@@ -20,7 +20,9 @@
   "scripts": {
     "build:apps": "node project/build/build-apps.js",
     "build:apps:dev": "node project/build/build-apps.js --dev",
-    "dev": "node project/app/dev-electron.js"
+    "dev": "node project/app/dev-electron.js",
+    "pack-electron": "rimraf dist && node project/app/pack-electron.js",
+    "clean": "rimraf dist"
   },
   "devDependencies": {
     "@types/node": "^24.8.1",
