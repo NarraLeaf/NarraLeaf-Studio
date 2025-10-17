@@ -18,10 +18,13 @@
   "author": "NarraLeaf Project",
   "main": "dist/main/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build:apps": "node project/build/build-apps.js",
+    "build:apps:dev": "node project/build/build-apps.js --dev",
+    "dev": "node project/app/dev-electron.js"
   },
   "devDependencies": {
     "@types/node": "^24.8.1",
+    "chokidar": "^4.0.3",
     "ejs": "^3.1.10",
     "electron": "^38.3.0",
     "electron-builder": "^26.0.12",

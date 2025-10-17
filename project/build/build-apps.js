@@ -2,7 +2,14 @@ const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
 const esbuild = require('esbuild');
-const ejs = require('ejs');
+const {
+    rootDir,
+    appsDir,
+    distWindows,
+    isDev,
+    renderHtml,
+    getRendererApps,
+} = require('./utils');
 
 /**
  * Build all renderer apps located under "src/apps/<appName>".
@@ -13,19 +20,12 @@ const ejs = require('ejs');
  */
 
 (async () => {
-    const isDev = process.argv.includes('--dev');
-    console.log(`[build-apps] Mode: ${isDev ? 'development' : 'production'}`);
-    const rootDir = path.resolve(__dirname, '../..');
-    const appsDir = path.join(rootDir, 'src', 'apps');
-    const templatePath = path.join(rootDir, 'project', 'assets', 'app-entry-html.ejs');
-    const distRoot = path.join(rootDir, 'dist', 'windows');
+    console.log(`[build-apps] Mode: ${isDev() ? 'development' : 'production'}`);
 
     // Ensure dist root exists
-    fs.mkdirSync(distRoot, { recursive: true });
+    fs.mkdirSync(distWindows, { recursive: true });
 
-    const entries = fs.readdirSync(appsDir, { withFileTypes: true })
-        .filter((dirent) => dirent.isDirectory())
-        .map((dirent) => dirent.name);
+    const entries = getRendererApps();
 
     if (entries.length === 0) {
         console.warn('[build-apps] No apps found in src/apps');
@@ -34,8 +34,7 @@ const ejs = require('ejs');
 
     console.log(`[build-apps] Found ${entries.length} app(s): ${entries.join(', ')}`);
 
-    // Read html template once
-    const template = await promisify(fs.readFile)(templatePath, 'utf-8');
+    // Preload template render function
 
     await Promise.all(entries.map(async (appName) => {
         const entryFile = path.join(appsDir, appName, 'index.tsx');
@@ -44,7 +43,7 @@ const ejs = require('ejs');
             return;
         }
 
-        const outDir = path.join(distRoot, appName);
+        const outDir = path.join(distWindows, appName);
         fs.mkdirSync(outDir, { recursive: true });
 
         const outfile = path.join(outDir, 'index.js');
@@ -57,8 +56,8 @@ const ejs = require('ejs');
             bundle: true,
             platform: 'browser',
             format: 'iife',
-            sourcemap: isDev,
-            minify: !isDev,
+            sourcemap: isDev(),
+            minify: !isDev(),
             jsx: 'automatic',
             target: ['chrome114', 'firefox120', 'safari16'],
             loader: {
@@ -68,11 +67,7 @@ const ejs = require('ejs');
         });
 
         // Render html
-        const html = ejs.render(template, {
-            title: `NarraLeaf - ${appName}`,
-            base: `app://public/${appName}`,
-            script: 'index.js',
-        });
+        const html = await renderHtml(appName);
 
         await promisify(fs.writeFile)(path.join(outDir, 'index.html'), html, 'utf-8');
 
