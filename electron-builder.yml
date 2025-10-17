@@ -1,12 +1,15 @@
 appId: com.narraleaf.studio
 productName: NarraLeaf-Studio
+directories:
+  output: build
+files:
+  - dist/**/*
+  - package.json
+  - node_modules/**/*
+extraMetadata:
+  main: dist/main/index.js
 
 asar: true
-files:
-  - from: ./dist
-    to: .
-    filter:
-      - '**/*'
 extraResources:
   - from: ./resources
     to: resources
@@ -16,5 +19,6 @@ mac:
   target: dmg
 win:
   target: nsis
+  icon: resources/app-icon.ico
 linux:
   target: AppImage
