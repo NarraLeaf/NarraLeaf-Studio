@@ -1,0 +1,20 @@
+appId: com.narraleaf.studio
+productName: NarraLeaf-Studio
+
+asar: true
+files:
+  - from: ./dist
+    to: .
+    filter:
+      - '**/*'
+extraResources:
+  - from: ./resources
+    to: resources
+    filter:
+      - '**/*'
+mac:
+  target: dmg
+win:
+  target: nsis
+linux:
+  target: AppImage
