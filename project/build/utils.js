@@ -4,7 +4,7 @@ const { promisify } = require('util');
 const ejs = require('ejs');
 
 const rootDir = path.resolve(__dirname, '../..');
-const appsDir = path.join(rootDir, 'src', 'apps');
+const appsDir = path.join(rootDir, 'src', 'renderer', 'apps');
 const templatePath = path.join(rootDir, 'project', 'assets', 'app-entry-html.ejs');
 const distRoot = path.join(rootDir, 'dist');
 const distWindows = path.join(distRoot, 'windows');

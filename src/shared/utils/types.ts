@@ -11,4 +11,4 @@ export type MayPromise<T> = T | Promise<T>;
 export type DeepPartial<T> = {
     [P in keyof T]?: DeepPartial<T[P]>;
 }
-export type StringKeyof<T> = Extract<keyof T, string>;
+export type StringKeyOf<T> = Extract<keyof T, string>;

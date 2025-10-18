@@ -67,7 +67,7 @@ const chokidar = require('chokidar');
     const apps = getRendererApps();
 
     await Promise.all(apps.map(async (appName) => {
-        const entryFile = path.join(rootDir, 'src', 'apps', appName, 'index.tsx');
+        const entryFile = path.join(rootDir, 'src', 'renderer', 'apps', appName, 'index.tsx');
         const outDir = path.join(distWindows, appName);
         fs.mkdirSync(outDir, { recursive: true });
         const outfile = path.join(outDir, 'index.js');

@@ -12,7 +12,7 @@ const {
 } = require('./utils');
 
 /**
- * Build all renderer apps located under "src/apps/<appName>".
+ * Build all renderer apps located under "src/renderer/apps/<appName>".
  * Each app must have an "index.tsx" entry file.
  * The build output is written to "dist/windows/<appName>" with:
  *   - index.js  : bundled renderer script
@@ -28,7 +28,7 @@ const {
     const entries = getRendererApps();
 
     if (entries.length === 0) {
-        console.warn('[build-apps] No apps found in src/apps');
+        console.warn('[build-apps] No apps found in src/renderer/apps');
         return;
     }
 

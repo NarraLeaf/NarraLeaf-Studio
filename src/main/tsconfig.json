@@ -14,10 +14,13 @@
       "@shared/*": ["../shared/*"]
     },
     "typeRoots": [
-      "../../node_modules/@types"
-    ]
+      "../../node_modules/@types",
+      "../shared/types"
+    ],
+    "types": ["node"]
   },
   "include": [
-    "./**/*"
+    "./**/*",
+    "../shared/**/*"
   ],
 }

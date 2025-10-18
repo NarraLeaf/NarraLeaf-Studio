@@ -12,15 +12,17 @@
     "emitDeclarationOnly": true,
     "paths": {
       "@/*": ["./*"],
-      "@root/*": ["../../*"],
-      "@shared/*": ["../shared/*"]
+      "@shared/*": ["../shared/*"],
+      "@lib/*": ["./lib/*"]
     },
     "typeRoots": [
-      "../../node_modules/@types"
+      "../../node_modules/@types",
+      "../shared/types"
     ],
-    "types": ["node"]
+    "types": ["node", "react", "react-dom"]
   },
   "include": [
-    "./**/*"
+    "./**/*",
+    "../shared/**/*"
   ],
 }

@@ -23,10 +23,7 @@ export type IPCEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {},
-        response: {
-            platform: PlatformInfo;
-            isPackaged: boolean;
-        };
+        response: PlatformInfo;
     };
     [IPCEventType.appTerminate]: {
         type: IPCMessageType.message,
@@ -46,7 +43,3 @@ export type IPCEvents = {
         response: any;
     };
 };
-
-export enum Namespace {
-    NarraLeaf = "narraleaf",
-}
