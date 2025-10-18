@@ -8,6 +8,10 @@ export enum IPCMessageType {
     request = "request",
 }
 
+export enum Namespace {
+    NarraLeafStudio = "narraleaf-studio",
+}
+
 export enum SubNamespace {
     Reply = "reply",
 }

@@ -142,4 +142,6 @@ vite.config.ts.timestamp-*
 dist/
 build/
 yarn.lock
+.yarn
+.dev/
 package-lock.json

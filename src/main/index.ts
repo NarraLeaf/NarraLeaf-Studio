@@ -13,7 +13,7 @@ app.whenReady().then(() => {
         width: 800,
         height: 600,
         webPreferences: {
-            preload: path.join(app.getAppPath(), '../windows/launcher/index.js'),
+            preload: path.join(app.getAppPath(), './preload.js'),
         },
         title: 'NarraLeaf-Studio',
     });

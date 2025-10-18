@@ -28,5 +28,24 @@ const { rootDir, isDev } = require('./utils');
         tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
     });
 
+    const preloadEntry = path.join(rootDir, 'src', 'main', 'preload', 'preload.ts');
+    if (!fs.existsSync(preloadEntry)) {
+        console.warn('[build-main] Preload entry "src/main/preload/preload.ts" not found. Skipping preload build.');
+    } else {
+        console.log('[build-main] Bundling preload script…');
+        await esbuild.build({
+            entryPoints: [preloadEntry],
+            outfile: path.join(outDir, 'preload.js'),
+            platform: 'node',
+            format: 'cjs',
+            bundle: true,
+            external: ['electron', 'esbuild'],
+            sourcemap: isDev(),
+            minify: !isDev(),
+            target: ['node18'],
+            tsconfig: path.join(rootDir, 'src', 'main', 'tsconfig.json'),
+        });
+    }
+
     console.log('[build-main] Main process built successfully.');
 })();

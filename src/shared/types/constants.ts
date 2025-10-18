@@ -1,0 +1,1 @@
+export const RendererInterfaceKey = "__NLS_RENDERER_INTERFACE__";
