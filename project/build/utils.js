@@ -23,8 +23,8 @@ async function renderHtml(appName) {
     const template = await promisify(fs.readFile)(templatePath, 'utf-8');
     return ejs.render(template, {
         title: `NarraLeaf - ${appName}`,
-        base: `app://public/${appName}`,
-        script: 'index.js',
+        base: `app://public`,
+        script: `app://windows/${appName}/index.js`,
     });
 }
 

@@ -1,7 +1,14 @@
-import { BaseApp } from "./application/baseApp";
+import { BaseApp, BaseAppConfig } from "./application/baseApp";
+
+export interface AppConfig extends BaseAppConfig {
+}
 
 export class App extends BaseApp {
-    constructor() {
-        super();
+    public static create(config: AppConfig): App {
+        return new App(config);
+    }
+
+    constructor(public readonly config: AppConfig) {
+        super(config);
     }
 }
