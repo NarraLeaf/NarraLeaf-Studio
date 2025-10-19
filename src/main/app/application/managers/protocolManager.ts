@@ -106,7 +106,8 @@ export class ProtocolManager implements IProtocolManager {
             AppProtocol,
             { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
             () => path.resolve(this.app.getDistDir(), "windows"),
-            AppHost.Windows
+            AppHost.Windows,
+            this.app.isDevMode()
         );
         windowsHandler.addRule({
             include: (requested) => {

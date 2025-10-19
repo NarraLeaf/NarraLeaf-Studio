@@ -19,7 +19,7 @@ export interface AppDependencies {
     protocolManager: ProtocolManager;
     windowManager: WindowManager;
 }
-export interface BaseAppConfig {}
+export interface BaseAppConfig { }
 
 export type AppEvents = {
     "ready": [];
@@ -131,13 +131,17 @@ export class BaseApp {
     public getDevTempDir(): string {
         return path.join(this.getAppPath(), ".dev", "temp");
     }
-    
+
     public quit(): void {
         this.electronApp.quit();
     }
 
     public crash(error: string): void {
         /* TODO: Implement crash handling */
+    }
+
+    public isDevMode(): boolean {
+        return process.argv.includes("--dev");
     }
 
     /**
@@ -170,6 +174,19 @@ export class BaseApp {
 
             this.emit(BaseApp.Events.Ready);
         });
+
+        if (this.isDevMode()) {
+            // Listen for reload events from the development server
+            this.logger.info("App is running in development mode");
+
+            const { WebSocket } = await import("ws");
+            const ws = new WebSocket("ws://localhost:5588");
+            ws.onmessage = () => {
+                this.windowManager.getWindows().forEach((w) => {
+                    w.reload();
+                });
+            };
+        }
     }
 
     private emit<K extends StringKeyOf<AppEvents>>(event: K, ...args: AppEvents[K]): void {

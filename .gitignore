@@ -140,7 +140,7 @@ vite.config.ts.timestamp-*
 
 # NarraLeaf-Studio
 dist/
-build/
+./build/
 yarn.lock
 .yarn
 .dev/

@@ -38,13 +38,19 @@
     "@types/node": "^24.8.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/ws": "^8.18.1",
+    "autoprefixer": "^10.4.21",
     "chokidar": "^4.0.3",
     "ejs": "^3.1.10",
     "electron": "^38.3.0",
     "electron-builder": "^26.0.12",
     "esbuild": "^0.25.11",
+    "esbuild-postcss": "^0.0.4",
+    "postcss": "^8.5.6",
     "rimraf": "^6.0.1",
-    "typescript": "^5.7.3"
+    "tailwindcss": "^4.1.14",
+    "typescript": "^5.7.3",
+    "ws": "^8.17.0"
   },
   "packageManager": "yarn@4.10.3+sha512.c38cafb5c7bb273f3926d04e55e1d8c9dfa7d9c3ea1f36a4868fa028b9e5f72298f0b7f401ad5eb921749eb012eb1c3bb74bf7503df3ee43fd600d14a018266f"
 }
