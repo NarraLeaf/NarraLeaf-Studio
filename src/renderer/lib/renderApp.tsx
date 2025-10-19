@@ -2,6 +2,7 @@ import { RendererInterfaceKey } from "@shared/types/constants";
 import React from "react";
 import { getInterface } from "./app/bridge";
 import { CriticalErrorBoundary } from "./app/errorHandling/CriticalErrorBoundary";
+import { createRoot } from "react-dom/client";
 
 function validateEnv() {
     if (!window[RendererInterfaceKey]) {
@@ -19,13 +20,17 @@ export async function renderApp(children: React.ReactNode) {
         throw new Error("Failed to get platform info");
     }
 
-    return (
+    console.log("[renderer] platformInfo", platformInfo.data);
+
+    const root = createRoot(document.getElementById("root")!);
+    root.render(
         <React.StrictMode>
             <CriticalErrorBoundary platformInfo={platformInfo.data}>
-                {children}
+                {children as React.ReactElement}
             </CriticalErrorBoundary>
         </React.StrictMode>
     );
+    return root;
 }
 
 export function renderAppAsync(children: React.ReactNode) {

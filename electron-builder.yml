@@ -5,7 +5,12 @@ directories:
 files:
   - dist/**/*
   - package.json
-  - node_modules/**/*
+  - '!**/*.map'
+  - '!**/{CHANGELOG,README,README.md,docs,CHANGELOG.md}/**'
+  - from: src/renderer/public
+    to: public
+    filter:
+      - '**/*'
 extraMetadata:
   main: dist/main/index.js
 

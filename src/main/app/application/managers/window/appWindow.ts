@@ -133,7 +133,17 @@ export class AppWindow extends WindowProxy {
         };
     }
 
+    public registerPreloadScript(script: string): string {
+        return this.win.webContents.session.registerPreloadScript({
+            type: "frame",
+            filePath: script,
+        })
+    }
+
     private initialize(_app: App): void {
+        this.app.windowManager.registerWindow(this);
+        this.app.windowManager.registerDefaultIPCHandlers(this);
+
         this.prepareEvents();
     }
 

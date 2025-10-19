@@ -11,6 +11,9 @@ import { Platform, PlatformInfo } from "@shared/types/os";
 import { WindowManager } from "./managers/windowManager";
 import path from "path";
 import { StringKeyOf } from "@shared/utils/types";
+import { ProtocolManager } from "./managers/protocolManager";
+import { AppEventToken } from "@shared/types/app";
+import { safeExecuteFn } from "@shared/utils/os";
 
 export interface AppDependencies {
     protocolManager: ProtocolManager;
@@ -53,6 +56,44 @@ export class BaseApp {
         this.prepare();
     }
 
+    public onReady(fn: (...args: AppEvents["ready"]) => void): AppEventToken {
+        const handler = () => {
+            safeExecuteFn(fn);
+        };
+        this.events.on<"ready">(BaseApp.Events.Ready, handler);
+
+        return {
+            cancel: () => {
+                this.events.off(BaseApp.Events.Ready, handler);
+            }
+        };
+    }
+
+    /**
+     * Wait until the app is ready
+     * 
+     * @example
+     * ```ts
+     * app.whenReady().then(() => {
+     *     console.log("App is ready");
+     * });
+     * ```
+     */
+    public whenReady(): Promise<void> {
+        return new Promise((resolve) => {
+            this.events.once(BaseApp.Events.Ready, () => {
+                resolve();
+            });
+        });
+    }
+
+    /**
+     * Alias for whenReady
+     */
+    public untilReady(): Promise<void> {
+        return this.whenReady();
+    }
+
     /**
      * Return the application path.
      * 
@@ -67,6 +108,14 @@ export class BaseApp {
         return this.electronApp.isPackaged ? appDir : path.resolve(appDir, '../..');
     }
 
+    public getDistDir(): string {
+        return path.resolve(this.getAppPath(), "dist");
+    }
+
+    public getPublicDir(): string {
+        return path.resolve(this.getAppPath(), this.isPackaged() ? "public" : "src/renderer/public");
+    }
+
     public isPackaged(): boolean {
         return this.electronApp.isPackaged;
     }
@@ -75,8 +124,20 @@ export class BaseApp {
         return app.getPath("userData");
     }
 
+    public getPreloadScript(): string {
+        return path.resolve(this.getDistDir(), "main", "preload.js");
+    }
+
     public getDevTempDir(): string {
         return path.join(this.getAppPath(), ".dev", "temp");
+    }
+    
+    public quit(): void {
+        this.electronApp.quit();
+    }
+
+    public crash(error: string): void {
+        /* TODO: Implement crash handling */
     }
 
     /**
