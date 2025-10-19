@@ -3,6 +3,7 @@ import React from "react";
 import { getInterface } from "./app/bridge";
 import { CriticalErrorBoundary } from "./app/errorHandling/CriticalErrorBoundary";
 import { createRoot } from "react-dom/client";
+import "@/styles/styles.css";
 
 function validateEnv() {
     if (!window[RendererInterfaceKey]) {

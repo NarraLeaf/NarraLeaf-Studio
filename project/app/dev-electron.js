@@ -12,6 +12,7 @@ const {
 const chokidar = require('chokidar');
 const { WebSocketServer } = require('ws');
 const { watchBuild } = require('../build/watch');
+const { postcssPlugin } = require('../build/postCss-plugin');
 
 const styleIn = path.join(rootDir, 'src', 'renderer', 'styles', 'styles.css');
 const styleOut = path.join(distWindows, 'styles.css');
@@ -36,9 +37,10 @@ function broadcastReload() {
     let initialMainBuilt = false;
     let initialStylesBuilt = false;
     let initialRenderersBuilt = false;
+    let initialPreloadBuilt = false;
 
     function tryStartElectronOnce() {
-        if (!appStarted && initialMainBuilt && initialStylesBuilt && initialRenderersBuilt) {
+        if (!appStarted && initialMainBuilt && initialStylesBuilt && initialRenderersBuilt && initialPreloadBuilt) {
             appStarted = true;
             console.log('[dev] all initial builds completed. starting electron...');
             restartElectron();
@@ -78,7 +80,6 @@ function broadcastReload() {
         }
     });
 
-    // Do not start Electron here; we start only after renderer + styles are also ready
 
     // Fallback watcher: ensure rebuild when any file in src/main changes
     const mainWatcher = chokidar.watch(path.join(rootDir, 'src', 'main'), {
@@ -91,6 +92,34 @@ function broadcastReload() {
         console.log('[main] chokidar rebuild. restarting electron...');
         restartElectron();
     });
+
+    /** Build & watch preload script */
+    const preloadEntry = path.join(rootDir, 'src', 'main', 'preload', 'preload.ts');
+    if (fs.existsSync(preloadEntry)) {
+        await watchBuild({
+            entryPoints: [preloadEntry],
+            outfile: path.join(distDir, 'main', 'preload.js'),
+            platform: 'node',
+            format: 'cjs',
+            bundle: true,
+            external: ['electron'],
+            sourcemap: true,
+            target: ['node18'],
+        }, () => {
+            if (!initialPreloadBuilt) {
+                initialPreloadBuilt = true;
+                console.log('[preload] initial build complete.');
+                tryStartElectronOnce();
+            } else {
+                console.log('[preload] rebuilt. restarting electron...');
+                if (appStarted) restartElectron();
+            }
+        });
+    } else {
+        console.warn('[preload] Entry "src/main/preload/preload.ts" not found. Skipping preload build.');
+        initialPreloadBuilt = true;
+        tryStartElectronOnce();
+    }
 
     // Build & watch renderer apps
     const apps = getRendererApps();
@@ -111,11 +140,12 @@ function broadcastReload() {
             jsx: 'automatic',
             target: ['chrome114'],
             loader: { '.css': 'css' },
-            plugins: [require('esbuild-postcss')()],
+            plugins: [postcssPlugin()],
         }, () => {
             // Only broadcast reloads after the app has started
+            console.log(`[renderer:${appName}] rebuilt.`);
             if (appStarted) {
-                console.log(`[renderer:${appName}] rebuilt. broadcasting reload...`);
+                console.log(`[renderer:${appName}] broadcasting reload...`);
                 broadcastReload();
             }
         });
@@ -131,22 +161,12 @@ function broadcastReload() {
     initialRenderersBuilt = true;
     tryStartElectronOnce();
 
-    await watchBuild({
-        entryPoints: [styleIn],
-        outfile: styleOut,
-        bundle: true,
-        loader: { '.css': 'css' },
-        plugins: [require('esbuild-postcss')({
-            plugins: [require('tailwindcss'), require('autoprefixer')],
-        })],
-    }, () => {
-        if (!initialStylesBuilt) {
-            initialStylesBuilt = true;
-            console.log('[styles] initial build complete.');
-            tryStartElectronOnce();
-        } else {
-            console.log('[styles] rebuilt. broadcasting reload...');
-            if (appStarted) broadcastReload();
-        }
-    });
+    if (!initialStylesBuilt) {
+        initialStylesBuilt = true;
+        console.log('[styles] initial build complete.');
+        tryStartElectronOnce();
+    } else {
+        console.log('[styles] rebuilt. broadcasting reload...');
+        if (appStarted) broadcastReload();
+    }
 })();

@@ -11,6 +11,7 @@ const {
     renderHtml,
     getRendererApps,
 } = require('./utils');
+const { postcssPlugin } = require('./postCss-plugin');
 
 /**
  * Build all renderer apps located under "src/renderer/apps/<appName>".
@@ -25,23 +26,6 @@ const {
 
     // Ensure dist root exists
     fs.mkdirSync(distWindows, { recursive: true });
-
-    /*
-     * Build global styles (Tailwind CSS)
-     * Output: dist/windows/styles.css
-     */
-    try {
-        const inFile = path.join(rootDir, 'src/renderer/styles/styles.css');
-        const outFile = path.join(distWindows, 'styles.css');
-        console.log(`[build-apps] Building styles → ${path.relative(rootDir, outFile)}`);
-        execSync(`npx tailwindcss -i "${inFile}" -o "${outFile}"`, {
-            stdio: 'inherit',
-            cwd: rootDir,
-        });
-    } catch (err) {
-        console.error('[build-apps] Failed to build styles', err);
-        process.exit(1);
-    }
 
     const entries = getRendererApps();
 
@@ -82,6 +66,7 @@ const {
                 '.ts': 'ts',
                 '.tsx': 'tsx',
             },
+            plugins: [postcssPlugin()],
         });
 
         // Render html
