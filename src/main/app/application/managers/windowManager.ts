@@ -32,6 +32,10 @@ export class WindowManager {
         this.windows = this.windows.filter(w => w !== win);
     }
 
+    public getWindows(): AppWindow[] {
+        return this.windows;
+    }
+
     public registerDefaultIPCHandlers(win: AppWindow): void {
         win.registerIPCHandler(new AppInfoHandler());
         win.registerIPCHandler(new AppTerminateHandler());

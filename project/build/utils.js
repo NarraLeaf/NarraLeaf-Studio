@@ -25,6 +25,7 @@ async function renderHtml(appName) {
         title: `NarraLeaf - ${appName}`,
         base: `app://public`,
         script: `app://windows/${appName}/index.js`,
+        style: `app://windows/styles.css`,
     });
 }
 
