@@ -8,7 +8,28 @@ const esbuild = require('esbuild');
  * @returns {Promise<import('esbuild').BuildContext>}
  */
 async function watchBuild(options, onSuccess = () => {}) {
-  const ctx = await esbuild.context(options);
+  // Rebuild duration logger plugin
+  const rebuildLogPlugin = {
+    name: 'rebuild-log',
+    setup(build) {
+      let startTime;
+      build.onStart(() => {
+        startTime = Date.now();
+      });
+      build.onEnd(() => {
+        if (startTime) {
+          console.log(`[watch] build finished in ${Date.now() - startTime} ms`);
+        }
+        onSuccess();
+      });
+    },
+  };
+
+  // Ensure plugins array exists and append the logger
+  const ctx = await esbuild.context({
+    ...options,
+    plugins: [...(options.plugins || []), rebuildLogPlugin],
+  });
 
   // Trigger the initial build explicitly and invoke success callback
   try {
@@ -18,14 +39,7 @@ async function watchBuild(options, onSuccess = () => {}) {
     console.error(`[watch] initial build failed`, err);
   }
 
-  // Start watching for file changes; callback fires on rebuilds
-  await ctx.watch((err) => {
-    if (err) {
-      console.error(`[watch] build failed`, err);
-      return;
-    }
-    onSuccess();
-  });
+  await ctx.watch();
   return ctx;
 }
 

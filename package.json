@@ -47,8 +47,9 @@
     "esbuild": "^0.25.11",
     "esbuild-postcss": "^0.0.4",
     "postcss": "^8.5.6",
+    "postcss-import": "^16.1.1",
     "rimraf": "^6.0.1",
-    "tailwindcss": "^4.1.14",
+    "tailwindcss": "^3",
     "typescript": "^5.7.3",
     "ws": "^8.17.0"
   },
