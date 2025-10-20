@@ -1,3 +1,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+*, *::before, *::after {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none;
+}
+
+@layer utilities {
+    .titlebar-drag { -webkit-app-region: drag; }
+    .no-drag { -webkit-app-region: no-drag; }
+}

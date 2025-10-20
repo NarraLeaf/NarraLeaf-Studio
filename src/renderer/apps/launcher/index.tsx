@@ -1,7 +1,4 @@
 import { renderAppAsync } from "@lib/renderApp";
+import { LauncherApp } from "./LauncherApp";
 
-export async function main() {
-    await renderAppAsync(<div className="text-red-500">Hello, world!</div>);
-}
-
-main();
+renderAppAsync(<LauncherApp />);

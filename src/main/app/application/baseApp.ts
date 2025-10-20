@@ -14,6 +14,8 @@ import { StringKeyOf } from "@shared/utils/types";
 import { ProtocolManager } from "./managers/protocolManager";
 import { AppEventToken } from "@shared/types/app";
 import { safeExecuteFn } from "@shared/utils/os";
+import { WindowAppType } from "@shared/types/window";
+import { MenuManager } from "./managers/menuManager";
 
 export interface AppDependencies {
     protocolManager: ProtocolManager;
@@ -38,6 +40,7 @@ export class BaseApp {
 
     public readonly protocolManager: ProtocolManager;
     public readonly windowManager: WindowManager;
+    public readonly menuManager: MenuManager;
 
     private initialized: boolean = false;
 
@@ -52,6 +55,7 @@ export class BaseApp {
 
         this.protocolManager = new ProtocolManager(this);
         this.windowManager = new WindowManager(this);
+        this.menuManager = new MenuManager(this);
 
         this.prepare();
     }
@@ -144,6 +148,10 @@ export class BaseApp {
         return process.argv.includes("--dev");
     }
 
+    public getAppEntry(type: WindowAppType): string {
+        return path.resolve(this.getDistDir(), "windows", type, "index.html");
+    }
+
     /**
      * Setup development userData path if running in development mode
      * This must be called before creating managers that depend on userData path
@@ -167,6 +175,7 @@ export class BaseApp {
 
         this.windowManager.initialize();
         this.protocolManager.initialize();
+        this.menuManager.initialize();
 
         this.electronApp.whenReady().then(async () => {
             this.initialized = true;

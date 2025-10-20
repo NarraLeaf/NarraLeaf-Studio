@@ -1,9 +1,8 @@
 import { EventEmitter } from "events";
-import path from "path";
-import { AppWindow, WindowConfig } from "./window/appWindow";
+import { BaseApp } from "../baseApp";
+import { AppWindow } from "./window/appWindow";
+import { AppTerminateHandler, AppWindowControlHandler, AppWindowGetControlHandler } from "./window/handlers/appAction";
 import { AppInfoHandler } from "./window/handlers/appInfo";
-import { App } from "@/app/app";
-import { AppTerminateHandler } from "./window/handlers/appAction";
 
 type WindowManagerEvents = {
     "window-created": [window: AppWindow];
@@ -16,7 +15,7 @@ export class WindowManager {
     public events: EventEmitter<WindowManagerEvents>;
 
     constructor(
-        private app: App,
+        private app: BaseApp,
     ) {
         this.events = new EventEmitter();
     }
@@ -38,6 +37,8 @@ export class WindowManager {
 
     public registerDefaultIPCHandlers(win: AppWindow): void {
         win.registerIPCHandler(new AppInfoHandler());
+        win.registerIPCHandler(new AppWindowControlHandler());
+        win.registerIPCHandler(new AppWindowGetControlHandler());
         win.registerIPCHandler(new AppTerminateHandler());
     }
 } 

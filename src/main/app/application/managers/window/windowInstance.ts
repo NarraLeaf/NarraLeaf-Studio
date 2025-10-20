@@ -2,7 +2,7 @@ import { BrowserWindow, WebPreferences } from "electron";
 
 export interface WindowInstanceConfig {
     isolated: boolean;
-    preload: string;
+    preload: string | null;
     options?: Electron.BrowserWindowConstructorOptions;
 }
 
@@ -27,7 +27,7 @@ export class WindowInstance {
     private getWebPreference(config: WindowInstanceConfig): WebPreferences {
         return {
             contextIsolation: config.isolated,
-            preload: config.preload,
+            preload: config.preload ?? undefined,
         };
     }
 } 

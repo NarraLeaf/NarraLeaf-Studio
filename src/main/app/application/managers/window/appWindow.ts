@@ -8,30 +8,31 @@ import { WindowInstanceConfig, WindowInstance } from "./windowInstance";
 import { WindowIPC } from "./windowIPC";
 import { WindowProxy } from "./windowProxy";
 import { WindowUserHandlers } from "./windowUserHandlers";
+import { WindowProps, WindowAppType, WindowVisibilityStatus } from "@shared/types/window";
 
 export interface WindowConfig {
     isolated: boolean;
     autoFocus: boolean;
+    preload: string | null;
     options?: Electron.BrowserWindowConstructorOptions;
 }
 
-export interface AppWindowConfig {
-    preload: string;
-}
-
-export class AppWindow extends WindowProxy {
+export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     public static readonly DefaultConfig: WindowConfig = {
         isolated: true,
         autoFocus: true,
+        preload: null,
         options: {
             backgroundColor: "#fff",
         }
     }
 
-    constructor(app: App, config: Partial<WindowConfig>, appConfig: AppWindowConfig) {
+    private props: WindowProps[T];
+
+    constructor(app: App, config: Partial<WindowConfig>, props: WindowProps[T]) {
         const instanceConfig: WindowInstanceConfig = {
             isolated: config.isolated ?? AppWindow.DefaultConfig.isolated,
-            preload: appConfig.preload,
+            preload: config.preload ?? AppWindow.DefaultConfig.preload,
             options: config.options ?? AppWindow.DefaultConfig.options,
         };
 
@@ -41,6 +42,7 @@ export class AppWindow extends WindowProxy {
         const userHandlers = new WindowUserHandlers(app.logger);
 
         super(app, instance, ipc, events, userHandlers);
+        this.props = props;
 
         this.initialize(app);
     }
@@ -138,6 +140,32 @@ export class AppWindow extends WindowProxy {
             type: "frame",
             filePath: script,
         })
+    }
+
+    public getProps(): WindowProps[T] {
+        return this.props;
+    }
+
+    public minimize(): void {
+        this.getBrowserWindow().minimize();
+    }
+
+    public maximize(): void {
+        this.getBrowserWindow().maximize();
+    }
+
+    public unmaximize(): void {
+        this.getBrowserWindow().unmaximize();
+    }
+
+    public getControl(): WindowVisibilityStatus {
+        if (this.getBrowserWindow().isMinimized()) {
+            return "minimized";
+        } else if (this.getBrowserWindow().isMaximized()) {
+            return "maximized";
+        } else {
+            return "normal";
+        }
     }
 
     private initialize(_app: App): void {

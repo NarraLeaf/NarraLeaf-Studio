@@ -1,7 +1,7 @@
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { WindowProxy } from "../windowProxy";
 
-export type EventResponse<T extends IPCEventType> = IPCEvents[T] extends { response: infer R } ? R : never;
+export type EventResponse<T extends IPCEventType> = Exclude<IPCEvents[T]["response"], never>;
 export type IPCHandlerProps<T extends IPCEventType> = IPCEvents[T]["data"];
 
 export abstract class IPCHandler<T extends IPCEventType> {
@@ -9,11 +9,7 @@ export abstract class IPCHandler<T extends IPCEventType> {
     abstract readonly type: IPCEvents[T]["type"];
     public abstract handle(window: WindowProxy, data: IPCEvents[T]["data"]): Promise<RequestStatus<EventResponse<T>>> | RequestStatus<EventResponse<T>>;
 
-    protected failed(err: unknown): {
-        success: false;
-        data?: never;
-        error?: string;
-    } {
+    protected failed(err: unknown): RequestStatus<never> {
         return {
             success: false,
             error: err instanceof Error ? err.message : String(err),
@@ -31,7 +27,7 @@ export abstract class IPCHandler<T extends IPCEventType> {
         }
         return {
             success: true,
-            data: undefined as any,
+            data: undefined as never,
         };
     }
 
