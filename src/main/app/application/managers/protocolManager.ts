@@ -4,12 +4,13 @@ import { ProtocolHandler, ProtocolManager as IProtocolManager } from "./protocol
 import { App } from "@/app/app";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 import path from "path";
+import { BaseApp } from "../baseApp";
 
 export class ProtocolManager implements IProtocolManager {
     private handlers: ProtocolHandler[] = [];
     private initialized: boolean = false;
 
-    constructor(private app: App) { }
+    constructor(private app: BaseApp) { }
 
     public initialize(): void {
         if (this.initialized) {

@@ -20,7 +20,7 @@ export type IPCConfiguration = {
     type: IPCMessageType.message;
     consumer: IPCType;
     data: Record<any, any>;
-    response: never;
+    response: never | void;
 } | {
     type: IPCMessageType.request;
     consumer: IPCType;
