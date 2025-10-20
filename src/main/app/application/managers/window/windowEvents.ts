@@ -5,6 +5,10 @@ import { StringKeyOf } from "@shared/utils/types";
 type WindowEventTypes = {
     close: [];
     "render-process-gone": [reason: string, detail: string];
+    /**
+     * Emitted when the window is ready and the react app finished its first render
+     */
+    "ready": [];
 };
 
 export class WindowEventManager {
@@ -18,6 +22,18 @@ export class WindowEventManager {
         return {
             cancel: () => {
                 this.events.removeListener("close", handler);
+            }
+        };
+    }
+
+    public onReady(fn: () => void): AppEventToken {
+        const handler = () => {
+            fn();
+        };
+        this.events.on("ready", handler);
+        return {
+            cancel: () => {
+                this.events.removeListener("ready", handler);
             }
         };
     }

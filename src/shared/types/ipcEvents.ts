@@ -1,13 +1,16 @@
+import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
 import { PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus } from "./window";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
-    getWindowProps = "getWindowProps",
     appTerminate = "app.terminate",
     appWindowControl = "app.window.setControl",
     appWindowGetControl = "app.window.getControl",
+    appWindowProps = "app.window.props",
+    appInfo = "app.info",
+    appWindowReady = "app.window.ready",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -27,12 +30,6 @@ export type IPCEvents = {
         consumer: IPCType.Host,
         data: {},
         response: PlatformInfo;
-    };
-    [IPCEventType.getWindowProps]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: {},
-        response: WindowProps[WindowAppType];
     };
     [IPCEventType.appTerminate]: {
         type: IPCMessageType.message,
@@ -57,5 +54,23 @@ export type IPCEvents = {
         response: {
             status: WindowVisibilityStatus,
         };
+    };
+    [IPCEventType.appWindowProps]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: WindowProps[WindowAppType];
+    };
+    [IPCEventType.appInfo]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: AppInfo;
+    };
+    [IPCEventType.appWindowReady]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {},
+        response: never;
     };
 };

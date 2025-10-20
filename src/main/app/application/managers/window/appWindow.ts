@@ -168,6 +168,14 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         }
     }
 
+    public announceReady(): void {
+        this.getEvents().emit("ready");
+    }
+
+    public onReady(fn: () => void): AppEventToken {
+        return this.getEvents().onReady(fn);
+    }
+
     private initialize(_app: App): void {
         this.app.windowManager.registerWindow(this);
         this.app.windowManager.registerDefaultIPCHandlers(this);
