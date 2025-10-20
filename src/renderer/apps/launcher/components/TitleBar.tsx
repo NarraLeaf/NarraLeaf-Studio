@@ -1,4 +1,3 @@
-import React from "react";
 import { useWindowControls } from "@/lib/app/hooks/useWindowControls";
 import { Minus, Square, X } from "lucide-react";
 

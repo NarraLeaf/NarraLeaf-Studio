@@ -7,13 +7,17 @@ import { WindowAppType, WindowProps } from "@shared/types/window";
 export const ipcClient = new IPCClient(Namespace.NarraLeafStudio);
 export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     getPlatform: () => ipcClient.invoke(IPCEventType.getPlatform, {}),
-    getWindowProps: <T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>> => ipcClient.invoke(IPCEventType.getWindowProps, {}),
+    getAppInfo: () => ipcClient.invoke(IPCEventType.appInfo, {}),
+    getWindowProps: <T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>> => ipcClient.invoke(IPCEventType.appWindowProps, {}),
     terminate: async (err?: string) => ipcClient.send(IPCEventType.appTerminate, { err: err ?? null }),
-    windowControl: {
-        minimize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "minimize" }),
-        maximize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "maximize" }),
-        unmaximize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "unmaximize" }),
-        close: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "close" }),
-        status: () => ipcClient.invoke(IPCEventType.appWindowGetControl, {}),
+    window: {
+        ready: () => ipcClient.send(IPCEventType.appWindowReady, {}),
+        control: {
+            minimize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "minimize" }),
+            maximize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "maximize" }),
+            unmaximize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "unmaximize" }),
+            close: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "close" }),
+            status: () => ipcClient.invoke(IPCEventType.appWindowGetControl, {}),
+        },
     },
 };

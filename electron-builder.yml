@@ -15,6 +15,7 @@ extraMetadata:
   main: dist/main/index.js
 
 asar: true
+publish: null
 extraResources:
   - from: ./resources
     to: resources

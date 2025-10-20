@@ -53,3 +53,13 @@ export class AppWindowGetControlHandler extends IPCHandler<IPCEventType.appWindo
         return this.success({ status: window.getControl() });
     }
 }
+
+export class AppWindowReadyHandler extends IPCHandler<IPCEventType.appWindowReady> {
+    readonly name = IPCEventType.appWindowReady;
+    readonly type = IPCMessageType.message;
+
+    public handle(window: AppWindow) {
+        window.announceReady();
+        return this.success(void 0 as never);
+    }
+}

@@ -1,4 +1,5 @@
 import { App } from '@/app/app';
+import path from 'path';
 
 const app = App.create({});
 
@@ -16,6 +17,8 @@ app.whenReady().then(async () => {
         closable: true,
         titleBarStyle: 'hidden',
         backgroundColor: '#0f1115',
+        show: false,
+        icon: app.resolveResource("app-icon.ico"),
     }, {});
     launcher.win.setTitle('Launcher - NarraLeaf Studio');
 
@@ -24,5 +27,8 @@ app.whenReady().then(async () => {
     });
     launcher.onKeyUp("F12", () => {
         launcher.toggleDevTools();
+    });
+    launcher.onReady(() => {
+        launcher.show();
     });
 });

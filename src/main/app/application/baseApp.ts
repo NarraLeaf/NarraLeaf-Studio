@@ -12,10 +12,11 @@ import { WindowManager } from "./managers/windowManager";
 import path from "path";
 import { StringKeyOf } from "@shared/utils/types";
 import { ProtocolManager } from "./managers/protocolManager";
-import { AppEventToken } from "@shared/types/app";
+import { AppEventToken, AppInfo } from "@shared/types/app";
 import { safeExecuteFn } from "@shared/utils/os";
 import { WindowAppType } from "@shared/types/window";
 import { MenuManager } from "./managers/menuManager";
+import { readJson } from "@shared/utils/json";
 
 export interface AppDependencies {
     protocolManager: ProtocolManager;
@@ -43,6 +44,7 @@ export class BaseApp {
     public readonly menuManager: MenuManager;
 
     private initialized: boolean = false;
+    protected appInfo: AppInfo | null = null;
 
     constructor(config: BaseAppConfig) {
         this.config = config;
@@ -112,6 +114,15 @@ export class BaseApp {
         return this.electronApp.isPackaged ? appDir : path.resolve(appDir, '../..');
     }
 
+    public getResourcesDir(): string {
+        const appDir = this.getAppPath();
+        return this.electronApp.isPackaged ? path.resolve(appDir, "..", "resources") : path.resolve(appDir, "resources");
+    }
+
+    public resolveResource(p: string): string {
+        return path.resolve(this.getResourcesDir(), p);
+    }
+
     public getDistDir(): string {
         return path.resolve(this.getAppPath(), "dist");
     }
@@ -152,6 +163,13 @@ export class BaseApp {
         return path.resolve(this.getDistDir(), "windows", type, "index.html");
     }
 
+    public getAppInfo(): AppInfo {
+        if (!this.appInfo) {
+            throw new Error("App info is not available");
+        }
+        return this.appInfo;
+    }
+
     /**
      * Setup development userData path if running in development mode
      * This must be called before creating managers that depend on userData path
@@ -173,11 +191,15 @@ export class BaseApp {
             throw new Error("Electron App is not available");
         }
 
+        // Initialize managers
         this.windowManager.initialize();
         this.protocolManager.initialize();
         this.menuManager.initialize();
 
         this.electronApp.whenReady().then(async () => {
+            // Retrieve app info
+            this.appInfo = await this.constructAppInfo();
+
             this.initialized = true;
             this.logger.info("App initialization completed");
 
@@ -196,6 +218,17 @@ export class BaseApp {
                 });
             };
         }
+    }
+
+    private async constructAppInfo(): Promise<AppInfo> {
+        const pkg = await readJson<{ version: string }>(path.resolve(this.getAppPath(), "package.json"));
+        if (!pkg.ok) {
+            throw new Error(`Failed to load app info: ${pkg.error}`);
+        }
+
+        return {
+            version: pkg.data.version,
+        };
     }
 
     private emit<K extends StringKeyOf<AppEvents>>(event: K, ...args: AppEvents[K]): void {

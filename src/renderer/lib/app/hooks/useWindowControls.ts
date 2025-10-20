@@ -10,7 +10,7 @@ export function useWindowControls() {
     const [status, setStatus] = useState<WindowVisibilityStatus>("normal");
 
     const refreshStatus = useCallback(async () => {
-        const res = await getInterface().windowControl.status();
+        const res = await getInterface().window.control.status();
         if (res.success) {
             setStatus(res.data.status);
         } else {
@@ -20,26 +20,26 @@ export function useWindowControls() {
     }, []);
 
     const minimize = useCallback(async () => {
-        await getInterface().windowControl.minimize();
+        await getInterface().window.control.minimize();
         await refreshStatus();
     }, [refreshStatus]);
 
     const toggleMaximize = useCallback(async () => {
-        const res = await getInterface().windowControl.status();
+        const res = await getInterface().window.control.status();
         if (!res.success) {
             console.error("[useWindowControls] Failed to get status", res.error);
             return;
         }
         if (res.data.status === "maximized") {
-            await getInterface().windowControl.unmaximize();
+            await getInterface().window.control.unmaximize();
         } else {
-            await getInterface().windowControl.maximize();    
+            await getInterface().window.control.maximize();    
         }
         await refreshStatus();
     }, [refreshStatus]);
 
     const close = useCallback(async () => {
-        await getInterface().windowControl.close();
+        await getInterface().window.control.close();
     }, []);
 
     useEffect(() => {
