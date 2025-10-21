@@ -1,7 +1,8 @@
+import { FileDetails, FileStat } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
-import { PlatformInfo } from "./os";
-import { WindowAppType, WindowLuanchOptions, WindowProps, WindowVisibilityStatus } from "./window";
+import { FsRequestResult, PlatformInfo } from "./os";
+import { WindowAppType, WindowProps, WindowVisibilityStatus } from "./window";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -12,6 +13,24 @@ export enum IPCEventType {
     appInfo = "app.info",
     appWindowReady = "app.window.ready",
     appLaunchSettings = "app.settings.launchWindow",
+
+    fsStat = "fs.stat",
+    fsList = "fs.list",
+    fsDetails = "fs.details",
+    fsRequestRead = "fs.requestRead",
+    fsRequestWrite = "fs.requestWrite",
+    fsCreateDir = "fs.createDir",
+    fsDeleteFile = "fs.deleteFile",
+    fsDeleteDir = "fs.deleteDir",
+    fsRename = "fs.rename",
+    fsCopyFile = "fs.copyFile",
+    fsCopyDir = "fs.copyDir",
+    fsMoveFile = "fs.moveFile",
+    fsMoveDir = "fs.moveDir",
+    fsFileExists = "fs.fileExists",
+    fsDirExists = "fs.dirExists",
+    fsIsFile = "fs.isFile",
+    fsIsDir = "fs.isDir",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -82,4 +101,153 @@ export type IPCEvents = {
         },
         response: void;
     };
-};
+} & IPCFsEvents;
+
+export type IPCFsEvents = {
+    [IPCEventType.fsStat]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<FileStat>;
+    };
+    [IPCEventType.fsList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<FileStat[]>;
+    };
+    [IPCEventType.fsDetails]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<FileDetails>;
+    };
+    [IPCEventType.fsRequestRead]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+            raw: boolean;
+            encoding?: BufferEncoding;
+        },
+        response: FsRequestResult<string>; // a hash that can be used to fetch the file later
+    };
+    [IPCEventType.fsRequestWrite]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+            raw: boolean;
+            encoding?: BufferEncoding;
+        },
+        response: FsRequestResult<string>;
+    };
+    [IPCEventType.fsCreateDir]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<void>;
+    };
+    [IPCEventType.fsDeleteFile]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<void>;
+    };
+    [IPCEventType.fsDeleteDir]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<void>;
+    };
+    [IPCEventType.fsRename]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            oldPath: string;
+            newName: string;
+            isDir: boolean;
+        },
+        response: FsRequestResult<void>;
+    };
+    [IPCEventType.fsCopyFile]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            src: string;
+            dest: string;
+        },
+        response: FsRequestResult<void>;
+    };
+    [IPCEventType.fsCopyDir]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            src: string;
+            dest: string;
+        },
+        response: FsRequestResult<void>;
+    };
+    [IPCEventType.fsMoveFile]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            src: string;
+            dest: string;
+        },
+        response: FsRequestResult<void>;
+    };
+    [IPCEventType.fsMoveDir]: { 
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            src: string;
+            dest: string;
+        },
+        response: FsRequestResult<void>;
+    };
+    [IPCEventType.fsFileExists]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<boolean>;
+    };
+    [IPCEventType.fsDirExists]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<boolean>;
+    };
+    [IPCEventType.fsIsFile]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<boolean>;
+    };
+    [IPCEventType.fsIsDir]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<boolean>;
+    };
+}

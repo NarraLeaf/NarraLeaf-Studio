@@ -98,7 +98,7 @@ export class FileSystemHandler implements ProtocolHandler, AssetResolver {
         const mimeType = getMimeType(filePath);
 
         if (!data.ok) {
-            throw new Error(data.error);
+            throw new Error(data.error.message);
         }
 
         return {

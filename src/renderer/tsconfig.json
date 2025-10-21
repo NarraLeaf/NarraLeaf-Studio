@@ -13,7 +13,8 @@
     "paths": {
       "@/*": ["./*"],
       "@shared/*": ["../shared/*"],
-      "@lib/*": ["./lib/*"]
+      "@lib/*": ["./lib/*"],
+      "@services/*": ["./lib/workspace/services/*"]
     },
     "typeRoots": [
       "../../node_modules/@types",

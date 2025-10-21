@@ -38,6 +38,7 @@ function broadcastReload() {
     let initialStylesBuilt = false;
     let initialRenderersBuilt = false;
     let initialPreloadBuilt = false;
+    let restartTimer = null; // Timer for debouncing restarts
 
     function tryStartElectronOnce() {
         if (!appStarted && initialMainBuilt && initialStylesBuilt && initialRenderersBuilt && initialPreloadBuilt) {
@@ -46,14 +47,47 @@ function broadcastReload() {
             restartElectron();
         }
     }
+
     function restartElectron() {
-        if (electronProcess) {
-            electronProcess.kill('SIGTERM');
+        // Clear any existing restart timer
+        if (restartTimer) {
+            clearTimeout(restartTimer);
         }
+
+        // Debounce restarts by 300ms to avoid rapid successive restarts
+        restartTimer = setTimeout(() => {
+            if (electronProcess) {
+                console.log('[dev] killing existing electron process...');
+                electronProcess.kill('SIGTERM');
+                // Give it a moment to fully shut down
+                setTimeout(() => {
+                    startElectron();
+                }, 100);
+            } else {
+                startElectron();
+            }
+        }, 300);
+    }
+
+    function startElectron() {
         const electronBinary = require('electron');
         const mainEntry = path.join(distDir, 'main', 'index.js');
+        console.log('[dev] starting electron process...');
         electronProcess = spawn(electronBinary, [mainEntry, '--dev'], {
             stdio: 'inherit',
+        });
+
+        // Handle process events
+        electronProcess.on('error', (err) => {
+            console.error('[dev] electron process error:', err);
+        });
+
+        electronProcess.on('exit', (code, signal) => {
+            if (signal === 'SIGTERM') {
+                console.log('[dev] electron process terminated by dev server');
+            } else {
+                console.log(`[dev] electron process exited with code ${code}`);
+            }
         });
     }
 
@@ -80,17 +114,17 @@ function broadcastReload() {
         }
     });
 
-
     // Fallback watcher: ensure rebuild when any file in src/main changes
+    // Note: The esbuild watcher should handle most changes, this is just a fallback
     const mainWatcher = chokidar.watch(path.join(rootDir, 'src', 'main'), {
         ignored: /(^|[\/\\])\../,
         ignoreInitial: true,
     });
 
     mainWatcher.on('all', async () => {
-        await mainCtx.rebuild();
-        console.log('[main] chokidar rebuild. restarting electron...');
-        restartElectron();
+        console.log('[main] chokidar detected changes, rebuilding...');
+        // Don't restart electron here, let the esbuild watcher handle it
+        // to avoid duplicate restarts
     });
 
     /** Build & watch preload script */
