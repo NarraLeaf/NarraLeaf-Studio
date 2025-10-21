@@ -2,7 +2,7 @@ import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { RequestStatus } from "./ipcEvents";
 import { PlatformInfo } from "./os";
-import { WindowAppType, WindowProps, WindowVisibilityStatus } from "./window";
+import { WindowAppType, WindowLuanchOptions, WindowProps, WindowVisibilityStatus } from "./window";
 
 export interface RendererPreloadedInterface {
     getPlatform(): Promise<RequestStatus<PlatformInfo>>;
@@ -19,6 +19,7 @@ export interface RendererPreloadedInterface {
             status(): Promise<RequestStatus<{ status: WindowVisibilityStatus }>>;
         },
     }
+    launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
 }
 
 declare global {

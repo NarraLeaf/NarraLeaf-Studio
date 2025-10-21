@@ -7,23 +7,13 @@ app.whenReady().then(async () => {
     app.logger.info('App is ready');
 
     const launcher = await app.launchLauncher({
-        minWidth: 800,
-        minHeight: 500,
-        width: 800,
-        height: 500,
-        frame: false,
-        minimizable: true,
-        maximizable: false,
-        closable: true,
-        titleBarStyle: 'hidden',
         backgroundColor: '#0f1115',
-        show: false,
-        icon: app.resolveResource("app-icon.ico"),
-    }, {});
-    launcher.win.setTitle('Launcher - NarraLeaf Studio');
+    });
 
     launcher.onClose(() => {
-        app.quit();
+        if (!app.windowManager.hasWindows()) {
+            app.quit();
+        }
     });
     launcher.onKeyUp("F12", () => {
         launcher.toggleDevTools();

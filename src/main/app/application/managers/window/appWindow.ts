@@ -28,6 +28,8 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     }
 
     private props: WindowProps[T];
+    private children: Set<AppWindow> = new Set();
+    private tokens: Map<AppWindow, AppEventToken> = new Map();
 
     constructor(app: App, config: Partial<WindowConfig>, props: WindowProps[T]) {
         const instanceConfig: WindowInstanceConfig = {
@@ -169,11 +171,33 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     }
 
     public announceReady(): void {
-        this.getEvents().emit("ready");
+        this.getEvents().emit("ready", this);
     }
 
     public onReady(fn: () => void): AppEventToken {
         return this.getEvents().onReady(fn);
+    }
+
+    public addChild(child: AppWindow): void {
+        if (this.children.has(child)) {
+            return;
+        }
+        this.children.add(child);
+
+        const token = child.getEvents().onEvent("closed", () => {
+            this.removeChild(child);
+        });
+        this.tokens.set(child, token);
+    }
+
+    public removeChild(child: AppWindow): void {
+        this.children.delete(child);
+
+        const token = this.tokens.get(child);
+        if (token) {
+            token.cancel();
+            this.tokens.delete(child);
+        }
     }
 
     private initialize(_app: App): void {
@@ -187,8 +211,18 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         const win = this.getInstance().getBrowserWindow();
         
         win.on("close", () => {
-            this.getEvents().emit("close");
+            this.getEvents().emit("close", this);
 
+            this.getApp().windowManager.unregisterWindow(this);
+        });
+
+        win.on("closed", () => {
+            this.children.forEach(child => {
+                child.getBrowserWindow().destroy();
+            });
+
+            this.getEvents().emit("closed", this);
+            this.getApp().windowManager.unregisterIPCHandlers(this);
             this.getApp().windowManager.unregisterWindow(this);
         });
 
@@ -196,7 +230,9 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
             if (!details.reason || details.reason === "clean-exit") {
                 return;
             }
-            this.getEvents().emit("render-process-gone", details.reason, `Exit Code: ${details.exitCode}`);
+            this.getEvents().emit("render-process-gone", this, details.reason, `Exit Code: ${details.exitCode}`);
+
+            win.destroy();
         });
     }
 

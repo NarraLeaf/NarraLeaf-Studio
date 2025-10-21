@@ -21,7 +21,7 @@ export function TitleBar({ title, iconSrc }: TitleBarProps) {
             <div className="no-drag flex items-center">
                 <button
                     onClick={minimize}
-                    className="h-10 w-12 grid place-items-center text-gray-300 hover:bg-white/10 rounded-sm transition-colors"
+                    className="h-10 w-12 grid place-items-center text-gray-300 hover:bg-white/10 rounded-sm transition-colors cursor-default"
                     aria-label="Minimize"
                     title="Minimize"
                 >
@@ -29,7 +29,7 @@ export function TitleBar({ title, iconSrc }: TitleBarProps) {
                 </button>
                 <button
                     onClick={toggleMaximize}
-                    className="h-10 w-12 grid place-items-center text-gray-300 hover:bg-white/10 rounded-sm transition-colors"
+                    className="h-10 w-12 grid place-items-center text-gray-300 hover:bg-white/10 rounded-sm transition-colors cursor-default"
                     aria-label={isMaximized ? "Restore" : "Maximize"}
                     title={isMaximized ? "Restore" : "Maximize"}
                 >
@@ -37,7 +37,7 @@ export function TitleBar({ title, iconSrc }: TitleBarProps) {
                 </button>
                 <button
                     onClick={close}
-                    className="h-10 w-12 grid place-items-center text-gray-300 hover:bg-red-500/80 hover:text-white rounded-sm transition-colors"
+                    className="h-10 w-12 grid place-items-center text-gray-300 hover:bg-red-500/80 hover:text-white rounded-sm transition-colors cursor-default"
                     aria-label="Close"
                     title="Close"
                 >

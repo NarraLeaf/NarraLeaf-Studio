@@ -1,14 +1,27 @@
 import { EventEmitter } from "events";
 import { AppEventToken } from "@shared/types/app";
 import { StringKeyOf } from "@shared/utils/types";
+import type { AppWindow } from "./appWindow";
 
 type WindowEventTypes = {
-    close: [];
-    "render-process-gone": [reason: string, detail: string];
+    /**
+     * Emitted when the window is requested to be closed
+     */
+    "close": [window: AppWindow];
+    /**
+     * Emitted when the render process of the window is gone
+     * @param reason - The reason for the render process to be gone
+     * @param detail - The detail of the render process to be gone
+     */
+    "render-process-gone": [window: AppWindow, reason: string, detail: string];
     /**
      * Emitted when the window is ready and the react app finished its first render
      */
-    "ready": [];
+    "ready": [window: AppWindow];
+    /**
+     * Emitted when the window is closed due to the user or renderer process termination
+     */
+    "closed": [window: AppWindow];
 };
 
 export class WindowEventManager {
@@ -59,11 +72,13 @@ export class WindowEventManager {
         this.events.emit(event, ...args as any);
     }
 
-    public onRenderProcessGone(fn: (reason: string, detail: string) => void): AppEventToken {
-        const handler = (reason: string, detail: string) => {
-            fn(reason, detail);
+    public onRenderProcessGone(fn: (window: AppWindow, reason: string, detail: string) => void): AppEventToken {
+        const handler = (window: AppWindow, reason: string, detail: string) => {
+            fn(window, reason, detail);
         };
-        this.events.on("render-process-gone", handler);
+        this.events.on("render-process-gone", (window, reason, detail) => {
+            fn(window, reason, detail);
+        });
         return {
             cancel: () => {
                 this.events.removeListener("render-process-gone", handler);

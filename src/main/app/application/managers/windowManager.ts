@@ -3,6 +3,8 @@ import { BaseApp } from "../baseApp";
 import { AppWindow } from "./window/appWindow";
 import { AppTerminateHandler, AppWindowControlHandler, AppWindowGetControlHandler, AppWindowReadyHandler } from "./window/handlers/appAction";
 import { AppInfoHandler, AppPlatformInfoHandler } from "./window/handlers/appInfo";
+import { AppSettingsWindowLaunchHandler } from "./window/handlers/settingAction";
+import { IPCHost } from "./window/ipcHost";
 
 type WindowManagerEvents = {
     "window-created": [window: AppWindow];
@@ -35,6 +37,10 @@ export class WindowManager {
         return this.windows;
     }
 
+    public hasWindows(): boolean {
+        return this.windows.length > 0;
+    }
+
     public registerDefaultIPCHandlers(win: AppWindow): void {
         win.registerIPCHandler(new AppPlatformInfoHandler());
         win.registerIPCHandler(new AppInfoHandler());
@@ -42,5 +48,11 @@ export class WindowManager {
         win.registerIPCHandler(new AppWindowGetControlHandler());
         win.registerIPCHandler(new AppWindowReadyHandler());
         win.registerIPCHandler(new AppTerminateHandler());
+
+        win.registerIPCHandler(new AppSettingsWindowLaunchHandler());
+    }
+
+    public unregisterIPCHandlers(win: AppWindow): void {
+        IPCHost.unregisterWindow(win);
     }
 }
