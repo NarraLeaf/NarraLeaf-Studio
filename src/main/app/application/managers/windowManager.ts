@@ -4,6 +4,12 @@ import { AppWindow } from "./window/appWindow";
 import { AppTerminateHandler, AppWindowControlHandler, AppWindowGetControlHandler, AppWindowReadyHandler } from "./window/handlers/appAction";
 import { AppInfoHandler, AppPlatformInfoHandler } from "./window/handlers/appInfo";
 import { AppSettingsWindowLaunchHandler } from "./window/handlers/settingAction";
+import {
+    FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
+    FsCreateDirHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
+    FsCopyFileHandler, FsCopyDirHandler, FsMoveFileHandler, FsMoveDirHandler,
+    FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
+} from "./window/handlers/fsAction";
 import { IPCHost } from "./window/ipcHost";
 
 type WindowManagerEvents = {
@@ -50,6 +56,25 @@ export class WindowManager {
         win.registerIPCHandler(new AppTerminateHandler());
 
         win.registerIPCHandler(new AppSettingsWindowLaunchHandler());
+
+        // Register file system handlers
+        win.registerIPCHandler(new FsStatHandler());
+        win.registerIPCHandler(new FsListHandler());
+        win.registerIPCHandler(new FsDetailsHandler());
+        win.registerIPCHandler(new FsRequestReadHandler());
+        win.registerIPCHandler(new FsRequestWriteHandler());
+        win.registerIPCHandler(new FsCreateDirHandler());
+        win.registerIPCHandler(new FsDeleteFileHandler());
+        win.registerIPCHandler(new FsDeleteDirHandler());
+        win.registerIPCHandler(new FsRenameHandler());
+        win.registerIPCHandler(new FsCopyFileHandler());
+        win.registerIPCHandler(new FsCopyDirHandler());
+        win.registerIPCHandler(new FsMoveFileHandler());
+        win.registerIPCHandler(new FsMoveDirHandler());
+        win.registerIPCHandler(new FsFileExistsHandler());
+        win.registerIPCHandler(new FsDirExistsHandler());
+        win.registerIPCHandler(new FsIsFileHandler());
+        win.registerIPCHandler(new FsIsDirHandler());
     }
 
     public unregisterIPCHandlers(win: AppWindow): void {

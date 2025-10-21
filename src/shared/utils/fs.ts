@@ -77,12 +77,29 @@ export class Fs {
         return this.wrapSync(() => fsSync.appendFileSync(path, data, {encoding}));
     }
 
-    public static isDirExists(path: string): Promise<FsRequestResult<void>> {
-        return this.wrap(new Promise<void>((resolve, reject) => {
-            fs.access(path)
-                .then(() => resolve())
-                .catch(() => reject());
-        }));
+    public static isDirExists(path: string): Promise<FsRequestResult<boolean>> {
+        return (async () => {
+            try {
+                await fs.access(path);
+                // Check if it's actually a directory
+                const stats = await fs.stat(path);
+                return {
+                    ok: true as const,
+                    data: stats.isDirectory(),
+                } satisfies FsRequestResult<boolean, true>;
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+                    return {
+                        ok: true as const,
+                        data: false,
+                    } satisfies FsRequestResult<boolean, true>;
+                }
+                return {
+                    ok: false,
+                    error: this.createError(error)
+                } satisfies FsRequestResult<boolean, false>;
+            }
+        })();
     }
 
     public static copyDir(src: string, destDir: string): Promise<FsRequestResult<void>> {
@@ -107,7 +124,7 @@ export class Fs {
             return files
                 .filter((file) => file.isFile())
                 .map((file) => ({
-                    name: file.name,
+                    name: path.parse(file.name).name,
                     ext: path.extname(file.name),
                     type: "file",
                 }));
@@ -128,6 +145,94 @@ export class Fs {
 
     public static dirEntries(dir: string): Promise<FsRequestResult<Dirent[]>> {
         return this.wrap(fs.readdir(dir, {withFileTypes: true}));
+    }
+
+    public static stat(filePath: string): Promise<FsRequestResult<FileStat>> {
+        return this.wrap(fs.stat(filePath).then((stats) => {
+            return {
+                name: path.parse(filePath).name,
+                ext: path.extname(filePath),
+                type: stats.isFile() ? "file" : stats.isDirectory() ? "directory" : "file",
+            };
+        }));
+    }
+
+    public static details(filePath: string): Promise<FsRequestResult<FileDetails>> {
+        return this.wrap(fs.stat(filePath).then((stats) => {
+            return {
+                name: path.parse(filePath).name,
+                ext: path.extname(filePath),
+                type: stats.isFile() ? "file" : stats.isDirectory() ? "directory" : "file",
+                size: stats.size,
+                mtime: stats.mtime.toISOString(),
+                atime: stats.atime.toISOString(),
+                ctime: stats.ctime.toISOString(),
+                birthtime: stats.birthtime.toISOString(),
+                encoding: "utf-8",
+            };
+        }));
+    }
+
+    public static isFile(filePath: string): Promise<FsRequestResult<boolean>> {
+        return (async () => {
+            try {
+                const stats = await fs.stat(filePath);
+                return {
+                    ok: true as const,
+                    data: stats.isFile(),
+                } satisfies FsRequestResult<boolean, true>;
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+                    return {
+                        ok: true as const,
+                        data: false,
+                    } satisfies FsRequestResult<boolean, true>;
+                }
+                return {
+                    ok: false,
+                    error: this.createError(error)
+                } satisfies FsRequestResult<boolean, false>;
+            }
+        })();
+    }
+
+    public static isDir(filePath: string): Promise<FsRequestResult<boolean>> {
+        return (async () => {
+            try {
+                const stats = await fs.stat(filePath);
+                return {
+                    ok: true as const,
+                    data: stats.isDirectory(),
+                } satisfies FsRequestResult<boolean, true>;
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+                    return {
+                        ok: true as const,
+                        data: false,
+                    } satisfies FsRequestResult<boolean, true>;
+                }
+                return {
+                    ok: false,
+                    error: this.createError(error)
+                } satisfies FsRequestResult<boolean, false>;
+            }
+        })();
+    }
+
+    public static deleteDir(dirPath: string): Promise<FsRequestResult<void>> {
+        return this.wrap(fs.rm(dirPath, { recursive: true, force: true }));
+    }
+
+    public static rename(oldPath: string, newPath: string): Promise<FsRequestResult<void>> {
+        return this.wrap(fs.rename(oldPath, newPath));
+    }
+
+    public static moveFile(src: string, dest: string): Promise<FsRequestResult<void>> {
+        return this.wrap(fs.rename(src, dest));
+    }
+
+    public static moveDir(src: string, dest: string): Promise<FsRequestResult<void>> {
+        return this.wrap(fs.rename(src, dest));
     }
 
     private static createError(error: unknown): FsRejectError {

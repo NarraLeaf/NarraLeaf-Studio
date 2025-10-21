@@ -3,7 +3,6 @@ import { app } from "electron/main";
 
 // Utils
 import EventEmitter from "events";
-import { Hooks } from "@shared/utils/event";
 import { Logger } from "@shared/utils/logger";
 import { Platform, PlatformInfo } from "@shared/types/os";
 
@@ -16,11 +15,13 @@ import { AppEventToken, AppInfo } from "@shared/types/app";
 import { safeExecuteFn } from "@shared/utils/os";
 import { WindowAppType } from "@shared/types/window";
 import { MenuManager } from "./managers/menuManager";
+import { StorageManager } from "./managers/storageManager";
 import { readJson } from "@shared/utils/json";
 
 export interface AppDependencies {
     protocolManager: ProtocolManager;
     windowManager: WindowManager;
+    storageManager: StorageManager;
 }
 export interface BaseAppConfig { }
 
@@ -42,6 +43,7 @@ export class BaseApp {
     public readonly protocolManager: ProtocolManager;
     public readonly windowManager: WindowManager;
     public readonly menuManager: MenuManager;
+    public readonly storageManager: StorageManager;
 
     private initialized: boolean = false;
     protected appInfo: AppInfo | null = null;
@@ -58,6 +60,7 @@ export class BaseApp {
         this.protocolManager = new ProtocolManager(this);
         this.windowManager = new WindowManager(this);
         this.menuManager = new MenuManager(this);
+        this.storageManager = new StorageManager(this);
 
         this.prepare();
     }
@@ -195,6 +198,7 @@ export class BaseApp {
         this.windowManager.initialize();
         this.protocolManager.initialize();
         this.menuManager.initialize();
+        this.storageManager.initialize();
 
         this.electronApp.whenReady().then(async () => {
             // Retrieve app info
