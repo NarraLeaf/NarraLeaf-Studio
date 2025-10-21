@@ -21,6 +21,10 @@ export class WindowProxy implements IPCWindow {
         return this.mainApp;
     }
 
+    public isDestroyed(): boolean {
+        return this.instance.getBrowserWindow().isDestroyed();
+    }
+
     // Internal Accessors (for internal implementation)
     protected getInstance(): WindowInstance {
         return this.instance;

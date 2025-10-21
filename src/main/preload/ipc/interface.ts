@@ -2,7 +2,7 @@ import { RendererInterfaceKey } from "@shared/types/constants";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { IPCClient } from "./ipcClient";
-import { WindowAppType, WindowProps } from "@shared/types/window";
+import { WindowAppType, WindowLuanchOptions, WindowProps } from "@shared/types/window";
 
 export const ipcClient = new IPCClient(Namespace.NarraLeafStudio);
 export const IPCInterface: Window[typeof RendererInterfaceKey] = {
@@ -20,4 +20,5 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             status: () => ipcClient.invoke(IPCEventType.appWindowGetControl, {}),
         },
     },
+    launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
 };

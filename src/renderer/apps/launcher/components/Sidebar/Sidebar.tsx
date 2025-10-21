@@ -1,6 +1,8 @@
 import { getAppInfo } from "@/lib/renderApp";
 import { BookOpen, FolderOpen, Puzzle, Settings } from "lucide-react";
 import { SidebarItem } from "./SidebarItem";
+import { getInterface } from "@/lib/app/bridge";
+import { WindowAppType } from "@shared/types/window";
 
 export type SidebarTabKey = "projects" | "plugins" | "learning";
 
@@ -23,6 +25,10 @@ function IconLearning() {
 
 export function Sidebar({ active, onChange }: SidebarProps) {
     const version = getAppInfo().version;
+
+    const openSettings = () => {
+        getInterface().launchSettings({});
+    }
 
     return (
         <div className="h-full flex flex-col gap-3 p-3">
@@ -60,10 +66,7 @@ export function Sidebar({ active, onChange }: SidebarProps) {
             <div className="mt-auto">
                 <button
                     className="flex items-center justify-start p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-md transition-colors w-fit"
-                    onClick={() => {
-                        // TODO: Implement settings functionality
-                        console.log("Settings clicked - placeholder");
-                    }}
+                    onClick={openSettings}
                     title="Settings"
                 >
                     <Settings className="w-4 h-4" />

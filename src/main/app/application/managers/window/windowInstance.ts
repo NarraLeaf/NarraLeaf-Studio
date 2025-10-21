@@ -21,6 +21,9 @@ export class WindowInstance {
     }
 
     public getWebContents(): Electron.WebContents {
+        if (this.browserWindow.isDestroyed()) {
+            throw new Error("Browser window is destroyed. Tried to get web contents.");
+        }
         return this.browserWindow.webContents;
     }
 

@@ -5,6 +5,7 @@ import { AppEventToken } from "@shared/types/app";
 
 export interface IPCWindow {
     getWebContents(): Electron.WebContents;
+    isDestroyed(): boolean;
 }
 
 export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
@@ -15,6 +16,54 @@ export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
             win: IPCWindow
         }>
     } = {};
+    private static listeners: {
+        [key: string]: Array<{
+            token: AppEventToken,
+            win: IPCWindow
+        }>
+    } = {};
+
+    /**
+     * Remove all request & message listeners that belong to the specified window
+     * and clean up any ipcMain handlers/listeners if no listeners remain.
+     */
+    public static unregisterWindow(win: IPCWindow): void {
+        // Clean request handlers stored in events map
+        for (const ns of Object.keys(IPCHost.events)) {
+            IPCHost.events[ns] = IPCHost.events[ns].filter(listenerObj => listenerObj.win !== win);
+
+            if (IPCHost.events[ns].length === 0) {
+                delete IPCHost.events[ns];
+                if (IPCHost.handling[ns]) {
+                    delete IPCHost.handling[ns];
+                    try {
+                        ipcMain.removeHandler(ns);
+                    } catch {
+                        /* ignore */
+                    }
+                }
+            }
+        }
+
+        // Clean message listeners stored in listeners map and remove ipcMain listeners when empty
+        for (const eventName of Object.keys(IPCHost.listeners)) {
+            const leftover = IPCHost.listeners[eventName].filter(listenerObj => {
+                if (listenerObj.win === win) {
+                    listenerObj.token.cancel();
+                    return false;
+                }
+                return true;
+            });
+
+            if (leftover.length === 0) {
+                // remove all ipcMain listeners for this event name
+                ipcMain.removeAllListeners(eventName);
+                delete IPCHost.listeners[eventName];
+            } else {
+                IPCHost.listeners[eventName] = leftover;
+            }
+        }
+    }
 
     static handle<K extends keyof OnlyRequest<IPCEvents, IPCType.Host>>(
         namespace: string,
@@ -27,7 +76,7 @@ export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
         if (!IPCHost.handling[namespace]) {
             IPCHost.handling[namespace] = true;
             ipcMain.handle(namespace, async (event, data) => {
-                return await IPCHost.emitHandler(win, namespace, data);
+                return await IPCHost.emitHandlerBySender(event.sender, namespace, data);
             });
         }
         if (!IPCHost.events[namespace]) {
@@ -57,11 +106,13 @@ export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
         }
     }
 
-    static emitHandler<K extends keyof OnlyRequest<IPCEvents, IPCType.Host>>(win: IPCWindow, namespace: string, data: IPCEvents[K]["data"]): Promise<IPCEvents[K]["response"]> {
+    static emitHandlerBySender<K extends keyof OnlyRequest<IPCEvents, IPCType.Host>>(sender: Electron.WebContents, namespace: string, data: IPCEvents[K]["data"]): Promise<IPCEvents[K]["response"]> {
         return new Promise(resolve => {
-
-            for (const listener of IPCHost.events[namespace]) {
-                if (listener.win !== win) {
+            for (const listener of IPCHost.events[namespace] ?? []) {
+                if (listener.win.isDestroyed()) {
+                    throw new Error(`Window is destroyed. Tried to invoke handler for ${namespace}. (emitHandlerBySender)`);
+                }
+                if (listener.win.getWebContents() !== sender) {
                     continue;
                 }
                 console.info(`[IPC] Invoking listener for ${namespace}`);
@@ -84,10 +135,13 @@ export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
         key: K,
         data: IPCEvents[K]["data"]
     ): Promise<Exclude<IPCEvents[K]["response"], never>> {
+        if (win.isDestroyed()) {
+            throw new Error(`Window is destroyed. Tried to invoke IPC request: ${this.getEventName(key)}. (invoke)`);
+        }
         win.getWebContents().send(this.getEventName(key), data);
         return new Promise(resolve => {
             const handler = (event: Electron.IpcMainEvent, response: Exclude<IPCEvents[K]["response"], never>) => {
-                if (event.sender !== win.getWebContents()) {
+                if (win.isDestroyed() || event.sender !== win.getWebContents()) {
                     return;
                 }
                 resolve(response);
@@ -102,6 +156,10 @@ export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
         key: K,
         data: IPCEvents[K]["data"]
     ): void {
+        if (win.isDestroyed()) {
+            throw new Error(`Window is destroyed. Tried to send IPC event: ${this.getEventName(key)}. (send)`);
+        }
+
         return win.getWebContents().send(this.getEventName(key), data);
     }
 
@@ -110,18 +168,36 @@ export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
         key: K,
         listener: (data: IPCEvents[K]["data"]) => void
     ): AppEventToken {
+        if (win.isDestroyed()) {
+            throw new Error(`Window is destroyed. Tried to register IPC event listener: ${this.getEventName(key)}. (onMessage)`);
+        }
+
         const listenerFn = (event: Electron.IpcMainEvent, data: IPCEvents[K]["data"]) => {
+            if (win.isDestroyed()) {
+                throw new Error(`Possible memory leak. Trying to invoke listener for ${this.getEventName(key)} on a destroyed window.`);
+            }
             if (event.sender !== win.getWebContents()) {
                 return;
             }
             listener(data);
         };
-        ipcMain.on(this.getEventName(key), listenerFn);
-        return {
+
+        const token: AppEventToken = {
             cancel: () => {
                 ipcMain.removeListener(this.getEventName(key), listenerFn);
             }
         };
+        const eventName = this.getEventName(key);
+        if (!IPCHost.listeners[eventName]) {
+            IPCHost.listeners[eventName] = [];
+        }
+        IPCHost.listeners[eventName].push({
+            token,
+            win
+        });
+        ipcMain.on(this.getEventName(key), listenerFn);
+
+        return token;
     }
 
     onRequest<K extends keyof OnlyRequest<IPCEvents, IPCType.Host>>(

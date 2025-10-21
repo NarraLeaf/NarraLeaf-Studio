@@ -1,7 +1,7 @@
 import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
 import { PlatformInfo } from "./os";
-import { WindowAppType, WindowProps, WindowVisibilityStatus } from "./window";
+import { WindowAppType, WindowLuanchOptions, WindowProps, WindowVisibilityStatus } from "./window";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -11,6 +11,7 @@ export enum IPCEventType {
     appWindowProps = "app.window.props",
     appInfo = "app.info",
     appWindowReady = "app.window.ready",
+    appLaunchSettings = "app.settings.launchWindow",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -72,5 +73,13 @@ export type IPCEvents = {
         consumer: IPCType.Host,
         data: {},
         response: never;
+    };
+    [IPCEventType.appLaunchSettings]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            props: WindowProps[WindowAppType.Settings];
+        },
+        response: void;
     };
 };
