@@ -65,7 +65,8 @@ my-game/                 # NarraLeaf Studio 项目根目录
   .nlstudio/            # IDE 私有数据（缓存、窗口布局等）
   assets/               # 游戏资源
   scripts/              # 剧情脚本及逻辑
-  package.json          # 插件列表与元数据
+  plugins/              # 插件目录
+  project.json          # 插件列表与元数据
 ```
 
 ## 打包流程

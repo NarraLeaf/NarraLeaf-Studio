@@ -41,3 +41,27 @@ export class Platform {
         };
     }
 }
+
+export enum FsRejectErrorCode {
+    NOT_FOUND = "NOT_FOUND",
+    PERMISSION_DENIED = "PERMISSION_DENIED",
+    INVALID_PATH = "INVALID_PATH",
+    FILE_TOO_LARGE = "FILE_TOO_LARGE",
+    NOT_A_FILE = "NOT_A_FILE",
+    NOT_A_DIR = "NOT_A_DIR",
+    IO_ERROR = "IO_ERROR",
+    IPC_ERROR = "IPC_ERROR",
+    UNKNOWN = "UNKNOWN",
+}
+export type FsRejectError = {
+    code: FsRejectErrorCode;
+    message: string;
+};
+
+export type FsRequestResult<T, OK extends true | false = true | false> = OK extends true ? {
+    ok: true;
+    data: T;
+} : {
+    ok: false;
+    error: FsRejectError;
+};

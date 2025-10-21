@@ -3,4 +3,5 @@ export const AppProtocol = "app";
 export enum AppHost {
     Public = "public",
     Windows = "windows",
+    Fs = "fs",
 }
