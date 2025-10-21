@@ -1,5 +1,5 @@
 import { protocol } from "electron";
-import { FileSystemHandler } from "./protocol/fileSystemHandler";
+import { FileSystemHandler, FileSystemHashHandler } from "./protocol/fileSystemHandler";
 import { ProtocolHandler, ProtocolManager as IProtocolManager } from "./protocol/types";
 import { App } from "@/app/app";
 import { AppHost, AppProtocol } from "@shared/types/constants";
@@ -121,6 +121,14 @@ export class ProtocolManager implements IProtocolManager {
             })
         });
         this.registerHandler(windowsHandler);
+
+        // File system hash handler for app://fs/{hash} requests
+        const fsHashHandler = new FileSystemHashHandler(
+            AppProtocol,
+            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+            this.app.storageManager
+        );
+        this.registerHandler(fsHashHandler);
     }
 
     private setupProtocolHandler(): void {
