@@ -29,14 +29,14 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@types/sqlite3": "^5.1.0",
+    "electron-store": "^9.0.0",
     "lucide-react": "^0.546.0",
     "mime-types": "^3.0.1",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "sqlite3": "^5.1.7"
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@types/electron-store": "^3.2.2",
     "@types/mime-types": "^3.0.1",
     "@types/node": "^24.8.1",
     "@types/react": "^19.2.0",

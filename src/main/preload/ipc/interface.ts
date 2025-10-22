@@ -3,12 +3,13 @@ import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { IPCClient } from "./ipcClient";
 import { WindowAppType, WindowLuanchOptions, WindowProps } from "@shared/types/window";
+import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 
 export const ipcClient = new IPCClient(Namespace.NarraLeafStudio);
 export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     getPlatform: () => ipcClient.invoke(IPCEventType.getPlatform, {}),
     getAppInfo: () => ipcClient.invoke(IPCEventType.appInfo, {}),
-    getWindowProps: <T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>> => ipcClient.invoke(IPCEventType.appWindowProps, {}),
+    getWindowProps: <T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>> => ipcClient.invoke(IPCEventType.appWindowProps, {}) as Promise<RequestStatus<WindowProps[T]>>,
     terminate: async (err?: string) => ipcClient.send(IPCEventType.appTerminate, { err: err ?? null }),
     window: {
         ready: () => ipcClient.send(IPCEventType.appWindowReady, {}),
@@ -40,6 +41,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         isDirExists: (path: string) => ipcClient.invoke(IPCEventType.fsDirExists, { path }),
         isFile: (path: string) => ipcClient.invoke(IPCEventType.fsIsFile, { path }),
         isDir: (path: string) => ipcClient.invoke(IPCEventType.fsIsDir, { path }),
+    },
+    state: {
+        getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<GlobalStateValue<K>>>,
+        setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
     },
     launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
 };
