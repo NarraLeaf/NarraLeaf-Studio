@@ -1,16 +1,72 @@
 import { FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat } from "@shared/utils/fs";
+import { Porject, ProjectConfig } from "../project/project";
+import { ServiceRegistry } from "./serviceRegistry";
 
-interface WorkspaceContext {}
+interface WorkspaceContext {
+    project: Porject;
+    services: ServiceRegistry;
+}
 
 interface IService {
-    init(ctx: WorkspaceContext): Promise<void> | void;
     activate(ctx: WorkspaceContext): Promise<void> | void;
     dispose(ctx: WorkspaceContext): Promise<void> | void;
 }
 
+enum Services {
+    Project = "project",
+    FileSystem = "fileSystem",
+    // Storage = "storage",
+    // Command = "command",
+    // Logger = "logger",
+    // UI = "ui",
+    // Settings = "settings",
+    // Editor = "editor",
+    // Story = "story",
+    // Asset = "asset",
+    // Texture = "texture",
+    // Audio = "audio",
+    // Video = "video",
+    // Font = "font",
+    // Runtime = "runtime",
+    // Preview = "preview",
+    // Build = "build",
+    // Debug = "debug",
+    // Localization = "localization",
+    // VersionControl = "versionControl",
+    // Plugin = "plugin",
+}
+
 abstract class Service implements IService {
     private ctx: WorkspaceContext | null = null;
+    private _initialized = false;
+
+    public static async initializeAll(ctx: WorkspaceContext): Promise<void> {
+        const pending = new Set<Service>();
+
+        const init = async (service: Service): Promise<void> => {
+            if ((service as any)._initialized) return;
+            if (pending.has(service)) {
+                const cycle = [...pending, service].map(s => s.constructor.name).join(" -> ");
+                throw new Error(`Circular dependency detected: ${cycle}`);
+            }
+            pending.add(service);
+            const depend = async (deps: Service[]): Promise<void> => {
+                for (const dep of deps) {
+                    await init(dep);
+                }
+            };
+            await service.initialize(ctx, depend);
+            pending.delete(service);
+        };
+
+        const all = ctx.services.getAll();
+        for (let i = all.length - 1; i >= 0; i--) {
+            await init(all[i]);
+        }
+    }
+
+    protected abstract init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> | void;
 
     public setContext(ctx: WorkspaceContext): void {
         this.ctx = ctx;
@@ -23,8 +79,10 @@ abstract class Service implements IService {
         return this.ctx;
     }
 
-    public init(ctx: WorkspaceContext): Promise<void> | void {
+    public async initialize(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         this.setContext(ctx);
+        await this.init(ctx, depend);
+        this._initialized = true;
     }
 
     public activate(_ctx: WorkspaceContext): Promise<void> | void {}
@@ -33,6 +91,10 @@ abstract class Service implements IService {
 }
 
 // Core Services
+interface IProjectService extends IService {
+    getProjectConfig(): ProjectConfig;
+}
+
 interface IFileSystemService extends IService {
     stat(path: string): Promise<FsRequestResult<FileStat>>;
     list(path: string): Promise<FsRequestResult<FileStat[]>>;
@@ -53,12 +115,13 @@ interface IFileSystemService extends IService {
     isDirExists(path: string): Promise<FsRequestResult<boolean>>;
     isFile(path: string): Promise<FsRequestResult<boolean>>;
     isDir(path: string): Promise<FsRequestResult<boolean>>;
+
+    readJSON<T>(path: string): Promise<FsRequestResult<T>>;
 }
 
 interface IStorageService extends IService {
     get<T extends Record<string, any>>(namespace: string, name: string): Promise<FsRequestResult<T>>
     set<T extends Record<string, any>>(namespace: string, name: string, value: T): Promise<FsRequestResult<void>>;
-    initialize<T extends Record<string, any>>(namespace: string, name: string, value: T): Promise<FsRequestResult<void>>;
 }
 
 interface ICommandService extends IService {}
@@ -103,27 +166,7 @@ interface IVersionControlService extends IService {}
 interface IPluginService extends IService {}
 
 export {
-    IService,
-    Service,
-    WorkspaceContext,
-    IFileSystemService,
-    IStorageService,
-    ICommandService,
-    ILoggerService,
-    IUIService,
-    ISettingsService,
-    IEditorService,
-    IStoryService,
-    IAssetService,
-    ITextureService,
-    IAudioService,
-    IVideoService,
-    IFontService,
-    IRuntimeService,
-    IPreviewService,
-    IBuildService,
-    IDebugService,
-    ILocalizationService,
-    IVersionControlService,
-    IPluginService,
-}
+    IAssetService, IAudioService, IBuildService, ICommandService, IDebugService, IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService, IPluginService, IPreviewService, IProjectService, IRuntimeService, IService, ISettingsService, IStorageService, IStoryService, ITextureService, IUIService, IVersionControlService, IVideoService, Service,
+    WorkspaceContext, Services,
+};
+
