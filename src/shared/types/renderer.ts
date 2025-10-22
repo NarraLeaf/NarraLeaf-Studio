@@ -4,6 +4,8 @@ import { RendererInterfaceKey } from "./constants";
 import { RequestStatus } from "./ipcEvents";
 import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus } from "./window";
+import { GlobalStateValue } from "./state/globalState";
+import { GlobalStateKeys } from "./state/globalState";
 
 export interface RendererPreloadedInterface {
     getPlatform(): Promise<RequestStatus<PlatformInfo>>;
@@ -41,6 +43,10 @@ export interface RendererPreloadedInterface {
         isFile(path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
         isDir(path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
     };
+    state: {
+        getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<GlobalStateValue<K>>>;
+        setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
+    }
     launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
 }
 

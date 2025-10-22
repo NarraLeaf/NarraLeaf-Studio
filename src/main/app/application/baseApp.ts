@@ -2,24 +2,22 @@
 import { app } from "electron/main";
 
 // Utils
-import EventEmitter from "events";
-import { Logger } from "@shared/utils/logger";
 import { Platform, PlatformInfo } from "@shared/types/os";
+import { Logger } from "@shared/utils/logger";
+import EventEmitter from "events";
 
 // Managers
-import { WindowManager } from "./managers/windowManager";
-import path from "path";
-import { StringKeyOf } from "@shared/utils/types";
-import { ProtocolManager } from "./managers/protocolManager";
 import { AppEventToken, AppInfo } from "@shared/types/app";
-import { safeExecuteFn } from "@shared/utils/os";
 import { WindowAppType } from "@shared/types/window";
-import { MenuManager } from "./managers/menuManager";
-import { StorageManager } from "./managers/storageManager";
 import { readJson } from "@shared/utils/json";
-import { PersistentState } from "./storage/persistentState";
-import { PERSISTENT_STATE_DEFAULT_DB_NAME, UserDataNamespace } from "@shared/types/constants";
-import { createGlobalStateManager, GlobalStateManager } from "./storage/globalState";
+import { safeExecuteFn } from "@shared/utils/os";
+import { StringKeyOf } from "@shared/utils/types";
+import path from "path";
+import { MenuManager } from "./managers/menuManager";
+import { ProtocolManager } from "./managers/protocolManager";
+import { StorageManager } from "./managers/storageManager";
+import { WindowManager } from "./managers/windowManager";
+import { GlobalStateManager } from "./storage/globalState";
 
 export interface AppDependencies {
     protocolManager: ProtocolManager;
@@ -48,10 +46,10 @@ export class BaseApp {
     public readonly menuManager: MenuManager;
     public readonly storageManager: StorageManager;
 
+    public readonly globalState: GlobalStateManager;
+
     private initialized: boolean = false;
     protected appInfo: AppInfo | null = null;
-
-    private globalState: GlobalStateManager | null = null;
 
     constructor(config: BaseAppConfig) {
         this.config = config;
@@ -66,6 +64,8 @@ export class BaseApp {
         this.windowManager = new WindowManager(this);
         this.menuManager = new MenuManager(this);
         this.storageManager = new StorageManager(this);
+
+        this.globalState = new GlobalStateManager(this.getUserDataDir());
 
         this.prepare();
     }
@@ -211,10 +211,6 @@ export class BaseApp {
         this.protocolManager.initialize();
         this.menuManager.initialize();
         this.storageManager.initialize();
-
-        // Initialize global state
-        this.globalState = createGlobalStateManager(this.getUserDataDir());
-        await this.globalState.ready();
 
         this.electronApp.whenReady().then(async () => {
             // Retrieve app info

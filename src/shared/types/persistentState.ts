@@ -14,47 +14,27 @@ export interface IPersistentState {
     /**
      * Get item from storage with type safety
      */
-    getItem<T>(key: string): Promise<T | undefined>;
+    getItem<T>(key: string): T;
 
     /**
      * Get item from storage with default value
      */
-    getItem<T>(key: string, defaultValue: T): Promise<T>;
-
-    /**
-     * Set item in storage with automatic type detection
-     */
-    setItem(key: string, data: any): Promise<void>;
+    getItem<T>(key: string, assert: boolean): T;
 
     /**
      * Remove item from storage
      */
-    removeItem(key: string): Promise<void>;
+    removeItem(key: string): void;
 
     /**
      * Get all keys in storage
      */
-    keys(): Promise<string[]>;
+    keys(): string[];
 
     /**
      * Clear all data in storage
      */
-    clear(): Promise<void>;
-
-    /**
-     * Check if database is ready
-     */
-    isReady(): boolean;
-
-    /**
-     * Wait for database to be ready
-     */
-    ready(): Promise<void>;
-
-    /**
-     * Close the database connection
-     */
-    close(): void;
+    clear(): void;
 }
 
 /**
@@ -67,9 +47,9 @@ export interface PersistentStateConfig {
     dbPath: string;
 
     /**
-     * Database table name (optional, defaults to 'key_value_store')
+     * Default values
      */
-    tableName?: string;
+    defaults: Record<string, any>;
 }
 
 /**

@@ -3,6 +3,7 @@ import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus } from "./window";
+import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -13,6 +14,8 @@ export enum IPCEventType {
     appInfo = "app.info",
     appWindowReady = "app.window.ready",
     appLaunchSettings = "app.settings.launchWindow",
+    appGlobalStateGet = "app.globalState.get",
+    appGlobalStateSet = "app.globalState.set",
 
     fsStat = "fs.stat",
     fsList = "fs.list",
@@ -100,6 +103,25 @@ export type IPCEvents = {
         consumer: IPCType.Host,
         data: {
             props: WindowProps[WindowAppType.Settings];
+        },
+        response: void;
+    };
+    [IPCEventType.appGlobalStateGet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            key: GlobalStateKeys;
+        },
+        response: {
+            value: GlobalStateValue<GlobalStateKeys>;
+        };
+    };
+    [IPCEventType.appGlobalStateSet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            key: GlobalStateKeys;
+            value: GlobalStateValue<GlobalStateKeys>;
         },
         response: void;
     };

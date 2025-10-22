@@ -63,3 +63,22 @@ export class AppWindowReadyHandler extends IPCHandler<IPCEventType.appWindowRead
         return this.success(void 0 as never);
     }
 }
+
+export class AppGlobalStateGetHandler extends IPCHandler<IPCEventType.appGlobalStateGet> {
+    readonly name = IPCEventType.appGlobalStateGet;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateGet]["data"]) {
+        return this.success({ value: window.app.globalState.get(data.key, true) });
+    }
+}
+
+export class AppGlobalStateSetHandler extends IPCHandler<IPCEventType.appGlobalStateSet> {
+    readonly name = IPCEventType.appGlobalStateSet;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateSet]["data"]) {
+        window.app.globalState.set(data.key, data.value);
+        return this.success(void 0);
+    }
+}

@@ -144,11 +144,11 @@ export class StorageManager extends Manager {
      * @param dbName Database name (without extension)
      * @returns PersistentState instance
      */
-    public createState(namespace: UserDataNamespace, dbName: string = PERSISTENT_STATE_DEFAULT_DB_NAME): PersistentState {
+    public createState(namespace: UserDataNamespace, dbName: string = PERSISTENT_STATE_DEFAULT_DB_NAME, defaults: Record<string, any> = {}): PersistentState {
         const dbPath = path.join(this.getNamespacePath(namespace), `${dbName}${PERSISTENT_STATE_DB_EXTENSION}`);
         const config: PersistentStateConfig = {
             dbPath,
-            tableName: 'key_value_store'
+            defaults
         };
 
         return new PersistentState(config);

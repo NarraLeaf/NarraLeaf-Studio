@@ -15,78 +15,35 @@ export class GlobalStateManager {
     private state: PersistentState;
 
     constructor(userDataDir: string) {
-        const dbPath = path.join(userDataDir, UserDataNamespace.State, "global.db");
+        const dbPath = path.join(userDataDir, UserDataNamespace.State, "global.config");
         const config: PersistentStateConfig = {
             dbPath,
-            tableName: 'key_value_store'
+            defaults: GLOBAL_STATE_DEFAULTS
         };
 
         this.state = new PersistentState(config);
     }
 
     /**
-     * Wait for initialization to complete
-     */
-    public async ready(): Promise<void> {
-        await this.state.ready();
-    }
-
-    /**
      * Get a value from global state.
      *
-     * Automatically falls back to {@link GLOBAL_STATE_DEFAULTS} when the key is undefined.
+     * Throws an error if the key is not found and `assert` is true
      */
-    public async get<K extends GlobalStateKeys>(key: K): Promise<GlobalStateValue<K> | undefined> {
-        // Prefer stored value
-        const stored = await this.state.getItem<GlobalStateValue<K>>(key);
-
-        if (stored !== undefined) {
-            return stored;
-        }
-
-        // Fallback to compile-time defaults (if any)
-        return (GLOBAL_STATE_DEFAULTS as Partial<Record<K, GlobalStateValue<K>>>)[key];
+    public get<K extends GlobalStateKeys>(key: K, assert: boolean = false): GlobalStateValue<K> {
+        return this.state.getItem<GlobalStateValue<K>>(key, assert);
     }
 
     /**
      * Set a value in global state
      */
-    public async set<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<void> {
+    public set<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): void {
         return this.state.setItem(key, value);
     }
 
     /**
      * Get all keys
      */
-    public async getAllKeys(): Promise<GlobalStateKeys[]> {
-        return this.state.keys() as Promise<GlobalStateKeys[]>;
+    public getAllKeys(): string[] {
+        return this.state.keys();
     }
-
-    /**
-     * Clear all global state
-     */
-    public async clear(): Promise<void> {
-        return this.state.clear();
-    }
-
-    /**
-     * Check if database is ready
-     */
-    public isReady(): boolean {
-        return this.state.isReady();
-    }
-
-    /**
-     * Close the global state
-     */
-    public close(): void {
-        this.state.close();
-    }
-}
-
-/**
- * Create a global state manager instance
- */
-export function createGlobalStateManager(userDataDir: string): GlobalStateManager {
-    return new GlobalStateManager(userDataDir);
 }
