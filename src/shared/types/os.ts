@@ -51,6 +51,7 @@ export enum FsRejectErrorCode {
     NOT_A_DIR = "NOT_A_DIR",
     IO_ERROR = "IO_ERROR",
     IPC_ERROR = "IPC_ERROR",
+    INVALID_JSON = "INVALID_JSON",
     UNKNOWN = "UNKNOWN",
 }
 export type FsRejectError = {

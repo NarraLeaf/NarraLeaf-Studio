@@ -6,9 +6,7 @@ import { RequestStatus } from "@shared/types/ipcEvents";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 
 export class FileSystemService extends Service implements IFileSystemService {
-    constructor(private readonly baseDir: string) {
-        super();
-    }
+    protected init(_ctx: WorkspaceContext): Promise<void> | void {}
 
     public async stat(path: string): Promise<FsRequestResult<FileStat>> {
         return this.wrapIPCError(await getInterface().fs.stat(path));
@@ -84,6 +82,27 @@ export class FileSystemService extends Service implements IFileSystemService {
 
     public async isDir(path: string): Promise<FsRequestResult<boolean>> {
         return this.wrapIPCError(await getInterface().fs.isDir(path));
+    }
+
+    public async readJSON<T>(path: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<T>> {
+        const fileResult = await this.read(path, encoding);
+        if (!fileResult.ok) {
+            return fileResult;
+        }
+        try {
+            return {
+                ok: true,
+                data: JSON.parse(fileResult.data) as T,
+            };
+        } catch (error) {
+            return {
+                ok: false,
+                error: {
+                    code: FsRejectErrorCode.INVALID_JSON,
+                    message: `Failed to parse JSON from ${path}`,
+                }
+            };
+        }
     }
 
     private async fetch(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
