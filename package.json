@@ -29,10 +29,12 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@types/sqlite3": "^5.1.0",
     "lucide-react": "^0.546.0",
     "mime-types": "^3.0.1",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "@types/mime-types": "^3.0.1",

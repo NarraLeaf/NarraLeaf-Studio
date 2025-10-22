@@ -1,11 +1,12 @@
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat } from "@shared/utils/fs";
-import { IFileSystemService, Service, WorkspaceContext } from "../services";
+import { IFileSystemService, WorkspaceContext } from "../services";
+import { Service } from "../Service";
 import { getInterface } from "@/lib/app/bridge";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 
-export class FileSystemService extends Service implements IFileSystemService {
+export class FileSystemService extends Service<FileSystemService> implements IFileSystemService {
     protected init(_ctx: WorkspaceContext): Promise<void> | void {}
 
     public async stat(path: string): Promise<FsRequestResult<FileStat>> {

@@ -1,12 +1,13 @@
 import { FileSystemService } from "./core/FileSystem";
 import { ProjectService } from "./core/ProjectService";
-import { Service, Services } from "./services";
+import { Services } from "./services";
+import { Service } from "./Service";
 
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
-        [Services.Project]: new ProjectService(),
-        [Services.FileSystem]: new FileSystemService(),
+        [Services.Project]: ProjectService.getInstance(),
+        [Services.FileSystem]: FileSystemService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

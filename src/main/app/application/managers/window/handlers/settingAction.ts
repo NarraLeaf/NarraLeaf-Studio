@@ -8,14 +8,15 @@ export class AppSettingsWindowLaunchHandler extends IPCHandler<IPCEventType.appL
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow, { props }: IPCEvents[IPCEventType.appLaunchSettings]["data"]): Promise<RequestStatus<void>> {
-        const settingsWindow = await window.getApp().launchSettings(window, props);
-        window.addChild(settingsWindow);
-
-        settingsWindow.onReady(() => {
-            settingsWindow.show();
+        await window.getApp().launchSettings(window, props, {
+            modal: true,
+            parent: window.win,
+            minWidth: 800,
+            minHeight: 500,
+            width: 800,
+            height: 500,
         });
 
         return this.success(void 0);
     }
-
 }

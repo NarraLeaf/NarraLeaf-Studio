@@ -17,6 +17,9 @@ import { WindowAppType } from "@shared/types/window";
 import { MenuManager } from "./managers/menuManager";
 import { StorageManager } from "./managers/storageManager";
 import { readJson } from "@shared/utils/json";
+import { PersistentState } from "./storage/persistentState";
+import { PERSISTENT_STATE_DEFAULT_DB_NAME, UserDataNamespace } from "@shared/types/constants";
+import { createGlobalStateManager, GlobalStateManager } from "./storage/globalState";
 
 export interface AppDependencies {
     protocolManager: ProtocolManager;
@@ -47,6 +50,8 @@ export class BaseApp {
 
     private initialized: boolean = false;
     protected appInfo: AppInfo | null = null;
+
+    private globalState: GlobalStateManager | null = null;
 
     constructor(config: BaseAppConfig) {
         this.config = config;
@@ -173,6 +178,13 @@ export class BaseApp {
         return this.appInfo;
     }
 
+    public getGlobalState(): GlobalStateManager {
+        if (!this.globalState) {
+            throw new Error("Global state is not available");
+        }
+        return this.globalState;
+    }
+
     /**
      * Setup development userData path if running in development mode
      * This must be called before creating managers that depend on userData path
@@ -199,6 +211,10 @@ export class BaseApp {
         this.protocolManager.initialize();
         this.menuManager.initialize();
         this.storageManager.initialize();
+
+        // Initialize global state
+        this.globalState = createGlobalStateManager(this.getUserDataDir());
+        await this.globalState.ready();
 
         this.electronApp.whenReady().then(async () => {
             // Retrieve app info

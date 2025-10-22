@@ -53,10 +53,6 @@ export class App extends BaseApp {
             options: {
                 modal: true,
                 parent: parent.win,
-                minWidth: 800,
-                minHeight: 500,
-                width: 800,
-                height: 500,
                 // frame: false,
                 // titleBarStyle: 'hidden',
                 show: false,
@@ -67,8 +63,38 @@ export class App extends BaseApp {
         window.registerPreloadScript(this.getPreloadScript());
         window.setTitle("Settings - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
+        window.onReady(() => {
+            window.show();
+        });
 
         await window.loadFile(this.getAppEntry(WindowAppType.Settings));
+
+        return window;
+    }
+
+    async launchWorkspace(
+        parent: AppWindow<WindowAppType.Settings>,
+        props: WindowProps[WindowAppType.Workspace],
+        options: Partial<Electron.BrowserWindowConstructorOptions> = {},
+    ): Promise<AppWindow<WindowAppType.Workspace>> {
+        const config: WindowConfig = {
+            isolated: true,
+            autoFocus: true,
+            preload: null,
+            options: {
+                minWidth: 800,
+                minHeight: 500,
+                width: 800,
+                height: 500,
+                ...options,
+            },
+        };
+        const window = new AppWindow(this, config, props);
+        window.registerPreloadScript(this.getPreloadScript());
+        window.setTitle("Workspace - NarraLeaf Studio");
+        window.setIcon(this.resolveResource("app-icon.ico"));
+
+        await window.loadFile(this.getAppEntry(WindowAppType.Workspace));
 
         return window;
     }

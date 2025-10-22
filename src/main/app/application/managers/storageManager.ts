@@ -1,3 +1,11 @@
+import { PERSISTENT_STATE_DB_EXTENSION, PERSISTENT_STATE_DEFAULT_DB_NAME, UserDataNamespace } from "@shared/types/constants";
+import {
+    PersistentStateConfig,
+    StorageNamespaceInfo
+} from "@shared/types/persistentState";
+import fs from "fs/promises";
+import path from "path";
+import { PersistentState } from "../storage/persistentState";
 import { Manager } from "./manager";
 
 export interface FileStorageInfo {
@@ -11,6 +19,7 @@ export interface FileStorageInfo {
 export class StorageManager extends Manager {
     private storage = new Map<string, FileStorageInfo>();
     private nextId = 0;
+    private namespaces = new Map<string, StorageNamespaceInfo>();
 
     public initialize(): Promise<void> {
         return Promise.resolve();
@@ -62,13 +71,6 @@ export class StorageManager extends Manager {
     }
 
     /**
-     * Cleanup all storage entries
-     */
-    public cleanupAll(): void {
-        this.storage.clear();
-    }
-
-    /**
      * Get all active hashes
      */
     public getActiveHashes(): string[] {
@@ -80,5 +82,83 @@ export class StorageManager extends Manager {
      */
     public getAllStorage(): Map<string, FileStorageInfo> {
         return new Map(this.storage);
+    }
+
+    /**
+     * Get or create a namespace path for the given UserDataNamespace enum
+     * This is idempotent - same enum always returns the same path
+     * @param namespace The predefined namespace enum value
+     * @returns Full path to the namespace directory
+     */
+    public getNamespacePath(namespace: UserDataNamespace): string {
+        const namespaceId = `ns_${namespace}`;
+        const namespacePath = path.join(this.app.getUserDataDir(), namespace);
+
+        // Cache namespace info for cleanup purposes
+        if (!this.namespaces.has(namespaceId)) {
+            this.namespaces.set(namespaceId, {
+                id: namespaceId,
+                name: namespace,
+                path: namespacePath
+            });
+
+            // Ensure directory exists
+            fs.mkdir(namespacePath, { recursive: true }).catch(error => {
+                this.app.logger.error(`Failed to create namespace directory ${namespacePath}:`, error);
+            });
+        }
+
+        return namespacePath;
+    }
+
+    /**
+     * List all active namespaces
+     * @returns Array of namespace info
+     */
+    public getNamespaces(): StorageNamespaceInfo[] {
+        return Array.from(this.namespaces.values());
+    }
+
+    /**
+     * Remove a namespace and its directory
+     * @param namespace The namespace enum value
+     * @returns true if removed successfully, false otherwise
+     */
+    public async removeNamespace(namespace: UserDataNamespace): Promise<boolean> {
+        const namespacePath = this.getNamespacePath(namespace);
+        const namespaceId = `ns_${namespace}`;
+
+        try {
+            await fs.rm(namespacePath, { recursive: true, force: true });
+            this.namespaces.delete(namespaceId);
+            return true;
+        } catch (error) {
+            this.app.logger.error(`Failed to remove namespace ${namespace}:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Create a new PersistentState instance for the given namespace
+     * @param namespace The namespace enum value
+     * @param dbName Database name (without extension)
+     * @returns PersistentState instance
+     */
+    public createState(namespace: UserDataNamespace, dbName: string = PERSISTENT_STATE_DEFAULT_DB_NAME): PersistentState {
+        const dbPath = path.join(this.getNamespacePath(namespace), `${dbName}${PERSISTENT_STATE_DB_EXTENSION}`);
+        const config: PersistentStateConfig = {
+            dbPath,
+            tableName: 'key_value_store'
+        };
+
+        return new PersistentState(config);
+    }
+
+    /**
+     * Cleanup all storage entries and namespaces
+     */
+    public cleanupAll(): void {
+        this.storage.clear();
+        this.namespaces.clear();
     }
 }
