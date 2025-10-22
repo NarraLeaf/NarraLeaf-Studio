@@ -37,59 +37,6 @@ enum Services {
     // Plugin = "plugin",
 }
 
-abstract class Service implements IService {
-    private ctx: WorkspaceContext | null = null;
-    private _initialized = false;
-
-    public static async initializeAll(ctx: WorkspaceContext): Promise<void> {
-        const pending = new Set<Service>();
-
-        const init = async (service: Service): Promise<void> => {
-            if ((service as any)._initialized) return;
-            if (pending.has(service)) {
-                const cycle = [...pending, service].map(s => s.constructor.name).join(" -> ");
-                throw new Error(`Circular dependency detected: ${cycle}`);
-            }
-            pending.add(service);
-            const depend = async (deps: Service[]): Promise<void> => {
-                for (const dep of deps) {
-                    await init(dep);
-                }
-            };
-            await service.initialize(ctx, depend);
-            pending.delete(service);
-        };
-
-        const all = ctx.services.getAll();
-        for (let i = all.length - 1; i >= 0; i--) {
-            await init(all[i]);
-        }
-    }
-
-    protected abstract init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> | void;
-
-    public setContext(ctx: WorkspaceContext): void {
-        this.ctx = ctx;
-    }
-
-    public getContext(): WorkspaceContext | null {
-        if (!this.ctx) {
-            throw new Error("Trying to access context of a service before initialization");
-        }
-        return this.ctx;
-    }
-
-    public async initialize(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
-        this.setContext(ctx);
-        await this.init(ctx, depend);
-        this._initialized = true;
-    }
-
-    public activate(_ctx: WorkspaceContext): Promise<void> | void {}
-
-    public dispose(_ctx: WorkspaceContext): Promise<void> | void {}
-}
-
 // Core Services
 interface IProjectService extends IService {
     getProjectConfig(): ProjectConfig;
@@ -124,49 +71,49 @@ interface IStorageService extends IService {
     set<T extends Record<string, any>>(namespace: string, name: string, value: T): Promise<FsRequestResult<void>>;
 }
 
-interface ICommandService extends IService {}
+interface ICommandService extends IService { }
 
-interface ILoggerService extends IService {}
+interface ILoggerService extends IService { }
 
-interface IUIService extends IService {}
+interface IUIService extends IService { }
 
-interface ISettingsService extends IService {}
+interface ISettingsService extends IService { }
 
 // Editor Services
-interface IEditorService extends IService {}
+interface IEditorService extends IService { }
 
-interface IStoryService extends IService {}
+interface IStoryService extends IService { }
 
 // Asset Services
-interface IAssetService extends IService {}
+interface IAssetService extends IService { }
 
-interface ITextureService extends IService {}
+interface ITextureService extends IService { }
 
-interface IAudioService extends IService {}
+interface IAudioService extends IService { }
 
-interface IVideoService extends IService {}
+interface IVideoService extends IService { }
 
-interface IFontService extends IService {}
+interface IFontService extends IService { }
 
 // Runtime Services
-interface IRuntimeService extends IService {}
+interface IRuntimeService extends IService { }
 
-interface IPreviewService extends IService {}
+interface IPreviewService extends IService { }
 
-interface IBuildService extends IService {}
+interface IBuildService extends IService { }
 
-interface IDebugService extends IService {}
+interface IDebugService extends IService { }
 
 // Helper Services
-interface ILocalizationService extends IService {}
+interface ILocalizationService extends IService { }
 
-interface IVersionControlService extends IService {}
+interface IVersionControlService extends IService { }
 
 // Plugin Services
-interface IPluginService extends IService {}
+interface IPluginService extends IService { }
 
 export {
-    IAssetService, IAudioService, IBuildService, ICommandService, IDebugService, IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService, IPluginService, IPreviewService, IProjectService, IRuntimeService, IService, ISettingsService, IStorageService, IStoryService, ITextureService, IUIService, IVersionControlService, IVideoService, Service,
+    IAssetService, IAudioService, IBuildService, ICommandService, IDebugService, IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService, IPluginService, IPreviewService, IProjectService, IRuntimeService, IService, ISettingsService, IStorageService, IStoryService, ITextureService, IUIService, IVersionControlService, IVideoService,
     WorkspaceContext, Services,
 };
 

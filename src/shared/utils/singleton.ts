@@ -9,7 +9,7 @@ export abstract class Singleton<T extends Singleton<T>> {
      * Get the singleton instance of the class
      * Creates the instance if it doesn't exist
      */
-    public static getInstance(this: any) {
+    public static getInstance<T extends Singleton<T>>(this: new () => T): T {
         const constructor = this;
 
         if (!Singleton.instances.has(constructor)) {
@@ -26,7 +26,7 @@ export abstract class Singleton<T extends Singleton<T>> {
      * Protected constructor to prevent direct instantiation
      * Subclasses should make their constructors private and call super()
      */
-    protected constructor() {
+    constructor() {
         // Prevent direct instantiation of the base class
         if (new.target === Singleton) {
             throw new Error('Cannot instantiate Singleton base class directly');

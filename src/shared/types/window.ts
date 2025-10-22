@@ -2,6 +2,7 @@
 export enum WindowAppType {
     Launcher = "launcher",
     Settings = "settings",
+    Workspace = "Workspace",
 }
 
 export type WindowProps = {
@@ -9,7 +10,10 @@ export type WindowProps = {
     },
     [WindowAppType.Settings]: {
         highlight?: string;
-    }
+    },
+    [WindowAppType.Workspace]: {
+        projectPath: string;
+    },
 }
 
 export type WindowVisibilityStatus = "minimized" | "maximized" | "normal";

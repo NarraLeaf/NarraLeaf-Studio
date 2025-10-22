@@ -31,6 +31,8 @@ export enum IPCEventType {
     fsDirExists = "fs.dirExists",
     fsIsFile = "fs.isFile",
     fsIsDir = "fs.isDir",
+
+    editorLaunch = "editor.launch",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -101,7 +103,7 @@ export type IPCEvents = {
         },
         response: void;
     };
-} & IPCFsEvents;
+} & IPCFsEvents & IPCEditorEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -250,4 +252,17 @@ export type IPCFsEvents = {
         },
         response: FsRequestResult<boolean>;
     };
-}
+};
+
+
+export type IPCEditorEvents = {
+    [IPCEventType.editorLaunch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            props: WindowProps[WindowAppType.Workspace];
+            closeCurrentWindow: boolean;
+        },
+        response: void;
+    };
+};
