@@ -1,43 +1,27 @@
-/**
- * Global state type definitions
- * Defines the structure and types for all global state keys
- */
-
+import { PersistentState } from "@/app/application/managers/storage/persistentState";
 import { ObjectPaths } from "../persistentState";
+import { RecentlyOpenedProject } from "./appStateTypes";
 
-/**
- * Global state structure definition
- * This defines the complete structure of the global state
- */
 export interface GlobalStateStructure {
     app: {
         showHint: boolean;
+        recentProjects: RecentlyOpenedProject[];
     };
 }
 
-/**
- * All possible global state keys derived from the structure
- */
 export type GlobalStateKeys = ObjectPaths<GlobalStateStructure>;
-
-/**
- * Global state type mapping
- * Maps each key path to its corresponding value type
- */
 export type GlobalStateType = {
     [K in GlobalStateKeys]: K extends ObjectPaths<GlobalStateStructure>
         ? import("../persistentState").ObjectPathValue<GlobalStateStructure, K>
         : never;
 };
-
-/**
- * Helper type to get the type of a specific global state key
- */
 export type GlobalStateValue<K extends GlobalStateKeys> = GlobalStateType[K];
+export type GlobalState = PersistentState<GlobalStateType>;
 
 /**
  * Default values for global state
  */
 export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "app.showHint": true,
+    "app.recentProjects": [],
 };

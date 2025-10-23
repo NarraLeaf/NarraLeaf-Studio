@@ -48,6 +48,7 @@ export interface RendererPreloadedInterface {
         setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
     }
     launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
+    launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<void>>;
 }
 
 declare global {

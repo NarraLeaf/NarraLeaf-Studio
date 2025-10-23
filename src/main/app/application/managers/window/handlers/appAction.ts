@@ -2,6 +2,34 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents } from "@shared/types/ipcEvents";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
+import { Platform } from "@shared/types/os";
+
+export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
+    readonly name = IPCEventType.getPlatform;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow) {
+        return this.success(Platform.getInfo(process, window.app.isPackaged()));
+    }
+}
+
+export class AppPropsHandler extends IPCHandler<IPCEventType.appWindowProps> {
+    readonly name = IPCEventType.appWindowProps;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow) {
+        return this.success(window.getProps());
+    }
+}
+
+export class AppInfoHandler extends IPCHandler<IPCEventType.appInfo> {
+    readonly name = IPCEventType.appInfo;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow) {
+        return this.success(window.app.getAppInfo());
+    }
+}
 
 export class AppTerminateHandler extends IPCHandler<IPCEventType.appTerminate> {
     readonly name = IPCEventType.appTerminate;
@@ -69,6 +97,7 @@ export class AppGlobalStateGetHandler extends IPCHandler<IPCEventType.appGlobalS
     readonly type = IPCMessageType.request;
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateGet]["data"]) {
+        window.app.logger.debug(`Getting global state key: ${data.key}, raw: ${JSON.stringify(window.app.globalState.raw())}`);
         return this.success({ value: window.app.globalState.get(data.key, true) });
     }
 }

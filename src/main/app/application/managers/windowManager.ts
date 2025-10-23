@@ -1,8 +1,7 @@
 import { EventEmitter } from "events";
 import { BaseApp } from "../baseApp";
 import { AppWindow } from "./window/appWindow";
-import { AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowGetControlHandler, AppWindowReadyHandler } from "./window/handlers/appAction";
-import { AppInfoHandler, AppPlatformInfoHandler } from "./window/handlers/appInfo";
+import { AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowGetControlHandler, AppWindowReadyHandler } from "./window/handlers/appAction";
 import { AppSettingsWindowLaunchHandler } from "./window/handlers/settingAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
@@ -11,6 +10,7 @@ import {
     FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
 } from "./window/handlers/fsAction";
 import { IPCHost } from "./window/ipcHost";
+import { ProjectWizardLaunchHandler } from "./window/handlers/projectWizardAction";
 
 type WindowManagerEvents = {
     "window-created": [window: AppWindow];
@@ -58,6 +58,9 @@ export class WindowManager {
         win.registerIPCHandler(new AppGlobalStateSetHandler());
 
         win.registerIPCHandler(new AppSettingsWindowLaunchHandler());
+
+        // Register project wizard handlers
+        win.registerIPCHandler(new ProjectWizardLaunchHandler());
 
         // Register file system handlers
         win.registerIPCHandler(new FsStatHandler());

@@ -2,7 +2,8 @@
 export enum WindowAppType {
     Launcher = "launcher",
     Settings = "settings",
-    Workspace = "Workspace",
+    Workspace = "workspace",
+    ProjectWizard = "project-wizard",
 }
 
 export type WindowProps = {
@@ -13,6 +14,8 @@ export type WindowProps = {
     },
     [WindowAppType.Workspace]: {
         projectPath: string;
+    },
+    [WindowAppType.ProjectWizard]: {
     },
 }
 
