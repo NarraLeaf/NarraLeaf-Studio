@@ -36,6 +36,8 @@ export enum IPCEventType {
     fsIsDir = "fs.isDir",
 
     editorLaunch = "editor.launch",
+
+    projectWizardLaunch = "projectWizard.launch",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -125,7 +127,7 @@ export type IPCEvents = {
         },
         response: void;
     };
-} & IPCFsEvents & IPCEditorEvents;
+} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -276,7 +278,6 @@ export type IPCFsEvents = {
     };
 };
 
-
 export type IPCEditorEvents = {
     [IPCEventType.editorLaunch]: {
         type: IPCMessageType.request,
@@ -285,6 +286,15 @@ export type IPCEditorEvents = {
             props: WindowProps[WindowAppType.Workspace];
             closeCurrentWindow: boolean;
         },
+        response: void;
+    };
+};
+
+export type IPCProjectWizardEvents = {
+    [IPCEventType.projectWizardLaunch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
         response: void;
     };
 };

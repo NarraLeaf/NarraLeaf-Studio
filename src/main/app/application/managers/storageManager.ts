@@ -5,7 +5,7 @@ import {
 } from "@shared/types/persistentState";
 import fs from "fs/promises";
 import path from "path";
-import { PersistentState } from "../storage/persistentState";
+import { PersistentState } from "./storage/persistentState";
 import { Manager } from "./manager";
 
 export interface FileStorageInfo {
@@ -141,12 +141,12 @@ export class StorageManager extends Manager {
     /**
      * Create a new PersistentState instance for the given namespace
      * @param namespace The namespace enum value
-     * @param dbName Database name (without extension)
+     * @param name Database name (without extension)
      * @returns PersistentState instance
      */
-    public createState(namespace: UserDataNamespace, dbName: string = PERSISTENT_STATE_DEFAULT_DB_NAME, defaults: Record<string, any> = {}): PersistentState {
-        const dbPath = path.join(this.getNamespacePath(namespace), `${dbName}${PERSISTENT_STATE_DB_EXTENSION}`);
-        const config: PersistentStateConfig = {
+    public createState<T extends Record<string, any>>(namespace: UserDataNamespace, name: string, defaults: T): PersistentState<T> {
+        const dbPath = path.join(this.getNamespacePath(namespace), name);
+        const config: PersistentStateConfig<T> = {
             dbPath,
             defaults
         };

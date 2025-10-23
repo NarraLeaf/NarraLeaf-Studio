@@ -86,6 +86,9 @@ export class App extends BaseApp {
                 minHeight: 500,
                 width: 800,
                 height: 500,
+                center: true,
+                x: undefined,
+                y: undefined,
                 ...options,
             },
         };
@@ -95,6 +98,35 @@ export class App extends BaseApp {
         window.setIcon(this.resolveResource("app-icon.ico"));
 
         await window.loadFile(this.getAppEntry(WindowAppType.Workspace));
+
+        return window;
+    }
+
+    async launchProjectWizard(
+        parent: AppWindow<WindowAppType.Launcher>,
+        props: WindowProps[WindowAppType.ProjectWizard],
+        options: Partial<Electron.BrowserWindowConstructorOptions> = {},
+    ): Promise<AppWindow<WindowAppType.ProjectWizard>> {
+        const config: WindowConfig = {
+            isolated: true,
+            autoFocus: true,
+            preload: null,
+            options: {
+                modal: true,
+                parent: parent.win,
+                show: false,
+                ...options,
+            },
+        };
+        const window = new AppWindow(this, config, props);
+        window.registerPreloadScript(this.getPreloadScript());
+        window.setTitle("Project Wizard - NarraLeaf Studio");
+        window.setIcon(this.resolveResource("app-icon.ico"));
+        window.onReady(() => {
+            window.show();
+        });
+
+        await window.loadFile(this.getAppEntry(WindowAppType.ProjectWizard));
 
         return window;
     }

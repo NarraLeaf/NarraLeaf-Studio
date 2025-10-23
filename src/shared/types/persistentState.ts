@@ -40,7 +40,7 @@ export interface IPersistentState {
 /**
  * Configuration for PersistentState
  */
-export interface PersistentStateConfig {
+export interface PersistentStateConfig<T extends Record<string, any>> {
     /**
      * Database file path
      */
@@ -49,7 +49,7 @@ export interface PersistentStateConfig {
     /**
      * Default values
      */
-    defaults: Record<string, any>;
+    defaults: T;
 }
 
 /**
@@ -166,13 +166,4 @@ export interface ITypedPersistentState<T> {
      * Close the database connection
      */
     close(): void;
-}
-
-/**
- * Create a typed persistent state instance
- */
-export function createTypedState<T>(structure: T): ITypedPersistentState<T> {
-    // This would be implemented to return a wrapper around IPersistentState
-    // that provides type safety based on the structure
-    throw new Error("Not implemented - this is a type definition only");
 }

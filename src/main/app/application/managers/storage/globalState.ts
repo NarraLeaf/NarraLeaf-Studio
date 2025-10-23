@@ -1,27 +1,29 @@
-import { PersistentState } from "./persistentState";
-import { PersistentStateConfig } from "@shared/types/persistentState";
 import { UserDataNamespace } from "@shared/types/constants";
-import path from "path";
+import { PersistentStateConfig } from "@shared/types/persistentState";
 import {
     GLOBAL_STATE_DEFAULTS,
     GlobalStateKeys,
+    GlobalStateType,
     GlobalStateValue
 } from "@shared/types/state/globalState";
+import path from "path";
+import { PersistentState } from "./persistentState";
+import { RecentlyOpened } from "./recentlyOpened";
 
-/**
- * Type-safe global state manager
- */
 export class GlobalStateManager {
-    private state: PersistentState;
+    private state: PersistentState<GlobalStateType>;
+
+    public recentlyOpened: RecentlyOpened;
 
     constructor(userDataDir: string) {
         const dbPath = path.join(userDataDir, UserDataNamespace.State, "global.config");
-        const config: PersistentStateConfig = {
+        const config: PersistentStateConfig<GlobalStateType> = {
             dbPath,
-            defaults: GLOBAL_STATE_DEFAULTS
+            defaults: GLOBAL_STATE_DEFAULTS as GlobalStateType
         };
 
-        this.state = new PersistentState(config);
+        this.state = new PersistentState<GlobalStateType>(config);
+        this.recentlyOpened = new RecentlyOpened(this.state);
     }
 
     /**
@@ -30,7 +32,7 @@ export class GlobalStateManager {
      * Throws an error if the key is not found and `assert` is true
      */
     public get<K extends GlobalStateKeys>(key: K, assert: boolean = false): GlobalStateValue<K> {
-        return this.state.getItem<GlobalStateValue<K>>(key, assert);
+        return this.state.getItem<K>(key, assert);
     }
 
     /**
@@ -45,5 +47,12 @@ export class GlobalStateManager {
      */
     public getAllKeys(): string[] {
         return this.state.keys();
+    }
+
+    /**
+     * Get all data
+     */
+    public raw(): GlobalStateType {
+        return this.state.raw();
     }
 }

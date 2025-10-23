@@ -17,7 +17,7 @@ import { MenuManager } from "./managers/menuManager";
 import { ProtocolManager } from "./managers/protocolManager";
 import { StorageManager } from "./managers/storageManager";
 import { WindowManager } from "./managers/windowManager";
-import { GlobalStateManager } from "./storage/globalState";
+import { GlobalStateManager } from "./managers/storage/globalState";
 
 export interface AppDependencies {
     protocolManager: ProtocolManager;
@@ -45,7 +45,6 @@ export class BaseApp {
     public readonly windowManager: WindowManager;
     public readonly menuManager: MenuManager;
     public readonly storageManager: StorageManager;
-
     public readonly globalState: GlobalStateManager;
 
     private initialized: boolean = false;

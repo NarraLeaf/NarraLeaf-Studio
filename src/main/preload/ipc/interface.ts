@@ -47,4 +47,5 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
     },
     launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
+    launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}),
 };
