@@ -26,7 +26,8 @@
     "build:main:dev": "node project/build/build-main.js --dev",
     "dev": "rimraf dist && node project/app/dev-electron.js",
     "pack-electron": "yarn clean && node project/app/pack-electron.js",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "lint": "tsc --project src/main/tsconfig.json && tsc --project src/renderer/tsconfig.json"
   },
   "dependencies": {
     "electron-store": "^9.0.0",

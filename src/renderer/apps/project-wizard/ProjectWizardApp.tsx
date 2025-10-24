@@ -1,21 +1,14 @@
-import { useState, useEffect } from "react";
-import { LucideIcon } from "lucide-react";
-import { transliterate } from "transliteration";
+import { getInterface } from "@/lib/app/bridge";
+import { Button, Progress } from "@/lib/components/elements";
 import { AppLayout } from "@/lib/components/layout";
-import { Button } from "@/lib/components/elements";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/lib/components/elements";
-import { Input, InputGroup } from "@/lib/components/elements";
-import { Select } from "@/lib/components/elements";
-import { Progress } from "@/lib/components/elements";
-import { ChevronLeft, ChevronRight, CheckCircle, Zap, FileText, Package } from "lucide-react";
+import { PlatformSystem } from "@shared/types/os";
+import { CheckCircle, ChevronLeft, ChevronRight, FileText, LucideIcon, Package, Zap } from "lucide-react";
+import { useEffect, useState } from "react";
+import { transliterate } from "transliteration";
 import { DetailsStep } from "./steps/DetailsStep";
 import { ReviewStep } from "./steps/ReviewStep";
 import { SettingsStep } from "./steps/SettingsStep";
 import { TemplateStep } from "./steps/TemplateStep";
-import { getInterface } from "@/lib/app/bridge";
-import { PlatformSystem } from "@shared/types/os";
-import { IPCEventType } from "@shared/types/ipcEvents";
-import { getPlatformInfo } from "@/lib/renderApp";
 
 export interface ProjectTemplate {
     id: string;
@@ -116,8 +109,8 @@ export function ProjectWizardApp() {
                 const interface_ = getInterface();
                 const result = await interface_.getDefaultProjectDirectory();
 
-                if (result && result.success && result.data) {
-                    setDefaultLocation(result.data);
+                if (result && result.success && result.data.dir) {
+                    setDefaultLocation(result.data.dir);
                 } else {
                     // Fallback to ~/Projects if API fails
                     console.warn("Failed to get platform-specific directory, using fallback");
@@ -517,8 +510,8 @@ export function ProjectWizardApp() {
                         try {
                             const interface_ = getInterface();
                             const result = await interface_.selectProjectDirectory();
-                            if (result && result.success && result.data) {
-                                updateProjectData({ location: result.data });
+                            if (result && result.success && result.data.dest) {
+                                updateProjectData({ location: result.data.dest });
                                 // Clear validation errors when a directory is selected
                                 setValidationErrors(prev => ({
                                     ...prev,
@@ -530,7 +523,7 @@ export function ProjectWizardApp() {
                                 setLocationInputFocused(false);
 
                                 // Validate the selected directory
-                                await validateProjectDirectory(result.data);
+                                await validateProjectDirectory(result.data.dest);
                             }
                         } catch (error) {
                             console.error("Failed to select directory:", error);

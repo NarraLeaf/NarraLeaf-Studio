@@ -310,12 +310,16 @@ export type IPCProjectWizardEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {},
-        response: string | null;
+        response: {
+            dest: string | null;
+        };
     };
     [IPCEventType.projectWizardGetDefaultDirectory]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {},
-        response: string;
+        response: {
+            dir: string;
+        };
     };
 };

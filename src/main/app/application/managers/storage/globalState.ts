@@ -7,7 +7,7 @@ import {
     GlobalStateValue
 } from "@shared/types/state/globalState";
 import path from "path";
-import { PersistentState } from "./persistentState";
+import { PersistentState } from "../../../../../shared/utils/persistentState";
 import { RecentlyOpened } from "./recentlyOpened";
 
 export class GlobalStateManager {

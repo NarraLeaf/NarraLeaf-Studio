@@ -1,9 +1,9 @@
-import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
+import { IPCMessageType } from "@shared/types/ipc";
+import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
+import { app, dialog } from "electron";
+import path from "path";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
-import { IPCMessageType } from "@shared/types/ipc";
-import { dialog, app } from "electron";
-import path from "path";
 
 export class ProjectWizardLaunchHandler extends IPCHandler<IPCEventType.projectWizardLaunch> {
     readonly name = IPCEventType.projectWizardLaunch;
@@ -29,17 +29,17 @@ export class ProjectWizardSelectDirectoryHandler extends IPCHandler<IPCEventType
     readonly name = IPCEventType.projectWizardSelectDirectory;
     readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<string | null>> {
+    public async handle(window: AppWindow): Promise<RequestStatus<{ dest: string | null }>> {
         const result = await dialog.showOpenDialog(window.win, {
             properties: ['openDirectory', 'createDirectory'],
             title: 'Select Project Directory',
         });
 
         if (result.canceled || result.filePaths.length === 0) {
-            return this.success(null);
+            return this.success({ dest: null });
         }
 
-        return this.success(result.filePaths[0]);
+        return this.success({ dest: result.filePaths[0] || null });
     }
 }
 
@@ -51,7 +51,7 @@ export class ProjectWizardGetDefaultDirectoryHandler extends IPCHandler<IPCEvent
     readonly name = IPCEventType.projectWizardGetDefaultDirectory;
     readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<string>> {
+    public async handle(window: AppWindow): Promise<RequestStatus<{ dir: string }>> {
         // Get platform-specific default directory using Electron's app.getPath()
         const platform = process.platform;
         let defaultDir: string;
@@ -76,6 +76,6 @@ export class ProjectWizardGetDefaultDirectoryHandler extends IPCHandler<IPCEvent
                 break;
         }
 
-        return this.success(defaultDir);
+        return this.success({ dir: defaultDir });
     }
 }
