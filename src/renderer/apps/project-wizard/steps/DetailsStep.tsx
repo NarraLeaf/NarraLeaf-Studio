@@ -7,9 +7,9 @@ import { ProjectData } from "../ProjectWizardApp";
 
 interface DetailsStepProps {
     projectData: ProjectData;
-    updateProjectData: (updates: Partial<ProjectData>) => void;
-    updateProjectName: (name: string) => void;
-    updateAppId: (appId: string) => void;
+    updateProjectData: (updates: Partial<ProjectData>) => Promise<void>;
+    updateProjectName: (name: string) => Promise<void>;
+    updateAppId: (appId: string) => Promise<void>;
 }
 
 const licenseOptions = [
@@ -41,8 +41,8 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
     /**
      * Validate app ID and update error state
      */
-    const handleAppIdChange = (value: string) => {
-        updateAppId(value);
+    const handleAppIdChange = async (value: string) => {
+        await updateAppId(value);
 
         if (value.trim() === "") {
             setAppIdError("App ID is required");
@@ -53,14 +53,14 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
         }
     };
 
-    const handleLicenseChange = (value: string | number) => {
+    const handleLicenseChange = async (value: string | number) => {
         const stringValue = String(value);
-        updateProjectData({ license: stringValue });
+        await updateProjectData({ license: stringValue });
         if (stringValue === "Other") {
             setShowCustomLicense(true);
         } else {
             setShowCustomLicense(false);
-            updateProjectData({ licenseCustom: "" });
+            await updateProjectData({ licenseCustom: "" });
         }
     };
 
@@ -108,11 +108,11 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                                 />
                             </InputGroup>
 
-                            <InputGroup label="Author" required>
+                            <InputGroup label="Author">
                                 <Input
                                     placeholder="Author Email / Organization / Project"
                                     value={projectData.author}
-                                    onChange={(e) => updateProjectData({ author: e.target.value })}
+                                    onChange={async (e) => await updateProjectData({ author: e.target.value })}
                                 />
                             </InputGroup>
 
@@ -130,7 +130,7 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                                     <Input
                                         placeholder="Enter custom license..."
                                         value={projectData.licenseCustom || ""}
-                                        onChange={(e) => updateProjectData({ licenseCustom: e.target.value })}
+                                        onChange={async (e) => await updateProjectData({ licenseCustom: e.target.value })}
                                     />
                                 </InputGroup>
                             )}
@@ -139,7 +139,7 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                                 <TextArea
                                     placeholder="Describe your project..."
                                     value={projectData.description}
-                                    onChange={(e) => updateProjectData({ description: e.target.value })}
+                                    onChange={async (e) => await updateProjectData({ description: e.target.value })}
                                     rows={3}
                                 />
                             </InputGroup>
@@ -159,7 +159,7 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                                 <Select
                                     options={resolutionOptions}
                                     value={projectData.resolution}
-                                    onChange={(value) => updateProjectData({ resolution: String(value) })}
+                                    onChange={async (value) => await updateProjectData({ resolution: String(value) })}
                                     placeholder="Select resolution..."
                                 />
                             </InputGroup>
@@ -168,7 +168,7 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                 </div>
 
                 {/* Validation Messages */}
-                {(!projectData.name.trim() || !projectData.author.trim() || !projectData.resolution || !projectData.appId.trim() || appIdError) && (
+                {(!projectData.name.trim() || !projectData.resolution || !projectData.appId.trim() || appIdError) && (
                     <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
                         <div className="flex items-start gap-3">
                             <div className="text-yellow-400 mt-0.5">
@@ -181,7 +181,7 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                                     Required Fields
                                 </h3>
                                 <p className="text-sm text-yellow-300 mt-1">
-                                    Please fill in the required fields: Project Name, App ID, Author, and Resolution.
+                                    Please fill in the required fields: Project Name, App ID, and Resolution.
                                     {appIdError && ` ${appIdError}`}
                                 </p>
                             </div>

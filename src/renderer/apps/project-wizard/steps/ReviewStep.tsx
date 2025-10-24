@@ -81,45 +81,6 @@ export function ReviewStep({ projectData, onCreate }: ReviewStepProps) {
                                     <p className="text-sm text-gray-200">{projectData.resolution || "Not specified"}</p>
                                 </div>
                             </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-sm font-medium text-gray-400">Type</label>
-                                    <p className="text-sm text-gray-200">{projectData.type || "Not specified"}</p>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-sm font-medium text-gray-400">Language</label>
-                                    <p className="text-sm text-gray-200">
-                                        {projectData.language === "en" ? "English" :
-                                         projectData.language === "zh" ? "Chinese" :
-                                         projectData.language === "ja" ? "Japanese" :
-                                         projectData.language === "ko" ? "Korean" :
-                                         projectData.language === "fr" ? "French" :
-                                         projectData.language === "de" ? "German" :
-                                         projectData.language === "es" ? "Spanish" :
-                                         projectData.language === "pt" ? "Portuguese" :
-                                         projectData.language === "ru" ? "Russian" :
-                                         projectData.language === "ar" ? "Arabic" :
-                                         "Other"}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {projectData.tags.length > 0 && (
-                                <div className="space-y-1">
-                                    <label className="text-sm font-medium text-gray-400">Tags</label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {projectData.tags.map((tag, index) => (
-                                            <span
-                                                key={index}
-                                                className="px-2 py-1 text-xs bg-[#40a8c4]/20 text-[#40a8c4] rounded-full"
-                                            >
-                                                {tag}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
                         </CardContent>
                     </Card>
 
@@ -165,7 +126,7 @@ export function ReviewStep({ projectData, onCreate }: ReviewStepProps) {
                             <div className="grid grid-cols-2 gap-4 text-sm">
                                 <div className="space-y-1">
                                     <label className="font-medium text-gray-400">Location</label>
-                                    <p className="text-gray-200">{projectData.location || "~/Projects"}</p>
+                                    <p className="text-gray-200">{projectData.location}</p>
                                 </div>
                                 <div className="space-y-1">
                                     <label className="font-medium text-gray-400">App ID</label>

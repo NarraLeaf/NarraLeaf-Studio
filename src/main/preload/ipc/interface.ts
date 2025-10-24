@@ -50,4 +50,5 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
     launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}),
     selectProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardSelectDirectory, {}),
+    getDefaultProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardGetDefaultDirectory, {}),
 };

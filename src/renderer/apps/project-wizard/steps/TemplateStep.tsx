@@ -16,7 +16,6 @@ export function TemplateStep({ projectData, updateProjectData }: TemplateStepPro
     const handleTemplateSelect = (templateId: string) => {
         updateProjectData({
             template: templateId,
-            type: templateId
         });
     };
 
