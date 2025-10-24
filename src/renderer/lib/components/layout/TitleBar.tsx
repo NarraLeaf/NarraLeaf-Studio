@@ -15,11 +15,7 @@ export function TitleBar({ title, iconSrc, className = "" }: TitleBarProps) {
     const { isMaximized, ability, minimize, toggleMaximize, close } = useWindowControls();
 
     return (
-        <div className={`titlebar-drag h-10 flex items-center justify-between bg-[#0b0d12] border-b border-white/10 select-none ${className}`}>
-            <div className="flex items-center gap-2 min-w-0 px-3">
-                <img src={iconSrc} alt="app" className="w-4 h-4 rounded-sm" />
-                <div className="text-sm text-gray-200 truncate">{title}</div>
-            </div>
+        <div className={`titlebar-drag h-10 flex items-center justify-end bg-[#0b0d12] select-none ${className}`}>
             <div className="no-drag flex items-center">
                 {ability.minimizable && (
                     <button

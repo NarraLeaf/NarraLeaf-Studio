@@ -57,7 +57,7 @@ export function Sidebar({ active, onChange }: SidebarProps) {
     return (
         <div className="h-full flex flex-col gap-3 p-3">
             {/* App Info */}
-            <div className="flex items-center gap-2 px-2">
+            <div className="flex items-center gap-2 px-2 py-3">
                 <img src="/favicon.ico" className="w-6 h-6" alt="app" />
                 <div className="flex flex-col leading-tight">
                     <span className="text-sm text-white">NarraLeaf Studio</span>

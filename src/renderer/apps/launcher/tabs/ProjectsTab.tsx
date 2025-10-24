@@ -8,7 +8,7 @@ export function ProjectsTab() {
     };
 
     return (
-        <div className="h-full w-full p-8 text-gray-200">
+        <div className="h-full w-full pt-6 px-8 pb-8 text-gray-200">
             <div className="flex items-center justify-between mb-4">
                 <div className="text-lg font-semibold">Projects</div>
                 <button

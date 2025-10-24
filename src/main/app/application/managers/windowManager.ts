@@ -10,7 +10,7 @@ import {
     FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
 } from "./window/handlers/fsAction";
 import { IPCHost } from "./window/ipcHost";
-import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler } from "./window/handlers/projectWizardAction";
+import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./window/handlers/projectWizardAction";
 
 type WindowManagerEvents = {
     "window-created": [window: AppWindow];
@@ -63,6 +63,7 @@ export class WindowManager {
         // Register project wizard handlers
         win.registerIPCHandler(new ProjectWizardLaunchHandler());
         win.registerIPCHandler(new ProjectWizardSelectDirectoryHandler());
+        win.registerIPCHandler(new ProjectWizardGetDefaultDirectoryHandler());
 
         // Register file system handlers
         win.registerIPCHandler(new FsStatHandler());

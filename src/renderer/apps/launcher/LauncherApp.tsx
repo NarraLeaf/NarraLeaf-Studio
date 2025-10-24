@@ -22,8 +22,8 @@ export function LauncherApp() {
 
     return (
         <NavigationLayout
-            title="Launcher"
-            iconSrc="/favicon.ico"
+            title=""
+            iconSrc=""
             navigation={<Sidebar active={active} onChange={setActive} />}
         >
             {content}

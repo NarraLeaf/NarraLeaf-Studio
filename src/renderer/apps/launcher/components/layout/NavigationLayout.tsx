@@ -28,23 +28,26 @@ export function NavigationLayout({
                 className="grid h-full"
                 style={{
                     gridTemplateColumns: `${navigationWidth} 1fr`,
-                    gridTemplateRows: "40px 1fr",
+                    gridTemplateRows: "1fr",
                 }}
             >
-                {/* Title Bar - spans full width */}
-                <div className="col-[1_/_span_2]">
-                    <TitleBar title={title} iconSrc={iconSrc} />
-                </div>
-
-                {/* Navigation Sidebar */}
+                {/* Navigation Sidebar - spans full height */}
                 <aside className="border-r border-white/10 bg-white/5 overflow-y-auto">
                     {navigation}
                 </aside>
 
-                {/* Main Content */}
-                <main className="overflow-auto">
-                    {children}
-                </main>
+                {/* Right Panel */}
+                <div className="flex flex-col">
+                    {/* Title Bar - only on right side */}
+                    <div className="flex-shrink-0">
+                        <TitleBar title={title} iconSrc={iconSrc} />
+                    </div>
+
+                    {/* Main Content */}
+                    <main className="flex-1 overflow-auto">
+                        {children}
+                    </main>
+                </div>
             </div>
         </div>
     );

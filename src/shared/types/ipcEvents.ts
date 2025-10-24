@@ -40,6 +40,7 @@ export enum IPCEventType {
 
     projectWizardLaunch = "projectWizard.launch",
     projectWizardSelectDirectory = "projectWizard.selectDirectory",
+    projectWizardGetDefaultDirectory = "projectWizard.getDefaultDirectory",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -310,5 +311,11 @@ export type IPCProjectWizardEvents = {
         consumer: IPCType.Host,
         data: {},
         response: string | null;
+    };
+    [IPCEventType.projectWizardGetDefaultDirectory]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: string;
     };
 };
