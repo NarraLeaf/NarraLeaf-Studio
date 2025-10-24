@@ -5,7 +5,7 @@ import {
 } from "@shared/types/persistentState";
 import fs from "fs/promises";
 import path from "path";
-import { PersistentState } from "./storage/persistentState";
+import { PersistentState } from "../../../../shared/utils/persistentState";
 import { Manager } from "./manager";
 
 export interface FileStorageInfo {

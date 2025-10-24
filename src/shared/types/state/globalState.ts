@@ -1,4 +1,4 @@
-import { PersistentState } from "@/app/application/managers/storage/persistentState";
+import { PersistentState } from "@shared/utils/persistentState";
 import { ObjectPaths } from "../persistentState";
 import { RecentlyOpenedProject } from "./appStateTypes";
 
