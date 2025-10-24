@@ -53,8 +53,8 @@ export class App extends BaseApp {
             options: {
                 modal: true,
                 parent: parent.win,
-                // frame: false,
-                // titleBarStyle: 'hidden',
+                frame: false,
+                titleBarStyle: 'hidden',
                 show: false,
                 ...options,
             },
@@ -115,6 +115,8 @@ export class App extends BaseApp {
                 modal: true,
                 parent: parent.win,
                 show: false,
+                frame: false,
+                titleBarStyle: 'hidden',
                 ...options,
             },
         };

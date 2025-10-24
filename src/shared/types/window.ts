@@ -21,6 +21,15 @@ export type WindowProps = {
 
 export type WindowVisibilityStatus = "minimized" | "maximized" | "normal";
 
+export interface WindowControlAbility {
+    minimizable: boolean;
+    maximizable: boolean;
+    closable: boolean;
+    resizable: boolean;
+    movable: boolean;
+    fullscreenable: boolean;
+}
+
 export type WindowLuanchOptions = {
     modal: boolean;
     child: boolean;

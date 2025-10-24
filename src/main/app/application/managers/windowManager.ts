@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 import { BaseApp } from "../baseApp";
 import { AppWindow } from "./window/appWindow";
-import { AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowGetControlHandler, AppWindowReadyHandler } from "./window/handlers/appAction";
+import { AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowGetControlHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler } from "./window/handlers/appAction";
 import { AppSettingsWindowLaunchHandler } from "./window/handlers/settingAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
@@ -10,7 +10,7 @@ import {
     FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
 } from "./window/handlers/fsAction";
 import { IPCHost } from "./window/ipcHost";
-import { ProjectWizardLaunchHandler } from "./window/handlers/projectWizardAction";
+import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler } from "./window/handlers/projectWizardAction";
 
 type WindowManagerEvents = {
     "window-created": [window: AppWindow];
@@ -52,6 +52,7 @@ export class WindowManager {
         win.registerIPCHandler(new AppInfoHandler());
         win.registerIPCHandler(new AppWindowControlHandler());
         win.registerIPCHandler(new AppWindowGetControlHandler());
+        win.registerIPCHandler(new AppWindowControlAbilityHandler());
         win.registerIPCHandler(new AppWindowReadyHandler());
         win.registerIPCHandler(new AppTerminateHandler());
         win.registerIPCHandler(new AppGlobalStateGetHandler());
@@ -61,6 +62,7 @@ export class WindowManager {
 
         // Register project wizard handlers
         win.registerIPCHandler(new ProjectWizardLaunchHandler());
+        win.registerIPCHandler(new ProjectWizardSelectDirectoryHandler());
 
         // Register file system handlers
         win.registerIPCHandler(new FsStatHandler());

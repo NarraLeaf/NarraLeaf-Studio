@@ -1,3 +1,4 @@
 import { renderAppAsync } from "@lib/renderApp";
+import { SettingsApp } from "./SettingsApp";
 
-renderAppAsync(<div>Settings</div>);
+renderAppAsync(<SettingsApp />);

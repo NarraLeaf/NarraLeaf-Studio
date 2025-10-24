@@ -1,3 +1,4 @@
 import { renderAppAsync } from "@lib/renderApp";
+import { ProjectWizardApp } from "./ProjectWizardApp";
 
-renderAppAsync(<div>Project Creation Wizard</div>);
+renderAppAsync(<ProjectWizardApp />);
