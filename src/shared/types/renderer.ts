@@ -3,7 +3,7 @@ import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { RequestStatus } from "./ipcEvents";
 import { FsRequestResult, PlatformInfo } from "./os";
-import { WindowAppType, WindowProps, WindowVisibilityStatus } from "./window";
+import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 
@@ -20,6 +20,7 @@ export interface RendererPreloadedInterface {
             unmaximize(): Promise<RequestStatus<void>>;
             close(): Promise<RequestStatus<void>>;
             status(): Promise<RequestStatus<{ status: WindowVisibilityStatus }>>;
+            ability(): Promise<RequestStatus<WindowControlAbility>>;
         };
     };
     fs: {
@@ -49,6 +50,7 @@ export interface RendererPreloadedInterface {
     }
     launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
     launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<void>>;
+    selectProjectDirectory(): Promise<RequestStatus<string | null>>;
 }
 
 declare global {

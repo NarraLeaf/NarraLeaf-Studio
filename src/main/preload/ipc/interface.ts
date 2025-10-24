@@ -1,9 +1,9 @@
 import { RendererInterfaceKey } from "@shared/types/constants";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
-import { IPCClient } from "./ipcClient";
-import { WindowAppType, WindowLuanchOptions, WindowProps } from "@shared/types/window";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
+import { WindowAppType, WindowControlAbility, WindowProps } from "@shared/types/window";
+import { IPCClient } from "./ipcClient";
 
 export const ipcClient = new IPCClient(Namespace.NarraLeafStudio);
 export const IPCInterface: Window[typeof RendererInterfaceKey] = {
@@ -19,6 +19,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             unmaximize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "unmaximize" }),
             close: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "close" }),
             status: () => ipcClient.invoke(IPCEventType.appWindowGetControl, {}),
+            ability: () => ipcClient.invoke(IPCEventType.appWindowControlAbility, {}) as Promise<RequestStatus<WindowControlAbility>>,
         },
     },
     fs: {
@@ -48,4 +49,5 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     },
     launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
     launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}),
+    selectProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardSelectDirectory, {}),
 };

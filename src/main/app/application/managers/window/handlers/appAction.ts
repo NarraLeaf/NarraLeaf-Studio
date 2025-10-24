@@ -1,8 +1,9 @@
 import { IPCMessageType } from "@shared/types/ipc";
-import { IPCEventType, IPCEvents } from "@shared/types/ipcEvents";
+import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Platform } from "@shared/types/os";
+import { WindowControlAbility } from "@shared/types/window";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
     readonly name = IPCEventType.getPlatform;
@@ -109,5 +110,23 @@ export class AppGlobalStateSetHandler extends IPCHandler<IPCEventType.appGlobalS
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateSet]["data"]) {
         window.app.globalState.set(data.key, data.value);
         return this.success(void 0);
+    }
+}
+
+export class AppWindowControlAbilityHandler extends IPCHandler<IPCEventType.appWindowControlAbility> {
+    readonly name = IPCEventType.appWindowControlAbility;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow): RequestStatus<WindowControlAbility> {
+        const browserWindow = window.getBrowserWindow();
+        const controlAbility: WindowControlAbility = {
+            minimizable: browserWindow.isMinimizable(),
+            maximizable: browserWindow.isMaximizable(),
+            closable: browserWindow.isClosable(),
+            resizable: browserWindow.isResizable(),
+            movable: browserWindow.isMovable(),
+            fullscreenable: browserWindow.isFullScreenable(),
+        };
+        return this.success(controlAbility);
     }
 }
