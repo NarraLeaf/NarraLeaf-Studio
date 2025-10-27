@@ -1,17 +1,17 @@
-import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/lib/components/elements";
 import { Input, InputGroup } from "@/lib/components/elements";
 import { Select } from "@/lib/components/elements";
-import { ProjectData, ValidationErrors, DirectoryValidationResult } from "../ProjectWizardApp";
+import { ProjectData, ValidationErrors, DirectoryValidationResult } from "../types";
+import { versionControlOptions } from "../constants";
 import { FolderOpen } from "lucide-react";
 
 interface SettingsStepProps {
     projectData: ProjectData;
-    updateProjectData: (updates: Partial<ProjectData>) => Promise<void>;
+    updateProjectData: (updates: Partial<ProjectData>) => void;
     validationErrors: ValidationErrors;
     directoryValidation: DirectoryValidationResult | null;
     isValidatingDirectory: boolean;
-    onLocationChange: (value: string) => Promise<void>;
+    onLocationChange: (value: string) => void;
     onLocationBlur: () => Promise<void>;
     onLocationFocus: () => void;
     onSelectDirectory: () => Promise<void>;
@@ -19,17 +19,7 @@ interface SettingsStepProps {
 }
 
 
-const backupOptions = [
-    { value: "none", label: "No backups" },
-    { value: "hourly", label: "Hourly" },
-    { value: "daily", label: "Daily" },
-    { value: "weekly", label: "Weekly" },
-];
 
-const versionControlOptions = [
-    { value: "git", label: "Git" },
-    { value: "none", label: "None" },
-];
 
 /**
  * Project settings step for configuration options
@@ -75,7 +65,7 @@ export function SettingsStep({
                                         <Input
                                             placeholder="Enter project location..."
                                             value={projectData.location}
-                                            onChange={(e) => onLocationChange(e.target.value)}
+                                            onChange={async (e) => await onLocationChange(e.target.value)}
                                             onBlur={onLocationBlur}
                                             onFocus={onLocationFocus}
                                             disabled={isValidatingDirectory}
@@ -116,7 +106,7 @@ export function SettingsStep({
                                 <Select
                                     options={versionControlOptions}
                                     value={projectData.versionControl || "git"}
-                                    onChange={async (value) => await updateProjectData({ versionControl: String(value) })}
+                                    onChange={(value) => updateProjectData({ versionControl: String(value) })}
                                     placeholder="Select version control..."
                                 />
                             </InputGroup>

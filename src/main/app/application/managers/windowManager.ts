@@ -15,6 +15,7 @@ import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, Projec
 type WindowManagerEvents = {
     "window-created": [window: AppWindow];
     "window-ready": [window: AppWindow];
+    "window-closed": [window: AppWindow];
 }
 
 export class WindowManager {
@@ -37,6 +38,10 @@ export class WindowManager {
 
     public unregisterWindow(win: AppWindow): void {
         this.windows = this.windows.filter(w => w !== win);
+    }
+
+    public emitWindowClosed(win: AppWindow): void {
+        this.events.emit("window-closed", win);
     }
 
     public getWindows(): AppWindow[] {

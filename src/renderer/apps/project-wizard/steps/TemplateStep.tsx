@@ -1,6 +1,7 @@
 import { Card, CardDescription, CardTitle } from "@/lib/components/elements";
 import { useState } from "react";
-import { ProjectData, projectTemplates } from "../ProjectWizardApp";
+import { ProjectData } from "../types";
+import { projectTemplates } from "../constants";
 
 interface TemplateStepProps {
     projectData: ProjectData;
