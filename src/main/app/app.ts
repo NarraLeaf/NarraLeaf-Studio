@@ -35,6 +35,9 @@ export class App extends BaseApp {
         window.registerPreloadScript(this.getPreloadScript());
         window.setTitle("Launcher - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
+        window.onReady(() => {
+            window.show();
+        });
 
         await window.loadFile(this.getAppEntry(WindowAppType.Launcher));
 

@@ -3,33 +3,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/lib
 import { Input, InputGroup } from "@/lib/components/elements";
 import { TextArea } from "@/lib/components/elements";
 import { Select } from "@/lib/components/elements";
-import { ProjectData } from "../ProjectWizardApp";
+import { ProjectData } from "../types";
+import { licenseOptions, resolutionOptions } from "../constants";
 
 interface DetailsStepProps {
     projectData: ProjectData;
-    updateProjectData: (updates: Partial<ProjectData>) => Promise<void>;
-    updateProjectName: (name: string) => Promise<void>;
-    updateAppId: (appId: string) => Promise<void>;
+    updateProjectData: (updates: Partial<ProjectData>) => void;
+    updateProjectName: (name: string) => void;
+    updateAppId: (appId: string) => void;
 }
 
-const licenseOptions = [
-    { value: "MIT", label: "MIT License" },
-    { value: "Apache-2.0", label: "Apache License 2.0" },
-    { value: "GPL-3.0", label: "GNU General Public License v3.0" },
-    { value: "BSD-2-Clause", label: "BSD 2-Clause License" },
-    { value: "BSD-3-Clause", label: "BSD 3-Clause License" },
-    { value: "ISC", label: "ISC License" },
-    { value: "Unlicense", label: "The Unlicense" },
-    { value: "Other", label: "Other" },
-];
-
-const resolutionOptions = [
-    { value: "1280x720", label: "HD (1280x720)" },
-    { value: "1920x1080", label: "Full HD (1920x1080)" },
-    { value: "2560x1440", label: "QHD (2560x1440)" },
-    { value: "3840x2160", label: "4K (3840x2160)" },
-    { value: "7680x4320", label: "8K (7680x4320)" },
-];
 
 /**
  * Project details step for basic project information
@@ -41,8 +24,8 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
     /**
      * Validate app ID and update error state
      */
-    const handleAppIdChange = async (value: string) => {
-        await updateAppId(value);
+    const handleAppIdChange = (value: string) => {
+        updateAppId(value);
 
         if (value.trim() === "") {
             setAppIdError("App ID is required");
@@ -53,14 +36,14 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
         }
     };
 
-    const handleLicenseChange = async (value: string | number) => {
+    const handleLicenseChange = (value: string | number) => {
         const stringValue = String(value);
-        await updateProjectData({ license: stringValue });
+        updateProjectData({ license: stringValue });
         if (stringValue === "Other") {
             setShowCustomLicense(true);
         } else {
             setShowCustomLicense(false);
-            await updateProjectData({ licenseCustom: "" });
+            updateProjectData({ licenseCustom: "" });
         }
     };
 
@@ -88,7 +71,7 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                                 <Input
                                     placeholder="Enter project name..."
                                     value={projectData.name}
-                                    onChange={(e) => updateProjectName(e.target.value)}
+                                    onChange={async (e) => await updateProjectName(e.target.value)}
                                 />
                             </InputGroup>
 
@@ -96,12 +79,12 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                                 label="App ID"
                                 required
                                 error={appIdError}
-                                helper="Auto-generated from project name. Only lowercase letters, numbers, and hyphens allowed."
+                                helper="Only lowercase letters, numbers, and hyphens allowed."
                             >
                                 <Input
-                                    placeholder="Enter app identifier (auto-generated from project name)..."
+                                    placeholder="Enter app identifier..."
                                     value={projectData.appId}
-                                    onChange={(e) => handleAppIdChange(e.target.value)}
+                                    onChange={async (e) => await handleAppIdChange(e.target.value)}
                                     variant={appIdError ? "error" : "default"}
                                     pattern="[a-z0-9-]*"
                                     title="App ID can only contain lowercase letters, numbers, and hyphens"
@@ -112,7 +95,7 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                                 <Input
                                     placeholder="Author Email / Organization / Project"
                                     value={projectData.author}
-                                    onChange={async (e) => await updateProjectData({ author: e.target.value })}
+                                    onChange={(e) => updateProjectData({ author: e.target.value })}
                                 />
                             </InputGroup>
 
@@ -120,7 +103,7 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                                 <Select
                                     options={licenseOptions}
                                     value={projectData.license}
-                                    onChange={handleLicenseChange}
+                                    onChange={async (value) => await handleLicenseChange(value)}
                                     placeholder="Select license..."
                                 />
                             </InputGroup>
@@ -130,7 +113,7 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                                     <Input
                                         placeholder="Enter custom license..."
                                         value={projectData.licenseCustom || ""}
-                                        onChange={async (e) => await updateProjectData({ licenseCustom: e.target.value })}
+                                        onChange={(e) => updateProjectData({ licenseCustom: e.target.value })}
                                     />
                                 </InputGroup>
                             )}
@@ -139,7 +122,7 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                                 <TextArea
                                     placeholder="Describe your project..."
                                     value={projectData.description}
-                                    onChange={async (e) => await updateProjectData({ description: e.target.value })}
+                                    onChange={(e) => updateProjectData({ description: e.target.value })}
                                     rows={3}
                                 />
                             </InputGroup>
@@ -159,7 +142,7 @@ export function DetailsStep({ projectData, updateProjectData, updateProjectName,
                                 <Select
                                     options={resolutionOptions}
                                     value={projectData.resolution}
-                                    onChange={async (value) => await updateProjectData({ resolution: String(value) })}
+                                    onChange={(value) => updateProjectData({ resolution: String(value) })}
                                     placeholder="Select resolution..."
                                 />
                             </InputGroup>

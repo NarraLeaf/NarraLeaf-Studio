@@ -222,6 +222,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
             });
 
             this.getEvents().emit("closed", this);
+            this.getApp().windowManager.emitWindowClosed(this);
             this.getApp().windowManager.unregisterIPCHandlers(this);
             this.getApp().windowManager.unregisterWindow(this);
         });
