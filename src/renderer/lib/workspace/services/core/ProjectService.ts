@@ -1,9 +1,28 @@
 import { RendererError, throwException } from "@shared/utils/error";
 import { ProjectNameConvention } from "../../project/nameConvention";
-import { ProjectConfig } from "../../project/project";
+import { ProjectConfig, Resolution } from "../../project/project";
 import { IProjectService, Services, WorkspaceContext } from "../services";
 import { Service } from "../Service";
 import { FileSystemService } from "./FileSystem";
+
+export class BaseProjectService {
+    public static getInitialConfig(config: ProjectConfig): ProjectConfig {
+        return config;
+    }
+
+    public static parseResolution(resolution: string): Resolution {
+        const [width, height] = resolution.split("x").map(Number);
+        return { width, height };
+    }
+
+    public static getInitialAssetsMetadata() {
+        return {};
+    }
+
+    public static getInitialEditorConfig() {
+        return {};
+    }
+}
 
 export class ProjectService extends Service<ProjectService> implements IProjectService {
     private projectConfig: ProjectConfig | null = null;

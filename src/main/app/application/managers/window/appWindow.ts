@@ -178,6 +178,12 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         return this.getEvents().onReady(fn);
     }
 
+    public showWhenReady(): AppEventToken {
+        return this.getEvents().onReady(() => {
+            this.show();
+        });
+    }
+
     public addChild(child: AppWindow): void {
         if (this.children.has(child)) {
             return;

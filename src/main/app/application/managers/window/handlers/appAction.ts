@@ -89,6 +89,9 @@ export class AppWindowReadyHandler extends IPCHandler<IPCEventType.appWindowRead
 
     public handle(window: AppWindow) {
         window.announceReady();
+
+        window.app.logger.debug(`Window ready`);
+
         return this.success(void 0 as never);
     }
 }

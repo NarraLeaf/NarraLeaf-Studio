@@ -6,86 +6,84 @@ import { getInterface } from "@/lib/app/bridge";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AppHost, AppProtocol } from "@shared/types/constants";
 
-export class FileSystemService extends Service<FileSystemService> implements IFileSystemService {
-    protected init(_ctx: WorkspaceContext): Promise<void> | void {}
-
-    public async stat(path: string): Promise<FsRequestResult<FileStat>> {
+export class BaseFileSystemService {
+    public static async stat(path: string): Promise<FsRequestResult<FileStat>> {
         return this.wrapIPCError(await getInterface().fs.stat(path));
     }
 
-    public async list(path: string): Promise<FsRequestResult<FileStat[]>> {
+    public static async list(path: string): Promise<FsRequestResult<FileStat[]>> {
         return this.wrapIPCError(await getInterface().fs.list(path));
     }
 
-    public async details(path: string): Promise<FsRequestResult<FileDetails>> {
+    public static async details(path: string): Promise<FsRequestResult<FileDetails>> {
         return this.wrapIPCError(await getInterface().fs.details(path));
     }
 
-    public async read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
+    public static async read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
         return this.fetch(path, encoding);
     }
 
-    public async readRaw(path: string): Promise<FsRequestResult<Buffer>> {
+    public static async readRaw(path: string): Promise<FsRequestResult<Buffer>> {
         return this.fetchRaw(path);
     }
 
-    public async write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+    public static async write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
         return this.put(path, data, encoding);
     }
 
-    public async writeRaw(path: string, data: Buffer): Promise<FsRequestResult<void>> {
+    public static async writeRaw(path: string, data: Buffer): Promise<FsRequestResult<void>> {
         return this.putRaw(path, data);
     }
 
-    public async createDir(path: string): Promise<FsRequestResult<void>> {
+    public static async createDir(path: string): Promise<FsRequestResult<void>> {
         return this.wrapIPCError(await getInterface().fs.createDir(path));
     }
 
-    public async deleteFile(path: string): Promise<FsRequestResult<void>> {
+    public static async deleteFile(path: string): Promise<FsRequestResult<void>> {
         return this.wrapIPCError(await getInterface().fs.deleteFile(path));
     }
 
-    public async deleteDir(path: string): Promise<FsRequestResult<void>> {
+    public static async deleteDir(path: string): Promise<FsRequestResult<void>> {
         return this.wrapIPCError(await getInterface().fs.deleteDir(path));
     }
 
-    public async rename(oldPath: string, newPath: string, isDir: boolean): Promise<FsRequestResult<void>> {
+    public static async rename(oldPath: string, newPath: string, isDir: boolean): Promise<FsRequestResult<void>> {
         return this.wrapIPCError(await getInterface().fs.rename(oldPath, newPath, isDir));
     }
 
-    public async copyFile(src: string, dest: string): Promise<FsRequestResult<void>> {
+    public static async copyFile(src: string, dest: string): Promise<FsRequestResult<void>> {
         return this.wrapIPCError(await getInterface().fs.copyFile(src, dest));
     }
 
-    public async copyDir(src: string, dest: string): Promise<FsRequestResult<void>> {
+    public static async copyDir(src: string, dest: string): Promise<FsRequestResult<void>> {
         return this.wrapIPCError(await getInterface().fs.copyDir(src, dest));
     }
 
-    public async moveFile(src: string, dest: string): Promise<FsRequestResult<void>> {
+    public static async moveFile(src: string, dest: string): Promise<FsRequestResult<void>> {
         return this.wrapIPCError(await getInterface().fs.moveFile(src, dest));
     }
 
-    public async moveDir(src: string, dest: string): Promise<FsRequestResult<void>> {
+    public static async moveDir(src: string, dest: string): Promise<FsRequestResult<void>> {
         return this.wrapIPCError(await getInterface().fs.moveDir(src, dest));
     }
 
-    public async isFileExists(path: string): Promise<FsRequestResult<boolean>> {
+    public static async isFileExists(path: string): Promise<FsRequestResult<boolean>> {
         return this.wrapIPCError(await getInterface().fs.isFileExists(path));
     }
 
-    public async isDirExists(path: string): Promise<FsRequestResult<boolean>> {
+    public static async isDirExists(path: string): Promise<FsRequestResult<boolean>> {
         return this.wrapIPCError(await getInterface().fs.isDirExists(path));
     }
 
-    public async isFile(path: string): Promise<FsRequestResult<boolean>> {
+    public static async isFile(path: string): Promise<FsRequestResult<boolean>> {
         return this.wrapIPCError(await getInterface().fs.isFile(path));
     }
 
-    public async isDir(path: string): Promise<FsRequestResult<boolean>> {
+    public static async isDir(path: string): Promise<FsRequestResult<boolean>> {
         return this.wrapIPCError(await getInterface().fs.isDir(path));
     }
 
-    public async readJSON<T>(path: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<T>> {
+    public static async readJSON<T>(path: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<T>> {
         const fileResult = await this.read(path, encoding);
         if (!fileResult.ok) {
             return fileResult;
@@ -106,7 +104,7 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         }
     }
 
-    private async fetch(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
+    private static async fetch(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
         const requestResult = this.wrapIPCError(await getInterface().fs.requestRead(path, encoding));
         if (!requestResult.ok) {
             return requestResult;
@@ -130,7 +128,7 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         };
     }
 
-    private async fetchRaw(path: string): Promise<FsRequestResult<Buffer>> {
+    private static async fetchRaw(path: string): Promise<FsRequestResult<Buffer>> {
         const requestResult = this.wrapIPCError(await getInterface().fs.requestReadRaw(path));
         if (!requestResult.ok) {
             return requestResult;
@@ -154,12 +152,12 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         };
     }
 
-    private async put(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+    private static async put(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
         const requestResult = this.wrapIPCError(await getInterface().fs.requestWrite(path, encoding));
         if (!requestResult.ok) {
             return requestResult;
         }
-        
+
         const url = this.constructUrl(requestResult.data);
         const response = await fetch(url, {
             method: "PUT",
@@ -181,12 +179,12 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         };
     }
 
-    private async putRaw(path: string, data: Buffer): Promise<FsRequestResult<void>> {
+    private static async putRaw(path: string, data: Buffer): Promise<FsRequestResult<void>> {
         const requestResult = this.wrapIPCError(await getInterface().fs.requestWriteRaw(path));
         if (!requestResult.ok) {
             return requestResult;
         }
-        
+
         const url = this.constructUrl(requestResult.data);
         const response = await fetch(url, {
             method: "PUT",
@@ -211,11 +209,11 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         };
     }
 
-    private constructUrl(hash: string): string {
+    private static constructUrl(hash: string): string {
         return `${AppProtocol}://${AppHost.Fs}/${hash}`;
     }
 
-    private wrapIPCError<T>(result: RequestStatus<FsRequestResult<T>>): FsRequestResult<T> {
+    private static wrapIPCError<T>(result: RequestStatus<FsRequestResult<T>>): FsRequestResult<T> {
         if (!result.success) {
             return {
                 ok: false,
@@ -227,5 +225,88 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         }
         return result.data;
     }
+}
 
+export class FileSystemService extends Service<FileSystemService> implements IFileSystemService {
+    protected init(_ctx: WorkspaceContext): Promise<void> | void {}
+
+    public async stat(path: string): Promise<FsRequestResult<FileStat>> {
+        return BaseFileSystemService.stat(path);
+    }
+
+    public async list(path: string): Promise<FsRequestResult<FileStat[]>> {
+        return BaseFileSystemService.list(path);
+    }
+
+    public async details(path: string): Promise<FsRequestResult<FileDetails>> {
+        return BaseFileSystemService.details(path);
+    }
+
+    public async read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
+        return BaseFileSystemService.read(path, encoding);
+    }
+
+    public async readRaw(path: string): Promise<FsRequestResult<Buffer>> {
+        return BaseFileSystemService.readRaw(path);
+    }
+
+    public async write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.write(path, data, encoding);
+    }
+
+    public async writeRaw(path: string, data: Buffer): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.writeRaw(path, data);
+    }
+
+    public async createDir(path: string): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.createDir(path);
+    }
+
+    public async deleteFile(path: string): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.deleteFile(path);
+    }
+
+    public async deleteDir(path: string): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.deleteDir(path);
+    }
+
+    public async rename(oldPath: string, newPath: string, isDir: boolean): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.rename(oldPath, newPath, isDir);
+    }
+
+    public async copyFile(src: string, dest: string): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.copyFile(src, dest);
+    }
+
+    public async copyDir(src: string, dest: string): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.copyDir(src, dest);
+    }
+
+    public async moveFile(src: string, dest: string): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.moveFile(src, dest);
+    }
+
+    public async moveDir(src: string, dest: string): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.moveDir(src, dest);
+    }
+
+    public async isFileExists(path: string): Promise<FsRequestResult<boolean>> {
+        return BaseFileSystemService.isFileExists(path);
+    }
+
+    public async isDirExists(path: string): Promise<FsRequestResult<boolean>> {
+        return BaseFileSystemService.isDirExists(path);
+    }
+
+    public async isFile(path: string): Promise<FsRequestResult<boolean>> {
+        return BaseFileSystemService.isFile(path);
+    }
+
+    public async isDir(path: string): Promise<FsRequestResult<boolean>> {
+        return BaseFileSystemService.isDir(path);
+    }
+
+    public async readJSON<T>(path: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<T>> {
+        return BaseFileSystemService.readJSON<T>(path, encoding);
+    }
 }

@@ -92,7 +92,11 @@ export class FileSystemHandler implements ProtocolHandler, AssetResolver {
 
     public formatFileUrl(requested: string): string {
         const url = new URL(requested);
-        return `file://${normalizePath(path.join(this.getBaseDir(), url.pathname))}`;
+        // Ensure we join with a relative path to avoid discarding base dir on Windows
+        const pathname = url.pathname.replace(/^\/+/, "/");
+        const relativePath = pathname.replace(/^\//, "");
+        const fullPath = path.join(this.getBaseDir(), relativePath);
+        return `file://${normalizePath(fullPath)}`;
     }
 
     private async readFile(filePath: string): Promise<{ data: Buffer; mimeType: string }> {

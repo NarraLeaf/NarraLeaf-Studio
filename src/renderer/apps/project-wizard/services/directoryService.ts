@@ -28,7 +28,7 @@ export class DirectoryService {
     /**
      * Select project directory using system dialog
      */
-    static async selectProjectDirectory(): Promise<{ success: boolean; data?: { dest: string }; error?: string }> {
+    static async selectProjectDirectory(): Promise<{ success: boolean; data?: { dest: string | null }; error?: string }> {
         try {
             const interface_ = getInterface();
             const result = await interface_.selectProjectDirectory();

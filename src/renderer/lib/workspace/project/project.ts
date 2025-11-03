@@ -1,5 +1,10 @@
 import { resolve } from "@shared/utils/path";
 
+export type Resolution = {
+    width: number;
+    height: number;
+};
+
 export type ProjectMetadata = {
     description: string;
     version: string;
@@ -7,7 +12,9 @@ export type ProjectMetadata = {
     email: string;
     website: string;
     license: string;
+    licenseString?: string;
     copyright: string;
+    resolution: Resolution;
 };
 
 export interface ProjectProps {
@@ -16,6 +23,7 @@ export interface ProjectProps {
 
 export interface ProjectConfig {
     name: string;
+    identifier: string;
     metadata: Partial<ProjectMetadata>;
 }
 

@@ -14,10 +14,6 @@ export class CriticalErrorBoundary<T extends CriticalErrorBoundaryProps> extends
     }
 
     protected handleError(error: Error): void {
-        if (!this.props.platformInfo.isPackaged) {
-            console.warn("App is not terminated due to dev mode. In production, the app will be terminated.");
-        }
-
         getInterface().terminate(error.message);
     }
 }
