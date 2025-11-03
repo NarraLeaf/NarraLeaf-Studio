@@ -24,17 +24,11 @@ class PathPolyfill {
     private readonly isWindows: boolean;
     public readonly sep: string;
     public readonly delimiter: string;
-    public readonly win32: PathPolyfill;
-    public readonly posix: PathPolyfill;
 
     constructor(isWindows: boolean = false) {
         this.isWindows = isWindows;
         this.sep = isWindows ? '\\' : '/';
         this.delimiter = isWindows ? ';' : ':';
-
-        // Create platform-specific instances
-        this.win32 = new PathPolyfill(true);
-        this.posix = new PathPolyfill(false);
     }
 
     /**
@@ -354,14 +348,16 @@ class PathPolyfill {
      */
     getPlatformPath(): PathPolyfill {
         if (typeof process !== 'undefined' && process.platform === 'win32') {
-            return this.win32;
+            return win32;
         }
-        return this.posix;
+        return posix;
     }
 }
 
-// Create default instance (auto-detect platform)
-const defaultPath = new PathPolyfill();
+// Create platform singletons and default instance (auto-detect platform)
+const win32 = new PathPolyfill(true);
+const posix = new PathPolyfill(false);
+const defaultPath = (typeof process !== 'undefined' && process.platform === 'win32') ? win32 : posix;
 
 // Export commonly used functions
 export const resolve = (...paths: string[]) => defaultPath.resolve(...paths);
@@ -376,8 +372,7 @@ export const isAbsolute = (path: string) => defaultPath.isAbsolute(path);
 export const relative = (from: string, to: string) => defaultPath.relative(from, to);
 
 // Export platform-specific implementations
-export const win32 = defaultPath.win32;
-export const posix = defaultPath.posix;
+export { win32, posix };
 
 // Export constants
 export const sep = defaultPath.sep;

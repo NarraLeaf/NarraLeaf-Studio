@@ -229,7 +229,18 @@ export class BaseApp {
             const ws = new WebSocket("ws://localhost:5588");
             ws.onmessage = () => {
                 this.windowManager.getWindows().forEach((w) => {
-                    w.reload();
+                    if (w.isClosed()) {
+                        return;
+                    }
+                    // Avoid interrupting an in-flight navigation which causes ERR_ABORTED
+                    try {
+                        const wc = w.getWebContents();
+                        if (!wc.isLoadingMainFrame()) {
+                            w.reload();
+                        }
+                    } catch (_e) {
+                        // Window might be destroyed; ignore
+                    }
                 });
             };
         }

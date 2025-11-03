@@ -1,4 +1,6 @@
 import { renderAppAsync } from "@lib/renderApp";
-import { ProjectWizardApp } from "./ProjectWizardApp";
 
-renderAppAsync(<ProjectWizardApp />);
+renderAppAsync(async function () {
+    const ProjectWizard = (await import("./ProjectWizardApp")).ProjectWizardApp;
+    return <ProjectWizard />;
+});

@@ -35,11 +35,18 @@ export class App extends BaseApp {
         window.registerPreloadScript(this.getPreloadScript());
         window.setTitle("Launcher - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
-        window.onReady(() => {
-            window.show();
-        });
+        window.showWhenReady();
 
-        await window.loadFile(this.getAppEntry(WindowAppType.Launcher));
+        try {
+            await window.loadFile(this.getAppEntry(WindowAppType.Launcher));
+        } catch (error: any) {
+            // Ignore navigation aborted during dev hot-reload
+            if (error && (error.code === 'ERR_ABORTED' || error.errno === -3)) {
+                this.logger.warn('[Launcher] Initial navigation aborted by reload, continuing...');
+            } else {
+                throw error;
+            }
+        }
 
         return window;
     }
@@ -66,9 +73,7 @@ export class App extends BaseApp {
         window.registerPreloadScript(this.getPreloadScript());
         window.setTitle("Settings - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
-        window.onReady(() => {
-            window.show();
-        });
+        window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.Settings));
 
@@ -127,9 +132,7 @@ export class App extends BaseApp {
         window.registerPreloadScript(this.getPreloadScript());
         window.setTitle("Project Wizard - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
-        window.onReady(() => {
-            window.show();
-        });
+        window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.ProjectWizard));
 

@@ -52,11 +52,12 @@ export async function renderApp(children: React.ReactNode) {
     console.log("[renderer] appInfo", appInfo);
 
     const root = createRoot(document.getElementById("root")!);
-    const content = (
+    const content = (<>
+        <RenderingStatusAnnouncer />
         <CriticalErrorBoundary platformInfo={platformResult.data}>
-            <RenderingStatusAnnouncer />
             {children as React.ReactElement}
         </CriticalErrorBoundary>
+    </>
     );
 
     root.render(
@@ -65,9 +66,14 @@ export async function renderApp(children: React.ReactNode) {
     return root;
 }
 
-export function renderAppAsync(children: React.ReactNode) {
+export function renderAppAsync(children: React.ReactNode | (() => Promise<React.ReactNode>)) {
     return (async () => {
-        return await renderApp(children);
+        try {
+            return await renderApp(typeof children === "function" ? await children() : children);
+        } catch (error: any) {
+            const api = getInterface();
+            api.terminate(error.message + " " + error.stack);
+        }
     })();
 }
 
