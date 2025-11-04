@@ -154,7 +154,7 @@ export class FileSystemHashHandler implements ProtocolHandler {
             return {
                 statusCode: 404,
                 headers: { "Content-Type": "text/plain" },
-                data: "Hash not found"
+                data: "Hash not found: " + hash
             };
         }
 
@@ -186,7 +186,7 @@ export class FileSystemHashHandler implements ProtocolHandler {
             return {
                 statusCode: 500,
                 headers: { "Content-Type": "text/plain" },
-                data: "Internal server error"
+                data: "Internal server error: " + (error instanceof Error ? error.message : String(error))
             };
         }
     }
@@ -257,7 +257,7 @@ export class FileSystemHashHandler implements ProtocolHandler {
             return {
                 statusCode: 500,
                 headers: { "Content-Type": "text/plain" },
-                data: "Internal server error"
+                data: "Internal server error: " + (error instanceof Error ? error.message : String(error))
             };
         }
     }

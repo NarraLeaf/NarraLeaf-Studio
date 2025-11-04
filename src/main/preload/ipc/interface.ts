@@ -51,4 +51,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}),
     selectProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardSelectDirectory, {}),
     getDefaultProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardGetDefaultDirectory, {}),
+    
+    // Workspace
+    openWindow: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) => 
+        ipcClient.invoke(IPCEventType.workspaceLaunch, { props, closeCurrentWindow }),
+    selectFolder: () => ipcClient.invoke(IPCEventType.workspaceSelectFolder, {}),
 };

@@ -52,6 +52,10 @@ export interface RendererPreloadedInterface {
     launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<void>>;
     selectProjectDirectory(): Promise<RequestStatus<{ dest: string | null }>>;
     getDefaultProjectDirectory(): Promise<RequestStatus<{ dir: string }>>;
+    
+    // Workspace
+    openWindow(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
+    selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
 }
 
 declare global {

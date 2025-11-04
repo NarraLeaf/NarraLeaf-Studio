@@ -137,13 +137,6 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         };
     }
 
-    public registerPreloadScript(script: string): string {
-        return this.win.webContents.session.registerPreloadScript({
-            type: "frame",
-            filePath: script,
-        })
-    }
-
     public getProps(): WindowProps[T] {
         return this.props;
     }

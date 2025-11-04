@@ -1,4 +1,2 @@
-import { renderAppAsync } from "@lib/renderApp";
-import { LauncherApp } from "./LauncherApp";
-
-renderAppAsync(<LauncherApp />);
+import { render } from "@lib/renderApp";
+render(import("./LauncherApp"));

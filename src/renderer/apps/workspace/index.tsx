@@ -1,3 +1,3 @@
 import { render } from "@lib/renderApp";
 
-render(import("./ProjectWizardApp"));
+render(import("./WorkSpaceApp"));

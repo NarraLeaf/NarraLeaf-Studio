@@ -43,6 +43,8 @@ export class FsRequestReadHandler extends IPCHandler<IPCEventType.fsRequestRead>
     public async handle(window: AppWindow, { path, raw, encoding }: IPCEvents[IPCEventType.fsRequestRead]["data"]): Promise<RequestStatus<FsRequestResult<string>>> {
         const hash = window.app.storageManager.allocateHash(path, raw, encoding);
 
+        window.app.logger.debug(`[fs.read] path="${path}", raw=${raw}, encoding=${encoding}`);
+
         try {
             // Check if file exists and is readable
             const existsResult = await Fs.isFileExists(path);

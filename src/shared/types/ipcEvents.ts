@@ -41,6 +41,9 @@ export enum IPCEventType {
     projectWizardLaunch = "projectWizard.launch",
     projectWizardSelectDirectory = "projectWizard.selectDirectory",
     projectWizardGetDefaultDirectory = "projectWizard.getDefaultDirectory",
+    
+    workspaceLaunch = "workspace.launch",
+    workspaceSelectFolder = "workspace.selectFolder",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -136,7 +139,7 @@ export type IPCEvents = {
         },
         response: void;
     };
-} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents;
+} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -320,6 +323,26 @@ export type IPCProjectWizardEvents = {
         data: {},
         response: {
             dir: string;
+        };
+    };
+};
+
+export type IPCWorkspaceEvents = {
+    [IPCEventType.workspaceLaunch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            props: WindowProps[WindowAppType.Workspace];
+            closeCurrentWindow?: boolean;
+        },
+        response: void;
+    };
+    [IPCEventType.workspaceSelectFolder]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            path: string | null;
         };
     };
 };
