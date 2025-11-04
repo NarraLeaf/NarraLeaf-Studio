@@ -17,80 +17,38 @@ export function WelcomeEditor({ tabId }: WelcomeEditorProps) {
                 <div className="text-center mb-12">
                     <div className="flex items-center justify-center gap-3 mb-4">
                         <Sparkles className="w-12 h-12 text-blue-400" />
-                        <h1 className="text-4xl font-bold text-white">欢迎使用 NarraLeaf Studio</h1>
+                        <h1 className="text-4xl font-bold text-white">NarraLeaf Studio</h1>
                     </div>
                     <p className="text-lg text-gray-400">
-                        一体化的视觉小说游戏制作 IDE
+                        All-in-one IDE for NarraLeaf Projects.
                     </p>
-                </div>
-
-                {/* Quick Actions */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
-                    <QuickActionCard
-                        icon={<FolderOpen className="w-6 h-6" />}
-                        title="打开资源"
-                        description="从资源面板浏览和管理项目文件"
-                        color="blue"
-                    />
-                    <QuickActionCard
-                        icon={<Book className="w-6 h-6" />}
-                        title="编辑剧情"
-                        description="使用节点化编辑器创建游戏剧情"
-                        color="purple"
-                    />
-                    <QuickActionCard
-                        icon={<Settings className="w-6 h-6" />}
-                        title="项目设置"
-                        description="配置项目元数据和构建选项"
-                        color="green"
-                    />
                 </div>
 
                 {/* Getting Started */}
                 <div className="bg-[#0b0d12] rounded-lg p-6 border border-white/10">
-                    <h2 className="text-xl font-semibold text-white mb-4">快速开始</h2>
+                    <h2 className="text-xl font-semibold text-white mb-4">Getting Started</h2>
                     <div className="space-y-4">
                         <GettingStartedStep
                             number={1}
-                            title="探索工作区"
-                            description="左侧边栏包含资源管理器和其他面板。右侧可以添加属性检查器等工具。"
+                            title="Explore the Workspace"
+                            description="The left sidebar contains the asset manager and other panels. The right side can add property inspectors and other tools."
                         />
                         <GettingStartedStep
                             number={2}
-                            title="管理资源"
-                            description="在 Assets 面板中导入图片、音频、视频等游戏资源。"
+                            title="Manage Assets"
+                            description="Import images, audio, video, etc. into the Assets panel."
                         />
                         <GettingStartedStep
                             number={3}
-                            title="创建剧情"
-                            description="使用剧情编辑器创建游戏场景和对话。支持节点化编辑和预览。"
+                            title="Create Story"
+                            description="Create game scenes and dialogs using the story editor. Supports node-based editing and preview."
                         />
                         <GettingStartedStep
                             number={4}
-                            title="测试运行"
-                            description="点击运行按钮预览游戏效果，随时调试和修改。"
+                            title="Test Run"
+                            description="Click the run button to preview the game effect, and随时调试和修改。"
                         />
                     </div>
-                </div>
-
-                {/* Features */}
-                <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <FeatureCard
-                        title="模块化架构"
-                        description="完全解耦的组件设计，支持插件扩展和自定义面板。"
-                    />
-                    <FeatureCard
-                        title="灵活布局"
-                        description="自由调整边栏和编辑区布局，支持分屏和多标签页。"
-                    />
-                    <FeatureCard
-                        title="资源管理"
-                        description="基于 GUID 的资源系统，支持元数据管理和版本控制。"
-                    />
-                    <FeatureCard
-                        title="实时预览"
-                        description="边写边看，实时预览游戏效果，快速迭代开发。"
-                    />
                 </div>
             </div>
         </div>

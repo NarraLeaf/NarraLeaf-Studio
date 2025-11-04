@@ -59,7 +59,7 @@ export class FsRequestReadHandler extends IPCHandler<IPCEventType.fsRequestRead>
                     ok: false,
                     error: {
                         code: FsRejectErrorCode.NOT_FOUND,
-                        message: "File does not exist"
+                        message: "File does not exist: " + path
                     }
                 });
             }

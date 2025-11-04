@@ -13,7 +13,7 @@ export function useDefaultPanels() {
     useEffect(() => {
         // Register Assets panel on the left sidebar
         registerPanel({
-            id: "assets",
+            id: "narraleaf-studio:assets",
             title: "Assets",
             icon: <FolderOpen className="w-4 h-4" />,
             position: PanelPosition.Left,

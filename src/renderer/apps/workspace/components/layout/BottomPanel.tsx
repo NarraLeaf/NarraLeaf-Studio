@@ -6,13 +6,14 @@ import { PanelPosition } from "../../registry/types";
 interface BottomPanelProps {
     panelId: string;
     onClose: () => void;
+    height: number;
 }
 
 /**
  * Bottom panel container
  * Displays the selected panel content
  */
-export function BottomPanel({ panelId, onClose }: BottomPanelProps) {
+export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
     const { panels } = useRegistry();
     const panel = panels.find((p) => p.id === panelId && p.position === PanelPosition.Bottom);
 
@@ -23,7 +24,10 @@ export function BottomPanel({ panelId, onClose }: BottomPanelProps) {
     const PanelComponent = panel.component;
 
     return (
-        <div className="h-full bg-[#0f1115] flex flex-col">
+        <div 
+            className="bg-[#0f1115] flex flex-col"
+            style={{ height: `${height - 1}px` }}
+        >
             {/* Panel Header */}
             <div className="h-10 flex items-center justify-between px-4 bg-[#0b0d12] border-b border-white/10">
                 <div className="flex items-center gap-2">

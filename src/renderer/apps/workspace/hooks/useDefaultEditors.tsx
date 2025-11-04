@@ -14,7 +14,7 @@ export function useDefaultEditors() {
         if ("tabs" in editorLayout && editorLayout.tabs.length === 0) {
             // Open welcome tab by default
             openEditorTab({
-                id: "welcome",
+                id: "narraleaf-studio:welcome",
                 title: "Welcome",
                 icon: <Home className="w-4 h-4" />,
                 component: WelcomeEditor,

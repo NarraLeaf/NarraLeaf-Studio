@@ -3,6 +3,7 @@ import {
     PanelDefinition,
     PanelPosition,
     ActionDefinition,
+    ActionGroup,
     EditorTabDefinition,
     EditorLayout,
     EditorGroup,
@@ -17,8 +18,11 @@ interface RegistryContextValue {
 
     // Action management
     actions: ActionDefinition[];
+    actionGroups: ActionGroup[];
     registerAction: (action: ActionDefinition) => void;
+    registerActionGroup: (group: ActionGroup) => void;
     unregisterAction: (id: string) => void;
+    unregisterActionGroup: (id: string) => void;
 
     // Editor management
     editorLayout: EditorLayout;
@@ -45,6 +49,7 @@ interface RegistryProviderProps {
 export function RegistryProvider({ children }: RegistryProviderProps) {
     const [panels, setPanels] = useState<PanelDefinition[]>([]);
     const [actions, setActions] = useState<ActionDefinition[]>([]);
+    const [actionGroups, setActionGroups] = useState<ActionGroup[]>([]);
     const [visiblePanels, setVisiblePanels] = useState<Record<string, boolean>>({});
 
     // Initialize with a default editor group
@@ -91,6 +96,17 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
             const filtered = prev.filter((a) => a.id !== action.id);
             return [...filtered, action].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         });
+    }, []);
+
+    const registerActionGroup = useCallback((group: ActionGroup) => {
+        setActionGroups((prev) => {
+            const filtered = prev.filter((g) => g.id !== group.id);
+            return [...filtered, group].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        });
+    }, []);
+
+    const unregisterActionGroup = useCallback((id: string) => {
+        setActionGroups((prev) => prev.filter((g) => g.id !== id));
     }, []);
 
     const unregisterAction = useCallback((id: string) => {
@@ -205,8 +221,11 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
                 unregisterPanel,
                 getPanelsByPosition,
                 actions,
+                actionGroups,
                 registerAction,
+                registerActionGroup,
                 unregisterAction,
+                unregisterActionGroup,
                 editorLayout,
                 openEditorTab,
                 closeEditorTab,

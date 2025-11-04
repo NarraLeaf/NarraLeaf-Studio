@@ -23,6 +23,17 @@ export interface PanelDefinition {
 }
 
 /**
+ * Action group definition
+ */
+export interface ActionGroup {
+    id: string;
+    label: string;
+    icon?: ReactNode;
+    actions: ActionDefinition[];
+    order?: number;
+}
+
+/**
  * Action definition for toolbar actions
  */
 export interface ActionDefinition {
@@ -34,6 +45,8 @@ export interface ActionDefinition {
     order?: number;
     disabled?: boolean;
     visible?: boolean;
+    badge?: string | number; // Badge text/count
+    group?: string; // Group ID this action belongs to
 }
 
 /**

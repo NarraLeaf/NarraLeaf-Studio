@@ -148,7 +148,7 @@ export function AssetsPanel() {
                 <div className="p-2 space-y-1">
                     {assets.map((asset) => {
                         const isSelected = selectedAsset === asset.name;
-                        const Icon = asset.isDirectory ? Folder : File;
+                        const Icon = asset.type === "directory" ? Folder : File;
 
                         return (
                             <div
@@ -165,13 +165,13 @@ export function AssetsPanel() {
                             >
                                 <Icon
                                     className={`w-4 h-4 flex-shrink-0 ${
-                                        asset.isDirectory ? "text-blue-400" : "text-gray-400"
+                                        asset.type === "directory" ? "text-blue-400" : "text-gray-400"
                                     }`}
                                 />
                                 <span className="text-sm truncate flex-1">{asset.name}</span>
-                                {asset.size !== undefined && !asset.isDirectory && (
+                                {asset.type === "file" && (
                                     <span className="text-xs text-gray-500 flex-shrink-0">
-                                        {formatFileSize(asset.size)}
+                                        {formatFileSize(0)}
                                     </span>
                                 )}
                             </div>

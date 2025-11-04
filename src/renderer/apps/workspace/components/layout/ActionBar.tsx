@@ -1,29 +1,39 @@
 import React from "react";
 import { useRegistry } from "../../registry";
+import { ActionDropdown } from "../ui/ActionDropdown";
 
 /**
  * Action bar component
  * Displays dynamically registered actions in the top-left area
  */
 export function ActionBar() {
-    const { actions } = useRegistry();
+    const { actions, actionGroups } = useRegistry();
 
-    // Filter visible actions
-    const visibleActions = actions.filter((action) => action.visible !== false);
+    // Filter visible actions that are not part of any group
+    const standaloneActions = actions.filter((action) => action.visible !== false && !action.group);
+    const visibleActionGroups = actionGroups.filter((group) =>
+        group.actions.some((action) => action.visible !== false)
+    );
 
-    if (visibleActions.length === 0) {
+    if (standaloneActions.length === 0 && visibleActionGroups.length === 0) {
         return <div className="flex items-center gap-1" />;
     }
 
     return (
-        <div className="flex items-center gap-1">
-            {visibleActions.map((action) => (
+        <div className="flex items-center gap-0.5">
+            {/* Render action groups first */}
+            {visibleActionGroups.map((group) => (
+                <ActionDropdown key={group.id} group={group} />
+            ))}
+
+            {/* Render standalone actions */}
+            {standaloneActions.map((action) => (
                 <button
                     key={action.id}
                     onClick={action.onClick}
                     disabled={action.disabled}
                     className={`
-                        h-8 px-3 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default
+                        h-8 px-1.5 rounded-md flex items-center gap-1.5 text-sm transition-colors cursor-default relative
                         ${
                             action.disabled
                                 ? "text-gray-500 cursor-not-allowed"
@@ -35,6 +45,11 @@ export function ActionBar() {
                 >
                     {action.icon && <span className="w-4 h-4">{action.icon}</span>}
                     <span>{action.label}</span>
+                    {action.badge && (
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                            {action.badge}
+                        </span>
+                    )}
                 </button>
             ))}
         </div>
