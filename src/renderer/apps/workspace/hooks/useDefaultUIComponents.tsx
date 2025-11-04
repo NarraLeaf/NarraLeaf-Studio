@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Settings, Play, Save, FolderOpen, Terminal, FileText, Copy, Scissors, Clipboard, Bug } from "lucide-react";
+import { Settings, Play, Save, FolderOpen, Terminal, FileText, Copy, Scissors, Clipboard, Bug, Hammer } from "lucide-react";
 import { useRegistry } from "../registry";
 import { PanelPosition } from "../registry/types";
 import { PropertiesPanel, ConsolePanel } from "../panels";
@@ -36,7 +36,6 @@ export function useDefaultUIComponents() {
 
         registerAction({
             id: "narraleaf-studio:run",
-            label: "Run",
             icon: <Play className="w-4 h-4" />,
             tooltip: "Run project",
             onClick: () => {
@@ -48,7 +47,6 @@ export function useDefaultUIComponents() {
 
         registerAction({
             id: "narraleaf-studio:debug",
-            label: "Debug",
             icon: <Bug className="w-4 h-4" />,
             tooltip: "Debug project",
             onClick: () => {
@@ -56,6 +54,17 @@ export function useDefaultUIComponents() {
                 // TODO: Implement debug functionality
             },
             order: 3,
+        });
+
+        registerAction({
+            id: "narraleaf-studio:build",
+            icon: <Hammer className="w-4 h-4" />,
+            tooltip: "Build project",
+            onClick: () => {
+                console.log("Build clicked");
+                // TODO: Implement build functionality
+            },
+            order: 4,
         });
 
         // Register action groups

@@ -38,7 +38,7 @@ export interface ActionGroup {
  */
 export interface ActionDefinition {
     id: string;
-    label: string;
+    label?: string;
     icon: ReactNode;
     tooltip?: string;
     onClick: () => void;

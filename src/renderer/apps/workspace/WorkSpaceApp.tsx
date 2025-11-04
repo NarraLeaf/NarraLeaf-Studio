@@ -19,7 +19,8 @@ function WorkspaceContent() {
 
     // Show loading screen while initializing
     if (!isInitialized && !error) {
-        return <LoadingScreen message="Initializing workspace..." />;
+        // return <LoadingScreen message="Initializing workspace..." />;
+        return <></>;
     }
 
     // Show error screen if initialization failed

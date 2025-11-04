@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { TitleBar } from "@/lib/components/layout";
 import { LeftSidebarSelector } from "./LeftSidebarSelector";
 import { BottomPanelSelector } from "./BottomPanelSelector";
@@ -77,9 +77,50 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     // Settings service
     const settingsService = context?.services.get<ProjectSettingsService>(Services.ProjectSettings);
-    
+
     // Track whether settings have been loaded
     const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+    // Debounced save settings to reduce file system access
+    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const debouncedSaveSettings = useCallback(async () => {
+        // Clear existing timeout
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+
+        // Set new timeout with 500ms delay
+        saveTimeoutRef.current = setTimeout(async () => {
+            if (!settingsService) return;
+
+            try {
+                await Promise.all([
+                    settingsService.set(SETTINGS_KEYS.LEFT_SIDEBAR_VISIBLE, leftSidebarVisible),
+                    settingsService.set(SETTINGS_KEYS.LEFT_SIDEBAR_WIDTH, leftSidebarWidth),
+                    settingsService.set(SETTINGS_KEYS.LEFT_SIDEBAR_ACTIVE_PANEL, activeLeftPanelId),
+                    settingsService.set(SETTINGS_KEYS.RIGHT_SIDEBAR_VISIBLE, rightSidebarVisible),
+                    settingsService.set(SETTINGS_KEYS.RIGHT_SIDEBAR_WIDTH, rightSidebarWidth),
+                    settingsService.set(SETTINGS_KEYS.RIGHT_SIDEBAR_ACTIVE_PANEL, activeRightPanelId),
+                    settingsService.set(SETTINGS_KEYS.BOTTOM_PANEL_VISIBLE, bottomPanelVisible),
+                    settingsService.set(SETTINGS_KEYS.BOTTOM_PANEL_HEIGHT, bottomPanelHeight),
+                    settingsService.set(SETTINGS_KEYS.BOTTOM_PANEL_ACTIVE_PANEL, activeBottomPanelId),
+                ]);
+            } catch (error) {
+                console.error("Failed to save workspace layout settings:", error);
+            }
+        }, 500);
+    }, [
+        settingsService,
+        leftSidebarVisible,
+        leftSidebarWidth,
+        activeLeftPanelId,
+        rightSidebarVisible,
+        rightSidebarWidth,
+        activeRightPanelId,
+        bottomPanelVisible,
+        bottomPanelHeight,
+        activeBottomPanelId,
+    ]);
 
     // Load saved state on mount
     useEffect(() => {
@@ -124,55 +165,48 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         loadSettings();
     }, [settingsService]);
 
+    // Cleanup timeout on unmount
+    useEffect(() => {
+        return () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+        };
+    }, []);
+
     // Save state when it changes (but only after initial load)
     useEffect(() => {
         if (!settingsService || !settingsLoaded) return;
 
-        const saveSettings = async () => {
-            try {
-                await Promise.all([
-                    settingsService.set(SETTINGS_KEYS.LEFT_SIDEBAR_VISIBLE, leftSidebarVisible),
-                    settingsService.set(SETTINGS_KEYS.LEFT_SIDEBAR_WIDTH, leftSidebarWidth),
-                    settingsService.set(SETTINGS_KEYS.LEFT_SIDEBAR_ACTIVE_PANEL, activeLeftPanelId),
-                    settingsService.set(SETTINGS_KEYS.RIGHT_SIDEBAR_VISIBLE, rightSidebarVisible),
-                    settingsService.set(SETTINGS_KEYS.RIGHT_SIDEBAR_WIDTH, rightSidebarWidth),
-                    settingsService.set(SETTINGS_KEYS.RIGHT_SIDEBAR_ACTIVE_PANEL, activeRightPanelId),
-                    settingsService.set(SETTINGS_KEYS.BOTTOM_PANEL_VISIBLE, bottomPanelVisible),
-                    settingsService.set(SETTINGS_KEYS.BOTTOM_PANEL_HEIGHT, bottomPanelHeight),
-                    settingsService.set(SETTINGS_KEYS.BOTTOM_PANEL_ACTIVE_PANEL, activeBottomPanelId),
-                ]);
-            } catch (error) {
-                console.error("Failed to save workspace layout settings:", error);
-            }
-        };
-
-        saveSettings();
+        // Trigger debounced save
+        debouncedSaveSettings();
     }, [
         settingsService,
         settingsLoaded,
-        leftSidebarVisible,
-        leftSidebarWidth,
-        activeLeftPanelId,
-        rightSidebarVisible,
-        rightSidebarWidth,
-        activeRightPanelId,
-        bottomPanelVisible,
-        bottomPanelHeight,
-        activeBottomPanelId,
+        debouncedSaveSettings,
     ]);
 
     // Resize handlers
     const handleLeftSidebarResize = useCallback((delta: number) => {
-        setLeftSidebarWidth(prev => Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, prev + delta)));
-    }, []);
+        const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, leftSidebarWidth + delta));
+        const didResize = newWidth !== leftSidebarWidth;
+        setLeftSidebarWidth(newWidth);
+        return didResize;
+    }, [leftSidebarWidth]);
 
     const handleRightSidebarResize = useCallback((delta: number) => {
-        setRightSidebarWidth(prev => Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, prev - delta)));
-    }, []);
+        const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, rightSidebarWidth - delta));
+        const didResize = newWidth !== rightSidebarWidth;
+        setRightSidebarWidth(newWidth);
+        return didResize;
+    }, [rightSidebarWidth]);
 
     const handleBottomPanelResize = useCallback((delta: number) => {
-        setBottomPanelHeight(prev => Math.min(MAX_BOTTOM_PANEL_HEIGHT, Math.max(MIN_BOTTOM_PANEL_HEIGHT, prev - delta)));
-    }, []);
+        const newHeight = Math.min(MAX_BOTTOM_PANEL_HEIGHT, Math.max(MIN_BOTTOM_PANEL_HEIGHT, bottomPanelHeight - delta));
+        const didResize = newHeight !== bottomPanelHeight;
+        setBottomPanelHeight(newHeight);
+        return didResize;
+    }, [bottomPanelHeight]);
 
     // Enhanced toggle functions that auto-select first panel if none is active
     const toggleLeftSidebar = () => {
