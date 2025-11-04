@@ -1,6 +1,7 @@
 import React from "react";
 import { useRegistry } from "../../registry";
 import { ActionDropdown } from "../ui/ActionDropdown";
+import { ActionDefinition } from "../../registry/types";
 
 /**
  * Action bar component
@@ -11,9 +12,10 @@ export function ActionBar() {
 
     // Filter visible actions that are not part of any group
     const standaloneActions = actions.filter((action) => action.visible !== false && !action.group);
-    const visibleActionGroups = actionGroups.filter((group) =>
-        group.actions.some((action) => action.visible !== false)
-    );
+    const visibleActionGroups = actionGroups.filter((group) => {
+        const items = (group.items ?? group.actions) as (ActionDefinition | { items: any[]; })[];
+        return hasVisible(items);
+    });
 
     if (standaloneActions.length === 0 && visibleActionGroups.length === 0) {
         return <div className="flex items-center gap-1" />;
@@ -54,5 +56,18 @@ export function ActionBar() {
             ))}
         </div>
     );
+}
+
+function hasVisible(items: (ActionDefinition | { items: any[] })[]): boolean {
+    for (const it of items) {
+        if ((it as ActionDefinition).onClick) {
+            const action = it as ActionDefinition;
+            if (action.visible !== false) return true;
+        } else {
+            const submenu = it as { items: any[] };
+            if (submenu.items && submenu.items.length > 0 && hasVisible(submenu.items as any)) return true;
+        }
+    }
+    return false;
 }
 

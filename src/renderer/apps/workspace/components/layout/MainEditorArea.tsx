@@ -58,19 +58,19 @@ export function MainEditorArea() {
                     <div className="relative mb-8">
                         <img
                             src="/img/narraleaf-studio/logo-icon-white.png"
-                            className="w-48 h-48 mx-auto opacity-20 hover:opacity-30 transition-opacity duration-500"
+                            className="w-64 h-64 mx-auto opacity-5"
                             alt="NarraLeaf Studio Logo"
                         />
                         {/* Glow effect */}
-                        <div className="absolute inset-0 w-48 h-48 mx-auto bg-blue-400/10 rounded-full blur-xl"></div>
+                        {/* <div className="absolute inset-0 w-48 h-48 mx-auto bg-blue-400/10 rounded-full blur-xl"></div> */}
                     </div>
 
                     {/* Welcome text */}
                     <div className="space-y-4">
-                        <h1 className="text-4xl font-light text-white/20 bold">NarraLeaf Studio</h1>
-                        <p className="text-lg text-white/20 max-w-md mx-auto leading-relaxed">
+                        <h1 className="text-4xl font-light text-white/5">NarraLeaf Studio</h1>
+                        {/* <p className="text-lg text-white/20 max-w-md mx-auto leading-relaxed">
                             Plan, Create, and Share
-                        </p>
+                        </p> */}
                     </div>
                 </div>
             </div>
