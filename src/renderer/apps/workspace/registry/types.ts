@@ -25,11 +25,29 @@ export interface PanelDefinition {
 /**
  * Action group definition
  */
+export interface ActionSubmenu {
+    id: string;
+    label: string;
+    icon?: ReactNode;
+    items: ActionMenuItem[];
+    order?: number;
+}
+
+export type ActionMenuItem = ActionDefinition | ActionSubmenu;
+
 export interface ActionGroup {
     id: string;
     label: string;
     icon?: ReactNode;
-    actions: ActionDefinition[];
+    /**
+     * Backward-compatible flat actions. If provided and `items` is undefined,
+     * the dropdown will render these as the top-level items.
+     */
+    actions?: ActionDefinition[];
+    /**
+     * Hierarchical menu items (actions or submenus). Takes precedence over `actions` when defined.
+     */
+    items?: ActionMenuItem[];
     order?: number;
 }
 
@@ -39,7 +57,7 @@ export interface ActionGroup {
 export interface ActionDefinition {
     id: string;
     label?: string;
-    icon: ReactNode;
+    icon?: ReactNode;
     tooltip?: string;
     onClick: () => void;
     order?: number;

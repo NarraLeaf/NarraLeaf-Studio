@@ -72,7 +72,7 @@ export function useDefaultUIComponents() {
             id: "narraleaf-studio:file",
             label: "File",
             order: 10,
-            actions: [
+            items: [
                 {
                     id: "narraleaf-studio:file-new",
                     label: "New File",
@@ -105,6 +105,13 @@ export function useDefaultUIComponents() {
                         // TODO: Implement save as functionality
                     },
                     order: 2,
+                },
+                {
+                    id: "file-recent",
+                    label: "Open Recent",
+                    items: [
+                        { id: "recent-1", label: "Project A", onClick: () => {} },
+                    ],
                 },
             ],
         });
