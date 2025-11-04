@@ -38,7 +38,7 @@ export function BottomPanelSelector({
     }
 
     return (
-        <div className="w-12 bg-[#0b0d12] border-r border-t border-white/10 flex flex-col items-center py-2 gap-1">
+        <div className="bg-[#0b0d12] border-t border-white/10 flex flex-col items-center py-2 px-1 gap-1">
             {panels.map((panel) => (
                 <button
                     key={panel.id}

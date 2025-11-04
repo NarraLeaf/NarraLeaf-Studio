@@ -56,6 +56,14 @@ export interface RendererPreloadedInterface {
     // Workspace
     openWindow(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
+    
+    // Project Settings
+    projectSettings: {
+        get<T = any>(projectPath: string, key: string): Promise<RequestStatus<{ value: T }>>;
+        set<T = any>(projectPath: string, key: string, value: T): Promise<RequestStatus<void>>;
+        getAll(projectPath: string): Promise<RequestStatus<{ settings: Record<string, any> }>>;
+        clear(projectPath: string): Promise<RequestStatus<void>>;
+    };
 }
 
 declare global {

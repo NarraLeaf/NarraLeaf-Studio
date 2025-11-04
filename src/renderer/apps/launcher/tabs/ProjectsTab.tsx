@@ -64,13 +64,6 @@ export function ProjectsTab() {
                     </button>
                 </div>
             </div>
-            <div className="text-sm text-gray-400">
-                <p className="mb-2">Open an existing project folder or create a new one.</p>
-                <ul className="list-disc list-inside space-y-1 text-gray-500">
-                    <li>Click "Open Folder" to browse and open a NarraLeaf project</li>
-                    <li>Click "New Project" to create a new project from scratch</li>
-                </ul>
-            </div>
         </div>
     );
 }

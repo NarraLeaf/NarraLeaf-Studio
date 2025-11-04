@@ -51,7 +51,7 @@ class PathPolyfill {
             if (path === '') continue;
 
             if (this.isAbsolute(path)) {
-                resolvedPath = path;
+                resolvedPath = this.join(path, resolvedPath);
                 resolvedAbsolute = true;
             } else {
                 resolvedPath = this.join(resolvedPath, path);
@@ -282,7 +282,10 @@ class PathPolyfill {
 
         // Handle Windows drive letters
         if (isWindowsPath && segments[0].endsWith(':')) {
-            result.unshift(segments[0]);
+            // Avoid duplicating the drive letter if it has already been added
+            if (result.length === 0 || result[0] !== segments[0]) {
+                result.unshift(segments[0]);
+            }
         }
 
         return result.join(this.sep) || '.';
@@ -357,7 +360,20 @@ class PathPolyfill {
 // Create platform singletons and default instance (auto-detect platform)
 const win32 = new PathPolyfill(true);
 const posix = new PathPolyfill(false);
-const defaultPath = (typeof process !== 'undefined' && process.platform === 'win32') ? win32 : posix;
+
+// Enhanced platform detection: works in Node, Electron renderer, and browser bundles
+function detectIsWindows(): boolean {
+    if (typeof process !== 'undefined' && typeof process.platform === 'string') {
+        return process.platform === 'win32';
+    }
+    // Fallback for browser-like environments
+    if (typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string') {
+        return /windows|win32/i.test(navigator.userAgent);
+    }
+    return false;
+}
+
+const defaultPath = detectIsWindows() ? win32 : posix;
 
 // Export commonly used functions
 export const resolve = (...paths: string[]) => defaultPath.resolve(...paths);

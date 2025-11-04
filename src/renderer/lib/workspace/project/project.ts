@@ -62,4 +62,8 @@ export class Porject {
         const flattened = paths.flatMap(path => Array.isArray(path) ? path : [path]);
         return resolve(this.config.projectPath, ...flattened);
     }
+
+    public getConfig(): ProjectProps {
+        return this.config;
+    }
 }

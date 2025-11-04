@@ -12,6 +12,12 @@ import {
 import { IPCHost } from "./window/ipcHost";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./window/handlers/projectWizardAction";
 import { WorkspaceLaunchHandler, WorkspaceSelectFolderHandler } from "./window/handlers/workspaceAction";
+import { 
+    ProjectSettingsGetHandler, 
+    ProjectSettingsSetHandler, 
+    ProjectSettingsGetAllHandler, 
+    ProjectSettingsClearHandler 
+} from "./window/handlers/projectSettingsAction";
 
 type WindowManagerEvents = {
     "window-created": [window: AppWindow];
@@ -76,6 +82,12 @@ export class WindowManager {
         // Register workspace handlers
         win.registerIPCHandler(new WorkspaceLaunchHandler());
         win.registerIPCHandler(new WorkspaceSelectFolderHandler());
+
+        // Register project settings handlers
+        win.registerIPCHandler(new ProjectSettingsGetHandler());
+        win.registerIPCHandler(new ProjectSettingsSetHandler());
+        win.registerIPCHandler(new ProjectSettingsGetAllHandler());
+        win.registerIPCHandler(new ProjectSettingsClearHandler());
 
         // Register file system handlers
         win.registerIPCHandler(new FsStatHandler());

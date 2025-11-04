@@ -44,6 +44,12 @@ export enum IPCEventType {
     
     workspaceLaunch = "workspace.launch",
     workspaceSelectFolder = "workspace.selectFolder",
+    
+    // Project Settings
+    projectSettingsGet = "projectSettings.get",
+    projectSettingsSet = "projectSettings.set",
+    projectSettingsGetAll = "projectSettings.getAll",
+    projectSettingsClear = "projectSettings.clear",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -139,7 +145,7 @@ export type IPCEvents = {
         },
         response: void;
     };
-} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents;
+} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCProjectSettingsEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -344,5 +350,47 @@ export type IPCWorkspaceEvents = {
         response: {
             path: string | null;
         };
+    };
+};
+
+export type IPCProjectSettingsEvents = {
+    [IPCEventType.projectSettingsGet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            key: string;
+        },
+        response: {
+            value: any;
+        };
+    };
+    [IPCEventType.projectSettingsSet]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            key: string;
+            value: any;
+        },
+        response: void;
+    };
+    [IPCEventType.projectSettingsGetAll]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            settings: Record<string, any>;
+        };
+    };
+    [IPCEventType.projectSettingsClear]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: void;
     };
 };

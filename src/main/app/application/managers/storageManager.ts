@@ -7,6 +7,8 @@ import fs from "fs/promises";
 import path from "path";
 import { PersistentState } from "../../../../shared/utils/persistentState";
 import { Manager } from "./manager";
+import { ProjectSettings } from "./storage/projectSettings";
+import { BaseApp } from "../baseApp";
 
 export interface FileStorageInfo {
     path: string;
@@ -20,6 +22,14 @@ export class StorageManager extends Manager {
     private storage = new Map<string, FileStorageInfo>();
     private nextId = 0;
     private namespaces = new Map<string, StorageNamespaceInfo>();
+    
+    // Project settings manager
+    public projectSettings: ProjectSettings;
+
+    constructor(app: BaseApp) {
+        super(app);
+        this.projectSettings = new ProjectSettings();
+    }
 
     public initialize(): Promise<void> {
         return Promise.resolve();

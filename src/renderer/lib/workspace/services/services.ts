@@ -17,6 +17,7 @@ enum Services {
     Project = "project",
     FileSystem = "fileSystem",
     UI = "ui",
+    ProjectSettings = "projectSettings",
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
@@ -64,6 +65,15 @@ interface IFileSystemService extends IService {
     isDir(path: string): Promise<FsRequestResult<boolean>>;
 
     readJSON<T>(path: string): Promise<FsRequestResult<T>>;
+}
+
+interface IProjectSettingsService extends IService {
+    get<T = any>(key: string, defaultValue?: T): Promise<T | undefined>;
+    set<T = any>(key: string, value: T): Promise<void>;
+    getAll(): Record<string, any>;
+    clear(): Promise<void>;
+    has(key: string): boolean;
+    getSync<T = any>(key: string, defaultValue?: T): T | undefined;
 }
 
 interface IStorageService extends IService {
@@ -118,7 +128,7 @@ interface IVersionControlService extends IService { }
 interface IPluginService extends IService { }
 
 export {
-    IAssetService, IAudioService, IBuildService, ICommandService, IDebugService, IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService, IPluginService, IPreviewService, IProjectService, IRuntimeService, IService, ISettingsService, IStorageService, IStoryService, ITextureService, IUIService, IVersionControlService, IVideoService,
+    IAssetService, IAudioService, IBuildService, ICommandService, IDebugService, IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService, IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService, IService, ISettingsService, IStorageService, IStoryService, ITextureService, IUIService, IVersionControlService, IVideoService,
     WorkspaceContext, Services,
 };
 

@@ -95,6 +95,7 @@ export class App extends BaseApp {
                 center: true,
                 x: undefined,
                 y: undefined,
+                frame: false,
                 ...options,
             },
         };
