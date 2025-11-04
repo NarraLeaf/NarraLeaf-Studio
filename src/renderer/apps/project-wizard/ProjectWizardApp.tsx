@@ -125,3 +125,5 @@ export function ProjectWizardApp() {
         </AppLayout>
     );
 }
+
+export default ProjectWizardApp;

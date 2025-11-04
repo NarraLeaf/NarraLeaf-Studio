@@ -16,10 +16,10 @@ interface IService {
 enum Services {
     Project = "project",
     FileSystem = "fileSystem",
+    UI = "ui",
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
-    // UI = "ui",
     // Settings = "settings",
     // Editor = "editor",
     // Story = "story",
@@ -75,7 +75,12 @@ interface ICommandService extends IService { }
 
 interface ILoggerService extends IService { }
 
-interface IUIService extends IService { }
+interface IUIService extends IService {
+    showConfirm(message: string, detail?: string): Promise<boolean>;
+    showAlert(message: string, detail?: string): Promise<void>;
+    showNotification(message: string, type?: "info" | "success" | "warning" | "error"): void;
+    showError(error: Error | string): void;
+}
 
 interface ISettingsService extends IService { }
 

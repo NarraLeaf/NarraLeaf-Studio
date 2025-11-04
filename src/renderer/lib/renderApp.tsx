@@ -1,11 +1,13 @@
+import React from "react";
+import { AppInfo } from "@shared/types/app";
 import { RendererInterfaceKey } from "@shared/types/constants";
-import React, { useEffect, useRef } from "react";
+import { PlatformInfo } from "@shared/types/os";
+import { createRoot } from "react-dom/client";
 import { getInterface } from "./app/bridge";
 import { CriticalErrorBoundary } from "./app/errorHandling/CriticalErrorBoundary";
-import { createRoot } from "react-dom/client";
+import { RenderingStatusAnnouncer } from "./components/announcers/RenderingStatusAnnouncer";
+
 import "@/styles/styles.css";
-import { AppInfo } from "@shared/types/app";
-import { PlatformInfo } from "@shared/types/os";
 
 function validateEnv() {
     if (!window[RendererInterfaceKey]) {
@@ -30,7 +32,7 @@ export function getPlatformInfo() {
     return platformInfo;
 }
 
-export async function renderApp(children: React.ReactNode) {
+async function renderApp(children: React.ReactNode) {
     // Validate environment
     validateEnv();
 
@@ -57,8 +59,7 @@ export async function renderApp(children: React.ReactNode) {
         <CriticalErrorBoundary platformInfo={platformResult.data}>
             {children as React.ReactElement}
         </CriticalErrorBoundary>
-    </>
-    );
+    </>);
 
     root.render(
         platformInfo.isPackaged ? content : <React.StrictMode>{content}</React.StrictMode>
@@ -66,28 +67,17 @@ export async function renderApp(children: React.ReactNode) {
     return root;
 }
 
-export function renderAppAsync(children: React.ReactNode | (() => Promise<React.ReactNode>)) {
-    return (async () => {
-        try {
-            return await renderApp(typeof children === "function" ? await children() : children);
-        } catch (error: any) {
-            const api = getInterface();
-            api.terminate(error.message + " " + error.stack);
-        }
-    })();
+export async function render(module: AppComponentModule) {
+    const { default: Component } = await module;
+
+    try {
+        return await renderApp(<Component />);
+    } catch (error: unknown) {
+        const api = getInterface();
+        const message = error instanceof Error ? `${error.name}\n${error.message}` : String(error);
+        api.terminate(message);
+    }
 }
 
-function RenderingStatusAnnouncer() {
-    const emitted = useRef(false);
-
-    useEffect(() => {
-        if (emitted.current) {
-            return;
-        }
-        emitted.current = true;
-        getInterface().window.ready();
-    }, []);
-
-    return <></>;
-}
-
+type AppComponentFunction = React.FunctionComponent;
+type AppComponentModule = Promise<{ default: AppComponentFunction }>;

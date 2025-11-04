@@ -56,3 +56,5 @@ export function SettingsApp({ initialTab = "general" }: SettingsAppProps) {
         </AppLayout>
     );
 }
+
+export default SettingsApp;

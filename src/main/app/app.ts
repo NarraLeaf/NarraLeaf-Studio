@@ -18,7 +18,7 @@ export class App extends BaseApp {
         const config: WindowConfig = {
             isolated: true,
             autoFocus: true,
-            preload: null,
+            preload: this.getPreloadScript(),
             options: {
                 minWidth: 800,
                 minHeight: 500,
@@ -32,7 +32,6 @@ export class App extends BaseApp {
             },
         };
         const window = new AppWindow(this, config, {});
-        window.registerPreloadScript(this.getPreloadScript());
         window.setTitle("Launcher - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
         window.showWhenReady();
@@ -59,7 +58,7 @@ export class App extends BaseApp {
         const config: WindowConfig = {
             isolated: true,
             autoFocus: true,
-            preload: null,
+            preload: this.getPreloadScript(),
             options: {
                 modal: true,
                 parent: parent.win,
@@ -70,7 +69,6 @@ export class App extends BaseApp {
             },
         };
         const window = new AppWindow(this, config, props);
-        window.registerPreloadScript(this.getPreloadScript());
         window.setTitle("Settings - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
         window.showWhenReady();
@@ -88,7 +86,7 @@ export class App extends BaseApp {
         const config: WindowConfig = {
             isolated: true,
             autoFocus: true,
-            preload: null,
+            preload: this.getPreloadScript(),
             options: {
                 minWidth: 800,
                 minHeight: 500,
@@ -101,7 +99,6 @@ export class App extends BaseApp {
             },
         };
         const window = new AppWindow(this, config, props);
-        window.registerPreloadScript(this.getPreloadScript());
         window.setTitle("Workspace - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
 
@@ -118,7 +115,7 @@ export class App extends BaseApp {
         const config: WindowConfig = {
             isolated: true,
             autoFocus: true,
-            preload: null,
+            preload: this.getPreloadScript(),
             options: {
                 modal: true,
                 parent: parent.win,
@@ -129,7 +126,6 @@ export class App extends BaseApp {
             },
         };
         const window = new AppWindow(this, config, props);
-        window.registerPreloadScript(this.getPreloadScript());
         window.setTitle("Project Wizard - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
         window.showWhenReady();

@@ -7,20 +7,6 @@
 - 代码模块化、插件化，方便后续功能增删
 - 剧情脚本使用结构化数据 `.nlstory` 作为唯一真源，保证编辑细节完整；`.nls` 作为可选导出格式
 
-## 技术选型
-
-1. Electron 作为桌面容器；主进程 TypeScript
-2. Renderer 使用 React 18 + TypeScript + esbuild
-3. Monorepo 采用 yarn workspaces，包划分：
-   - app-main（Electron 主进程）
-   - window-core（渲染器公共代码）
-   - windows/settings、project-manager、editor-core 等
-   - common/（UI 组件、工具函数）
-   - cli-bridge（封装 NarraLeaf-CLI）
-4. 状态管理：Redux Toolkit + Zustand（局部状态）
-5. UI 框架：Tailwind
-6. 数据持久化：项目目录下 *.json / *.yaml；大型二进制资源用独立文件夹
-
 ## 架构
 
 ### 主进程
@@ -33,15 +19,6 @@
 ### 多窗口体系
 
 - 每个窗口独立打包，产物：`dist/windows/<name>/index.html`
-- 窗口启动参数：`--window=name --project=<path>`，由 `window-core` 解析
-- 公共依赖通过 preload 共享，减少重复加载
-
-### Service API 设计
-
-- 通过 Electron contextBridge 暴露：
-  - `ipc.invoke('fs:read', path)`
-  - `ipc.invoke('cli:build', args)`
-- Renderer 端统一在 `@studio/services` 调用
 
 ### 插件系统
 

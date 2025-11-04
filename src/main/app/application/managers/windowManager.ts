@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 import { BaseApp } from "../baseApp";
 import { AppWindow } from "./window/appWindow";
-import { AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowGetControlHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler } from "./window/handlers/appAction";
+import { AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowGetControlHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler } from "./window/handlers/appAction";
 import { AppSettingsWindowLaunchHandler } from "./window/handlers/settingAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
@@ -11,6 +11,7 @@ import {
 } from "./window/handlers/fsAction";
 import { IPCHost } from "./window/ipcHost";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./window/handlers/projectWizardAction";
+import { WorkspaceLaunchHandler, WorkspaceSelectFolderHandler } from "./window/handlers/workspaceAction";
 
 type WindowManagerEvents = {
     "window-created": [window: AppWindow];
@@ -55,6 +56,8 @@ export class WindowManager {
     public registerDefaultIPCHandlers(win: AppWindow): void {
         win.registerIPCHandler(new AppPlatformInfoHandler());
         win.registerIPCHandler(new AppInfoHandler());
+
+        win.registerIPCHandler(new AppPropsHandler());
         win.registerIPCHandler(new AppWindowControlHandler());
         win.registerIPCHandler(new AppWindowGetControlHandler());
         win.registerIPCHandler(new AppWindowControlAbilityHandler());
@@ -69,6 +72,10 @@ export class WindowManager {
         win.registerIPCHandler(new ProjectWizardLaunchHandler());
         win.registerIPCHandler(new ProjectWizardSelectDirectoryHandler());
         win.registerIPCHandler(new ProjectWizardGetDefaultDirectoryHandler());
+
+        // Register workspace handlers
+        win.registerIPCHandler(new WorkspaceLaunchHandler());
+        win.registerIPCHandler(new WorkspaceSelectFolderHandler());
 
         // Register file system handlers
         win.registerIPCHandler(new FsStatHandler());

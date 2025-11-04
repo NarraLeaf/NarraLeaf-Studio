@@ -14,6 +14,6 @@ export class CriticalErrorBoundary<T extends CriticalErrorBoundaryProps> extends
     }
 
     protected handleError(error: Error): void {
-        getInterface().terminate(error.message);
+        getInterface().terminate(error.message + "\n" + (error.stack ?? ""));
     }
 }

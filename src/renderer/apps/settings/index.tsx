@@ -1,4 +1,3 @@
-import { renderAppAsync } from "@lib/renderApp";
-import { SettingsApp } from "./SettingsApp";
+import { render } from "@lib/renderApp";
 
-renderAppAsync(<SettingsApp />);
+render(import("./SettingsApp"));
