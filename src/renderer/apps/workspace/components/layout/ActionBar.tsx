@@ -33,7 +33,7 @@ export function ActionBar() {
                     onClick={action.onClick}
                     disabled={action.disabled}
                     className={`
-                        h-8 px-1.5 rounded-md flex items-center gap-1.5 text-sm transition-colors cursor-default relative
+                        h-8 px-2 rounded-md flex items-center gap-1.5 text-sm transition-colors cursor-default relative
                         ${
                             action.disabled
                                 ? "text-gray-500 cursor-not-allowed"
@@ -44,7 +44,7 @@ export function ActionBar() {
                     aria-label={action.label}
                 >
                     {action.icon && <span className="w-4 h-4">{action.icon}</span>}
-                    <span>{action.label}</span>
+                    {action.label && <span>{action.label}</span>}
                     {action.badge && (
                         <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
                             {action.badge}

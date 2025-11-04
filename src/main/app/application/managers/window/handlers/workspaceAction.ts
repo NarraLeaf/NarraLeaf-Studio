@@ -20,6 +20,7 @@ export class WorkspaceLaunchHandler extends IPCHandler<IPCEventType.workspaceLau
             minHeight: 600,
             width: 1400,
             height: 900,
+            backgroundColor: "#0f1115",
         });
 
         if (window.getApp().isDevMode()) {
