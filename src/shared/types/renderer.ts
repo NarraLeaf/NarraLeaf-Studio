@@ -61,6 +61,7 @@ export interface RendererPreloadedInterface {
     projectSettings: {
         get<T = any>(projectPath: string, key: string): Promise<RequestStatus<{ value: T }>>;
         set<T = any>(projectPath: string, key: string, value: T): Promise<RequestStatus<void>>;
+        setBatch(projectPath: string, settings: Record<string, any>): Promise<RequestStatus<void>>;
         getAll(projectPath: string): Promise<RequestStatus<{ settings: Record<string, any> }>>;
         clear(projectPath: string): Promise<RequestStatus<void>>;
     };

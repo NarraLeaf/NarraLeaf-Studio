@@ -57,6 +57,18 @@ export class ProjectSettingsService extends Service<ProjectSettingsService> {
     }
 
     /**
+     * Set multiple setting values in batch
+     * @param settings Record of setting keys and values
+     */
+    async setBatch(settings: Record<string, any>): Promise<void> {
+        // Update cache
+        Object.assign(this.cache, settings);
+
+        // Save to main process in batch
+        throwException(await getInterface().projectSettings.setBatch(this.projectPath, settings));
+    }
+
+    /**
      * Get all settings
      */
     getAll(): Record<string, any> {
