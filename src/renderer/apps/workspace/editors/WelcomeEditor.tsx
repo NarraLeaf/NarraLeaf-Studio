@@ -46,39 +46,11 @@ export function WelcomeEditor({ tabId }: WelcomeEditorProps) {
                         <GettingStartedStep
                             number={4}
                             title="Test Run"
-                            description="Click the run button to preview the game effect, and随时调试和修改。"
+                            description="Click the run button to preview the game effect, and debug and modify as needed."
                         />
                     </div>
                 </div>
             </div>
-        </div>
-    );
-}
-
-interface QuickActionCardProps {
-    icon: React.ReactNode;
-    title: string;
-    description: string;
-    color: "blue" | "purple" | "green";
-}
-
-function QuickActionCard({ icon, title, description, color }: QuickActionCardProps) {
-    const colorClasses = {
-        blue: "text-blue-400 border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10",
-        purple: "text-purple-400 border-purple-500/30 bg-purple-500/5 hover:bg-purple-500/10",
-        green: "text-green-400 border-green-500/30 bg-green-500/5 hover:bg-green-500/10",
-    };
-
-    return (
-        <div
-            className={`
-                p-6 rounded-lg border transition-colors cursor-default
-                ${colorClasses[color]}
-            `}
-        >
-            <div className="mb-3">{icon}</div>
-            <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>
-            <p className="text-sm text-gray-400">{description}</p>
         </div>
     );
 }
@@ -102,18 +74,3 @@ function GettingStartedStep({ number, title, description }: GettingStartedStepPr
         </div>
     );
 }
-
-interface FeatureCardProps {
-    title: string;
-    description: string;
-}
-
-function FeatureCard({ title, description }: FeatureCardProps) {
-    return (
-        <div className="p-4 rounded-lg bg-[#0b0d12] border border-white/10">
-            <h3 className="text-base font-semibold text-white mb-2">{title}</h3>
-            <p className="text-sm text-gray-400">{description}</p>
-        </div>
-    );
-}
-

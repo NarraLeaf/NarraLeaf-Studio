@@ -59,13 +59,15 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     
     // Project Settings
     projectSettings: {
-        get: <T = any>(projectPath: string, key: string) => 
+        get: <T = any>(projectPath: string, key: string) =>
             ipcClient.invoke(IPCEventType.projectSettingsGet, { projectPath, key }) as Promise<RequestStatus<{ value: T }>>,
-        set: <T = any>(projectPath: string, key: string, value: T) => 
+        set: <T = any>(projectPath: string, key: string, value: T) =>
             ipcClient.invoke(IPCEventType.projectSettingsSet, { projectPath, key, value }),
-        getAll: (projectPath: string) => 
+        setBatch: (projectPath: string, settings: Record<string, any>) =>
+            ipcClient.invoke(IPCEventType.projectSettingsSetBatch, { projectPath, settings }),
+        getAll: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.projectSettingsGetAll, { projectPath }) as Promise<RequestStatus<{ settings: Record<string, any> }>>,
-        clear: (projectPath: string) => 
+        clear: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.projectSettingsClear, { projectPath }),
     },
 };

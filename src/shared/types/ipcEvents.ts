@@ -48,6 +48,7 @@ export enum IPCEventType {
     // Project Settings
     projectSettingsGet = "projectSettings.get",
     projectSettingsSet = "projectSettings.set",
+    projectSettingsSetBatch = "projectSettings.setBatch",
     projectSettingsGetAll = "projectSettings.getAll",
     projectSettingsClear = "projectSettings.clear",
 }
@@ -372,6 +373,15 @@ export type IPCProjectSettingsEvents = {
             projectPath: string;
             key: string;
             value: any;
+        },
+        response: void;
+    };
+    [IPCEventType.projectSettingsSetBatch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            settings: Record<string, any>;
         },
         response: void;
     };

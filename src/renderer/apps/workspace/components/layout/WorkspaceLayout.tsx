@@ -94,17 +94,19 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             if (!settingsService) return;
 
             try {
-                await Promise.all([
-                    settingsService.set(SETTINGS_KEYS.LEFT_SIDEBAR_VISIBLE, leftSidebarVisible),
-                    settingsService.set(SETTINGS_KEYS.LEFT_SIDEBAR_WIDTH, leftSidebarWidth),
-                    settingsService.set(SETTINGS_KEYS.LEFT_SIDEBAR_ACTIVE_PANEL, activeLeftPanelId),
-                    settingsService.set(SETTINGS_KEYS.RIGHT_SIDEBAR_VISIBLE, rightSidebarVisible),
-                    settingsService.set(SETTINGS_KEYS.RIGHT_SIDEBAR_WIDTH, rightSidebarWidth),
-                    settingsService.set(SETTINGS_KEYS.RIGHT_SIDEBAR_ACTIVE_PANEL, activeRightPanelId),
-                    settingsService.set(SETTINGS_KEYS.BOTTOM_PANEL_VISIBLE, bottomPanelVisible),
-                    settingsService.set(SETTINGS_KEYS.BOTTOM_PANEL_HEIGHT, bottomPanelHeight),
-                    settingsService.set(SETTINGS_KEYS.BOTTOM_PANEL_ACTIVE_PANEL, activeBottomPanelId),
-                ]);
+                const settings = {
+                    [SETTINGS_KEYS.LEFT_SIDEBAR_VISIBLE]: leftSidebarVisible,
+                    [SETTINGS_KEYS.LEFT_SIDEBAR_WIDTH]: leftSidebarWidth,
+                    [SETTINGS_KEYS.LEFT_SIDEBAR_ACTIVE_PANEL]: activeLeftPanelId,
+                    [SETTINGS_KEYS.RIGHT_SIDEBAR_VISIBLE]: rightSidebarVisible,
+                    [SETTINGS_KEYS.RIGHT_SIDEBAR_WIDTH]: rightSidebarWidth,
+                    [SETTINGS_KEYS.RIGHT_SIDEBAR_ACTIVE_PANEL]: activeRightPanelId,
+                    [SETTINGS_KEYS.BOTTOM_PANEL_VISIBLE]: bottomPanelVisible,
+                    [SETTINGS_KEYS.BOTTOM_PANEL_HEIGHT]: bottomPanelHeight,
+                    [SETTINGS_KEYS.BOTTOM_PANEL_ACTIVE_PANEL]: activeBottomPanelId,
+                };
+
+                await settingsService.setBatch(settings);
             } catch (error) {
                 console.error("Failed to save workspace layout settings:", error);
             }
@@ -174,6 +176,49 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         };
     }, []);
 
+    // Handle window resize to ensure panels don't exceed available space
+    useEffect(() => {
+        const handleWindowResize = () => {
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+
+            // Reserve some space for minimum editor area (at least 400px)
+            const minEditorWidth = 400;
+            const titleBarHeight = 40; // Approximate title bar height
+
+            // Calculate available space for sidebars
+            const availableWidth = Math.max(0, windowWidth - minEditorWidth);
+            const maxSidebarWidth = Math.floor(availableWidth / 2); // Split equally between left and right
+
+            // Calculate available height for bottom panel
+            const availableHeight = Math.max(0, windowHeight - titleBarHeight - 100); // Reserve space for content
+            const maxPanelHeight = Math.min(MAX_BOTTOM_PANEL_HEIGHT, availableHeight);
+
+            // Adjust sidebar widths if they exceed available space
+            if (leftSidebarVisible && leftSidebarWidth > maxSidebarWidth) {
+                setLeftSidebarWidth(maxSidebarWidth);
+            }
+            if (rightSidebarVisible && rightSidebarWidth > maxSidebarWidth) {
+                setRightSidebarWidth(maxSidebarWidth);
+            }
+
+            // Adjust bottom panel height if it exceeds available space
+            if (bottomPanelVisible && bottomPanelHeight > maxPanelHeight) {
+                setBottomPanelHeight(maxPanelHeight);
+            }
+        };
+
+        // Initial check
+        handleWindowResize();
+
+        // Listen for window resize
+        window.addEventListener('resize', handleWindowResize);
+
+        return () => {
+            window.removeEventListener('resize', handleWindowResize);
+        };
+    }, [leftSidebarVisible, leftSidebarWidth, rightSidebarVisible, rightSidebarWidth, bottomPanelVisible, bottomPanelHeight]);
+
     // Save state when it changes (but only after initial load)
     useEffect(() => {
         if (!settingsService || !settingsLoaded) return;
@@ -188,21 +233,36 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
 
     // Resize handlers
     const handleLeftSidebarResize = useCallback((delta: number) => {
-        const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, leftSidebarWidth + delta));
+        // Calculate dynamic max width based on window size
+        const minEditorWidth = 400;
+        const availableWidth = Math.max(0, window.innerWidth - minEditorWidth);
+        const dynamicMaxWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.floor(availableWidth / 2));
+
+        const newWidth = Math.min(dynamicMaxWidth, Math.max(MIN_SIDEBAR_WIDTH, leftSidebarWidth + delta));
         const didResize = newWidth !== leftSidebarWidth;
         setLeftSidebarWidth(newWidth);
         return didResize;
     }, [leftSidebarWidth]);
 
     const handleRightSidebarResize = useCallback((delta: number) => {
-        const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, rightSidebarWidth - delta));
+        // Calculate dynamic max width based on window size
+        const minEditorWidth = 400;
+        const availableWidth = Math.max(0, window.innerWidth - minEditorWidth);
+        const dynamicMaxWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.floor(availableWidth / 2));
+
+        const newWidth = Math.min(dynamicMaxWidth, Math.max(MIN_SIDEBAR_WIDTH, rightSidebarWidth - delta));
         const didResize = newWidth !== rightSidebarWidth;
         setRightSidebarWidth(newWidth);
         return didResize;
     }, [rightSidebarWidth]);
 
     const handleBottomPanelResize = useCallback((delta: number) => {
-        const newHeight = Math.min(MAX_BOTTOM_PANEL_HEIGHT, Math.max(MIN_BOTTOM_PANEL_HEIGHT, bottomPanelHeight - delta));
+        // Calculate dynamic max height based on window size
+        const titleBarHeight = 40;
+        const availableHeight = Math.max(0, window.innerHeight - titleBarHeight - 100);
+        const dynamicMaxHeight = Math.min(MAX_BOTTOM_PANEL_HEIGHT, availableHeight);
+
+        const newHeight = Math.min(dynamicMaxHeight, Math.max(MIN_BOTTOM_PANEL_HEIGHT, bottomPanelHeight - delta));
         const didResize = newHeight !== bottomPanelHeight;
         setBottomPanelHeight(newHeight);
         return didResize;

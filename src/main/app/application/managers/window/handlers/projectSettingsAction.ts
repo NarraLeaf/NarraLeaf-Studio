@@ -44,6 +44,29 @@ export class ProjectSettingsSetHandler extends IPCHandler<IPCEventType.projectSe
 }
 
 /**
+ * Handler for setting multiple project setting values in batch
+ */
+export class ProjectSettingsSetBatchHandler extends IPCHandler<IPCEventType.projectSettingsSetBatch> {
+    readonly name = IPCEventType.projectSettingsSetBatch;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath, settings }: IPCEvents[IPCEventType.projectSettingsSetBatch]["data"]
+    ): Promise<RequestStatus<void>> {
+        try {
+            const promises = Object.entries(settings).map(([key, value]) =>
+                window.getApp().storageManager.projectSettings.set(projectPath, key, value)
+            );
+            await Promise.all(promises);
+            return this.success(void 0);
+        } catch (error) {
+            return this.failed(`Failed to set batch project settings: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+}
+
+/**
  * Handler for getting all project settings
  */
 export class ProjectSettingsGetAllHandler extends IPCHandler<IPCEventType.projectSettingsGetAll> {
