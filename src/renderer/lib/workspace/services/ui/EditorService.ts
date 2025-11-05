@@ -3,7 +3,7 @@ import { EditorTab } from "./types";
 
 /**
  * Editor Service
- * Manages editor tabs
+ * Manages editor tabs with type-safe payload support
  */
 export class EditorService {
     private store: UIStore;
@@ -13,10 +13,24 @@ export class EditorService {
     }
 
     /**
-     * Open an editor tab
+     * Open an editor tab with optional payload
      */
-    public open(tab: EditorTab): void {
+    public open<TPayload = any>(tab: EditorTab<TPayload>): void {
         this.store.openEditorTab(tab);
+    }
+
+    /**
+     * Open or update an editor tab with new payload
+     * If the tab is already open, updates its payload
+     */
+    public openOrUpdate<TPayload = any>(tab: EditorTab<TPayload>): void {
+        const existing = this.get(tab.id);
+        if (existing) {
+            this.store.updateEditorTab(tab);
+            this.store.setActiveEditorTab(tab.id);
+        } else {
+            this.store.openEditorTab(tab);
+        }
     }
 
     /**
@@ -79,21 +93,36 @@ export class EditorService {
     /**
      * Get an editor tab by id
      */
-    public get(tabId: string): EditorTab | undefined {
+    public get<TPayload = any>(tabId: string): EditorTab<TPayload> | undefined {
         return this.store.getEditorTabs().find(t => t.id === tabId);
     }
 
     /**
      * Update an editor tab
      */
-    public update(tabId: string, updates: Partial<Omit<EditorTab, "id">>): void {
-        const tab = this.get(tabId);
+    public update<TPayload = any>(tabId: string, updates: Partial<Omit<EditorTab<TPayload>, "id">>): void {
+        const tab = this.get<TPayload>(tabId);
         if (tab) {
             this.store.updateEditorTab({
                 ...tab,
                 ...updates,
             });
         }
+    }
+
+    /**
+     * Update payload of an editor tab
+     */
+    public updatePayload<TPayload = any>(tabId: string, payload: TPayload): void {
+        this.update<TPayload>(tabId, { payload });
+    }
+
+    /**
+     * Get payload of an editor tab
+     */
+    public getPayload<TPayload = any>(tabId: string): TPayload | undefined {
+        const tab = this.get<TPayload>(tabId);
+        return tab?.payload;
     }
 
     /**

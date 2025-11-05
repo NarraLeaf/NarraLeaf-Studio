@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ActionDefinition, ActionGroup, ActionMenuItem } from "../../registry/types";
+import { useWorkspace } from "../../context";
+import { Services } from "@/lib/workspace/services/services";
+import { UIService } from "@/lib/workspace/services/core/UIService";
+import { FocusContext } from "@/lib/workspace/services/ui";
 
 interface ActionDropdownProps {
     group: ActionGroup;
@@ -8,27 +12,45 @@ interface ActionDropdownProps {
 
 /**
  * Action dropdown component for grouped actions
+ * Filters actions based on focus context and when conditions
  */
 export function ActionDropdown({ group }: ActionDropdownProps) {
+    const { context } = useWorkspace();
     const [isOpen, setIsOpen] = useState(false);
     const [openPath, setOpenPath] = useState<number[]>([]); // path of opened submenus
     const [focusPath, setFocusPath] = useState<number[]>([]); // path of focused item
+    const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const rootMenuRef = useRef<HTMLDivElement>(null);
     const hoverOpenTimerRef = useRef<number | null>(null);
     const hoverCloseTimerRef = useRef<number | null>(null);
+
+    // Subscribe to focus changes
+    useEffect(() => {
+        if (!context) return;
+
+        const uiService = context.services.get<UIService>(Services.UI);
+        setFocusContext(uiService.focus.getFocus());
+
+        return uiService.focus.onFocusChange((newContext) => {
+            setFocusContext(newContext);
+        });
+    }, [context]);
 
     // Normalize items: prefer hierarchical `items`, fallback to flat `actions`
     const rootItems: ActionMenuItem[] = useMemo(() => {
         const items = (group.items ?? group.actions) as ActionMenuItem[];
         return (items || []).slice().filter((item) => {
             if (isAction(item)) {
-                return item.visible !== false;
+                if (item.visible === false) return false;
+                // Check when condition
+                if (item.when && focusContext && !item.when(focusContext)) return false;
+                return true;
             }
             // submenu visible if it has any visible children
-            return getVisibleItems(item.items).length > 0;
+            return getVisibleItems(item.items, focusContext).length > 0;
         }).sort(byOrder);
-    }, [group]);
+    }, [group, focusContext]);
 
     useEffect(() => {
         if (!isOpen) {
@@ -82,7 +104,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
         if (!focusPath.length) return;
 
         const level = focusPath.length - 1;
-        const itemsAtLevel = getItemsAtPath(rootItems, focusPath.slice(0, -1));
+        const itemsAtLevel = getItemsAtPath(rootItems, focusPath.slice(0, -1), focusContext);
         const focusedIndex = focusPath[level];
         const focusedItem = itemsAtLevel[focusedIndex];
 
@@ -97,7 +119,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
         } else if (key === "ArrowRight" || key === "Right") {
             if (!isAction(focusedItem)) {
                 // open submenu and focus first item
-                const visible = getVisibleItems(focusedItem.items);
+                const visible = getVisibleItems(focusedItem.items, focusContext);
                 if (visible.length > 0) {
                     setOpenPath(focusPath);
                     const first = firstEnabledIndex(visible);
@@ -117,7 +139,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
             if (isAction(focusedItem) && !focusedItem.disabled) {
                 handleActionClick(focusedItem);
             } else if (!isAction(focusedItem)) {
-                const visible = getVisibleItems(focusedItem.items);
+                const visible = getVisibleItems(focusedItem.items, focusContext);
                 if (visible.length > 0) {
                     setOpenPath(focusPath);
                     const first = firstEnabledIndex(visible);
@@ -180,6 +202,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                             onActionClick={handleActionClick}
                             hoverOpenTimerRef={hoverOpenTimerRef}
                             hoverCloseTimerRef={hoverCloseTimerRef}
+                            focusContext={focusContext}
                         />
                     </div>
                 </>
@@ -198,10 +221,18 @@ function byOrder(a: { order?: number }, b: { order?: number }) {
     return ao - bo;
 }
 
-function getVisibleItems(items: ActionMenuItem[]): ActionMenuItem[] {
+/**
+ * Filter items based on visibility and when conditions
+ */
+function getVisibleItems(items: ActionMenuItem[], focusContext: FocusContext | null = null): ActionMenuItem[] {
     return (items || []).filter((i) => {
-        if (isAction(i)) return i.visible !== false;
-        return getVisibleItems(i.items).length > 0;
+        if (isAction(i)) {
+            if (i.visible === false) return false;
+            // Check when condition
+            if (i.when && focusContext && !i.when(focusContext)) return false;
+            return true;
+        }
+        return getVisibleItems(i.items, focusContext).length > 0;
     }).sort(byOrder);
 }
 
@@ -251,12 +282,12 @@ function replaceIndex(path: number[], level: number, value: number): number[] {
     return next;
 }
 
-function getItemsAtPath(root: ActionMenuItem[], parentPath: number[]): ActionMenuItem[] {
+function getItemsAtPath(root: ActionMenuItem[], parentPath: number[], focusContext: FocusContext | null = null): ActionMenuItem[] {
     let items = root;
     for (const idx of parentPath) {
         const node = items[idx];
         if (!node || isAction(node)) return [];
-        items = getVisibleItems(node.items);
+        items = getVisibleItems(node.items, focusContext);
     }
     return items;
 }
@@ -271,10 +302,11 @@ interface MenuLevelProps {
     onActionClick: (a: ActionDefinition) => void;
     hoverOpenTimerRef: React.MutableRefObject<number | null>;
     hoverCloseTimerRef: React.MutableRefObject<number | null>;
+    focusContext: FocusContext | null;
 }
 
 function MenuLevel(props: MenuLevelProps) {
-    const { level, items, openPath, focusPath, setOpenPath, setFocusPath, onActionClick, hoverOpenTimerRef, hoverCloseTimerRef } = props;
+    const { level, items, openPath, focusPath, setOpenPath, setFocusPath, onActionClick, hoverOpenTimerRef, hoverCloseTimerRef, focusContext } = props;
     const parentPath = focusPath.slice(0, level);
     const focusedIndex = focusPath[level] ?? -1;
 
@@ -285,14 +317,14 @@ function MenuLevel(props: MenuLevelProps) {
                     const isFocused = focusedIndex === index;
                     const isSubmenu = !isAction(item);
                     const isOpened = openPath[level] === index && openPath.length === level + 1;
-                    const isDisabled = isAction(item) ? !!item.disabled : getVisibleItems(item.items).length === 0;
+                    const isDisabled = isAction(item) ? !!item.disabled : getVisibleItems(item.items, focusContext).length === 0;
 
                     const onMouseEnter = () => {
                         if (hoverCloseTimerRef.current) window.clearTimeout(hoverCloseTimerRef.current);
                         if (isSubmenu) {
                             if (hoverOpenTimerRef.current) window.clearTimeout(hoverOpenTimerRef.current);
                             hoverOpenTimerRef.current = window.setTimeout(() => {
-                                const visible = getVisibleItems(item.items);
+                                const visible = getVisibleItems(item.items, focusContext);
                                 if (visible.length > 0) {
                                     setOpenPath([...parentPath, index]);
                                     // do not change focus unless keyboard navigates
@@ -332,7 +364,7 @@ function MenuLevel(props: MenuLevelProps) {
                                 if (isAction(item)) {
                                     onActionClick(item);
                                 } else {
-                                    const visible = getVisibleItems(item.items);
+                                    const visible = getVisibleItems(item.items, focusContext);
                                     if (visible.length > 0) {
                                         setOpenPath([...parentPath, index]);
                                         const first = firstEnabledIndex(visible);
@@ -356,7 +388,7 @@ function MenuLevel(props: MenuLevelProps) {
                                 <div className="absolute top-0 left-full ml-1 z-20 min-w-48 bg-[#1a1a1a] border border-white/20 rounded-md shadow-lg py-1">
                                     <MenuLevel
                                         level={level + 1}
-                                        items={getVisibleItems(item.items)}
+                                        items={getVisibleItems(item.items, focusContext)}
                                         openPath={openPath}
                                         focusPath={focusPath}
                                         setOpenPath={setOpenPath}
@@ -364,6 +396,7 @@ function MenuLevel(props: MenuLevelProps) {
                                         onActionClick={onActionClick}
                                         hoverOpenTimerRef={hoverOpenTimerRef}
                                         hoverCloseTimerRef={hoverCloseTimerRef}
+                                        focusContext={focusContext}
                                     />
                                 </div>
                             )}

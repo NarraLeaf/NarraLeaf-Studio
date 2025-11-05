@@ -1,7 +1,5 @@
-// Hooks exports
-export { useDefaultPanels } from "./useDefaultPanels";
-export { useDefaultEditors } from "./useDefaultEditors";
-export { useDefaultUIComponents } from "./useDefaultUIComponents";
+// Module loader hook
+export { useModuleLoader } from "./useModuleLoader";
 
 // UI Service hooks
 export {

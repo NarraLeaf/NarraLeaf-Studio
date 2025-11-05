@@ -3,7 +3,7 @@ import { RegistryProvider } from "./registry";
 import { WorkspaceLayout } from "./components/layout";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { ErrorScreen } from "./components/ErrorScreen";
-import { useDefaultPanels, useDefaultEditors, useDefaultUIComponents } from "./hooks";
+import { useModuleLoader } from "./hooks/useModuleLoader";
 
 /**
  * Main workspace application component
@@ -12,10 +12,8 @@ import { useDefaultPanels, useDefaultEditors, useDefaultUIComponents } from "./h
 function WorkspaceContent() {
     const { isInitialized, error } = useWorkspace();
 
-    // Register default panels, editors, and UI components
-    useDefaultPanels();
-    useDefaultEditors();
-    useDefaultUIComponents();
+    // Load all built-in modules (panels, editors, actions)
+    useModuleLoader();
 
     // Show loading screen while initializing
     if (!isInitialized && !error) {

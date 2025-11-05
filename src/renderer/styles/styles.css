@@ -4,6 +4,7 @@
 
 *, *::before, *::after {
     user-select: none;
+    box-sizing: border-box;
     -webkit-user-select: none;
     -webkit-user-drag: none;
 }

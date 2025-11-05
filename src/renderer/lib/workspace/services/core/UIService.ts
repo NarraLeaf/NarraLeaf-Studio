@@ -7,6 +7,8 @@ import { PanelService } from "../ui/PanelService";
 import { EditorService } from "../ui/EditorService";
 import { DialogService } from "../ui/DialogService";
 import { StatusBarService } from "../ui/StatusBarService";
+import { FocusManager } from "../ui/FocusManager";
+import { KeybindingService } from "../ui/KeybindingService";
 import { EventEmitter } from "../ui/EventEmitter";
 import { UIStateEvents } from "../ui/UIStore";
 
@@ -20,6 +22,8 @@ import { UIStateEvents } from "../ui/UIStore";
  * - editor: Editor tab management
  * - dialogs: Modal dialogs and inputs
  * - statusBar: Status bar items
+ * - focus: Focus management
+ * - keybindings: Keyboard shortcuts
  */
 export class UIService extends Service<UIService> implements IUIService {
     private store: UIStore;
@@ -29,6 +33,8 @@ export class UIService extends Service<UIService> implements IUIService {
     private _editor: EditorService;
     private _dialogs: DialogService;
     private _statusBar: StatusBarService;
+    private _focus: FocusManager;
+    private _keybindings: KeybindingService;
 
     constructor() {
         super();
@@ -39,10 +45,13 @@ export class UIService extends Service<UIService> implements IUIService {
         this._editor = new EditorService(this.store);
         this._dialogs = new DialogService(this.store);
         this._statusBar = new StatusBarService(this.store);
+        this._focus = new FocusManager();
+        this._keybindings = new KeybindingService(this._focus);
     }
 
     protected init(_ctx: WorkspaceContext): Promise<void> | void {
-        // No initialization needed
+        // Start keybinding service
+        this._keybindings.start();
     }
 
     /**
@@ -109,6 +118,22 @@ export class UIService extends Service<UIService> implements IUIService {
         return this._statusBar;
     }
 
+    /**
+     * Focus manager
+     * Usage: services.get<UIService>(Services.UI).focus.setFocus(...)
+     */
+    public get focus(): FocusManager {
+        return this._focus;
+    }
+
+    /**
+     * Keybinding service
+     * Usage: services.get<UIService>(Services.UI).keybindings.register({...})
+     */
+    public get keybindings(): KeybindingService {
+        return this._keybindings;
+    }
+
     // === Legacy API (for backward compatibility) ===
 
     /**
@@ -158,6 +183,8 @@ export class UIService extends Service<UIService> implements IUIService {
      * Clean up
      */
     public override dispose(_ctx: WorkspaceContext): void {
+        this._keybindings.stop();
+        this._keybindings.clear();
         this.store.clear();
     }
 }

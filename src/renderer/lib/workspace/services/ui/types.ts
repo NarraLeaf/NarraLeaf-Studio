@@ -1,4 +1,4 @@
-import { ReactNode, FC } from "react";
+import { ReactNode, ComponentType } from "react";
 
 /**
  * Notification types
@@ -69,30 +69,79 @@ export enum PanelPosition {
 }
 
 /**
- * Panel definition
+ * Base props for panel components
  */
-export interface PanelDefinition {
+export interface PanelComponentProps<TPayload = any> {
+    panelId: string;
+    payload?: TPayload;
+}
+
+/**
+ * Panel definition with payload support
+ */
+export interface PanelDefinition<TPayload = any> {
     id: string;
     title: string;
     icon: ReactNode;
     position: PanelPosition;
-    component: FC<{ panelId: string }>;
+    component: ComponentType<PanelComponentProps<TPayload>>;
     defaultVisible?: boolean;
     order?: number;
     badge?: string | number;
+    payload?: TPayload; // Payload data for the panel
 }
 
 /**
- * Editor tab definition
+ * Base props for editor tab components
  */
-export interface EditorTab {
+export interface EditorTabComponentProps<TPayload = any> {
+    tabId: string;
+    payload?: TPayload;
+}
+
+/**
+ * Editor tab definition with payload support
+ */
+export interface EditorTab<TPayload = any> {
     id: string;
     title: string;
     icon?: ReactNode;
-    component: FC<{ tabId: string }>;
+    component: ComponentType<EditorTabComponentProps<TPayload>>;
     closable?: boolean;
     modified?: boolean;
     badge?: string | number;
+    payload?: TPayload; // Payload data for the editor
+}
+
+/**
+ * Focus area types
+ */
+export enum FocusArea {
+    LeftPanel = "left-panel",
+    RightPanel = "right-panel",
+    BottomPanel = "bottom-panel",
+    Editor = "editor",
+    ActionBar = "action-bar",
+    None = "none",
+}
+
+/**
+ * Focus context with area and target ID
+ */
+export interface FocusContext {
+    area: FocusArea;
+    targetId?: string; // Panel ID or Editor Tab ID
+}
+
+/**
+ * Keybinding definition
+ */
+export interface Keybinding {
+    id: string;
+    key: string; // e.g., "ctrl+s", "cmd+shift+p"
+    description?: string;
+    handler: (context: FocusContext) => void | Promise<void>;
+    when?: (context: FocusContext) => boolean; // Condition for when the keybinding is active
 }
 
 /**

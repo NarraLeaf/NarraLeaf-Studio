@@ -1,11 +1,11 @@
-import React from "react";
 import { Settings } from "lucide-react";
+import { PanelComponentProps } from "../types";
 
 /**
  * Properties panel component
  * Shows properties/inspector for selected items
  */
-export function PropertiesPanel() {
+export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     return (
         <div className="h-full flex flex-col">
             {/* Header */}
@@ -24,3 +24,4 @@ export function PropertiesPanel() {
         </div>
     );
 }
+

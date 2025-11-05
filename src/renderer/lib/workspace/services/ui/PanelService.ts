@@ -3,7 +3,7 @@ import { PanelDefinition, PanelPosition } from "./types";
 
 /**
  * Panel Service
- * Manages sidebar and bottom panel registration and visibility
+ * Manages sidebar and bottom panel registration and visibility with payload support
  */
 export class PanelService {
     private store: UIStore;
@@ -13,9 +13,10 @@ export class PanelService {
     }
 
     /**
-     * Register a panel
+     * Register a panel with optional payload
+     * Returns a disposer function
      */
-    public register(panel: PanelDefinition): () => void {
+    public register<TPayload = any>(panel: PanelDefinition<TPayload>): () => void {
         this.store.registerPanel(panel);
         
         // Return disposer function
@@ -74,7 +75,7 @@ export class PanelService {
     /**
      * Get a panel by id
      */
-    public get(id: string): PanelDefinition | undefined {
+    public get<TPayload = any>(id: string): PanelDefinition<TPayload> | undefined {
         return this.store.getPanels().find(p => p.id === id);
     }
 
@@ -89,6 +90,27 @@ export class PanelService {
                 badge,
             });
         }
+    }
+
+    /**
+     * Update panel payload
+     */
+    public updatePayload<TPayload = any>(panelId: string, payload: TPayload): void {
+        const panel = this.get<TPayload>(panelId);
+        if (panel) {
+            this.store.registerPanel({
+                ...panel,
+                payload,
+            });
+        }
+    }
+
+    /**
+     * Get panel payload
+     */
+    public getPayload<TPayload = any>(panelId: string): TPayload | undefined {
+        const panel = this.get<TPayload>(panelId);
+        return panel?.payload;
     }
 
     /**
