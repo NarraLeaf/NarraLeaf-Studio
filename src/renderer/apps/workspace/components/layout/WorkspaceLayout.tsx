@@ -328,67 +328,65 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     onSelectPanel={setActiveLeftPanelId}
                 />
 
-                {/* Left Sidebar */}
-                {leftSidebarVisible && activeLeftPanelId && (
-                    <>
-                        <LeftSidebar 
-                            panelId={activeLeftPanelId} 
-                            onClose={() => setLeftSidebarVisible(false)}
-                            width={leftSidebarWidth}
-                        />
-                        <ResizableHandle
-                            direction="horizontal"
-                            onResize={handleLeftSidebarResize}
-                            className="w-1 border-r border-white/10 hover:bg-blue-500/20"
-                        />
-                    </>
-                )}
+                {/* Left Sidebar - Always rendered, controlled by CSS visibility */}
+                <div 
+                    className={leftSidebarVisible && activeLeftPanelId ? "flex" : "hidden"}
+                >
+                    <LeftSidebar 
+                        panelId={activeLeftPanelId || ""} 
+                        onClose={() => setLeftSidebarVisible(false)}
+                        width={leftSidebarWidth}
+                    />
+                    <ResizableHandle
+                        direction="horizontal"
+                        onResize={handleLeftSidebarResize}
+                        className="w-1 border-r border-white/10 hover:bg-blue-500/20"
+                    />
+                </div>
 
                 {/* Center Area */}
                 <div className="flex-1 flex flex-col overflow-hidden">
                     {/* Main Editor and Bottom Panel */}
                     <div className="flex-1 flex flex-col overflow-hidden">
                         {/* Main Editor Area */}
-                        <div className={`${bottomPanelVisible ? "flex-1" : "flex-1"} overflow-hidden`}>
+                        <div className="flex-1 overflow-hidden">
                             <MainEditorArea />
                         </div>
 
-                        {/* Bottom Panel */}
-                        {bottomPanelVisible && activeBottomPanelId && (
-                            <div 
-                                className="border-t border-white/10"
-                                style={{ height: `${bottomPanelHeight}px` }}
-                            >
-                                <ResizableHandle
-                                    direction="vertical"
-                                    onResize={handleBottomPanelResize}
-                                    className="h-1 border-t border-white/10 hover:bg-blue-500/20"
-                                />
-                                <BottomPanel
-                                    panelId={activeBottomPanelId}
-                                    onClose={() => setBottomPanelVisible(false)}
-                                    height={bottomPanelHeight}
-                                />
-                            </div>
-                        )}
+                        {/* Bottom Panel - Always rendered, controlled by CSS visibility */}
+                        <div 
+                            className={bottomPanelVisible && activeBottomPanelId ? "border-t border-white/10" : "hidden"}
+                            style={{ height: bottomPanelVisible && activeBottomPanelId ? `${bottomPanelHeight}px` : 0 }}
+                        >
+                            <ResizableHandle
+                                direction="vertical"
+                                onResize={handleBottomPanelResize}
+                                className="h-1 border-t border-white/10 hover:bg-blue-500/20"
+                            />
+                            <BottomPanel
+                                panelId={activeBottomPanelId || ""}
+                                onClose={() => setBottomPanelVisible(false)}
+                                height={bottomPanelHeight}
+                            />
+                        </div>
                     </div>
                 </div>
 
-                {/* Right Sidebar */}
-                {rightSidebarVisible && activeRightPanelId && (
-                    <>
-                        <ResizableHandle
-                            direction="horizontal"
-                            onResize={handleRightSidebarResize}
-                            className="w-1 border-l border-white/10 hover:bg-blue-500/20"
-                        />
-                        <RightSidebar 
-                            panelId={activeRightPanelId} 
-                            onClose={() => setRightSidebarVisible(false)}
-                            width={rightSidebarWidth}
-                        />
-                    </>
-                )}
+                {/* Right Sidebar - Always rendered, controlled by CSS visibility */}
+                <div 
+                    className={rightSidebarVisible && activeRightPanelId ? "flex" : "hidden"}
+                >
+                    <ResizableHandle
+                        direction="horizontal"
+                        onResize={handleRightSidebarResize}
+                        className="w-1 border-l border-white/10 hover:bg-blue-500/20"
+                    />
+                    <RightSidebar 
+                        panelId={activeRightPanelId || ""} 
+                        onClose={() => setRightSidebarVisible(false)}
+                        width={rightSidebarWidth}
+                    />
+                </div>
 
                 {/* Right Sidebar Selector */}
                 <RightSidebarSelector

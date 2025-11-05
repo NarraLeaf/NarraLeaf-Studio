@@ -1,15 +1,11 @@
-import React from "react";
-import { Sparkles, FolderOpen, Book, Settings } from "lucide-react";
-
-interface WelcomeEditorProps {
-    tabId: string;
-}
+import { Sparkles } from "lucide-react";
+import { EditorComponentProps } from "../types";
 
 /**
  * Welcome editor component
  * Displays a welcome screen with quick actions and getting started guide
  */
-export function WelcomeEditor({ tabId }: WelcomeEditorProps) {
+export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
     return (
         <div className="h-full overflow-auto bg-[#0f1115]">
             <div className="max-w-4xl mx-auto py-12 px-6">
@@ -56,11 +52,18 @@ export function WelcomeEditor({ tabId }: WelcomeEditorProps) {
 }
 
 interface GettingStartedStepProps {
+    /** Step number */
     number: number;
+    /** Step title */
     title: string;
+    /** Step description */
     description: string;
 }
 
+/**
+ * Getting started step component
+ * Displays a numbered step in the getting started guide
+ */
 function GettingStartedStep({ number, title, description }: GettingStartedStepProps) {
     return (
         <div className="flex gap-4">
@@ -74,3 +77,4 @@ function GettingStartedStep({ number, title, description }: GettingStartedStepPr
         </div>
     );
 }
+

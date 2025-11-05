@@ -1,3 +1,4 @@
+import { EditorTabComponentProps, FocusContext, PanelComponentProps } from "@/lib/workspace/services/ui/types";
 import { FC, ReactNode } from "react";
 
 /**
@@ -17,7 +18,7 @@ export interface PanelDefinition {
     title: string;
     icon: ReactNode;
     position: PanelPosition;
-    component: FC;
+    component: FC<PanelComponentProps>;
     defaultVisible?: boolean;
     order?: number; // For sorting panels
 }
@@ -63,6 +64,7 @@ export interface ActionDefinition {
     order?: number;
     disabled?: boolean;
     visible?: boolean;
+    when?: (context: FocusContext) => boolean;
     badge?: string | number; // Badge text/count
     group?: string; // Group ID this action belongs to
 }
@@ -74,7 +76,7 @@ export interface EditorTabDefinition {
     id: string;
     title: string;
     icon?: ReactNode;
-    component: FC<{ tabId: string }>;
+    component: FC<EditorTabComponentProps>;
     closable?: boolean;
     modified?: boolean;
 }

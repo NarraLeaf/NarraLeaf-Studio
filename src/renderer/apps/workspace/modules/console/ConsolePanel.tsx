@@ -1,11 +1,11 @@
-import React from "react";
 import { Terminal } from "lucide-react";
+import { PanelComponentProps } from "../types";
 
 /**
  * Console panel component
  * Shows console output and logs
  */
-export function ConsolePanel() {
+export function ConsolePanel({ panelId, payload }: PanelComponentProps) {
     return (
         <div className="h-full flex flex-col">
             {/* Header */}
@@ -24,3 +24,4 @@ export function ConsolePanel() {
         </div>
     );
 }
+

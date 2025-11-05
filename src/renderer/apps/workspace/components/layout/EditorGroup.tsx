@@ -1,7 +1,11 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { X, Circle } from "lucide-react";
 import { useRegistry } from "../../registry";
+import { useWorkspace } from "../../context";
 import { EditorGroup as EditorGroupType } from "../../registry/types";
+import { Services } from "@/lib/workspace/services/services";
+import { UIService } from "@/lib/workspace/services/core/UIService";
+import { FocusArea } from "@/lib/workspace/services/ui";
 
 interface EditorGroupProps {
     group: EditorGroupType;
@@ -10,19 +14,59 @@ interface EditorGroupProps {
 /**
  * Editor group component
  * Displays tabs and active editor content
+ * Manages focus state and visual focus indicator
  */
 export function EditorGroup({ group }: EditorGroupProps) {
     const { closeEditorTab, setActiveEditorTab } = useRegistry();
+    const { context } = useWorkspace();
+    const [isFocused, setIsFocused] = useState(false);
 
     const activeTab = group.tabs.find((tab) => tab.id === group.activeTabId);
+
+    // Set focus when active tab changes or when editor is clicked
+    useEffect(() => {
+        if (!context || !group.activeTabId) return;
+
+        const uiService = context.services.get<UIService>(Services.UI);
+        
+        // Subscribe to focus changes to update visual indicator
+        const unsubscribe = uiService.focus.onFocusChange((focusContext) => {
+            setIsFocused(
+                focusContext.area === FocusArea.Editor && 
+                focusContext.targetId === group.activeTabId
+            );
+        });
+
+        // Set focus when active tab mounts or changes (after subscribing)
+        uiService.focus.setFocus(FocusArea.Editor, group.activeTabId);
+
+        return unsubscribe;
+    }, [context, group.activeTabId]);
 
     const handleCloseTab = (tabId: string, e: React.MouseEvent) => {
         e.stopPropagation();
         closeEditorTab(tabId, group.id);
     };
 
+    const handleTabClick = (tabId: string) => {
+        setActiveEditorTab(tabId, group.id);
+        // Focus will be set by useEffect when activeTabId changes
+    };
+
+    const handleEditorClick = () => {
+        if (!context || !group.activeTabId) return;
+        const uiService = context.services.get<UIService>(Services.UI);
+        uiService.focus.setFocus(FocusArea.Editor, group.activeTabId);
+    };
+
     return (
-        <div className="h-full flex flex-col">
+        <div 
+            className={`h-full flex flex-col border transition-colors ${
+                isFocused ? 'border-blue-500' : 'border-transparent border-b-white/10'
+            }`}
+            onClick={handleEditorClick}
+            tabIndex={0}
+        >
             {/* Tab Bar */}
             {group.tabs.length > 0 && (
                 <div className="flex items-center bg-[#0b0d12] border-b border-white/10 overflow-x-auto">
@@ -42,7 +86,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                             : "bg-[#0b0d12] text-gray-400 hover:bg-[#0f1115] hover:text-white"
                                     }
                                 `}
-                                onClick={() => setActiveEditorTab(tab.id, group.id)}
+                                onClick={() => handleTabClick(tab.id)}
                             >
                                 {/* Tab Icon */}
                                 {tab.icon && <span className="w-4 h-4 flex-shrink-0">{tab.icon}</span>}
@@ -78,10 +122,10 @@ export function EditorGroup({ group }: EditorGroupProps) {
                 </div>
             )}
 
-            {/* Editor Content */}
+            {/* Editor Content with payload support */}
             <div className="flex-1 overflow-auto">
                 {activeTab ? (
-                    <activeTab.component tabId={activeTab.id} />
+                    <activeTab.component tabId={activeTab.id} payload={activeTab.payload} />
                 ) : (
                     <div className="h-full flex items-center justify-center text-gray-500">
                         <p>No active editor</p>

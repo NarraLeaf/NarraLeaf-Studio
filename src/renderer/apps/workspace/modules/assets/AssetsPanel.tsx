@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { File, Folder, RefreshCw, AlertCircle } from "lucide-react";
-import { useWorkspace } from "../context";
+import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { FileStat } from "@shared/utils/fs";
+import { PanelComponentProps } from "../types";
 
 /**
  * Assets panel component
@@ -11,7 +12,7 @@ import { FileStat } from "@shared/utils/fs";
  * Currently shows a flat list, but designed for future extensibility
  * to support hash-based asset management with metadata
  */
-export function AssetsPanel() {
+export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const [assets, setAssets] = useState<FileStat[]>([]);
     const [loading, setLoading] = useState(false);
