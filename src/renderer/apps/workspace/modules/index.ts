@@ -11,15 +11,6 @@ export type {
     ModuleRegistration,
 } from "./types";
 
-// Module system hooks
-export {
-    usePanelModule,
-    useEditorModule,
-    useOpenEditor,
-    useRegisterActions,
-    useRegisterKeybindings,
-} from "./hooks";
-
 // Built-in modules registry
 export {
     builtInPanels,

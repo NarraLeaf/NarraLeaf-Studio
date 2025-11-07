@@ -4,6 +4,7 @@ import { UIService } from "./core/UIService";
 import { ProjectSettingsService } from "./ProjectSettingsService";
 import { Services } from "./services";
 import { Service } from "./Service";
+import { AssetsService } from "./core/AssetsService";
 
 
 export class ServiceRegistry {
@@ -12,6 +13,7 @@ export class ServiceRegistry {
         [Services.FileSystem]: FileSystemService.getInstance(),
         [Services.UI]: UIService.getInstance(),
         [Services.ProjectSettings]: ProjectSettingsService.getInstance(),
+        [Services.Asset]: AssetsService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

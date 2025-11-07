@@ -12,35 +12,31 @@ import {
 
 /**
  * Hook to load all built-in modules
- * Registers panels, editors, and global actions
- * This replaces the old useDefaultPanels, useDefaultEditors, and useDefaultUIComponents hooks
+ * Registers panels, editors, and global actions through UIService
+ * All state changes are managed by UIStore as single source of truth
+ * Registry context provides convenient React-based access to the same state
  */
 export function useModuleLoader() {
     const { context } = useWorkspace();
-    const {
-        registerPanel,
-        registerAction,
-        registerActionGroup,
-        editorLayout,
-        openEditorTab,
-    } = useRegistry();
+    const { editorLayout, openEditorTab } = useRegistry();
 
     // Register all panel modules
     useEffect(() => {
         if (!context) return;
 
         const uiService = context.services.get<UIService>(Services.UI);
+        const store = uiService.getStore();
         const cleanup: (() => void)[] = [];
 
-        // Register panels
+        // Register panels through UIStore (single source of truth)
         builtInPanels.forEach((panelModule) => {
             // Call onLoad if provided
             if (panelModule.onLoad) {
                 panelModule.onLoad();
             }
 
-            // Register the panel
-            registerPanel({
+            // Register the panel via UIStore
+            store.registerPanel({
                 id: panelModule.metadata.id,
                 title: panelModule.metadata.title,
                 icon: panelModule.metadata.icon!,
@@ -50,10 +46,10 @@ export function useModuleLoader() {
                 order: panelModule.metadata.order,
             });
 
-            // Register panel's global actions
+            // Register panel's global actions via UIStore
             if (panelModule.actions) {
                 panelModule.actions.forEach((action) => {
-                    registerAction({
+                    store.registerAction({
                         id: action.id,
                         label: action.label,
                         icon: action.icon,
@@ -68,10 +64,10 @@ export function useModuleLoader() {
                 });
             }
 
-            // Register panel's action groups
+            // Register panel's action groups via UIStore
             if (panelModule.actionGroups) {
                 panelModule.actionGroups.forEach((group) => {
-                    registerActionGroup({
+                    store.registerActionGroup({
                         id: group.id,
                         label: group.label,
                         icon: group.icon,
@@ -81,7 +77,7 @@ export function useModuleLoader() {
                 });
             }
 
-            // Register panel's keybindings
+            // Register panel's keybindings via UIService
             if (panelModule.keybindings) {
                 panelModule.keybindings.forEach((keybinding) => {
                     uiService.keybindings.register({
@@ -96,9 +92,9 @@ export function useModuleLoader() {
             }
         });
 
-        // Register global actions
+        // Register global actions via UIStore
         builtInActions.forEach((action) => {
-            registerAction({
+            store.registerAction({
                 id: action.id,
                 label: action.label,
                 icon: action.icon,
@@ -111,9 +107,9 @@ export function useModuleLoader() {
             });
         });
 
-        // Register global action groups
+        // Register global action groups via UIStore
         builtInActionGroups.forEach((group) => {
-            registerActionGroup({
+            store.registerActionGroup({
                 id: group.id,
                 label: group.label,
                 icon: group.icon,
@@ -131,7 +127,7 @@ export function useModuleLoader() {
                 }
             });
         };
-    }, [context, registerPanel, registerAction, registerActionGroup]);
+    }, [context]);
 
     // Open default editor (welcome tab) if no tabs are open
     useEffect(() => {

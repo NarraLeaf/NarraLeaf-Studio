@@ -4,6 +4,8 @@ import { ProjectConfig, Resolution } from "../../project/project";
 import { IProjectService, Services, WorkspaceContext } from "../services";
 import { Service } from "../Service";
 import { FileSystemService } from "./FileSystem";
+import { Asset, AssetsMap, AssetSource } from "../assets/types";
+import { AssetType } from "../assets/assetTypes";
 
 export class BaseProjectService {
     public static getInitialConfig(config: ProjectConfig): ProjectConfig {
@@ -42,5 +44,27 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
             throw new RendererError("Project config not initialized");
         }
         return this.projectConfig;
+    }
+
+    public async getAssetsMetadata(): Promise<AssetsMap> {
+        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const data: AssetsMap = {
+            [AssetType.Image]: {},
+            [AssetType.Audio]: {},
+            [AssetType.Video]: {},
+            [AssetType.JSON]: {},
+            [AssetType.Font]: {},
+            [AssetType.Other]: {},
+        };
+
+        for (const type of Object.values(AssetType)) {
+            const shardPath = this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type));
+            const shardResult = await filesystemService.readJSON<Record<string, Asset>>(shardPath);
+            if (shardResult.ok) {
+                Object.assign(data[type], shardResult.data);
+            }
+        }
+
+        return data;
     }
 }
