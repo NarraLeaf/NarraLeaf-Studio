@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, ReactNode, FC } from "react";
+import { createContext, useContext, ReactNode } from "react";
 import {
     PanelDefinition,
     PanelPosition,
@@ -6,15 +6,27 @@ import {
     ActionGroup,
     EditorTabDefinition,
     EditorLayout,
-    EditorGroup,
 } from "./types";
+import {
+    useActions,
+    useActionGroups,
+    useEditorLayout,
+    usePanels,
+    usePanelVisibility,
+    useUIService,
+} from "../hooks/useUIService";
 
+/**
+ * Registry context provides convenient access to UI state and operations
+ * All state is managed by UIStore through UIService
+ */
 interface RegistryContextValue {
     // Panel management
     panels: PanelDefinition[];
-    registerPanel: (panel: PanelDefinition) => void;
+    registerPanel: <TPayload = any>(panel: PanelDefinition<TPayload>) => void;
     unregisterPanel: (id: string) => void;
     getPanelsByPosition: (position: PanelPosition) => PanelDefinition[];
+    updatePanelPayload: <TPayload = any>(panelId: string, payload: TPayload) => void;
 
     // Action management
     actions: ActionDefinition[];
@@ -26,9 +38,10 @@ interface RegistryContextValue {
 
     // Editor management
     editorLayout: EditorLayout;
-    openEditorTab: (tab: EditorTabDefinition, groupId?: string) => void;
+    openEditorTab: <TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string) => void;
     closeEditorTab: (tabId: string, groupId?: string) => void;
     setActiveEditorTab: (tabId: string, groupId: string) => void;
+    updateEditorTabPayload: <TPayload = any>(tabId: string, payload: TPayload, groupId?: string) => void;
     
     // Panel visibility
     visiblePanels: Record<string, boolean>;
@@ -44,174 +57,79 @@ interface RegistryProviderProps {
 
 /**
  * Provider for workspace extension registry
- * Manages panels, actions, and editors
+ * Delegates to UIService for state management
+ * This is now a lightweight wrapper that provides convenient hooks-based access
  */
 export function RegistryProvider({ children }: RegistryProviderProps) {
-    const [panels, setPanels] = useState<PanelDefinition[]>([]);
-    const [actions, setActions] = useState<ActionDefinition[]>([]);
-    const [actionGroups, setActionGroups] = useState<ActionGroup[]>([]);
-    const [visiblePanels, setVisiblePanels] = useState<Record<string, boolean>>({});
+    const uiService = useUIService();
+    
+    // Subscribe to state from UIStore via hooks
+    const panels = usePanels();
+    const actions = useActions();
+    const actionGroups = useActionGroups();
+    const editorLayout = useEditorLayout();
+    const visiblePanels = usePanelVisibility();
+    
+    // Helper function to get panels by position
+    const getPanelsByPosition = (position: PanelPosition): PanelDefinition[] => {
+        return panels.filter((p) => p.position === position);
+    };
 
-    // Initialize with a default editor group
-    const [editorLayout, setEditorLayout] = useState<EditorLayout>({
-        id: "main",
-        tabs: [],
-        activeTabId: null,
-    });
+    // Panel management - delegate to UIStore
+    const registerPanel = <TPayload = any>(panel: PanelDefinition<TPayload>) => {
+        uiService.getStore().registerPanel(panel);
+    };
 
-    // Panel management
-    const registerPanel = useCallback((panel: PanelDefinition) => {
-        setPanels((prev) => {
-            // Remove existing panel with same id
-            const filtered = prev.filter((p) => p.id !== panel.id);
-            // Add new panel and sort by order
-            return [...filtered, panel].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-        });
+    const unregisterPanel = (id: string) => {
+        uiService.getStore().unregisterPanel(id);
+    };
 
-        // Set default visibility
-        if (panel.defaultVisible !== false) {
-            setVisiblePanels((prev) => ({ ...prev, [panel.id]: true }));
-        }
-    }, []);
+    const updatePanelPayload = <TPayload = any>(panelId: string, payload: TPayload) => {
+        uiService.getStore().updatePanelPayload(panelId, payload);
+    };
 
-    const unregisterPanel = useCallback((id: string) => {
-        setPanels((prev) => prev.filter((p) => p.id !== id));
-        setVisiblePanels((prev) => {
-            const next = { ...prev };
-            delete next[id];
-            return next;
-        });
-    }, []);
+    // Action management - delegate to UIStore
+    const registerAction = (action: ActionDefinition) => {
+        uiService.getStore().registerAction(action);
+    };
 
-    const getPanelsByPosition = useCallback(
-        (position: PanelPosition) => {
-            return panels.filter((p) => p.position === position);
-        },
-        [panels]
-    );
+    const registerActionGroup = (group: ActionGroup) => {
+        uiService.getStore().registerActionGroup(group);
+    };
 
-    // Action management
-    const registerAction = useCallback((action: ActionDefinition) => {
-        setActions((prev) => {
-            const filtered = prev.filter((a) => a.id !== action.id);
-            return [...filtered, action].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-        });
-    }, []);
+    const unregisterAction = (id: string) => {
+        uiService.getStore().unregisterAction(id);
+    };
 
-    const registerActionGroup = useCallback((group: ActionGroup) => {
-        setActionGroups((prev) => {
-            const filtered = prev.filter((g) => g.id !== group.id);
-            return [...filtered, group].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-        });
-    }, []);
+    const unregisterActionGroup = (id: string) => {
+        uiService.getStore().unregisterActionGroup(id);
+    };
 
-    const unregisterActionGroup = useCallback((id: string) => {
-        setActionGroups((prev) => prev.filter((g) => g.id !== id));
-    }, []);
+    // Editor management - delegate to UIStore
+    const openEditorTab = <TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string) => {
+        uiService.getStore().openEditorTabInGroup(tab, groupId);
+    };
 
-    const unregisterAction = useCallback((id: string) => {
-        setActions((prev) => prev.filter((a) => a.id !== id));
-    }, []);
+    const closeEditorTab = (tabId: string, groupId?: string) => {
+        uiService.getStore().closeEditorTabInGroup(tabId, groupId);
+    };
 
-    // Editor management helpers
-    const findGroup = useCallback(
-        (layout: EditorLayout, groupId?: string): EditorGroup | null => {
-            if ("tabs" in layout) {
-                return !groupId || layout.id === groupId ? layout : null;
-            }
-            return findGroup(layout.first, groupId) || findGroup(layout.second, groupId);
-        },
-        []
-    );
+    const setActiveEditorTab = (tabId: string, groupId: string) => {
+        uiService.getStore().setActiveEditorTabInGroup(tabId, groupId);
+    };
 
-    const updateGroup = useCallback(
-        (layout: EditorLayout, groupId: string, updater: (group: EditorGroup) => EditorGroup): EditorLayout => {
-            if ("tabs" in layout) {
-                return layout.id === groupId ? updater(layout) : layout;
-            }
-            return {
-                ...layout,
-                first: updateGroup(layout.first, groupId, updater),
-                second: updateGroup(layout.second, groupId, updater),
-            };
-        },
-        []
-    );
+    const updateEditorTabPayload = <TPayload = any>(tabId: string, payload: TPayload, groupId?: string) => {
+        uiService.getStore().updateEditorTabPayload(tabId, payload, groupId);
+    };
 
-    // Editor tab management
-    const openEditorTab = useCallback(
-        (tab: EditorTabDefinition, groupId?: string) => {
-            setEditorLayout((prev) => {
-                const targetGroup = findGroup(prev, groupId);
-                const targetId = targetGroup?.id ?? (prev as EditorGroup).id;
+    // Panel visibility - delegate to UIStore
+    const togglePanelVisibility = (panelId: string) => {
+        uiService.getStore().togglePanelVisibility(panelId);
+    };
 
-                return updateGroup(prev, targetId, (group) => {
-                    // Check if tab already exists
-                    const existingIndex = group.tabs.findIndex((t) => t.id === tab.id);
-                    if (existingIndex >= 0) {
-                        // Just activate existing tab
-                        return { ...group, activeTabId: tab.id };
-                    }
-                    // Add new tab
-                    return {
-                        ...group,
-                        tabs: [...group.tabs, tab],
-                        activeTabId: tab.id,
-                    };
-                });
-            });
-        },
-        [findGroup, updateGroup]
-    );
-
-    const closeEditorTab = useCallback(
-        (tabId: string, groupId?: string) => {
-            setEditorLayout((prev) => {
-                const targetGroup = findGroup(prev, groupId);
-                const targetId = targetGroup?.id ?? (prev as EditorGroup).id;
-
-                return updateGroup(prev, targetId, (group) => {
-                    const tabs = group.tabs.filter((t) => t.id !== tabId);
-                    let activeTabId = group.activeTabId;
-                    
-                    // If we closed the active tab, activate another
-                    if (activeTabId === tabId) {
-                        activeTabId = tabs.length > 0 ? tabs[tabs.length - 1].id : null;
-                    }
-
-                    return { ...group, tabs, activeTabId };
-                });
-            });
-        },
-        [findGroup, updateGroup]
-    );
-
-    const setActiveEditorTab = useCallback(
-        (tabId: string, groupId: string) => {
-            setEditorLayout((prev) => {
-                return updateGroup(prev, groupId, (group) => ({
-                    ...group,
-                    activeTabId: tabId,
-                }));
-            });
-        },
-        [updateGroup]
-    );
-
-    // Panel visibility
-    const togglePanelVisibility = useCallback((panelId: string) => {
-        setVisiblePanels((prev) => ({
-            ...prev,
-            [panelId]: !prev[panelId],
-        }));
-    }, []);
-
-    const setPanelVisibility = useCallback((panelId: string, visible: boolean) => {
-        setVisiblePanels((prev) => ({
-            ...prev,
-            [panelId]: visible,
-        }));
-    }, []);
+    const setPanelVisibility = (panelId: string, visible: boolean) => {
+        uiService.getStore().setPanelVisibility(panelId, visible);
+    };
 
     return (
         <RegistryContext.Provider
@@ -220,6 +138,7 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
                 registerPanel,
                 unregisterPanel,
                 getPanelsByPosition,
+                updatePanelPayload,
                 actions,
                 actionGroups,
                 registerAction,
@@ -230,6 +149,7 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
                 openEditorTab,
                 closeEditorTab,
                 setActiveEditorTab,
+                updateEditorTabPayload,
                 visiblePanels,
                 togglePanelVisibility,
                 setPanelVisibility,

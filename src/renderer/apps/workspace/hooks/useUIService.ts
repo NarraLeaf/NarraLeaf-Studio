@@ -10,6 +10,12 @@ import {
     Dialog,
     StatusBarItem,
 } from "@/lib/workspace/services/ui/types";
+import {
+    ActionDefinition,
+    ActionGroup,
+    EditorLayout,
+    PanelPosition,
+} from "@/apps/workspace/registry/types";
 
 /**
  * Hook to access UI service
@@ -212,5 +218,85 @@ export function useStatusBarItems(): StatusBarItem[] {
     }, [uiService]);
 
     return items;
+}
+
+/**
+ * Hook to access actions from UIStore
+ */
+export function useActions(): ActionDefinition[] {
+    const uiService = useUIService();
+    const [actions, setActions] = useState<ActionDefinition[]>([]);
+
+    useEffect(() => {
+        const store = uiService.getStore();
+        setActions(store.getActions());
+
+        const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
+            if (changes.actions) {
+                setActions([...changes.actions]);
+            }
+        });
+
+        return unsubscribe;
+    }, [uiService]);
+
+    return actions;
+}
+
+/**
+ * Hook to access action groups from UIStore
+ */
+export function useActionGroups(): ActionGroup[] {
+    const uiService = useUIService();
+    const [groups, setGroups] = useState<ActionGroup[]>([]);
+
+    useEffect(() => {
+        const store = uiService.getStore();
+        setGroups(store.getActionGroups());
+
+        const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
+            if (changes.actionGroups) {
+                setGroups([...changes.actionGroups]);
+            }
+        });
+
+        return unsubscribe;
+    }, [uiService]);
+
+    return groups;
+}
+
+/**
+ * Hook to access editor layout from UIStore
+ */
+export function useEditorLayout(): EditorLayout {
+    const uiService = useUIService();
+    const [layout, setLayout] = useState<EditorLayout>(() => {
+        const store = uiService.getStore();
+        return store.getEditorLayout();
+    });
+
+    useEffect(() => {
+        const store = uiService.getStore();
+        setLayout(store.getEditorLayout());
+
+        const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
+            if (changes.editorLayout) {
+                setLayout(store.getEditorLayout());
+            }
+        });
+
+        return unsubscribe;
+    }, [uiService]);
+
+    return layout;
+}
+
+/**
+ * Hook to access panels by position from UIStore
+ */
+export function usePanelsByPosition(position: PanelPosition): PanelDefinition[] {
+    const panels = usePanels();
+    return panels.filter(p => p.position === position);
 }
 

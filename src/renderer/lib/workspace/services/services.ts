@@ -1,6 +1,7 @@
 import { FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat } from "@shared/utils/fs";
 import { Porject, ProjectConfig } from "../project/project";
+import { AssetsMap } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
 
 interface WorkspaceContext {
@@ -24,7 +25,7 @@ enum Services {
     // Settings = "settings",
     // Editor = "editor",
     // Story = "story",
-    // Asset = "asset",
+    Asset = "asset",
     // Texture = "texture",
     // Audio = "audio",
     // Video = "video",
@@ -41,6 +42,7 @@ enum Services {
 // Core Services
 interface IProjectService extends IService {
     getProjectConfig(): ProjectConfig;
+    getAssetsMetadata(): Promise<AssetsMap>;
 }
 
 interface IFileSystemService extends IService {
@@ -100,7 +102,9 @@ interface IEditorService extends IService { }
 interface IStoryService extends IService { }
 
 // Asset Services
-interface IAssetService extends IService { }
+interface IAssetService extends IService {
+    getAssets(): Promise<AssetsMap>;
+}
 
 interface ITextureService extends IService { }
 
@@ -128,7 +132,6 @@ interface IVersionControlService extends IService { }
 interface IPluginService extends IService { }
 
 export {
-    IAssetService, IAudioService, IBuildService, ICommandService, IDebugService, IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService, IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService, IService, ISettingsService, IStorageService, IStoryService, ITextureService, IUIService, IVersionControlService, IVideoService,
-    WorkspaceContext, Services,
+    IAssetService, IAudioService, IBuildService, ICommandService, IDebugService, IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService, IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService, IService, ISettingsService, IStorageService, IStoryService, ITextureService, IUIService, IVersionControlService, IVideoService, Services, WorkspaceContext
 };
 

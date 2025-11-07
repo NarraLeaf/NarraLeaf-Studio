@@ -1,5 +1,5 @@
 import { EditorTabComponentProps, FocusContext, PanelComponentProps } from "@/lib/workspace/services/ui/types";
-import { FC, ReactNode } from "react";
+import { ComponentType, ReactNode } from "react";
 
 /**
  * Position where a panel can be displayed
@@ -11,16 +11,18 @@ export enum PanelPosition {
 }
 
 /**
- * Panel definition for sidebar/bottom panels
+ * Panel definition for sidebar/bottom panels with generic payload support
  */
-export interface PanelDefinition {
+export interface PanelDefinition<TPayload = any> {
     id: string;
     title: string;
     icon: ReactNode;
     position: PanelPosition;
-    component: FC<PanelComponentProps>;
+    component: ComponentType<PanelComponentProps<TPayload>>;
     defaultVisible?: boolean;
     order?: number; // For sorting panels
+    badge?: string | number;
+    payload?: TPayload; // Payload data passed to the panel component
 }
 
 /**
@@ -70,15 +72,16 @@ export interface ActionDefinition {
 }
 
 /**
- * Editor tab definition
+ * Editor tab definition with generic payload support
  */
-export interface EditorTabDefinition {
+export interface EditorTabDefinition<TPayload = any> {
     id: string;
     title: string;
     icon?: ReactNode;
-    component: FC<EditorTabComponentProps>;
+    component: ComponentType<EditorTabComponentProps<TPayload>>;
     closable?: boolean;
     modified?: boolean;
+    payload?: TPayload; // Payload data passed to the editor component
 }
 
 /**
@@ -97,7 +100,7 @@ export interface EditorSplit {
  */
 export interface EditorGroup {
     id: string;
-    tabs: EditorTabDefinition[];
+    tabs: EditorTabDefinition<any>[];
     activeTabId: string | null;
 }
 
