@@ -15,7 +15,7 @@ interface ActionDropdownProps {
  * Filters actions based on focus context and when conditions
  */
 export function ActionDropdown({ group }: ActionDropdownProps) {
-    const { context } = useWorkspace();
+    const { workspace, context } = useWorkspace();
     const [isOpen, setIsOpen] = useState(false);
     const [openPath, setOpenPath] = useState<number[]>([]); // path of opened submenus
     const [focusPath, setFocusPath] = useState<number[]>([]); // path of focused item
@@ -80,8 +80,13 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
     };
 
     const handleActionClick = (action: ActionDefinition) => {
+        if (!workspace) {
+            console.warn("[ActionDropdown] Unhandled action click: workspace is not initialized");
+            return;
+        }
+
         if (!action.disabled) {
-            action.onClick();
+            action.onClick(workspace);
             setIsOpen(false);
         }
     };
@@ -165,13 +170,13 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                     }
                 }}
                 className="h-8 px-2 rounded-md flex items-center gap-2 text-sm transition-colors cursor-default text-gray-300 hover:bg-white/10 hover:text-white"
-                title={group.label}
-                aria-label={group.label}
+                title={String(group.label)}
+                aria-label={String(group.label)}
                 aria-expanded={isOpen}
                 aria-haspopup="true"
             >
                 {group.icon && <span className="w-4 h-4">{group.icon}</span>}
-                <span>{group.label}</span>
+                <span>{String(group.label)}</span>
                 <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`} />
             </button>
 
@@ -375,7 +380,7 @@ function MenuLevel(props: MenuLevelProps) {
                         >
                             <span className="flex items-center gap-2">
                                 {isAction(item) ? null : (item.icon ? <span className="w-4 h-4">{item.icon}</span> : null)}
-                                <span>{isAction(item) ? item.label : item.label}</span>
+                                <span>{String(isAction(item) ? item.label : item.label)}</span>
                             </span>
                             {isAction(item) ? (
                                 item.badge ? (

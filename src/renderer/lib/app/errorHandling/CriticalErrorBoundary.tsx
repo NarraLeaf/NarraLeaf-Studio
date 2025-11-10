@@ -13,7 +13,10 @@ export class CriticalErrorBoundary<T extends CriticalErrorBoundaryProps> extends
         super(props);
     }
 
-    protected handleError(error: Error): void {
-        getInterface().terminate(error.message + "\n" + (error.stack ?? ""));
+    protected handleError(error: Error, info: { componentStack: string }): void {
+        const message = `${error.message}\n${error.stack ?? ""}\n${info.componentStack}`;
+        console.error(message);
+        
+        getInterface().terminate(message);
     }
 }

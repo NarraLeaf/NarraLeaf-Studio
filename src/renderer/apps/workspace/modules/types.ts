@@ -1,6 +1,7 @@
 import { ComponentType, ReactNode } from "react";
 import { PanelPosition } from "../registry/types";
 import { FocusContext } from "@/lib/workspace/services/ui";
+import { Workspace } from "@/lib/workspace/workspace";
 
 /**
  * Base module metadata
@@ -31,7 +32,7 @@ export interface ModuleAction {
     /** Tooltip text */
     tooltip?: string;
     /** Action handler */
-    onClick: () => void;
+    onClick: (workspace: Workspace) => void;
     /** Sort order within group */
     order?: number;
     /** Whether the action is disabled */

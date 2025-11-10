@@ -10,6 +10,10 @@ import {
     Clipboard,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
+import { Workspace } from "@/lib/workspace/workspace";
+import { UIService } from "@/lib/workspace/services/ui";
+import { Services } from "@/lib/workspace/services/services";
+import { welcomeModule } from "../welcome";
 
 /**
  * Global toolbar actions
@@ -151,6 +155,31 @@ export const editActionGroup: ModuleActionGroup = {
     ],
 };
 
+export const helpActionGroup: ModuleActionGroup = {
+    id: "narraleaf-studio:help",
+    label: "Help",
+    order: 30,
+    actions: [
+        {
+            id: "narraleaf-studio:open-welcome",
+            label: "Open Welcome",
+            tooltip: "Open welcome screen",
+            onClick: (workspace: Workspace) => {
+                const uiService = workspace.getContext().services.get<UIService>(Services.UI);
+                uiService.editor.open({
+                    id: welcomeModule.metadata.id,
+                    title: welcomeModule.metadata.title,
+                    icon: welcomeModule.metadata.icon,
+                    component: welcomeModule.component as any,
+                    closable: welcomeModule.metadata.closable,
+                    modified: welcomeModule.metadata.modified,
+                });
+            },
+            order: 0,
+        },
+    ],
+};
+
 /**
  * All global actions
  * Array of all actions that should be registered globally
@@ -161,5 +190,5 @@ export const globalActions: ModuleAction[] = [runAction, debugAction, buildActio
  * All global action groups
  * Array of all action groups that should be registered globally
  */
-export const globalActionGroups: ModuleActionGroup[] = [fileActionGroup, editActionGroup];
+export const globalActionGroups: ModuleActionGroup[] = [fileActionGroup, editActionGroup, helpActionGroup];
 

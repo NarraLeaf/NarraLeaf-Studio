@@ -532,9 +532,8 @@ export class UIStore {
         this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
     }
 
-    public getEditorLayout(): EditorLayout {
-        // Deep clone to prevent mutations
-        return JSON.parse(JSON.stringify(this.state.editorLayout));
+    public getEditorLayout(): Readonly<EditorLayout> {
+        return this.state.editorLayout;
     }
 
     /**

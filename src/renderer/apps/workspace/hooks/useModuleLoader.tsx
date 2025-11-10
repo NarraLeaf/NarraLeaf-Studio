@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRegistry } from "../registry";
 import { useWorkspace } from "../context";
 import { Services } from "@/lib/workspace/services/services";
@@ -19,6 +19,8 @@ import {
 export function useModuleLoader() {
     const { context } = useWorkspace();
     const { editorLayout, openEditorTab } = useRegistry();
+
+    const [shownWelcomeTab, setShownWelcomeTab] = useState(false);
 
     // Register all panel modules
     useEffect(() => {
@@ -130,17 +132,18 @@ export function useModuleLoader() {
     }, [context]);
 
     // Open default editor (welcome tab) if no tabs are open
-    useEffect(() => {
-        if ("tabs" in editorLayout && editorLayout.tabs.length === 0) {
-            openEditorTab({
-                id: welcomeModule.metadata.id,
-                title: welcomeModule.metadata.title,
-                icon: welcomeModule.metadata.icon,
-                component: welcomeModule.component as any,
-                closable: welcomeModule.metadata.closable,
-                modified: welcomeModule.metadata.modified,
-            });
-        }
-    }, [editorLayout, openEditorTab]);
+    // useEffect(() => {
+    //     if ("tabs" in editorLayout && editorLayout.tabs.length === 0 && !shownWelcomeTab) {
+    //         openEditorTab({
+    //             id: welcomeModule.metadata.id,
+    //             title: welcomeModule.metadata.title,
+    //             icon: welcomeModule.metadata.icon,
+    //             component: welcomeModule.component as any,
+    //             closable: welcomeModule.metadata.closable,
+    //             modified: welcomeModule.metadata.modified,
+    //         });
+    //         setShownWelcomeTab(true);
+    //     }
+    // }, [editorLayout, openEditorTab, shownWelcomeTab]);
 }
 

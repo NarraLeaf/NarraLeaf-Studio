@@ -75,6 +75,11 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const [rightSidebarWidth, setRightSidebarWidth] = useState(DEFAULT_RIGHT_SIDEBAR_WIDTH);
     const [bottomPanelHeight, setBottomPanelHeight] = useState(DEFAULT_BOTTOM_PANEL_HEIGHT);
 
+    // Use refs to track current sizes synchronously (avoid async state update issues during fast dragging)
+    const leftSidebarWidthRef = useRef(DEFAULT_LEFT_SIDEBAR_WIDTH);
+    const rightSidebarWidthRef = useRef(DEFAULT_RIGHT_SIDEBAR_WIDTH);
+    const bottomPanelHeightRef = useRef(DEFAULT_BOTTOM_PANEL_HEIGHT);
+
     // Settings service
     const settingsService = context?.services.get<ProjectSettingsService>(Services.ProjectSettings);
 
@@ -149,9 +154,18 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 if (leftVisible !== undefined) setLeftSidebarVisible(leftVisible);
                 if (rightVisible !== undefined) setRightSidebarVisible(rightVisible);
                 if (bottomVisible !== undefined) setBottomPanelVisible(bottomVisible);
-                if (leftWidth !== undefined) setLeftSidebarWidth(leftWidth);
-                if (rightWidth !== undefined) setRightSidebarWidth(rightWidth);
-                if (bottomHeight !== undefined) setBottomPanelHeight(bottomHeight);
+                if (leftWidth !== undefined) {
+                    setLeftSidebarWidth(leftWidth);
+                    leftSidebarWidthRef.current = leftWidth;
+                }
+                if (rightWidth !== undefined) {
+                    setRightSidebarWidth(rightWidth);
+                    rightSidebarWidthRef.current = rightWidth;
+                }
+                if (bottomHeight !== undefined) {
+                    setBottomPanelHeight(bottomHeight);
+                    bottomPanelHeightRef.current = bottomHeight;
+                }
                 if (leftPanel !== undefined) setActiveLeftPanelId(leftPanel);
                 if (rightPanel !== undefined) setActiveRightPanelId(rightPanel);
                 if (bottomPanel !== undefined) setActiveBottomPanelId(bottomPanel);
@@ -195,15 +209,18 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
             const maxPanelHeight = Math.min(MAX_BOTTOM_PANEL_HEIGHT, availableHeight);
 
             // Adjust sidebar widths if they exceed available space
-            if (leftSidebarVisible && leftSidebarWidth > maxSidebarWidth) {
+            if (leftSidebarVisible && leftSidebarWidthRef.current > maxSidebarWidth) {
+                leftSidebarWidthRef.current = maxSidebarWidth;
                 setLeftSidebarWidth(maxSidebarWidth);
             }
-            if (rightSidebarVisible && rightSidebarWidth > maxSidebarWidth) {
+            if (rightSidebarVisible && rightSidebarWidthRef.current > maxSidebarWidth) {
+                rightSidebarWidthRef.current = maxSidebarWidth;
                 setRightSidebarWidth(maxSidebarWidth);
             }
 
             // Adjust bottom panel height if it exceeds available space
-            if (bottomPanelVisible && bottomPanelHeight > maxPanelHeight) {
+            if (bottomPanelVisible && bottomPanelHeightRef.current > maxPanelHeight) {
+                bottomPanelHeightRef.current = maxPanelHeight;
                 setBottomPanelHeight(maxPanelHeight);
             }
         };
@@ -232,41 +249,55 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     ]);
 
     // Resize handlers
+    // Use refs for synchronous updates to avoid issues with fast mouse movements
     const handleLeftSidebarResize = useCallback((delta: number) => {
-        // Calculate dynamic max width based on window size
+        // Calculate dynamic max width based on current window size
         const minEditorWidth = 400;
         const availableWidth = Math.max(0, window.innerWidth - minEditorWidth);
         const dynamicMaxWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.floor(availableWidth / 2));
 
-        const newWidth = Math.min(dynamicMaxWidth, Math.max(MIN_SIDEBAR_WIDTH, leftSidebarWidth + delta));
-        const didResize = newWidth !== leftSidebarWidth;
+        const currentWidth = leftSidebarWidthRef.current;
+        const newWidth = Math.min(dynamicMaxWidth, Math.max(MIN_SIDEBAR_WIDTH, currentWidth + delta));
+        const actualDelta = newWidth - currentWidth;
+
+        // Update ref immediately (synchronous)
+        leftSidebarWidthRef.current = newWidth;
+        // Update state (asynchronous, for rendering)
         setLeftSidebarWidth(newWidth);
-        return didResize;
-    }, [leftSidebarWidth]);
+
+        // Result = actualDelta - delta, so startPosRef only advances by actualDelta
+        return actualDelta - delta;
+    }, []);
 
     const handleRightSidebarResize = useCallback((delta: number) => {
-        // Calculate dynamic max width based on window size
         const minEditorWidth = 400;
         const availableWidth = Math.max(0, window.innerWidth - minEditorWidth);
         const dynamicMaxWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.floor(availableWidth / 2));
 
-        const newWidth = Math.min(dynamicMaxWidth, Math.max(MIN_SIDEBAR_WIDTH, rightSidebarWidth - delta));
-        const didResize = newWidth !== rightSidebarWidth;
+        const currentWidth = rightSidebarWidthRef.current;
+        const newWidth = Math.min(dynamicMaxWidth, Math.max(MIN_SIDEBAR_WIDTH, currentWidth - delta));
+        const actualDelta = newWidth - currentWidth;
+
+        rightSidebarWidthRef.current = newWidth;
         setRightSidebarWidth(newWidth);
-        return didResize;
-    }, [rightSidebarWidth]);
+
+        return -actualDelta - delta;
+    }, []);
 
     const handleBottomPanelResize = useCallback((delta: number) => {
-        // Calculate dynamic max height based on window size
-        const titleBarHeight = 40;
-        const availableHeight = Math.max(0, window.innerHeight - titleBarHeight - 100);
-        const dynamicMaxHeight = Math.min(MAX_BOTTOM_PANEL_HEIGHT, availableHeight);
+        const minEditorHeight = 200;
+        const availableHeight = Math.max(0, window.innerHeight - minEditorHeight);
+        const dynamicMaxHeight = Math.min(MAX_BOTTOM_PANEL_HEIGHT, Math.floor(availableHeight / 2));
 
-        const newHeight = Math.min(dynamicMaxHeight, Math.max(MIN_BOTTOM_PANEL_HEIGHT, bottomPanelHeight - delta));
-        const didResize = newHeight !== bottomPanelHeight;
+        const currentHeight = bottomPanelHeightRef.current;
+        const newHeight = Math.min(dynamicMaxHeight, Math.max(MIN_BOTTOM_PANEL_HEIGHT, currentHeight - delta));
+        const actualDelta = newHeight - currentHeight;
+
+        bottomPanelHeightRef.current = newHeight;
         setBottomPanelHeight(newHeight);
-        return didResize;
-    }, [bottomPanelHeight]);
+        
+        return -actualDelta - delta;
+    }, []);
 
     // Enhanced toggle functions that auto-select first panel if none is active
     const toggleLeftSidebar = () => {
