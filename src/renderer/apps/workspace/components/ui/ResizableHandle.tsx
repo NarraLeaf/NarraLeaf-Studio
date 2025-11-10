@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from "react";
 
 interface ResizableHandleProps {
     direction: "horizontal" | "vertical";
-    onResize: (delta: number) => boolean;
+    onResize: (delta: number) => number;
     className?: string;
 }
 
@@ -21,10 +21,8 @@ export function ResizableHandle({ direction, onResize, className = "" }: Resizab
             const currentPos = direction === "horizontal" ? e.clientX : e.clientY;
             const delta = currentPos - startPosRef.current;
 
-            const didResize = onResize(delta);
-            if (didResize) {
-                startPosRef.current = currentPos;
-            }
+            const result = onResize(delta);
+            startPosRef.current = currentPos + result;
         };
 
         const handleMouseUp = () => {
@@ -64,4 +62,3 @@ export function ResizableHandle({ direction, onResize, className = "" }: Resizab
         />
     );
 }
-

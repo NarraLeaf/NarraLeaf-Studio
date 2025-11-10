@@ -28,9 +28,6 @@ module.exports = {
                 'fade-in': 'fade-in 0.2s ease-out',
                 'scale-in': 'scale-in 0.2s ease-out',
             },
-        },
-        colors: {
-            primary: "#40a8c4",
         }
     },
     plugins: [],

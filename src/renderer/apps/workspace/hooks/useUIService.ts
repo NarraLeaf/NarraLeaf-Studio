@@ -269,9 +269,9 @@ export function useActionGroups(): ActionGroup[] {
 /**
  * Hook to access editor layout from UIStore
  */
-export function useEditorLayout(): EditorLayout {
+export function useEditorLayout(): Readonly<EditorLayout> {
     const uiService = useUIService();
-    const [layout, setLayout] = useState<EditorLayout>(() => {
+    const [layout, setLayout] = useState<Readonly<EditorLayout>>(() => {
         const store = uiService.getStore();
         return store.getEditorLayout();
     });

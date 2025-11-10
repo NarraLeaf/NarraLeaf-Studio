@@ -1,4 +1,5 @@
 import { EditorTabComponentProps, FocusContext, PanelComponentProps } from "@/lib/workspace/services/ui/types";
+import { Workspace } from "@/lib/workspace/workspace";
 import { ComponentType, ReactNode } from "react";
 
 /**
@@ -62,7 +63,7 @@ export interface ActionDefinition {
     label?: string;
     icon?: ReactNode;
     tooltip?: string;
-    onClick: () => void;
+    onClick: (workspace: Workspace) => void;
     order?: number;
     disabled?: boolean;
     visible?: boolean;

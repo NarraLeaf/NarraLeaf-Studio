@@ -14,7 +14,7 @@ import { FocusContext } from "@/lib/workspace/services/ui";
  */
 export function ActionBar() {
     const { actions, actionGroups } = useRegistry();
-    const { context } = useWorkspace();
+    const { workspace, context } = useWorkspace();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
 
     // Subscribe to focus changes
@@ -47,6 +47,14 @@ export function ActionBar() {
         return <div className="flex items-center gap-1" />;
     }
 
+    const handleActionClick = (action: ActionDefinition) => {
+        if (!workspace) {
+            console.warn("[ActionBar] Unhandled action click: workspace is not initialized");
+            return;
+        }
+        action.onClick(workspace);
+    };
+
     return (
         <div className="flex items-center gap-0.5">
             {/* Render action groups first */}
@@ -58,7 +66,7 @@ export function ActionBar() {
             {standaloneActions.map((action) => (
                 <button
                     key={action.id}
-                    onClick={action.onClick}
+                    onClick={() => handleActionClick(action)}
                     disabled={action.disabled}
                     className={`
                         h-8 px-2 rounded-md flex items-center gap-1.5 text-sm transition-colors cursor-default relative
@@ -72,7 +80,7 @@ export function ActionBar() {
                     aria-label={action.label}
                 >
                     {action.icon && <span className="w-4 h-4">{action.icon}</span>}
-                    {action.label && <span>{action.label}</span>}
+                    {action.label && <span>{String(action.label)}</span>}
                     {action.badge && (
                         <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
                             {action.badge}

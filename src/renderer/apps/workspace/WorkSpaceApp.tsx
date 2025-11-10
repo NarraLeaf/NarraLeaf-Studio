@@ -1,19 +1,23 @@
-import { WorkspaceProvider, useWorkspace } from "./context";
-import { RegistryProvider } from "./registry";
-import { WorkspaceLayout } from "./components/layout";
-import { LoadingScreen } from "./components/LoadingScreen";
+import { LoadingScreen } from "./components";
 import { ErrorScreen } from "./components/ErrorScreen";
+import { WorkspaceLayout } from "./components/layout";
+import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
+import { RegistryProvider } from "./registry";
 
 /**
  * Main workspace application component
  * Provides context and renders the workspace layout
  */
 function WorkspaceContent() {
-    const { isInitialized, error } = useWorkspace();
-
     // Load all built-in modules (panels, editors, actions)
     useModuleLoader();
+
+    return <WorkspaceLayout title="NarraLeaf Studio" iconSrc="/favicon.ico" />;
+}
+
+function InitializedWorkspace({ children }: { children: React.ReactNode }) {
+    const { isInitialized, error } = useWorkspace();
 
     // Show loading screen while initializing
     if (!isInitialized && !error) {
@@ -26,7 +30,7 @@ function WorkspaceContent() {
         return <ErrorScreen error={error} />;
     }
 
-    return <WorkspaceLayout title="NarraLeaf Studio" iconSrc="/favicon.ico" />;
+    return (<>{children}</>);
 }
 
 /**
@@ -35,9 +39,11 @@ function WorkspaceContent() {
 export function WorkSpaceApp() {
     return (
         <WorkspaceProvider>
-            <RegistryProvider>
-                <WorkspaceContent />
-            </RegistryProvider>
+            <InitializedWorkspace>
+                <RegistryProvider>
+                    <WorkspaceContent />
+                </RegistryProvider>
+            </InitializedWorkspace>
         </WorkspaceProvider>
     );
 }

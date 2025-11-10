@@ -92,7 +92,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                 {tab.icon && <span className="w-4 h-4 flex-shrink-0">{tab.icon}</span>}
 
                                 {/* Tab Title */}
-                                <span className="text-sm whitespace-nowrap">{tab.title}</span>
+                                <span className="text-sm whitespace-nowrap">{String(tab.title)}</span>
 
                                 {/* Modified Indicator */}
                                 {tab.modified && (

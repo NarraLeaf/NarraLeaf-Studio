@@ -1,5 +1,6 @@
 import { UIStore } from "./UIStore";
 import { EditorTab } from "./types";
+import { EditorTabDefinition } from "@/apps/workspace/registry/types";
 
 /**
  * Editor Service
@@ -15,22 +16,18 @@ export class EditorService {
     /**
      * Open an editor tab with optional payload
      */
-    public open<TPayload = any>(tab: EditorTab<TPayload>): void {
-        this.store.openEditorTab(tab);
+    public open<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string): void {
+        // Route to group-aware API to ensure consistent behavior with Registry
+        this.store.openEditorTabInGroup(tab, groupId);
     }
 
     /**
      * Open or update an editor tab with new payload
      * If the tab is already open, updates its payload
      */
-    public openOrUpdate<TPayload = any>(tab: EditorTab<TPayload>): void {
-        const existing = this.get(tab.id);
-        if (existing) {
-            this.store.updateEditorTab(tab);
-            this.store.setActiveEditorTab(tab.id);
-        } else {
-            this.store.openEditorTab(tab);
-        }
+    public openOrUpdate<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string): void {
+        // Group-aware API already updates existing tabs and activates them
+        this.store.openEditorTabInGroup(tab, groupId);
     }
 
     /**
