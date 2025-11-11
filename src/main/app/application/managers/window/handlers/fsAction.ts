@@ -5,6 +5,7 @@ import { IPCHandler } from "./IPCHandler";
 import { Fs } from "@shared/utils/fs";
 import { FileStat, FileDetails } from "@shared/utils/fs";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
+import { dialog } from "electron";
 
 export class FsStatHandler extends IPCHandler<IPCEventType.fsStat> {
     readonly name = IPCEventType.fsStat;
@@ -285,5 +286,148 @@ export class FsIsDirHandler extends IPCHandler<IPCEventType.fsIsDir> {
     public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsIsDir]["data"]): Promise<RequestStatus<FsRequestResult<boolean>>> {
         const result = await Fs.isDir(path);
         return this.success(result);
+    }
+}
+
+export class FsSelectFileHandler extends IPCHandler<IPCEventType.fsSelectFile> {
+    readonly name = IPCEventType.fsSelectFile;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow, { filters, multiple }: IPCEvents[IPCEventType.fsSelectFile]["data"]): Promise<RequestStatus<FsRequestResult<string[]>>> {
+        try {
+            const dialogOptions: Electron.OpenDialogOptions = {
+                title: "Select File",
+                buttonLabel: "Select",
+                properties: multiple ? ["openFile", "multiSelections"] : ["openFile"]
+            };
+
+            // Convert filters from string[] to Electron dialog format
+            if (filters && filters.length > 0) {
+                dialogOptions.filters = [
+                    {
+                        name: "Filtered Files",
+                        extensions: filters
+                    },
+                    {
+                        name: "All Files",
+                        extensions: ["*"]
+                    }
+                ];
+            }
+
+            const result = await dialog.showOpenDialog(window.win, dialogOptions);
+
+            if (result.canceled) {
+                return this.success({
+                    ok: true,
+                    data: []
+                });
+            }
+
+            return this.success({
+                ok: true,
+                data: result.filePaths
+            });
+        } catch (error) {
+            return this.success({
+                ok: false,
+                error: {
+                    code: FsRejectErrorCode.UNKNOWN,
+                    message: error instanceof Error ? error.message : String(error)
+                }
+            });
+        }
+    }
+}
+
+export class FsSelectDirectoryHandler extends IPCHandler<IPCEventType.fsSelectDirectory> {
+    readonly name = IPCEventType.fsSelectDirectory;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow, { multiple }: IPCEvents[IPCEventType.fsSelectDirectory]["data"]): Promise<RequestStatus<FsRequestResult<string[]>>> {
+        try {
+            const dialogOptions: Electron.OpenDialogOptions = {
+                title: "Select Directory",
+                buttonLabel: "Select",
+                properties: multiple ? ["openDirectory", "multiSelections", "createDirectory"] : ["openDirectory", "createDirectory"]
+            };
+
+            const result = await dialog.showOpenDialog(window.win, dialogOptions);
+
+            if (result.canceled) {
+                return this.success({
+                    ok: true,
+                    data: []
+                });
+            }
+
+            return this.success({
+                ok: true,
+                data: result.filePaths
+            });
+        } catch (error) {
+            return this.success({
+                ok: false,
+                error: {
+                    code: FsRejectErrorCode.UNKNOWN,
+                    message: error instanceof Error ? error.message : String(error)
+                }
+            });
+        }
+    }
+}
+
+export class FsHashHandler extends IPCHandler<IPCEventType.fsHash> {
+    readonly name = IPCEventType.fsHash;
+    readonly type = IPCMessageType.request;
+
+    public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsHash]["data"]): Promise<RequestStatus<FsRequestResult<string>>> {
+        try {
+            const fs = require('fs').promises;
+            const crypto = require('crypto');
+
+            // Check if file exists
+            const existsResult = await Fs.isFileExists(path);
+            if (!existsResult.ok || !existsResult.data) {
+                return this.success({
+                    ok: false,
+                    error: {
+                        code: FsRejectErrorCode.NOT_FOUND,
+                        message: "File does not exist: " + path
+                    }
+                });
+            }
+
+            // Check if it's actually a file
+            const isFileResult = await Fs.isFile(path);
+            if (!isFileResult.ok || !isFileResult.data) {
+                return this.success({
+                    ok: false,
+                    error: {
+                        code: FsRejectErrorCode.NOT_A_FILE,
+                        message: "Path is not a file: " + path
+                    }
+                });
+            }
+
+            // Read file content
+            const buffer = await fs.readFile(path);
+
+            // Calculate SHA-256 hash
+            const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+            return this.success({
+                ok: true,
+                data: hash
+            });
+        } catch (error) {
+            return this.success({
+                ok: false,
+                error: {
+                    code: FsRejectErrorCode.UNKNOWN,
+                    message: error instanceof Error ? error.message : String(error)
+                }
+            });
+        }
     }
 }

@@ -35,6 +35,9 @@ export enum IPCEventType {
     fsDirExists = "fs.dirExists",
     fsIsFile = "fs.isFile",
     fsIsDir = "fs.isDir",
+    fsSelectFile = "fs.selectFile",
+    fsSelectDirectory = "fs.selectDirectory",
+    fsHash = "fs.hash",
 
     editorLaunch = "editor.launch",
 
@@ -294,6 +297,31 @@ export type IPCFsEvents = {
             path: string;
         },
         response: FsRequestResult<boolean>;
+    };
+    [IPCEventType.fsSelectFile]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            filters: string[];
+            multiple: boolean;
+        },
+        response: FsRequestResult<string[]>;
+    };
+    [IPCEventType.fsSelectDirectory]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            multiple: boolean;
+        },
+        response: FsRequestResult<string[]>;
+    };
+    [IPCEventType.fsHash]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        },
+        response: FsRequestResult<string>;
     };
 };
 

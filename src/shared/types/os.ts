@@ -53,6 +53,7 @@ export enum FsRejectErrorCode {
     IPC_ERROR = "IPC_ERROR",
     INVALID_JSON = "INVALID_JSON",
     UNKNOWN = "UNKNOWN",
+    HASH_MISMATCH = "HASH_MISMATCH",
 }
 export type FsRejectError = {
     code: FsRejectErrorCode;

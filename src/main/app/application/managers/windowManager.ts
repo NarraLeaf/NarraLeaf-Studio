@@ -8,6 +8,7 @@ import {
     FsCreateDirHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
     FsCopyFileHandler, FsCopyDirHandler, FsMoveFileHandler, FsMoveDirHandler,
     FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
+    FsSelectFileHandler, FsSelectDirectoryHandler, FsHashHandler,
 } from "./window/handlers/fsAction";
 import { IPCHost } from "./window/ipcHost";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./window/handlers/projectWizardAction";
@@ -109,6 +110,9 @@ export class WindowManager {
         win.registerIPCHandler(new FsDirExistsHandler());
         win.registerIPCHandler(new FsIsFileHandler());
         win.registerIPCHandler(new FsIsDirHandler());
+        win.registerIPCHandler(new FsSelectFileHandler());
+        win.registerIPCHandler(new FsSelectDirectoryHandler());
+        win.registerIPCHandler(new FsHashHandler());
     }
 
     public unregisterIPCHandlers(win: AppWindow): void {

@@ -42,6 +42,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         isDirExists: (path: string) => ipcClient.invoke(IPCEventType.fsDirExists, { path }),
         isFile: (path: string) => ipcClient.invoke(IPCEventType.fsIsFile, { path }),
         isDir: (path: string) => ipcClient.invoke(IPCEventType.fsIsDir, { path }),
+        selectFile: (filters: string[], multiple: boolean) => ipcClient.invoke(IPCEventType.fsSelectFile, { filters, multiple }),
+        selectDirectory: (multiple: boolean) => ipcClient.invoke(IPCEventType.fsSelectDirectory, { multiple }),
+        hash: (path: string) => ipcClient.invoke(IPCEventType.fsHash, { path }),
     },
     state: {
         getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<GlobalStateValue<K>>>,

@@ -1,8 +1,10 @@
 import { FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat } from "@shared/utils/fs";
 import { Porject, ProjectConfig } from "../project/project";
-import { AssetsMap } from "./assets/types";
+import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
+import { AssetData, AssetType } from "./assets/assetTypes";
+import { RequestStatus } from "@shared/types/ipcEvents";
 
 interface WorkspaceContext {
     project: Porject;
@@ -42,7 +44,6 @@ enum Services {
 // Core Services
 interface IProjectService extends IService {
     getProjectConfig(): ProjectConfig;
-    getAssetsMetadata(): Promise<AssetsMap>;
 }
 
 interface IFileSystemService extends IService {
@@ -103,7 +104,14 @@ interface IStoryService extends IService { }
 
 // Asset Services
 interface IAssetService extends IService {
-    getAssets(): Promise<AssetsMap>;
+    getAssets(): AssetsMap;
+    getMetadata<T extends AssetType>(type: T, name: string): Asset<T>;
+    checkIntegrity(): Promise<FsRequestResult<void, false>[]>;
+
+    list<T extends AssetType>(type: T): string[];
+    fetch<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<AssetData<T>>>;
+    exists<T extends AssetType>(asset: Asset<T>): boolean;
+    importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>>;
 }
 
 interface ITextureService extends IService { }
