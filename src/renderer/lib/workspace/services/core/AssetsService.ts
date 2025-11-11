@@ -1,12 +1,17 @@
 import { RendererError } from "@shared/utils/error";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { AssetData, AssetExtensions, AssetType } from "../assets/assetTypes";
-import { Asset, AssetsMap, AssetSource } from "../assets/types";
+import { Asset, AssetsMap, AssetSource, AssetGroupMap, AssetGroup } from "../assets/types";
 import { Service } from "../Service";
 import { IAssetService, Services, WorkspaceContext } from "../services";
 import { FileSystemService } from "./FileSystem";
 import { ProjectService } from "./ProjectService";
 import { ImageService } from "../assets/ImageService";
+import { AudioService } from "../assets/AudioService";
+import { VideoService } from "../assets/VideoService";
+import { JSONService } from "../assets/JSONService";
+import { FontService } from "../assets/FontService";
+import { OtherService } from "../assets/OtherService";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { getInterface } from "@/lib/app/bridge";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
@@ -14,15 +19,29 @@ import { basename, dirname } from "@shared/utils/path";
 
 export class AssetsService extends Service<AssetsService> implements IAssetService {
     private assetsMetadata: AssetsMap | null = null;
+    private assetsGroups: AssetGroupMap | null = null;
     private imageService: ImageService | null = null;
+    private audioService: AudioService | null = null;
+    private videoService: VideoService | null = null;
+    private jsonService: JSONService | null = null;
+    private fontService: FontService | null = null;
+    private otherService: OtherService | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const projectService = ctx.services.get<ProjectService>(Services.Project);
         await depend([filesystemService, projectService]);
 
+        // Initialize all asset services
         this.imageService = new ImageService(filesystemService);
+        this.audioService = new AudioService(filesystemService);
+        this.videoService = new VideoService(filesystemService);
+        this.jsonService = new JSONService(filesystemService);
+        this.fontService = new FontService(filesystemService);
+        this.otherService = new OtherService(filesystemService);
+        
         this.assetsMetadata = await this.fetchAssetsMetadata();
+        this.assetsGroups = await this.fetchAssetsGroups();
     }
 
     public getAssets(): AssetsMap {
@@ -62,6 +81,31 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                         throw new RendererError("Image service not initialized");
                     }
                     return await this.imageService.readLocalImage(path) as RequestStatus<AssetData<T>>;
+                case AssetType.Audio:
+                    if (!this.audioService) {
+                        throw new RendererError("Audio service not initialized");
+                    }
+                    return await this.audioService.readLocalAudio(path) as RequestStatus<AssetData<T>>;
+                case AssetType.Video:
+                    if (!this.videoService) {
+                        throw new RendererError("Video service not initialized");
+                    }
+                    return await this.videoService.readLocalVideo(path) as RequestStatus<AssetData<T>>;
+                case AssetType.JSON:
+                    if (!this.jsonService) {
+                        throw new RendererError("JSON service not initialized");
+                    }
+                    return await this.jsonService.readLocalJSON(path) as RequestStatus<AssetData<T>>;
+                case AssetType.Font:
+                    if (!this.fontService) {
+                        throw new RendererError("Font service not initialized");
+                    }
+                    return await this.fontService.readLocalFont(path) as RequestStatus<AssetData<T>>;
+                case AssetType.Other:
+                    if (!this.otherService) {
+                        throw new RendererError("Other service not initialized");
+                    }
+                    return await this.otherService.readLocalOther(path) as RequestStatus<AssetData<T>>;
                 default:
                     return {
                         success: false,
@@ -162,10 +206,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const asset: Asset<T, AssetSource.Local> = {
             type,
             name: basename(path),
-            hash,
-            source: AssetSource.Local,
-            meta: {},
-        };
+                hash,
+                source: AssetSource.Local,
+                meta: {},
+                tags: [],
+                description: "",
+            };
 
         // copy asset to local
         const destPath = this.getLocalAssetPath(hash);
@@ -288,9 +334,348 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
     }
 
+    private async fetchAssetsGroups(): Promise<AssetGroupMap> {
+        // Initialize assets groups
+        await this.initAssetsGroups();
+
+        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const data: AssetGroupMap = {
+            [AssetType.Image]: {},
+            [AssetType.Audio]: {},
+            [AssetType.Video]: {},
+            [AssetType.JSON]: {},
+            [AssetType.Font]: {},
+            [AssetType.Other]: {},
+        };
+
+        for (const type of Object.values(AssetType)) {
+            const shardPath = this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(type));
+            const shardResult = await filesystemService.readJSON<Record<string, AssetGroup>>(shardPath);
+            if (shardResult.ok) {
+                Object.assign(data[type], shardResult.data);
+            } else {
+                throw new RendererError(`Failed to read assets groups shard: ${shardPath}`);
+            }
+        }
+
+        return data;
+    }
+
+    private async initAssetsGroups(): Promise<void> {
+        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const files = [
+            AssetType.Image, AssetType.Audio, AssetType.Video, AssetType.JSON, AssetType.Font, AssetType.Other,
+        ].map(type => this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(type)));
+
+        const tasks = files.map(async file => {
+            const existsResult = await filesystemService.isFileExists(file);
+            if (!existsResult.ok || !existsResult.data) {
+                return filesystemService.write(file, JSON.stringify({}), "utf-8");
+            }
+            return { ok: true, data: void 0 } satisfies FsRequestResult<void, true>;
+        });
+        const results = await Promise.all(tasks);
+        if (results.some(result => !result.ok)) {
+            throw new RendererError(`Failed to initialize assets groups shards`);
+        }
+    }
+
     private assertMetadata() {
         if (!this.assetsMetadata) {
             throw new RendererError("Assets metadata not initialized");
         }
+    }
+
+    private assertGroups() {
+        if (!this.assetsGroups) {
+            throw new RendererError("Assets groups not initialized");
+        }
+    }
+
+    // Group management APIs
+    public getGroups<T extends AssetType>(type: T): AssetGroup[] {
+        this.assertGroups();
+        return Object.values(this.assetsGroups![type]);
+    }
+
+    public createGroup<T extends AssetType>(
+        type: T, 
+        name: string, 
+        parentGroupId?: string
+    ): RequestStatus<AssetGroup> {
+        this.assertGroups();
+
+        const id = `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const group: AssetGroup = {
+            id,
+            name,
+            type,
+            parentGroupId,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+        };
+
+        (this.assetsGroups![type] as Record<string, AssetGroup>)[id] = group;
+        
+        return {
+            success: true,
+            data: group,
+        };
+    }
+
+    public async deleteGroup<T extends AssetType>(
+        type: T, 
+        groupId: string, 
+        recursive: boolean = false
+    ): Promise<RequestStatus<void>> {
+        this.assertGroups();
+        this.assertMetadata();
+
+        if (!this.assetsGroups![type][groupId]) {
+            return {
+                success: false,
+                error: `Group not found: ${groupId}`,
+            };
+        }
+
+        // Check for child groups
+        const childGroups = Object.values(this.assetsGroups![type]).filter(
+            g => g.parentGroupId === groupId
+        );
+
+        if (childGroups.length > 0 && !recursive) {
+            return {
+                success: false,
+                error: `Group has ${childGroups.length} child group(s). Use recursive delete or move them first.`,
+            };
+        }
+
+        // Check for assets in this group
+        const assetsInGroup = Object.values(this.assetsMetadata![type]).filter(
+            a => a.groupId === groupId
+        );
+
+        if (assetsInGroup.length > 0) {
+            // Move assets to root (no group)
+            for (const asset of assetsInGroup) {
+                asset.groupId = undefined;
+            }
+        }
+
+        // Delete child groups recursively
+        if (recursive) {
+            for (const child of childGroups) {
+                await this.deleteGroup(type, child.id, true);
+            }
+        }
+
+        // Delete the group
+        delete this.assetsGroups![type][groupId];
+
+        // Save changes
+        await this.writeAssetsGroupsMetadata(type);
+        await this.writeAssetsMetadata(type);
+
+        return {
+            success: true,
+            data: void 0,
+        };
+    }
+
+    public async renameGroup<T extends AssetType>(
+        type: T,
+        groupId: string,
+        newName: string
+    ): Promise<RequestStatus<AssetGroup>> {
+        this.assertGroups();
+
+        const group = this.assetsGroups![type][groupId];
+        if (!group) {
+            return {
+                success: false,
+                error: `Group not found: ${groupId}`,
+            };
+        }
+
+        group.name = newName;
+        group.updatedAt = Date.now();
+
+        await this.writeAssetsGroupsMetadata(type);
+
+        return {
+            success: true,
+            data: group,
+        };
+    }
+
+    public async moveAssetToGroup<T extends AssetType>(
+        asset: Asset<T>,
+        groupId?: string
+    ): Promise<RequestStatus<void>> {
+        this.assertMetadata();
+        this.assertGroups();
+
+        // Verify group exists if provided
+        if (groupId && !this.assetsGroups![asset.type][groupId]) {
+            return {
+                success: false,
+                error: `Group not found: ${groupId}`,
+            };
+        }
+
+        const existingAsset = this.assetsMetadata![asset.type][asset.hash];
+        if (!existingAsset) {
+            return {
+                success: false,
+                error: `Asset not found: ${asset.hash}`,
+            };
+        }
+
+        existingAsset.groupId = groupId;
+        await this.writeAssetsMetadata(asset.type);
+
+        return {
+            success: true,
+            data: void 0,
+        };
+    }
+
+    // Metadata management APIs
+    public async updateAssetTags<T extends AssetType>(
+        asset: Asset<T>,
+        tags: string[]
+    ): Promise<RequestStatus<void>> {
+        this.assertMetadata();
+
+        const existingAsset = this.assetsMetadata![asset.type][asset.hash];
+        if (!existingAsset) {
+            return {
+                success: false,
+                error: `Asset not found: ${asset.hash}`,
+            };
+        }
+
+        existingAsset.tags = tags;
+        await this.writeAssetsMetadata(asset.type);
+
+        return {
+            success: true,
+            data: void 0,
+        };
+    }
+
+    public async updateAssetDescription<T extends AssetType>(
+        asset: Asset<T>,
+        description: string
+    ): Promise<RequestStatus<void>> {
+        this.assertMetadata();
+
+        const existingAsset = this.assetsMetadata![asset.type][asset.hash];
+        if (!existingAsset) {
+            return {
+                success: false,
+                error: `Asset not found: ${asset.hash}`,
+            };
+        }
+
+        existingAsset.description = description;
+        await this.writeAssetsMetadata(asset.type);
+
+        return {
+            success: true,
+            data: void 0,
+        };
+    }
+
+    public async renameAsset<T extends AssetType>(
+        asset: Asset<T>,
+        newName: string
+    ): Promise<RequestStatus<void>> {
+        this.assertMetadata();
+
+        const existingAsset = this.assetsMetadata![asset.type][asset.hash];
+        if (!existingAsset) {
+            return {
+                success: false,
+                error: `Asset not found: ${asset.hash}`,
+            };
+        }
+
+        existingAsset.name = newName;
+        await this.writeAssetsMetadata(asset.type);
+
+        return {
+            success: true,
+            data: void 0,
+        };
+    }
+
+    // Asset operations
+    public async deleteAsset<T extends AssetType>(
+        asset: Asset<T>
+    ): Promise<RequestStatus<void>> {
+        this.assertMetadata();
+
+        if (!this.assetsMetadata![asset.type][asset.hash]) {
+            return {
+                success: false,
+                error: `Asset not found: ${asset.hash}`,
+            };
+        }
+
+        // Delete asset file
+        const assetPath = this.getLocalAssetPath(asset.hash);
+        const deleteResult = await getInterface().fs.deleteFile(assetPath);
+        
+        if (!deleteResult.success || !deleteResult.data.ok) {
+            // Continue even if file deletion fails (file might not exist)
+            console.warn(`Failed to delete asset file: ${assetPath}`);
+        }
+
+        // Remove from metadata
+        delete this.assetsMetadata![asset.type][asset.hash];
+        await this.writeAssetsMetadata(asset.type);
+
+        return {
+            success: true,
+            data: void 0,
+        };
+    }
+
+    public async importFromPaths<T extends AssetType>(
+        type: T,
+        paths: string[]
+    ): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
+        const results: RequestStatus<Asset<T, AssetSource.Local>>[] = [];
+        
+        for (const path of paths) {
+            results.push(await this.importLocalAsset(type, path));
+        }
+
+        const writeResult = await this.writeAssetsMetadata(type);
+        if (!writeResult.ok) {
+            return {
+                success: false,
+                error: `Failed to write assets metadata: ${writeResult.error.code} ${writeResult.error.message}`,
+            };
+        }
+
+        return {
+            success: true,
+            data: results,
+        };
+    }
+
+    private async writeAssetsGroupsMetadata(type: AssetType): Promise<FsRequestResult<void>> {
+        this.assertGroups();
+
+        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const data = JSON.stringify(this.assetsGroups![type]);
+
+        return await filesystemService.write(
+            this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(type)), 
+            data, 
+            "utf-8"
+        );
     }
 }

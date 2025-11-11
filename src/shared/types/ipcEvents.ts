@@ -9,6 +9,8 @@ export enum IPCEventType {
     getPlatform = "getPlatform",
     appTerminate = "app.terminate",
     appWindowControl = "app.window.setControl",
+    appWindowClose = "app.window.close",
+    appWindowCloseParent = "app.window.closeParent",
     appWindowGetControl = "app.window.getControl",
     appWindowControlAbility = "app.window.getControlAbility",
     appWindowProps = "app.window.props",
@@ -89,6 +91,18 @@ export type IPCEvents = {
             control: "minimize" | "maximize" | "unmaximize" | "close",
         },
         response: void;
+    };
+    [IPCEventType.appWindowClose]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {},
+        response: never;
+    };
+    [IPCEventType.appWindowCloseParent]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {},
+        response: never;
     };
     [IPCEventType.appWindowGetControl]: {
         type: IPCMessageType.request,

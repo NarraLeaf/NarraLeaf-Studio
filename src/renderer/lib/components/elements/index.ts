@@ -2,6 +2,14 @@
 export { Button, IconButton } from "./Button";
 export type { ButtonProps, ButtonVariant, ButtonSize } from "./Button";
 
+// Accordion components
+export { Accordion, AccordionItem, NestedAccordion } from "./Accordion";
+export type { AccordionProps, AccordionItemProps, NestedAccordionProps } from "./Accordion";
+
+// ContextMenu components
+export { ContextMenu, ContextMenuSeparator, useContextMenu } from "./ContextMenu";
+export type { ContextMenuProps, ContextMenuItemDef, ContextMenuSeparatorDef, ContextMenuDef } from "./ContextMenu";
+
 // Progress components
 export { Progress, ProgressIndeterminate, ProgressCircle } from "./Progress";
 export type { ProgressProps, ProgressVariant, ProgressSize } from "./Progress";

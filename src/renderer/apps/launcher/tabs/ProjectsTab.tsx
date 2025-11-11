@@ -29,7 +29,7 @@ export function ProjectsTab() {
             }
 
             // Open workspace with the selected folder
-            await getInterface().openWindow(
+            await getInterface().workspace.launch(
                 { projectPath: result.data.path },
                 true // Close launcher window after opening workspace
             );

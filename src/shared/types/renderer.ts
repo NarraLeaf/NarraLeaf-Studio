@@ -14,6 +14,8 @@ export interface RendererPreloadedInterface {
     terminate(err?: string): Promise<void>;
     window: {
         ready(): void;
+        close(): void;
+        closeParent(): void;
         control: {
             minimize(): Promise<RequestStatus<void>>;
             maximize(): Promise<RequestStatus<void>>;
@@ -50,15 +52,17 @@ export interface RendererPreloadedInterface {
     state: {
         getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<GlobalStateValue<K>>>;
         setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
-    }
+    };
     launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
     launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<void>>;
     selectProjectDirectory(): Promise<RequestStatus<{ dest: string | null }>>;
     getDefaultProjectDirectory(): Promise<RequestStatus<{ dir: string }>>;
     
     // Workspace
-    openWindow(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
+    workspace: {
+        launch(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
+    };
     
     // Project Settings
     projectSettings: {
