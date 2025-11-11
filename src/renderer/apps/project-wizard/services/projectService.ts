@@ -29,10 +29,6 @@ export class ProjectService {
             });
             await BaseFileSystemService.write(projectConfigPath, JSON.stringify(projectConfig, null, 2), "utf-8");
 
-            const assetsMetadataPath = this.resolve(basePath, ProjectNameConvention.AssetsMetadata);
-            const assetsMetadata = BaseProjectService.getInitialAssetsMetadata();
-            await BaseFileSystemService.write(assetsMetadataPath, JSON.stringify(assetsMetadata, null, 2), "utf-8");
-
             const NLCachePath = this.resolve(basePath, ProjectNameConvention.NLCache);
             await BaseFileSystemService.createDir(NLCachePath);
 

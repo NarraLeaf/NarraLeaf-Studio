@@ -27,7 +27,7 @@ enum Services {
     // Settings = "settings",
     // Editor = "editor",
     // Story = "story",
-    Asset = "asset",
+    Assets = "assets",
     // Texture = "texture",
     // Audio = "audio",
     // Video = "video",

@@ -189,6 +189,26 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
 
         if (!existCheck.data) {
+            // Ensure destination directory exists
+            const destDir = dirname(destPath);
+            const dirExistCheck = await fsService.isDirExists(destDir);
+            if (!dirExistCheck.ok) {
+                return {
+                    success: false,
+                    error: `Failed to check destination directory: ${dirExistCheck.error?.message}`,
+                } as RequestStatus<Asset<T, AssetSource.Local>>;
+            }
+
+            if (!dirExistCheck.data) {
+                const mkdirResult = await fsService.createDir(destDir);
+                if (!mkdirResult.ok) {
+                    return {
+                        success: false,
+                        error: `Failed to create destination directory: ${destDir}. ${mkdirResult.error?.message}`,
+                    };
+                }
+            }
+
             const copyResult = await getInterface().fs.copyFile(path, destPath);
             if (!copyResult.success || !copyResult.data.ok) {
                 const message = copyResult.error
