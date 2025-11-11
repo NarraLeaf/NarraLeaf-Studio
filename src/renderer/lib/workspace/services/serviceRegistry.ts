@@ -13,7 +13,7 @@ export class ServiceRegistry {
         [Services.FileSystem]: FileSystemService.getInstance(),
         [Services.UI]: UIService.getInstance(),
         [Services.ProjectSettings]: ProjectSettingsService.getInstance(),
-        [Services.Asset]: AssetsService.getInstance(),
+        [Services.Assets]: AssetsService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

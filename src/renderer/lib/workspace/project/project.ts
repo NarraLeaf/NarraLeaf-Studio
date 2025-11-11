@@ -1,4 +1,4 @@
-import { resolve } from "@shared/utils/path";
+import { join } from "@shared/utils/path";
 
 export type Resolution = {
     width: number;
@@ -60,7 +60,7 @@ export class Porject {
 
     public resolve(...paths: (Readonly<string[]> | string)[]): string {
         const flattened = paths.flatMap(path => Array.isArray(path) ? path : [path]);
-        return resolve(this.config.projectPath, ...flattened);
+        return join(this.config.projectPath, ...flattened);
     }
 
     public getConfig(): ProjectProps {
