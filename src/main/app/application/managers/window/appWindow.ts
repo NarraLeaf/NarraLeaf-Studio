@@ -30,6 +30,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     private props: WindowProps[T];
     private children: Set<AppWindow> = new Set();
     private tokens: Map<AppWindow, AppEventToken> = new Map();
+    private parent?: AppWindow;
 
     constructor(app: App, config: Partial<WindowConfig>, props: WindowProps[T]) {
         const instanceConfig: WindowInstanceConfig = {
@@ -118,6 +119,12 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         this.getBrowserWindow().close();
     }
 
+    public closeParent(): void {
+        if (this.parent) {
+            this.parent.close();
+        }
+    }
+
     public isClosed(): boolean {
         return this.getBrowserWindow().isDestroyed();
     }
@@ -182,6 +189,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
             return;
         }
         this.children.add(child);
+        child.parent = this;
 
         const token = child.getEvents().onEvent("closed", () => {
             this.removeChild(child);
@@ -191,6 +199,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
     public removeChild(child: AppWindow): void {
         this.children.delete(child);
+        child.parent = undefined;
 
         const token = this.tokens.get(child);
         if (token) {

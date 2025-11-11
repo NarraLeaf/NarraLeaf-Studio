@@ -3,7 +3,10 @@ import { AssetType } from "../services/assets/assetTypes";
 export const ProjectNameConvention = {
     // Project Root Files
     ProjectConfig: ["project.json"],
-    AssetsMetadataShard: (type: AssetType) => [`assets.metadata.${type}.json` as const],
+    
+    // Assets metadata and groups (stored in assets/)
+    AssetsMetadataShard: (type: AssetType) => ["assets", `assets.metadata.${type}.json` as const],
+    AssetsGroupsShard: (type: AssetType) => ["assets", `assets.groups.${type}.json` as const],
 
     // Project Root Directories
     NLCache: [".nlstudio/"],
@@ -11,7 +14,8 @@ export const ProjectNameConvention = {
     EditorConfig: [".nlstudio", "editor.json"],
 
     Assets: ["assets/"],
-    AssetsDataShard: (hash: string) => ["assets", ...splitHash(hash)],
+    AssetsContent: ["assets", "content/"],
+    AssetsDataShard: (hash: string) => ["assets", "content", ...splitHash(hash)],
     Scripts: ["scripts/"],
 } as const;
 

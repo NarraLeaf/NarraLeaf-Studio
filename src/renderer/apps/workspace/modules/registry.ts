@@ -9,6 +9,7 @@ import { propertiesModule } from "./properties";
 import { consoleModule } from "./console";
 import { welcomeModule } from "./welcome";
 import { globalActions, globalActionGroups } from "./actions";
+import { imagePreviewModule } from "./assets/editors/imagePreviewModule";
 import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
 
 /**
@@ -27,6 +28,7 @@ export const builtInPanels: PanelModule[] = [
  */
 export const builtInEditors: EditorModule[] = [
     welcomeModule,
+    imagePreviewModule,
 ];
 
 /**

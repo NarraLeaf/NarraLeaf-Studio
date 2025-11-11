@@ -13,6 +13,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     terminate: async (err?: string) => ipcClient.send(IPCEventType.appTerminate, { err: err ?? null }),
     window: {
         ready: () => ipcClient.send(IPCEventType.appWindowReady, {}),
+        close: () => ipcClient.send(IPCEventType.appWindowClose, {}),
+        closeParent: () => ipcClient.send(IPCEventType.appWindowCloseParent, {}),
         control: {
             minimize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "minimize" }),
             maximize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "maximize" }),
@@ -56,10 +58,12 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     getDefaultProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardGetDefaultDirectory, {}),
     
     // Workspace
-    openWindow: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) => 
-        ipcClient.invoke(IPCEventType.workspaceLaunch, { props, closeCurrentWindow }),
     selectFolder: () => ipcClient.invoke(IPCEventType.workspaceSelectFolder, {}),
-    
+    workspace: {
+        launch: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) =>
+            ipcClient.invoke(IPCEventType.workspaceLaunch, { props, closeCurrentWindow }),
+    },
+
     // Project Settings
     projectSettings: {
         get: <T = any>(projectPath: string, key: string) =>

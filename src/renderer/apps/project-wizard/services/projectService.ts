@@ -42,8 +42,25 @@ export class ProjectService {
             const assetsPath = this.resolve(basePath, ProjectNameConvention.Assets);
             await BaseFileSystemService.createDir(assetsPath);
 
+            const assetsContentPath = this.resolve(basePath, ProjectNameConvention.AssetsContent);
+            await BaseFileSystemService.createDir(assetsContentPath);
+
+            // Initialize assets metadata files for all asset types
+            const assetTypes = ["image", "audio", "video", "json", "font", "other"];
+            for (const type of assetTypes) {
+                const metadataPath = this.resolve(basePath, ProjectNameConvention.AssetsMetadataShard(type as any));
+                await BaseFileSystemService.write(metadataPath, JSON.stringify({}, null, 2), "utf-8");
+                
+                const groupsPath = this.resolve(basePath, ProjectNameConvention.AssetsGroupsShard(type as any));
+                await BaseFileSystemService.write(groupsPath, JSON.stringify({}, null, 2), "utf-8");
+            }
+
             const scriptsPath = this.resolve(basePath, ProjectNameConvention.Scripts);
             await BaseFileSystemService.createDir(scriptsPath);
+
+            getInterface().workspace.launch({ projectPath: basePath });
+            getInterface().window.closeParent();
+            getInterface().window.close();
             
             return { success: true };
         } catch (error) {

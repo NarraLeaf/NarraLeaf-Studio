@@ -1,4 +1,3 @@
-
 export enum AssetType {
     Image = "image",
     Audio = "audio",
@@ -14,6 +13,7 @@ export type ImageAssetMetadata = {
     format: string;
     size: number;
 };
+
 export type AudioAssetMetadata = {
     duration: number;
     sampleRate: number;
@@ -21,11 +21,32 @@ export type AudioAssetMetadata = {
     format: string;
     size: number;
 };
+
 export type VideoAssetMetadata = {
     duration: number;
     width: number;
     height: number;
     format: string;
+    frameRate?: number;
+    size: number;
+};
+
+export type JSONAssetMetadata = {
+    size: number;
+    isValid: boolean;
+    schema?: string;
+};
+
+export type FontAssetMetadata = {
+    family?: string;
+    style?: string;
+    weight?: string;
+    format: string;
+    size: number;
+};
+
+export type OtherAssetMetadata = {
+    mimeType?: string;
     size: number;
 };
 
@@ -40,10 +61,13 @@ export type AssetData<Type extends AssetType> = Type extends AssetType.Image ? {
     metadata: VideoAssetMetadata;
 } : Type extends AssetType.JSON ? {
     data: Record<string, any>;
+    metadata: JSONAssetMetadata;
 } : Type extends AssetType.Font ? {
     data: Buffer;
+    metadata: FontAssetMetadata;
 } : Type extends AssetType.Other ? {
     data: Buffer;
+    metadata: OtherAssetMetadata;
 } : never;
 
 export const AssetExtensions = {
