@@ -43,6 +43,9 @@ export interface RendererPreloadedInterface {
         isDirExists(path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
         isFile(path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
         isDir(path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
+        selectFile(filters: string[], multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>>;
+        selectDirectory(multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>>;
+        hash(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
     };
     state: {
         getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<GlobalStateValue<K>>>;

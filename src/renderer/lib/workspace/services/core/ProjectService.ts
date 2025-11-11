@@ -45,26 +45,4 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         }
         return this.projectConfig;
     }
-
-    public async getAssetsMetadata(): Promise<AssetsMap> {
-        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const data: AssetsMap = {
-            [AssetType.Image]: {},
-            [AssetType.Audio]: {},
-            [AssetType.Video]: {},
-            [AssetType.JSON]: {},
-            [AssetType.Font]: {},
-            [AssetType.Other]: {},
-        };
-
-        for (const type of Object.values(AssetType)) {
-            const shardPath = this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type));
-            const shardResult = await filesystemService.readJSON<Record<string, Asset>>(shardPath);
-            if (shardResult.ok) {
-                Object.assign(data[type], shardResult.data);
-            }
-        }
-
-        return data;
-    }
 }
