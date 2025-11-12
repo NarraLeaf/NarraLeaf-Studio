@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, ReactNode } from "react";
+import React, { useState, useEffect, useRef, ReactNode, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { ChevronRight } from "lucide-react";
 
 // Menu item types
@@ -47,7 +48,7 @@ export function ContextMenu({
     const [openSubmenuIndex, setOpenSubmenuIndex] = useState<number | null>(null);
 
     // Adjust position to keep menu on screen
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!menuRef.current || !visible) return;
 
         const rect = menuRef.current.getBoundingClientRect();
@@ -73,7 +74,7 @@ export function ContextMenu({
         }
 
         setAdjustedPosition({ x, y });
-    }, [position, visible]);
+    }, [position, visible, items]);
 
     // Close on click outside
     useEffect(() => {
@@ -153,13 +154,15 @@ export function ContextMenu({
 
     if (!visible) return null;
 
-    return (
+    const menuContent = (
         <div
             ref={menuRef}
             className="fixed z-50 min-w-48 bg-[#1e1f22] border border-white/10 rounded-md shadow-lg py-1"
             style={{
                 left: `${adjustedPosition.x}px`,
                 top: `${adjustedPosition.y}px`,
+                maxHeight: "calc(100vh - 16px)",
+                overflowY: "auto",
             }}
         >
             {items.map((item, index) => {
@@ -184,6 +187,12 @@ export function ContextMenu({
             })}
         </div>
     );
+
+    if (typeof document === "undefined") {
+        return menuContent;
+    }
+
+    return createPortal(menuContent, document.body);
 }
 
 // ContextMenuItem component
@@ -245,7 +254,7 @@ function ContextMenuItem({
                     ${item.disabled
                         ? 'opacity-50 cursor-not-allowed'
                         : isFocused
-                        ? 'bg-blue-500/20 text-white'
+                        ? 'bg-primary/20 text-white'
                         : 'text-gray-300 hover:bg-white/10 hover:text-white'
                     }
                 `}

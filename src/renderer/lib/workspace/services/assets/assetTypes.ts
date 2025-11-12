@@ -51,22 +51,22 @@ export type OtherAssetMetadata = {
 };
 
 export type AssetData<Type extends AssetType> = Type extends AssetType.Image ? {
-    data: Buffer;
+    data: Uint8Array;
     metadata: ImageAssetMetadata;
 } : Type extends AssetType.Audio ? {
-    data: Buffer;
+    data: Uint8Array;
     metadata: AudioAssetMetadata;
 } : Type extends AssetType.Video ? {
-    data: Buffer;
+    data: Uint8Array;
     metadata: VideoAssetMetadata;
 } : Type extends AssetType.JSON ? {
     data: Record<string, any>;
     metadata: JSONAssetMetadata;
 } : Type extends AssetType.Font ? {
-    data: Buffer;
+    data: Uint8Array;
     metadata: FontAssetMetadata;
 } : Type extends AssetType.Other ? {
-    data: Buffer;
+    data: Uint8Array;
     metadata: OtherAssetMetadata;
 } : never;
 

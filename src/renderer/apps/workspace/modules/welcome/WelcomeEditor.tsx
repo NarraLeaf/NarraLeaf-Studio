@@ -12,7 +12,7 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
                 {/* Header */}
                 <div className="text-center mb-12">
                     <div className="flex items-center justify-center gap-3 mb-4">
-                        <Sparkles className="w-12 h-12 text-blue-400" />
+                        <Sparkles className="w-12 h-12 text-primary" />
                         <h1 className="text-4xl font-bold text-white">NarraLeaf Studio</h1>
                     </div>
                     <p className="text-lg text-gray-400">
@@ -67,7 +67,7 @@ interface GettingStartedStepProps {
 function GettingStartedStep({ number, title, description }: GettingStartedStepProps) {
     return (
         <div className="flex gap-4">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-semibold text-sm">
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-semibold text-sm">
                 {number}
             </div>
             <div>

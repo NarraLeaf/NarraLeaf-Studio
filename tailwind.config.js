@@ -6,6 +6,9 @@ module.exports = {
     ],
     theme: {
         extend: {
+            colors: {
+                primary: '#40a8c4',
+            },
             fontWeight: {
                 normal: '300',
             },

@@ -59,7 +59,7 @@ export function RightSidebar({ panelId, onClose, width }: RightSidebarProps) {
     return (
         <div 
             className={`bg-[#0f1115] flex flex-col border transition-colors ${
-                isFocused ? 'border-blue-500' : 'border-transparent border-l-white/10'
+                isFocused ? 'border-primary' : 'border-transparent border-l-white/10'
             }`}
             style={{ width: `${width}px` }}
             onClick={handleClick}

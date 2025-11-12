@@ -46,10 +46,10 @@ export function ResizableHandle({ direction, onResize, className = "" }: Resizab
 
     const cursorClass = direction === "horizontal" ? "cursor-col-resize" : "cursor-row-resize";
     const hoverClass = direction === "horizontal" 
-        ? "hover:border-r-blue-500" 
-        : "hover:border-t-blue-500";
+        ? "hover:border-r-primary"
+        : "hover:border-t-primary";
     const activeClass = isDragging 
-        ? (direction === "horizontal" ? "border-r-blue-500" : "border-t-blue-500")
+        ? (direction === "horizontal" ? "border-r-primary" : "border-t-primary")
         : "";
 
     return (

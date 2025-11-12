@@ -62,7 +62,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
     return (
         <div 
             className={`h-full flex flex-col border transition-colors ${
-                isFocused ? 'border-blue-500' : 'border-transparent border-b-white/10'
+                isFocused ? 'border-primary' : 'border-transparent border-b-white/10'
             }`}
             onClick={handleEditorClick}
             tabIndex={0}
@@ -96,7 +96,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
 
                                 {/* Modified Indicator */}
                                 {tab.modified && (
-                                    <Circle className="w-2 h-2 fill-current text-blue-400" />
+                                    <Circle className="w-2 h-2 fill-current text-primary" />
                                 )}
 
                                 {/* Close Button */}

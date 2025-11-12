@@ -23,7 +23,7 @@ export class BaseFileSystemService {
         return this.fetch(path, encoding);
     }
 
-    public static async readRaw(path: string): Promise<FsRequestResult<Buffer>> {
+    public static async readRaw(path: string): Promise<FsRequestResult<Uint8Array>> {
         return this.fetchRaw(path);
     }
 
@@ -31,7 +31,7 @@ export class BaseFileSystemService {
         return this.put(path, data, encoding);
     }
 
-    public static async writeRaw(path: string, data: Buffer): Promise<FsRequestResult<void>> {
+    public static async writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
         return this.putRaw(path, data);
     }
 
@@ -128,7 +128,7 @@ export class BaseFileSystemService {
         };
     }
 
-    private static async fetchRaw(path: string): Promise<FsRequestResult<Buffer>> {
+    private static async fetchRaw(path: string): Promise<FsRequestResult<Uint8Array>> {
         const requestResult = this.wrapIPCError(await getInterface().fs.requestReadRaw(path));
         if (!requestResult.ok) {
             return requestResult;
@@ -148,7 +148,7 @@ export class BaseFileSystemService {
         }
         return {
             ok: true,
-            data: Buffer.from(await response.arrayBuffer()),
+            data: new Uint8Array(await response.arrayBuffer()),
         };
     }
 
@@ -179,7 +179,7 @@ export class BaseFileSystemService {
         };
     }
 
-    private static async putRaw(path: string, data: Buffer): Promise<FsRequestResult<void>> {
+    private static async putRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
         const requestResult = this.wrapIPCError(await getInterface().fs.requestWriteRaw(path));
         if (!requestResult.ok) {
             return requestResult;
@@ -246,7 +246,7 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         return BaseFileSystemService.read(path, encoding);
     }
 
-    public async readRaw(path: string): Promise<FsRequestResult<Buffer>> {
+    public async readRaw(path: string): Promise<FsRequestResult<Uint8Array>> {
         return BaseFileSystemService.readRaw(path);
     }
 
@@ -254,7 +254,7 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
         return BaseFileSystemService.write(path, data, encoding);
     }
 
-    public async writeRaw(path: string, data: Buffer): Promise<FsRequestResult<void>> {
+    public async writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
         return BaseFileSystemService.writeRaw(path, data);
     }
 

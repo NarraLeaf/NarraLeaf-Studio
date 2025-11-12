@@ -1,18 +1,19 @@
-import { useEffect, useState, useCallback } from "react";
-import { 
-    Image, Music, Video, FileJson, Type, File, 
-    Plus, FolderPlus, Upload, RefreshCw, AlertCircle 
+import { useMemo, useCallback, useState } from "react";
+import {
+    Image, Music, Video, FileJson, Type, File,
+    FolderPlus, Upload, RefreshCw, AlertCircle
 } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
-import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelComponentProps } from "../types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { ContextMenu, useContextMenu, ContextMenuDef } from "@/lib/components/elements/ContextMenu";
-import { FocusArea } from "@/lib/workspace/services/ui/types";
+import React from "react";
+import { createInputDialog } from "@/lib/components/dialogs";
+import { useAssetsPanelState } from "./hooks/useAssetsPanelState";
 
 // Asset type icons mapping
 const ASSET_TYPE_ICONS = {
@@ -40,346 +41,188 @@ const ASSET_TYPE_LABELS = {
  */
 export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
-    const [assets, setAssets] = useState<Record<AssetType, Asset[]>>({
-        [AssetType.Image]: [],
-        [AssetType.Audio]: [],
-        [AssetType.Video]: [],
-        [AssetType.JSON]: [],
-        [AssetType.Font]: [],
-        [AssetType.Other]: [],
-    });
-    const [groups, setGroups] = useState<Record<AssetType, AssetGroup[]>>({
-        [AssetType.Image]: [],
-        [AssetType.Audio]: [],
-        [AssetType.Video]: [],
-        [AssetType.JSON]: [],
-        [AssetType.Font]: [],
-        [AssetType.Other]: [],
-    });
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [dragOver, setDragOver] = useState(false);
-    const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
-    
-    const { menuState, showMenu, hideMenu } = useContextMenu();
-    const [contextMenuTarget, setContextMenuTarget] = useState<{
-        type: AssetType;
-        item: Asset | AssetGroup | null;
-        isGroup: boolean;
-    } | null>(null);
-
-    // Clipboard state
-    const [clipboard, setClipboard] = useState<{
-        type: 'copy' | 'cut';
-        asset: Asset | null;
-    } | null>(null);
-
-    // Load assets from service
-    const loadAssets = useCallback(async () => {
-        if (!context) return;
-
-        setLoading(true);
-        setError(null);
-
-        try {
-            const assetsService = context.services.get<AssetsService>(Services.Assets);
-            const assetsMap = assetsService.getAssets();
-
-            // Load assets for each type
-            const newAssets: Record<AssetType, Asset[]> = {
-                [AssetType.Image]: [],
-                [AssetType.Audio]: [],
-                [AssetType.Video]: [],
-                [AssetType.JSON]: [],
-                [AssetType.Font]: [],
-                [AssetType.Other]: [],
-            };
-
-            const newGroups: Record<AssetType, AssetGroup[]> = {
-                [AssetType.Image]: [],
-                [AssetType.Audio]: [],
-                [AssetType.Video]: [],
-                [AssetType.JSON]: [],
-                [AssetType.Font]: [],
-                [AssetType.Other]: [],
-            };
-
-            for (const type of Object.values(AssetType)) {
-                newAssets[type] = Object.values(assetsMap[type]);
-                newGroups[type] = assetsService.getGroups(type);
-            }
-
-            setAssets(newAssets);
-            setGroups(newGroups);
-        } catch (err) {
-            console.error("Failed to load assets:", err);
-            setError(err instanceof Error ? err.message : String(err));
-        } finally {
-            setLoading(false);
-        }
+    const inputDialog = useMemo(() => {
+        if (!context) return null;
+        const uiService = context.services.get<UIService>(Services.UI);
+        return createInputDialog(uiService);
     }, [context]);
 
-    useEffect(() => {
-        if (isInitialized) {
-            loadAssets();
-        }
-    }, [isInitialized, loadAssets]);
+    const {
+        assets,
+        groups,
+        loading,
+        error,
+        dragOver,
+        clipboard,
+        draggedItem,
+        dropTargetId,
+        focusedItemId,
+        contextMenuTarget,
+        setContextMenuTarget,
+        setDragOver,
+        setDropTargetId,
+        loadAssets,
+        handleDrop,
+        handleAssetClick,
+        handleGroupFocus,
+        handleCreateGroup,
+        handleImport,
+        handleImportToGroup,
+        handleCopy,
+        handleCut,
+        handlePaste,
+        handleRename,
+        handleDelete,
+        handleDragStart,
+        handleDragEnd,
+        handleDragOverItem,
+        handleDropOnItem,
+    } = useAssetsPanelState({
+        context,
+        isInitialized,
+        panelId,
+        inputDialog,
+    });
 
-    // Set focus when panel is active
-    useEffect(() => {
-        if (!context || !isInitialized) return;
+    const { menuState, showMenu, hideMenu } = useContextMenu();
 
-        const uiService = context.services.get<UIService>(Services.UI);
-        const unsubscribe = uiService.focus.onFocusChange((focusContext) => {
-            if (focusContext.area === FocusArea.LeftPanel && focusContext.targetId === panelId) {
-                // Panel is focused
-            }
-        });
-
-        return unsubscribe;
-    }, [context, isInitialized, panelId]);
-
-    // Handle drag and drop
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDragOver(true);
-    };
-
-    const handleDragLeave = (e: React.DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDragOver(false);
-    };
-
-    const handleDrop = async (e: React.DragEvent, type: AssetType) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setDragOver(false);
-
-        if (!context) return;
-
-        const files = Array.from(e.dataTransfer.files);
-        if (files.length === 0) return;
-
-        const paths = files.map(f => (f as any).path).filter(Boolean);
-        if (paths.length === 0) return;
-
-        setLoading(true);
-        try {
-            const assetsService = context.services.get<AssetsService>(Services.Assets);
-            await assetsService.importFromPaths(type, paths);
-            await loadAssets();
-        } catch (err) {
-            console.error("Failed to import assets:", err);
-            setError(err instanceof Error ? err.message : String(err));
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Handle asset click
-    const handleAssetClick = (asset: Asset) => {
-        if (!context) return;
-
-        const uiService = context.services.get<UIService>(Services.UI);
-        
-        // Set focus
-        uiService.focus.setFocus(FocusArea.LeftPanel, `asset:${asset.hash}`);
-        setFocusedItemId(`asset:${asset.hash}`);
-
-        // Open editor based on asset type
-        if (asset.type === AssetType.Image) {
-            uiService.editor.open({
-                id: `image-preview:${asset.hash}`,
-                type: "narraleaf-studio:image-preview",
-                title: asset.name,
-                payload: { asset },
-            });
-        }
-
-        // Show properties panel
-        uiService.panels.setPanelVisible("narraleaf-studio:properties", true);
-    };
-
-    // Handle context menu
-    const handleContextMenu = (e: React.MouseEvent, type: AssetType, item: Asset | AssetGroup | null, isGroup: boolean) => {
-        e.preventDefault();
+    const showContextMenu = useCallback((event: React.MouseEvent, type: AssetType, item: Asset | AssetGroup | null, isGroup: boolean) => {
+        event.preventDefault();
         setContextMenuTarget({ type, item, isGroup });
-        showMenu(e);
-    };
+        showMenu(event);
+    }, [setContextMenuTarget, showMenu]);
 
-    // Context menu actions
-    const handleCopy = () => {
-        if (contextMenuTarget && contextMenuTarget.item && !contextMenuTarget.isGroup) {
-            setClipboard({
-                type: 'copy',
-                asset: contextMenuTarget.item as Asset,
-            });
-        }
+    const closeContextMenu = useCallback(() => {
+        setContextMenuTarget(null);
         hideMenu();
-    };
+    }, [hideMenu, setContextMenuTarget]);
 
-    const handleCut = () => {
-        if (contextMenuTarget && contextMenuTarget.item && !contextMenuTarget.isGroup) {
-            setClipboard({
-                type: 'cut',
-                asset: contextMenuTarget.item as Asset,
-            });
-        }
-        hideMenu();
-    };
+    const handlePanelDragOver = useCallback((event: React.DragEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDragOver(true);
+    }, [setDragOver]);
 
-    const handlePaste = async () => {
-        if (!context || !clipboard || !contextMenuTarget) return;
+    const handlePanelDragLeave = useCallback((event: React.DragEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setDragOver(false);
+        setDropTargetId(null);
+    }, [setDragOver, setDropTargetId]);
 
-        const assetsService = context.services.get<AssetsService>(Services.Assets);
-        const targetGroupId = contextMenuTarget.isGroup && contextMenuTarget.item 
-            ? (contextMenuTarget.item as AssetGroup).id 
-            : undefined;
+    const handleRootDrop = useCallback(async (event: React.DragEvent, type: AssetType) => {
+        await handleDrop(event, type);
+        await handleDropOnItem(event, type, null);
+    }, [handleDrop, handleDropOnItem]);
 
-        if (clipboard.type === 'cut') {
-            // Move asset
-            await assetsService.moveAssetToGroup(clipboard.asset!, targetGroupId);
-            setClipboard(null);
-        }
-
-        await loadAssets();
-        hideMenu();
-    };
-
-    const handleRename = async () => {
-        if (!context || !contextMenuTarget || !contextMenuTarget.item) return;
-
-        const uiService = context.services.get<UIService>(Services.UI);
-        const assetsService = context.services.get<AssetsService>(Services.Assets);
-
-        // Show prompt dialog
-        const newName = prompt(
-            contextMenuTarget.isGroup ? "Enter new group name:" : "Enter new asset name:",
-            contextMenuTarget.isGroup 
-                ? (contextMenuTarget.item as AssetGroup).name 
-                : (contextMenuTarget.item as Asset).name
-        );
-
-        if (!newName) {
-            hideMenu();
-            return;
+    const contextMenu = useMemo<ContextMenuDef>(() => {
+        if (!contextMenuTarget) {
+            return [];
         }
 
-        if (contextMenuTarget.isGroup) {
-            await assetsService.renameGroup(
-                contextMenuTarget.type,
-                (contextMenuTarget.item as AssetGroup).id,
-                newName
-            );
-        } else {
-            await assetsService.renameAsset(contextMenuTarget.item as Asset, newName);
-        }
+        const items: ContextMenuDef = [];
 
-        await loadAssets();
-        hideMenu();
-    };
+        console.log(contextMenuTarget);
 
-    const handleDelete = async () => {
-        if (!context || !contextMenuTarget || !contextMenuTarget.item) return;
-
-        const confirmed = confirm(
-            contextMenuTarget.isGroup
-                ? "Are you sure you want to delete this group? Assets will be moved to root."
-                : "Are you sure you want to delete this asset? This cannot be undone."
-        );
-
-        if (!confirmed) {
-            hideMenu();
-            return;
-        }
-
-        const assetsService = context.services.get<AssetsService>(Services.Assets);
-
-        if (contextMenuTarget.isGroup) {
-            await assetsService.deleteGroup(
-                contextMenuTarget.type,
-                (contextMenuTarget.item as AssetGroup).id,
-                false
-            );
-        } else {
-            await assetsService.deleteAsset(contextMenuTarget.item as Asset);
-        }
-
-        await loadAssets();
-        hideMenu();
-    };
-
-    const handleCreateGroup = async (type: AssetType, parentGroupId?: string) => {
-        if (!context) return;
-
-        const groupName = prompt("Enter group name:");
-        if (!groupName) return;
-
-        const assetsService = context.services.get<AssetsService>(Services.Assets);
-        assetsService.createGroup(type, groupName, parentGroupId);
-        
-        await loadAssets();
-    };
-
-    const handleImport = async (type: AssetType) => {
-        if (!context) return;
-
-        setLoading(true);
-        try {
-            const assetsService = context.services.get<AssetsService>(Services.Assets);
-            await assetsService.importLocalAssets(type);
-            await loadAssets();
-        } catch (err) {
-            console.error("Failed to import assets:", err);
-            setError(err instanceof Error ? err.message : String(err));
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Build context menu
-    const contextMenu: ContextMenuDef = contextMenuTarget
-        ? [
-            ...(contextMenuTarget.item && !contextMenuTarget.isGroup
-                ? [
-                    { id: 'copy', label: 'Copy', onClick: handleCopy },
-                    { id: 'cut', label: 'Cut', onClick: handleCut },
-                ]
-                : []
-            ),
-            ...(clipboard && contextMenuTarget.isGroup
-                ? [{ id: 'paste', label: 'Paste', onClick: handlePaste }]
-                : []
-            ),
-            ...(contextMenuTarget.item
-                ? [
-                    { separator: true, id: 'sep1' },
-                    { id: 'rename', label: 'Rename', onClick: handleRename },
-                    { id: 'delete', label: 'Delete', onClick: handleDelete },
-                ]
-                : []
-            ),
-            ...(contextMenuTarget.isGroup || !contextMenuTarget.item
-                ? [
-                    { separator: true, id: 'sep2' },
-                    {
-                        id: 'new-group',
-                        label: 'New Group',
-                        onClick: () => {
-                            handleCreateGroup(
-                                contextMenuTarget.type,
-                                contextMenuTarget.item ? (contextMenuTarget.item as AssetGroup).id : undefined
-                            );
-                            hideMenu();
-                        },
+        if (contextMenuTarget.item && !contextMenuTarget.isGroup) {
+            items.push(
+                {
+                    id: "copy",
+                    label: "Copy",
+                    onClick: () => {
+                        handleCopy();
+                        closeContextMenu();
                     },
-                ]
-                : []
-            ),
-        ]
-        : [];
+                },
+                {
+                    id: "cut",
+                    label: "Cut",
+                    onClick: () => {
+                        handleCut();
+                        closeContextMenu();
+                    },
+                },
+            );
+        }
+
+        if (clipboard && (contextMenuTarget.isGroup || !contextMenuTarget.item)) {
+            items.push({
+                id: "paste",
+                label: "Paste",
+                onClick: async () => {
+                    await handlePaste();
+                    closeContextMenu();
+                },
+            });
+        }
+
+        if (contextMenuTarget.item) {
+            if (items.length > 0) {
+                items.push({ separator: true as const, id: "sep1" });
+            }
+            items.push(
+                {
+                    id: "rename",
+                    label: "Rename",
+                    onClick: async () => {
+                        await handleRename();
+                        closeContextMenu();
+                    },
+                },
+                {
+                    id: "delete",
+                    label: "Delete",
+                    onClick: async () => {
+                        await handleDelete();
+                        closeContextMenu();
+                    },
+                },
+            );
+        }
+
+        if (contextMenuTarget.isGroup || !contextMenuTarget.item) {
+            if (items.length > 0) {
+                items.push({ separator: true as const, id: "sep2" });
+            }
+
+            items.push({
+                id: "new-group",
+                label: contextMenuTarget.isGroup ? "New Sub-Group" : "New Group",
+                onClick: async () => {
+                    const parentGroupId = contextMenuTarget.item
+                        ? (contextMenuTarget.item as AssetGroup).id
+                        : undefined;
+                    await handleCreateGroup(contextMenuTarget.type, parentGroupId);
+                    closeContextMenu();
+                },
+            });
+
+            items.push({
+                id: "import-assets",
+                label: "Import Assets...",
+                onClick: async () => {
+                    const groupId = contextMenuTarget.item
+                        ? (contextMenuTarget.item as AssetGroup).id
+                        : undefined;
+                    await handleImportToGroup(contextMenuTarget.type, groupId);
+                    closeContextMenu();
+                },
+            });
+        }
+
+        return items;
+    }, [
+        clipboard,
+        closeContextMenu,
+        contextMenuTarget,
+        handleCopy,
+        handleCut,
+        handleDelete,
+        handleImportToGroup,
+        handlePaste,
+        handleRename,
+        handleCreateGroup,
+    ]);
 
     // Loading state
     if (loading && Object.values(assets).every(arr => arr.length === 0)) {
@@ -418,9 +261,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
 
     return (
         <div
-            className={`h-full flex flex-col ${dragOver ? 'bg-blue-500/10' : ''}`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
+            className={`h-full flex flex-col ${dragOver ? 'bg-primary/10' : ''}`}
+            onDragOver={handlePanelDragOver}
+            onDragLeave={handlePanelDragLeave}
         >
             {/* Toolbar */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
@@ -442,8 +285,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
                 <Accordion
                     defaultOpen={[AssetType.Image]}
                     multiple={true}
-                    isActive={true}
-                    onItemFocus={setFocusedItemId}
+                    isActive={false}
                 >
                     {Object.values(AssetType).map((type) => {
                         const TypeIcon = ASSET_TYPE_ICONS[type];
@@ -457,10 +299,18 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
                                 title={`${ASSET_TYPE_LABELS[type]} (${typeAssets.length})`}
                                 icon={<TypeIcon className="w-4 h-4" />}
                                 contentClassName="bg-[#0b0d12]"
+                                focusable={false}
                             >
                                 <div
-                                    onDrop={(e) => handleDrop(e, type)}
-                                    onContextMenu={(e) => handleContextMenu(e, type, null, false)}
+                                    onDrop={(e) => handleRootDrop(e, type)}
+                                    onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (draggedItem && draggedItem.type === type) {
+                                            setDropTargetId(`root:${type}`);
+                                        }
+                                    }}
+                                    onContextMenu={(e) => showContextMenu(e, type, null, false)}
                                 >
                                     {/* Actions */}
                                     <div className="flex gap-1 p-2 border-b border-white/10">
@@ -500,8 +350,15 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
                                                         groups={typeGroups}
                                                         level={0}
                                                         onAssetClick={handleAssetClick}
-                                                        onContextMenu={handleContextMenu}
+                                                        onContextMenu={showContextMenu}
+                                                        onGroupFocus={handleGroupFocus}
                                                         isFocused={isFocused}
+                                                        onDragStart={handleDragStart}
+                                                        onDragEnd={handleDragEnd}
+                                                        onDragOver={handleDragOverItem}
+                                                        onDrop={handleDropOnItem}
+                                                        draggedItemId={draggedItem?.isGroup ? (draggedItem.item as AssetGroup).id : draggedItem ? (draggedItem.item as Asset).hash : null}
+                                                        dropTargetId={dropTargetId}
                                                     />
                                                 ))}
 
@@ -512,10 +369,14 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
                                                     <AssetItem
                                                         key={asset.hash}
                                                         asset={asset}
+                                                        type={type}
                                                         level={0}
                                                         onClick={() => handleAssetClick(asset)}
-                                                        onContextMenu={(e) => handleContextMenu(e, type, asset, false)}
+                                                        onContextMenu={(e) => showContextMenu(e, type, asset, false)}
                                                         isFocused={isFocused(`asset:${asset.hash}`)}
+                                                        onDragStart={handleDragStart}
+                                                        onDragEnd={handleDragEnd}
+                                                        isDragging={draggedItem?.item === asset}
                                                     />
                                                 ))}
                                         </div>
@@ -532,7 +393,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
                 items={contextMenu}
                 position={menuState.position}
                 visible={menuState.visible}
-                onClose={hideMenu}
+                onClose={closeContextMenu}
             />
         </div>
     );
@@ -547,7 +408,14 @@ interface GroupItemProps {
     level: number;
     onAssetClick: (asset: Asset) => void;
     onContextMenu: (e: React.MouseEvent, type: AssetType, item: Asset | AssetGroup, isGroup: boolean) => void;
+    onGroupFocus: (groupId: string) => void;
     isFocused: (id: string) => boolean;
+    onDragStart: (e: React.DragEvent, type: AssetType, item: Asset | AssetGroup, isGroup: boolean) => void;
+    onDragEnd: () => void;
+    onDragOver: (e: React.DragEvent, targetId: string) => void;
+    onDrop: (e: React.DragEvent, targetType: AssetType, targetGroup: AssetGroup | null) => void;
+    draggedItemId: string | null;
+    dropTargetId: string | null;
 }
 
 function GroupItem({
@@ -558,24 +426,43 @@ function GroupItem({
     level,
     onAssetClick,
     onContextMenu,
+    onGroupFocus,
     isFocused,
+    onDragStart,
+    onDragEnd,
+    onDragOver,
+    onDrop,
+    draggedItemId,
+    dropTargetId,
 }: GroupItemProps) {
     const [isOpen, setIsOpen] = useState(false);
     const childGroups = groups.filter(g => g.parentGroupId === group.id);
     const groupAssets = assets.filter(a => a.groupId === group.id);
+    const isDragging = draggedItemId === group.id;
+    const isDropTarget = dropTargetId === `group:${group.id}`;
 
     return (
         <div>
             <div
+                draggable={true}
                 className={`
-                    flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-white/10 transition-colors
-                    ${isFocused(`group:${group.id}`) ? 'bg-blue-500/20' : ''}
+                    flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 transition-colors
+                    ${isFocused(`group:${group.id}`) ? 'border-l-2 border-primary bg-gray-600/10' : ''}
+                    ${isDragging ? 'opacity-50' : ''}
+                    ${isDropTarget ? 'bg-primary/20 border-l-2 border-primary' : ''}
                 `}
-                style={{ paddingLeft: `${12 + level * 12}px` }}
-                onClick={() => setIsOpen(!isOpen)}
+                style={{ paddingLeft: `${20 + level * 12}px` }}
+                onClick={() => {
+                    onGroupFocus(group.id);
+                    setIsOpen(!isOpen);
+                }}
                 onContextMenu={(e) => onContextMenu(e, type, group, true)}
+                onDragStart={(e) => onDragStart(e, type, group, true)}
+                onDragEnd={onDragEnd}
+                onDragOver={(e) => onDragOver(e, `group:${group.id}`)}
+                onDrop={(e) => onDrop(e, type, group)}
             >
-                <FolderPlus className="w-4 h-4 text-blue-400" />
+                <FolderPlus className="w-4 h-4 text-primary" />
                 <span className="text-sm text-gray-300">{group.name}</span>
                 <span className="text-xs text-gray-500">({groupAssets.length + childGroups.length})</span>
             </div>
@@ -593,7 +480,14 @@ function GroupItem({
                             level={level + 1}
                             onAssetClick={onAssetClick}
                             onContextMenu={onContextMenu}
+                            onGroupFocus={onGroupFocus}
                             isFocused={isFocused}
+                            onDragStart={onDragStart}
+                            onDragEnd={onDragEnd}
+                            onDragOver={onDragOver}
+                            onDrop={onDrop}
+                            draggedItemId={draggedItemId}
+                            dropTargetId={dropTargetId}
                         />
                     ))}
 
@@ -602,10 +496,14 @@ function GroupItem({
                         <AssetItem
                             key={asset.hash}
                             asset={asset}
+                            type={type}
                             level={level + 1}
                             onClick={() => onAssetClick(asset)}
                             onContextMenu={(e) => onContextMenu(e, type, asset, false)}
                             isFocused={isFocused(`asset:${asset.hash}`)}
+                            onDragStart={onDragStart}
+                            onDragEnd={onDragEnd}
+                            isDragging={draggedItemId === asset.hash}
                         />
                     ))}
                 </div>
@@ -617,24 +515,32 @@ function GroupItem({
 // Asset item component
 interface AssetItemProps {
     asset: Asset;
+    type: AssetType;
     level: number;
     onClick: () => void;
     onContextMenu: (e: React.MouseEvent) => void;
     isFocused: boolean;
+    onDragStart: (e: React.DragEvent, type: AssetType, item: Asset | AssetGroup, isGroup: boolean) => void;
+    onDragEnd: () => void;
+    isDragging: boolean;
 }
 
-function AssetItem({ asset, level, onClick, onContextMenu, isFocused }: AssetItemProps) {
+function AssetItem({ asset, type, level, onClick, onContextMenu, isFocused, onDragStart, onDragEnd, isDragging }: AssetItemProps) {
     const Icon = ASSET_TYPE_ICONS[asset.type];
 
     return (
         <div
+            draggable={true}
             className={`
-                flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-white/10 transition-colors
-                ${isFocused ? 'bg-blue-500/20' : ''}
+                flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 transition-colors
+                ${isFocused ? 'border-l-2 border-primary bg-gray-600/10' : ''}
+                ${isDragging ? 'opacity-50' : ''}
             `}
-            style={{ paddingLeft: `${12 + level * 12}px` }}
+            style={{ paddingLeft: `${20 + level * 12}px` }}
             onClick={onClick}
             onContextMenu={onContextMenu}
+            onDragStart={(e) => onDragStart(e, type, asset, false)}
+            onDragEnd={onDragEnd}
         >
             <Icon className="w-4 h-4 text-gray-400" />
             <span className="text-sm text-gray-300 flex-1 truncate">{asset.name}</span>

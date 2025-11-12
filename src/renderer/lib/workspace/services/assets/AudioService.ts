@@ -40,7 +40,7 @@ export class AudioService {
         }
     }
 
-    private async getAudioMetadata(buffer: Buffer, path: string): Promise<Omit<AudioAssetMetadata, 'size'>> {
+    private async getAudioMetadata(buffer: Uint8Array, path: string): Promise<Omit<AudioAssetMetadata, 'size'>> {
         return new Promise((resolve, reject) => {
             const blob = new Blob([new Uint8Array(buffer)]);
             const url = URL.createObjectURL(blob);
