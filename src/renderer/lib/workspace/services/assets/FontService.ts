@@ -51,7 +51,7 @@ export class FontService {
         }
     }
 
-    private async getFontMetadata(buffer: Buffer, format: string): Promise<Partial<Omit<FontAssetMetadata, 'format' | 'size'>>> {
+    private async getFontMetadata(buffer: Uint8Array, format: string): Promise<Partial<Omit<FontAssetMetadata, 'format' | 'size'>>> {
         // Font metadata extraction is complex and requires parsing font tables
         // For now, we'll return empty metadata
         // In the future, can use libraries like opentype.js for detailed parsing

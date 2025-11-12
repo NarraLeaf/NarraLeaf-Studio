@@ -59,7 +59,7 @@ export function LeftSidebar({ panelId, onClose, width }: LeftSidebarProps) {
     return (
         <div 
             className={`bg-[#0f1115] flex flex-col border transition-colors ${
-                isFocused ? 'border-blue-500' : 'border-transparent border-r-white/10'
+                isFocused ? 'border-primary' : 'border-transparent border-r-white/10'
             }`}
             style={{ width: `${width}px` }}
             onClick={handleClick}

@@ -371,7 +371,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     <ResizableHandle
                         direction="horizontal"
                         onResize={handleLeftSidebarResize}
-                        className="w-1 border-r border-white/10 hover:bg-blue-500/20"
+                        className="w-1 border-r border-white/10 hover:bg-primary/20"
                     />
                 </div>
 
@@ -392,7 +392,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                             <ResizableHandle
                                 direction="vertical"
                                 onResize={handleBottomPanelResize}
-                                className="h-1 border-t border-white/10 hover:bg-blue-500/20"
+                                className="h-1 border-t border-white/10 hover:bg-primary/20"
                             />
                             <BottomPanel
                                 panelId={activeBottomPanelId || ""}
@@ -410,7 +410,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     <ResizableHandle
                         direction="horizontal"
                         onResize={handleRightSidebarResize}
-                        className="w-1 border-l border-white/10 hover:bg-blue-500/20"
+                        className="w-1 border-l border-white/10 hover:bg-primary/20"
                     />
                     <RightSidebar 
                         panelId={activeRightPanelId || ""} 

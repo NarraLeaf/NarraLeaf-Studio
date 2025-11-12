@@ -85,7 +85,7 @@ export function SettingsStep({
 
                                     {/* Show informational message when directory doesn't exist */}
                                     {directoryValidation && !directoryValidation.exists && !validationErrors.directory && (
-                                        <div className="text-xs text-blue-400 mt-1">
+                                        <div className="text-xs text-primary mt-1">
                                             ✓ This directory will be created automatically when you create the project
                                         </div>
                                     )}

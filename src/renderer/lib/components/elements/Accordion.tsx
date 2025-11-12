@@ -153,6 +153,8 @@ export interface AccordionItemProps {
     icon?: ReactNode;
     /** Disable this item */
     disabled?: boolean;
+    /** Whether this item can receive focus */
+    focusable?: boolean;
     /** Additional className for the item */
     className?: string;
     /** Additional className for the header */
@@ -173,12 +175,15 @@ export function AccordionItem({
     children,
     icon,
     disabled = false,
+    focusable = true,
     className = "",
     headerClassName = "",
     contentClassName = "",
     level = 0,
 }: AccordionItemProps) {
-    const { openItems, toggleItem, focusedItemId, setFocusedItem } = useAccordionContext();
+    const context = useAccordionContext();
+    const { openItems, toggleItem, focusedItemId, setFocusedItem } = context;
+    const isActive = context.isActive ?? true;
     const isOpen = openItems.has(id);
     const isFocused = focusedItemId === id;
     const contentRef = useRef<HTMLDivElement>(null);
@@ -194,11 +199,15 @@ export function AccordionItem({
     const handleClick = () => {
         if (disabled) return;
         toggleItem(id);
-        setFocusedItem(id);
+        if (focusable) {
+            setFocusedItem(id);
+        }
     };
 
     const handleMouseEnter = () => {
-        if (!disabled) {
+        // Only set focus on mouse enter if accordion is not active and item is focusable
+        // This prevents conflicts with parent components that manage their own focus
+        if (!disabled && !isActive && focusable) {
             setFocusedItem(id);
         }
     };
@@ -219,7 +228,7 @@ export function AccordionItem({
                     w-full flex items-center gap-2 px-3 py-2 text-left
                     transition-colors duration-200
                     ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-default hover:bg-white/10'}
-                    ${isFocused && !disabled ? 'bg-blue-500/20' : ''}
+                    ${isFocused && !disabled && focusable ? 'bg-primary/20' : ''}
                     ${headerClassName}
                 `}
                 style={{ paddingLeft: `${12 + indentation}px` }}

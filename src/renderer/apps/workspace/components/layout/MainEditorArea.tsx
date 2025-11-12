@@ -32,7 +32,7 @@ export function MainEditorArea() {
                     className={`
                         ${isHorizontal ? "w-[2px]" : "h-[2px]"}
                         bg-white/10
-                        hover:bg-blue-500/50
+                        hover:bg-primary/50
                         cursor-${isHorizontal ? "col" : "row"}-resize
                         transition-colors
                     `}

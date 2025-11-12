@@ -125,7 +125,7 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     onBlur={handleNameBlur}
-                    className="w-full px-3 py-2 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 focus:outline-none focus:border-blue-500/50 transition-colors"
+                    className="w-full px-3 py-2 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 focus:outline-none focus:border-primary/50 transition-colors"
                     disabled={saving}
                 />
             </div>
@@ -139,12 +139,12 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
                     {tags.map((tag) => (
                         <span
                             key={tag}
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-500/20 text-blue-300 text-xs rounded"
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-primary/20 text-primary text-xs rounded"
                         >
                             {tag}
                             <button
                                 onClick={() => handleRemoveTag(tag)}
-                                className="hover:text-blue-200 cursor-default"
+                                className="hover:text-primary cursor-default"
                                 disabled={saving}
                             >
                                 <X className="w-3 h-3" />
@@ -164,13 +164,13 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
                             }
                         }}
                         placeholder="Add tag..."
-                        className="flex-1 px-3 py-1.5 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 focus:outline-none focus:border-blue-500/50 transition-colors"
+                        className="flex-1 px-3 py-1.5 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 focus:outline-none focus:border-primary/50 transition-colors"
                         disabled={saving}
                     />
                     <button
                         onClick={handleAddTag}
                         disabled={!newTag.trim() || saving}
-                        className="px-2 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-default"
+                        className="px-2 py-1.5 bg-primary/20 hover:bg-primary/30 text-primary rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-default"
                     >
                         <Plus className="w-4 h-4" />
                     </button>
@@ -187,7 +187,7 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
                     onChange={(e) => setDescription(e.target.value)}
                     onBlur={handleDescriptionBlur}
                     rows={4}
-                    className="w-full px-3 py-2 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 focus:outline-none focus:border-blue-500/50 transition-colors resize-none"
+                    className="w-full px-3 py-2 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 focus:outline-none focus:border-primary/50 transition-colors resize-none"
                     placeholder="Enter description..."
                     disabled={saving}
                 />

@@ -172,6 +172,7 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
                         onClick={handleZoomIn}
                         className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-default"
                         title="Zoom In">
+                        <ZoomIn className="w-4 h-4" />
                     </button>
                     <button
                         onClick={handleResetView}

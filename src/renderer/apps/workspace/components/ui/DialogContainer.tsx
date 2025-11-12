@@ -67,7 +67,7 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                                     ${button.disabled
                                         ? "bg-gray-700 text-gray-500 cursor-not-allowed"
                                         : button.primary
-                                            ? "bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                                            ? "bg-primary hover:bg-primary/80 text-white font-medium"
                                             : "bg-white/5 hover:bg-white/10 text-gray-300"
                                     }
                                 `}

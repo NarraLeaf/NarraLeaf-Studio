@@ -40,7 +40,7 @@ export class VideoService {
         }
     }
 
-    private async getVideoMetadata(buffer: Buffer, path: string): Promise<Omit<VideoAssetMetadata, 'size'>> {
+    private async getVideoMetadata(buffer: Uint8Array, path: string): Promise<Omit<VideoAssetMetadata, 'size'>> {
         return new Promise((resolve, reject) => {
             const blob = new Blob([new Uint8Array(buffer)]);
             const url = URL.createObjectURL(blob);

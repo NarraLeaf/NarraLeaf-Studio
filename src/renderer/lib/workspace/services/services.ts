@@ -51,9 +51,9 @@ interface IFileSystemService extends IService {
     list(path: string): Promise<FsRequestResult<FileStat[]>>;
     details(path: string): Promise<FsRequestResult<FileDetails>>;
     read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>>;
-    readRaw(path: string): Promise<FsRequestResult<Buffer>>;
+    readRaw(path: string): Promise<FsRequestResult<Uint8Array>>;
     write(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
-    writeRaw(path: string, data: Buffer): Promise<FsRequestResult<void>>;
+    writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>>;
     createDir(path: string): Promise<FsRequestResult<void>>;
     deleteFile(path: string): Promise<FsRequestResult<void>>;
     deleteDir(path: string): Promise<FsRequestResult<void>>;

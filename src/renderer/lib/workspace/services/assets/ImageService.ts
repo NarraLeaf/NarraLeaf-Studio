@@ -40,7 +40,7 @@ export class ImageService {
         }
     }
 
-    private async getImageMetadata(buffer: Buffer): Promise<Omit<ImageAssetMetadata, 'size'>> {
+    private async getImageMetadata(buffer: Uint8Array): Promise<Omit<ImageAssetMetadata, 'size'>> {
         return new Promise((resolve, reject) => {
             const blob = new Blob([new Uint8Array(buffer)]);
             const url = URL.createObjectURL(blob);
@@ -68,7 +68,7 @@ export class ImageService {
         });
     }
 
-    private detectImageFormat(buffer: Buffer): string {
+    private detectImageFormat(buffer: Uint8Array): string {
         // Check magic bytes for common image formats
         if (buffer.length >= 4) {
             const header = buffer.subarray(0, 4);
@@ -91,8 +91,9 @@ export class ImageService {
             // WebP
             if (buffer.length >= 12) {
                 const webpHeader = buffer.subarray(0, 12);
-                if (webpHeader.toString('ascii', 0, 4) === 'RIFF' &&
-                    webpHeader.toString('ascii', 8, 12) === 'WEBP') {
+                const riffStr = String.fromCharCode(...webpHeader.subarray(0, 4));
+                const webpStr = String.fromCharCode(...webpHeader.subarray(8, 12));
+                if (riffStr === 'RIFF' && webpStr === 'WEBP') {
                     return 'webp';
                 }
             }
