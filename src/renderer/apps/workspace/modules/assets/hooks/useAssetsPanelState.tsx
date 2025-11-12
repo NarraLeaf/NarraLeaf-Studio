@@ -327,6 +327,15 @@ export function useAssetsPanelState({
             if (clipboard.type === "cut" && clipboard.asset) {
                 await assetsService.moveAssetToGroup(clipboard.asset, targetGroupId);
                 setClipboard(null);
+            } else if (clipboard.type === "copy" && clipboard.asset) {
+                const dupResult = await assetsService.duplicateAsset(clipboard.asset);
+                if (!dupResult.success || !dupResult.data) {
+                    setError(dupResult.error || "Failed to copy asset");
+                    return;
+                }
+                if (targetGroupId) {
+                    await assetsService.moveAssetToGroup(dupResult.data, targetGroupId);
+                }
             }
         });
 
@@ -373,15 +382,12 @@ export function useAssetsPanelState({
         }
 
         const target = contextMenuTarget;
-        const confirmed = confirm(
-            target.isGroup
-                ? "Are you sure you want to delete this group? Assets will be moved to root."
-                : "Are you sure you want to delete this asset? This cannot be undone.",
+        const uiService = context.services.get<UIService>(Services.UI);
+        const confirmed = await uiService.showConfirm(
+            target.isGroup ? "Delete group?" : "Delete asset?",
+            target.isGroup ? "Assets will be moved to root." : "This cannot be undone.",
         );
-
-        if (!confirmed) {
-            return;
-        }
+        if (!confirmed) return;
 
         await withAssetsService(async (assetsService) => {
             if (target.isGroup) {

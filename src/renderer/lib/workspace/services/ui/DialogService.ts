@@ -20,6 +20,14 @@ export class DialogService {
      */
     public async confirm(message: string, detail?: string): Promise<boolean> {
         return new Promise<boolean>(resolve => {
+            let settled = false;
+            const safeResolve = (val: boolean) => {
+                if (!settled) {
+                    settled = true;
+                    resolve(val);
+                }
+            };
+
             const id = this.createDialog({
                 title: "Confirm",
                 message,
@@ -30,20 +38,20 @@ export class DialogService {
                         label: "Cancel",
                         onClick: () => {
                             this.close(id);
-                            resolve(false);
+                            safeResolve(false);
                         },
                     },
                     {
                         label: "OK",
                         primary: true,
                         onClick: () => {
+                            safeResolve(true);
                             this.close(id);
-                            resolve(true);
                         },
                     },
                 ],
                 closable: true,
-                onClose: () => resolve(false),
+                onClose: () => safeResolve(false),
             });
         });
     }

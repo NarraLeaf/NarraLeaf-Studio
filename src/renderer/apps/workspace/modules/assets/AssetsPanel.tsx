@@ -10,7 +10,8 @@ import { PanelComponentProps } from "../types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
-import { ContextMenu, useContextMenu, ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { ContextMenu } from "@/lib/components/elements/ContextMenu";
+import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
 import React from "react";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { useAssetsPanelState } from "./hooks/useAssetsPanelState";
@@ -84,18 +85,23 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
         inputDialog,
     });
 
-    const { menuState, showMenu, hideMenu } = useContextMenu();
-
-    const showContextMenu = useCallback((event: React.MouseEvent, type: AssetType, item: Asset | AssetGroup | null, isGroup: boolean) => {
-        event.preventDefault();
-        setContextMenuTarget({ type, item, isGroup });
-        showMenu(event);
-    }, [setContextMenuTarget, showMenu]);
-
-    const closeContextMenu = useCallback(() => {
-        setContextMenuTarget(null);
-        hideMenu();
-    }, [hideMenu, setContextMenuTarget]);
+    const {
+        menuState,
+        contextMenu,
+        showContextMenu,
+        closeContextMenu,
+    } = useAssetsContextMenu({
+        clipboard,
+        contextMenuTarget,
+        setContextMenuTarget,
+        handleCopy,
+        handleCut,
+        handlePaste,
+        handleRename,
+        handleDelete,
+        handleCreateGroup,
+        handleImportToGroup,
+    });
 
     const handlePanelDragOver = useCallback((event: React.DragEvent) => {
         event.preventDefault();
@@ -114,115 +120,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
         await handleDrop(event, type);
         await handleDropOnItem(event, type, null);
     }, [handleDrop, handleDropOnItem]);
-
-    const contextMenu = useMemo<ContextMenuDef>(() => {
-        if (!contextMenuTarget) {
-            return [];
-        }
-
-        const items: ContextMenuDef = [];
-
-        console.log(contextMenuTarget);
-
-        if (contextMenuTarget.item && !contextMenuTarget.isGroup) {
-            items.push(
-                {
-                    id: "copy",
-                    label: "Copy",
-                    onClick: () => {
-                        handleCopy();
-                        closeContextMenu();
-                    },
-                },
-                {
-                    id: "cut",
-                    label: "Cut",
-                    onClick: () => {
-                        handleCut();
-                        closeContextMenu();
-                    },
-                },
-            );
-        }
-
-        if (clipboard && (contextMenuTarget.isGroup || !contextMenuTarget.item)) {
-            items.push({
-                id: "paste",
-                label: "Paste",
-                onClick: async () => {
-                    await handlePaste();
-                    closeContextMenu();
-                },
-            });
-        }
-
-        if (contextMenuTarget.item) {
-            if (items.length > 0) {
-                items.push({ separator: true as const, id: "sep1" });
-            }
-            items.push(
-                {
-                    id: "rename",
-                    label: "Rename",
-                    onClick: async () => {
-                        await handleRename();
-                        closeContextMenu();
-                    },
-                },
-                {
-                    id: "delete",
-                    label: "Delete",
-                    onClick: async () => {
-                        await handleDelete();
-                        closeContextMenu();
-                    },
-                },
-            );
-        }
-
-        if (contextMenuTarget.isGroup || !contextMenuTarget.item) {
-            if (items.length > 0) {
-                items.push({ separator: true as const, id: "sep2" });
-            }
-
-            items.push({
-                id: "new-group",
-                label: contextMenuTarget.isGroup ? "New Sub-Group" : "New Group",
-                onClick: async () => {
-                    const parentGroupId = contextMenuTarget.item
-                        ? (contextMenuTarget.item as AssetGroup).id
-                        : undefined;
-                    await handleCreateGroup(contextMenuTarget.type, parentGroupId);
-                    closeContextMenu();
-                },
-            });
-
-            items.push({
-                id: "import-assets",
-                label: "Import Assets...",
-                onClick: async () => {
-                    const groupId = contextMenuTarget.item
-                        ? (contextMenuTarget.item as AssetGroup).id
-                        : undefined;
-                    await handleImportToGroup(contextMenuTarget.type, groupId);
-                    closeContextMenu();
-                },
-            });
-        }
-
-        return items;
-    }, [
-        clipboard,
-        closeContextMenu,
-        contextMenuTarget,
-        handleCopy,
-        handleCut,
-        handleDelete,
-        handleImportToGroup,
-        handlePaste,
-        handleRename,
-        handleCreateGroup,
-    ]);
 
     // Loading state
     if (loading && Object.values(assets).every(arr => arr.length === 0)) {
