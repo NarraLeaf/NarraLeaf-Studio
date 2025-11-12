@@ -199,31 +199,26 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             };
         }
 
-        // prepare hash
-        const hashResult = await getInterface().fs.hash(path);
-        if (!hashResult.success || !hashResult.data.ok) {
-            const message = hashResult.error
-                || (`[${(hashResult.data as FsRequestResult<string, false>)?.error.code}] ${(hashResult.data as FsRequestResult<string, false>)?.error.message}`);
-            return {
-                success: false,
-                error: `Failed to hash asset: ${path}. ${message}`,
-            };
-        }
-        const hash = hashResult.data.data;
+        // generate unique id for this asset
+        const id = crypto.randomUUID();
 
-        // construct asset
+        // resolve unique display name (e.g. "image.png", "image-1.png")
+        const originalName = basename(path);
+        const uniqueName = this.resolveUniqueAssetName(type, originalName);
+
+        // construct asset metadata
         const asset: Asset<T, AssetSource.Local> = {
             type,
-            name: basename(path),
-                hash,
-                source: AssetSource.Local,
-                meta: {},
-                tags: [],
-                description: "",
-            };
+            name: uniqueName,
+            hash: id, // keeping property name for compatibility, but now stores uuid
+            source: AssetSource.Local,
+            meta: {},
+            tags: [],
+            description: "",
+        };
 
-        // copy asset to local
-        const destPath = this.getLocalAssetPath(hash);
+        // copy asset to local directory using uuid as filename (no extension kept)
+        const destPath = this.getLocalAssetPath(id);
 
         const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const existCheck = await fsService.isFileExists(destPath);
@@ -236,10 +231,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
         this.assertMetadata();
         const record: Record<string, Asset<T, AssetSource.Local>> = this.assetsMetadata![type];
-        if (record[hash]) {
+        if (record[id]) {
             return {
                 success: true,
-                data: record[hash] as Asset<T, AssetSource.Local>,
+                data: record[id] as Asset<T, AssetSource.Local>,
             };
         }
 
@@ -276,12 +271,37 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
 
         // update assets metadata
-        record[hash] = asset;
+        record[id] = asset;
 
         return {
             success: true,
             data: asset,
         };
+    }
+
+    /**
+     * Ensure asset display name is unique within given type. Append "-n" if duplicate.
+     */
+    private resolveUniqueAssetName<T extends AssetType>(type: T, originalName: string): string {
+        this.assertMetadata();
+        const record = this.assetsMetadata![type];
+        const existingNames = new Set(Object.values(record).map(a => a.name));
+
+        if (!existingNames.has(originalName)) {
+            return originalName;
+        }
+
+        const extIndex = originalName.lastIndexOf('.');
+        const base = extIndex !== -1 ? originalName.slice(0, extIndex) : originalName;
+        const ext = extIndex !== -1 ? originalName.slice(extIndex) : '';
+
+        let counter = 1;
+        let candidate = `${base}-${counter}${ext}`;
+        while (existingNames.has(candidate)) {
+            counter += 1;
+            candidate = `${base}-${counter}${ext}`;
+        }
+        return candidate;
     }
 
     private getLocalAssetPath(name: string): string {
@@ -693,6 +713,51 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             success: true,
             data: void 0,
         };
+    }
+
+    /**
+     * Duplicate an existing asset, returning the new asset metadata.
+     */
+    public async duplicateAsset<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        this.assertMetadata();
+
+        // Ensure asset exists
+        const existing = this.assetsMetadata![asset.type][asset.hash];
+        if (!existing) {
+            return { success: false, error: `Asset not found: ${asset.hash}` };
+        }
+
+        // Generate new uuid and resolve unique name
+        const newId = crypto.randomUUID();
+        const uniqueName = this.resolveUniqueAssetName(asset.type, asset.name);
+
+        // Source/dest paths
+        const srcPath = this.getLocalAssetPath(asset.hash);
+        const destPath = this.getLocalAssetPath(newId);
+
+        // Copy file
+        const copyResult = await getInterface().fs.copyFile(srcPath, destPath);
+        if (!copyResult.success || !copyResult.data.ok) {
+            const msg = copyResult.error || (copyResult.data as FsRequestResult<void, false>)?.error.message;
+            return { success: false, error: `Failed to copy asset file: ${msg}` };
+        }
+
+        // Create metadata
+        const newAsset: Asset<T, AssetSource.Local> = {
+            ...asset,
+            hash: newId,
+            name: uniqueName,
+            source: AssetSource.Local,
+        };
+
+        // Save metadata
+        (this.assetsMetadata![asset.type] as Record<string, Asset<T>>)[newId] = newAsset as Asset<T>;
+        const writeResult = await this.writeAssetsMetadata(asset.type);
+        if (!writeResult.ok) {
+            return { success: false, error: `Failed to write metadata: ${writeResult.error.message}` };
+        }
+
+        return { success: true, data: newAsset };
     }
 
     public async importFromPaths<T extends AssetType>(

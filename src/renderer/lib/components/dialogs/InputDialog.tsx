@@ -170,6 +170,14 @@ export class InputDialog {
             let cancelHandler: (() => void) | null = null;
             let valueGetter: (() => string) | null = null;
 
+            let settled = false;
+            const safeResolve = (val: string | null) => {
+                if (!settled) {
+                    settled = true;
+                    resolve(val);
+                }
+            };
+
             const registerHandlers = (handlers: InputDialogContentHandlers) => {
                 submitHandler = handlers.submit;
                 cancelHandler = handlers.cancel;
@@ -184,13 +192,13 @@ export class InputDialog {
             };
 
             const handleSubmit = (value: string | null) => {
+                safeResolve(value);
                 closeDialog();
-                resolve(value);
             };
 
             const handleCancel = () => {
+                safeResolve(null);
                 closeDialog();
-                resolve(null);
             };
 
             const invokeSubmit = () => {
