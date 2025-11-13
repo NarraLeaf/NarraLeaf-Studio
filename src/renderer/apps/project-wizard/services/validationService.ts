@@ -125,13 +125,15 @@ export class ValidationService {
                 };
             }
 
-            // Check if directory is empty
+            // Check if directory is empty (check both files and subdirectories)
+            // Use fs.list which now returns all entries (files and directories) via Fs.dirEntries
             const listResult = await interface_.fs.list(path);
             if (!listResult.success) {
                 return { success: false, error: "Failed to list directory contents" };
             }
 
-            const isEmpty = listResult.success ? (listResult.data?.ok ? (listResult.data.data?.length === 0 || false) : false) : false;
+            // Directory is empty if the list has no entries
+            const isEmpty = listResult.data?.ok ? (listResult.data.data?.length ?? 0) === 0 : false;
 
             // For now, assume we can write if it exists and is a directory
             // In a real implementation, you might want to check write permissions

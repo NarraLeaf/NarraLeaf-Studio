@@ -3,7 +3,7 @@ import { AppInfo } from "./app";
 import { RendererInterfaceKey } from "./constants";
 import { RequestStatus } from "./ipcEvents";
 import { FsRequestResult, PlatformInfo } from "./os";
-import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility } from "./window";
+import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 
@@ -15,7 +15,7 @@ export interface RendererPreloadedInterface {
     window: {
         ready(): void;
         close(): void;
-        closeParent(): void;
+        closeWith<T extends WindowAppType = WindowAppType>(result: WindowCloseResults[T]): void;
         control: {
             minimize(): Promise<RequestStatus<void>>;
             maximize(): Promise<RequestStatus<void>>;
@@ -54,7 +54,7 @@ export interface RendererPreloadedInterface {
         setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
     };
     launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
-    launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<void>>;
+    launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<{created: boolean; projectPath: string} | null>>;
     selectProjectDirectory(): Promise<RequestStatus<{ dest: string | null }>>;
     getDefaultProjectDirectory(): Promise<RequestStatus<{ dir: string }>>;
     

@@ -4,6 +4,7 @@ import { defaultProjectData } from "../constants";
 import { ValidationService } from "../services/validationService";
 import { DirectoryService } from "../services/directoryService";
 import { ProjectService } from "../services/projectService";
+import { join } from "@shared/utils/path";
 
 /**
  * Custom hook for managing project wizard state and logic
@@ -20,6 +21,7 @@ export function useProjectWizard() {
     const [locationInputDirty, setLocationInputDirty] = useState(false);
     const [locationInputFocused, setLocationInputFocused] = useState(false);
     const [isCreatingProject, setIsCreatingProject] = useState(false);
+    const [creationError, setCreationError] = useState<string | null>(null);
 
     const [projectData, setProjectData] = useState<ProjectData>(defaultProjectData);
 
@@ -161,7 +163,8 @@ export function useProjectWizard() {
         try {
             const result = await DirectoryService.selectProjectDirectory();
             if (result.success && result.data?.dest) {
-                updateProjectData({ location: result.data.dest });
+                let selectedPath = result.data.dest;
+                
                 // Clear validation errors when a directory is selected
                 setValidationErrors(prev => ({
                     ...prev,
@@ -172,15 +175,38 @@ export function useProjectWizard() {
                 setLocationInputDirty(false);
                 setLocationInputFocused(false);
 
-                // Validate the selected directory
-                await validateProjectDirectory(result.data.dest);
+                // Validate the selected directory first
+                const validationResult = await ValidationService.validateProjectDirectory(selectedPath, platformInfo);
+                
+                // If directory is not empty and appId exists, append appId to the path
+                if (validationResult.data && !validationResult.data.isEmpty && projectData.appId) {
+                    selectedPath = join(selectedPath, projectData.appId);
+                    // Update location with the new path that includes appId
+                    updateProjectData({ location: selectedPath });
+                    // Validate the new path
+                    await validateProjectDirectory(selectedPath);
+                    // Reset input state after validation completes
+                    setLocationInputDirty(false);
+                    setLocationInputFocused(false);
+                } else {
+                    // Directory is empty or appId doesn't exist, use original path
+                    updateProjectData({ location: selectedPath });
+                    // Set validation result
+                    if (validationResult.data) {
+                        setDirectoryValidation(validationResult.data);
+                    }
+                    setValidationErrors(validationResult.errors);
+                    // Reset input state after validation completes
+                    setLocationInputDirty(false);
+                    setLocationInputFocused(false);
+                }
             }
         } catch (error) {
             console.error("Failed to select directory:", error);
         } finally {
             setIsSelectingDirectory(false);
         }
-    }, [updateProjectData, validateProjectDirectory]);
+    }, [updateProjectData, validateProjectDirectory, projectData.appId, platformInfo]);
 
     /**
      * Navigate to next step
@@ -189,7 +215,18 @@ export function useProjectWizard() {
         const stepKeys: WizardStep[] = ["template", "details", "settings", "review"];
         const currentIndex = stepKeys.indexOf(currentStep);
         if (currentIndex < stepKeys.length - 1) {
-            setCurrentStep(stepKeys[currentIndex + 1]);
+            const nextStepKey = stepKeys[currentIndex + 1];
+            setCurrentStep(nextStepKey);
+            // Clear location validation errors when leaving settings step
+            if (currentStep === "settings" && nextStepKey !== "settings") {
+                setValidationErrors(prev => ({
+                    ...prev,
+                    location: undefined,
+                    directory: undefined
+                }));
+                setLocationInputDirty(false);
+                setLocationInputFocused(false);
+            }
         }
     }, [currentStep]);
 
@@ -200,7 +237,18 @@ export function useProjectWizard() {
         const stepKeys: WizardStep[] = ["template", "details", "settings", "review"];
         const currentIndex = stepKeys.indexOf(currentStep);
         if (currentIndex > 0) {
-            setCurrentStep(stepKeys[currentIndex - 1]);
+            const prevStepKey = stepKeys[currentIndex - 1];
+            setCurrentStep(prevStepKey);
+            // Clear location validation errors when leaving settings step
+            if (currentStep === "settings" && prevStepKey !== "settings") {
+                setValidationErrors(prev => ({
+                    ...prev,
+                    location: undefined,
+                    directory: undefined
+                }));
+                setLocationInputDirty(false);
+                setLocationInputFocused(false);
+            }
         }
     }, [currentStep]);
 
@@ -216,12 +264,15 @@ export function useProjectWizard() {
      */
     const canProceed = useCallback(() => {
         // UX: Prevent proceeding if input is focused (user is typing) or dirty (modified but not validated)
-        return isStepValid() &&
-               !validationErrors.location &&
-               !validationErrors.directory &&
-               !locationInputDirty &&
-               !locationInputFocused;
-    }, [isStepValid, validationErrors, locationInputDirty, locationInputFocused]);
+        // Only check location validation errors when on settings step
+        const locationValid = currentStep !== "settings" || 
+            (!validationErrors.location && 
+             !validationErrors.directory && 
+             !locationInputDirty && 
+             !locationInputFocused);
+        
+        return isStepValid() && locationValid;
+    }, [isStepValid, validationErrors, locationInputDirty, locationInputFocused, currentStep]);
 
     /**
      * Create project
@@ -229,13 +280,23 @@ export function useProjectWizard() {
     const createProject = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
         const validation = ProjectService.validateProjectData(projectData);
         if (!validation.isValid) {
-            return { success: false, error: validation.errors.join(", ") };
+            const error = validation.errors.join(", ");
+            setCreationError(error);
+            return { success: false, error };
         }
 
         setIsCreatingProject(true);
+        setCreationError(null);
         try {
             const result = await ProjectService.createProject(projectData);
+            if (!result.success) {
+                setCreationError(result.error || "Failed to create project");
+            }
             return result;
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            setCreationError(errorMessage);
+            return { success: false, error: errorMessage };
         } finally {
             setIsCreatingProject(false);
         }
@@ -250,6 +311,7 @@ export function useProjectWizard() {
         isValidatingDirectory,
         isSelectingDirectory,
         isCreatingProject,
+        creationError,
         locationInputDirty,
         locationInputFocused,
         appIdManuallyEdited,
@@ -266,6 +328,7 @@ export function useProjectWizard() {
         prevStep,
         createProject,
         validateProjectDirectory,
+        clearCreationError: () => setCreationError(null),
 
         // Computed
         canProceed,

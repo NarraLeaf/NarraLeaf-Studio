@@ -6,8 +6,15 @@ import { useState } from "react";
 export function ProjectsTab() {
     const [isOpening, setIsOpening] = useState(false);
 
-    const handleNewProject = () => {
-        getInterface().launchProjectWizard({});
+    const handleNewProject = async () => {
+        const result = await getInterface().launchProjectWizard({});
+        if (result.success && result.data?.created) {
+            // Open workspace with the selected folder
+            await getInterface().workspace.launch(
+                { projectPath: result.data.projectPath },
+                true // Close launcher window after opening workspace
+            );
+        }
     };
 
     const handleOpenFolder = async () => {

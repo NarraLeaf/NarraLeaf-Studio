@@ -11,6 +11,9 @@ import { FocusManager } from "../ui/FocusManager";
 import { KeybindingService } from "../ui/KeybindingService";
 import { EventEmitter } from "../ui/EventEmitter";
 import { UIStateEvents } from "../ui/UIStore";
+import { AssetsService } from "./AssetsService";
+import { Asset } from "../assets/types";
+import { Services } from "../services";
 
 /**
  * UI Service
@@ -49,9 +52,48 @@ export class UIService extends Service<UIService> implements IUIService {
         this._keybindings = new KeybindingService(this._focus);
     }
 
-    protected init(_ctx: WorkspaceContext): Promise<void> | void {
+    protected init(ctx: WorkspaceContext): Promise<void> | void {
         // Start keybinding service
         this._keybindings.start();
+
+        try {
+            const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+            assetsService.getEvents().on("deleted", (asset: Asset) => {
+                // Clear selection if the deleted asset is selected
+                const selection = this.store.getSelection();
+                if (selection.type === "asset" && (selection.data as Asset).id === asset.id) {
+                    this.store.setSelection({ type: null, data: null });
+                }
+
+                // Helper to traverse editor layout and gather {tab, groupId}
+                const collectTabs = (
+                    layout: any,
+                    acc: Array<{ tab: any; groupId: string }>
+                ) => {
+                    if ("tabs" in layout) {
+                        // EditorGroup
+                        (layout.tabs as any[]).forEach((t) => acc.push({ tab: t, groupId: layout.id }));
+                    } else {
+                        collectTabs(layout.first, acc);
+                        collectTabs(layout.second, acc);
+                    }
+                };
+
+                const allTabs: Array<{ tab: any; groupId: string }> = [];
+                collectTabs(this.store.getEditorLayout(), allTabs);
+
+                allTabs.forEach(({ tab, groupId }) => {
+                    const related =
+                        tab.id === `image-preview:${asset.id}` ||
+                        (tab.payload && typeof tab.payload === "object" && "asset" in tab.payload && tab.payload.asset?.id === asset.id);
+                    if (related) {
+                        this.store.closeEditorTabInGroup(tab.id, groupId);
+                    }
+                });
+            });
+        } catch (err) {
+            console.warn("UIService: failed to attach asset deletion listener", err);
+        }
     }
 
     /**

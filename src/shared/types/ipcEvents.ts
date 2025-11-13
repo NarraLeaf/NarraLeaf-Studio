@@ -2,7 +2,7 @@ import { FileDetails, FileStat } from "@shared/utils/fs";
 import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
-import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility } from "./window";
+import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 
 export enum IPCEventType {
@@ -10,7 +10,7 @@ export enum IPCEventType {
     appTerminate = "app.terminate",
     appWindowControl = "app.window.setControl",
     appWindowClose = "app.window.close",
-    appWindowCloseParent = "app.window.closeParent",
+    appWindowCloseWith = "app.window.closeWith",
     appWindowGetControl = "app.window.getControl",
     appWindowControlAbility = "app.window.getControlAbility",
     appWindowProps = "app.window.props",
@@ -98,10 +98,12 @@ export type IPCEvents = {
         data: {},
         response: never;
     };
-    [IPCEventType.appWindowCloseParent]: {
+    [IPCEventType.appWindowCloseWith]: {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
-        data: {},
+        data: {
+            result: WindowCloseResults[WindowAppType];
+        },
         response: never;
     };
     [IPCEventType.appWindowGetControl]: {
@@ -356,7 +358,10 @@ export type IPCProjectWizardEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {},
-        response: void;
+        response: {
+            created: boolean;
+            projectPath: string;
+        } | null;
     };
     [IPCEventType.projectWizardSelectDirectory]: {
         type: IPCMessageType.request,

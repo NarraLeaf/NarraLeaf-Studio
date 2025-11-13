@@ -4,6 +4,8 @@ import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { BaseFileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { BaseProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { join } from "@shared/utils/path";
+import { WindowAppType } from "@shared/types/window";
+import { throwException } from "@shared/utils/error";
 
 /**
  * Service for handling project creation logic
@@ -15,6 +17,13 @@ export class ProjectService {
 
             const basePath = projectData.location;
 
+            // Ensure project directory exists before writing files
+            const dirExists = throwException(await BaseFileSystemService.isDirExists(basePath));
+            if (!dirExists) {
+                throwException(await BaseFileSystemService.createDir(basePath));
+            }
+
+            // Write project.json
             const projectConfigPath = this.resolve(basePath, ProjectNameConvention.ProjectConfig);
             const projectConfig = BaseProjectService.getInitialConfig({
                 name: projectData.name,
@@ -27,45 +36,37 @@ export class ProjectService {
                     resolution: BaseProjectService.parseResolution(projectData.resolution),
                 },
             });
-            await BaseFileSystemService.write(projectConfigPath, JSON.stringify(projectConfig, null, 2), "utf-8");
+            throwException(await BaseFileSystemService.write(projectConfigPath, JSON.stringify(projectConfig, null, 2), "utf-8"));
 
-            const NLCachePath = this.resolve(basePath, ProjectNameConvention.NLCache);
-            await BaseFileSystemService.createDir(NLCachePath);
+            // Create directories
+            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.NLCache)));
+            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Plugins)));
+            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Assets)));
+            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.AssetsContent)));
+            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Scripts)));
 
-            const pluginsPath = this.resolve(basePath, ProjectNameConvention.Plugins);
-            await BaseFileSystemService.createDir(pluginsPath);
-
+            // Write editor.json
             const editorConfigPath = this.resolve(basePath, ProjectNameConvention.EditorConfig);
             const editorConfig = BaseProjectService.getInitialEditorConfig();
-            await BaseFileSystemService.write(editorConfigPath, JSON.stringify(editorConfig, null, 2), "utf-8");
-
-            const assetsPath = this.resolve(basePath, ProjectNameConvention.Assets);
-            await BaseFileSystemService.createDir(assetsPath);
-
-            const assetsContentPath = this.resolve(basePath, ProjectNameConvention.AssetsContent);
-            await BaseFileSystemService.createDir(assetsContentPath);
+            throwException(await BaseFileSystemService.write(editorConfigPath, JSON.stringify(editorConfig, null, 2), "utf-8"));
 
             // Initialize assets metadata files for all asset types
             const assetTypes = ["image", "audio", "video", "json", "font", "other"];
             for (const type of assetTypes) {
                 const metadataPath = this.resolve(basePath, ProjectNameConvention.AssetsMetadataShard(type as any));
-                await BaseFileSystemService.write(metadataPath, JSON.stringify({}, null, 2), "utf-8");
+                throwException(await BaseFileSystemService.write(metadataPath, JSON.stringify({}, null, 2), "utf-8"));
                 
                 const groupsPath = this.resolve(basePath, ProjectNameConvention.AssetsGroupsShard(type as any));
-                await BaseFileSystemService.write(groupsPath, JSON.stringify({}, null, 2), "utf-8");
+                throwException(await BaseFileSystemService.write(groupsPath, JSON.stringify({}, null, 2), "utf-8"));
             }
 
-            const scriptsPath = this.resolve(basePath, ProjectNameConvention.Scripts);
-            await BaseFileSystemService.createDir(scriptsPath);
-
-            getInterface().workspace.launch({ projectPath: basePath });
-            getInterface().window.closeParent();
-            getInterface().window.close();
+            getInterface().window.closeWith<WindowAppType.ProjectWizard>({ created: true, projectPath: basePath });
             
             return { success: true };
         } catch (error) {
-            console.error("Failed to create project:", error);
-            return { success: false, error: "Failed to create project" };
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error("Failed to create project:", errorMessage);
+            return { success: false, error: errorMessage };
         }
     }
 

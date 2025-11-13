@@ -18,9 +18,6 @@ interface SettingsStepProps {
     isSelectingDirectory: boolean;
 }
 
-
-
-
 /**
  * Project settings step for configuration options
  */

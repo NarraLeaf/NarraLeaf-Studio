@@ -16,44 +16,20 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const [activeAsset, setActiveAsset] = useState<Asset | null>(null);
 
-    // Monitor active editor and extract asset from payload
+    // Listen selection changes
     useEffect(() => {
-        if (!context || !isInitialized) return;
-
+        if (!context) return;
         const uiService = context.services.get<UIService>(Services.UI);
         const store = uiService.getStore();
 
-        // Get initial active editor
-        const initialState = store.getState();
-        const activeTabId = initialState.activeEditorTabId;
-        if (activeTabId) {
-            const activeTab = initialState.editorTabs.find(tab => tab.id === activeTabId);
-            if (activeTab && activeTab.payload && (activeTab.payload as any).asset) {
-                setActiveAsset((activeTab.payload as any).asset);
-            }
-        }
+        setActiveAsset(store.getSelection().type === "asset" ? store.getSelection().data as Asset : null);
 
-        // Listen for editor changes
-        const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.activeEditorTabId || changes.editorTabs) {
-                const state = store.getState();
-                const activeTabId = state.activeEditorTabId;
-                
-                if (activeTabId) {
-                    const activeTab = state.editorTabs.find(tab => tab.id === activeTabId);
-                    if (activeTab && activeTab.payload && (activeTab.payload as any).asset) {
-                        setActiveAsset((activeTab.payload as any).asset);
-                    } else {
-                        setActiveAsset(null);
-                    }
-                } else {
-                    setActiveAsset(null);
-                }
-            }
+        const unsub = uiService.getEvents().on("selectionChanged", sel => {
+            setActiveAsset(sel.type === "asset" ? sel.data as Asset : null);
         });
 
-        return unsubscribe;
-    }, [context, isInitialized]);
+        return unsub;
+    }, [context]);
 
     // Render appropriate property editor based on asset type
     const renderPropertyEditor = () => {

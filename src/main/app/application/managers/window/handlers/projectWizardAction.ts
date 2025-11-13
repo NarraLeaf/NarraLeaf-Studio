@@ -1,5 +1,6 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
+import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { app, dialog } from "electron";
 import path from "path";
 import { AppWindow } from "../appWindow";
@@ -9,8 +10,8 @@ export class ProjectWizardLaunchHandler extends IPCHandler<IPCEventType.projectW
     readonly name = IPCEventType.projectWizardLaunch;
     readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
-        await window.getApp().launchProjectWizard(window, {}, {
+    public async handle(window: AppWindow): Promise<RequestStatus<{created: boolean; projectPath: string} | null>> {
+        const wizardWindow = await window.getApp().launchProjectWizard(window, {}, {
             modal: true,
             parent: window.win,
             resizable: false,
@@ -21,7 +22,23 @@ export class ProjectWizardLaunchHandler extends IPCHandler<IPCEventType.projectW
             y: undefined,
         });
 
-        return this.success(void 0);
+        // Establish parent-child relationship
+        window.addChild(wizardWindow);
+
+        // Wait for the wizard window to close and get the result
+        return new Promise<RequestStatus<{created: boolean; projectPath: string} | null>>((resolve) => {
+            // Set up resolver that will be called when window closes
+            // This handles both cases: closeWith was called or window was closed directly
+            wizardWindow.setCloseResultResolver((result: WindowCloseResults[WindowAppType.ProjectWizard]) => {
+                // If result is provided and has created property, return it
+                // Otherwise return null (user cancelled or closed without result)
+                if (result && typeof result === 'object' && 'created' in result && 'projectPath' in result) {
+                    resolve(this.success({ created: result.created, projectPath: result.projectPath }));
+                } else {
+                    resolve(this.success(null));
+                }
+            });
+        });
     }
 }
 

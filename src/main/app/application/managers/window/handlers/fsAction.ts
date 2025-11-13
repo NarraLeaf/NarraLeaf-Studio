@@ -6,6 +6,7 @@ import { Fs } from "@shared/utils/fs";
 import { FileStat, FileDetails } from "@shared/utils/fs";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { dialog } from "electron";
+import pathModule from "path";
 
 export class FsStatHandler extends IPCHandler<IPCEventType.fsStat> {
     readonly name = IPCEventType.fsStat;
@@ -22,8 +23,24 @@ export class FsListHandler extends IPCHandler<IPCEventType.fsList> {
     readonly type = IPCMessageType.request;
 
     public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsList]["data"]): Promise<RequestStatus<FsRequestResult<FileStat[]>>> {
-        const result = await Fs.listFiles(path);
-        return this.success(result);
+        // Use Fs.dirEntries to get all entries (files and directories)
+        // Then convert to FileStat[] format to maintain compatibility
+        const dirEntriesResult = await Fs.dirEntries(path);
+        if (!dirEntriesResult.ok) {
+            return this.success(dirEntriesResult as FsRequestResult<FileStat[]>);
+        }
+
+        // Convert Dirent[] to FileStat[]
+        const fileStats: FileStat[] = dirEntriesResult.data.map(entry => ({
+            name: pathModule.parse(entry.name).name,
+            ext: pathModule.extname(entry.name) || null,
+            type: entry.isDirectory() ? "directory" : "file",
+        }));
+
+        return this.success({
+            ok: true,
+            data: fileStats
+        });
     }
 }
 

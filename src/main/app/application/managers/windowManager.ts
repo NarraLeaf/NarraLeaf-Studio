@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 import { BaseApp } from "../baseApp";
 import { AppWindow } from "./window/appWindow";
-import { AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseParentHandler, AppWindowGetControlHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler } from "./window/handlers/appAction";
+import { AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowGetControlHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler } from "./window/handlers/appAction";
 import { AppSettingsWindowLaunchHandler } from "./window/handlers/settingAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
@@ -68,7 +68,7 @@ export class WindowManager {
         win.registerIPCHandler(new AppPropsHandler());
         win.registerIPCHandler(new AppWindowControlHandler());
         win.registerIPCHandler(new AppWindowCloseHandler());
-        win.registerIPCHandler(new AppWindowCloseParentHandler());
+        win.registerIPCHandler(new AppWindowCloseWithHandler());
         win.registerIPCHandler(new AppWindowGetControlHandler());
         win.registerIPCHandler(new AppWindowControlAbilityHandler());
         win.registerIPCHandler(new AppWindowReadyHandler());

@@ -2,7 +2,7 @@ import { RendererInterfaceKey } from "@shared/types/constants";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
-import { WindowAppType, WindowControlAbility, WindowProps } from "@shared/types/window";
+import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
 import { IPCClient } from "./ipcClient";
 
 export const ipcClient = new IPCClient(Namespace.NarraLeafStudio);
@@ -14,7 +14,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     window: {
         ready: () => ipcClient.send(IPCEventType.appWindowReady, {}),
         close: () => ipcClient.send(IPCEventType.appWindowClose, {}),
-        closeParent: () => ipcClient.send(IPCEventType.appWindowCloseParent, {}),
+        closeWith: <T extends WindowAppType = WindowAppType>(result: WindowCloseResults[T]) => ipcClient.send(IPCEventType.appWindowCloseWith, { result }),
         control: {
             minimize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "minimize" }),
             maximize: () => ipcClient.invoke(IPCEventType.appWindowControl, { control: "maximize" }),
@@ -53,7 +53,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
     },
     launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
-    launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}),
+    launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,
     selectProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardSelectDirectory, {}),
     getDefaultProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardGetDefaultDirectory, {}),
     

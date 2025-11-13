@@ -16,6 +16,11 @@ import { RequestStatus } from "@shared/types/ipcEvents";
 import { getInterface } from "@/lib/app/bridge";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { basename, dirname } from "@shared/utils/path";
+import { EventEmitter } from "../ui/EventEmitter";
+
+interface AssetsEvents {
+    deleted: Asset;
+}
 
 export class AssetsService extends Service<AssetsService> implements IAssetService {
     private assetsMetadata: AssetsMap | null = null;
@@ -26,6 +31,18 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     private jsonService: JSONService | null = null;
     private fontService: FontService | null = null;
     private otherService: OtherService | null = null;
+
+    /**
+     * Event emitter for asset-level changes (added, deleted, updated)
+     */
+    private readonly events = new EventEmitter<AssetsEvents>();
+
+    /**
+     * Get event emitter so UI layer can subscribe
+     */
+    public getEvents(): EventEmitter<AssetsEvents> {
+        return this.events;
+    }
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -69,12 +86,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         if (!this.assetsMetadata) {
             throw new RendererError("Assets metadata not initialized");
         }
-        return this.assetsMetadata[asset.type][asset.hash] !== undefined;
+        return this.assetsMetadata[asset.type][asset.id] !== undefined;
     }
 
     public async fetch<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<AssetData<T>>> {
         if (asset.source === AssetSource.Local) {
-            const path = this.getLocalAssetPath(asset.hash);
+            const path = this.getLocalAssetPath(asset.id);
             switch (asset.type) {
                 case AssetType.Image:
                     if (!this.imageService) {
@@ -109,20 +126,20 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                 default:
                     return {
                         success: false,
-                        error: `Failed to fetch asset: ${asset.hash}. Type "${asset.type}" is not supported.`,
+                        error: `Failed to fetch asset: ${asset.id}. Type "${asset.type}" is not supported.`,
                     };
             }
         }
 
         return {
             success: false,
-            error: `Failed to fetch asset: ${asset.hash}. Source "${asset.source}" is not supported.`,
+            error: `Failed to fetch asset: ${asset.id}. Source "${asset.source}" is not supported.`,
         };
     }
 
     public async importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
         const assetExtensions = AssetExtensions[type];
-        const files = await getInterface().fs.selectFile(assetExtensions, false);
+        const files = await getInterface().fs.selectFile(assetExtensions, true);
         if (!files.success || !files.data.ok) {
             return {
                 success: false,
@@ -157,9 +174,21 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const results: FsRequestResult<void, false>[] = [];
 
         for (const type of Object.values(AssetType)) {
-            const assets = this.list(type);
-            for (const asset of assets) {
-                const dest = this.getLocalAssetPath(asset);
+            const assetIds = this.list(type);
+            for (const assetId of assetIds) {
+                const asset = this.assetsMetadata![type][assetId];
+                if (!asset) {
+                    results.push({
+                        ok: false,
+                        error: {
+                            code: FsRejectErrorCode.UNKNOWN,
+                            message: `Asset not found: ${assetId}`,
+                        },
+                    });
+                    continue;
+                }
+
+                const dest = this.getLocalAssetPath(asset.id);
                 const hashResult = await getInterface().fs.hash(dest);
                 if (!hashResult.success) {
                     results.push({
@@ -173,13 +202,15 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                 }
                 if (!hashResult.data.ok) {
                     results.push(hashResult.data);
+                    continue;
                 }
-                if ((hashResult.data as FsRequestResult<string, true>).data !== asset) {
+                const computedHash = (hashResult.data as FsRequestResult<string, true>).data;
+                if (computedHash !== asset.hash) {
                     results.push({
                         ok: false,
                         error: {
                             code: FsRejectErrorCode.HASH_MISMATCH,
-                            message: `Hash mismatch for asset: ${dest}. Expected ${(hashResult.data as FsRequestResult<string, true>).data} got ${asset}`,
+                            message: `Hash mismatch for asset: ${dest}. Expected ${asset.hash} got ${computedHash}`,
                         },
                     });
                 }
@@ -199,7 +230,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             };
         }
 
-        // generate unique id for this asset
+        // compute file hash for info only
+        const hashResult = await getInterface().fs.hash(path);
+        const fileHash = hashResult.success && hashResult.data.ok ? hashResult.data.data : "";
+
+        // generate unique id for storage / indexing
         const id = crypto.randomUUID();
 
         // resolve unique display name (e.g. "image.png", "image-1.png")
@@ -208,16 +243,17 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
         // construct asset metadata
         const asset: Asset<T, AssetSource.Local> = {
+            id,
             type,
             name: uniqueName,
-            hash: id, // keeping property name for compatibility, but now stores uuid
+            hash: fileHash,
             source: AssetSource.Local,
             meta: {},
             tags: [],
             description: "",
         };
 
-        // copy asset to local directory using uuid as filename (no extension kept)
+        // copy asset to local directory using id as filename
         const destPath = this.getLocalAssetPath(id);
 
         const fsService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
@@ -596,11 +632,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             };
         }
 
-        const existingAsset = this.assetsMetadata![asset.type][asset.hash];
+        const existingAsset = this.assetsMetadata![asset.type][asset.id];
         if (!existingAsset) {
             return {
                 success: false,
-                error: `Asset not found: ${asset.hash}`,
+                error: `Asset not found: ${asset.id}`,
             };
         }
 
@@ -620,11 +656,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     ): Promise<RequestStatus<void>> {
         this.assertMetadata();
 
-        const existingAsset = this.assetsMetadata![asset.type][asset.hash];
+        const existingAsset = this.assetsMetadata![asset.type][asset.id];
         if (!existingAsset) {
             return {
                 success: false,
-                error: `Asset not found: ${asset.hash}`,
+                error: `Asset not found: ${asset.id}`,
             };
         }
 
@@ -643,11 +679,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     ): Promise<RequestStatus<void>> {
         this.assertMetadata();
 
-        const existingAsset = this.assetsMetadata![asset.type][asset.hash];
+        const existingAsset = this.assetsMetadata![asset.type][asset.id];
         if (!existingAsset) {
             return {
                 success: false,
-                error: `Asset not found: ${asset.hash}`,
+                error: `Asset not found: ${asset.id}`,
             };
         }
 
@@ -666,11 +702,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     ): Promise<RequestStatus<void>> {
         this.assertMetadata();
 
-        const existingAsset = this.assetsMetadata![asset.type][asset.hash];
+        const existingAsset = this.assetsMetadata![asset.type][asset.id];
         if (!existingAsset) {
             return {
                 success: false,
-                error: `Asset not found: ${asset.hash}`,
+                error: `Asset not found: ${asset.id}`,
             };
         }
 
@@ -689,15 +725,15 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     ): Promise<RequestStatus<void>> {
         this.assertMetadata();
 
-        if (!this.assetsMetadata![asset.type][asset.hash]) {
+        if (!this.assetsMetadata![asset.type][asset.id]) {
             return {
                 success: false,
-                error: `Asset not found: ${asset.hash}`,
+                error: `Asset not found: ${asset.id}`,
             };
         }
 
         // Delete asset file
-        const assetPath = this.getLocalAssetPath(asset.hash);
+        const assetPath = this.getLocalAssetPath(asset.id);
         const deleteResult = await getInterface().fs.deleteFile(assetPath);
         
         if (!deleteResult.success || !deleteResult.data.ok) {
@@ -706,8 +742,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
 
         // Remove from metadata
-        delete this.assetsMetadata![asset.type][asset.hash];
+        delete this.assetsMetadata![asset.type][asset.id];
         await this.writeAssetsMetadata(asset.type);
+
+        // Emit deletion event so UI can react
+        this.events.emit("deleted", asset);
 
         return {
             success: true,
@@ -722,9 +761,9 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         this.assertMetadata();
 
         // Ensure asset exists
-        const existing = this.assetsMetadata![asset.type][asset.hash];
+        const existing = this.assetsMetadata![asset.type][asset.id];
         if (!existing) {
-            return { success: false, error: `Asset not found: ${asset.hash}` };
+            return { success: false, error: `Asset not found: ${asset.id}` };
         }
 
         // Generate new uuid and resolve unique name
@@ -732,7 +771,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const uniqueName = this.resolveUniqueAssetName(asset.type, asset.name);
 
         // Source/dest paths
-        const srcPath = this.getLocalAssetPath(asset.hash);
+        const srcPath = this.getLocalAssetPath(asset.id);
         const destPath = this.getLocalAssetPath(newId);
 
         // Copy file
@@ -742,10 +781,15 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             return { success: false, error: `Failed to copy asset file: ${msg}` };
         }
 
+        // Compute hash for the duplicated file
+        const hashResult = await getInterface().fs.hash(destPath);
+        const fileHash = hashResult.success && hashResult.data.ok ? hashResult.data.data : asset.hash;
+
         // Create metadata
         const newAsset: Asset<T, AssetSource.Local> = {
             ...asset,
-            hash: newId,
+            id: newId,
+            hash: fileHash,
             name: uniqueName,
             source: AssetSource.Local,
         };
@@ -819,6 +863,16 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
 
         const fileExt = path.split('.').pop()?.toLowerCase() || '';
+        
+        // Check if file extension is in the allowed list for this asset type
+        const allowedExtensions = AssetExtensions[type];
+        if (!allowedExtensions.includes(fileExt)) {
+            return {
+                success: false,
+                error: `File extension .${fileExt} is not allowed for ${type} assets. Allowed extensions: ${allowedExtensions.join(', ')}`,
+            };
+        }
+
         let detectedFormat: string | null = null;
 
         // Detect format based on asset type
@@ -848,16 +902,17 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                     };
                 }
             case AssetType.Other:
-                // No validation for other types
+                // No validation for other types (extension check is sufficient)
                 return { success: true, data: void 0 };
         }
 
+        // If format was detected, verify it matches the file extension
         if (detectedFormat && detectedFormat !== 'unknown') {
             const formatMatches = this.checkFormatMatch(type, fileExt, detectedFormat);
             if (!formatMatches) {
                 return {
                     success: false,
-                    error: `File format mismatch: expected ${fileExt.toUpperCase()} but detected ${detectedFormat.toUpperCase()}. The file may be corrupted or misnamed.`,
+                    error: `File format mismatch: file extension is .${fileExt.toUpperCase()} but file content indicates ${detectedFormat.toUpperCase()} format. The file may be corrupted or misnamed.`,
                 };
             }
         }

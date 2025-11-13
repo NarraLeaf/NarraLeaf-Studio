@@ -188,11 +188,46 @@ export function useAssetsPanelState({
         setLoading(true);
         try {
             const assetsService = context.services.get<AssetsService>(Services.Assets);
-            await assetsService.importFromPaths(type, paths);
+            const result = await assetsService.importFromPaths(type, paths);
+            
+            if (!result.success) {
+                const uiService = context.services.get<UIService>(Services.UI);
+                await uiService.showAlert(
+                    "Failed to import assets",
+                    result.error || "Unknown error occurred"
+                );
+                setError(result.error || "Failed to import assets");
+                return;
+            }
+
+            // Check for individual file import errors
+            if (result.data) {
+                const failedImports = result.data.filter(r => !r.success);
+                if (failedImports.length > 0) {
+                    const successCount = result.data.length - failedImports.length;
+                    const errorMessages = failedImports
+                        .map(r => r.error || "Unknown error")
+                        .filter(Boolean)
+                        .join("\n");
+                    
+                    const uiService = context.services.get<UIService>(Services.UI);
+                    await uiService.showAlert(
+                        "Partial import failure",
+                        `${successCount} asset(s) imported successfully, ${failedImports.length} failed:\n\n${errorMessages}`
+                    );
+                }
+            }
+
             await loadAssets();
         } catch (err) {
             console.error("Failed to import assets:", err);
-            setError(err instanceof Error ? err.message : String(err));
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            setError(errorMessage);
+            
+            if (context) {
+                const uiService = context.services.get<UIService>(Services.UI);
+                await uiService.showAlert("Failed to import assets", errorMessage);
+            }
         } finally {
             setLoading(false);
         }
@@ -204,12 +239,13 @@ export function useAssetsPanelState({
         }
 
         const uiService = context.services.get<UIService>(Services.UI);
-        uiService.focus.setFocus(FocusArea.LeftPanel, `asset:${asset.hash}`);
-        setFocusedItemId(`asset:${asset.hash}`);
+        uiService.getStore().setSelection({ type: "asset", data: asset });
+        uiService.focus.setFocus(FocusArea.LeftPanel, `asset:${asset.id}`);
+        setFocusedItemId(`asset:${asset.id}`);
 
         if (asset.type === AssetType.Image) {
             uiService.editor.open({
-                id: `image-preview:${asset.hash}`,
+                id: `image-preview:${asset.id}`,
                 title: asset.name,
                 icon: <Image className="w-4 h-4" />,
                 component: ImagePreviewEditor,
@@ -252,28 +288,89 @@ export function useAssetsPanelState({
     }, [context, inputDialog, loadAssets, withAssetsService]);
 
     const handleImport = useCallback(async (type: AssetType) => {
+        if (!context) {
+            return;
+        }
+
         setLoading(true);
         try {
-            await withAssetsService(async (assetsService) => {
-                await assetsService.importLocalAssets(type);
-            });
+            const assetsService = context.services.get<AssetsService>(Services.Assets);
+            const result = await assetsService.importLocalAssets(type);
+            
+            if (!result.success) {
+                const uiService = context.services.get<UIService>(Services.UI);
+                await uiService.showAlert(
+                    "Failed to import assets",
+                    result.error || "Unknown error occurred"
+                );
+                setError(result.error || "Failed to import assets");
+                return;
+            }
+
+            // Check for individual file import errors
+            if (result.data) {
+                const failedImports = result.data.filter(r => !r.success);
+                if (failedImports.length > 0) {
+                    const successCount = result.data.length - failedImports.length;
+                    const errorMessages = failedImports
+                        .map(r => r.error || "Unknown error")
+                        .filter(Boolean)
+                        .join("\n");
+                    
+                    const uiService = context.services.get<UIService>(Services.UI);
+                    await uiService.showAlert(
+                        "Partial import failure",
+                        `${successCount} asset(s) imported successfully, ${failedImports.length} failed:\n\n${errorMessages}`
+                    );
+                }
+            }
+
             await loadAssets();
         } catch (err) {
             console.error("Failed to import assets:", err);
-            setError(err instanceof Error ? err.message : String(err));
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            setError(errorMessage);
+            
+            if (context) {
+                const uiService = context.services.get<UIService>(Services.UI);
+                await uiService.showAlert("Failed to import assets", errorMessage);
+            }
         } finally {
             setLoading(false);
         }
-    }, [loadAssets, withAssetsService]);
+    }, [context, loadAssets]);
 
     const handleImportToGroup = useCallback(async (type: AssetType, groupId?: string) => {
+        if (!context) {
+            return;
+        }
+
         setLoading(true);
         try {
-            await withAssetsService(async (assetsService) => {
-                const result = await assetsService.importLocalAssets(type);
-                if (!result.success) {
-                    setError(result.error || "Failed to import assets");
-                    return;
+            const assetsService = context.services.get<AssetsService>(Services.Assets);
+            const result = await assetsService.importLocalAssets(type);
+            
+            if (!result.success) {
+                const uiService = context.services.get<UIService>(Services.UI);
+                await uiService.showAlert(
+                    "Failed to import assets",
+                    result.error || "Unknown error occurred"
+                );
+                setError(result.error || "Failed to import assets");
+                return;
+            }
+
+            // Check for individual file import errors
+            let hasErrors = false;
+            const failedImports: string[] = [];
+            
+            if (result.data) {
+                const failed = result.data.filter(r => !r.success);
+                if (failed.length > 0) {
+                    hasErrors = true;
+                    failed.forEach(r => {
+                        if (r.error) failedImports.push(r.error);
+                    });
                 }
 
                 if (groupId && result.data) {
@@ -283,16 +380,31 @@ export function useAssetsPanelState({
                         }
                     }
                 }
-            });
+            }
+
+            if (hasErrors) {
+                const successCount = result.data ? result.data.length - failedImports.length : 0;
+                const uiService = context.services.get<UIService>(Services.UI);
+                await uiService.showAlert(
+                    "Partial import failure",
+                    `${successCount} asset(s) imported successfully, ${failedImports.length} failed:\n\n${failedImports.join("\n")}`
+                );
+            }
 
             await loadAssets();
         } catch (err) {
             console.error("Failed to import assets:", err);
-            setError(err instanceof Error ? err.message : String(err));
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            setError(errorMessage);
+            
+            if (context) {
+                const uiService = context.services.get<UIService>(Services.UI);
+                await uiService.showAlert("Failed to import assets", errorMessage);
+            }
         } finally {
             setLoading(false);
         }
-    }, [loadAssets, withAssetsService]);
+    }, [context, loadAssets]);
 
     const handleCopy = useCallback(() => {
         if (contextMenuTarget && contextMenuTarget.item && !contextMenuTarget.isGroup) {

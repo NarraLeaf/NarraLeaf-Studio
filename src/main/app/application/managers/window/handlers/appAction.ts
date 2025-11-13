@@ -84,12 +84,12 @@ export class AppWindowCloseHandler extends IPCHandler<IPCEventType.appWindowClos
     }
 }
 
-export class AppWindowCloseParentHandler extends IPCHandler<IPCEventType.appWindowCloseParent> {
-    readonly name = IPCEventType.appWindowCloseParent;
+export class AppWindowCloseWithHandler extends IPCHandler<IPCEventType.appWindowCloseWith> {
+    readonly name = IPCEventType.appWindowCloseWith;
     readonly type = IPCMessageType.message;
 
-    public handle(window: AppWindow) {
-        window.closeParent();
+    public handle(window: AppWindow, data: IPCEvents[IPCEventType.appWindowCloseWith]["data"]) {
+        window.closeWith(data.result);
         return this.success(void 0 as never);
     }
 }

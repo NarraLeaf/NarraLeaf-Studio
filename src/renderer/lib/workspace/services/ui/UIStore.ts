@@ -6,6 +6,7 @@ import {
     EditorTab,
     Dialog,
     StatusBarItem,
+    FocusContext,
 } from "./types";
 import {
     ActionDefinition,
@@ -14,6 +15,11 @@ import {
     EditorGroup,
     EditorTabDefinition,
 } from "@/apps/workspace/registry/types";
+
+export interface SelectionState {
+    type: "asset" | "node" | "scene" | null;
+    data: any | null;
+}
 
 /**
  * UI state
@@ -31,6 +37,7 @@ export interface UIState {
     actions: ActionDefinition[];
     actionGroups: ActionGroup[];
     editorLayout: EditorLayout;
+    selection: SelectionState;
 }
 
 /**
@@ -77,6 +84,7 @@ export interface UIStateEvents {
     editorTabActivatedInGroup: { tabId: string; groupId: string };
     
     stateChanged: Partial<UIState>;
+    selectionChanged: SelectionState;
 }
 
 /**
@@ -104,6 +112,7 @@ export class UIStore {
                 tabs: [],
                 activeTabId: null,
             },
+            selection: { type: null, data: null },
         };
         this.events = new EventEmitter<UIStateEvents>();
     }
@@ -120,6 +129,17 @@ export class UIStore {
      */
     public getState(): Readonly<UIState> {
         return { ...this.state };
+    }
+
+    // === Selection ===
+    public setSelection(selection: SelectionState): void {
+        this.state.selection = selection;
+        this.events.emit("selectionChanged", selection);
+        this.events.emit("stateChanged", { selection });
+    }
+
+    public getSelection(): SelectionState {
+        return this.state.selection;
     }
 
     // === Notifications ===
@@ -557,6 +577,7 @@ export class UIStore {
                 tabs: [],
                 activeTabId: null,
             },
+            selection: { type: null, data: null },
         };
         this.events.clear();
     }
