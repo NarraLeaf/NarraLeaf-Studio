@@ -34,3 +34,14 @@ export type WindowLuanchOptions = {
     modal: boolean;
     child: boolean;
 };
+
+/**
+ * Window close result types for each window type
+ * Defines the return value type when a window is closed with closeWith()
+ */
+export type WindowCloseResults = {
+    [WindowAppType.Launcher]: null;
+    [WindowAppType.Settings]: null;
+    [WindowAppType.Workspace]: null;
+    [WindowAppType.ProjectWizard]: { created: boolean; projectPath: string } | null;
+};

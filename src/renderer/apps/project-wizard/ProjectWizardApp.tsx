@@ -21,6 +21,7 @@ export function ProjectWizardApp() {
         isValidatingDirectory,
         isSelectingDirectory,
         isCreatingProject,
+        creationError,
         updateProjectName,
         updateAppId,
         updateProjectData,
@@ -32,6 +33,7 @@ export function ProjectWizardApp() {
         prevStep,
         createProject,
         canProceed,
+        clearCreationError,
     } = useProjectWizard();
 
     // Step configuration
@@ -47,11 +49,10 @@ export function ProjectWizardApp() {
      */
     const handleCreateProject = async () => {
         const result = await createProject();
-        if (result.success) {
-            window.close();
-        } else {
+        // If successful, closeWith() in projectService will handle window closing
+        // If failed, error is already displayed via creationError state
+        if (!result.success) {
             console.error("Failed to create project:", result.error);
-            // TODO: Show error to user
         }
     };
 
@@ -109,6 +110,36 @@ export function ProjectWizardApp() {
                 {/* Step Content */}
                 <div className="flex-1 overflow-y-auto">
                     {renderStepContent()}
+                    
+                    {/* Error Message */}
+                    {creationError && (
+                        <div className="p-4 mx-6 mb-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+                            <div className="flex items-start gap-3">
+                                <div className="text-red-400 mt-0.5 flex-shrink-0">
+                                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                                    </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="text-sm font-medium text-red-200">
+                                        Failed to Create Project
+                                    </h3>
+                                    <p className="text-sm text-red-300 mt-1 break-words">
+                                        {creationError}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={clearCreationError}
+                                    className="text-red-400 hover:text-red-300 flex-shrink-0"
+                                    aria-label="Close error"
+                                >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Navigation Footer */}

@@ -14,9 +14,10 @@ export type AssetResolveMeta<Source extends AssetSource> = Source extends AssetS
  * Stored in assets metadata files
  */
 export interface Asset<Type extends AssetType = AssetType, Source extends AssetSource = AssetSource.Local> {
+    id: string; // Unique identifier (UUID) used for indexing and file storage
     type: Type;
     name: string;
-    hash: string;
+    hash: string; // File hash (read-only, for integrity checking)
     source: Source;
     meta: AssetResolveMeta<Source>;
     tags: string[];

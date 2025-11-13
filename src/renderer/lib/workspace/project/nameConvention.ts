@@ -15,19 +15,27 @@ export const ProjectNameConvention = {
 
     Assets: ["assets/"],
     AssetsContent: ["assets", "content/"],
-    AssetsDataShard: (hash: string) => ["assets", "content", ...splitHash(hash)],
+    AssetsDataShard: (id: string) => ["assets", "content", ...splitId(id)],
     Scripts: ["scripts/"],
 } as const;
 
-function splitHash(hash: string): [string, string, string] {
-    if (hash.length < 4) {
-        // If hash is too short, pad it or use fallback
-        const padded = hash.padEnd(4, '0');
-        return [padded.slice(0, 2), padded.slice(2, 4), hash];
+/**
+ * Split UUID or hash into path segments for storage
+ * UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 chars with dashes)
+ * Hash format: 64 hex characters
+ */
+function splitId(id: string): [string, string, string] {
+    // Remove dashes if it's a UUID (UUIDs contain dashes)
+    const cleanId = id.replace(/-/g, '');
+    
+    if (cleanId.length < 4) {
+        // If id is too short, pad it or use fallback
+        const padded = cleanId.padEnd(4, '0');
+        return [padded.slice(0, 2), padded.slice(2, 4), id];
     }
-    const charsA = hash.slice(0, 2);
-    const charsB = hash.slice(2, 4);
-    const rest = hash.slice(4);
+    const charsA = cleanId.slice(0, 2);
+    const charsB = cleanId.slice(2, 4);
+    const rest = cleanId.slice(4);
     // Ensure rest is not empty to avoid directory paths
-    return [charsA, charsB, rest || hash];
+    return [charsA, charsB, rest || id];
 }

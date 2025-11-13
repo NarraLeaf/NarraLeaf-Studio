@@ -254,7 +254,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
                                                         onDragEnd={handleDragEnd}
                                                         onDragOver={handleDragOverItem}
                                                         onDrop={handleDropOnItem}
-                                                        draggedItemId={draggedItem?.isGroup ? (draggedItem.item as AssetGroup).id : draggedItem ? (draggedItem.item as Asset).hash : null}
+                                                        draggedItemId={draggedItem?.isGroup ? (draggedItem.item as AssetGroup).id : draggedItem ? (draggedItem.item as Asset).id : null}
                                                         dropTargetId={dropTargetId}
                                                     />
                                                 ))}
@@ -264,13 +264,13 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
                                                 .filter(a => !a.groupId)
                                                 .map(asset => (
                                                     <AssetItem
-                                                        key={asset.hash}
+                                                        key={asset.id}
                                                         asset={asset}
                                                         type={type}
                                                         level={0}
                                                         onClick={() => handleAssetClick(asset)}
                                                         onContextMenu={(e) => showContextMenu(e, type, asset, false)}
-                                                        isFocused={isFocused(`asset:${asset.hash}`)}
+                                                        isFocused={isFocused(`asset:${asset.id}`)}
                                                         onDragStart={handleDragStart}
                                                         onDragEnd={handleDragEnd}
                                                         isDragging={draggedItem?.item === asset}
@@ -391,16 +391,16 @@ function GroupItem({
                     {/* Group assets */}
                     {groupAssets.map(asset => (
                         <AssetItem
-                            key={asset.hash}
+                            key={asset.id}
                             asset={asset}
                             type={type}
                             level={level + 1}
                             onClick={() => onAssetClick(asset)}
                             onContextMenu={(e) => onContextMenu(e, type, asset, false)}
-                            isFocused={isFocused(`asset:${asset.hash}`)}
+                            isFocused={isFocused(`asset:${asset.id}`)}
                             onDragStart={onDragStart}
                             onDragEnd={onDragEnd}
-                            isDragging={draggedItemId === asset.hash}
+                            isDragging={draggedItemId === asset.id}
                         />
                     ))}
                 </div>

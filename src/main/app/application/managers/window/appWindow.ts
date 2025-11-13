@@ -8,7 +8,7 @@ import { WindowInstanceConfig, WindowInstance } from "./windowInstance";
 import { WindowIPC } from "./windowIPC";
 import { WindowProxy } from "./windowProxy";
 import { WindowUserHandlers } from "./windowUserHandlers";
-import { WindowProps, WindowAppType, WindowVisibilityStatus } from "@shared/types/window";
+import { WindowProps, WindowAppType, WindowVisibilityStatus, WindowCloseResults } from "@shared/types/window";
 
 export interface WindowConfig {
     isolated: boolean;
@@ -31,6 +31,8 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     private children: Set<AppWindow> = new Set();
     private tokens: Map<AppWindow, AppEventToken> = new Map();
     private parent?: AppWindow;
+    private closeResult?: WindowCloseResults[T];
+    private closeResultResolver?: (result: WindowCloseResults[T]) => void;
 
     constructor(app: App, config: Partial<WindowConfig>, props: WindowProps[T]) {
         const instanceConfig: WindowInstanceConfig = {
@@ -119,10 +121,17 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         this.getBrowserWindow().close();
     }
 
-    public closeParent(): void {
-        if (this.parent) {
-            this.parent.close();
-        }
+    public closeWith(result: WindowCloseResults[T]): void {
+        this.closeResult = result;
+        this.close();
+    }
+
+    public setCloseResultResolver(resolver: (result: WindowCloseResults[T]) => void): void {
+        this.closeResultResolver = resolver;
+    }
+
+    public getCloseResult(): WindowCloseResults[T] | undefined {
+        return this.closeResult;
     }
 
     public isClosed(): boolean {
@@ -220,6 +229,13 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         
         win.on("close", () => {
             this.getEvents().emit("close", this);
+
+            // Resolve close result if resolver is set
+            if (this.closeResultResolver) {
+                // If closeResult is undefined, pass null (window closed without result)
+                this.closeResultResolver(this.closeResult ?? null as WindowCloseResults[T]);
+                this.closeResultResolver = undefined;
+            }
 
             this.getApp().windowManager.unregisterWindow(this);
         });
