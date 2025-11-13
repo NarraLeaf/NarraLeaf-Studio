@@ -20,6 +20,13 @@ function useAccordionContext() {
     return context;
 }
 
+// 新增：Nested toggle notification context
+interface AccordionNestedContextValue {
+    notifyNestedToggle: () => void;
+}
+
+const AccordionNestedContext = createContext<AccordionNestedContextValue | null>(null);
+
 // Accordion Props
 export interface AccordionProps {
     children: ReactNode;
@@ -66,7 +73,7 @@ export function Accordion({
 
     const toggleItem = (id: string) => {
         const newOpenItems = new Set(openItems);
-        
+
         if (newOpenItems.has(id)) {
             newOpenItems.delete(id);
         } else {
@@ -189,6 +196,20 @@ export function AccordionItem({
     const contentRef = useRef<HTMLDivElement>(null);
     const [contentHeight, setContentHeight] = useState<number>(0);
 
+    // Nested toggle notification
+    const parentNestedContext = useContext(AccordionNestedContext);
+
+    const notifyNestedToggle = () => {
+        // Use rAF to measure after DOM updates for more accurate height
+        requestAnimationFrame(() => {
+            if (contentRef.current) {
+                setContentHeight(contentRef.current.scrollHeight);
+            }
+            // Propagate notification to higher levels after own measurement
+            parentNestedContext?.notifyNestedToggle();
+        });
+    };
+
     // Measure content height for animation
     useEffect(() => {
         if (contentRef.current) {
@@ -196,12 +217,39 @@ export function AccordionItem({
         }
     }, [children, isOpen]);
 
+    // Auto-update height when descendants resize (e.g., nested accordions toggled)
+    useEffect(() => {
+        const el = contentRef.current;
+        if (!el) return;
+
+        // Some environments may not support ResizeObserver; guard just in case
+        if (typeof ResizeObserver === 'undefined') return;
+
+        const observer = new ResizeObserver(() => {
+            setContentHeight(el.scrollHeight);
+            // Notify ancestors because our height changed
+            parentNestedContext?.notifyNestedToggle();
+        });
+        observer.observe(el);
+
+        return () => observer.disconnect();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Notify ancestors when this item's open state changes
+    useEffect(() => {
+        parentNestedContext?.notifyNestedToggle();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]);
+
     const handleClick = () => {
         if (disabled) return;
         toggleItem(id);
         if (focusable) {
             setFocusedItem(id);
         }
+        // Inform ancestors to recompute height after toggle
+        notifyNestedToggle();
     };
 
     const handleMouseEnter = () => {
@@ -215,51 +263,52 @@ export function AccordionItem({
     const indentation = level * 12; // 12px per level
 
     return (
-        <div
-            className={`border-b border-white/10 ${className}`}
-            data-accordion-item={id}
-        >
-            {/* Header */}
-            <button
-                onClick={handleClick}
-                onMouseEnter={handleMouseEnter}
-                disabled={disabled}
-                className={`
+        <AccordionNestedContext.Provider value={{ notifyNestedToggle }}>
+            <div
+                className={`border-b border-white/10 ${className}`}
+                data-accordion-item={id}
+            >
+                {/* Header */}
+                <button
+                    onClick={handleClick}
+                    onMouseEnter={handleMouseEnter}
+                    disabled={disabled}
+                    className={`
                     w-full flex items-center gap-2 px-3 py-2 text-left
                     transition-colors duration-200
                     ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-default hover:bg-white/10'}
                     ${isFocused && !disabled && focusable ? 'bg-primary/20' : ''}
                     ${headerClassName}
                 `}
-                style={{ paddingLeft: `${12 + indentation}px` }}
-            >
-                {/* Expand/collapse icon */}
-                <ChevronRight
-                    className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform duration-200 ${
-                        isOpen ? 'transform rotate-90' : ''
-                    }`}
-                />
-                
-                {/* Custom icon (optional) */}
-                {icon && <span className="w-4 h-4 flex-shrink-0">{icon}</span>}
-                
-                {/* Title */}
-                <span className="flex-1 text-sm text-gray-300">{title}</span>
-            </button>
+                    style={{ paddingLeft: `${12 + indentation}px` }}
+                >
+                    {/* Expand/collapse icon */}
+                    <ChevronRight
+                        className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'transform rotate-90' : ''
+                            }`}
+                    />
 
-            {/* Content */}
-            <div
-                style={{
-                    height: isOpen ? `${contentHeight}px` : '0px',
-                    overflow: 'hidden',
-                    transition: 'height 200ms ease-out',
-                }}
-            >
-                <div ref={contentRef} className={contentClassName}>
-                    {children}
+                    {/* Custom icon (optional) */}
+                    {icon && <span className="w-4 h-4 flex-shrink-0">{icon}</span>}
+
+                    {/* Title */}
+                    <span className="flex-1 text-sm text-gray-300">{title}</span>
+                </button>
+
+                {/* Content */}
+                <div
+                    style={{
+                        height: isOpen ? `${contentHeight}px` : '0px',
+                        overflow: 'hidden',
+                        transition: 'height 200ms ease-out',
+                    }}
+                >
+                    <div ref={contentRef} className={contentClassName}>
+                        {children}
+                    </div>
                 </div>
             </div>
-        </div>
+        </AccordionNestedContext.Provider>
     );
 }
 
@@ -279,7 +328,7 @@ export function NestedAccordion({
 }: NestedAccordionProps) {
     const parentContext = useContext(AccordionContext);
     const isActive = parentContext?.isActive ?? providedIsActive ?? true;
-    
+
     return (
         <Accordion
             {...props}
