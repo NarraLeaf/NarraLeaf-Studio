@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { X, Plus, Image as ImageIcon } from "lucide-react";
 import { PropertyEditorProps } from "./PropertyEditorBase";
 import { AssetType, AssetData } from "@/lib/workspace/services/assets/assetTypes";
@@ -18,6 +18,25 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
     const [newTag, setNewTag] = useState("");
     const [saving, setSaving] = useState(false);
     const [imageData, setImageData] = useState<AssetData<AssetType.Image> | null>(null);
+    const tagInputRef = useRef<HTMLInputElement>(null);
+
+    // Sync local state when asset reference changes
+    useEffect(() => {
+        setName(asset.name);
+        setTags(asset.tags);
+        setDescription(asset.description);
+    }, [asset]);
+
+    // Keep focus on tag input after adding a tag
+    useEffect(() => {
+        if (newTag === "") {
+            // Small delay to ensure DOM has updated
+            const timer = setTimeout(() => {
+                tagInputRef.current?.focus();
+            }, 10);
+            return () => clearTimeout(timer);
+        }
+    }, [newTag]);
 
     // Load image metadata
     useEffect(() => {
@@ -154,6 +173,7 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
                 </div>
                 <div className="flex gap-1">
                     <input
+                        ref={tagInputRef}
                         type="text"
                         value={newTag}
                         onChange={(e) => setNewTag(e.target.value)}
@@ -197,7 +217,7 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
             {imageData && (
                 <div>
                     <label className="block text-xs font-medium text-gray-400 mb-1">
-                        Technical Info
+                        Image Information
                     </label>
                     <div className="bg-[#1e1f22] border border-white/10 rounded-md p-3 space-y-1">
                         <div className="flex justify-between text-xs">

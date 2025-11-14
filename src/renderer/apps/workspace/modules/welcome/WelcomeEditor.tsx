@@ -37,7 +37,7 @@ export function WelcomeEditor({ tabId, payload }: EditorComponentProps) {
                         <GettingStartedStep
                             number={3}
                             title="Create Story"
-                            description="Create game scenes and dialogs using the story editor. Supports node-based editing and preview."
+                            description="Create game scenes and dialogs using the story editor. "
                         />
                         <GettingStartedStep
                             number={4}
