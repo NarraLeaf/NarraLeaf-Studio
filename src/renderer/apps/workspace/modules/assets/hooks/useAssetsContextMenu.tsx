@@ -61,7 +61,7 @@ export function useAssetsContextMenu({
 
         const items: ContextMenuDef = [];
 
-        // Multi-selection mode menu
+        // Always add copy/cut operations first if applicable
         if (isMultiSelectMode) {
             // Check if all selected items are assets (not groups)
             const selectedAssetItems = Array.from(selectedItems).filter(id => id.startsWith('asset:'));
@@ -99,25 +99,8 @@ export function useAssetsContextMenu({
                     },
                 },
             );
-
-            // Paste option when clipboard available and context allows (root or group)
-            if (clipboard) {
-                items.push({ separator: true as const, id: 'sep-paste' });
-                items.push({
-                    id: 'paste',
-                    label: 'Paste',
-                    onClick: async () => {
-                        await handlePaste();
-                        closeContextMenu();
-                    }
-                });
-            }
-
-            return items;
-        }
-
-        // Single item menu (original logic)
-        if (contextMenuTarget.item && !contextMenuTarget.isGroup) {
+        } else if (contextMenuTarget.item && !contextMenuTarget.isGroup) {
+            // Single asset selected
             items.push(
                 {
                     id: "copy",
@@ -136,31 +119,25 @@ export function useAssetsContextMenu({
                     },
                 },
             );
-
-            if (clipboard) {
-                items.push({
-                    id: 'paste',
-                    label: 'Paste',
-                    onClick: async () => {
-                        await handlePaste();
-                        closeContextMenu();
-                    }
-                });
-            }
         }
 
-        if (clipboard && (contextMenuTarget.isGroup || !contextMenuTarget.item)) {
+        // Add paste option in consistent position (after copy/cut/delete operations)
+        if (clipboard) {
+            if (items.length > 0) {
+                items.push({ separator: true as const, id: 'sep-paste' });
+            }
             items.push({
-                id: "paste",
-                label: "Paste",
+                id: 'paste',
+                label: 'Paste',
                 onClick: async () => {
                     await handlePaste();
                     closeContextMenu();
-                },
+                }
             });
         }
 
-        if (contextMenuTarget.item) {
+        // Add rename/delete for single items
+        if (!isMultiSelectMode && contextMenuTarget.item) {
             if (items.length > 0) {
                 items.push({ separator: true as const, id: "sep1" });
             }
@@ -184,35 +161,34 @@ export function useAssetsContextMenu({
             );
         }
 
-        if (contextMenuTarget.isGroup || !contextMenuTarget.item) {
-            if (items.length > 0) {
-                items.push({ separator: true as const, id: "sep2" });
-            }
-
-            items.push({
-                id: "new-group",
-                label: contextMenuTarget.isGroup ? "New Sub-Group" : "New Group",
-                onClick: async () => {
-                    const parentGroupId = contextMenuTarget.item
-                        ? (contextMenuTarget.item as AssetGroup).id
-                        : undefined;
-                    await handleCreateGroup(contextMenuTarget.type, parentGroupId);
-                    closeContextMenu();
-                },
-            });
-
-            items.push({
-                id: "import-assets",
-                label: "Import Assets...",
-                onClick: async () => {
-                    const groupId = contextMenuTarget.item
-                        ? (contextMenuTarget.item as AssetGroup).id
-                        : undefined;
-                    await handleImportToGroup(contextMenuTarget.type, groupId);
-                    closeContextMenu();
-                },
-            });
+        // Always show create group and import options at the end
+        if (items.length > 0) {
+            items.push({ separator: true as const, id: "sep-actions" });
         }
+
+        items.push({
+            id: "new-group",
+            label: contextMenuTarget.isGroup ? "New Sub-Group" : "New Group",
+            onClick: async () => {
+                const parentGroupId = contextMenuTarget.item
+                    ? (contextMenuTarget.item as AssetGroup).id
+                    : undefined;
+                await handleCreateGroup(contextMenuTarget.type, parentGroupId);
+                closeContextMenu();
+            },
+        });
+
+        items.push({
+            id: "import-assets",
+            label: "Import Assets...",
+            onClick: async () => {
+                const groupId = contextMenuTarget.item
+                    ? (contextMenuTarget.item as AssetGroup).id
+                    : undefined;
+                await handleImportToGroup(contextMenuTarget.type, groupId);
+                closeContextMenu();
+            },
+        });
 
         return items;
     }, [clipboard, closeContextMenu, contextMenuTarget, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleCreateGroup, isMultiSelectMode, selectedItems]);

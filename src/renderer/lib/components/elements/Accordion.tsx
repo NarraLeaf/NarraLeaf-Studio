@@ -272,17 +272,15 @@ export function AccordionItem({
                 data-accordion-item={id}
             >
                 {/* Header */}
-                <div className="w-full flex items-center">
+                <div className={`w-full flex items-center group transition-colors duration-200 ${disabled ? '' : 'hover:bg-white/10'} ${isFocused && !disabled && focusable ? 'bg-primary/20' : ''} ${headerClassName}`}>
                     <button
                         onClick={handleClick}
                         onMouseEnter={handleMouseEnter}
                         disabled={disabled}
                         className={`
-                        flex-1 flex items-center gap-2 px-3 py-2 text-left
+                        flex-1 flex items-center gap-2 pl-3 py-2 text-left
                         transition-colors duration-200
-                        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-default hover:bg-white/10'}
-                        ${isFocused && !disabled && focusable ? 'bg-primary/20' : ''}
-                        ${headerClassName}
+                        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-default'}
                     `}
                         style={{ paddingLeft: `${12 + indentation}px` }}
                     >
@@ -301,7 +299,7 @@ export function AccordionItem({
 
                     {/* Actions */}
                     {actions && (
-                        <div className="flex items-center gap-1 pr-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" onClick={(e) => e.stopPropagation()}>
                             {actions}
                         </div>
                     )}

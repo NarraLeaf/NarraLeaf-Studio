@@ -242,7 +242,7 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
         <div>
             <div
                 draggable
-                className={`flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 ${isSelected ? 'bg-primary/20' : ''} ${isFocused(`group:${group.id}`) ? 'bg-gray-600/10' : ''} ${isDragging ? 'opacity-50' : ''} ${isDropTarget ? 'bg-primary/20' : ''}`}
+                className={`flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`group:${group.id}`) ? 'bg-gray-600/10' : ''} ${isDragging ? 'opacity-50' : ''} ${isDropTarget ? 'bg-primary/20' : ''}`}
                 style={{ paddingLeft: `${20 + level * 12}px` }}
                 onClick={(e) => { handleItemSelect(group.id, true, e); handleGroupFocus(group.id); setIsOpen(!isOpen); }}
                 onContextMenu={(e) => showContextMenu(e, type, group, true)}
@@ -275,7 +275,7 @@ function AssetItem({ asset, type, level }: { asset: Asset; type: AssetType; leve
     return (
         <div
             draggable
-            className={`flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 ${isSelected ? 'bg-primary/20' : ''} ${isFocused(`asset:${asset.id}`) ? 'bg-gray-600/10' : ''} ${clipboard?.type === 'cut' && clipboard.assets.some(a => a.id === asset.id) ? 'opacity-40' : ''} ${isDragging ? 'opacity-50' : ''}`}
+            className={`flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`asset:${asset.id}`) ? 'bg-gray-600/10' : ''} ${clipboard?.type === 'cut' && clipboard.assets.some(a => a.id === asset.id) ? 'opacity-40' : ''} ${isDragging ? 'opacity-50' : ''}`}
             style={{ paddingLeft: `${20 + level * 12}px` }}
             onClick={(e) => { handleItemSelect(asset.id, false, e); handleAssetClick(asset, isMultiSelectMode); }}
             onContextMenu={(e) => showContextMenu(e, type, asset, false)}
