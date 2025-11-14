@@ -113,6 +113,9 @@ const InputDialogContent: React.FC<InputDialogContentProps> = ({
         } else if (event.key === "Escape") {
             event.preventDefault();
             cancel();
+        } else if (event.ctrlKey || event.altKey || event.metaKey) {
+            // Prevent global shortcuts from being triggered when typing in dialog input
+            event.stopPropagation();
         }
     }, [commit, cancel]);
 

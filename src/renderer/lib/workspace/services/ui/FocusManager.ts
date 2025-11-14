@@ -15,6 +15,7 @@ export interface FocusEvents {
  */
 export class FocusManager {
     private currentFocus: FocusContext;
+    private focusStack: FocusContext[] = []; // Stack to track previous focus states for dialogs
     private events: EventEmitter<FocusEvents>;
 
     constructor() {
@@ -35,13 +36,35 @@ export class FocusManager {
     /**
      * Set focus to a specific area and target
      */
-    public setFocus(area: FocusArea, targetId?: string): void {
+    public setFocus(area: FocusArea, targetId?: string, options?: { silent?: boolean; pushToStack?: boolean }): void {
         const oldFocus = { ...this.currentFocus };
+
+        // Handle dialog focus management
+        if (area === FocusArea.Dialog) {
+            // When setting focus to a dialog, push current focus to stack
+            if (options?.pushToStack !== false) { // Default to true for dialogs
+                this.focusStack.push(oldFocus);
+            }
+        }
+
         this.currentFocus = { area, targetId };
 
-        // Only emit if focus actually changed
-        if (oldFocus.area !== area || oldFocus.targetId !== targetId) {
+        // Only emit if focus actually changed and not silent
+        if (!options?.silent && (oldFocus.area !== area || oldFocus.targetId !== targetId)) {
             this.events.emit("focusChanged", this.currentFocus);
+        }
+    }
+
+    /**
+     * Restore previous focus from stack (used when closing dialogs)
+     */
+    public restorePreviousFocus(): void {
+        const previousFocus = this.focusStack.pop();
+        if (previousFocus) {
+            this.setFocus(previousFocus.area, previousFocus.targetId, { pushToStack: false });
+        } else {
+            // If no previous focus in stack, clear focus
+            this.clearFocus();
         }
     }
 

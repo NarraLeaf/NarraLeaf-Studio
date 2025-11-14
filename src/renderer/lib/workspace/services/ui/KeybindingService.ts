@@ -1,5 +1,6 @@
 import { Keybinding, FocusContext } from "./types";
 import { FocusManager } from "./FocusManager";
+import { UIStore } from "./UIStore";
 
 /**
  * Parse a keybinding string (e.g., "ctrl+s") into modifier keys and key
@@ -68,11 +69,13 @@ function matchesKeybinding(event: KeyboardEvent, parsed: ParsedKeybinding): bool
 export class KeybindingService {
     private keybindings: Map<string, Keybinding>;
     private focusManager: FocusManager;
+    private uiStore: UIStore;
     private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 
-    constructor(focusManager: FocusManager) {
+    constructor(focusManager: FocusManager, uiStore: UIStore) {
         this.keybindings = new Map();
         this.focusManager = focusManager;
+        this.uiStore = uiStore;
     }
 
     /**
@@ -138,12 +141,18 @@ export class KeybindingService {
      * Handle keydown event
      */
     private handleKeyDown(event: KeyboardEvent): void {
+        // If there's an active dialog, don't process global keybindings
+        // Dialogs handle their own keyboard events
+        if (this.uiStore.getActiveDialogId()) {
+            return;
+        }
+
         const currentFocus = this.focusManager.getFocus();
 
         // Find matching keybindings
         for (const keybinding of this.keybindings.values()) {
             const parsed = parseKeybinding(keybinding.key);
-            
+
             if (matchesKeybinding(event, parsed)) {
                 // Check if keybinding is active in current context
                 if (keybinding.when && !keybinding.when(currentFocus)) {
@@ -153,7 +162,7 @@ export class KeybindingService {
                 // Execute handler
                 event.preventDefault();
                 event.stopPropagation();
-                
+
                 const result = keybinding.handler(currentFocus);
                 if (result instanceof Promise) {
                     result.catch(err => {

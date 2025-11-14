@@ -42,14 +42,14 @@ export class UIService extends Service<UIService> implements IUIService {
     constructor() {
         super();
         this.store = new UIStore();
+        this._focus = new FocusManager();
         this._notifications = new NotificationService(this.store);
         this._actionBar = new ActionBarService(this.store);
         this._panels = new PanelService(this.store);
         this._editor = new EditorService(this.store);
-        this._dialogs = new DialogService(this.store);
+        this._dialogs = new DialogService(this.store, this._focus);
         this._statusBar = new StatusBarService(this.store);
-        this._focus = new FocusManager();
-        this._keybindings = new KeybindingService(this._focus);
+        this._keybindings = new KeybindingService(this._focus, this.store);
     }
 
     protected init(ctx: WorkspaceContext): Promise<void> | void {

@@ -21,11 +21,11 @@ export function EditorGroup({ group }: EditorGroupProps) {
     const { context } = useWorkspace();
     const [isFocused, setIsFocused] = useState(false);
 
-    const activeTab = group.tabs.find((tab) => tab.id === group.activeTabId);
+    const activeTab = group.tabs.find((tab) => tab.id === group.focus);
 
     // Set focus when active tab changes or when editor is clicked
     useEffect(() => {
-        if (!context || !group.activeTabId) return;
+        if (!context || !group.focus) return;
 
         const uiService = context.services.get<UIService>(Services.UI);
         
@@ -33,15 +33,12 @@ export function EditorGroup({ group }: EditorGroupProps) {
         const unsubscribe = uiService.focus.onFocusChange((focusContext) => {
             setIsFocused(
                 focusContext.area === FocusArea.Editor && 
-                focusContext.targetId === group.activeTabId
+                focusContext.targetId === group.focus
             );
         });
 
-        // Set focus when active tab mounts or changes (after subscribing)
-        uiService.focus.setFocus(FocusArea.Editor, group.activeTabId);
-
         return unsubscribe;
-    }, [context, group.activeTabId]);
+    }, [context, group.focus]);
 
     const handleCloseTab = (tabId: string, e: React.MouseEvent) => {
         e.stopPropagation();
@@ -54,9 +51,9 @@ export function EditorGroup({ group }: EditorGroupProps) {
     };
 
     const handleEditorClick = () => {
-        if (!context || !group.activeTabId) return;
+        if (!context || !group.focus) return;
         const uiService = context.services.get<UIService>(Services.UI);
-        uiService.focus.setFocus(FocusArea.Editor, group.activeTabId);
+        uiService.focus.setFocus(FocusArea.Editor, group.focus);
     };
 
     return (
@@ -71,7 +68,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
             {group.tabs.length > 0 && (
                 <div className="flex items-center bg-[#0b0d12] border-b border-white/10 overflow-x-auto">
                     {group.tabs.map((tab) => {
-                        const isActive = tab.id === group.activeTabId;
+                        const isActive = tab.id === group.focus;
                         const closable = tab.closable !== false;
 
                         return (

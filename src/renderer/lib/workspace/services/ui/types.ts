@@ -122,6 +122,7 @@ export enum FocusArea {
     BottomPanel = "bottom-panel",
     Editor = "editor",
     ActionBar = "action-bar",
+    Dialog = "dialog",
     None = "none",
 }
 

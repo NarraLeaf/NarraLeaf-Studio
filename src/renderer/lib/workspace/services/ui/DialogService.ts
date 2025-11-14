@@ -1,5 +1,7 @@
 import React, { ReactNode } from "react";
 import { UIStore } from "./UIStore";
+import { FocusManager } from "./FocusManager";
+import { FocusArea } from "./types";
 import { Dialog, DialogButton, QuickPickItem, QuickPickOptions, InputBoxOptions } from "./types";
 
 /**
@@ -8,11 +10,13 @@ import { Dialog, DialogButton, QuickPickItem, QuickPickOptions, InputBoxOptions 
  */
 export class DialogService {
     private store: UIStore;
+    private focusManager: FocusManager;
     private nextId = 1;
     private dialogResolvers: Map<string, (result: any) => void> = new Map();
 
-    constructor(store: UIStore) {
+    constructor(store: UIStore, focusManager: FocusManager) {
         this.store = store;
+        this.focusManager = focusManager;
     }
 
     /**
@@ -183,6 +187,9 @@ export class DialogService {
         this.store.closeDialog(id);
         // Clean up resolver if exists
         this.dialogResolvers.delete(id);
+
+        // Restore previous focus from stack
+        this.focusManager.restorePreviousFocus();
     }
 
     /**
@@ -249,6 +256,10 @@ export class DialogService {
         };
 
         this.store.openDialog(dialog);
+
+        // Set focus to the new dialog
+        this.focusManager.setFocus(FocusArea.Dialog, id);
+
         return id;
     }
 }

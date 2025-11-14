@@ -16,18 +16,18 @@ export class EditorService {
     /**
      * Open an editor tab with optional payload
      */
-    public open<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string): void {
+    public open<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string, options?: { activate?: boolean }): void {
         // Route to group-aware API to ensure consistent behavior with Registry
-        this.store.openEditorTabInGroup(tab, groupId);
+        this.store.openEditorTabInGroup(tab, groupId, options?.activate ?? true);
     }
 
     /**
      * Open or update an editor tab with new payload
      * If the tab is already open, updates its payload
      */
-    public openOrUpdate<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string): void {
+    public openOrUpdate<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string, options?: { activate?: boolean }): void {
         // Group-aware API already updates existing tabs and activates them
-        this.store.openEditorTabInGroup(tab, groupId);
+        this.store.openEditorTabInGroup(tab, groupId, options?.activate ?? true);
     }
 
     /**
