@@ -9,6 +9,10 @@ export interface UseAssetsContextMenuParams {
     clipboard: ClipboardState | null;
     contextMenuTarget: ContextMenuTargetState | null;
     setContextMenuTarget: (target: ContextMenuTargetState | null) => void;
+    // Multi-selection related
+    selectedItems: Set<string>;
+    isMultiSelectMode: boolean;
+    handleClearSelection: () => void;
     // handlers passed from state hook
     handleCopy: () => void;
     handleCut: () => void;
@@ -23,6 +27,10 @@ export function useAssetsContextMenu({
     clipboard,
     contextMenuTarget,
     setContextMenuTarget,
+    // Multi-selection related
+    selectedItems,
+    isMultiSelectMode,
+    handleClearSelection,
     handleCopy,
     handleCut,
     handlePaste,
@@ -52,6 +60,62 @@ export function useAssetsContextMenu({
 
         const items: ContextMenuDef = [];
 
+        // Multi-selection mode menu
+        if (isMultiSelectMode) {
+            // Check if all selected items are assets (not groups)
+            const selectedAssetItems = Array.from(selectedItems).filter(id => id.startsWith('asset:'));
+            const hasAssets = selectedAssetItems.length > 0;
+
+            if (hasAssets) {
+                items.push(
+                    {
+                        id: "copy-selected",
+                        label: `Copy ${selectedAssetItems.length} item(s)`,
+                        onClick: () => {
+                            handleCopy();
+                            closeContextMenu();
+                        },
+                    },
+                    {
+                        id: "cut-selected",
+                        label: `Cut ${selectedAssetItems.length} item(s)`,
+                        onClick: () => {
+                            handleCut();
+                            closeContextMenu();
+                        },
+                    },
+                );
+            }
+
+            // Delete selected items
+            items.push(
+                {
+                    id: "delete-selected",
+                    label: `Delete ${selectedItems.size} item(s)`,
+                    onClick: async () => {
+                        await handleDelete();
+                        closeContextMenu();
+                    },
+                },
+            );
+
+            // Paste option when clipboard available and context allows (root or group)
+            if (clipboard) {
+                items.push({ separator: true as const, id: 'sep-paste' });
+                items.push({
+                    id: 'paste',
+                    label: 'Paste',
+                    onClick: async () => {
+                        await handlePaste();
+                        closeContextMenu();
+                    }
+                });
+            }
+
+            return items;
+        }
+
+        // Single item menu (original logic)
         if (contextMenuTarget.item && !contextMenuTarget.isGroup) {
             items.push(
                 {
@@ -71,6 +135,17 @@ export function useAssetsContextMenu({
                     },
                 },
             );
+
+            if (clipboard) {
+                items.push({
+                    id: 'paste',
+                    label: 'Paste',
+                    onClick: async () => {
+                        await handlePaste();
+                        closeContextMenu();
+                    }
+                });
+            }
         }
 
         if (clipboard && (contextMenuTarget.isGroup || !contextMenuTarget.item)) {
@@ -139,7 +214,7 @@ export function useAssetsContextMenu({
         }
 
         return items;
-    }, [clipboard, closeContextMenu, contextMenuTarget, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleCreateGroup]);
+    }, [clipboard, closeContextMenu, contextMenuTarget, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleCreateGroup, isMultiSelectMode, selectedItems, handleClearSelection]);
 
     return {
         menuState,

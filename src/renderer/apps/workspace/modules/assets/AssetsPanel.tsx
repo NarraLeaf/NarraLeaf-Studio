@@ -12,9 +12,12 @@ import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { ContextMenu } from "@/lib/components/elements/ContextMenu";
 import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
-import React from "react";
+import React, { useRef } from "react";
 import { createInputDialog } from "@/lib/components/dialogs";
-import { useAssetsPanelState } from "./hooks/useAssetsPanelState";
+import { ClipboardState, useAssetsPanelState } from "./hooks/useAssetsPanelState";
+import { SearchBox } from "./components/SearchBox";
+import { SearchResultsPopup } from "./components/SearchResultsPopup";
+import { FilterSystem } from "./components/FilterSystem";
 
 // Asset type icons mapping
 const ASSET_TYPE_ICONS = {
@@ -42,6 +45,7 @@ const ASSET_TYPE_LABELS = {
  */
 export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
+    const searchBoxRef = useRef<HTMLElement>(null);
     const inputDialog = useMemo(() => {
         if (!context) return null;
         const uiService = context.services.get<UIService>(Services.UI);
@@ -59,6 +63,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
         dropTargetId,
         focusedItemId,
         contextMenuTarget,
+        // Multi-selection related
+        selectedItems,
+        isMultiSelectMode,
         setContextMenuTarget,
         setDragOver,
         setDropTargetId,
@@ -78,6 +85,24 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
         handleDragEnd,
         handleDragOverItem,
         handleDropOnItem,
+        // Multi-selection methods
+        handleItemSelect,
+        handleClearSelection,
+        handleSelectAll,
+        // Search related
+        searchQuery,
+        searchResults,
+        isSearchResultsVisible,
+        setSearchQuery,
+        setSearchResultsVisible,
+        handleSearchResultClick,
+        // Filter related
+        filterConfigs,
+        activeFilters,
+        filteredAssets,
+        filteredGroups,
+        setActiveFilters,
+        handleFilterOpen,
     } = useAssetsPanelState({
         context,
         isInitialized,
@@ -94,6 +119,10 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
         clipboard,
         contextMenuTarget,
         setContextMenuTarget,
+        // Multi-selection related
+        selectedItems,
+        isMultiSelectMode,
+        handleClearSelection,
         handleCopy,
         handleCut,
         handlePaste,
@@ -163,18 +192,40 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
             onDragLeave={handlePanelDragLeave}
         >
             {/* Toolbar */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
-                <span className="text-xs text-gray-400">
-                    {Object.values(assets).reduce((sum, arr) => sum + arr.length, 0)} items
-                </span>
-                <button
-                    onClick={loadAssets}
-                    disabled={loading}
-                    className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-default disabled:opacity-50"
-                    title="Refresh"
-                >
-                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                </button>
+            <div className="px-3 py-2 border-b border-white/10 space-y-2">
+                {/* Search Box */}
+                <SearchBox
+                    ref={searchBoxRef}
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    className="w-full"
+                    placeholder="Search assets..."
+                />
+
+                {/* Filter System */}
+                <FilterSystem
+                    filters={filterConfigs}
+                    activeFilters={activeFilters}
+                    onFiltersChange={setActiveFilters}
+                    onFilterOpen={handleFilterOpen}
+                    className="flex-shrink-0"
+                />
+
+                {/* Stats and Actions */}
+                <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">
+                        {Object.values(filteredAssets).reduce((sum, arr) => sum + arr.length, 0)} items
+                        {activeFilters.length > 0 && ` (filtered from ${Object.values(assets).reduce((sum, arr) => sum + arr.length, 0)})`}
+                    </span>
+                    <button
+                        onClick={loadAssets}
+                        disabled={loading}
+                        className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-default disabled:opacity-50"
+                        title="Refresh"
+                    >
+                        <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                    </button>
+                </div>
             </div>
 
             {/* Asset List */}
@@ -186,8 +237,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
                 >
                     {Object.values(AssetType).map((type) => {
                         const TypeIcon = ASSET_TYPE_ICONS[type];
-                        const typeAssets = assets[type];
-                        const typeGroups = groups[type];
+                        const typeAssets = filteredAssets[type];
+                        const typeGroups = filteredGroups[type];
 
                         return (
                             <AccordionItem
@@ -243,8 +294,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
                                                         key={group.id}
                                                         group={group}
                                                         type={type}
-                                                        assets={typeAssets}
-                                                        groups={typeGroups}
+                                                        assets={filteredAssets[type]}
+                                                        groups={filteredGroups[type]}
                                                         level={0}
                                                         onAssetClick={handleAssetClick}
                                                         onContextMenu={showContextMenu}
@@ -256,6 +307,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
                                                         onDrop={handleDropOnItem}
                                                         draggedItemId={draggedItem?.isGroup ? (draggedItem.item as AssetGroup).id : draggedItem ? (draggedItem.item as Asset).id : null}
                                                         dropTargetId={dropTargetId}
+                                                        selectedItems={selectedItems}
+                                                        onItemSelect={handleItemSelect}
                                                     />
                                                 ))}
 
@@ -268,12 +321,19 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
                                                         asset={asset}
                                                         type={type}
                                                         level={0}
-                                                        onClick={() => handleAssetClick(asset)}
+                                                        onClick={(e) => {
+                                                            // Selection is handled inside AssetItem
+                                                            handleAssetClick(asset);
+                                                        }}
                                                         onContextMenu={(e) => showContextMenu(e, type, asset, false)}
                                                         isFocused={isFocused(`asset:${asset.id}`)}
+                                                        isMultiSelectMode={isMultiSelectMode}
+                                                        clipboard={clipboard}
                                                         onDragStart={handleDragStart}
                                                         onDragEnd={handleDragEnd}
                                                         isDragging={draggedItem?.item === asset}
+                                                        selectedItems={selectedItems}
+                                                        onItemSelect={handleItemSelect}
                                                     />
                                                 ))}
                                         </div>
@@ -283,6 +343,18 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps) {
                         );
                     })}
                 </Accordion>
+            </div>
+
+            {/* Search Results Popup */}
+            <div className="absolute" style={{ position: 'relative' }}>
+                <SearchResultsPopup
+                    results={searchResults}
+                    visible={isSearchResultsVisible}
+                    onResultClick={handleSearchResultClick}
+                    onClose={() => setSearchResultsVisible(false)}
+                    searchQuery={searchQuery}
+                    anchorRef={searchBoxRef}
+                />
             </div>
 
             {/* Context Menu */}
@@ -303,7 +375,7 @@ interface GroupItemProps {
     assets: Asset[];
     groups: AssetGroup[];
     level: number;
-    onAssetClick: (asset: Asset) => void;
+    onAssetClick: (asset: Asset, event?: React.MouseEvent) => void;
     onContextMenu: (e: React.MouseEvent, type: AssetType, item: Asset | AssetGroup, isGroup: boolean) => void;
     onGroupFocus: (groupId: string) => void;
     isFocused: (id: string) => boolean;
@@ -313,6 +385,9 @@ interface GroupItemProps {
     onDrop: (e: React.DragEvent, targetType: AssetType, targetGroup: AssetGroup | null) => void;
     draggedItemId: string | null;
     dropTargetId: string | null;
+    // Multi-selection related
+    selectedItems: Set<string>;
+    onItemSelect: (itemId: string, isGroup: boolean, event: React.MouseEvent) => void;
 }
 
 function GroupItem({
@@ -331,6 +406,9 @@ function GroupItem({
     onDrop,
     draggedItemId,
     dropTargetId,
+    // Multi-selection related
+    selectedItems,
+    onItemSelect,
 }: GroupItemProps) {
     const [isOpen, setIsOpen] = useState(false);
     const childGroups = groups.filter(g => g.parentGroupId === group.id);
@@ -345,11 +423,13 @@ function GroupItem({
                 className={`
                     flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 transition-colors
                     ${isFocused(`group:${group.id}`) ? 'border-l-2 border-primary bg-gray-600/10' : ''}
+                    ${selectedItems.has(`group:${group.id}`) ? 'bg-blue-600/20 border-l-2 border-blue-500' : ''}
                     ${isDragging ? 'opacity-50' : ''}
                     ${isDropTarget ? 'bg-primary/20 border-l-2 border-primary' : ''}
                 `}
                 style={{ paddingLeft: `${20 + level * 12}px` }}
-                onClick={() => {
+                onClick={(e) => {
+                    onItemSelect(group.id, true, e);
                     onGroupFocus(group.id);
                     setIsOpen(!isOpen);
                 }}
@@ -385,6 +465,8 @@ function GroupItem({
                             onDrop={onDrop}
                             draggedItemId={draggedItemId}
                             dropTargetId={dropTargetId}
+                            selectedItems={selectedItems}
+                            onItemSelect={onItemSelect}
                         />
                     ))}
 
@@ -395,13 +477,14 @@ function GroupItem({
                             asset={asset}
                             type={type}
                             level={level + 1}
-                            onClick={() => onAssetClick(asset)}
+                            onClick={(e) => onAssetClick(asset, e)}
                             onContextMenu={(e) => onContextMenu(e, type, asset, false)}
                             isFocused={isFocused(`asset:${asset.id}`)}
                             onDragStart={onDragStart}
                             onDragEnd={onDragEnd}
                             isDragging={draggedItemId === asset.id}
-                        />
+                            selectedItems={selectedItems}
+                            onItemSelect={onItemSelect} clipboard={null}                        />
                     ))}
                 </div>
             )}
@@ -414,27 +497,39 @@ interface AssetItemProps {
     asset: Asset;
     type: AssetType;
     level: number;
-    onClick: () => void;
+    onClick: (e: React.MouseEvent) => void;
     onContextMenu: (e: React.MouseEvent) => void;
     isFocused: boolean;
     onDragStart: (e: React.DragEvent, type: AssetType, item: Asset | AssetGroup, isGroup: boolean) => void;
     onDragEnd: () => void;
     isDragging: boolean;
+    // Multi-selection related
+    selectedItems: Set<string>;
+    onItemSelect: (itemId: string, isGroup: boolean, event: React.MouseEvent) => void;
+    isMultiSelectMode?: boolean;
+    clipboard: ClipboardState | null;
 }
 
-function AssetItem({ asset, type, level, onClick, onContextMenu, isFocused, onDragStart, onDragEnd, isDragging }: AssetItemProps) {
+function AssetItem({ asset, type, level, onClick, onContextMenu, isFocused, onDragStart, onDragEnd, isDragging, selectedItems, onItemSelect, isMultiSelectMode, clipboard }: AssetItemProps) {
     const Icon = ASSET_TYPE_ICONS[asset.type];
+
+    const handleClick = (e: React.MouseEvent) => {
+        onItemSelect(asset.id, false, e);
+        onClick(e);
+    };
 
     return (
         <div
             draggable={true}
             className={`
                 flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 transition-colors
-                ${isFocused ? 'border-l-2 border-primary bg-gray-600/10' : ''}
+                ${!isMultiSelectMode && isFocused ? 'border-l-2 border-primary bg-gray-600/10' : ''}
+                ${selectedItems.has(`asset:${asset.id}`) ? 'bg-blue-600/20 border-l-2 border-blue-500' : ''}
+                ${clipboard && clipboard.type === 'cut' && clipboard.assets.some(a=>a.id===asset.id) ? 'opacity-40' : ''}
                 ${isDragging ? 'opacity-50' : ''}
             `}
             style={{ paddingLeft: `${20 + level * 12}px` }}
-            onClick={onClick}
+            onClick={handleClick}
             onContextMenu={onContextMenu}
             onDragStart={(e) => onDragStart(e, type, asset, false)}
             onDragEnd={onDragEnd}

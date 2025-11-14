@@ -20,6 +20,7 @@ import { EventEmitter } from "../ui/EventEmitter";
 
 interface AssetsEvents {
     deleted: Asset;
+    updated: Asset;
 }
 
 export class AssetsService extends Service<AssetsService> implements IAssetService {
@@ -643,6 +644,9 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         existingAsset.groupId = groupId;
         await this.writeAssetsMetadata(asset.type);
 
+        // Emit update event so UI can react
+        this.events.emit("updated", existingAsset);
+
         return {
             success: true,
             data: void 0,
@@ -667,6 +671,9 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         existingAsset.tags = tags;
         await this.writeAssetsMetadata(asset.type);
 
+        // Emit update event so UI can react
+        this.events.emit("updated", existingAsset);
+
         return {
             success: true,
             data: void 0,
@@ -690,6 +697,9 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         existingAsset.description = description;
         await this.writeAssetsMetadata(asset.type);
 
+        // Emit update event so UI can react
+        this.events.emit("updated", existingAsset);
+
         return {
             success: true,
             data: void 0,
@@ -712,6 +722,9 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
         existingAsset.name = newName;
         await this.writeAssetsMetadata(asset.type);
+
+        // Emit update event so UI can react
+        this.events.emit("updated", existingAsset);
 
         return {
             success: true,

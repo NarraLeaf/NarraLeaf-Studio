@@ -42,6 +42,13 @@
     background: transparent;
 }
 
+/* Global focus styles - remove default browser focus outlines */
+*:focus,
+*:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
 /* Global input focus styles */
 input:focus,
 textarea:focus,

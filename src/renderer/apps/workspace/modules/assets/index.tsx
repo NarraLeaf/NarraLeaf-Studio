@@ -3,12 +3,12 @@ import { PanelModule } from "../types";
 import { AssetsPanel } from "./AssetsPanel";
 import { PanelPosition } from "../../registry/types";
 import { FocusArea, FocusContext } from "@/lib/workspace/services/ui/types";
-import { Workspace } from "@/lib/workspace/workspace";
-import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import { Services } from "@/lib/workspace/services/services";
+// import { Workspace } from "@/lib/workspace/workspace";
+// import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+// import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+// import { Services } from "@/lib/workspace/services/services";
 
-const when = (context: FocusContext) => context.area === FocusArea.LeftPanel && context.targetId === "narraleaf-studio:assets";
+// const when = (context: FocusContext) => context.area === FocusArea.LeftPanel && context.targetId === "narraleaf-studio:assets";
 
 /**
  * Assets panel module
@@ -39,34 +39,25 @@ export const assetsModule: PanelModule = {
     //         order: 100,
     //     },
     // ],
-    actionGroups: [
-        {
-            id: "narraleaf-studio:assets-actions",
-            label: "Assets",
-            actions: [
-                {
-                    id: "narraleaf-studio:assets-import",
-                    label: "Import Images",
-                    tooltip: "Import a new asset",
-                    when,
-                    onClick: async (workspace: Workspace) => {
-                        const result = await workspace.getContext().services.get<AssetsService>(Services.Assets).importLocalAssets(AssetType.Image);
-                        console.log(result);
-                    },
-                },
-                {
-                    id: "narraleaf-studio:assets-print",
-                    label: "Print Assets",
-                    tooltip: "Print assets metadata to the console",
-                    when,
-                    onClick: (workspace: Workspace) => {
-                        const assets = workspace.getContext().services.get<AssetsService>(Services.Assets).getAssets();
-                        console.log(assets);
-                    },
-                },
-            ],
-        },
-    ],
+    // actionGroups: [
+    //     {
+    //         id: "narraleaf-studio:assets-actions",
+    //         label: "Assets",
+    //         actions: [
+    //             {
+    //                 id: "narraleaf-studio:assets-import",
+    //                 label: "Import Images",
+    //                 tooltip: "Import images from your local files",
+    //                 when,
+    //                 onClick: async (workspace: Workspace) => {
+    //                     const result = await workspace.getContext().services.get<AssetsService>(Services.Assets).importLocalAssets(AssetType.Image);
+    //                     console.log(result);
+    //                 },
+    //             },
+
+    //         ],
+    //     },
+    // ],
     // Keybindings specific to the assets panel
     // keybindings: [
     //     // Example: Refresh keybinding
