@@ -3,7 +3,8 @@ import { useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
-import { ClipboardState, ContextMenuTargetState } from "./useAssetsPanelState";
+import { ContextMenuTargetState } from "../state/useAssetActions";
+import { ClipboardState } from "../state/useClipboard";
 
 export interface UseAssetsContextMenuParams {
     clipboard: ClipboardState | null;
@@ -214,7 +215,7 @@ export function useAssetsContextMenu({
         }
 
         return items;
-    }, [clipboard, closeContextMenu, contextMenuTarget, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleCreateGroup, isMultiSelectMode, selectedItems, handleClearSelection]);
+    }, [clipboard, closeContextMenu, contextMenuTarget, handleCopy, handleCut, handleDelete, handleImportToGroup, handlePaste, handleRename, handleCreateGroup, isMultiSelectMode, selectedItems]);
 
     return {
         menuState,

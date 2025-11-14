@@ -102,7 +102,7 @@ export interface EditorSplit {
 export interface EditorGroup {
     id: string;
     tabs: EditorTabDefinition<any>[];
-    activeTabId: string | null;
+    focus: string | null;
 }
 
 export type EditorLayout = EditorSplit | EditorGroup;

@@ -531,11 +531,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             a => a.groupId === groupId
         );
 
-        if (assetsInGroup.length > 0) {
-            // Move assets to root (no group)
-            for (const asset of assetsInGroup) {
-                asset.groupId = undefined;
-            }
+        // Delete all assets within this group instead of moving them to root
+        for (const asset of assetsInGroup) {
+            // Ensure we await each deletion to keep metadata consistent
+            await this.deleteAsset(asset);
         }
 
         // Delete child groups recursively
@@ -786,6 +785,20 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         // Source/dest paths
         const srcPath = this.getLocalAssetPath(asset.id);
         const destPath = this.getLocalAssetPath(newId);
+
+        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        // Ensure destination directory exists
+        const destDir = dirname(destPath);
+        const dirEnsure = await filesystemService.createDir(destDir);
+        if (!dirEnsure.ok) {
+            return { success: false, error: `Failed to create destination directory: ${dirEnsure.error?.message}` };
+        }
+
+        // Check if source file exists
+        const srcExists = await filesystemService.isFileExists(srcPath);
+        if (!srcExists.ok || !srcExists.data) {
+            return { success: false, error: `Source asset file not found: ${srcPath}` };
+        }
 
         // Copy file
         const copyResult = await getInterface().fs.copyFile(srcPath, destPath);

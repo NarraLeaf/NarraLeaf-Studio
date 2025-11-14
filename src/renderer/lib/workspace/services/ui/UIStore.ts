@@ -79,7 +79,7 @@ export interface UIStateEvents {
     
     // EditorLayout events
     editorLayoutChanged: EditorLayout;
-    editorTabOpenedInGroup: { tab: EditorTabDefinition; groupId: string };
+    editorTabOpenedInGroup: { tab: EditorTabDefinition; groupId: string; activated: boolean };
     editorTabClosedInGroup: { tabId: string; groupId: string };
     editorTabActivatedInGroup: { tabId: string; groupId: string };
     
@@ -110,7 +110,7 @@ export class UIStore {
             editorLayout: {
                 id: "main",
                 tabs: [],
-                activeTabId: null,
+                focus: null,
             },
             selection: { type: null, data: null },
         };
@@ -476,7 +476,7 @@ export class UIStore {
         };
     }
 
-    public openEditorTabInGroup<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string): void {
+    public openEditorTabInGroup<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string, activate: boolean = true): void {
         const targetGroup = this.findGroup(this.state.editorLayout, groupId);
         const targetId = targetGroup?.id ?? (this.state.editorLayout as EditorGroup).id;
 
@@ -487,17 +487,17 @@ export class UIStore {
                 // Update existing tab with new payload
                 const updatedTabs = [...group.tabs];
                 updatedTabs[existingIndex] = tab as EditorTabDefinition<any>;
-                return { ...group, tabs: updatedTabs, activeTabId: tab.id };
+                return { ...group, tabs: updatedTabs, focus: activate ? tab.id : group.focus };
             }
             // Add new tab
-            return {
+            const newGroup = {
                 ...group,
                 tabs: [...group.tabs, tab as EditorTabDefinition<any>],
-                activeTabId: tab.id,
             };
+            return activate ? { ...newGroup, focus: tab.id } : newGroup;
         });
 
-        this.events.emit("editorTabOpenedInGroup", { tab: tab as EditorTabDefinition<any>, groupId: targetId });
+        this.events.emit("editorTabOpenedInGroup", { tab: tab as EditorTabDefinition<any>, groupId: targetId, activated: activate });
         this.events.emit("editorLayoutChanged", this.state.editorLayout);
         this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
     }
@@ -526,14 +526,14 @@ export class UIStore {
 
         this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
             const tabs = group.tabs.filter((t) => t.id !== tabId);
-            let activeTabId = group.activeTabId;
+            let activeTabId = group.focus;
 
             // If we closed the active tab, activate another
             if (activeTabId === tabId) {
                 activeTabId = tabs.length > 0 ? tabs[tabs.length - 1].id : null;
             }
 
-            return { ...group, tabs, activeTabId };
+            return { ...group, tabs, focus: activeTabId };
         });
 
         this.events.emit("editorTabClosedInGroup", { tabId, groupId: targetId });
@@ -544,7 +544,7 @@ export class UIStore {
     public setActiveEditorTabInGroup(tabId: string, groupId: string): void {
         this.state.editorLayout = this.updateGroup(this.state.editorLayout, groupId, (group) => ({
             ...group,
-            activeTabId: tabId,
+            focus: tabId,
         }));
 
         this.events.emit("editorTabActivatedInGroup", { tabId, groupId });
@@ -575,7 +575,7 @@ export class UIStore {
             editorLayout: {
                 id: "main",
                 tabs: [],
-                activeTabId: null,
+                focus: null,
             },
             selection: { type: null, data: null },
         };
