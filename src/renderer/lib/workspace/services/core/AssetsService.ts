@@ -39,10 +39,53 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     private readonly events = new EventEmitter<AssetsEvents>();
 
     /**
+     * Transaction batching support
+     */
+    private batchDepth = 0;
+    private dirtyTypes = new Set<AssetType>();
+
+    /**
      * Get event emitter so UI layer can subscribe
      */
     public getEvents(): EventEmitter<AssetsEvents> {
         return this.events;
+    }
+
+    /**
+     * Execute a transaction that batches all metadata changes
+     */
+    public async transaction(
+        mutator: (svc: this) => Promise<void> | void,
+    ): Promise<void> {
+        this.beginBatch();
+        try {
+            await mutator(this);
+        } finally {
+            await this.endBatch();
+        }
+    }
+
+    private beginBatch(): void {
+        this.batchDepth += 1;
+    }
+
+    private async endBatch(): Promise<void> {
+        if (--this.batchDepth > 0) return;
+        await this.flushPendingWrites();
+    }
+
+    private markDirty(type: AssetType): void {
+        this.dirtyTypes.add(type);
+        if (this.batchDepth === 0) {
+            void this.flushPendingWrites();
+        }
+    }
+
+    private async flushPendingWrites(): Promise<void> {
+        if (this.dirtyTypes.size === 0) return;
+        const types = Array.from(this.dirtyTypes);
+        this.dirtyTypes.clear();
+        await Promise.all(types.map(type => this.writeAssetsMetadata(type)));
     }
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
@@ -153,13 +196,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             results.push(await this.importLocalAsset(type, file));
         }
 
-        const writeResult = await this.writeAssetsMetadata(type);
-        if (!writeResult.ok) {
-            return {
-                success: false,
-                error: `Failed to write assets metadata: ${`[${writeResult.error.code}] ${writeResult.error.message}`}`,
-            };
-        }
+        this.markDirty(type);
 
         return {
             success: true,
@@ -365,7 +402,26 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             if (shardResult.ok) {
                 Object.assign(data[type], shardResult.data);
             } else {
-                throw new RendererError(`Failed to read assets metadata shard: ${shardPath}`);
+                // readJSON failed (file missing or invalid JSON) – attempt manual recovery
+                const rawResult = await filesystemService.read(shardPath, "utf-8");
+                let parsed: Record<string, Asset> | null = null;
+                if (rawResult.ok) {
+                    try {
+                        parsed = JSON.parse(rawResult.data);
+                    } catch {
+                        parsed = null;
+                    }
+                }
+
+                if (parsed) {
+                    Object.assign(data[type], parsed);
+                } else {
+                    console.warn(`AssetsService: metadata shard corrupted, backing up and resetting: ${shardPath}`);
+                    // Backup corrupted file
+                    await filesystemService.copyFile(shardPath, `${shardPath}.bak`);
+                    // Overwrite with empty object
+                    await filesystemService.write(shardPath, JSON.stringify({}), "utf-8");
+                }
             }
         }
 
@@ -547,9 +603,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         // Delete the group
         delete this.assetsGroups![type][groupId];
 
+        // Remove any now-empty parent groups
+        this.cleanupEmptyGroups(type);
+
         // Save changes
         await this.writeAssetsGroupsMetadata(type);
-        await this.writeAssetsMetadata(type);
+        this.markDirty(type);
 
         return {
             success: true,
@@ -641,7 +700,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
 
         existingAsset.groupId = groupId;
-        await this.writeAssetsMetadata(asset.type);
+        this.markDirty(asset.type);
 
         // Emit update event so UI can react
         this.events.emit("updated", existingAsset);
@@ -668,7 +727,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
 
         existingAsset.tags = tags;
-        await this.writeAssetsMetadata(asset.type);
+        this.markDirty(asset.type);
 
         // Emit update event so UI can react
         this.events.emit("updated", existingAsset);
@@ -694,7 +753,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
 
         existingAsset.description = description;
-        await this.writeAssetsMetadata(asset.type);
+        this.markDirty(asset.type);
 
         // Emit update event so UI can react
         this.events.emit("updated", existingAsset);
@@ -720,7 +779,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
 
         existingAsset.name = newName;
-        await this.writeAssetsMetadata(asset.type);
+        this.markDirty(asset.type);
 
         // Emit update event so UI can react
         this.events.emit("updated", existingAsset);
@@ -755,10 +814,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
         // Remove from metadata
         delete this.assetsMetadata![asset.type][asset.id];
-        await this.writeAssetsMetadata(asset.type);
+        this.markDirty(asset.type);
 
         // Emit deletion event so UI can react
         this.events.emit("deleted", asset);
+
+        // Note: cleanup of empty groups should be triggered by caller after batch deletions to avoid frequent writes
 
         return {
             success: true,
@@ -822,10 +883,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
         // Save metadata
         (this.assetsMetadata![asset.type] as Record<string, Asset<T>>)[newId] = newAsset as Asset<T>;
-        const writeResult = await this.writeAssetsMetadata(asset.type);
-        if (!writeResult.ok) {
-            return { success: false, error: `Failed to write metadata: ${writeResult.error.message}` };
-        }
+        this.markDirty(asset.type);
 
         return { success: true, data: newAsset };
     }
@@ -840,13 +898,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             results.push(await this.importLocalAsset(type, path));
         }
 
-        const writeResult = await this.writeAssetsMetadata(type);
-        if (!writeResult.ok) {
-            return {
-                success: false,
-                error: `Failed to write assets metadata: ${writeResult.error.code} ${writeResult.error.message}`,
-            };
-        }
+        this.markDirty(type);
 
         return {
             success: true,
@@ -1129,5 +1181,48 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
 
         return false;
+    }
+
+    /**
+     * Remove groups that have become empty (no assets and no child groups)
+     */
+    public cleanupEmptyGroups(type?: AssetType): boolean {
+        if (!this.assetsGroups || !this.assetsMetadata) return false;
+
+        const types = type ? [type] as AssetType[] : (Object.values(AssetType) as AssetType[]);
+
+        let changed = false;
+        for (const t of types) {
+            const groups = this.assetsGroups[t];
+            if (!groups) continue;
+
+            let currentChanged = true;
+            while (currentChanged) {
+                currentChanged = false;
+                for (const [gid, g] of Object.entries(groups)) {
+                    // Skip rootless groups until their children processed
+                    const hasChildGroup = Object.values(groups).some(gr => gr.parentGroupId === gid);
+                    const hasAssets = Object.values(this.assetsMetadata[t]).some(a => a.groupId === gid);
+                    if (!hasChildGroup && !hasAssets) {
+                        delete groups[gid];
+                        currentChanged = true;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        return changed;
+    }
+
+    public async cleanupEmptyGroupsPersist(type?: AssetType) {
+        if (this.cleanupEmptyGroups(type)) {
+            if (type) {
+                await this.writeAssetsGroupsMetadata(type);
+            } else {
+                for (const t of Object.values(AssetType)) {
+                    await this.writeAssetsGroupsMetadata(t);
+                }
+            }
+        }
     }
 }

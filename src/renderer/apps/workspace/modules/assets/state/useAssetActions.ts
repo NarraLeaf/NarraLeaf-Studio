@@ -25,6 +25,8 @@ export interface UseAssetActionsParams {
     focusedItemId: string | null;
     onActionComplete: () => void; // To reload assets, clear selections, etc.
     setClipboard: (clipboard: ClipboardState | null) => void;
+    /** Notify caller when a long-running action starts/ends */
+    setActionLoading?: (loading: boolean) => void;
 }
 
 export function useAssetActions({
@@ -37,11 +39,19 @@ export function useAssetActions({
     contextMenuTarget,
     focusedItemId,
     onActionComplete,
-    setClipboard
+    setClipboard,
+    setActionLoading
 }: UseAssetActionsParams) {
     // Use ref to always have latest context inside callbacks to avoid stale closure issues.
     const contextRef = useRef(context);
     contextRef.current = context;
+
+    // Helper to inform UI about loading state of long operations
+    const notifyLoading = useCallback((loading: boolean) => {
+        if (setActionLoading) {
+            setActionLoading(loading);
+        }
+    }, [setActionLoading]);
 
     const withAssetsService = useCallback(async <T,>(handler: (service: AssetsService) => Promise<T>): Promise<T | undefined> => {
         const ctx = contextRef.current;
@@ -57,36 +67,43 @@ export function useAssetActions({
 
     const handleImport = useCallback(async (type: AssetType, groupId?: string, files?: FileList) => {
         if (!context) return;
+        notifyLoading(true);
         
         await withAssetsService(async (assetsService) => {
-            const result = files 
-                ? await assetsService.importFromPaths(type, Array.from(files).map(f => (f as any).path))
-                : await assetsService.importLocalAssets(type);
+            await assetsService.transaction(async (svc) => {
+                const result = files
+                    ? await svc.importFromPaths(type, Array.from(files).map(f => (f as any).path))
+                    : await svc.importLocalAssets(type);
 
-            if (!result.success) {
-                context.services.get<UIService>(Services.UI).showAlert("Failed to import assets", result.error || "Unknown error");
-                return;
-            }
+                if (!result.success) {
+                    context.services.get<UIService>(Services.UI).showAlert("Failed to import assets", result.error || "Unknown error");
+                    return;
+                }
 
-            if (groupId && result.data) {
-                for (const assetResult of result.data) {
-                    if (assetResult.success && assetResult.data) {
-                        await assetsService.moveAssetToGroup(assetResult.data, groupId);
+                if (groupId && result.data) {
+                    for (const assetResult of result.data) {
+                        if (assetResult.success && assetResult.data) {
+                            await svc.moveAssetToGroup(assetResult.data, groupId);
+                        }
                     }
                 }
-            }
+            });
         });
 
         onActionComplete();
-    }, [context, withAssetsService, onActionComplete]);
+        notifyLoading(false);
+    }, [context, withAssetsService, onActionComplete, notifyLoading]);
     
     const handleImportToGroup = useCallback(async (type: AssetType, groupId?: string) => {
+        notifyLoading(true);
         await handleImport(type, groupId);
-    }, [handleImport]);
+        notifyLoading(false);
+    }, [handleImport, notifyLoading]);
 
     const handleCreateGroup = useCallback(async (type: AssetType, parentGroupId?: string) => {
+        notifyLoading(true);
         const groupName = inputDialog ? await inputDialog.showCreateGroupDialog(type, parentGroupId) : null;
-        if (!groupName) return;
+        if (!groupName) { notifyLoading(false); return; }
 
         await withAssetsService(async (assetsService) => {
             const result = await assetsService.createGroup(type, groupName, parentGroupId);
@@ -95,7 +112,8 @@ export function useAssetActions({
             }
         });
         onActionComplete();
-    }, [inputDialog, withAssetsService, onActionComplete]);
+        notifyLoading(false);
+    }, [inputDialog, withAssetsService, onActionComplete, notifyLoading]);
 
     // ... other actions like handleImport, handleImportToGroup
 
@@ -141,6 +159,7 @@ export function useAssetActions({
 
     const handlePaste = useCallback(async () => {
         if (!context || !clipboard) return;
+        notifyLoading(true);
 
         let targetGroupId: string | undefined;
         if (contextMenuTarget) {
@@ -156,23 +175,26 @@ export function useAssetActions({
         }
 
         await withAssetsService(async (assetsService) => {
-            if (clipboard.type === 'cut') {
-                for (const a of clipboard.assets) {
-                    await assetsService.moveAssetToGroup(a, targetGroupId);
-                }
-                setClipboard(null);
-            } else if (clipboard.type === 'copy') {
-                for (const a of clipboard.assets) {
-                    const dupResult = await assetsService.duplicateAsset(a);
-                    if (dupResult.success && dupResult.data && targetGroupId) {
-                        await assetsService.moveAssetToGroup(dupResult.data, targetGroupId);
+            await assetsService.transaction(async (svc) => {
+                if (clipboard.type === 'cut') {
+                    for (const a of clipboard.assets) {
+                        await svc.moveAssetToGroup(a, targetGroupId);
+                    }
+                    setClipboard(null);
+                } else if (clipboard.type === 'copy') {
+                    for (const a of clipboard.assets) {
+                        const dupResult = await svc.duplicateAsset(a);
+                        if (dupResult.success && dupResult.data && targetGroupId) {
+                            await svc.moveAssetToGroup(dupResult.data, targetGroupId);
+                        }
                     }
                 }
-            }
+            });
         });
 
         onActionComplete();
-    }, [clipboard, context, contextMenuTarget, focusedItemId, assets, onActionComplete, withAssetsService, setClipboard]);
+        notifyLoading(false);
+    }, [clipboard, context, contextMenuTarget, focusedItemId, assets, onActionComplete, withAssetsService, setClipboard, notifyLoading]);
     
     const handleRename = useCallback(async () => {
         if (!context || !contextMenuTarget?.item || !inputDialog) return;
@@ -194,8 +216,9 @@ export function useAssetActions({
     }, [context, contextMenuTarget, inputDialog, onActionComplete, withAssetsService]);
 
     const handleDelete = useCallback(async () => {
+        notifyLoading(true);
         const ctx = contextRef.current;
-        if (!ctx) return;
+        if (!ctx) { notifyLoading(false); return; }
         const uiService = ctx.services.get<UIService>(Services.UI);
         
         // Determine targets in priority order: selection > context menu target > focused item
@@ -256,16 +279,22 @@ export function useAssetActions({
         const uniqueTargets = Array.from(new Map(targets.map(t => [t.item.id, t])).values());
 
         await withAssetsService(async (assetsService) => {
-            await Promise.all(uniqueTargets.map(async (t) => {
-                if (t.isGroup) {
-                    await assetsService.deleteGroup(t.type, (t.item as AssetGroup).id, true);
-                } else {
-                    await assetsService.deleteAsset(t.item as Asset);
-                }
-            }));
+            await assetsService.transaction(async (svc) => {
+                await Promise.all(uniqueTargets.map(async (t) => {
+                    if (t.isGroup) {
+                        await svc.deleteGroup(t.type, (t.item as AssetGroup).id, true);
+                    } else {
+                        await svc.deleteAsset(t.item as Asset);
+                    }
+                }));
+
+                // After batch deletions, clean up any empty groups and persist once
+                await svc.cleanupEmptyGroupsPersist();
+            });
         });
         onActionComplete();
-    }, [selectedItems, assets, groups, contextMenuTarget, onActionComplete, withAssetsService, focusedItemId]);
+        notifyLoading(false);
+    }, [selectedItems, assets, groups, contextMenuTarget, onActionComplete, withAssetsService, focusedItemId, notifyLoading]);
 
 
     return {

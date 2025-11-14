@@ -56,6 +56,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
     }, [context]);
 
     const [contextMenuTarget, setContextMenuTarget] = useState<ContextMenuTargetState | null>(null);
+    const [actionLoading, setActionLoading] = useState(false);
 
     const { assets, groups, loading, error, loadAssets } = useAssetData({ context, isInitialized });
 
@@ -86,7 +87,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleDelete, handleImport, handleImportToGroup 
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
-        focusedItemId, onActionComplete, setClipboard
+        focusedItemId, onActionComplete, setClipboard, setActionLoading
     });
 
     const { 
@@ -162,12 +163,49 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                             const typeGroups = filteredGroups[type];
 
                             return (
-                                <AccordionItem key={type} id={type} title={`${ASSET_TYPE_LABELS[type]} (${typeAssets.length})`} icon={<TypeIcon className="w-4 h-4" />}>
-                                    <div onDrop={(e) => handleRootDrop(e, type)} onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (draggedItem?.type === type) setDropTargetId(`root:${type}`); }} onContextMenu={(e) => showContextMenu(e, type, null, false)}>
-                                        <div className="flex gap-1 p-2 border-b border-white/10">
-                                            <button onClick={() => handleImport(type)} className="flex-1 flex items-center justify-center gap-1 text-xs" title="Import"><Upload className="w-3 h-3" /> Import</button>
-                                            <button onClick={() => handleCreateGroup(type)} className="flex items-center justify-center gap-1 text-xs" title="New Group"><FolderPlus className="w-3 h-3" /></button>
-                                        </div>
+                                <AccordionItem
+                                    key={type}
+                                    id={type}
+                                    icon={<TypeIcon className="w-4 h-4" />}
+                                    title={`${ASSET_TYPE_LABELS[type]} (${typeAssets.length})`}
+                                    actions={
+                                        actionLoading ? (
+                                            <RefreshCw className="w-3 h-3 animate-spin text-white" />
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleImport(type);
+                                                    }}
+                                                    className="p-1 hover:text-primary"
+                                                    title="Import"
+                                                >
+                                                    <Upload className="w-3 h-3" />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleCreateGroup(type);
+                                                    }}
+                                                    className="p-1 hover:text-primary"
+                                                    title="New Group"
+                                                >
+                                                    <FolderPlus className="w-3 h-3" />
+                                                </button>
+                                            </>
+                                        )
+                                    }
+                                >
+                                    <div
+                                        onDrop={(e) => handleRootDrop(e, type)}
+                                        onDragOver={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            if (draggedItem?.type === type) setDropTargetId(`root:${type}`);
+                                        }}
+                                        onContextMenu={(e) => showContextMenu(e, type, null, false)}
+                                    >
                                         {typeAssets.length === 0 && typeGroups.length === 0 ? (
                                             <div className="p-4 text-center text-xs text-gray-500">No {ASSET_TYPE_LABELS[type].toLowerCase()} yet</div>
                                         ) : (

@@ -116,6 +116,8 @@ export class FsRequestWriteHandler extends IPCHandler<IPCEventType.fsRequestWrit
     public async handle(window: AppWindow, { path, raw, encoding }: IPCEvents[IPCEventType.fsRequestWrite]["data"]): Promise<RequestStatus<FsRequestResult<string>>> {
         const hash = window.app.storageManager.allocateHash(path, raw, encoding);
 
+        window.app.logger.debug(`[fs.write] path="${path}", raw=${raw}, encoding=${encoding}`);
+
         try {
             // Check if directory exists and is writable
             const dirPath = require('path').dirname(path);

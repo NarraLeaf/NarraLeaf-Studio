@@ -158,6 +158,8 @@ export interface AccordionItemProps {
     children: ReactNode;
     /** Icon to show (defaults to ChevronRight) */
     icon?: ReactNode;
+    /** Additional actions/content to show after the title */
+    actions?: ReactNode;
     /** Disable this item */
     disabled?: boolean;
     /** Whether this item can receive focus */
@@ -181,6 +183,7 @@ export function AccordionItem({
     title,
     children,
     icon,
+    actions,
     disabled = false,
     focusable = true,
     className = "",
@@ -269,31 +272,40 @@ export function AccordionItem({
                 data-accordion-item={id}
             >
                 {/* Header */}
-                <button
-                    onClick={handleClick}
-                    onMouseEnter={handleMouseEnter}
-                    disabled={disabled}
-                    className={`
-                    w-full flex items-center gap-2 px-3 py-2 text-left
-                    transition-colors duration-200
-                    ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-default hover:bg-white/10'}
-                    ${isFocused && !disabled && focusable ? 'bg-primary/20' : ''}
-                    ${headerClassName}
-                `}
-                    style={{ paddingLeft: `${12 + indentation}px` }}
-                >
-                    {/* Expand/collapse icon */}
-                    <ChevronRight
-                        className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'transform rotate-90' : ''
-                            }`}
-                    />
+                <div className="w-full flex items-center">
+                    <button
+                        onClick={handleClick}
+                        onMouseEnter={handleMouseEnter}
+                        disabled={disabled}
+                        className={`
+                        flex-1 flex items-center gap-2 px-3 py-2 text-left
+                        transition-colors duration-200
+                        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-default hover:bg-white/10'}
+                        ${isFocused && !disabled && focusable ? 'bg-primary/20' : ''}
+                        ${headerClassName}
+                    `}
+                        style={{ paddingLeft: `${12 + indentation}px` }}
+                    >
+                        {/* Expand/collapse icon */}
+                        <ChevronRight
+                            className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'transform rotate-90' : ''
+                                }`}
+                        />
 
-                    {/* Custom icon (optional) */}
-                    {icon && <span className="w-4 h-4 flex-shrink-0">{icon}</span>}
+                        {/* Custom icon (optional) */}
+                        {icon && <span className="w-4 h-4 flex-shrink-0">{icon}</span>}
 
-                    {/* Title */}
-                    <span className="flex-1 text-sm text-gray-300">{title}</span>
-                </button>
+                        {/* Title */}
+                        <span className="flex-1 text-sm text-gray-300">{title}</span>
+                    </button>
+
+                    {/* Actions */}
+                    {actions && (
+                        <div className="flex items-center gap-1 pr-3" onClick={(e) => e.stopPropagation()}>
+                            {actions}
+                        </div>
+                    )}
+                </div>
 
                 {/* Content */}
                 <div

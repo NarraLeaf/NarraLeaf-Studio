@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
 import { AssetType } from '@/lib/workspace/services/assets/assetTypes';
 
@@ -21,6 +21,7 @@ export function useAssetSearch({ assets, groups }: UseAssetSearchParams) {
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
     const [isSearchResultsVisible, setSearchResultsVisible] = useState(false);
+    const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const performSearch = useCallback((query: string) => {
         if (!query.trim()) {
@@ -83,10 +84,26 @@ export function useAssetSearch({ assets, groups }: UseAssetSearchParams) {
         setSearchResultsVisible(query.trim().length > 0);
     }, [assets, groups]);
 
+    // Search debounced to prevent excessive re-renders
+    useEffect(() => {
+        if (debounceTimeoutRef.current) {
+            clearTimeout(debounceTimeoutRef.current);
+        }
+
+        debounceTimeoutRef.current = setTimeout(() => {
+            performSearch(searchQuery);
+        }, 300);
+
+        return () => {
+            if (debounceTimeoutRef.current) {
+                clearTimeout(debounceTimeoutRef.current);
+            }
+        };
+    }, [searchQuery, performSearch]);
+
     const handleSearchQueryChange = useCallback((query: string) => {
         setSearchQuery(query);
-        performSearch(query);
-    }, [performSearch]);
+    }, []);
 
     return {
         searchQuery,
