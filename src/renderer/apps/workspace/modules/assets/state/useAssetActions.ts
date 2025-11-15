@@ -287,9 +287,6 @@ export function useAssetActions({
                         await svc.deleteAsset(t.item as Asset);
                     }
                 }));
-
-                // After batch deletions, clean up any empty groups and persist once
-                await svc.cleanupEmptyGroupsPersist();
             });
         });
         onActionComplete();
