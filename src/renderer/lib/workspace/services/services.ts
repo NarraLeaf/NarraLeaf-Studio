@@ -105,8 +105,6 @@ interface IStoryService extends IService { }
 // Asset Services
 interface IAssetService extends IService {
     getAssets(): AssetsMap;
-    getMetadata<T extends AssetType>(type: T, name: string): Asset<T>;
-    checkIntegrity(): Promise<FsRequestResult<void, false>[]>;
 
     list<T extends AssetType>(type: T): string[];
     fetch<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<AssetData<T>>>;

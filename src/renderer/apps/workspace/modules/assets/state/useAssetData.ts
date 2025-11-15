@@ -51,7 +51,7 @@ export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
 
             for (const type of Object.values(AssetType)) {
                 newAssets[type] = Object.values(assetsMap[type]);
-                newGroups[type] = assetsService.getGroups(type);
+                newGroups[type] = assetsService.getGroupAssetsManager().getGroups(type);
             }
 
             setAssets(newAssets);
