@@ -7,6 +7,7 @@ import { UIService } from '@/lib/workspace/services/core/UIService';
 import { Services } from '@/lib/workspace/services/services';
 import { InputDialog } from '@/lib/components/dialogs/InputDialog';
 import { ClipboardState } from './useClipboard';
+import { getInterface } from '@/lib/app/bridge';
 
 export interface ContextMenuTargetState {
     type: AssetType;
@@ -65,15 +66,47 @@ export function useAssetActions({
         return Object.values(assets).flat().filter(a => ids.includes(a.id));
     }, [selectedItems, assets]);
 
-    const handleImport = useCallback(async (type: AssetType, groupId?: string, files?: FileList) => {
+    const handleImport = useCallback(async (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
         if (!context) return;
         notifyLoading(true);
         
         await withAssetsService(async (assetsService) => {
             await assetsService.transaction(async (svc) => {
-                const result = files
-                    ? await svc.importFromPaths(type, Array.from(files).map(f => (f as any).path))
-                    : await svc.importLocalAssets(type);
+                let result;
+                if (files) {
+                    const paths = Array.from(files)
+                        .map(f => {
+                            const pathFromProp = (f as any).path;
+                            if (pathFromProp && pathFromProp.length > 0) return pathFromProp;
+
+                            return getInterface().fs.getPathForFile(f);
+                        })
+                        .filter((p): p is string => typeof p === 'string' && p.length > 0);
+
+                    if (paths.length === 0) {
+                        // Try parse uri-list
+                        if (dataTransfer) {
+                            const uriList = dataTransfer.getData('text/uri-list');
+                            const uriPaths = uriList.split('\n').filter(l=>l.startsWith('file://')).map(u=> decodeURI(u.replace('file:///', '').replace('file://', '')));
+                            if (uriPaths.length > 0) {
+                                paths.push(...uriPaths);
+                            }
+                        }
+
+                        console.log(dataTransfer);
+
+                        if (paths.length === 0) {
+                            context.services.get<UIService>(Services.UI).showAlert(
+                                'Unable to import',
+                                'File path parsing failed.'
+                            );
+                            return;
+                        }
+                    }
+                    result = await svc.importFromPaths(type, paths);
+                } else {
+                    result = await svc.importLocalAssets(type);
+                }
 
                 if (!result.success) {
                     context.services.get<UIService>(Services.UI).showAlert("Failed to import assets", result.error || "Unknown error");
@@ -94,9 +127,10 @@ export function useAssetActions({
         notifyLoading(false);
     }, [context, withAssetsService, onActionComplete, notifyLoading]);
     
-    const handleImportToGroup = useCallback(async (type: AssetType, groupId?: string) => {
+    // Support drag-in files directly to a group
+    const handleImportToGroup = useCallback(async (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
         notifyLoading(true);
-        await handleImport(type, groupId);
+        await handleImport(type, groupId, files, dataTransfer);
         notifyLoading(false);
     }, [handleImport, notifyLoading]);
 
@@ -197,23 +231,55 @@ export function useAssetActions({
     }, [clipboard, context, contextMenuTarget, focusedItemId, assets, onActionComplete, withAssetsService, setClipboard, notifyLoading]);
     
     const handleRename = useCallback(async () => {
-        if (!context || !contextMenuTarget?.item || !inputDialog) return;
+        if (!context || !inputDialog) return;
 
-        const { item, isGroup, type } = contextMenuTarget;
-        const initialName = (item as Asset | AssetGroup).name;
-        const newName = await inputDialog.showRenameDialog(initialName, isGroup ? "group" : "asset");
+        // Determine target item in priority order: context menu / single selection / focused item
+        let target: { item: Asset | AssetGroup; isGroup: boolean; type: AssetType } | null = null;
 
+        if (contextMenuTarget?.item) {
+            target = { item: contextMenuTarget.item, isGroup: contextMenuTarget.isGroup, type: contextMenuTarget.type };
+        } else if (selectedItems.size === 1) {
+            const id = Array.from(selectedItems)[0];
+            if (id.startsWith('asset:')) {
+                const assetId = id.replace('asset:', '');
+                const asset = Object.values(assets).flat().find(a => a.id === assetId);
+                if (asset) target = { item: asset, isGroup: false, type: asset.type };
+            } else if (id.startsWith('group:')) {
+                const groupId = id.replace('group:', '');
+                for (const [t, groupList] of Object.entries(groups)) {
+                    const g = groupList.find(gr => gr.id === groupId);
+                    if (g) { target = { item: g, isGroup: true, type: t as AssetType }; break; }
+                }
+            }
+        } else if (focusedItemId) {
+            if (focusedItemId.startsWith('asset:')) {
+                const assetId = focusedItemId.replace('asset:', '');
+                const asset = Object.values(assets).flat().find(a => a.id === assetId);
+                if (asset) target = { item: asset, isGroup: false, type: asset.type };
+            } else if (focusedItemId.startsWith('group:')) {
+                const groupId = focusedItemId.replace('group:', '');
+                for (const [t, groupList] of Object.entries(groups)) {
+                    const g = groupList.find(gr => gr.id === groupId);
+                    if (g) { target = { item: g, isGroup: true, type: t as AssetType }; break; }
+                }
+            }
+        }
+
+        if (!target) return;
+
+        const initialName = (target.item as Asset | AssetGroup).name;
+        const newName = await inputDialog.showRenameDialog(initialName, target.isGroup ? 'group' : 'asset');
         if (!newName) return;
 
         await withAssetsService(async (assetsService) => {
-            if (isGroup) {
-                await assetsService.renameGroup(type, (item as AssetGroup).id, newName);
+            if (target.isGroup) {
+                await assetsService.renameGroup(target.type, (target.item as AssetGroup).id, newName);
             } else {
-                await assetsService.renameAsset(item as Asset, newName);
+                await assetsService.renameAsset(target.item as Asset, newName);
             }
         });
         onActionComplete();
-    }, [context, contextMenuTarget, inputDialog, onActionComplete, withAssetsService]);
+    }, [context, contextMenuTarget, selectedItems, focusedItemId, assets, groups, inputDialog, onActionComplete, withAssetsService]);
 
     const handleDelete = useCallback(async () => {
         notifyLoading(true);

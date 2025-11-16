@@ -48,6 +48,7 @@ export interface RendererPreloadedInterface {
         selectFile(filters: string[], multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>>;
         selectDirectory(multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>>;
         hash(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
+        getPathForFile(file: File): string;
     };
     state: {
         getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<GlobalStateValue<K>>>;

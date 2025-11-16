@@ -279,13 +279,13 @@ export class InputDialog {
             description: `Please enter a name for the ${typeNames[assetType]} group`,
             placeholder: 'Enter group name...',
             required: true,
-            maxLength: 50,
+            maxLength: 100,
             validation: (value) => {
                 if (!value.trim()) {
                     return 'Group name cannot be empty';
                 }
-                if (value.length < 2) {
-                    return 'Group name must be at least 2 characters';
+                if (value.length < 1) {
+                    return 'Group name must be at least 1 characters';
                 }
                 // Add more validation rules as needed
                 return null;

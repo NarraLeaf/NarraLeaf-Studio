@@ -4,6 +4,7 @@ import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
 import { IPCClient } from "./ipcClient";
+import { webUtils } from "electron";
 
 export const ipcClient = new IPCClient(Namespace.NarraLeafStudio);
 export const IPCInterface: Window[typeof RendererInterfaceKey] = {
@@ -47,6 +48,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         selectFile: (filters: string[], multiple: boolean) => ipcClient.invoke(IPCEventType.fsSelectFile, { filters, multiple }),
         selectDirectory: (multiple: boolean) => ipcClient.invoke(IPCEventType.fsSelectDirectory, { multiple }),
         hash: (path: string) => ipcClient.invoke(IPCEventType.fsHash, { path }),
+        getPathForFile: (file: File) => getPathForFile(file),
     },
     state: {
         getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<GlobalStateValue<K>>>,
@@ -78,3 +80,11 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.projectSettingsClear, { projectPath }),
     },
 };
+
+function getPathForFile(file: File): string {
+    try {
+        return webUtils.getPathForFile(file);
+    } catch {
+        return "";
+    }
+}

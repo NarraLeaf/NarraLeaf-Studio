@@ -11,6 +11,8 @@ export interface UseKeyboardShortcutsParams {
     onCopy: () => void;
     onCut: () => void;
     onPaste: () => void;
+    /** Callback to rename selected asset/group */
+    onRename: () => void;
 }
 
 export function useKeyboardShortcuts({
@@ -20,16 +22,19 @@ export function useKeyboardShortcuts({
     onCopy,
     onCut,
     onPaste,
+    onRename,
 }: UseKeyboardShortcutsParams) {
     // Use refs to store the latest function references
     const onCopyRef = useRef(onCopy);
     const onCutRef = useRef(onCut);
     const onPasteRef = useRef(onPaste);
+    const onRenameRef = useRef(onRename);
 
     // Update refs when functions change
     onCopyRef.current = onCopy;
     onCutRef.current = onCut;
     onPasteRef.current = onPaste;
+    onRenameRef.current = onRename;
 
     useEffect(() => {
         console.log('useKeyboardShortcuts initialized for panel:', panelId);
@@ -70,10 +75,21 @@ export function useKeyboardShortcuts({
             when,
         });
 
+        const unregisterRename = uiService.keybindings.register({
+            id: `assets-${panelId}-rename`,
+            key: 'f2',
+            description: 'Rename selected asset or group',
+            handler: () => {
+                onRenameRef.current();
+            },
+            when,
+        });
+
         return () => {
             unregisterCopy();
             unregisterCut();
             unregisterPaste();
+            unregisterRename();
         };
     }, [context, isInitialized, panelId]); // Removed function dependencies
 }

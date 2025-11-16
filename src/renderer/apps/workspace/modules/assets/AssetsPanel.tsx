@@ -96,7 +96,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         handlePanelDragOver, handlePanelDragLeave, handleDragOverItem, handleDropOnItem 
     } = useDragAndDrop({ context, groups, onDropCompleted: loadAssets });
 
-    useKeyboardShortcuts({ context, isInitialized, panelId, onCopy: handleCopy, onCut: handleCut, onPaste: handlePaste });
+    useKeyboardShortcuts({ context, isInitialized, panelId, onCopy: handleCopy, onCut: handleCut, onPaste: handlePaste, onRename: handleRename });
 
     const { menuState, contextMenu, showContextMenu, closeContextMenu } = useAssetsContextMenu({
         clipboard, contextMenuTarget, setContextMenuTarget, selectedItems, isMultiSelectMode,
@@ -118,8 +118,10 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         if (draggedItem) {
             await handleDropOnItem(event, type, null);
         } else {
-            await handleImport(type, undefined, event.dataTransfer.files);
+            await handleImport(type, undefined, event.dataTransfer.files, event.dataTransfer);
         }
+        setDragOver(false);
+        setDropTargetId(null);
     }, [draggedItem, handleDropOnItem, handleImport]);
 
     if (loading && Object.values(assets).every(arr => arr.length === 0)) {
@@ -134,7 +136,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         assets, groups, filteredAssets, filteredGroups, selectedItems, focusedItemId, 
         draggedItem, dropTargetId, clipboard, isMultiSelectMode,
         handleItemSelect, handleAssetClick, handleGroupFocus, showContextMenu,
-        handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem,
+        handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
         isFocused: (id: string) => focusedItemId === id,
     };
 
@@ -144,6 +146,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                 className={`h-full flex flex-col ${dragOver ? 'bg-primary/10' : ''}`}
                 onDragOver={handlePanelDragOver}
                 onDragLeave={handlePanelDragLeave}
+                onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }}
                 onClick={setFocusToPanel}
             >
                 <div className="px-3 py-2 border-b border-white/10 space-y-2">
@@ -198,11 +201,14 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                                     }
                                 >
                                     <div
+                                        className={`${dropTargetId === `root:${type}` ? 'bg-primary/10' : ''}`}
                                         onDrop={(e) => handleRootDrop(e, type)}
                                         onDragOver={(e) => {
                                             e.preventDefault();
                                             e.stopPropagation();
-                                            if (draggedItem?.type === type) setDropTargetId(`root:${type}`);
+                                            if (draggedItem?.type === type || e.dataTransfer.types.includes('Files')) {
+                                                setDropTargetId(`root:${type}`);
+                                            }
                                         }}
                                         onContextMenu={(e) => showContextMenu(e, type, null, false)}
                                     >
@@ -229,8 +235,9 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
 }
 
 function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType; level: number }) {
-    const { filteredAssets, filteredGroups, selectedItems, draggedItem, dropTargetId, handleItemSelect, handleGroupFocus, showContextMenu, handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, isFocused } = useAssetsPanelContext();
+    const { filteredAssets, filteredGroups, selectedItems, draggedItem, dropTargetId, handleItemSelect, handleGroupFocus, showContextMenu, handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup, isFocused } = useAssetsPanelContext();
     const [isOpen, setIsOpen] = useState(false);
+    const [isDragOverLocal, setDragOverLocal] = useState(false);
 
     const childGroups = filteredGroups[type].filter(g => g.parentGroupId === group.id);
     const groupAssets = filteredAssets[type].filter(a => a.groupId === group.id);
@@ -239,17 +246,29 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
     const isSelected = selectedItems.has(`group:${group.id}`);
 
     return (
-        <div>
+        <div
+            className={`${isDragOverLocal ? 'bg-primary/20' : ''}`}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverLocal(true); }}
+            onDragLeave={(e) => { e.stopPropagation(); setDragOverLocal(false); }}
+            onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOverLocal(false);
+                if (draggedItem && handleDropOnItem) {
+                    handleDropOnItem(e, type, group);
+                } else {
+                    handleImportToGroup(type, group.id, e.dataTransfer.files, e.dataTransfer);
+                }
+            }}
+        >
             <div
                 draggable
-                className={`flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`group:${group.id}`) ? 'bg-gray-600/10' : ''} ${isDragging ? 'opacity-50' : ''} ${isDropTarget ? 'bg-primary/20' : ''}`}
+                className={`flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`group:${group.id}`) ? 'bg-gray-600/10' : ''} ${isDragging ? 'opacity-50' : ''}`}
                 style={{ paddingLeft: `${20 + level * 12}px` }}
                 onClick={(e) => { handleItemSelect(group.id, true, e); handleGroupFocus(group.id); setIsOpen(!isOpen); }}
                 onContextMenu={(e) => showContextMenu(e, type, group, true)}
-                onDragStart={(e) => handleDragStart(e, type, group, true)}
-                onDragEnd={handleDragEnd}
-                onDragOver={(e) => handleDragOverItem(e, `group:${group.id}`)}
-                onDrop={(e) => handleDropOnItem(e, type, group)}
+                onDragStart={(e) => handleDragStart?.(e, type, group, true)}
+                onDragEnd={() => handleDragEnd?.()}
             >
                 <FolderPlus className="w-4 h-4 text-primary" />
                 <span className="text-sm">{group.name}</span>
@@ -279,8 +298,8 @@ function AssetItem({ asset, type, level }: { asset: Asset; type: AssetType; leve
             style={{ paddingLeft: `${20 + level * 12}px` }}
             onClick={(e) => { handleItemSelect(asset.id, false, e); handleAssetClick(asset, isMultiSelectMode); }}
             onContextMenu={(e) => showContextMenu(e, type, asset, false)}
-            onDragStart={(e) => handleDragStart(e, type, asset, false)}
-            onDragEnd={handleDragEnd}
+            onDragStart={(e) => handleDragStart?.(e, type, asset, false)}
+            onDragEnd={() => handleDragEnd?.()}
         >
             <Icon className="w-4 h-4 text-gray-400" />
             <span className="text-sm flex-1 truncate">{asset.name}</span>
