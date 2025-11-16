@@ -226,7 +226,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
     private prepareEvents(): void {
         const win = this.getInstance().getBrowserWindow();
-        
+
         win.on("close", () => {
             this.getEvents().emit("close", this);
 

@@ -54,12 +54,17 @@ export function useDragAndDrop({ context, groups, onDropCompleted }: UseDragAndD
         setDropTargetId(null);
     }, []);
     
+    // When dragging over an internal item or external files, mark current item as potential drop target
     const handleDragOverItem = useCallback((event: DragEvent, targetId: string) => {
         event.preventDefault();
         event.stopPropagation();
-        if (draggedItem) {
+
+        const isExternalFiles = event.dataTransfer.types.includes("Files");
+
+        if (draggedItem || isExternalFiles) {
             setDropTargetId(targetId);
-            event.dataTransfer.dropEffect = "move";
+            // Show proper cursor depending on source
+            event.dataTransfer.dropEffect = draggedItem ? "move" : "copy";
         }
     }, [draggedItem]);
 
@@ -88,6 +93,8 @@ export function useDragAndDrop({ context, groups, onDropCompleted }: UseDragAndD
         }
         
         onDropCompleted();
+        setDragOver(false);
+        setDropTargetId(null);
     }, [context, draggedItem, groups, isDescendantGroup, onDropCompleted]);
 
     return {
