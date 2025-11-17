@@ -51,7 +51,7 @@ export interface RendererPreloadedInterface {
         getPathForFile(file: File): string;
     };
     state: {
-        getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<GlobalStateValue<K>>>;
+        getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{value: GlobalStateValue<K>}>>;
         setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
     };
     launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;

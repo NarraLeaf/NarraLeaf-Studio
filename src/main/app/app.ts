@@ -1,6 +1,9 @@
 import { WindowAppType, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
+import path from "path";
+import { Fs } from "@shared/utils/fs";
+import { throwException } from "@shared/utils/error";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -104,6 +107,32 @@ export class App extends BaseApp {
         window.setIcon(this.resolveResource("app-icon.ico"));
 
         await window.loadFile(this.getAppEntry(WindowAppType.Workspace));
+
+        // Add project to recently opened list
+        try {
+            // Try to read project name from project.json, fallback to directory name
+            let projectName = path.basename(props.projectPath);
+            try {
+                const projectConfigPath = path.join(props.projectPath, "project.json");
+                const configContent = throwException(await Fs.read(projectConfigPath, "utf-8"));
+                const config = JSON.parse(configContent);
+                if (config.name && typeof config.name === "string") {
+                    projectName = config.name;
+                }
+            } catch (configError) {
+                // If reading config fails, use directory name (already set above)
+                this.logger.debug("Could not read project config, using directory name:", configError);
+            }
+
+            this.globalState.recentlyOpened.addProject({
+                name: projectName,
+                path: props.projectPath,
+                icon: undefined,
+                openedAt: Date.now(),
+            });
+        } catch (error) {
+            this.logger.error("Failed to add project to recently opened list:", error);
+        }
 
         return window;
     }
