@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, ReactNode, useCallback } from "react";
 import {
     PanelDefinition,
     PanelPosition,
@@ -76,60 +76,60 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
     };
 
     // Panel management - delegate to UIStore
-    const registerPanel = <TPayload = any>(panel: PanelDefinition<TPayload>) => {
+    const registerPanel = useCallback(<TPayload = any>(panel: PanelDefinition<TPayload>) => {
         uiService.getStore().registerPanel(panel);
-    };
+    }, [uiService]);
 
-    const unregisterPanel = (id: string) => {
+    const unregisterPanel = useCallback((id: string) => {
         uiService.getStore().unregisterPanel(id);
-    };
+    }, [uiService]);
 
-    const updatePanelPayload = <TPayload = any>(panelId: string, payload: TPayload) => {
+    const updatePanelPayload = useCallback(<TPayload = any>(panelId: string, payload: TPayload) => {
         uiService.getStore().updatePanelPayload(panelId, payload);
-    };
+    }, [uiService]);
 
     // Action management - delegate to UIStore
-    const registerAction = (action: ActionDefinition) => {
+    const registerAction = useCallback((action: ActionDefinition) => {
         uiService.getStore().registerAction(action);
-    };
+    }, [uiService]);
 
-    const registerActionGroup = (group: ActionGroup) => {
+    const registerActionGroup = useCallback((group: ActionGroup) => {
         uiService.getStore().registerActionGroup(group);
-    };
+    }, [uiService]);
 
-    const unregisterAction = (id: string) => {
+    const unregisterAction = useCallback((id: string) => {
         uiService.getStore().unregisterAction(id);
-    };
+    }, [uiService]);
 
-    const unregisterActionGroup = (id: string) => {
+    const unregisterActionGroup = useCallback((id: string) => {
         uiService.getStore().unregisterActionGroup(id);
-    };
+    }, [uiService]);
 
     // Editor management - delegate to UIStore
-    const openEditorTab = <TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string) => {
+    const openEditorTab = useCallback(<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string) => {
         uiService.getStore().openEditorTabInGroup(tab, groupId);
-    };
+    }, [uiService]);
 
-    const closeEditorTab = (tabId: string, groupId?: string) => {
+    const closeEditorTab = useCallback((tabId: string, groupId?: string) => {
         uiService.getStore().closeEditorTabInGroup(tabId, groupId);
-    };
+    }, [uiService]);
 
-    const setActiveEditorTab = (tabId: string, groupId: string) => {
+    const setActiveEditorTab = useCallback((tabId: string, groupId: string) => {
         uiService.getStore().setActiveEditorTabInGroup(tabId, groupId);
-    };
+    }, [uiService]);
 
-    const updateEditorTabPayload = <TPayload = any>(tabId: string, payload: TPayload, groupId?: string) => {
+    const updateEditorTabPayload = useCallback(<TPayload = any>(tabId: string, payload: TPayload, groupId?: string) => {
         uiService.getStore().updateEditorTabPayload(tabId, payload, groupId);
-    };
+    }, [uiService]);
 
     // Panel visibility - delegate to UIStore
-    const togglePanelVisibility = (panelId: string) => {
+    const togglePanelVisibility = useCallback((panelId: string) => {
         uiService.getStore().togglePanelVisibility(panelId);
-    };
+    }, [uiService]);
 
-    const setPanelVisibility = (panelId: string, visible: boolean) => {
+    const setPanelVisibility = useCallback((panelId: string, visible: boolean) => {
         uiService.getStore().setPanelVisibility(panelId, visible);
-    };
+    }, [uiService]);
 
     return (
         <RegistryContext.Provider

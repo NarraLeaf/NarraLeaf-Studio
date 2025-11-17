@@ -22,6 +22,7 @@ export interface UseAssetsContextMenuParams {
     handleDelete: () => Promise<void>;
     handleCreateGroup: (type: AssetType, parentGroupId?: string) => Promise<void>;
     handleImportToGroup: (type: AssetType, groupId?: string) => Promise<void>;
+    handleCreateMagicTags?: () => Promise<void>;
 }
 
 export function useAssetsContextMenu({
@@ -39,6 +40,7 @@ export function useAssetsContextMenu({
     handleDelete,
     handleCreateGroup,
     handleImportToGroup,
+    handleCreateMagicTags,
 }: UseAssetsContextMenuParams) {
     const { menuState, showMenu, hideMenu } = useContextMenu();
 
@@ -99,6 +101,19 @@ export function useAssetsContextMenu({
                     },
                 },
             );
+
+            // Magic Tags section
+            if (hasAssets && selectedAssetItems.length >= 2 && handleCreateMagicTags) {
+                items.push({ separator: true as const, id: "sep-magic-tags" });
+                items.push({
+                    id: "magic-tags",
+                    label: `Create Magic Tags`,
+                    onClick: async () => {
+                        await handleCreateMagicTags();
+                        closeContextMenu();
+                    },
+                });
+            }
         } else if (contextMenuTarget.item && !contextMenuTarget.isGroup) {
             // Single asset selected
             items.push(

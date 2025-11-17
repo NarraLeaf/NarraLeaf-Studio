@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useWorkspace } from "../context";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
@@ -25,7 +25,7 @@ export function useUIService(): UIService {
     if (!context) {
         throw new Error("useUIService called before workspace is initialized");
     }
-    return context.services.get<UIService>(Services.UI);
+    return useMemo(() => context.services.get<UIService>(Services.UI), [context]);
 }
 
 /**
@@ -36,17 +36,22 @@ export function useNotifications(): Notification[] {
     const [notifications, setNotifications] = useState<Notification[]>([]);
 
     useEffect(() => {
+        let mounted = true;
+
         const store = uiService.getStore();
         setNotifications(store.getNotifications());
 
         const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.notifications) {
-                setNotifications([...changes.notifications]);
+            if (changes.notifications && mounted) {
+                setNotifications(changes.notifications);
             }
         });
 
-        return unsubscribe;
-    }, [uiService]);
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
 
     return notifications;
 }
@@ -59,17 +64,22 @@ export function useActionBarItems(): ActionBarItem[] {
     const [items, setItems] = useState<ActionBarItem[]>([]);
 
     useEffect(() => {
+        let mounted = true;
+
         const store = uiService.getStore();
         setItems(store.getActionBarItems());
 
         const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.actionBarItems) {
-                setItems([...changes.actionBarItems]);
+            if (changes.actionBarItems && mounted) {
+                setItems(changes.actionBarItems);
             }
         });
 
-        return unsubscribe;
-    }, [uiService]);
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
 
     return items;
 }
@@ -82,17 +92,22 @@ export function usePanels(): PanelDefinition[] {
     const [panels, setPanels] = useState<PanelDefinition[]>([]);
 
     useEffect(() => {
+        let mounted = true;
+
         const store = uiService.getStore();
         setPanels(store.getPanels());
 
         const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.panels) {
-                setPanels([...changes.panels]);
+            if (changes.panels && mounted) {
+                setPanels(changes.panels);
             }
         });
 
-        return unsubscribe;
-    }, [uiService]);
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
 
     return panels;
 }
@@ -105,17 +120,22 @@ export function usePanelVisibility(): Record<string, boolean> {
     const [visibility, setVisibility] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
+        let mounted = true;
+
         const store = uiService.getStore();
         setVisibility(store.getPanelVisibility());
 
         const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.panelVisibility) {
-                setVisibility({ ...changes.panelVisibility });
+            if (changes.panelVisibility && mounted) {
+                setVisibility(changes.panelVisibility);
             }
         });
 
-        return unsubscribe;
-    }, [uiService]);
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
 
     return visibility;
 }
@@ -128,17 +148,22 @@ export function useEditorTabs(): EditorTab[] {
     const [tabs, setTabs] = useState<EditorTab[]>([]);
 
     useEffect(() => {
+        let mounted = true;
+
         const store = uiService.getStore();
         setTabs(store.getEditorTabs());
 
         const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.editorTabs) {
-                setTabs([...changes.editorTabs]);
+            if (changes.editorTabs && mounted) {
+                setTabs(changes.editorTabs);
             }
         });
 
-        return unsubscribe;
-    }, [uiService]);
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
 
     return tabs;
 }
@@ -154,13 +179,15 @@ export function useActiveEditorTab(): { tab: EditorTab | null; tabId: string | n
     });
 
     useEffect(() => {
+        let mounted = true;
+
         const store = uiService.getStore();
         const tabId = store.getActiveEditorTabId();
         const tab = tabId ? store.getEditorTabs().find(t => t.id === tabId) ?? null : null;
         setResult({ tab, tabId });
 
         const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.editorTabs || changes.activeEditorTabId !== undefined) {
+            if ((changes.editorTabs || changes.activeEditorTabId !== undefined) && mounted) {
                 const store = uiService.getStore();
                 const tabId = store.getActiveEditorTabId();
                 const tab = tabId ? store.getEditorTabs().find(t => t.id === tabId) ?? null : null;
@@ -168,8 +195,11 @@ export function useActiveEditorTab(): { tab: EditorTab | null; tabId: string | n
             }
         });
 
-        return unsubscribe;
-    }, [uiService]);
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
 
     return result;
 }
@@ -182,17 +212,22 @@ export function useDialogs(): Dialog[] {
     const [dialogs, setDialogs] = useState<Dialog[]>([]);
 
     useEffect(() => {
+        let mounted = true;
+
         const store = uiService.getStore();
         setDialogs(store.getDialogs());
 
         const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.dialogs) {
-                setDialogs([...changes.dialogs]);
+            if (changes.dialogs && mounted) {
+                setDialogs(changes.dialogs);
             }
         });
 
-        return unsubscribe;
-    }, [uiService]);
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
 
     return dialogs;
 }
@@ -205,17 +240,22 @@ export function useStatusBarItems(): StatusBarItem[] {
     const [items, setItems] = useState<StatusBarItem[]>([]);
 
     useEffect(() => {
+        let mounted = true;
+
         const store = uiService.getStore();
         setItems(store.getStatusBarItems());
 
         const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.statusBarItems) {
-                setItems([...changes.statusBarItems]);
+            if (changes.statusBarItems && mounted) {
+                setItems(changes.statusBarItems);
             }
         });
 
-        return unsubscribe;
-    }, [uiService]);
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
 
     return items;
 }
@@ -228,17 +268,22 @@ export function useActions(): ActionDefinition[] {
     const [actions, setActions] = useState<ActionDefinition[]>([]);
 
     useEffect(() => {
+        let mounted = true;
+
         const store = uiService.getStore();
         setActions(store.getActions());
 
         const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.actions) {
-                setActions([...changes.actions]);
+            if (changes.actions && mounted) {
+                setActions(changes.actions);
             }
         });
 
-        return unsubscribe;
-    }, [uiService]);
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
 
     return actions;
 }
@@ -251,17 +296,22 @@ export function useActionGroups(): ActionGroup[] {
     const [groups, setGroups] = useState<ActionGroup[]>([]);
 
     useEffect(() => {
+        let mounted = true;
+
         const store = uiService.getStore();
         setGroups(store.getActionGroups());
 
         const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.actionGroups) {
-                setGroups([...changes.actionGroups]);
+            if (changes.actionGroups && mounted) {
+                setGroups(changes.actionGroups);
             }
         });
 
-        return unsubscribe;
-    }, [uiService]);
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []); // Remove uiService from deps since it's memoized and should be stable
 
     return groups;
 }
@@ -277,17 +327,22 @@ export function useEditorLayout(): Readonly<EditorLayout> {
     });
 
     useEffect(() => {
+        let mounted = true;
+
         const store = uiService.getStore();
         setLayout(store.getEditorLayout());
 
         const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.editorLayout) {
+            if (changes.editorLayout && mounted) {
                 setLayout(store.getEditorLayout());
             }
         });
 
-        return unsubscribe;
-    }, [uiService]);
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
+    }, []);
 
     return layout;
 }

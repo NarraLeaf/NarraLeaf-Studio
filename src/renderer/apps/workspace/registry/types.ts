@@ -60,7 +60,7 @@ export interface ActionGroup {
      * Backward-compatible flat actions. If provided and `items` is undefined,
      * the dropdown will render these as the top-level items.
      */
-    actions?: ActionDefinition[];
+    actions?: (ActionDefinition | ActionSeparator)[];
     /**
      * Hierarchical menu items (actions or submenus). Takes precedence over `actions` when defined.
      */
@@ -76,6 +76,7 @@ export interface ActionDefinition {
     label?: string;
     icon?: ReactNode;
     tooltip?: string;
+    shortcut?: string;
     onClick: (workspace: Workspace) => void;
     order?: number;
     disabled?: boolean;

@@ -192,7 +192,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                     {/* Root menu */}
                     <div
                         ref={rootMenuRef}
-                        className="absolute top-full left-0 mt-1 z-20 min-w-48 bg-[#1a1a1a] border border-white/20 rounded-md shadow-lg py-1"
+                        className="absolute top-full left-0 mt-1 z-20 min-w-64 bg-[#1a1a1a] border border-white/20 rounded-md shadow-lg py-1"
                         role="menu"
                         aria-label={group.label}
                         tabIndex={0}
@@ -399,15 +399,21 @@ function MenuLevel(props: MenuLevelProps) {
                                 {isAction(item) ? null : (item.icon ? <span className="w-4 h-4">{item.icon}</span> : null)}
                                 <span>{String(isAction(item) ? item.label : item.label)}</span>
                             </span>
-                            {isAction(item) ? (
-                                item.badge ? (
-                                    <span className="bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{item.badge}</span>
-                                ) : null
-                            ) : (
-                                <ChevronRight className="w-3 h-3 opacity-80" />
-                            )}
+                            {/* Right side: shortcut + badge/chevron */}
+                            <span className="flex items-center gap-2">
+                                {isAction(item) && item.shortcut ? (
+                                    <span className="text-sm text-gray-400 tabular-nums">{item.shortcut}</span>
+                                ) : null}
+                                {isAction(item) ? (
+                                    item.badge ? (
+                                        <span className="bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{item.badge}</span>
+                                    ) : null
+                                ) : (
+                                    <ChevronRight className="w-3 h-3 opacity-80" />
+                                )}
+                            </span>
                             {!isAction(item) && isOpened && (
-                                <div className="absolute top-0 left-full ml-1 z-20 min-w-48 bg-[#1a1a1a] border border-white/20 rounded-md shadow-lg py-1">
+                                <div className="absolute top-0 left-full ml-1 z-20 min-w-56 bg-[#1a1a1a] border border-white/20 rounded-md shadow-lg py-1">
                                     <MenuLevel
                                         level={level + 1}
                                         items={getVisibleItems(item.items, focusContext)}

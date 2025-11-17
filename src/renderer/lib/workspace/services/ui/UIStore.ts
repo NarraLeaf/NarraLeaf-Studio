@@ -1,4 +1,7 @@
+import { ModuleAction } from "@/apps/workspace/modules";
 import { EventEmitter } from "./EventEmitter";
+import { KeybindingService } from "./KeybindingService";
+import { Keybinding } from "./types";
 import {
     Notification,
     ActionBarItem,
@@ -11,9 +14,12 @@ import {
 import {
     ActionDefinition,
     ActionGroup,
+    ActionMenuItem,
+    ActionSubmenu,
     EditorLayout,
     EditorGroup,
     EditorTabDefinition,
+    ActionSeparator,
 } from "@/apps/workspace/registry/types";
 
 export interface SelectionState {
@@ -93,6 +99,8 @@ export interface UIStateEvents {
 export class UIStore {
     private state: UIState;
     private events: EventEmitter<UIStateEvents>;
+    private keybindingService?: KeybindingService;
+    private kbDisposers: Map<string, () => void> = new Map();
 
     constructor() {
         this.state = {
@@ -115,6 +123,11 @@ export class UIStore {
             selection: { type: null, data: null },
         };
         this.events = new EventEmitter<UIStateEvents>();
+    }
+
+    /** Inject KeybindingService (called by UIService after construction) */
+    public setKeybindingService(kb: KeybindingService) {
+        this.keybindingService = kb;
     }
 
     /**
@@ -176,7 +189,7 @@ export class UIStore {
         this.state.actionBarItems = this.state.actionBarItems.filter(i => i.id !== item.id);
         this.state.actionBarItems.push(item);
         // Sort by order
-        this.state.actionBarItems.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        this.state.actionBarItems.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
         this.events.emit("actionBarItemAdded", item);
         this.events.emit("stateChanged", { actionBarItems: [...this.state.actionBarItems] });
     }
@@ -191,7 +204,7 @@ export class UIStore {
         const index = this.state.actionBarItems.findIndex(i => i.id === item.id);
         if (index >= 0) {
             this.state.actionBarItems[index] = item;
-            this.state.actionBarItems.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            this.state.actionBarItems.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
             this.events.emit("actionBarItemUpdated", item);
             this.events.emit("stateChanged", { actionBarItems: [...this.state.actionBarItems] });
         }
@@ -208,7 +221,7 @@ export class UIStore {
         this.state.panels = this.state.panels.filter(p => p.id !== panel.id);
         this.state.panels.push(panel as PanelDefinition<any>);
         // Sort by order
-        this.state.panels.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        this.state.panels.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
         // Set default visibility
         if (panel.defaultVisible !== false && !(panel.id in this.state.panelVisibility)) {
             this.state.panelVisibility[panel.id] = true;
@@ -395,7 +408,9 @@ export class UIStore {
         this.state.actions = this.state.actions.filter(a => a.id !== action.id);
         this.state.actions.push(action);
         // Sort by order
-        this.state.actions.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        this.state.actions.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
+        // Auto keybinding registration
+        this.registerKeybindingForAction(action);
         this.events.emit("actionRegistered", action);
         this.events.emit("stateChanged", { actions: [...this.state.actions] });
     }
@@ -404,13 +419,20 @@ export class UIStore {
         this.state.actions = this.state.actions.filter(a => a.id !== id);
         this.events.emit("actionUnregistered", id);
         this.events.emit("stateChanged", { actions: [...this.state.actions] });
+        // Dispose keybinding if exists
+        const d = this.kbDisposers.get(id);
+        if (d) {
+            d();
+            this.kbDisposers.delete(id);
+        }
     }
 
     public updateAction(action: ActionDefinition): void {
         const index = this.state.actions.findIndex(a => a.id === action.id);
         if (index >= 0) {
             this.state.actions[index] = action;
-            this.state.actions.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            this.state.actions.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
+            this.registerKeybindingForAction(action);
             this.events.emit("actionUpdated", action);
             this.events.emit("stateChanged", { actions: [...this.state.actions] });
         }
@@ -427,7 +449,14 @@ export class UIStore {
         this.state.actionGroups = this.state.actionGroups.filter(g => g.id !== group.id);
         this.state.actionGroups.push(group);
         // Sort by order
-        this.state.actionGroups.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        this.state.actionGroups.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
+
+        // === Auto keybinding registration for group actions ===
+        for (const action of UIStore.flattenGroupActions(group)) {
+            if ("separator" in action) continue;
+            this.registerKeybindingForAction(action, group.id);
+        }
+
         this.events.emit("actionGroupRegistered", group);
         this.events.emit("stateChanged", { actionGroups: [...this.state.actionGroups] });
     }
@@ -436,13 +465,20 @@ export class UIStore {
         this.state.actionGroups = this.state.actionGroups.filter(g => g.id !== id);
         this.events.emit("actionGroupUnregistered", id);
         this.events.emit("stateChanged", { actionGroups: [...this.state.actionGroups] });
+        for (const aid of Array.from(this.kbDisposers.keys())) {
+            if (aid.startsWith(`${id}-`)) {
+                const dispose = this.kbDisposers.get(aid);
+                dispose?.();
+                this.kbDisposers.delete(aid);
+            }
+        }
     }
 
     public updateActionGroup(group: ActionGroup): void {
         const index = this.state.actionGroups.findIndex(g => g.id === group.id);
         if (index >= 0) {
             this.state.actionGroups[index] = group;
-            this.state.actionGroups.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            this.state.actionGroups.sort((a, b) => (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER));
             this.events.emit("actionGroupUpdated", group);
             this.events.emit("stateChanged", { actionGroups: [...this.state.actionGroups] });
         }
@@ -554,6 +590,68 @@ export class UIStore {
 
     public getEditorLayout(): Readonly<EditorLayout> {
         return this.state.editorLayout;
+    }
+
+    /**
+     * Flatten all ActionDefinition objects contained in an ActionGroup (recursively).
+     */
+    private static flattenGroupActions(group: ActionGroup): (ModuleAction | ActionSeparator)[] {
+        const collected: (ModuleAction | ActionSeparator)[] = [];
+
+        // Helper to recursively walk through menu items
+        const walk = (item: ActionMenuItem | ActionDefinition): void => {
+            // Skip separators
+            if ((item as any).separator) {
+                return;
+            }
+
+            // If submenu -> recurse
+            if ("items" in item && Array.isArray((item as any).items)) {
+                (item as ActionSubmenu).items.forEach(walk);
+                return;
+            }
+
+            // Finally, it should be an ActionDefinition
+            collected.push(item as ActionDefinition);
+        };
+
+        // Old flat list API
+        if (group.actions) {
+            group.actions.forEach((a) => collected.push(a));
+        }
+
+        // Hierarchical API
+        if (group.items) {
+            group.items.forEach(walk);
+        }
+
+        return collected;
+    }
+
+    /**
+     * Register (or refresh) keybinding for an ActionDefinition
+     * @param action the action definition
+     * @param ownerPrefix optional prefix (e.g., group id) to make keybinding ids unique
+     */
+    private registerKeybindingForAction(action: ActionDefinition, ownerPrefix?: string) {
+        if (!this.keybindingService || !action.shortcut) {
+            return;
+        }
+
+        const kbKey = ownerPrefix ? `${ownerPrefix}-${action.id}` : action.id;
+
+        // dispose previous if exist so we can refresh
+        this.kbDisposers.get(kbKey)?.();
+
+        const kb: Keybinding = {
+            id: `action:${kbKey}`,
+            key: action.shortcut,
+            description: action.tooltip ?? action.label ?? action.id,
+            handler: () => action.onClick(null as any),
+            when: action.when,
+        };
+        const dispose = this.keybindingService.register(kb);
+        this.kbDisposers.set(kbKey, dispose);
     }
 
     /**

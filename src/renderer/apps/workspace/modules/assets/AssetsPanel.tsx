@@ -27,6 +27,8 @@ import { useKeyboardShortcuts } from "./state/useKeyboardShortcuts";
 import { AssetsPanelContext, useAssetsPanelContext } from './AssetsPanelContext';
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { MagicTagDialog } from "./components/MagicTagDialog";
+import { MagicTagTemplate } from "@/lib/workspace/services/core/MagicTagManager";
 
 const ASSET_TYPE_ICONS = {
     [AssetType.Image]: Image,
@@ -57,6 +59,11 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
 
     const [contextMenuTarget, setContextMenuTarget] = useState<ContextMenuTargetState | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
+    
+    // Magic Tags state
+    const [magicTagDialogVisible, setMagicTagDialogVisible] = useState(false);
+    const [magicTagTemplate, setMagicTagTemplate] = useState<MagicTagTemplate | null>(null);
+    const [magicTagAssets, setMagicTagAssets] = useState<Asset[]>([]);
 
     const { assets, groups, loading, error, loadAssets } = useAssetData({ context, isInitialized });
 
@@ -84,11 +91,36 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
     const { clipboard, setClipboard } = useClipboard();
 
     const { 
-        handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleDelete, handleImport, handleImportToGroup 
+        handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleDelete, handleImport, handleImportToGroup,
+        handleCreateMagicTags, handleApplyMagicTags
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
         focusedItemId, onActionComplete, setClipboard, setActionLoading
     });
+
+    // Magic Tags handler
+    const handleMagicTagsClick = useCallback(async () => {
+        const result = await handleCreateMagicTags();
+        if (result) {
+            setMagicTagTemplate(result.template);
+            setMagicTagAssets(result.assets);
+            setMagicTagDialogVisible(true);
+        }
+    }, [handleCreateMagicTags]);
+
+    const handleMagicTagsApply = useCallback(async (categoryMapping: Record<number, string>) => {
+        if (!magicTagTemplate) return;
+        await handleApplyMagicTags(magicTagAssets, magicTagTemplate, categoryMapping);
+        setMagicTagDialogVisible(false);
+        setMagicTagTemplate(null);
+        setMagicTagAssets([]);
+    }, [magicTagTemplate, magicTagAssets, handleApplyMagicTags]);
+
+    const handleMagicTagsClose = useCallback(() => {
+        setMagicTagDialogVisible(false);
+        setMagicTagTemplate(null);
+        setMagicTagAssets([]);
+    }, []);
 
     const { 
         draggedItem, dropTargetId, dragOver, 
@@ -101,7 +133,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
     const { menuState, contextMenu, showContextMenu, closeContextMenu } = useAssetsContextMenu({
         clipboard, contextMenuTarget, setContextMenuTarget, selectedItems, isMultiSelectMode,
         handleClearSelection, handleCopy, handleCut, handlePaste, handleRename, handleDelete,
-        handleCreateGroup, handleImportToGroup
+        handleCreateGroup, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick
     });
 
     const handleSearchResultClick = useCallback((result: SearchResult) => {
@@ -229,6 +261,13 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                 
                 <SearchResultsPopup results={searchResults} visible={isSearchResultsVisible} onResultClick={handleSearchResultClick} onClose={() => setSearchResultsVisible(false)} searchQuery={searchQuery} anchorRef={searchBoxRef} />
                 <ContextMenu items={contextMenu} position={menuState.position} visible={menuState.visible} onClose={closeContextMenu} />
+                <MagicTagDialog 
+                    visible={magicTagDialogVisible}
+                    assets={magicTagAssets}
+                    template={magicTagTemplate}
+                    onClose={handleMagicTagsClose}
+                    onApply={handleMagicTagsApply}
+                />
             </div>
         </AssetsPanelContext.Provider>
     );
