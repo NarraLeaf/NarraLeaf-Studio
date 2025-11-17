@@ -1,4 +1,5 @@
 import { ComponentType, ReactNode } from "react";
+import { ActionSeparator } from "@/apps/workspace/registry/types";
 import { PanelPosition } from "../registry/types";
 import { FocusContext } from "@/lib/workspace/services/ui";
 import { Workspace } from "@/lib/workspace/workspace";
@@ -57,7 +58,7 @@ export interface ModuleActionGroup {
     /** Icon component or element */
     icon?: ReactNode;
     /** Actions in this group */
-    actions: ModuleAction[];
+    actions: (ModuleAction | ActionSeparator)[];
     /** Sort order */
     order?: number;
 }

@@ -18,7 +18,8 @@ export class App extends BaseApp {
     }
 
     async launchLauncher(options: Partial<Electron.BrowserWindowConstructorOptions>): Promise<AppWindow<WindowAppType.Launcher>> {
-        const config: WindowConfig = {
+        const config: WindowConfig<WindowAppType.Launcher> = {
+            windowType: WindowAppType.Launcher,
             isolated: true,
             autoFocus: true,
             preload: this.getPreloadScript(),
@@ -34,7 +35,7 @@ export class App extends BaseApp {
                 ...options,
             },
         };
-        const window = new AppWindow(this, config, {});
+        const window = new AppWindow<WindowAppType.Launcher>(this, config, {});
         window.setTitle("Launcher - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
         window.showWhenReady();
@@ -58,7 +59,8 @@ export class App extends BaseApp {
         props: WindowProps[WindowAppType.Settings],
         options: Partial<Electron.BrowserWindowConstructorOptions> = {},
     ): Promise<AppWindow<WindowAppType.Settings>> {
-        const config: WindowConfig = {
+        const config: WindowConfig<WindowAppType.Settings> = {
+            windowType: WindowAppType.Settings,
             isolated: true,
             autoFocus: true,
             preload: this.getPreloadScript(),
@@ -71,7 +73,7 @@ export class App extends BaseApp {
                 ...options,
             },
         };
-        const window = new AppWindow(this, config, props);
+        const window = new AppWindow<WindowAppType.Settings>(this, config, props);
         window.setTitle("Settings - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
         window.showWhenReady();
@@ -86,7 +88,8 @@ export class App extends BaseApp {
         props: WindowProps[WindowAppType.Workspace],
         options: Partial<Electron.BrowserWindowConstructorOptions> = {},
     ): Promise<AppWindow<WindowAppType.Workspace>> {
-        const config: WindowConfig = {
+        const config: WindowConfig<WindowAppType.Workspace> = {
+            windowType: WindowAppType.Workspace,
             isolated: true,
             autoFocus: true,
             preload: this.getPreloadScript(),
@@ -102,7 +105,7 @@ export class App extends BaseApp {
                 ...options,
             },
         };
-        const window = new AppWindow(this, config, props);
+        const window = new AppWindow<WindowAppType.Workspace>(this, config, props);
         window.setTitle("Workspace - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
 
@@ -142,7 +145,8 @@ export class App extends BaseApp {
         props: WindowProps[WindowAppType.ProjectWizard],
         options: Partial<Electron.BrowserWindowConstructorOptions> = {},
     ): Promise<AppWindow<WindowAppType.ProjectWizard>> {
-        const config: WindowConfig = {
+        const config: WindowConfig<WindowAppType.ProjectWizard> = {
+            windowType: WindowAppType.ProjectWizard,
             isolated: true,
             autoFocus: true,
             preload: this.getPreloadScript(),

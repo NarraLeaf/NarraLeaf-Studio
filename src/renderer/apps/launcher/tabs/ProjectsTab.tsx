@@ -11,7 +11,7 @@ export function ProjectsTab() {
     useEffect(() => {
         const loadRecentProjects = async () => {
             try {
-                const result = await getInterface().state.getGlobalState("app.recentProjects");
+                const result = await getInterface().app.state.getGlobalState("app.recentProjects");
                 if (result.success) {
                     setRecentProjects(result.data.value || []);
                 }
@@ -42,7 +42,7 @@ export function ProjectsTab() {
     };
 
     const handleNewProject = async () => {
-        const result = await getInterface().launchProjectWizard({});
+        const result = await getInterface().app.launchProjectWizard({});
         if (result.success && result.data?.created) {
             // Open workspace with the selected folder
             await getInterface().workspace.launch(

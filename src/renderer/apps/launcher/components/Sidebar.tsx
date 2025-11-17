@@ -27,7 +27,7 @@ function IconLearning() {
  */
 export function Sidebar({ active, onChange }: SidebarProps) {
     const openSettings = () => {
-        getInterface().launchSettings({});
+        getInterface().app.launchSettings({});
     };
 
     const navigationItems = [

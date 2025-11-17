@@ -49,6 +49,7 @@ export enum IPCEventType {
     
     workspaceLaunch = "workspace.launch",
     workspaceSelectFolder = "workspace.selectFolder",
+    workspaceClose = "workspace.close",
     
     // Project Settings
     projectSettingsGet = "projectSettings.get",
@@ -398,6 +399,12 @@ export type IPCWorkspaceEvents = {
         response: {
             path: string | null;
         };
+    };
+    [IPCEventType.workspaceClose]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: void;
     };
 };
 

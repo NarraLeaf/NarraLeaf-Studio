@@ -1,5 +1,4 @@
 import { App } from '@/app/app';
-import path from 'path';
 
 const app = App.create({});
 

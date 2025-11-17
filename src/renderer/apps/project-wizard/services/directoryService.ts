@@ -10,7 +10,7 @@ export class DirectoryService {
     static async getDefaultProjectDirectory(): Promise<{ success: boolean; data?: { dir: string }; error?: string }> {
         try {
             const interface_ = getInterface();
-            const result = await interface_.getDefaultProjectDirectory();
+            const result = await interface_.workspace.getDefaultProjectDirectory();
 
             if (result && result.success && result.data.dir) {
                 return { success: true, data: { dir: result.data.dir } };

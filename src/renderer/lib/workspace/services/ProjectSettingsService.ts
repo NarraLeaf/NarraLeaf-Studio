@@ -14,7 +14,7 @@ export class ProjectSettingsService extends Service<ProjectSettingsService> {
     protected async init(ctx: WorkspaceContext): Promise<void> {
         this.projectPath = ctx.project.getConfig().projectPath;
         // Load all settings into cache
-        const result = throwException(await getInterface().projectSettings.getAll(this.projectPath));
+        const result = throwException(await getInterface().workspace.projectSettings.getAll(this.projectPath));
         this.cache = result.settings;
     }
 
@@ -34,7 +34,7 @@ export class ProjectSettingsService extends Service<ProjectSettingsService> {
         }
 
         // Fetch from main process
-        const result = await getInterface().projectSettings.get<T>(this.projectPath, key);
+        const result = await getInterface().workspace.projectSettings.get<T>(this.projectPath, key);
         if (result.success && result.data.value !== undefined) {
             this.cache[key] = result.data.value;
             return result.data.value;
@@ -53,7 +53,7 @@ export class ProjectSettingsService extends Service<ProjectSettingsService> {
         this.cache[key] = value;
 
         // Save to main process
-        throwException(await getInterface().projectSettings.set(this.projectPath, key, value));
+        throwException(await getInterface().workspace.projectSettings.set(this.projectPath, key, value));
     }
 
     /**
@@ -65,7 +65,7 @@ export class ProjectSettingsService extends Service<ProjectSettingsService> {
         Object.assign(this.cache, settings);
 
         // Save to main process in batch
-        throwException(await getInterface().projectSettings.setBatch(this.projectPath, settings));
+        throwException(await getInterface().workspace.projectSettings.setBatch(this.projectPath, settings));
     }
 
     /**
@@ -80,7 +80,7 @@ export class ProjectSettingsService extends Service<ProjectSettingsService> {
      */
     async clear(): Promise<void> {
         this.cache = {};
-        throwException(await getInterface().projectSettings.clear(this.projectPath));
+        throwException(await getInterface().workspace.projectSettings.clear(this.projectPath));
     }
 
     /**

@@ -12,7 +12,7 @@ import {
 } from "./window/handlers/fsAction";
 import { IPCHost } from "./window/ipcHost";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./window/handlers/projectWizardAction";
-import { WorkspaceLaunchHandler, WorkspaceSelectFolderHandler } from "./window/handlers/workspaceAction";
+import { WorkspaceLaunchHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler } from "./window/handlers/workspaceAction";
 import {
     ProjectSettingsGetHandler,
     ProjectSettingsSetHandler,
@@ -86,6 +86,7 @@ export class WindowManager {
         // Register workspace handlers
         win.registerIPCHandler(new WorkspaceLaunchHandler());
         win.registerIPCHandler(new WorkspaceSelectFolderHandler());
+        win.registerIPCHandler(new WorkspaceCloseHandler());
 
         // Register project settings handlers
         win.registerIPCHandler(new ProjectSettingsGetHandler());
