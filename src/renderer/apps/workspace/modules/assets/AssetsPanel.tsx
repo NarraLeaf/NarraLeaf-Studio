@@ -143,7 +143,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
     return (
         <AssetsPanelContext.Provider value={contextValue}>
             <div
-                className={`h-full flex flex-col ${dragOver ? 'bg-primary/10' : ''}`}
+                className="h-full flex flex-col"
                 onDragOver={handlePanelDragOver}
                 onDragLeave={handlePanelDragLeave}
                 onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }}
