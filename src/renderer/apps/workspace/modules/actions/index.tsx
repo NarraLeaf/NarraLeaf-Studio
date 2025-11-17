@@ -14,6 +14,8 @@ import { Workspace } from "@/lib/workspace/workspace";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
 import { welcomeModule } from "../welcome";
+import { getInterface } from "@/lib/app/bridge";
+import { Separator } from "../../registry/types";
 
 /**
  * Global toolbar actions
@@ -76,9 +78,9 @@ export const fileActionGroup: ModuleActionGroup = {
     actions: [
         {
             id: "narraleaf-studio:file-new",
-            label: "New File",
+            label: "New Workspace",
             icon: <FileText className="w-4 h-4" />,
-            tooltip: "Create a new file",
+            tooltip: "Create a new workspace",
             onClick: () => {
                 console.log("New file clicked");
                 // TODO: Implement new file functionality
@@ -87,23 +89,23 @@ export const fileActionGroup: ModuleActionGroup = {
         },
         {
             id: "narraleaf-studio:file-open",
-            label: "Open File",
+            label: "Open Workspace",
             icon: <FolderOpen className="w-4 h-4" />,
-            tooltip: "Open an existing file",
+            tooltip: "Open an existing workspace",
             onClick: () => {
                 console.log("Open file clicked");
                 // TODO: Implement open file functionality
             },
             order: 1,
         },
+        Separator,
         {
             id: "narraleaf-studio:file-save-as",
-            label: "Save As...",
+            label: "Close",
             icon: <Save className="w-4 h-4" />,
-            tooltip: "Save file with a different name",
+            tooltip: "Close the current workspace",
             onClick: () => {
-                console.log("Save as clicked");
-                // TODO: Implement save as functionality
+                getInterface().workspace.close();
             },
             order: 2,
         },

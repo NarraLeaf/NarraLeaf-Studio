@@ -10,7 +10,8 @@ import { WindowProxy } from "./windowProxy";
 import { WindowUserHandlers } from "./windowUserHandlers";
 import { WindowProps, WindowAppType, WindowVisibilityStatus, WindowCloseResults } from "@shared/types/window";
 
-export interface WindowConfig {
+export interface WindowConfig<T extends WindowAppType> {
+    windowType: T;
     isolated: boolean;
     autoFocus: boolean;
     preload: string | null;
@@ -18,7 +19,8 @@ export interface WindowConfig {
 }
 
 export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
-    public static readonly DefaultConfig: WindowConfig = {
+    public static readonly DefaultConfig: WindowConfig<WindowAppType.Raw> = {
+        windowType: WindowAppType.Raw,
         isolated: true,
         autoFocus: true,
         preload: null,
@@ -33,21 +35,22 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     private parent?: AppWindow;
     private closeResult?: WindowCloseResults[T];
     private closeResultResolver?: (result: WindowCloseResults[T]) => void;
+    private config: WindowConfig<T>;
 
-    constructor(app: App, config: Partial<WindowConfig>, props: WindowProps[T]) {
-        const instanceConfig: WindowInstanceConfig = {
-            isolated: config.isolated ?? AppWindow.DefaultConfig.isolated,
-            preload: config.preload ?? AppWindow.DefaultConfig.preload,
-            options: config.options ?? AppWindow.DefaultConfig.options,
-        };
+    constructor(app: App, config: WindowConfig<T>, props: WindowProps[T]) {
+        const windowConfig: WindowConfig<T> = {
+            ...AppWindow.DefaultConfig,
+            ...config,
+        } as WindowConfig<T>;
 
-        const instance = new WindowInstance(instanceConfig);
+        const instance = new WindowInstance(windowConfig);
         const ipc = new WindowIPC(Namespace.NarraLeafStudio);
         const events = new WindowEventManager();
         const userHandlers = new WindowUserHandlers(app.logger);
 
         super(app, instance, ipc, events, userHandlers);
         this.props = props;
+        this.config = windowConfig;
 
         this.initialize(app);
     }
@@ -138,6 +141,10 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         return this.getBrowserWindow().isDestroyed();
     }
 
+    public getWindowType(): WindowAppType {
+        return this.getConfig().windowType;
+    }
+
     public onKeyUp(key: KeyboardEvent["key"], fn: (event: Electron.Event, input: Electron.Input) => void): AppEventToken {
         const handler = (event: Electron.Event, input: Electron.Input) => {
             if (input.type === "keyUp" && input.key === key) {
@@ -216,6 +223,10 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
             this.tokens.delete(child);
         }
     }
+    
+    public getConfig(): WindowConfig<T> {
+        return this.config;
+    }
 
     private initialize(_app: App): void {
         this.app.windowManager.registerWindow(this);
@@ -259,6 +270,14 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
             win.destroy();
         });
+
+        this.autoFocus();
+    }
+
+    private autoFocus(): void {
+        if (this.getConfig().autoFocus) {
+            this.getBrowserWindow().focus();
+        }
     }
 
     // Getters

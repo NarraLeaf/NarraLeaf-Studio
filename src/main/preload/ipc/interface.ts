@@ -50,35 +50,37 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         hash: (path: string) => ipcClient.invoke(IPCEventType.fsHash, { path }),
         getPathForFile: (file: File) => getPathForFile(file),
     },
-    state: {
-        getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
-        setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
-    },
-    launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
-    launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,
     selectProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardSelectDirectory, {}),
-    getDefaultProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardGetDefaultDirectory, {}),
     
     // Workspace
     selectFolder: () => ipcClient.invoke(IPCEventType.workspaceSelectFolder, {}),
     workspace: {
+        getDefaultProjectDirectory: () => ipcClient.invoke(IPCEventType.projectWizardGetDefaultDirectory, {}),
         launch: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) =>
             ipcClient.invoke(IPCEventType.workspaceLaunch, { props, closeCurrentWindow }),
+        close: () => ipcClient.invoke(IPCEventType.workspaceClose, {}),
+        projectSettings: {
+            get: <T = any>(projectPath: string, key: string) =>
+                ipcClient.invoke(IPCEventType.projectSettingsGet, { projectPath, key }) as Promise<RequestStatus<{ value: T }>>,
+            set: <T = any>(projectPath: string, key: string, value: T) =>
+                ipcClient.invoke(IPCEventType.projectSettingsSet, { projectPath, key, value }),
+            setBatch: (projectPath: string, settings: Record<string, any>) =>
+                ipcClient.invoke(IPCEventType.projectSettingsSetBatch, { projectPath, settings }),
+            getAll: (projectPath: string) =>
+                ipcClient.invoke(IPCEventType.projectSettingsGetAll, { projectPath }) as Promise<RequestStatus<{ settings: Record<string, any> }>>,
+            clear: (projectPath: string) =>
+                ipcClient.invoke(IPCEventType.projectSettingsClear, { projectPath }),
+        },
     },
 
-    // Project Settings
-    projectSettings: {
-        get: <T = any>(projectPath: string, key: string) =>
-            ipcClient.invoke(IPCEventType.projectSettingsGet, { projectPath, key }) as Promise<RequestStatus<{ value: T }>>,
-        set: <T = any>(projectPath: string, key: string, value: T) =>
-            ipcClient.invoke(IPCEventType.projectSettingsSet, { projectPath, key, value }),
-        setBatch: (projectPath: string, settings: Record<string, any>) =>
-            ipcClient.invoke(IPCEventType.projectSettingsSetBatch, { projectPath, settings }),
-        getAll: (projectPath: string) =>
-            ipcClient.invoke(IPCEventType.projectSettingsGetAll, { projectPath }) as Promise<RequestStatus<{ settings: Record<string, any> }>>,
-        clear: (projectPath: string) =>
-            ipcClient.invoke(IPCEventType.projectSettingsClear, { projectPath }),
-    },
+    app: {
+        launchSettings: (props: WindowProps[WindowAppType.Settings]) => ipcClient.invoke(IPCEventType.appLaunchSettings, { props }),
+        launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,    
+        state: {
+            getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
+            setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
+        },
+    }
 };
 
 function getPathForFile(file: File): string {

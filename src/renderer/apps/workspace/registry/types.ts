@@ -37,7 +37,20 @@ export interface ActionSubmenu {
     order?: number;
 }
 
-export type ActionMenuItem = ActionDefinition | ActionSubmenu;
+export interface ActionSeparator {
+    /** Marker flag to identify separator items */
+    separator: true;
+    /** Optional sort order */
+    order?: number;
+}
+
+/**
+ * Convenience constant that can be inserted inside an ActionGroup.items array
+ * to render a visual separator line.
+ */
+export const Separator: ActionSeparator = { separator: true };
+
+export type ActionMenuItem = ActionDefinition | ActionSubmenu | ActionSeparator;
 
 export interface ActionGroup {
     id: string;

@@ -25,7 +25,7 @@ export function ControlBar({
     onToggleBottomPanel,
 }: ControlBarProps) {
     const handleOpenSettings = async () => {
-        await getInterface().launchSettings({});
+        await getInterface().app.launchSettings({});
     };
 
     return (

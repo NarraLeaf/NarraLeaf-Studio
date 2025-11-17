@@ -4,6 +4,7 @@ export enum WindowAppType {
     Settings = "settings",
     Workspace = "workspace",
     ProjectWizard = "project-wizard",
+    Raw = "raw",
 }
 
 export type WindowProps = {
@@ -16,6 +17,8 @@ export type WindowProps = {
         projectPath: string;
     },
     [WindowAppType.ProjectWizard]: {
+    },
+    [WindowAppType.Raw]: {
     },
 }
 
@@ -44,4 +47,5 @@ export type WindowCloseResults = {
     [WindowAppType.Settings]: null;
     [WindowAppType.Workspace]: null;
     [WindowAppType.ProjectWizard]: { created: boolean; projectPath: string } | null;
+    [WindowAppType.Raw]: null;
 };

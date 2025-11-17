@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { ActionDefinition, ActionGroup, ActionMenuItem } from "../../registry/types";
+import { ActionDefinition, ActionGroup, ActionMenuItem, ActionSeparator } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -41,6 +41,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
     const rootItems: ActionMenuItem[] = useMemo(() => {
         const items = (group.items ?? group.actions) as ActionMenuItem[];
         return (items || []).slice().filter((item) => {
+            if (isSeparator(item)) return true; // always visible
             if (isAction(item)) {
                 if (item.visible === false) return false;
                 // Check when condition
@@ -122,7 +123,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
             if (prev !== -1) setFocusPath(replaceIndex(focusPath, level, prev));
             event.preventDefault();
         } else if (key === "ArrowRight" || key === "Right") {
-            if (!isAction(focusedItem)) {
+            if (!isAction(focusedItem) && !isSeparator(focusedItem)) {
                 // open submenu and focus first item
                 const visible = getVisibleItems(focusedItem.items, focusContext);
                 if (visible.length > 0) {
@@ -143,7 +144,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
         } else if (key === "Enter" || key === " ") {
             if (isAction(focusedItem) && !focusedItem.disabled) {
                 handleActionClick(focusedItem);
-            } else if (!isAction(focusedItem)) {
+            } else if (!isAction(focusedItem) && !isSeparator(focusedItem)) {
                 const visible = getVisibleItems(focusedItem.items, focusContext);
                 if (visible.length > 0) {
                     setOpenPath(focusPath);
@@ -216,13 +217,19 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
     );
 }
 
+function isSeparator(item: ActionMenuItem): item is ActionSeparator {
+    return (item as ActionSeparator).separator === true;
+}
+
 function isAction(item: ActionMenuItem): item is ActionDefinition {
     return (item as ActionDefinition).onClick !== undefined;
 }
 
-function byOrder(a: { order?: number }, b: { order?: number }) {
-    const ao = a.order ?? 0;
-    const bo = b.order ?? 0;
+function byOrder(a: { order?: number } | ActionSeparator, b: { order?: number } | ActionSeparator) {
+    // If either item is a separator, maintain existing relative order (stable sort assumption)
+    if ((a as any).separator || (b as any).separator) return 0;
+    const ao = (a as any).order ?? 0;
+    const bo = (b as any).order ?? 0;
     return ao - bo;
 }
 
@@ -231,6 +238,7 @@ function byOrder(a: { order?: number }, b: { order?: number }) {
  */
 function getVisibleItems(items: ActionMenuItem[], focusContext: FocusContext | null = null): ActionMenuItem[] {
     return (items || []).filter((i) => {
+        if (isSeparator(i)) return true; // always visible
         if (isAction(i)) {
             if (i.visible === false) return false;
             // Check when condition
@@ -244,10 +252,11 @@ function getVisibleItems(items: ActionMenuItem[], focusContext: FocusContext | n
 function firstEnabledIndex(items: ActionMenuItem[]): number {
     for (let i = 0; i < items.length; i++) {
         const it = items[i];
+        if (isSeparator(it)) continue;
         if (isAction(it)) {
             if (!it.disabled) return i;
         } else {
-            return i; // submenu is focusable
+            return i; // submenu focusable
         }
     }
     return -1;
@@ -258,6 +267,7 @@ function nextEnabledIndex(items: ActionMenuItem[], from: number): number {
     for (let i = 1; i <= n; i++) {
         const idx = (from + i) % n;
         const it = items[idx];
+        if (isSeparator(it)) continue;
         if (isAction(it)) {
             if (!it.disabled) return idx;
         } else {
@@ -272,6 +282,7 @@ function prevEnabledIndex(items: ActionMenuItem[], from: number): number {
     for (let i = 1; i <= n; i++) {
         const idx = (from - i + n) % n;
         const it = items[idx];
+        if (isSeparator(it)) continue;
         if (isAction(it)) {
             if (!it.disabled) return idx;
         } else {
@@ -288,11 +299,12 @@ function replaceIndex(path: number[], level: number, value: number): number[] {
 }
 
 function getItemsAtPath(root: ActionMenuItem[], parentPath: number[], focusContext: FocusContext | null = null): ActionMenuItem[] {
-    let items = root;
+    let items: ActionMenuItem[] = root;
     for (const idx of parentPath) {
         const node = items[idx];
-        if (!node || isAction(node)) return [];
-        items = getVisibleItems(node.items, focusContext);
+        if (!node || isAction(node) || isSeparator(node)) return [];
+        // node is assured to be submenu here
+        items = getVisibleItems((node as any).items, focusContext);
     }
     return items;
 }
@@ -319,6 +331,11 @@ function MenuLevel(props: MenuLevelProps) {
         <div className="relative">
             <div role="menu" aria-level={level + 1}>
                 {items.map((item, index) => {
+                    if (isSeparator(item)) {
+                        return (
+                            <div key={`sep-${index}`} className="h-px bg-white/20 my-1 mx-2" />
+                        );
+                    }
                     const isFocused = focusedIndex === index;
                     const isSubmenu = !isAction(item);
                     const isOpened = openPath[level] === index && openPath.length === level + 1;

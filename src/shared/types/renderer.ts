@@ -8,10 +8,13 @@ import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 
 export interface RendererPreloadedInterface {
+    // Basic Information
     getPlatform(): Promise<RequestStatus<PlatformInfo>>;
     getAppInfo(): Promise<RequestStatus<AppInfo>>;
     getWindowProps<T extends WindowAppType>(): Promise<RequestStatus<WindowProps[T]>>;
     terminate(err?: string): Promise<void>;
+
+    // Window
     window: {
         ready(): void;
         close(): void;
@@ -25,6 +28,8 @@ export interface RendererPreloadedInterface {
             ability(): Promise<RequestStatus<WindowControlAbility>>;
         };
     };
+
+    // File System
     fs: {
         stat(path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;
         list(path: string): Promise<RequestStatus<FsRequestResult<FileStat[]>>>;
@@ -50,28 +55,32 @@ export interface RendererPreloadedInterface {
         hash(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         getPathForFile(file: File): string;
     };
-    state: {
-        getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{value: GlobalStateValue<K>}>>;
-        setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
-    };
-    launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
-    launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<{created: boolean; projectPath: string} | null>>;
+
     selectProjectDirectory(): Promise<RequestStatus<{ dest: string | null }>>;
-    getDefaultProjectDirectory(): Promise<RequestStatus<{ dir: string }>>;
-    
+
     // Workspace
     selectFolder(): Promise<RequestStatus<{ path: string | null }>>;
     workspace: {
         launch(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
+        close(): Promise<RequestStatus<void>>;
+        getDefaultProjectDirectory(): Promise<RequestStatus<{ dir: string }>>;
+        projectSettings: {
+            get<T = any>(projectPath: string, key: string): Promise<RequestStatus<{ value: T }>>;
+            set<T = any>(projectPath: string, key: string, value: T): Promise<RequestStatus<void>>;
+            setBatch(projectPath: string, settings: Record<string, any>): Promise<RequestStatus<void>>;
+            getAll(projectPath: string): Promise<RequestStatus<{ settings: Record<string, any> }>>;
+            clear(projectPath: string): Promise<RequestStatus<void>>;
+        };
     };
-    
-    // Project Settings
-    projectSettings: {
-        get<T = any>(projectPath: string, key: string): Promise<RequestStatus<{ value: T }>>;
-        set<T = any>(projectPath: string, key: string, value: T): Promise<RequestStatus<void>>;
-        setBatch(projectPath: string, settings: Record<string, any>): Promise<RequestStatus<void>>;
-        getAll(projectPath: string): Promise<RequestStatus<{ settings: Record<string, any> }>>;
-        clear(projectPath: string): Promise<RequestStatus<void>>;
+
+    // App
+    app: {
+        launchSettings(props: WindowProps[WindowAppType.Settings]): Promise<RequestStatus<void>>;
+        launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<{ created: boolean; projectPath: string } | null>>;
+        state: {
+            getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
+            setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
+        };
     };
 }
 
