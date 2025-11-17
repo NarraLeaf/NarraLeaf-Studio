@@ -6,6 +6,10 @@ import { AssetType, AssetData } from "@/lib/workspace/services/assets/assetTypes
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { ActionDefinition, useRegistry } from "../../../registry";
+import { Image as ImageIcon } from "lucide-react";
+import { FocusArea, Keybinding } from "@/lib/workspace/services/ui/types";
+import { UIService } from "@/lib/workspace/services/core/UIService";
 
 interface ImagePreviewPayload {
     asset: Asset<AssetType.Image>;
@@ -26,6 +30,61 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
     const [panStart, setPanStart] = useState({ x: 0, y: 0 });
     const containerRef = useRef<HTMLDivElement>(null);
     const imageUrl = useRef<string | null>(null);
+
+    // Access registry to register action group when this editor is focused
+    const { registerActionGroup, unregisterActionGroup } = useRegistry();
+
+    // Register editor-specific action group on mount and cleanup on unmount
+    useEffect(() => {
+        const groupId = `${tabId}-image-preview-actions`;
+
+        const focusWhen = (ctx: any) => ctx?.area === FocusArea.Editor && ctx?.targetId === tabId;
+        const namespace = "narraleaf-studio:image-preview";
+
+        // Helper actions manipulating component state
+        const zoomInAction: ActionDefinition = {
+            id: `${namespace}:${groupId}-zoom-in`,
+            icon: <ZoomIn className="w-4 h-4" />,
+            label: "Zoom In",
+            shortcut: "ctrl+=",
+            onClick: () => setZoom((prev) => Math.min(5, prev * 1.2)),
+            order: 1,
+            when: focusWhen,
+        };
+
+        const zoomOutAction: ActionDefinition = {
+            id: `${namespace}:${groupId}-zoom-out`,
+            icon: <ZoomOut className="w-4 h-4" />,
+            label: "Zoom Out",
+            shortcut: "ctrl+-",
+            onClick: () => setZoom((prev) => Math.max(0.1, prev / 1.2)),
+            order: 2,
+            when: focusWhen,
+        };
+
+        const resetViewAction: ActionDefinition = {
+            id: `${namespace}:${groupId}-reset-view`,
+            icon: <RefreshCw className="w-4 h-4" />,
+            label: "Reset View",
+            shortcut: "ctrl+0",
+            onClick: () => {
+                setZoom(1);
+                setPan({ x: 0, y: 0 });
+            },
+            order: 3,
+            when: focusWhen,
+        };
+
+        registerActionGroup({
+            id: groupId,
+            label: "Preview",
+            actions: [zoomOutAction, zoomInAction, resetViewAction],
+        });
+
+        return () => {
+            unregisterActionGroup(groupId);
+        };
+    }, [registerActionGroup, unregisterActionGroup, tabId]);
 
     const asset = payload?.asset;
 

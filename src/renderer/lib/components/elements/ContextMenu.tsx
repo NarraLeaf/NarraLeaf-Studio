@@ -73,7 +73,9 @@ export function ContextMenu({
             y = 8;
         }
 
-        setAdjustedPosition({ x, y });
+        if (x !== adjustedPosition.x || y !== adjustedPosition.y) {
+            setAdjustedPosition({ x, y });
+        }
     }, [position, visible, items]);
 
     // Close on click outside

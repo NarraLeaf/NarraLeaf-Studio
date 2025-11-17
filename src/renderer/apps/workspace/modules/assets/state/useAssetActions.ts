@@ -360,6 +360,75 @@ export function useAssetActions({
     }, [selectedItems, assets, groups, contextMenuTarget, onActionComplete, withAssetsService, focusedItemId, notifyLoading]);
 
 
+    const handleCreateMagicTags = useCallback(async () => {
+        const selectedAssets = getSelectedAssets();
+        if (selectedAssets.length === 0) return null;
+
+        const ctx = contextRef.current;
+        if (!ctx) return null;
+
+        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+        
+        // Extract filenames from selected assets
+        const filenames = selectedAssets.map(asset => asset.name);
+        
+        try {
+            // Analyze filenames and generate template
+            const template = assetsService.analyzeMagicTags(filenames);
+            return { template, assets: selectedAssets };
+        } catch (error) {
+            const uiService = ctx.services.get<UIService>(Services.UI);
+            uiService.showAlert(
+                'Magic Tags parsing failed',
+                error instanceof Error ? error.message : 'Unknown error'
+            );
+            return null;
+        }
+    }, [getSelectedAssets]);
+
+    const handleApplyMagicTags = useCallback(async (
+        selectedAssets: Asset[],
+        template: any,
+        categoryMapping: Record<number, string>
+    ) => {
+        const ctx = contextRef.current;
+        if (!ctx) return;
+
+        notifyLoading(true);
+        
+        try {
+            const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+            
+            // Generate preview to get the tags for each file
+            const previews = assetsService.generateMagicTagPreview(template, categoryMapping);
+            
+            // Apply tags to each asset
+            await assetsService.transaction(async (svc) => {
+                for (let i = 0; i < selectedAssets.length; i++) {
+                    const asset = selectedAssets[i];
+                    const preview = previews[i];
+                    
+                    if (preview && preview.tags.length > 0) {
+                        // Merge with existing tags
+                        const existingTags = asset.tags || [];
+                        const newTags = Array.from(new Set([...existingTags, ...preview.tags]));
+                        await svc.updateAssetTags(asset, newTags);
+                    }
+                }
+            });
+
+            onActionComplete();
+        } catch (error) {
+            const uiService = ctx.services.get<UIService>(Services.UI);
+            uiService.showAlert(
+                'Applying tags failed',
+                error instanceof Error ? error.message : 'Unknown error'
+            );
+        } finally {
+            notifyLoading(false);
+        }
+    }, [onActionComplete, notifyLoading]);
+
     return {
         handleCreateGroup,
         handleImport,
@@ -369,5 +438,7 @@ export function useAssetActions({
         handlePaste,
         handleRename,
         handleDelete,
+        handleCreateMagicTags,
+        handleApplyMagicTags,
     };
 }

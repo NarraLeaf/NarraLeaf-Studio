@@ -18,6 +18,7 @@ import { Service } from "../Service";
 import { IAssetService, Services, WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
 import { FileSystemService } from "./FileSystem";
+import { MagicTagManager, MagicTagTemplate, MagicTagPreview } from "./MagicTagManager";
 import { ProjectService } from "./ProjectService";
 
 interface AssetsEvents {
@@ -250,5 +251,41 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         paths: string[]
     ): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
         return this.getLocalAssetsManager().importFromPaths(type, paths);
+    }
+
+    // Magic Tag functionality
+    /**
+     * Analyze filenames and generate a magic tag template (auto-detect mode)
+     * @param filenames Array of filenames to analyze
+     * @returns Magic tag template with detected delimiters
+     */
+    public analyzeMagicTags(filenames: string[]): MagicTagTemplate {
+        return MagicTagManager.analyzeFilenames(filenames);
+    }
+
+    /**
+     * Analyze filenames using a regular expression (regex mode)
+     * @param filenames Array of filenames to analyze
+     * @param regexPattern Regular expression with named capture groups
+     * @returns Magic tag template with regex pattern
+     */
+    public analyzeMagicTagsWithRegex(
+        filenames: string[],
+        regexPattern: string
+    ): MagicTagTemplate {
+        return MagicTagManager.analyzeWithRegex(filenames, regexPattern);
+    }
+
+    /**
+     * Generate tag preview based on user's category mapping
+     * @param template Magic tag template
+     * @param categoryMapping Map from segment index to category name
+     * @returns Array of previews for each file
+     */
+    public generateMagicTagPreview(
+        template: MagicTagTemplate,
+        categoryMapping: Record<number, string>
+    ): MagicTagPreview[] {
+        return MagicTagManager.generatePreview(template, categoryMapping);
     }
 }

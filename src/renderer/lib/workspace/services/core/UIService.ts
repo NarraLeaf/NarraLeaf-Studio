@@ -50,6 +50,7 @@ export class UIService extends Service<UIService> implements IUIService {
         this._dialogs = new DialogService(this.store, this._focus);
         this._statusBar = new StatusBarService(this.store);
         this._keybindings = new KeybindingService(this._focus, this.store);
+        this.store.setKeybindingService(this._keybindings);
     }
 
     protected init(ctx: WorkspaceContext): Promise<void> | void {
