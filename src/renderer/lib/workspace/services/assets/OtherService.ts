@@ -1,13 +1,16 @@
 import { AssetData, AssetType } from "./assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
-import { FileSystemService } from "../core/FileSystem";
+import { Asset } from "./types";
+import { AssetServiceBase } from "./AssetServiceBase";
+export class OtherService extends AssetServiceBase {
 
-export class OtherService {
-    constructor(private filesystemService: FileSystemService) {}
 
-    public async readLocalOther(path: string): Promise<RequestStatus<AssetData<AssetType.Other>>> {
+    public async readLocalOther(asset: Asset<AssetType.Other>): Promise<RequestStatus<AssetData<AssetType.Other>>> {
+        // Get storage path for the asset
+        const path = this.getAssetPath(asset.id);
+
         // Read file as buffer
-        const fileResult = await this.filesystemService.readRaw(path);
+        const fileResult = await this.getFileSystemService().readRaw(path);
         if (!fileResult.ok) {
             return {
                 success: false,
@@ -19,7 +22,7 @@ export class OtherService {
         const size = buffer.byteLength;
 
         // Try to detect MIME type from file extension
-        const mimeType = this.detectMimeType(path);
+        const mimeType = this.detectMimeType(asset.name);
 
         return {
             success: true,
@@ -33,8 +36,10 @@ export class OtherService {
         };
     }
 
-    private detectMimeType(path: string): string | undefined {
-        const ext = path.split('.').pop()?.toLowerCase();
+
+    private detectMimeType(filename: string): string | undefined {
+        const parts = filename.split('.');
+        const ext = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
         
         const mimeTypes: Record<string, string> = {
             txt: 'text/plain',

@@ -98,6 +98,14 @@ export class AssetsMetadataManager {
         }
 
         existingAsset.name = newName;
+
+        // Update extension if the new name has a different extension
+        const nameParts = newName.toLowerCase().split('.');
+        const newExtension = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+        if (newExtension !== (existingAsset.ext || '')) {
+            existingAsset.ext = newExtension || undefined;
+        }
+
         this.assetsService.markDirty(asset.type);
 
         // Emit update event so UI can react
@@ -171,7 +179,33 @@ export class AssetsMetadataManager {
             }
         }
 
+        // Migration: ensure all assets have ext field set
+        this.migrateAssetExtensions(data);
+
         return data;
+    }
+
+    private migrateAssetExtensions(data: AssetsMap): void {
+        let hasChanges = false;
+
+        for (const type of Object.values(AssetType)) {
+            for (const asset of Object.values(data[type])) {
+                if (asset && asset.ext === undefined) {
+                    // Extract extension from filename
+                    const nameParts = asset.name.toLowerCase().split('.');
+                    const extension = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+                    asset.ext = extension || undefined;
+                    hasChanges = true;
+                }
+            }
+        }
+
+        // Mark all types as dirty if we made changes so they get saved
+        if (hasChanges) {
+            for (const type of Object.values(AssetType)) {
+                this.assetsService.markDirty(type);
+            }
+        }
     }
 
     private getContext(): WorkspaceContext {

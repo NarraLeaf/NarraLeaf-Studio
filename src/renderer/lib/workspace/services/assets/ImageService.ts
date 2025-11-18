@@ -1,13 +1,16 @@
 import { AssetData, AssetType, ImageAssetMetadata } from "./assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
-import { FileSystemService } from "../core/FileSystem";
+import { Asset } from "./types";
+import { AssetServiceBase } from "./AssetServiceBase";
 
-export class ImageService {
-    constructor(private filesystemService: FileSystemService) {}
+export class ImageService extends AssetServiceBase {
 
-    public async readLocalImage(path: string): Promise<RequestStatus<AssetData<AssetType.Image>>> {
+    public async readLocalImage(asset: Asset<AssetType.Image>): Promise<RequestStatus<AssetData<AssetType.Image>>> {
+        // Get storage path for the asset
+        const path = this.getAssetPath(asset.id);
+
         // Read image file as buffer
-        const fileResult = await this.filesystemService.readRaw(path);
+        const fileResult = await this.getFileSystemService().readRaw(path);
         if (!fileResult.ok) {
             return {
                 success: false,
@@ -20,7 +23,7 @@ export class ImageService {
 
         // Get image metadata using HTML Image API
         try {
-            const metadata = await this.getImageMetadata(buffer);
+            const metadata = await this.getImageMetadata(buffer, asset);
 
             return {
                 success: true,
@@ -40,7 +43,8 @@ export class ImageService {
         }
     }
 
-    private async getImageMetadata(buffer: Uint8Array): Promise<Omit<ImageAssetMetadata, 'size'>> {
+
+    private async getImageMetadata(buffer: Uint8Array, asset: Asset<AssetType.Image>): Promise<Omit<ImageAssetMetadata, 'size'>> {
         return new Promise((resolve, reject) => {
             const blob = new Blob([new Uint8Array(buffer)]);
             const url = URL.createObjectURL(blob);
@@ -49,8 +53,8 @@ export class ImageService {
             img.onload = () => {
                 URL.revokeObjectURL(url);
 
-                // Get format from buffer magic bytes or fallback to file extension
-                const format = this.detectImageFormat(buffer);
+                // Get format from buffer magic bytes or fallback to stored real extension
+                const format = this.detectImageFormat(buffer) || (asset.ext ?? this.detectFormatFromFilename(asset.name));
 
                 resolve({
                     width: img.naturalWidth,
@@ -66,6 +70,11 @@ export class ImageService {
 
             img.src = url;
         });
+    }
+
+    private detectFormatFromFilename(filename: string): string {
+        const parts = filename.split('.');
+        return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : 'unknown';
     }
 
     private detectImageFormat(buffer: Uint8Array): string {

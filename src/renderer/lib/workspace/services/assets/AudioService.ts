@@ -1,13 +1,16 @@
 import { AssetData, AssetType, AudioAssetMetadata } from "./assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
-import { FileSystemService } from "../core/FileSystem";
+import { Asset } from "./types";
+import { AssetServiceBase } from "./AssetServiceBase";
 
-export class AudioService {
-    constructor(private filesystemService: FileSystemService) {}
+export class AudioService extends AssetServiceBase {
 
-    public async readLocalAudio(path: string): Promise<RequestStatus<AssetData<AssetType.Audio>>> {
+    public async readLocalAudio(asset: Asset<AssetType.Audio>): Promise<RequestStatus<AssetData<AssetType.Audio>>> {
+        // Get storage path for the asset
+        const path = this.getAssetPath(asset.id);
+
         // Read audio file as buffer
-        const fileResult = await this.filesystemService.readRaw(path);
+        const fileResult = await this.getFileSystemService().readRaw(path);
         if (!fileResult.ok) {
             return {
                 success: false,
@@ -20,7 +23,7 @@ export class AudioService {
 
         // Get audio metadata using HTML Audio API
         try {
-            const metadata = await this.getAudioMetadata(buffer, path);
+            const metadata = await this.getAudioMetadata(buffer, asset);
 
             return {
                 success: true,
@@ -40,7 +43,8 @@ export class AudioService {
         }
     }
 
-    private async getAudioMetadata(buffer: Uint8Array, path: string): Promise<Omit<AudioAssetMetadata, 'size'>> {
+
+    private async getAudioMetadata(buffer: Uint8Array, asset: Asset<AssetType.Audio>): Promise<Omit<AudioAssetMetadata, 'size'>> {
         return new Promise((resolve, reject) => {
             const blob = new Blob([new Uint8Array(buffer)]);
             const url = URL.createObjectURL(blob);
@@ -50,7 +54,7 @@ export class AudioService {
                 URL.revokeObjectURL(url);
 
                 // Get format from file extension
-                const format = this.detectAudioFormat(path);
+                const format = this.detectAudioFormat(asset);
 
                 // Get audio context for sample rate (if available)
                 try {
@@ -84,9 +88,13 @@ export class AudioService {
         });
     }
 
-    private detectAudioFormat(path: string): string {
-        const ext = path.split('.').pop()?.toLowerCase();
-        return ext || 'unknown';
+    private detectAudioFormat(asset: Asset): string {
+        return asset.ext ?? this.detectFromName(asset.name);
+    }
+
+    private detectFromName(name: string): string {
+        const parts = name.split('.');
+        return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : 'unknown';
     }
 }
 

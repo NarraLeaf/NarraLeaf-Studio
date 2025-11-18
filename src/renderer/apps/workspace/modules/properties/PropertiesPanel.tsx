@@ -7,6 +7,11 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { ImagePropertyEditor } from "./editors/ImagePropertyEditor";
+import { AudioPropertyEditor } from "./editors/AudioPropertyEditor";
+import { VideoPropertyEditor } from "./editors/VideoPropertyEditor";
+import { JSONPropertyEditor } from "./editors/JSONPropertyEditor";
+import { FontPropertyEditor } from "./editors/FontPropertyEditor";
+import { OtherPropertyEditor } from "./editors/OtherPropertyEditor";
 
 /**
  * Properties panel component
@@ -48,25 +53,17 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         switch (activeAsset.type) {
             case AssetType.Image:
                 return <ImagePropertyEditor asset={activeAsset as Asset<AssetType.Image>} />;
-            
-            // Add other asset type editors here
             case AssetType.Audio:
+                return <AudioPropertyEditor asset={activeAsset as Asset<AssetType.Audio>} />;
             case AssetType.Video:
+                return <VideoPropertyEditor asset={activeAsset as Asset<AssetType.Video>} />;
             case AssetType.JSON:
+                return <JSONPropertyEditor asset={activeAsset as Asset<AssetType.JSON>} />;
             case AssetType.Font:
+                return <FontPropertyEditor asset={activeAsset as Asset<AssetType.Font>} />;
             case AssetType.Other:
-                return (
-                    <div className="flex-1 flex items-center justify-center p-4">
-                        <div className="text-center text-gray-500 py-8">
-                            <Settings className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                            <p className="text-sm">Property editor not available</p>
-                            <p className="text-xs mt-1">
-                                Editor for {activeAsset.type} assets is not yet implemented
-                            </p>
-                        </div>
-                    </div>
-                );
-            
+                return <OtherPropertyEditor asset={activeAsset as Asset<AssetType.Other>} />;
+
             default:
                 return null;
         }

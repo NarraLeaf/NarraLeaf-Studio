@@ -17,7 +17,8 @@ export interface Asset<Type extends AssetType = AssetType, Source extends AssetS
     id: string; // Unique identifier (UUID) used for indexing and file storage
     type: Type;
     name: string;
-    hash: string; // File hash (read-only, for integrity checking)
+    hash: string; // File hash (read-only)
+    ext?: string;
     source: Source;
     meta: AssetResolveMeta<Source>;
     tags: string[];

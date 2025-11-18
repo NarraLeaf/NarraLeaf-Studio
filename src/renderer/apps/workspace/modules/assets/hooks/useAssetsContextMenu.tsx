@@ -107,7 +107,7 @@ export function useAssetsContextMenu({
                 items.push({ separator: true as const, id: "sep-magic-tags" });
                 items.push({
                     id: "magic-tags",
-                    label: `Create Magic Tags`,
+                    label: `Create Tags`,
                     onClick: async () => {
                         await handleCreateMagicTags();
                         closeContextMenu();

@@ -1,13 +1,16 @@
 import { AssetData, AssetType, VideoAssetMetadata } from "./assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
-import { FileSystemService } from "../core/FileSystem";
+import { Asset } from "./types";
+import { AssetServiceBase } from "./AssetServiceBase";
 
-export class VideoService {
-    constructor(private filesystemService: FileSystemService) {}
+export class VideoService extends AssetServiceBase {
 
-    public async readLocalVideo(path: string): Promise<RequestStatus<AssetData<AssetType.Video>>> {
+    public async readLocalVideo(asset: Asset<AssetType.Video>): Promise<RequestStatus<AssetData<AssetType.Video>>> {
+        // Get storage path for the asset
+        const path = this.getAssetPath(asset.id);
+
         // Read video file as buffer
-        const fileResult = await this.filesystemService.readRaw(path);
+        const fileResult = await this.getFileSystemService().readRaw(path);
         if (!fileResult.ok) {
             return {
                 success: false,
@@ -20,7 +23,7 @@ export class VideoService {
 
         // Get video metadata using HTML Video API
         try {
-            const metadata = await this.getVideoMetadata(buffer, path);
+            const metadata = await this.getVideoMetadata(buffer, asset);
 
             return {
                 success: true,
@@ -40,7 +43,8 @@ export class VideoService {
         }
     }
 
-    private async getVideoMetadata(buffer: Uint8Array, path: string): Promise<Omit<VideoAssetMetadata, 'size'>> {
+
+    private async getVideoMetadata(buffer: Uint8Array, asset: Asset<AssetType.Video>): Promise<Omit<VideoAssetMetadata, 'size'>> {
         return new Promise((resolve, reject) => {
             const blob = new Blob([new Uint8Array(buffer)]);
             const url = URL.createObjectURL(blob);
@@ -50,7 +54,7 @@ export class VideoService {
                 URL.revokeObjectURL(url);
 
                 // Get format from file extension
-                const format = this.detectVideoFormat(path);
+                const format = this.detectVideoFormat(asset);
 
                 resolve({
                     duration: video.duration || 0,
@@ -69,9 +73,13 @@ export class VideoService {
         });
     }
 
-    private detectVideoFormat(path: string): string {
-        const ext = path.split('.').pop()?.toLowerCase();
-        return ext || 'unknown';
+    private detectVideoFormat(asset: Asset): string {
+        return asset.ext ?? this.detectFromName(asset.name);
+    }
+
+    private detectFromName(name: string): string {
+        const parts = name.split('.');
+        return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : 'unknown';
     }
 }
 

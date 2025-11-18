@@ -8,7 +8,7 @@ import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { FsRequestResult } from "@shared/types/os";
 import { FileSystemService } from "../../core/FileSystem";
 import { RendererError } from "@shared/utils/error";
-import { basename, dirname } from "@shared/utils/path";
+import { basename, dirname, extname } from "@shared/utils/path";
 
 export class LocalAssetsManager {
     constructor(private assetsService: AssetsService, private context: WorkspaceContext) {
@@ -49,17 +49,17 @@ export class LocalAssetsManager {
                     if (!this.assetsService.imageService) {
                         throw new RendererError("Image service not initialized");
                     }
-                    return await this.assetsService.imageService.readLocalImage(path) as RequestStatus<AssetData<T>>;
+                    return await this.assetsService.imageService.readLocalImage(asset as Asset<AssetType.Image>) as RequestStatus<AssetData<T>>;
                 case AssetType.Audio:
                     if (!this.assetsService.audioService) {
                         throw new RendererError("Audio service not initialized");
                     }
-                    return await this.assetsService.audioService.readLocalAudio(path) as RequestStatus<AssetData<T>>;
+                    return await this.assetsService.audioService.readLocalAudio(asset as Asset<AssetType.Audio>) as RequestStatus<AssetData<T>>;
                 case AssetType.Video:
                     if (!this.assetsService.videoService) {
                         throw new RendererError("Video service not initialized");
                     }
-                    return await this.assetsService.videoService.readLocalVideo(path) as RequestStatus<AssetData<T>>;
+                    return await this.assetsService.videoService.readLocalVideo(asset as Asset<AssetType.Video>) as RequestStatus<AssetData<T>>;
                 case AssetType.JSON:
                     if (!this.assetsService.jsonService) {
                         throw new RendererError("JSON service not initialized");
@@ -69,12 +69,12 @@ export class LocalAssetsManager {
                     if (!this.assetsService.fontService) {
                         throw new RendererError("Font service not initialized");
                     }
-                    return await this.assetsService.fontService.readLocalFont(path) as RequestStatus<AssetData<T>>;
+                    return await this.assetsService.fontService.readLocalFont(asset as Asset<AssetType.Font>) as RequestStatus<AssetData<T>>;
                 case AssetType.Other:
                     if (!this.assetsService.otherService) {
                         throw new RendererError("Other service not initialized");
                     }
-                    return await this.assetsService.otherService.readLocalOther(path) as RequestStatus<AssetData<T>>;
+                    return await this.assetsService.otherService.readLocalOther(asset as Asset<AssetType.Other>) as RequestStatus<AssetData<T>>;
                 default:
                     return {
                         success: false,
@@ -171,6 +171,7 @@ export class LocalAssetsManager {
             id: newId,
             hash: fileHash,
             name: uniqueName,
+            ext: asset.ext,
             source: AssetSource.Local,
         };
 
@@ -225,6 +226,7 @@ export class LocalAssetsManager {
             id,
             type,
             name: uniqueName,
+            ext: extname(originalName).slice(1).toLowerCase(), // persist real extension
             hash: fileHash,
             source: AssetSource.Local,
             meta: {},

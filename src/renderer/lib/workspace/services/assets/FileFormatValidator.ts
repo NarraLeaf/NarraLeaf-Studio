@@ -19,11 +19,13 @@ export class FileFormatValidator {
      * Validate file format by checking magic bytes and extension consistency
      */
     public async validateFileFormat(type: AssetType, path: string, buffer: Uint8Array): Promise<FileFormatValidationResult> {
-        const fileExt = path.split('.').pop()?.toLowerCase() || '';
+        const parts = path.split('.');
+        const fileExt = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
 
         // Check if file extension is in the allowed list for this asset type
         const allowedExtensions = AssetExtensions[type];
-        if (!allowedExtensions.includes(fileExt)) {
+        const allowAll = allowedExtensions.includes("*");
+        if (!allowAll && !allowedExtensions.includes(fileExt)) {
             return {
                 success: false,
                 error: `File extension .${fileExt} is not allowed for ${type} assets. Allowed extensions: ${allowedExtensions.join(', ')}`,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Image as ImageIcon } from "lucide-react";
+import { FileJson } from "lucide-react";
 import { PropertyEditorProps } from "./PropertyEditorBase";
 import { BasePropertyEditor } from "./BasePropertyEditor";
 import { AssetType, AssetData } from "@/lib/workspace/services/assets/assetTypes";
@@ -8,14 +8,14 @@ import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 
 /**
- * Image property editor
- * Allows editing name, tags, and description for image assets
+ * JSON property editor
+ * Allows editing name, tags, and description for JSON assets
  */
-export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<AssetType.Image>) {
+export function JSONPropertyEditor({ asset, onChange }: PropertyEditorProps<AssetType.JSON>) {
     const { context } = useWorkspace();
-    const [imageData, setImageData] = useState<AssetData<AssetType.Image> | null>(null);
+    const [jsonData, setJsonData] = useState<AssetData<AssetType.JSON> | null>(null);
 
-    // Load image metadata
+    // Load JSON metadata
     useEffect(() => {
         if (!context) return;
 
@@ -25,57 +25,57 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
                 const result = await assetsService.fetch(asset);
 
                 if (result.success) {
-                    setImageData(result.data);
+                    setJsonData(result.data);
                 }
             } catch (err) {
-                console.error("Failed to load image metadata:", err);
+                console.error("Failed to load JSON metadata:", err);
             }
         };
 
         loadMetadata();
     }, [context, asset]);
 
+    const getKeysCount = (data: Record<string, any>) => {
+        try {
+            return Object.keys(data).length;
+        } catch {
+            return 0;
+        }
+    };
+
     return (
         <BasePropertyEditor asset={asset} onChange={onChange}>
             {/* Preview */}
-            {imageData && (
+            {jsonData && (
                 <div className="bg-[#1e1f22] rounded-md p-3 border border-white/10">
                     <div className="flex items-center gap-2 mb-2">
-                        <ImageIcon className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-300">Preview</span>
+                        <FileJson className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm font-medium text-gray-300">JSON Structure</span>
                     </div>
                     <div className="flex items-center justify-center bg-[#0f1115] rounded p-2">
                         <div className="text-xs text-gray-500 text-center">
-                            {imageData.metadata.width} × {imageData.metadata.height}
-                            <br />
-                            {imageData.metadata.format.toUpperCase()}
-                            <br />
-                            {(imageData.metadata.size / 1024).toFixed(1)} KB
+                            {jsonData.metadata.schema ? `Schema: ${jsonData.metadata.schema}` : 'No schema'}
                         </div>
                     </div>
                 </div>
             )}
 
             {/* Technical Info (Read-only) */}
-            {imageData && (
+            {jsonData && (
                 <div>
                     <label className="block text-xs font-medium text-gray-400 mb-1">
-                        Image Information
+                        JSON Information
                     </label>
                     <div className="bg-[#1e1f22] border border-white/10 rounded-md p-3 space-y-1">
-                        <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Dimensions:</span>
-                            <span className="text-gray-300">
-                                {imageData.metadata.width} × {imageData.metadata.height}
-                            </span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">Format:</span>
-                            <span className="text-gray-300">{imageData.metadata.format.toUpperCase()}</span>
-                        </div>
+                        {jsonData.metadata.schema && (
+                            <div className="flex justify-between text-xs">
+                                <span className="text-gray-400">Schema:</span>
+                                <span className="text-gray-300">{jsonData.metadata.schema}</span>
+                            </div>
+                        )}
                         <div className="flex justify-between text-xs">
                             <span className="text-gray-400">Size:</span>
-                            <span className="text-gray-300">{(imageData.metadata.size / 1024).toFixed(1)} KB</span>
+                            <span className="text-gray-300">{(jsonData.metadata.size / 1024).toFixed(1)} KB</span>
                         </div>
                         <div className="flex justify-between text-xs">
                             <span className="text-gray-400">Hash:</span>
@@ -87,4 +87,3 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
         </BasePropertyEditor>
     );
 }
-
