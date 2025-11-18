@@ -106,12 +106,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         await depend([filesystemService, projectService]);
 
         // Initialize all asset services
-        this.imageService = new ImageService(filesystemService);
-        this.audioService = new AudioService(filesystemService);
-        this.videoService = new VideoService(filesystemService);
-        this.jsonService = new JSONService(filesystemService);
-        this.fontService = new FontService(filesystemService);
-        this.otherService = new OtherService(filesystemService);
+        this.imageService = new ImageService(ctx);
+        this.audioService = new AudioService(ctx);
+        this.videoService = new VideoService(ctx);
+        this.jsonService = new JSONService(ctx);
+        this.fontService = new FontService(ctx);
+        this.otherService = new OtherService(ctx);
 
         // Initialize file format validator
         this.fileFormatValidator = new FileFormatValidator();

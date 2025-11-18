@@ -105,7 +105,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                 <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
                     <div className="flex items-center gap-2">
                         <Wand2 className="w-5 h-5 text-primary" />
-                        <h2 className="text-lg font-semibold">Create Magic Tags</h2>
+                        <h2 className="text-lg font-semibold">Create Tags</h2>
                     </div>
                     <button
                         onClick={onClose}

@@ -71,10 +71,38 @@ export type AssetData<Type extends AssetType> = Type extends AssetType.Image ? {
 } : never;
 
 export const AssetExtensions = {
-    [AssetType.Image]: ["png", "jpg", "jpeg", "gif", "bmp", "tiff", "webp"],
-    [AssetType.Audio]: ["mp3", "wav", "ogg", "aac", "m4a", "flac", "wma", "aiff", "ape", "alac", "opus", "m4b", "m4p", "m4r", "m4v"],
-    [AssetType.Video]: ["mp4", "avi", "mov", "wmv", "flv", "mkv", "webm", "m4v", "m4b", "m4p", "m4r", "m4v"],
-    [AssetType.JSON]: ["json"],
-    [AssetType.Font]: ["ttf", "otf", "woff", "woff2", "eot", "svg"],
-    [AssetType.Other]: ["bin", "txt", "log", "csv", "json", "xml", "html", "css", "js", "ts", "jsx", "tsx", "md", "markdown", "yml", "yaml", "toml", "ini", "cfg", "conf", "props", "config", "settings"],
+    // Comprehensive extension lists supported by Chromium (Chrome) for each media type
+    [AssetType.Image]: [
+        // Raster images
+        "png", "apng", "avif", "jpg", "jpeg", "jfif", "pjpeg", "pjp", "bmp", "dib", "gif", "webp", "tif", "tiff", "ico", "cur", "xbm",
+        // Vector images
+        "svg"
+    ],
+    [AssetType.Audio]: [
+        // Common codecs/containers
+        "mp3", "wav", "wave", "ogg", "oga", "opus", "aac", "m4a", "flac", "wma", "weba",
+        // Less-common / legacy but recognised
+        "aiff", "aif", "aifc", "ape", "alac", "mid", "midi", "caf", "amr", "mp2", "mka",
+        // Playlist / container formats people may import as audio assets
+        "m3u", "m3u8", "pls"
+    ],
+    [AssetType.Video]: [
+        // Modern web formats
+        "mp4", "m4v", "m4p", "m4b", "m4r", "mov", "qt", "webm", "mkv", "av1",
+        // Legacy / additional container formats Chromium can demux with the correct codecs installed
+        "3gp", "3g2", "avi", "flv", "f4v", "wmv", "asf", "mpg", "mpeg", "mpe", "mpv", "m2v", "ts", "m2ts", "mts", "m2t", "ogv", "ogm", "ogx", "vob"
+    ],
+    [AssetType.JSON]: [
+        // Standard JSON and JSON with comments (supported by many editors)
+        "json", "jsonc"
+    ],
+    [AssetType.Font]: [
+        // Font formats loadable in Chromium
+        "ttf", "otf", "ttc", // TrueType / OpenType collections
+        "woff", "woff2",       // Web optimised font formats
+        "eot",                 // Embedded OpenType (legacy IE but harmless)
+        "svg", "otc"           // SVG fonts & OpenType collections (rare but supported)
+    ],
+    // Allow any file for the Other type
+    [AssetType.Other]: ["*"],
 };

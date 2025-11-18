@@ -35,7 +35,7 @@ export function useAssetFilters({ assets, groups }: UseAssetFiltersParams) {
         if (fileExtensionFilter) {
             const existingExtensions = new Set<string>();
             allAssets.forEach(asset => {
-                const extension = asset.name.toLowerCase().split('.').pop();
+                const extension = asset.ext || '';
                 if (extension) existingExtensions.add(extension);
             });
             fileExtensionFilter.options = fileExtensionFilter.options.filter(option =>
@@ -67,9 +67,9 @@ export function useAssetFilters({ assets, groups }: UseAssetFiltersParams) {
 
             filteredAssets[assetType] = typeAssets.filter(asset => {
                 if (tagFilters.length > 0 && !tagFilters.some(tag => asset.tags.includes(tag))) return false;
-                
-                const assetExtension = asset.name.toLowerCase().split('.').pop();
-                if (extensionFilters.length > 0 && assetExtension && !extensionFilters.includes(assetExtension)) return false;
+
+                const assetExtension = asset.ext || '';
+                if (extensionFilters.length > 0 && !extensionFilters.includes(assetExtension)) return false;
 
                 return true;
             });

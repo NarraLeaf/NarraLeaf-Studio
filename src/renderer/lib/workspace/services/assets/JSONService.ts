@@ -1,13 +1,12 @@
 import { AssetData, AssetType } from "./assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
-import { FileSystemService } from "../core/FileSystem";
+import { AssetServiceBase } from "./AssetServiceBase";
 
-export class JSONService {
-    constructor(private filesystemService: FileSystemService) {}
+export class JSONService extends AssetServiceBase {
 
     public async readLocalJSON(path: string): Promise<RequestStatus<AssetData<AssetType.JSON>>> {
         // Read JSON file
-        const fileResult = await this.filesystemService.read(path, "utf-8");
+        const fileResult = await this.getFileSystemService().read(path, "utf-8");
         if (!fileResult.ok) {
             return {
                 success: false,
