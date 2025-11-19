@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "outDir": "dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "paths": {
+      "@/*": ["./*"],
+      "@shared/*": ["../shared/*"],
+      "@lib/*": ["./lib/*"],
+      "@services/*": ["./lib/workspace/services/*"]
+    },
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../shared/types"
+    ],
+    "types": ["node", "react", "react-dom"]
+  },
+  "include": [
+    "./**/*",
+    "../shared/**/*"
+  ],
+}

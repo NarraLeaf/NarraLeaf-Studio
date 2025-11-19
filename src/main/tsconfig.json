@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "outDir": "dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "declaration": true,
+    "paths": {
+      "@/*": ["./*"],
+      "@root/*": ["../../*"],
+      "@shared/*": ["../shared/*"]
+    },
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../shared/types"
+    ],
+    "types": ["node"]
+  },
+  "include": [
+    "./**/*",
+    "../shared/**/*"
+  ],
+}

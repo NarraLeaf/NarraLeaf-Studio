@@ -8,25 +8,34 @@
 
 All-in-one IDE for NarraLeaf Projects.
 
-## Planned Features
+## Features
+
+### Game Compatibility
+
+For game compatibility, see [docs/game-compatibility.md](docs/game-compatibility.md).
+
+### Planned Features
 
 - [ ] Launcher
-- [ ] Project Manager
-- [ ] Editor
-  - [ ] Module Bus
-  - [ ] Plugin API
-  - [ ] Editor UI
-  - [ ] Themes
-- [ ] Core Modules
+- [ ] Workspace
+  - [x] Assets Manager
+    - [x] Magic Tags
+    - [x] Asset Groups
+    - [ ] Asset Explorer
+    - [ ] Asset Compression
+    - [ ] Remote Assets
+  - [ ] Character Manager
+  - [ ] Scene Editor
   - [ ] Script Editor
-  - [ ] Visual Graph Editor
-  - [ ] Asset Manager
-  - [ ] Scene/UI Editor
+  - [ ] Visual Graph Manager
+  - [ ] UI Editor
   - [ ] Debugger
-  - [ ] Game Viewer
-- [ ] NarraLeaf Runtime
-  - [ ] Assets Pipeline
-- [ ] App
+  - [ ] Live Preview
   - [ ] Build & Publish
-  - [ ] Debug Build
-  - [ ] Import & Export
+  - [ ] Version Control
+
+## Development
+
+### Setup
+
+### Development
