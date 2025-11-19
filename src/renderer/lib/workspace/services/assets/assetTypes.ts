@@ -79,11 +79,11 @@ export const AssetExtensions = {
         "svg"
     ],
     [AssetType.Audio]: [
-        // Common codecs/containers
-        "mp3", "wav", "wave", "ogg", "oga", "opus", "aac", "m4a", "flac", "wma", "weba",
-        // Less-common / legacy but recognised
-        "aiff", "aif", "aifc", "ape", "alac", "mid", "midi", "caf", "amr", "mp2", "mka",
-        // Playlist / container formats people may import as audio assets
+        // Common codecs/containers (Chromium native)
+        "mp3", "wav", "wave", "ogg", "oga", "opus", "aac", "m4a", "flac", "weba",
+        // Less-common / legacy (may require transcoding)
+        "aiff", "aif", "aifc", "mid", "midi", "mp2", "mka",
+        // Playlist / container formats
         "m3u", "m3u8", "pls"
     ],
     [AssetType.Video]: [
