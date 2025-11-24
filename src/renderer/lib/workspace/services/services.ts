@@ -27,6 +27,7 @@ enum Services {
     // Settings = "settings",
     // Editor = "editor",
     // Story = "story",
+    Character = "character",
     Assets = "assets",
     // Texture = "texture",
     // Audio = "audio",
@@ -101,6 +102,8 @@ interface ISettingsService extends IService { }
 interface IEditorService extends IService { }
 
 interface IStoryService extends IService { }
+
+interface ICharacterService extends IService { }
 
 // Asset Services
 interface IAssetService extends IService {
