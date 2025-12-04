@@ -18,10 +18,14 @@ export interface ICharacterAppearance {
     forms: CharacterForm[];
 }
 
+export type VariantData = {
+    data: Asset<AssetType.Image>;
+};
+
 export interface CharacterForm {
     name: string;
     defaultVariant: string;
-    variants: Record<string, Asset<AssetType.Image>>;
+    variants: Record<string, VariantData>;
 }
 
 export enum CharacterVariantElementType {
@@ -33,13 +37,13 @@ interface CharacterVariantElement<T> {
     type: T;
 }
 
+export interface CharacterVariant extends CharacterVariantElement<CharacterVariantElementType.Variant> {
+    name: string;
+}
+
 export interface CharacterVariantGroup extends CharacterVariantElement<CharacterVariantElementType.VariantGroup> {
     name: string;
     variants: CharacterVariant[];
-}
-
-export interface CharacterVariant extends CharacterVariantElement<CharacterVariantElementType.Variant> {
-    name: string;
 }
 
 export type CharacterRelationshipType = {
