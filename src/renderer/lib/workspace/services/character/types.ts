@@ -24,7 +24,6 @@ export type VariantData = {
 
 export interface CharacterForm {
     name: string;
-    defaultVariant: string;
     variants: Record<string, VariantData>;
 }
 
@@ -43,6 +42,7 @@ export interface CharacterVariant extends CharacterVariantElement<CharacterVaria
 
 export interface CharacterVariantGroup extends CharacterVariantElement<CharacterVariantElementType.VariantGroup> {
     name: string;
+    defaultVariant: string | null;
     variants: CharacterVariant[];
 }
 

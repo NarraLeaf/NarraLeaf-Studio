@@ -11,7 +11,7 @@ type VariantResolver = {
 };
 
 export class CharacterAppearance {
-    constructor(private appearance: ICharacterAppearance) {}
+    constructor(private appearance: ICharacterAppearance) { }
 
     /**
      * Get all character forms.
@@ -136,7 +136,7 @@ export class CharacterAppearance {
      * If the group does not exist, this method will create the group and then create the variant in the group.
      */
     public createVariantInGroup(groupName: string, variantName: string): CharacterVariant {
-        const group = this.createGroup(groupName);
+        const group = this.createGroup(groupName, [], null);
         const variant: CharacterVariant = {
             type: CharacterVariantElementType.Variant,
             name: variantName,
@@ -148,7 +148,7 @@ export class CharacterAppearance {
     /**
      * If the group already exists, this method will return the existing group.
      */
-    public createGroup(name: string): CharacterVariantGroup {
+    public createGroup(name: string, variants: CharacterVariant[], defaultVariant: string | null): CharacterVariantGroup {
         for (const variant of this.appearance.variants) {
             if (variant.type === CharacterVariantElementType.VariantGroup && variant.name === name) {
                 return variant;
@@ -157,15 +157,80 @@ export class CharacterAppearance {
         const group: CharacterVariantGroup = {
             type: CharacterVariantElementType.VariantGroup,
             name,
-            variants: [],
+            defaultVariant,
+            variants,
         };
         this.appearance.variants.push(group);
         return group;
     }
 
-    public resolve(variants: string[], ): string[] {
+    public resolve(variants: string[], resolvers: VariantResolver[] = []): string[] {
         const map = this.mapVariants();
-        const resolved
+        const groups: Set<string> = new Set();
+        const singles: Set<string> = new Set();
+        const resolved: Set<string> = new Set();
+
+        for (const [key, value] of Object.entries(map)) {
+            if (value.group) {
+                groups.add(value.group.name);
+            } else {
+                singles.add(key);
+            }
+        }
+
+        for (const variant of variants) {
+            const definition: VariantMap[string] | undefined = map[variant];
+            if (!definition) continue;
+            if ((definition.group && !groups.has(definition.group.name))
+                || (!definition.group && !singles.has(definition.variant.name))
+            ) {
+                const reason = map[definition.group?.name || definition.variant.name]
+                    ? `duplicated (group: ${definition.group?.name || "none"})`
+                    : "not defined"
+                throw new Error(`Invalid variant groups. Variant "${variant}" is ${reason}`);
+            }
+
+            if (definition.group) {
+                groups.delete(definition.group.name);
+            }
+
+            resolved.add(variant);
+        }
+
+        const groupMap = this.createGroupMap();
+        for (const group of groups) {
+            const groupDefinition = groupMap[group];
+            const defaultVariant = groupDefinition.defaultVariant;
+            if (!defaultVariant) continue;
+
+            resolved.add(defaultVariant);
+        }
+
+        for (const resolver of resolvers) {
+            const definition = map[resolver.variant];
+            if (!definition) {
+                throw new Error(`Invalid variant groups. Variant "${resolver.variant}" is not defined`);
+            }
+
+            const isGroup = definition?.group !== null;
+            if (resolver.type === "add") {
+                if (isGroup) {
+                    definition.group?.variants.forEach(variant => resolved.delete(variant.name));
+                }
+                resolved.add(definition.variant.name);
+            } else {
+                if (isGroup) {
+                    definition.group!.variants.forEach(variant => resolved.delete(variant.name));
+                    if (definition.group?.defaultVariant) {
+                        resolved.add(definition.group?.defaultVariant);
+                    }
+                } else {
+                    resolved.delete(definition.variant.name);
+                }
+            }
+        }
+
+        return Array.from(resolved);
     }
 
     private mapVariants(): VariantMap {
@@ -212,5 +277,15 @@ export class CharacterAppearance {
             }
         }
         return null;
+    }
+
+    private createGroupMap(): Record<string, CharacterVariantGroup> {
+        const map: Record<string, CharacterVariantGroup> = {};
+        for (const variant of this.appearance.variants) {
+            if (variant.type === CharacterVariantElementType.VariantGroup) {
+                map[variant.name] = variant;
+            }
+        }
+        return map;
     }
 }
