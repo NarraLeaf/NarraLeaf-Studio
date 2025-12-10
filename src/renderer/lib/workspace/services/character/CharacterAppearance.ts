@@ -14,6 +14,31 @@ export class CharacterAppearance {
     constructor(private appearance: ICharacterAppearance) { }
 
     /**
+     * Serialize appearance for persistence/export.
+     */
+    public toJSON(): ICharacterAppearance {
+        const clonedVariants: (CharacterVariantGroup | CharacterVariant)[] = this.appearance.variants.map(variant => {
+            if (variant.type === CharacterVariantElementType.VariantGroup) {
+                return {
+                    ...variant,
+                    variants: variant.variants.map(child => ({ ...child })),
+                };
+            }
+            return { ...variant };
+        });
+
+        const clonedForms = this.appearance.forms.map(form => ({
+            name: form.name,
+            variants: { ...form.variants },
+        }));
+
+        return {
+            variants: clonedVariants,
+            forms: clonedForms,
+        };
+    }
+
+    /**
      * Get all character forms.
      * @returns An array of all character forms.
      */
