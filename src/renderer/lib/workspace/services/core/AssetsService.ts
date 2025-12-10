@@ -20,6 +20,7 @@ import { EventEmitter } from "../ui/EventEmitter";
 import { FileSystemService } from "./FileSystem";
 import { MagicTagManager, MagicTagTemplate, MagicTagPreview } from "./MagicTagManager";
 import { ProjectService } from "./ProjectService";
+import { UuidService } from "./UuidService";
 
 interface AssetsEvents {
     deleted: Asset;
@@ -103,7 +104,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const projectService = ctx.services.get<ProjectService>(Services.Project);
-        await depend([filesystemService, projectService]);
+        const uuidService = ctx.services.get<UuidService>(Services.Uuid);
+        await depend([filesystemService, projectService, uuidService]);
 
         // Initialize all asset services
         this.imageService = new ImageService(ctx);

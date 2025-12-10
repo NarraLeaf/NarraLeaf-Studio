@@ -7,6 +7,7 @@ import { Asset, AssetSource } from "../types";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { FsRequestResult } from "@shared/types/os";
 import { FileSystemService } from "../../core/FileSystem";
+import { UuidService } from "../../core/UuidService";
 import { RendererError } from "@shared/utils/error";
 import { basename, dirname, extname } from "@shared/utils/path";
 
@@ -133,7 +134,7 @@ export class LocalAssetsManager {
         }
 
         // Generate new uuid and resolve unique name
-        const newId = crypto.randomUUID();
+        const newId = this.getUuidService().generate();
         const uniqueName = this.resolveUniqueAssetName(asset.type, asset.name);
 
         // Source/dest paths
@@ -215,7 +216,7 @@ export class LocalAssetsManager {
         const fileHash = hashResult.success && hashResult.data.ok ? hashResult.data.data : "";
 
         // generate unique id for storage / indexing
-        const id = crypto.randomUUID();
+        const id = this.getUuidService().generate();
 
         // resolve unique display name (e.g. "image.png", "image-1.png")
         const originalName = basename(path);
@@ -350,5 +351,9 @@ export class LocalAssetsManager {
 
     private getContext(): WorkspaceContext {
         return this.assetsService.getContext();
+    }
+
+    private getUuidService(): UuidService {
+        return this.getContext().services.get<UuidService>(Services.Uuid);
     }
 }

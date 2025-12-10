@@ -1,11 +1,9 @@
 import { RendererError, throwException } from "@shared/utils/error";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { ProjectConfig, Resolution } from "../../project/project";
-import { IProjectService, Services, WorkspaceContext } from "../services";
 import { Service } from "../Service";
+import { IProjectService, Services, WorkspaceContext } from "../services";
 import { FileSystemService } from "./FileSystem";
-import { Asset, AssetsMap, AssetSource } from "../assets/types";
-import { AssetType } from "../assets/assetTypes";
 
 export class BaseProjectService {
     public static getInitialConfig(config: ProjectConfig): ProjectConfig {
