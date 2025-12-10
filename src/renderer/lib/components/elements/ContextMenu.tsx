@@ -83,9 +83,11 @@ export function ContextMenu({
         if (!visible) return;
 
         const handleClickOutside = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-                onClose();
-            }
+            const target = e.target as Node | null;
+            if (!target) return;
+            const inAnyMenu = (target as HTMLElement).closest?.('[data-context-menu="true"]');
+            if (inAnyMenu) return;
+            onClose();
         };
 
         // Delay to prevent immediate closure from the opening click
@@ -101,7 +103,10 @@ export function ContextMenu({
 
     // Keyboard navigation
     useEffect(() => {
-        if (!visible) return;
+        if (!visible) {
+            setOpenSubmenuIndex(null);
+            return;
+        }
 
         const enabledItems = items.filter(
             item => !('separator' in item && item.separator) && !item.disabled
@@ -159,6 +164,7 @@ export function ContextMenu({
     const menuContent = (
         <div
             ref={menuRef}
+            data-context-menu="true"
             className="fixed z-50 min-w-48 bg-[#1e1f22] border border-white/10 rounded-md shadow-lg py-1"
             style={{
                 left: `${adjustedPosition.x}px`,
@@ -166,6 +172,7 @@ export function ContextMenu({
                 maxHeight: "calc(100vh - 16px)",
                 overflowY: "auto",
             }}
+            onMouseDown={(e) => e.stopPropagation()}
         >
             {items.map((item, index) => {
                 if ('separator' in item && item.separator) {
@@ -183,7 +190,8 @@ export function ContextMenu({
                         isFocused={isFocused}
                         onClose={onClose}
                         isSubmenuOpen={isOpen}
-                        onSubmenuToggle={() => setOpenSubmenuIndex(isOpen ? null : index)}
+                        onSubmenuOpen={() => setOpenSubmenuIndex(index)}
+                        onSubmenuClose={() => setOpenSubmenuIndex(null)}
                     />
                 );
             })}
@@ -203,7 +211,8 @@ interface ContextMenuItemProps {
     isFocused: boolean;
     onClose: () => void;
     isSubmenuOpen: boolean;
-    onSubmenuToggle: () => void;
+    onSubmenuOpen: () => void;
+    onSubmenuClose: () => void;
 }
 
 function ContextMenuItem({
@@ -211,7 +220,8 @@ function ContextMenuItem({
     isFocused,
     onClose,
     isSubmenuOpen,
-    onSubmenuToggle,
+    onSubmenuOpen,
+    onSubmenuClose,
 }: ContextMenuItemProps) {
     const itemRef = useRef<HTMLDivElement>(null);
     const [submenuPosition, setSubmenuPosition] = useState({ x: 0, y: 0 });
@@ -233,7 +243,11 @@ function ContextMenuItem({
         if (item.disabled) return;
 
         if (hasSubmenu) {
-            onSubmenuToggle();
+            if (isSubmenuOpen) {
+                onSubmenuClose();
+            } else {
+                onSubmenuOpen();
+            }
         } else {
             item.onClick?.();
             onClose();
@@ -242,7 +256,7 @@ function ContextMenuItem({
 
     const handleMouseEnter = () => {
         if (hasSubmenu && !item.disabled) {
-            onSubmenuToggle();
+            onSubmenuOpen();
         }
     };
 
@@ -254,7 +268,7 @@ function ContextMenuItem({
                     px-3 py-1.5 flex items-center gap-2 text-sm cursor-default
                     transition-colors duration-150
                     ${item.disabled
-                        ? 'opacity-50 cursor-not-allowed'
+                        ? 'opacity-50 cursor-not-allowed text-gray-300'
                         : isFocused
                         ? 'bg-primary/20 text-white'
                         : 'text-gray-300 hover:bg-white/10 hover:text-white'
@@ -262,6 +276,7 @@ function ContextMenuItem({
                 `}
                 onClick={handleClick}
                 onMouseEnter={handleMouseEnter}
+                onMouseDown={(e) => e.stopPropagation()}
             >
                 {/* Icon */}
                 {item.icon && (

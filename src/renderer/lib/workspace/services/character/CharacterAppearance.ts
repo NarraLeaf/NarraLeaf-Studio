@@ -11,7 +11,17 @@ type VariantResolver = {
 };
 
 export class CharacterAppearance {
-    constructor(private appearance: ICharacterAppearance) { }
+    constructor(private appearance: ICharacterAppearance, private onChange: (() => void) | null = null) { }
+
+    public setOnChange(handler: (() => void) | null): void {
+        this.onChange = handler;
+    }
+
+    private notifyChange(): void {
+        if (this.onChange) {
+            this.onChange();
+        }
+    }
 
     /**
      * Serialize appearance for persistence/export.
@@ -154,6 +164,7 @@ export class CharacterAppearance {
             name,
         };
         this.appearance.variants.push(newVariant);
+        this.notifyChange();
         return newVariant;
     }
 
@@ -167,6 +178,7 @@ export class CharacterAppearance {
             name: variantName,
         };
         group.variants.push(variant);
+        this.notifyChange();
         return variant;
     }
 
@@ -186,6 +198,7 @@ export class CharacterAppearance {
             variants,
         };
         this.appearance.variants.push(group);
+        this.notifyChange();
         return group;
     }
 

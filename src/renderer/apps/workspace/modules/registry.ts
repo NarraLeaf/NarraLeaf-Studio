@@ -10,6 +10,7 @@ import { consoleModule } from "./console";
 import { welcomeModule } from "./welcome";
 import { globalActions, globalActionGroups } from "./actions";
 import { imagePreviewModule } from "./assets/editors/imagePreviewModule";
+import { charactersModule } from "./characters";
 import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
 
 /**
@@ -17,6 +18,7 @@ import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./ty
  * All panels that should be registered on workspace startup
  */
 export const builtInPanels: PanelModule[] = [
+    charactersModule,
     assetsModule,
     propertiesModule,
     consoleModule,
@@ -47,6 +49,7 @@ export const builtInActionGroups: ModuleActionGroup[] = globalActionGroups;
  * Export individual modules for direct access if needed
  */
 export { assetsModule } from "./assets";
+export { charactersModule } from "./characters";
 export { propertiesModule } from "./properties";
 export { consoleModule } from "./console";
 export { welcomeModule } from "./welcome";

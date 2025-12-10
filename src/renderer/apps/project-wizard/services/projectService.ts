@@ -44,6 +44,9 @@ export class ProjectService {
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Assets)));
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.AssetsContent)));
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Scripts)));
+            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Editor)));
+            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorAssets)));
+            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorServices)));
 
             // Write editor.json
             const editorConfigPath = this.resolve(basePath, ProjectNameConvention.EditorConfig);

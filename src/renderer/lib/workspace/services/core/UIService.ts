@@ -53,12 +53,14 @@ export class UIService extends Service<UIService> implements IUIService {
         this.store.setKeybindingService(this._keybindings);
     }
 
-    protected init(ctx: WorkspaceContext): Promise<void> | void {
+    protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
+        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+        await depend([assetsService]);
+
         // Start keybinding service
         this._keybindings.start();
 
         try {
-            const assetsService = ctx.services.get<AssetsService>(Services.Assets);
             assetsService.getEvents().on("deleted", (asset: Asset) => {
                 // Clear selection if the deleted asset is selected
                 const selection = this.store.getSelection();

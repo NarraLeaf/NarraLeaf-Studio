@@ -27,6 +27,9 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
             if (e.key === "Escape") {
                 handleClear();
             }
+            if (e.key === " ") {
+                e.stopPropagation();
+            }
         }, [handleClear]);
 
         return (

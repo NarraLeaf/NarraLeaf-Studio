@@ -5,6 +5,8 @@ import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetData, AssetType } from "./assets/assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
+import { Character } from "./character/Character";
+import { CharacterGroup } from "./character/types";
 
 interface WorkspaceContext {
     project: Porject;
@@ -18,9 +20,11 @@ interface IService {
 
 enum Services {
     Project = "project",
+    Uuid = "uuid",
     FileSystem = "fileSystem",
     UI = "ui",
     ProjectSettings = "projectSettings",
+    ServiceAssets = "serviceAssets",
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
@@ -45,6 +49,10 @@ enum Services {
 // Core Services
 interface IProjectService extends IService {
     getProjectConfig(): ProjectConfig;
+}
+
+interface IUuidService extends IService {
+    generate(compact?: boolean): string;
 }
 
 interface IFileSystemService extends IService {
@@ -103,7 +111,19 @@ interface IEditorService extends IService { }
 
 interface IStoryService extends IService { }
 
-interface ICharacterService extends IService { }
+interface ICharacterService extends IService {
+    getCharacter(id: string): Character | undefined;
+    listCharacter(): Character[];
+    createCharacter(name: string): Character;
+    renameCharacter(id: string, name: string): boolean;
+    listGroups(): CharacterGroup[];
+    getGroup(id: string): CharacterGroup | undefined;
+    createGroup(name: string): CharacterGroup;
+    renameGroup(id: string, name: string): boolean;
+    deleteGroup(id: string): boolean;
+    assignCharacterToGroup(characterId: string, groupId?: string): boolean;
+    listCharactersByGroup(groupId?: string): Character[];
+}
 
 // Asset Services
 interface IAssetService extends IService {
@@ -113,6 +133,15 @@ interface IAssetService extends IService {
     fetch<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<AssetData<T>>>;
     exists<T extends AssetType>(asset: Asset<T>): boolean;
     importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>>;
+}
+
+interface IServiceAssetsService extends IService {
+    writeStore<T extends Record<string, any>>(namespace: string, data: T): Promise<FsRequestResult<{ path: string }>>;
+    readStore<T extends Record<string, any>>(namespace: string): Promise<FsRequestResult<T>>;
+    writeFile(data: string | Buffer): Promise<FsRequestResult<string>>;
+    readFile(fileId: string, encoding?: BufferEncoding): Promise<FsRequestResult<string>>;
+    readRaw(fileId: string): Promise<FsRequestResult<Uint8Array>>;
+    deleteFile(fileId: string): Promise<FsRequestResult<void>>;
 }
 
 interface ITextureService extends IService { }
@@ -141,6 +170,11 @@ interface IVersionControlService extends IService { }
 interface IPluginService extends IService { }
 
 export {
-    IAssetService, IAudioService, IBuildService, ICommandService, IDebugService, IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService, IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService, IService, ISettingsService, IStorageService, IStoryService, ITextureService, IUIService, IVersionControlService, IVideoService, Services, WorkspaceContext
+    IAssetService, IAudioService, IBuildService, ICommandService, IDebugService,
+    IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
+    IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService,
+    IService, IServiceAssetsService, ISettingsService, IStorageService, IStoryService,
+    ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
+    ICharacterService, Services, WorkspaceContext
 };
 

@@ -17,6 +17,12 @@ export const ProjectNameConvention = {
     AssetsContent: ["assets", "content/"],
     AssetsDataShard: (id: string) => ["assets", "content", ...splitId(id)],
     Scripts: ["scripts/"],
+
+    // Editor Related Files
+    // These files are not packaged into the product
+    Editor: ["editor/"],
+    EditorAssets: ["editor", "assets/"],
+    EditorServices: ["editor", "services/"],
 } as const;
 
 /**

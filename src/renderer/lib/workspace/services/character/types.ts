@@ -4,13 +4,34 @@ import { Asset } from "../assets/types";
 
 export interface CharacterBaseProfile {
     name: string;
-    id: string;
+    readonly id: string;
 }
 
 export interface CharacterEditorProfile extends CharacterBaseProfile {
+    /**
+     * Character Description
+     */
     description: string;
+    /**
+     * Character Tags
+     */
     tags: string[];
+    /**
+     * User defined attributes
+     */
     attributes: Record<string, string>;
+    /**
+     * Editor Asset UUID
+     */
+    thumbnail: string | null;
+    /**
+     * Character Nicknames
+     */
+    nicknames: string[];
+    /**
+     * Group that the character belongs to
+     */
+    groupId?: string;
 }
 
 export interface ICharacterAppearance {
@@ -56,3 +77,12 @@ export type CharacterRelationshipMap = {
     target: string;
     name: string;
 };
+
+export interface CharacterGroup {
+    id: string;
+    name: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export type CharacterGroupMap = Record<string, CharacterGroup>;
