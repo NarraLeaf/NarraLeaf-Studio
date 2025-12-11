@@ -116,6 +116,7 @@ interface ICharacterService extends IService {
     listCharacter(): Character[];
     createCharacter(name: string): Character;
     renameCharacter(id: string, name: string): boolean;
+    deleteCharacter(id: string): boolean;
     listGroups(): CharacterGroup[];
     getGroup(id: string): CharacterGroup | undefined;
     createGroup(name: string): CharacterGroup;

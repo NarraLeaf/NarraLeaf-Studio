@@ -1,3 +1,5 @@
+import { Asset } from "../assets/types";
+import { AssetType } from "../assets/assetTypes";
 import { CharacterForm, CharacterVariant, CharacterVariantGroup, ICharacterAppearance, VariantData } from "./types";
 
 type VariantResolver = {
@@ -6,16 +8,23 @@ type VariantResolver = {
 };
 
 export class CharacterAppearance {
+    private listeners: Set<() => void> = new Set();
     constructor(private appearance: ICharacterAppearance, private onChange: (() => void) | null = null) { }
 
     public setOnChange(handler: (() => void) | null): void {
         this.onChange = handler;
     }
 
+    public subscribe(handler: () => void): () => void {
+        this.listeners.add(handler);
+        return () => this.listeners.delete(handler);
+    }
+
     private notifyChange(): void {
         if (this.onChange) {
             this.onChange();
         }
+        this.listeners.forEach(listener => listener());
     }
 
     /**
@@ -152,6 +161,15 @@ export class CharacterAppearance {
      * Create a variant inside a group (group created if missing).
      */
     public createVariantInGroup(formName: string, groupName: string, variantName: string): CharacterVariant {
+        const form = this.ensureForm(formName);
+
+        // Prevent duplicate variant names across the whole form (not just within the target group)
+        const duplicated = form.groups.some(g => g.variants.some(v => v.name.toLowerCase() === variantName.toLowerCase()));
+        if (duplicated) {
+            const existing = form.groups.flatMap(g => g.variants).find(v => v.name.toLowerCase() === variantName.toLowerCase());
+            return existing ?? { name: variantName };
+        }
+
         const group = this.createGroup(formName, groupName, [], null);
         const existing = group.variants.find(v => v.name === variantName);
         if (existing) return existing;
@@ -179,6 +197,36 @@ export class CharacterAppearance {
         }
         this.notifyChange();
         return true;
+    }
+
+    /**
+     * Attach or clear an asset for a specific variant within a form.
+     */
+    public setVariantAsset(formName: string, variantName: string, asset: Asset<AssetType.Image> | null): void {
+        const form = this.getForm(formName);
+        if (!form) return;
+
+        const hasVariant = form.groups.some(group => group.variants.some(v => v.name === variantName));
+        if (!hasVariant) return;
+
+        if (asset) {
+            form.variantAssets[variantName] = { data: asset };
+        } else {
+            delete form.variantAssets[variantName];
+        }
+        this.notifyChange();
+    }
+
+    /**
+     * Update default variant for a group.
+     */
+    public setGroupDefaultVariant(formName: string, groupName: string, variantName: string | null): void {
+        const form = this.getForm(formName);
+        if (!form) return;
+        const group = form.groups.find(g => g.name === groupName);
+        if (!group) return;
+        group.defaultVariant = variantName;
+        this.notifyChange();
     }
 
     /**

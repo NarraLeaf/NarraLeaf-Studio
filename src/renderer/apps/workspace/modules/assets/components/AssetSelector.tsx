@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
     Image,
@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../../context";
 import { SearchBox } from "./SearchBox";
 import { FilterSystem } from "./FilterSystem";
@@ -65,58 +67,27 @@ export function AssetSelector({
     const { context, isInitialized } = useWorkspace();
     const { assets, groups, loading, error, loadAssets } = useAssetData({ context, isInitialized });
     const { filterConfigs, activeFilters, setActiveFilters, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({ assets, groups });
+    const assetsService = useMemo(() => {
+        if (!context) return null;
+        return context.services.get<AssetsService>(Services.Assets);
+    }, [context]);
 
     const [searchQuery, setSearchQuery] = useState("");
     const [selection, setSelection] = useState<Set<string>>(new Set(selectedIds));
     const [anchorStyle, setAnchorStyle] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 420 });
+    const panelRef = useRef<HTMLDivElement | null>(null);
+    const previewTimerRef = useRef<number | null>(null);
+    const previewTargetRef = useRef<HTMLElement | null>(null);
+    const previewCacheRef = useRef<Record<string, string>>({});
+    const [previewState, setPreviewState] = useState<{
+        asset: Asset<AssetType.Image>;
+        url: string;
+        position: { top: number; left: number };
+    } | null>(null);
 
     useEffect(() => {
         setSelection(new Set(selectedIds));
     }, [selectedIds, visible]);
-
-    useLayoutEffect(() => {
-        if (!visible) return;
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        const viewportMargin = 12;
-        const maxPanelHeight = 560; // matches max-h
-        const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
-
-        if (anchorRef?.current) {
-            const rect = anchorRef.current.getBoundingClientRect();
-            const width = clamp(rect.width, 320, 480);
-            let top = rect.bottom + 8 + window.scrollY;
-            // If bottom would overflow, try opening upward
-            if (top + maxPanelHeight > window.scrollY + viewportHeight - viewportMargin) {
-                top = rect.top + window.scrollY - maxPanelHeight - 8;
-            }
-            top = clamp(top, window.scrollY + viewportMargin, window.scrollY + viewportHeight - viewportMargin - maxPanelHeight);
-            const left = clamp(
-                rect.left + window.scrollX,
-                window.scrollX + viewportMargin,
-                window.scrollX + viewportWidth - viewportMargin - width
-            );
-
-            setAnchorStyle({
-                top,
-                left,
-                width,
-            });
-        } else {
-            const width = 420;
-            const left = clamp(
-                (viewportWidth - width) / 2 + window.scrollX,
-                window.scrollX + viewportMargin,
-                window.scrollX + viewportWidth - viewportMargin - width
-            );
-            const top = clamp(
-                96 + window.scrollY,
-                window.scrollY + viewportMargin,
-                window.scrollY + viewportHeight - viewportMargin - maxPanelHeight
-            );
-            setAnchorStyle((prev) => ({ ...prev, top, left, width }));
-        }
-    }, [anchorRef, visible]);
 
     const typeAssets = useMemo(() => assets[assetType] ?? [], [assets, assetType]);
     const filteredTypeAssets = useMemo(() => filteredAssets[assetType] ?? [], [filteredAssets, assetType]);
@@ -133,6 +104,60 @@ export function AssetSelector({
             return false;
         });
     }, [filteredTypeAssets, searchQuery]);
+
+    useLayoutEffect(() => {
+        if (!visible) return;
+
+        const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+        const viewportMargin = 12;
+        const maxPanelHeight = 560; // matches max-h
+
+        const updatePosition = () => {
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            const panelHeight = Math.min(panelRef.current?.offsetHeight ?? maxPanelHeight, maxPanelHeight);
+
+            if (anchorRef?.current) {
+                const rect = anchorRef.current.getBoundingClientRect();
+                const width = clamp(rect.width, 320, 480);
+                const availableBelow = viewportHeight - rect.bottom - viewportMargin;
+                const availableAbove = rect.top - viewportMargin;
+
+                const shouldOpenDown = availableBelow >= panelHeight || availableBelow >= availableAbove;
+                let top = shouldOpenDown ? rect.bottom + 8 : rect.top - panelHeight - 8;
+                top = clamp(top, viewportMargin, viewportHeight - viewportMargin - panelHeight);
+                const left = clamp(rect.left, viewportMargin, viewportWidth - viewportMargin - width);
+
+                setAnchorStyle({
+                    top,
+                    left,
+                    width,
+                });
+            } else {
+                const width = 420;
+                const left = clamp((viewportWidth - width) / 2, viewportMargin, viewportWidth - viewportMargin - width);
+                const top = clamp(96, viewportMargin, viewportHeight - viewportMargin - maxPanelHeight);
+                setAnchorStyle((prev) => ({ ...prev, top, left, width }));
+            }
+        };
+
+        updatePosition();
+        const handleReposition = () => updatePosition();
+        window.addEventListener("resize", handleReposition);
+        window.addEventListener("scroll", handleReposition, { passive: true });
+
+        let resizeObserver: ResizeObserver | undefined;
+        if (panelRef.current && "ResizeObserver" in window) {
+            resizeObserver = new ResizeObserver(() => updatePosition());
+            resizeObserver.observe(panelRef.current);
+        }
+
+        return () => {
+            window.removeEventListener("resize", handleReposition);
+            window.removeEventListener("scroll", handleReposition);
+            resizeObserver?.disconnect();
+        };
+    }, [anchorRef, visible, displayedAssets.length]);
 
     const assetsByGroup = useMemo(() => {
         const map = new Map<string | null | undefined, Asset[]>();
@@ -172,6 +197,97 @@ export function AssetSelector({
             .map((id) => map.get(id))
             .filter((asset): asset is Asset => Boolean(asset));
     }, [selection, typeAssets]);
+
+    const clearPreviewTimer = useCallback(() => {
+        if (previewTimerRef.current) {
+            window.clearTimeout(previewTimerRef.current);
+            previewTimerRef.current = null;
+        }
+    }, []);
+
+    const hidePreview = useCallback(() => {
+        clearPreviewTimer();
+        previewTargetRef.current = null;
+        setPreviewState(null);
+    }, [clearPreviewTimer]);
+
+    const ensurePreviewUrl = useCallback(
+        async (asset: Asset<AssetType.Image>) => {
+            if (!assetsService) return null;
+            const cached = previewCacheRef.current[asset.id];
+            if (cached) return cached;
+            const result = await assetsService.fetch(asset);
+            if (!result.success) return null;
+            const blob = new Blob([new Uint8Array(result.data.data)]);
+            const url = URL.createObjectURL(blob);
+            previewCacheRef.current[asset.id] = url;
+            return url;
+        },
+        [assetsService],
+    );
+
+    const computePreviewPosition = useCallback((target: HTMLElement) => {
+        const rect = target.getBoundingClientRect();
+        const margin = 8;
+        const gap = 12;
+        const previewWidth = 240;
+        const previewHeight = 240;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        let left = rect.right + gap;
+        if (left + previewWidth > viewportWidth - margin) {
+            left = rect.left - previewWidth - gap;
+            if (left < margin) {
+                left = viewportWidth - margin - previewWidth;
+            }
+        }
+
+        let top = rect.top + rect.height / 2 - previewHeight / 2;
+        const maxTop = viewportHeight - margin - previewHeight;
+        if (top < margin) top = margin;
+        if (top > maxTop) top = maxTop;
+
+        return { top, left };
+    }, []);
+
+    const openPreview = useCallback(
+        async (asset: Asset<AssetType.Image>, target: HTMLElement) => {
+            previewTargetRef.current = target;
+            const url = await ensurePreviewUrl(asset);
+            if (!url) return;
+            if (previewTargetRef.current !== target) return;
+            const position = computePreviewPosition(target);
+            setPreviewState({ asset, url, position });
+        },
+        [computePreviewPosition, ensurePreviewUrl],
+    );
+
+    const handlePreviewEnter = useCallback(
+        (asset: Asset, target: HTMLElement) => {
+            if (asset.type !== AssetType.Image) return;
+            clearPreviewTimer();
+            previewTargetRef.current = target;
+            setPreviewState((prev) => (prev?.asset.id === asset.id ? prev : null));
+            previewTimerRef.current = window.setTimeout(() => {
+                void openPreview(asset as Asset<AssetType.Image>, target);
+            }, 550);
+        },
+        [clearPreviewTimer, openPreview],
+    );
+
+    useEffect(() => {
+        if (!visible) {
+            hidePreview();
+        }
+    }, [visible, hidePreview]);
+
+    useEffect(() => {
+        return () => {
+            hidePreview();
+            Object.values(previewCacheRef.current).forEach((url) => URL.revokeObjectURL(url));
+        };
+    }, [hidePreview]);
 
     const toggleGroup = (groupId: string) => {
         setExpandedGroups((prev) => {
@@ -243,6 +359,8 @@ export function AssetSelector({
             <button
                 key={asset.id}
                 onClick={() => handleItemClick(asset)}
+                onMouseEnter={(e) => handlePreviewEnter(asset, e.currentTarget)}
+                onMouseLeave={hidePreview}
                 className={`w-full text-left rounded-md px-3 py-2 flex items-center gap-2 transition-colors hover:bg-white/5 ${
                     isSelected ? "bg-primary/20 border border-primary/60" : "border border-transparent"
                 }`}
@@ -299,6 +417,7 @@ export function AssetSelector({
             }}
         >
             <div
+                ref={panelRef}
                 style={anchorRef?.current ? { position: "absolute", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
                 className={`${anchorRef?.current ? "" : "mt-12 mx-auto"} bg-[#0b0d12] border border-white/20 rounded-lg shadow-2xl text-gray-200 max-h-[560px] flex flex-col ${className}`}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -410,6 +529,25 @@ export function AssetSelector({
         </div>
     );
 
-    return createPortal(panel, document.body);
+    return createPortal(
+        <>
+            {panel}
+            {previewState && (
+                <div
+                    style={{
+                        position: "fixed",
+                        top: previewState.position.top,
+                        left: previewState.position.left,
+                        width: 240,
+                        height: 240,
+                    }}
+                    className="z-50 pointer-events-none border border-white/20 rounded-lg shadow-2xl bg-black/70 overflow-hidden backdrop-blur"
+                >
+                    <img src={previewState.url} alt={previewState.asset.name} className="w-full h-full object-contain bg-black/60" />
+                </div>
+            )}
+        </>,
+        document.body,
+    );
 }
 

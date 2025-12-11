@@ -17,6 +17,10 @@ export interface CharacterEditorProfile extends CharacterBaseProfile {
      */
     tags: string[];
     /**
+     * Preferred default form name
+     */
+    defaultForm?: string | null;
+    /**
      * User defined attributes
      */
     attributes: Record<string, string>;

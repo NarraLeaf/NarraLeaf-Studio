@@ -263,6 +263,48 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         closeMenu();
     }, [characterService, inputDialog, loadCharacters, closeMenu]);
 
+    const handleDeleteCharacter = useCallback(async (item: CharacterItem) => {
+        if (!characterService || !context) return;
+        const uiService = context.services.get<UIService>(Services.UI);
+        const confirmed = await uiService.showConfirm(`Delete character "${item.name}"?`, "This action cannot be undone.");
+        if (!confirmed) return;
+        const removed = characterService.deleteCharacter(item.id);
+        if (removed) {
+            const editorId = `narraleaf-studio:character-editor-${item.id}`;
+            const store = uiService.getStore();
+            const layout = store.getEditorLayout();
+
+            // Ensure all editor instances related to this character are closed across groups
+            const collectTabs = (node: any, acc: Array<{ tab: any; groupId: string }>) => {
+                if (!node) return;
+                if ("tabs" in node) {
+                    (node.tabs as any[]).forEach((t) => acc.push({ tab: t, groupId: node.id }));
+                } else {
+                    collectTabs(node.first, acc);
+                    collectTabs(node.second, acc);
+                }
+            };
+
+            const allTabs: Array<{ tab: any; groupId: string }> = [];
+            collectTabs(layout, allTabs);
+
+            allTabs.forEach(({ tab, groupId }) => {
+                const sameId = tab.id === editorId;
+                const payloadCharacterId = tab?.payload?.character?.profile?.getId?.();
+                if (sameId || payloadCharacterId === item.id) {
+                    store.closeEditorTabInGroup(tab.id, groupId);
+                }
+            });
+
+            const selection = store.getSelection();
+            if (selection.type === "character" && (selection.data as Character)?.profile?.getId?.() === item.id) {
+                store.setSelection({ type: null, data: null });
+            }
+            loadCharacters();
+        }
+        closeMenu();
+    }, [characterService, context, loadCharacters, closeMenu]);
+
     const handleAssignToGroup = useCallback((characterId: string, targetGroupId?: string) => {
         if (!characterService) return;
         characterService.assignCharacterToGroup(characterId, targetGroupId);
@@ -319,6 +361,12 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     label: "Move to Group",
                     submenu: moveItems,
                 },
+                { separator: true, id: "character-separator" },
+                {
+                    id: "delete-character",
+                    label: "Delete",
+                    onClick: () => item && handleDeleteCharacter(item),
+                },
             ];
         }
 
@@ -360,7 +408,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 onClick: loadCharacters,
             },
         ];
-    }, [filteredCharacters, groups, handleAssignToGroup, handleCreateCharacter, handleCreateGroup, handleDeleteGroup, handleRenameCharacter, handleRenameGroup, loadCharacters]);
+    }, [filteredCharacters, groups, handleAssignToGroup, handleCreateCharacter, handleCreateGroup, handleDeleteCharacter, handleDeleteGroup, handleRenameCharacter, handleRenameGroup, loadCharacters]);
 
     const handleMenuOpen = useCallback((event: React.MouseEvent, target: MenuTarget) => {
         event.preventDefault();
@@ -407,7 +455,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         );
     }, [focusedCharacterId, handleCharacterClick, handleMenuOpen, thumbnails]);
 
-    const hasNoData = !loading && filteredCharacters.length === 0;
+    const hasNoData = !loading && filteredCharacters.length === 0 && groups.length === 0;
 
     return (
         <div className="h-full flex flex-col" data-panel-id={panelId} onClick={setFocusToPanel}>
