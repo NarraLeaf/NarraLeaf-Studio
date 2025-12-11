@@ -22,6 +22,60 @@ type CropRect = {
     height: number;
 };
 
+type NormalizedCrop = {
+    xRatio: number;
+    yRatio: number;
+    widthRatio: number;
+    heightRatio: number;
+};
+
+// Persist last crop selection in memory for reuse across characters
+let lastCropSelection: NormalizedCrop | null = null;
+
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+const clampDimension = (value: number, max: number) => Math.max(1, Math.min(max, value));
+
+const rememberLastCrop = (selection: CropRect, sourceWidth: number, sourceHeight: number) => {
+    if (sourceWidth <= 0 || sourceHeight <= 0) return;
+    const widthRatio = clamp01(selection.width / sourceWidth);
+    const heightRatio = clamp01(selection.height / sourceHeight);
+    const xRatio = clamp01(selection.x / sourceWidth);
+    const yRatio = clamp01(selection.y / sourceHeight);
+    if (widthRatio === 0 || heightRatio === 0) return;
+    lastCropSelection = { xRatio, yRatio, widthRatio, heightRatio };
+};
+
+const centeredSquareCrop = (width: number, height: number): CropRect => {
+    const side = Math.min(width, height);
+    const startX = (width - side) / 2;
+    const startY = (height - side) / 2;
+    return {
+        x: startX,
+        y: startY,
+        width: side,
+        height: side,
+    };
+};
+
+const getInitialCropForImage = (width: number, height: number): CropRect => {
+    if (!lastCropSelection) {
+        return centeredSquareCrop(width, height);
+    }
+    const { xRatio, yRatio, widthRatio, heightRatio } = lastCropSelection;
+    const cropWidth = clampDimension(widthRatio * width, width);
+    const cropHeight = clampDimension(heightRatio * height, height);
+    const maxX = Math.max(0, width - cropWidth);
+    const maxY = Math.max(0, height - cropHeight);
+    const x = Math.min(maxX, Math.max(0, xRatio * width));
+    const y = Math.min(maxY, Math.max(0, yRatio * height));
+    return {
+        x,
+        y,
+        width: cropWidth,
+        height: cropHeight,
+    };
+};
+
 type CharacterPropertiesEditorProps = {
     character: Character;
 };
@@ -45,6 +99,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
     const [thumbnailError, setThumbnailError] = useState<string | null>(null);
     const [savingThumbnail, setSavingThumbnail] = useState(false);
     const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+    const [cropSourceSize, setCropSourceSize] = useState<{ width: number; height: number } | null>(null);
     const thumbnailAnchorRef = useRef<HTMLButtonElement | null>(null);
 
     const hasTags = useMemo(() => tags.length > 0, [tags]);
@@ -148,12 +203,9 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
         const side = Math.min(width, height);
         const startX = (width - side) / 2;
         const startY = (height - side) / 2;
-        setInitialCrop({
-            x: startX,
-            y: startY,
-            width: side,
-            height: side,
-        });
+        const initial = getInitialCropForImage(width, height);
+        setInitialCrop(initial ?? { x: startX, y: startY, width: side, height: side });
+        setCropSourceSize({ width, height });
         setCropperOpen(true);
     };
 
@@ -224,6 +276,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
         setCropperOpen(false);
         setCroppingAsset(null);
         setInitialCrop(undefined);
+        setCropSourceSize(null);
         revokeCropperUrl();
         setCropperImageUrl(null);
     }, [revokeCropperUrl]);
@@ -235,6 +288,9 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
         }
         setSavingThumbnail(true);
         try {
+            if (cropSourceSize) {
+                rememberLastCrop(selection, cropSourceSize.width, cropSourceSize.height);
+            }
             const blob = await cropImage(cropperImageUrl, selection);
             const arrayBuffer = await blob.arrayBuffer();
             const writeResult = await serviceAssets.writeFile(Buffer.from(arrayBuffer));
