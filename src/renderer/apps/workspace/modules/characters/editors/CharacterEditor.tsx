@@ -5,7 +5,7 @@ import { ContextMenu, ContextMenuDef } from "@/lib/components/elements/ContextMe
 import { AssetData, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { Character } from "@/lib/workspace/services/character/Character";
-import { CharacterForm, CharacterVariantGroup } from "@/lib/workspace/services/character/types";
+import { CharacterForm, CharacterVariantGroup, CharacterVariant } from "@/lib/workspace/services/character/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
@@ -30,6 +30,18 @@ type SelectorState = {
 };
 
 const DEFAULT_GROUP = "__default__";
+
+// Clone forms to force referential changes so dependent effects re-run
+const cloneForms = (forms: CharacterForm[]): CharacterForm[] =>
+    forms.map(form => ({
+        name: form.name,
+        groups: form.groups.map(group => ({
+            name: group.name,
+            defaultVariant: group.defaultVariant,
+            variants: group.variants.map((variant: CharacterVariant) => ({ ...variant })),
+        })),
+        variantAssets: { ...form.variantAssets },
+    }));
 
 function getFormThumbnailVariant(form?: CharacterForm | null): string | null {
     if (!form) return null;
@@ -198,7 +210,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         return context.services.get<AssetsService>(Services.Assets);
     }, [context]);
 
-    const [version, setVersion] = useState(0);
+    const [profileVersion, setProfileVersion] = useState(0);
     const [previewVariant, setPreviewVariant] = useState<string | null>(null);
     const [activeFormName, setActiveFormName] = useState<string>(() => profile?.getDefaultForm() ?? appearance?.getForms()[0]?.name ?? "");
     const [assetViews, setAssetViews] = useState<Record<string, AssetView>>({});
@@ -211,18 +223,31 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     const selectorAnchorMemo = useMemo(() => selectorState.anchor ? { current: selectorState.anchor } : undefined, [selectorState.anchor]);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-    const forms = useMemo(() => appearance?.getForms() ?? [], [appearance, version]);
+    const [forms, setForms] = useState<CharacterForm[]>(() => (appearance ? cloneForms(appearance.getForms()) : []));
+
+    // Keep forms in sync with appearance updates without recreating snapshots on every render.
+    useEffect(() => {
+        if (!appearance) {
+            setForms([]);
+            return;
+        }
+        let cancelled = false;
+        const syncForms = () => {
+            if (!cancelled) {
+                setForms(cloneForms(appearance.getForms()));
+            }
+        };
+        syncForms(); // seed immediately
+        const unsubscribe = appearance.subscribe(syncForms);
+        return () => {
+            cancelled = true;
+            unsubscribe();
+        };
+    }, [appearance]);
     const activeForm = useMemo<CharacterForm | null>(
         () => forms.find(f => f.name === activeFormName) ?? null,
-        [forms, activeFormName, version]
+        [forms, activeFormName, profileVersion]
     );
-
-    // Sync with appearance change notifications to force rerender when internal mutations happen
-    useEffect(() => {
-        if (!appearance) return;
-        const unsubscribe = appearance.subscribe(() => setVersion(v => v + 1));
-        return () => unsubscribe();
-    }, [appearance]);
 
     const getVariantAsset = useCallback((form: CharacterForm | null, variantName: string) => {
         if (!form) return null;
@@ -288,7 +313,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
     useEffect(() => {
         if (!payload?.character) return;
         const unsubscribe = payload.character.subscribe(() => {
-            setVersion(v => v + 1);
+            setProfileVersion(v => v + 1);
         });
         return () => unsubscribe();
     }, [payload?.character]);
@@ -327,7 +352,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
             profile?.setDefaultForm(name.trim());
         }
         setActiveFormName(name.trim());
-        setVersion(v => v + 1);
+        setProfileVersion(v => v + 1);
     }, [appearance, forms, inputDialog, profile, uiService]);
 
     const handleDeleteForm = useCallback(async (name: string) => {
@@ -340,7 +365,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         }
         const remaining = appearance.getForms();
         setActiveFormName(remaining[0]?.name ?? "");
-        setVersion(v => v + 1);
+        setProfileVersion(v => v + 1);
         setMenuState(prev => ({ ...prev, visible: false }));
     }, [appearance, profile, uiService]);
 
@@ -395,7 +420,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
             appearance.setGroupDefaultVariant(formName, group.name, created.name);
         }
         setPreviewVariant(created.name);
-        setVersion(v => v + 1);
+        setProfileVersion(v => v + 1);
     }, [appearance, inputDialog, uiService, ensureDefaultGroup]);
 
     const handleAddGroup = useCallback(async (formName: string) => {
@@ -422,7 +447,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
             return;
         }
         appearance.createGroup(formName, name.trim(), [], null);
-        setVersion(v => v + 1);
+        setProfileVersion(v => v + 1);
     }, [appearance, inputDialog, uiService]);
 
     const handleDeleteGroup = useCallback(async (formName: string, groupName: string) => {
@@ -439,7 +464,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         if (isPreviewVariantInGroup) {
             setPreviewVariant(findFirstAssetVariant(appearance.getForm(formName)) ?? null);
         }
-        setVersion(v => v + 1);
+        setProfileVersion(v => v + 1);
     }, [appearance, previewVariant, uiService]);
 
     const handleDeleteVariant = useCallback(async (formName: string, group: CharacterVariantGroup, variantName: string) => {
@@ -450,7 +475,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         if (previewVariant === variantName) {
             setPreviewVariant(findFirstAssetVariant(appearance.getForm(formName)) ?? null);
         }
-        setVersion(v => v + 1);
+        setProfileVersion(v => v + 1);
     }, [appearance, previewVariant, uiService]);
 
     const handleSelectVariantForPreview = useCallback((variantName: string) => {
@@ -469,7 +494,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         await ensureAssetView(selected as Asset<AssetType.Image>);
         setPreviewVariant(selectorState.variantName);
         setSelectorState({ open: false, formName: null, variantName: null, anchor: null });
-        setVersion(v => v + 1);
+        setProfileVersion(v => v + 1);
     }, [appearance, ensureAssetView, selectorState]);
 
     const handleCloseSelector = useCallback(() => {
@@ -478,7 +503,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
 
     const handleSetDefaultVariant = useCallback((formName: string, groupName: string, variantName: string) => {
         appearance?.setGroupDefaultVariant(formName, groupName, variantName);
-        setVersion(v => v + 1);
+        setProfileVersion(v => v + 1);
     }, [appearance]);
 
     const closeMenu = useCallback(() => setMenuState(prev => ({ ...prev, visible: false })), []);
@@ -530,7 +555,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
             }
         });
         return map;
-    }, [forms, assetViews, version]);
+    }, [forms, assetViews]);
 
     const openFormMenu = useCallback((event: React.MouseEvent, form: CharacterForm) => {
         event.preventDefault();
@@ -542,7 +567,7 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
                 label: "Set as Default",
                 onClick: () => {
                     profile?.setDefaultForm(form.name);
-                    setVersion(v => v + 1);
+                    setProfileVersion(v => v + 1);
                 },
                 disabled: profile?.getDefaultForm() === form.name,
             },
@@ -576,24 +601,24 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
         const asset = getVariantAsset(activeForm, previewVariant);
         if (!asset) return null;
         return assetViews[asset.id] ?? null;
-    }, [activeForm, previewVariant, getVariantAsset, assetViews, version]);
+    }, [activeForm, previewVariant, getVariantAsset, assetViews]);
 
     const variantEntries = useMemo(() => {
         if (!activeForm) return [];
         return activeForm.groups.flatMap(group => group.variants.map(variant => ({ variant, group })));
-    }, [activeForm, version]);
+    }, [activeForm]);
 
     const ungroupedVariants = useMemo(() => {
         if (!activeForm) return [];
         const defaultGroup = activeForm.groups.find(g => g.name === DEFAULT_GROUP);
         if (!defaultGroup) return [];
         return defaultGroup.variants.map(variant => ({ variant, group: defaultGroup }));
-    }, [activeForm, version]);
+    }, [activeForm]);
 
     const groupedGroups = useMemo(() => {
         if (!activeForm) return [];
         return activeForm.groups.filter(g => g.name !== DEFAULT_GROUP);
-    }, [activeForm, version]);
+    }, [activeForm]);
 
     return (
         <div className="h-full bg-[#0f1115] text-gray-200 flex flex-col">
