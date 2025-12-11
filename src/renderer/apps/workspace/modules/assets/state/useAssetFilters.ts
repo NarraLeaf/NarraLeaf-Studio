@@ -66,7 +66,7 @@ export function useAssetFilters({ assets, groups }: UseAssetFiltersParams) {
             const typeGroups = groups[assetType];
 
             filteredAssets[assetType] = typeAssets.filter(asset => {
-                if (tagFilters.length > 0 && !tagFilters.some(tag => asset.tags.includes(tag))) return false;
+                if (tagFilters.length > 0 && !tagFilters.every(tag => asset.tags.includes(tag))) return false;
 
                 const assetExtension = asset.ext || '';
                 if (extensionFilters.length > 0 && !extensionFilters.includes(assetExtension)) return false;

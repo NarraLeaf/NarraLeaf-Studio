@@ -23,7 +23,7 @@ import {
 } from "@/apps/workspace/registry/types";
 
 export interface SelectionState {
-    type: "asset" | "node" | "scene" | null;
+    type: "asset" | "node" | "scene" | "character" | null;
     data: any | null;
 }
 

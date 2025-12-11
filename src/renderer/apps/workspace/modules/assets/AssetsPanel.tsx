@@ -1,9 +1,10 @@
-import { useMemo, useCallback, useState, useRef } from "react";
+import { useMemo, useCallback, useState, useRef, useEffect } from "react";
 import {
     Image, Music, Video, FileJson, Type, File,
-    FolderPlus, Upload, RefreshCw, AlertCircle
+    FolderPlus, Upload, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash
 } from "lucide-react";
 import { useWorkspace } from "../../context";
+import { useRegistry } from "../../registry";
 import { PanelComponentProps } from "../types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
@@ -29,6 +30,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { MagicTagDialog } from "./components/MagicTagDialog";
 import { MagicTagTemplate } from "@/lib/workspace/services/core/MagicTagManager";
+import { FocusArea } from "@/lib/workspace/services/ui/types";
 
 const ASSET_TYPE_ICONS = {
     [AssetType.Image]: Image,
@@ -50,6 +52,7 @@ const ASSET_TYPE_LABELS = {
 
 export function AssetsPanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
+    const { registerActionGroup, unregisterActionGroup } = useRegistry();
     const searchBoxRef = useRef<HTMLInputElement>(null);
     const inputDialog = useMemo(() => {
         if (!context) return null;
@@ -128,7 +131,16 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         handlePanelDragOver, handlePanelDragLeave, handleDragOverItem, handleDropOnItem 
     } = useDragAndDrop({ context, groups, onDropCompleted: loadAssets });
 
-    useKeyboardShortcuts({ context, isInitialized, panelId, onCopy: handleCopy, onCut: handleCut, onPaste: handlePaste, onRename: handleRename });
+    useKeyboardShortcuts({
+        context,
+        isInitialized,
+        panelId,
+        onCopy: handleCopy,
+        onCut: handleCut,
+        onPaste: handlePaste,
+        onRename: handleRename,
+        registerClipboardShortcuts: false, // already provided by action shortcuts
+    });
 
     const { menuState, contextMenu, showContextMenu, closeContextMenu } = useAssetsContextMenu({
         clipboard, contextMenuTarget, setContextMenuTarget, selectedItems, isMultiSelectMode,
@@ -155,6 +167,71 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         setDragOver(false);
         setDropTargetId(null);
     }, [draggedItem, handleDropOnItem, handleImport]);
+
+    useEffect(() => {
+        if (!context) return;
+
+        const groupId = "narraleaf-studio:assets-edit";
+        const hasSelection = selectedItems.size > 0;
+        const hasClipboardAssets = !!clipboard && clipboard.assets.length > 0;
+        const when = (focus: { area: FocusArea; targetId?: string }) => focus.area === FocusArea.LeftPanel && focus.targetId === panelId;
+
+        registerActionGroup({
+            id: groupId,
+            label: "Edit",
+            order: 20,
+            actions: [
+                {
+                    id: `${groupId}-copy`,
+                    label: "Copy",
+                    icon: <Copy className="w-4 h-4" />,
+                    tooltip: "Copy selected assets or groups",
+                    shortcut: "ctrl+c",
+                    onClick: (_workspace) => handleCopy(),
+                    disabled: !hasSelection || actionLoading,
+                    when,
+                    order: 0,
+                },
+                {
+                    id: `${groupId}-cut`,
+                    label: "Cut",
+                    icon: <Scissors className="w-4 h-4" />,
+                    tooltip: "Cut selected assets or groups",
+                    shortcut: "ctrl+x",
+                    onClick: (_workspace) => handleCut(),
+                    disabled: !hasSelection || actionLoading,
+                    when,
+                    order: 1,
+                },
+                {
+                    id: `${groupId}-paste`,
+                    label: "Paste",
+                    icon: <Clipboard className="w-4 h-4" />,
+                    tooltip: "Paste assets",
+                    shortcut: "ctrl+v",
+                    onClick: (_workspace) => handlePaste(),
+                    disabled: !hasClipboardAssets || actionLoading,
+                    when,
+                    order: 2,
+                },
+                {
+                    id: `${groupId}-delete`,
+                    label: "Delete",
+                    icon: <Trash className="w-4 h-4" />,
+                    tooltip: "Delete selected assets or groups",
+                    shortcut: "delete",
+                    onClick: (_workspace) => handleDelete(),
+                    disabled: !hasSelection || actionLoading,
+                    when,
+                    order: 3,
+                },
+            ],
+        });
+
+        return () => {
+            unregisterActionGroup(groupId);
+        };
+    }, [context, panelId, selectedItems, clipboard, actionLoading, handleCopy, handleCut, handlePaste, handleDelete, registerActionGroup, unregisterActionGroup]);
 
     if (loading && Object.values(assets).every(arr => arr.length === 0)) {
         return <div className="p-4 flex items-center gap-2 text-gray-400"><RefreshCw className="w-4 h-4 animate-spin" /> <span>Loading assets...</span></div>;

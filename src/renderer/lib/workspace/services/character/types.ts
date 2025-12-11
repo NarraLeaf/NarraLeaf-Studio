@@ -35,7 +35,6 @@ export interface CharacterEditorProfile extends CharacterBaseProfile {
 }
 
 export interface ICharacterAppearance {
-    variants: (CharacterVariant | CharacterVariantGroup)[];
     forms: CharacterForm[];
 }
 
@@ -43,28 +42,23 @@ export type VariantData = {
     data: Asset<AssetType.Image>;
 };
 
-export interface CharacterForm {
-    name: string;
-    variants: Record<string, VariantData>;
-}
-
-export enum CharacterVariantElementType {
-    Variant = "variant",
-    VariantGroup = "variantGroup",
-}
-
-interface CharacterVariantElement<T> {
-    type: T;
-}
-
-export interface CharacterVariant extends CharacterVariantElement<CharacterVariantElementType.Variant> {
+export interface CharacterVariant {
     name: string;
 }
 
-export interface CharacterVariantGroup extends CharacterVariantElement<CharacterVariantElementType.VariantGroup> {
+export interface CharacterVariantGroup {
     name: string;
     defaultVariant: string | null;
     variants: CharacterVariant[];
+}
+
+export interface CharacterForm {
+    name: string;
+    groups: CharacterVariantGroup[];
+    /**
+     * Map variant name -> asset data for this form
+     */
+    variantAssets: Record<string, VariantData>;
 }
 
 export type CharacterRelationshipType = {

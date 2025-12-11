@@ -22,6 +22,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
     private readonly groups: Record<string, CharacterGroup> = {};
     private saveTimer: ReturnType<typeof setTimeout> | null = null;
     private dirty = false;
+    private listeners: Set<() => void> = new Set();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -47,6 +48,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
         const character = Character.fromJSON({ profile: profile.toJSON() });
         this.registerCharacter(character);
         this.markDirty();
+        this.emitChange();
         return character;
     }
 
@@ -56,6 +58,8 @@ export class CharacterService extends Service<CharacterService> implements IChar
             return false;
         }
         character.profile.setName(name);
+        this.markDirty();
+        this.emitChange();
         return true;
     }
 
@@ -77,6 +81,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
         };
         this.registerGroup(group);
         this.markDirty();
+        this.emitChange();
         return group;
     }
 
@@ -88,6 +93,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
         group.name = name;
         group.updatedAt = Date.now();
         this.markDirty();
+        this.emitChange();
         return true;
     }
 
@@ -102,6 +108,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
         }
         delete this.groups[id];
         this.markDirty();
+        this.emitChange();
         return true;
     }
 
@@ -114,6 +121,8 @@ export class CharacterService extends Service<CharacterService> implements IChar
             return false;
         }
         character.profile.setGroupId(groupId);
+        this.markDirty();
+        this.emitChange();
         return true;
     }
 
@@ -144,7 +153,10 @@ export class CharacterService extends Service<CharacterService> implements IChar
         if (!this.characterOrder.includes(id)) {
             this.characterOrder.push(id);
         }
-        character.setOnChange(() => this.markDirty());
+        character.setOnChange(() => {
+            this.markDirty();
+            this.emitChange();
+        });
     }
 
     private markDirty(): void {
@@ -156,6 +168,18 @@ export class CharacterService extends Service<CharacterService> implements IChar
             this.saveTimer = null;
             void this.flush();
         }, 300);
+    }
+
+    /**
+     * Subscribe to service-level changes (character/profile/group updates).
+     */
+    public subscribe(listener: () => void): () => void {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+    }
+
+    private emitChange(): void {
+        this.listeners.forEach(listener => listener());
     }
 
     private async flush(): Promise<void> {
