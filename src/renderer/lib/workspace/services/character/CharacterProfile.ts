@@ -12,6 +12,7 @@ export class CharacterProfile {
             name,
             description: "",
             tags: [],
+            defaultForm: null,
             attributes: {},
             thumbnail: null,
             nicknames: [],
@@ -27,6 +28,7 @@ export class CharacterProfile {
         const clonedConfig: CharacterProfileConfig = {
             ...config,
             tags: [...config.tags],
+            defaultForm: config.defaultForm ?? null,
             attributes: { ...config.attributes },
             nicknames: [...config.nicknames],
             groupId: config.groupId,
@@ -76,6 +78,15 @@ export class CharacterProfile {
 
     public getTags(): string[] {
         return this.profile.tags;
+    }
+
+    public getDefaultForm(): string | null {
+        return this.profile.defaultForm ?? null;
+    }
+
+    public setDefaultForm(name: string | null): void {
+        this.profile.defaultForm = name ?? null;
+        this.notifyChange();
     }
 
     public addTag(tag: string): void {
@@ -149,6 +160,7 @@ export class CharacterProfile {
             name: this.profile.name,
             description: this.profile.description,
             tags: [...this.profile.tags],
+            defaultForm: this.profile.defaultForm ?? null,
             attributes: { ...this.profile.attributes },
             thumbnail: this.profile.thumbnail,
             nicknames: [...this.profile.nicknames],

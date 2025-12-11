@@ -63,6 +63,28 @@ export class CharacterService extends Service<CharacterService> implements IChar
         return true;
     }
 
+    public deleteCharacter(id: string): boolean {
+        const character = this.characters[id];
+        if (!character) {
+            return false;
+        }
+
+        const thumbnailId = character.profile.getThumbnail();
+        if (thumbnailId) {
+            void this.getServiceAssetsService().deleteFile(thumbnailId);
+        }
+
+        delete this.characters[id];
+        const index = this.characterOrder.indexOf(id);
+        if (index !== -1) {
+            this.characterOrder.splice(index, 1);
+        }
+
+        this.markDirty();
+        this.emitChange();
+        return true;
+    }
+
     public listGroups(): CharacterGroup[] {
         return Object.values(this.groups).sort((a, b) => a.createdAt - b.createdAt);
     }
@@ -82,6 +104,8 @@ export class CharacterService extends Service<CharacterService> implements IChar
         this.registerGroup(group);
         this.markDirty();
         this.emitChange();
+        // Persist immediately so UI and disk stay in sync
+        void this.flush();
         return group;
     }
 
@@ -94,6 +118,8 @@ export class CharacterService extends Service<CharacterService> implements IChar
         group.updatedAt = Date.now();
         this.markDirty();
         this.emitChange();
+        // Ensure rename is written promptly
+        void this.flush();
         return true;
     }
 
@@ -109,6 +135,8 @@ export class CharacterService extends Service<CharacterService> implements IChar
         delete this.groups[id];
         this.markDirty();
         this.emitChange();
+        // Persist deletion promptly
+        void this.flush();
         return true;
     }
 
