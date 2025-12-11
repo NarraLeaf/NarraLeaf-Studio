@@ -5,9 +5,6 @@ import {
     FileText,
     FolderOpen,
     Save,
-    Copy,
-    Scissors,
-    Clipboard,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
 import { Workspace } from "@/lib/workspace/workspace";
@@ -112,51 +109,6 @@ export const fileActionGroup: ModuleActionGroup = {
     ],
 };
 
-/**
- * Edit action group
- * Contains edit-related actions like copy, cut, paste
- */
-export const editActionGroup: ModuleActionGroup = {
-    id: "narraleaf-studio:edit",
-    label: "Edit",
-    order: 20,
-    actions: [
-        {
-            id: "narraleaf-studio:edit-copy",
-            label: "Copy",
-            icon: <Copy className="w-4 h-4" />,
-            tooltip: "Copy selected content",
-            onClick: () => {
-                console.log("Copy clicked");
-                // TODO: Implement copy functionality
-            },
-            order: 0,
-        },
-        {
-            id: "narraleaf-studio:edit-cut",
-            label: "Cut",
-            icon: <Scissors className="w-4 h-4" />,
-            tooltip: "Cut selected content",
-            onClick: () => {
-                console.log("Cut clicked");
-                // TODO: Implement cut functionality
-            },
-            order: 1,
-        },
-        {
-            id: "narraleaf-studio:edit-paste",
-            label: "Paste",
-            icon: <Clipboard className="w-4 h-4" />,
-            tooltip: "Paste content",
-            onClick: () => {
-                console.log("Paste clicked");
-                // TODO: Implement paste functionality
-            },
-            order: 2,
-        },
-    ],
-};
-
 export const helpActionGroup: ModuleActionGroup = {
     id: "narraleaf-studio:help",
     label: "Help",
@@ -192,5 +144,5 @@ export const globalActions: ModuleAction[] = [runAction, debugAction, buildActio
  * All global action groups
  * Array of all action groups that should be registered globally
  */
-export const globalActionGroups: ModuleActionGroup[] = [fileActionGroup, editActionGroup, helpActionGroup];
+export const globalActionGroups: ModuleActionGroup[] = [fileActionGroup, helpActionGroup];
 

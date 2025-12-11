@@ -13,6 +13,7 @@ import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAsset
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { FolderPlus, MoreVertical, RefreshCw, Tag, User, UserPlus, Users } from "lucide-react";
+import { useCharacterFocus } from "./state/useCharacterFocus";
 
 type MenuTarget =
     | { type: "panel" }
@@ -31,12 +32,14 @@ type CharacterItem = {
 
 export function CharacterPanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
+    const { focusedCharacterId, handleCharacterClick, setFocusToPanel } = useCharacterFocus({ context, panelId });
 
     const [characters, setCharacters] = useState<Character[]>([]);
     const [groups, setGroups] = useState<CharacterGroup[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [groupFilter, setGroupFilter] = useState<string>("all");
     const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+    const [filterRefreshKey, setFilterRefreshKey] = useState(0);
     const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
@@ -63,6 +66,15 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
     useEffect(() => {
         loadCharacters();
     }, [loadCharacters]);
+
+    // Subscribe to character service changes (rename, group changes, etc.)
+    useEffect(() => {
+        if (!characterService) return;
+        const unsubscribe = characterService.subscribe(() => {
+            loadCharacters();
+        });
+        return () => unsubscribe();
+    }, [characterService, loadCharacters]);
 
     const characterItems = useMemo<CharacterItem[]>(() => {
         return characters.map(character => {
@@ -135,7 +147,12 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         };
     }, [thumbnails]);
 
-    const tagFilter = useMemo(() => new Set(activeFilters.filter(f => f.filterId === "tags").map(f => f.optionId)), [activeFilters]);
+    const normalizeTag = useCallback((tag: string) => tag.trim().toLowerCase(), []);
+
+    const tagFilter = useMemo(
+        () => new Set(activeFilters.filter(f => f.filterId === "tags").map(f => normalizeTag(f.optionId))),
+        [activeFilters, normalizeTag]
+    );
 
     const filteredCharacters = useMemo(() => {
         const keyword = searchQuery.trim().toLowerCase();
@@ -149,20 +166,29 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                     : groupFilter === "ungrouped"
                         ? !item.groupId || !groupMap[item.groupId]
                         : item.groupId === groupFilter;
+                const normalizedTags = new Set(item.tags.map(normalizeTag));
                 const matchesTags = tagFilter.size === 0
                     ? true
-                    : Array.from(tagFilter).every(tag => item.tags.includes(tag));
+                    : Array.from(tagFilter).every(tag => normalizedTags.has(tag));
                 return matchesKeyword && matchesGroup && matchesTags;
             })
             .sort((a, b) => a.name.localeCompare(b.name));
-    }, [characterItems, searchQuery, groupFilter, groupMap, tagFilter]);
+    }, [characterItems, searchQuery, groupFilter, groupMap, tagFilter, normalizeTag]);
 
     const filterConfigs = useMemo<FilterConfig[]>(() => {
-        const tagOptions = Array.from(new Set(characterItems.flatMap(item => item.tags))).map(tag => ({
-            id: tag,
-            label: tag,
-            value: tag,
-        }));
+        const tagMap = new Map<string, string>();
+        characterItems.forEach(item => {
+            item.tags.forEach(raw => {
+                const id = normalizeTag(raw);
+                if (!id) return;
+                if (!tagMap.has(id)) {
+                    tagMap.set(id, raw.trim() || id);
+                }
+            });
+        });
+        const tagOptions = Array.from(tagMap.entries())
+            .map(([id, label]) => ({ id, label, value: id }))
+            .sort((a, b) => a.label.localeCompare(b.label));
         return [
             {
                 id: "tags",
@@ -172,7 +198,12 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 multiSelect: true,
             },
         ];
-    }, [characterItems]);
+    }, [characterItems, normalizeTag, filterRefreshKey]);
+
+    const handleFilterOpen = useCallback(() => {
+        // Force refresh to reflect latest tag updates when opening dropdown
+        setFilterRefreshKey(prev => prev + 1);
+    }, []);
 
     const ungroupedCharacters = useMemo(
         () => filteredCharacters.filter(item => !item.groupId || !groupMap[item.groupId]),
@@ -342,11 +373,15 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
 
     const renderCharacterRow = useCallback((item: CharacterItem) => {
         const thumbnailUrl = thumbnails[item.id];
+        const isFocused = focusedCharacterId === item.id;
+        const focusedStyles = isFocused ? "bg-primary/20 border-l-2 border-primary" : "";
+
         return (
             <div
                 key={item.id}
-                className="group flex items-center gap-3 px-3 py-2 hover:bg-white/5 border-b border-white/5 last:border-b-0 cursor-default"
+                className={`group flex items-center gap-3 px-3 py-2 cursor-default hover:bg-gray-600/30 border-b border-white/5 last:border-b-0 transition-colors ${focusedStyles}`}
                 data-character-id={item.id}
+                onClick={() => handleCharacterClick(item.source)}
             >
                 <div className="w-10 h-10 rounded-md bg-white/10 overflow-hidden flex items-center justify-center flex-shrink-0">
                     {thumbnailUrl ? (
@@ -363,19 +398,19 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 </div>
                 <button
                     className="p-1 rounded hover:bg-white/10 text-gray-300 opacity-0 group-hover:opacity-100"
-                    onClick={(event) => handleMenuOpen(event, { type: "character", character: item.source })}
+                    onClick={(event) => { event.stopPropagation(); handleMenuOpen(event, { type: "character", character: item.source }); }}
                     title="Actions"
                 >
                     <MoreVertical className="w-4 h-4" />
                 </button>
             </div>
         );
-    }, [handleMenuOpen, thumbnails]);
+    }, [focusedCharacterId, handleCharacterClick, handleMenuOpen, thumbnails]);
 
     const hasNoData = !loading && filteredCharacters.length === 0;
 
     return (
-        <div className="h-full flex flex-col" data-panel-id={panelId}>
+        <div className="h-full flex flex-col" data-panel-id={panelId} onClick={setFocusToPanel}>
             <div className="px-3 py-2 border-b border-white/10 space-y-3">
                 <SearchBox
                     value={searchQuery}
@@ -386,7 +421,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                 <div className="flex items-center gap-2">
                     <button
                         onClick={(event) => { event.stopPropagation(); handleCreateCharacter(); }}
-                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-white/20 bg-primary/80 text-white hover:bg-primary transition-colors"
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
                         title="Add Character"
                     >
                         <UserPlus className="w-4 h-4" />
@@ -405,6 +440,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                         onFiltersChange={(next) => {
                             setActiveFilters(next.filter(f => f.filterId === "tags"));
                         }}
+                        onFilterOpen={handleFilterOpen}
                     />
                     {/* Count removed per request */}
                     <button
@@ -460,7 +496,7 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                                                             event.stopPropagation();
                                                             handleCreateCharacter(group.id);
                                                         }}
-                                                        className="p-1 rounded hover:bg-white/10"
+                                                        className="inline-flex items-center justify-center p-1.5 rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors"
                                                         title="Add character"
                                                     >
                                                         <UserPlus className="w-3 h-3" />

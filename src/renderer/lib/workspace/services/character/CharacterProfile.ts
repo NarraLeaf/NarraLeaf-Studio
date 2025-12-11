@@ -17,7 +17,6 @@ export class CharacterProfile {
             nicknames: [],
             groupId: undefined,
             appearance: {
-                variants: [],
                 forms: [],
             },
         };

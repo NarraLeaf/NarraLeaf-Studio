@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings, Image as ImageIcon } from "lucide-react";
+import { Settings } from "lucide-react";
 import { PanelComponentProps } from "../types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
@@ -12,6 +12,8 @@ import { VideoPropertyEditor } from "./editors/VideoPropertyEditor";
 import { JSONPropertyEditor } from "./editors/JSONPropertyEditor";
 import { FontPropertyEditor } from "./editors/FontPropertyEditor";
 import { OtherPropertyEditor } from "./editors/OtherPropertyEditor";
+import { Character } from "@/lib/workspace/services/character/Character";
+import { CharacterPropertiesEditor } from "../characters/editors/CharacterPropertiesEditor";
 
 /**
  * Properties panel component
@@ -20,6 +22,8 @@ import { OtherPropertyEditor } from "./editors/OtherPropertyEditor";
 export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const [activeAsset, setActiveAsset] = useState<Asset | null>(null);
+    const [activeCharacter, setActiveCharacter] = useState<Character | null>(null);
+    const [, setCharacterVersion] = useState(0);
 
     // Listen selection changes
     useEffect(() => {
@@ -27,27 +31,49 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         const uiService = context.services.get<UIService>(Services.UI);
         const store = uiService.getStore();
 
-        setActiveAsset(store.getSelection().type === "asset" ? store.getSelection().data as Asset : null);
+        const setSelectionState = (selection: any) => {
+            setActiveAsset(selection.type === "asset" ? selection.data as Asset : null);
+            setActiveCharacter(selection.type === "character" ? selection.data as Character : null);
+        };
+
+        setSelectionState(store.getSelection());
 
         const unsub = uiService.getEvents().on("selectionChanged", sel => {
-            setActiveAsset(sel.type === "asset" ? sel.data as Asset : null);
+            setSelectionState(sel);
         });
 
         return unsub;
     }, [context]);
 
+    // Listen character changes so header reflects rename/group updates
+    useEffect(() => {
+        if (!activeCharacter) return;
+        const unsub = activeCharacter.subscribe(() => {
+            setCharacterVersion(v => v + 1);
+        });
+        return unsub;
+    }, [activeCharacter]);
+
     // Render appropriate property editor based on asset type
     const renderPropertyEditor = () => {
-        if (!activeAsset) {
+        if (!activeAsset && !activeCharacter) {
             return (
                 <div className="flex-1 flex items-center justify-center p-4">
                     <div className="text-center text-gray-500 py-8">
                         <Settings className="w-12 h-12 mx-auto mb-3 opacity-50" />
                         <p className="text-sm">No item selected</p>
-                        <p className="text-xs mt-1">Select an asset to view its properties</p>
+                        <p className="text-xs mt-1">Select an item to view its properties</p>
                     </div>
                 </div>
             );
+        }
+
+        if (activeCharacter) {
+            return <CharacterPropertiesEditor character={activeCharacter} />;
+        }
+
+        if (!activeAsset) {
+            return null;
         }
 
         switch (activeAsset.type) {
@@ -74,14 +100,17 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             {/* Header */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
                 <div className="flex items-center gap-2">
-                    <Settings className="w-4 h-4 text-gray-400" />
                     <span className="text-xs text-gray-400">
-                        {activeAsset ? activeAsset.name : "Properties"}
+                        {activeCharacter
+                            ? activeCharacter.profile.getProfile().name
+                            : activeAsset
+                                ? activeAsset.name
+                                : "Properties"}
                     </span>
                 </div>
-                {activeAsset && (
+                {(activeAsset || activeCharacter) && (
                     <span className="text-xs text-gray-500 uppercase">
-                        {activeAsset.type}
+                        {activeCharacter ? "Character" : activeAsset?.type}
                     </span>
                 )}
             </div>

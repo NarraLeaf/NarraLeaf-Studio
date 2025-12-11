@@ -21,7 +21,7 @@ export const assetsModule: PanelModule = {
         icon: <FolderOpen className="w-4 h-4" />,
         position: PanelPosition.Left,
         defaultVisible: true,
-        order: 0,
+        order: 20,
     },
     component: AssetsPanel,
     // Actions specific to the assets panel can be added here

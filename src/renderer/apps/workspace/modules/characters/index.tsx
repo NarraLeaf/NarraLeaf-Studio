@@ -10,7 +10,7 @@ export const charactersModule: PanelModule = {
         icon: <Users className="w-4 h-4" />,
         position: PanelPosition.Left,
         defaultVisible: true,
-        order: 1,
+        order: 10,
     },
     component: CharacterPanel,
 };

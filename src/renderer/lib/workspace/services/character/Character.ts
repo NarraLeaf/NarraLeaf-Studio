@@ -7,6 +7,7 @@ export interface CharacterConfig {
 export class Character {
     public readonly profile: CharacterProfile;
     private onChange: (() => void) | null = null;
+    private listeners: Set<() => void> = new Set();
 
     constructor(private config: CharacterConfig) {
         this.profile = CharacterProfile.fromJSON(config.profile);
@@ -27,9 +28,19 @@ export class Character {
         this.onChange = handler;
     }
 
+    /**
+     * Subscribe to change events without overriding existing handler.
+     * Returns an unsubscribe function.
+     */
+    public subscribe(handler: () => void): () => void {
+        this.listeners.add(handler);
+        return () => this.listeners.delete(handler);
+    }
+
     private handleProfileChange(): void {
         if (this.onChange) {
             this.onChange();
         }
+        this.listeners.forEach(listener => listener());
     }
 }

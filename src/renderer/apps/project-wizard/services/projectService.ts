@@ -36,7 +36,7 @@ export class ProjectService {
                     resolution: BaseProjectService.parseResolution(projectData.resolution),
                 },
             });
-            throwException(await BaseFileSystemService.write(projectConfigPath, JSON.stringify(projectConfig, null, 2), "utf-8"));
+            throwException(await BaseFileSystemService.write(projectConfigPath, JSON.stringify(projectConfig), "utf-8"));
 
             // Create directories
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.NLCache)));
@@ -51,16 +51,16 @@ export class ProjectService {
             // Write editor.json
             const editorConfigPath = this.resolve(basePath, ProjectNameConvention.EditorConfig);
             const editorConfig = BaseProjectService.getInitialEditorConfig();
-            throwException(await BaseFileSystemService.write(editorConfigPath, JSON.stringify(editorConfig, null, 2), "utf-8"));
+            throwException(await BaseFileSystemService.write(editorConfigPath, JSON.stringify(editorConfig), "utf-8"));
 
             // Initialize assets metadata files for all asset types
             const assetTypes = ["image", "audio", "video", "json", "font", "other"];
             for (const type of assetTypes) {
                 const metadataPath = this.resolve(basePath, ProjectNameConvention.AssetsMetadataShard(type as any));
-                throwException(await BaseFileSystemService.write(metadataPath, JSON.stringify({}, null, 2), "utf-8"));
+                throwException(await BaseFileSystemService.write(metadataPath, JSON.stringify({}), "utf-8"));
                 
                 const groupsPath = this.resolve(basePath, ProjectNameConvention.AssetsGroupsShard(type as any));
-                throwException(await BaseFileSystemService.write(groupsPath, JSON.stringify({}, null, 2), "utf-8"));
+                throwException(await BaseFileSystemService.write(groupsPath, JSON.stringify({}), "utf-8"));
             }
 
             getInterface().window.closeWith<WindowAppType.ProjectWizard>({ created: true, projectPath: basePath });

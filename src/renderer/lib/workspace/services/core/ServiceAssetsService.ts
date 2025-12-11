@@ -29,7 +29,7 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         }
 
         const targetPath = this.resolveStoreFile(namespace);
-        const writeResult = await filesystemService.write(targetPath, JSON.stringify(data, null, 2), "utf-8");
+        const writeResult = await filesystemService.write(targetPath, JSON.stringify(data), "utf-8");
         if (!writeResult.ok) {
             return writeResult;
         }
