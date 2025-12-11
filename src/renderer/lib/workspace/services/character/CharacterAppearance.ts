@@ -73,6 +73,21 @@ export class CharacterAppearance {
     }
 
     /**
+     * Rename an existing form.
+     */
+    public renameForm(currentName: string, nextName: string): boolean {
+        const form = this.getForm(currentName);
+        if (!form) return false;
+        const normalized = nextName.trim();
+        if (!normalized) return false;
+        const exists = this.appearance.forms.some(f => f.name.toLowerCase() === normalized.toLowerCase());
+        if (exists && currentName.toLowerCase() !== normalized.toLowerCase()) return false;
+        form.name = normalized;
+        this.notifyChange();
+        return true;
+    }
+
+    /**
      * Remove a form by name.
      */
     public removeForm(name: string): boolean {
@@ -141,6 +156,23 @@ export class CharacterAppearance {
     }
 
     /**
+     * Rename a variant group inside a form.
+     */
+    public renameGroup(formName: string, currentName: string, nextName: string): boolean {
+        const form = this.getForm(formName);
+        if (!form) return false;
+        const normalized = nextName.trim();
+        if (!normalized) return false;
+        const exists = form.groups.some(g => g.name.toLowerCase() === normalized.toLowerCase());
+        if (exists && currentName.toLowerCase() !== normalized.toLowerCase()) return false;
+        const group = form.groups.find(g => g.name === currentName);
+        if (!group) return false;
+        group.name = normalized;
+        this.notifyChange();
+        return true;
+    }
+
+    /**
      * Remove a group within a form.
      */
     public removeGroup(formName: string, groupName: string): boolean {
@@ -194,6 +226,32 @@ export class CharacterAppearance {
         // Reset default if removed variant was default.
         if (group.defaultVariant === variantName) {
             group.defaultVariant = group.variants[0]?.name ?? null;
+        }
+        this.notifyChange();
+        return true;
+    }
+
+    /**
+     * Rename a variant within a group.
+     */
+    public renameVariant(formName: string, groupName: string, currentName: string, nextName: string): boolean {
+        const form = this.getForm(formName);
+        if (!form) return false;
+        const group = form.groups.find(g => g.name === groupName);
+        if (!group) return false;
+        const normalized = nextName.trim();
+        if (!normalized) return false;
+        const duplicate = form.groups.some(g => g.variants.some(v => v.name.toLowerCase() === normalized.toLowerCase()));
+        if (duplicate && currentName.toLowerCase() !== normalized.toLowerCase()) return false;
+        const variant = group.variants.find(v => v.name === currentName);
+        if (!variant) return false;
+        variant.name = normalized;
+        if (form.variantAssets[currentName]) {
+            form.variantAssets[normalized] = form.variantAssets[currentName];
+            delete form.variantAssets[currentName];
+        }
+        if (group.defaultVariant === currentName) {
+            group.defaultVariant = normalized;
         }
         this.notifyChange();
         return true;

@@ -115,13 +115,20 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
     }, [context, isInitialized]);
 
     const [formsVersion, setFormsVersion] = useState(0);
-    const forms = useMemo(() => profile.appearance.getForms(), [profile, formsVersion]);
+    const forms = useMemo(() => [...profile.appearance.getForms()], [profile, formsVersion]);
+    useEffect(() => {
+        const appearance = profile.appearance;
+        if (!appearance) return;
+        const handleAppearanceChange = () => setFormsVersion(v => v + 1);
+        const unsubscribe = appearance.subscribe(handleAppearanceChange);
+        return () => unsubscribe();
+    }, [profile]);
     const defaultFormOptions = useMemo(
         () => [
             { value: "", label: "Follow first form" },
             ...forms.map(form => ({ value: form.name, label: form.name })),
         ],
-        [forms]
+        [forms, formsVersion]
     );
 
     const normalizeTag = useCallback((tag: string) => tag.trim().toLowerCase(), []);
