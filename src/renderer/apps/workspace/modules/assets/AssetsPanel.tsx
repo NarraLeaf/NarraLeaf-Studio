@@ -93,13 +93,21 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
 
     const { clipboard, setClipboard } = useClipboard();
 
-    const { 
+    const {
         handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleDelete, handleImport, handleImportToGroup,
         handleCreateMagicTags, handleApplyMagicTags
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
         focusedItemId, onActionComplete, setClipboard, setActionLoading
     });
+
+    // Memoize action handlers to prevent unnecessary re-registration of action groups
+    const actionHandlers = useMemo(() => ({
+        handleCopy,
+        handleCut,
+        handlePaste,
+        handleDelete,
+    }), [handleCopy, handleCut, handlePaste, handleDelete]);
 
     // Magic Tags handler
     const handleMagicTagsClick = useCallback(async () => {
@@ -187,7 +195,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                     icon: <Copy className="w-4 h-4" />,
                     tooltip: "Copy selected assets or groups",
                     shortcut: "ctrl+c",
-                    onClick: (_workspace) => handleCopy(),
+                    onClick: (_workspace) => actionHandlers.handleCopy(),
                     disabled: !hasSelection || actionLoading,
                     when,
                     order: 0,
@@ -198,7 +206,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                     icon: <Scissors className="w-4 h-4" />,
                     tooltip: "Cut selected assets or groups",
                     shortcut: "ctrl+x",
-                    onClick: (_workspace) => handleCut(),
+                    onClick: (_workspace) => actionHandlers.handleCut(),
                     disabled: !hasSelection || actionLoading,
                     when,
                     order: 1,
@@ -209,7 +217,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                     icon: <Clipboard className="w-4 h-4" />,
                     tooltip: "Paste assets",
                     shortcut: "ctrl+v",
-                    onClick: (_workspace) => handlePaste(),
+                    onClick: (_workspace) => actionHandlers.handlePaste(),
                     disabled: !hasClipboardAssets || actionLoading,
                     when,
                     order: 2,
@@ -220,7 +228,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                     icon: <Trash className="w-4 h-4" />,
                     tooltip: "Delete selected assets or groups",
                     shortcut: "delete",
-                    onClick: (_workspace) => handleDelete(),
+                    onClick: (_workspace) => actionHandlers.handleDelete(),
                     disabled: !hasSelection || actionLoading,
                     when,
                     order: 3,
@@ -231,7 +239,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         return () => {
             unregisterActionGroup(groupId);
         };
-    }, [context, panelId, selectedItems, clipboard, actionLoading, handleCopy, handleCut, handlePaste, handleDelete, registerActionGroup, unregisterActionGroup]);
+    }, [context, panelId, selectedItems, clipboard, actionLoading, actionHandlers, registerActionGroup, unregisterActionGroup]);
 
     if (loading && Object.values(assets).every(arr => arr.length === 0)) {
         return <div className="p-4 flex items-center gap-2 text-gray-400"><RefreshCw className="w-4 h-4 animate-spin" /> <span>Loading assets...</span></div>;
