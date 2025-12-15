@@ -12,6 +12,7 @@ import {
     RefreshCw,
     AlertCircle,
     ChevronRight,
+    FolderOpen,
 } from "lucide-react";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -378,10 +379,6 @@ export function AssetSelector({
         );
     };
 
-    if (!visible) {
-        return null;
-    }
-
     const handleItemClick = (asset: Asset) => {
         if (multiple) {
             setSelection((prev) => {
@@ -403,6 +400,39 @@ export function AssetSelector({
         onConfirm(selectedAssets);
         onClose();
     };
+
+    const handleImportAssets = useCallback(async () => {
+        if (!assetsService) return;
+
+        try {
+            const result = await assetsService.importLocalAssets(assetType);
+            if (result.success && result.data) {
+                // Reload assets to show the newly imported ones
+                await loadAssets();
+
+                // Auto-select the newly imported assets
+                const newAssetIds = result.data
+                    .filter(assetResult => assetResult.success && assetResult.data)
+                    .map(assetResult => assetResult.data!.id);
+
+                if (newAssetIds.length > 0) {
+                    setSelection(prev => {
+                        const next = new Set(prev);
+                        newAssetIds.forEach(id => next.add(id));
+                        return next;
+                    });
+                }
+            } else {
+                console.error('Failed to import assets:', result.error);
+            }
+        } catch (error) {
+            console.error('Error importing assets:', error);
+        }
+    }, [assetsService, assetType, loadAssets]);
+
+    if (!visible) {
+        return null;
+    }
 
     const Icon = ASSET_TYPE_ICONS[assetType];
     const headerLabel = title ?? `Select ${ASSET_TYPE_LABELS[assetType]}`;
@@ -432,12 +462,12 @@ export function AssetSelector({
                     </div>
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={loadAssets}
+                            onClick={handleImportAssets}
                             disabled={loading}
                             className="p-1 rounded hover:bg-white/10 disabled:opacity-50"
-                            title="Refresh"
+                            title="Import from disk"
                         >
-                            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+                            <FolderOpen className="w-4 h-4" />
                         </button>
                         <button
                             onClick={onClose}
