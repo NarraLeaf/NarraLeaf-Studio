@@ -101,13 +101,17 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         focusedItemId, onActionComplete, setClipboard, setActionLoading
     });
 
-    // Memoize action handlers to prevent unnecessary re-registration of action groups
-    const actionHandlers = useMemo(() => ({
-        handleCopy,
-        handleCut,
-        handlePaste,
-        handleDelete,
-    }), [handleCopy, handleCut, handlePaste, handleDelete]);
+    // Use refs to store latest function references to avoid stale closures in action group
+    const handleCopyRef = useRef(handleCopy);
+    const handleCutRef = useRef(handleCut);
+    const handlePasteRef = useRef(handlePaste);
+    const handleDeleteRef = useRef(handleDelete);
+
+    // Update refs when functions change
+    handleCopyRef.current = handleCopy;
+    handleCutRef.current = handleCut;
+    handlePasteRef.current = handlePaste;
+    handleDeleteRef.current = handleDelete;
 
     // Magic Tags handler
     const handleMagicTagsClick = useCallback(async () => {
@@ -143,16 +147,21 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         context,
         isInitialized,
         panelId,
-        onCopy: handleCopy,
-        onCut: handleCut,
-        onPaste: handlePaste,
+        onCopy: () => handleCopyRef.current(),
+        onCut: () => handleCutRef.current(),
+        onPaste: () => handlePasteRef.current(),
         onRename: handleRename,
         registerClipboardShortcuts: false, // already provided by action shortcuts
     });
 
     const { menuState, contextMenu, showContextMenu, closeContextMenu } = useAssetsContextMenu({
         clipboard, contextMenuTarget, setContextMenuTarget, selectedItems, isMultiSelectMode,
-        handleClearSelection, handleCopy, handleCut, handlePaste, handleRename, handleDelete,
+        handleClearSelection,
+        handleCopy: () => handleCopyRef.current(),
+        handleCut: () => handleCutRef.current(),
+        handlePaste: () => handlePasteRef.current(),
+        handleDelete: () => handleDeleteRef.current(),
+        handleRename,
         handleCreateGroup, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick
     });
 
@@ -195,7 +204,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                     icon: <Copy className="w-4 h-4" />,
                     tooltip: "Copy selected assets or groups",
                     shortcut: "ctrl+c",
-                    onClick: (_workspace) => actionHandlers.handleCopy(),
+                    onClick: (_workspace) => handleCopyRef.current(),
                     disabled: !hasSelection || actionLoading,
                     when,
                     order: 0,
@@ -206,7 +215,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                     icon: <Scissors className="w-4 h-4" />,
                     tooltip: "Cut selected assets or groups",
                     shortcut: "ctrl+x",
-                    onClick: (_workspace) => actionHandlers.handleCut(),
+                    onClick: (_workspace) => handleCutRef.current(),
                     disabled: !hasSelection || actionLoading,
                     when,
                     order: 1,
@@ -217,7 +226,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                     icon: <Clipboard className="w-4 h-4" />,
                     tooltip: "Paste assets",
                     shortcut: "ctrl+v",
-                    onClick: (_workspace) => actionHandlers.handlePaste(),
+                    onClick: (_workspace) => handlePasteRef.current(),
                     disabled: !hasClipboardAssets || actionLoading,
                     when,
                     order: 2,
@@ -228,7 +237,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                     icon: <Trash className="w-4 h-4" />,
                     tooltip: "Delete selected assets or groups",
                     shortcut: "delete",
-                    onClick: (_workspace) => actionHandlers.handleDelete(),
+                    onClick: (_workspace) => handleDeleteRef.current(),
                     disabled: !hasSelection || actionLoading,
                     when,
                     order: 3,
@@ -239,7 +248,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         return () => {
             unregisterActionGroup(groupId);
         };
-    }, [context, panelId, selectedItems, clipboard, actionLoading, actionHandlers, registerActionGroup, unregisterActionGroup]);
+    }, [context, panelId, selectedItems.size, clipboard?.assets.length, actionLoading]);
 
     if (loading && Object.values(assets).every(arr => arr.length === 0)) {
         return <div className="p-4 flex items-center gap-2 text-gray-400"><RefreshCw className="w-4 h-4 animate-spin" /> <span>Loading assets...</span></div>;
