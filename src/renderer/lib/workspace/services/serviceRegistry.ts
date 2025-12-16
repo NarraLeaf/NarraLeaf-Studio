@@ -8,6 +8,7 @@ import { AssetsService } from "./core/AssetsService";
 import { ServiceAssetsService } from "./core/ServiceAssetsService";
 import { CharacterService } from "./core/CharacterService";
 import { UuidService } from "./core/UuidService";
+import { SettingsService } from "./core/SettingsService";
 
 
 export class ServiceRegistry {
@@ -17,6 +18,7 @@ export class ServiceRegistry {
         [Services.FileSystem]: FileSystemService.getInstance(),
         [Services.UI]: UIService.getInstance(),
         [Services.ProjectSettings]: ProjectSettingsService.getInstance(),
+        [Services.Settings]: SettingsService.getInstance(),
         [Services.Assets]: AssetsService.getInstance(),
         [Services.ServiceAssets]: ServiceAssetsService.getInstance(),
         [Services.Character]: CharacterService.getInstance(),
