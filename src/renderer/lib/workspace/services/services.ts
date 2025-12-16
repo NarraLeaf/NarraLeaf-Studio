@@ -7,6 +7,7 @@ import { AssetData, AssetType } from "./assets/assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterGroup } from "./character/types";
+import { RuntimeSettingSchema, RuntimeSettingType, TypeofSettingSchema } from "./settings/types";
 
 interface WorkspaceContext {
     project: Porject;
@@ -28,7 +29,7 @@ enum Services {
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
-    // Settings = "settings",
+    Settings = "settings",
     // Editor = "editor",
     // Story = "story",
     Character = "character",
@@ -104,7 +105,13 @@ interface IUIService extends IService {
     showError(error: Error | string): void;
 }
 
-interface ISettingsService extends IService { }
+interface ISettingsService extends IService {
+    getCategories(): string[];
+    getSettings(category: string): RuntimeSettingSchema<RuntimeSettingType>[];
+    get(name: string): RuntimeSettingSchema<RuntimeSettingType> | undefined;
+    getValue<T extends RuntimeSettingType>(name: string): TypeofSettingSchema<T> | undefined;
+    setValue<T extends RuntimeSettingType>(name: string, value: TypeofSettingSchema<T>): Promise<void>;
+}
 
 // Editor Services
 interface IEditorService extends IService { }

@@ -104,7 +104,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
         this.registerGroup(group);
         this.markDirty();
         this.emitChange();
-        // Persist immediately so UI and disk stay in sync
         void this.flush();
         return group;
     }
@@ -118,7 +117,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
         group.updatedAt = Date.now();
         this.markDirty();
         this.emitChange();
-        // Ensure rename is written promptly
         void this.flush();
         return true;
     }
@@ -135,7 +133,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
         delete this.groups[id];
         this.markDirty();
         this.emitChange();
-        // Persist deletion promptly
         void this.flush();
         return true;
     }

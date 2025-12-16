@@ -7,6 +7,18 @@ export enum AssetSource {
 
 export type AssetResolveMeta<Source extends AssetSource> = Source extends AssetSource.Local ? {} : Source extends AssetSource.Remote ? {
     url: string;
+    /**
+     * The cache lifetime of the asset in milliseconds  
+     * This will only affect the asset fetching in production.
+     */
+    lifetime: number;
+    protocol: string;
+    hostname: string;
+    path: string;
+    query: string;
+    hash: string;
+    search: string;
+    searchParams: URLSearchParams;
 } : never;
 
 /**

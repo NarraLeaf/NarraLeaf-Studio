@@ -11,6 +11,7 @@ import { welcomeModule } from "./welcome";
 import { globalActions, globalActionGroups } from "./actions";
 import { imagePreviewModule } from "./assets/editors/imagePreviewModule";
 import { charactersModule } from "./characters";
+import { settingsModule } from "./settings";
 import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
 
 /**
@@ -20,6 +21,7 @@ import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./ty
 export const builtInPanels: PanelModule[] = [
     charactersModule,
     assetsModule,
+    settingsModule,
     propertiesModule,
     consoleModule,
 ];
@@ -53,5 +55,6 @@ export { charactersModule } from "./characters";
 export { propertiesModule } from "./properties";
 export { consoleModule } from "./console";
 export { welcomeModule } from "./welcome";
+export { settingsModule } from "./settings";
 export { globalActions, globalActionGroups } from "./actions";
 
