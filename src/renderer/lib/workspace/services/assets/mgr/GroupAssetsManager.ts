@@ -4,7 +4,7 @@ import { RendererError } from "@shared/utils/error";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
 import { AssetType } from "../assetTypes";
-import { Asset, AssetGroup, AssetGroupMap } from "../types";
+import { Asset, AssetGroup, AssetGroupMap, AssetSource } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 
@@ -96,8 +96,7 @@ export class GroupAssetsManager {
 
         // Delete all assets within this group instead of moving them to root
         for (const asset of assetsInGroup) {
-            // Ensure we await each deletion to keep metadata consistent
-            await this.assetsService.getLocalAssetsManager().deleteAsset(asset);
+            await this.assetsService.deleteAsset(asset as Asset<AssetType, AssetSource>);
         }
 
         // Delete child groups recursively

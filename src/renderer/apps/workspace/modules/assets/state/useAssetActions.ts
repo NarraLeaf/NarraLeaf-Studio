@@ -126,6 +126,45 @@ export function useAssetActions({
         onActionComplete();
         notifyLoading(false);
     }, [context, withAssetsService, onActionComplete, notifyLoading]);
+
+    const handleImportRemote = useCallback(async (type: AssetType) => {
+        if (!context || !inputDialog) return;
+        notifyLoading(true);
+
+        const url = await inputDialog.show({
+            title: "Import Remote Asset",
+            placeholder: "https://example.com/asset.png",
+            description: "Paste a direct link to the remote asset",
+            required: true,
+            validation: (value) => {
+                try {
+                    new URL(value.trim());
+                    return null;
+                } catch {
+                    return "Please enter a valid URL";
+                }
+            },
+            assetType: type,
+        });
+
+        if (!url) {
+            notifyLoading(false);
+            return;
+        }
+
+        await withAssetsService(async (assetsService) => {
+            const result = await assetsService.importRemoteAsset(type, url.trim());
+            if (!result.success) {
+                context.services.get<UIService>(Services.UI).showAlert(
+                    "Failed to import remote asset",
+                    result.error || "Unknown error"
+                );
+            }
+        });
+
+        onActionComplete();
+        notifyLoading(false);
+    }, [context, inputDialog, withAssetsService, onActionComplete, notifyLoading]);
     
     // Support drag-in files directly to a group
     const handleImportToGroup = useCallback(async (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
@@ -433,6 +472,7 @@ export function useAssetActions({
         handleCreateGroup,
         handleImport,
         handleImportToGroup,
+        handleImportRemote,
         handleCopy,
         handleCut,
         handlePaste,

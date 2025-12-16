@@ -9,8 +9,10 @@ import { FontService } from "../assets/FontService";
 import { ImageService } from "../assets/ImageService";
 import { JSONService } from "../assets/JSONService";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
+import { EditorRemoteCacheManager } from "../assets/mgr/EditorRemoteCacheManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
 import { LocalAssetsManager } from "../assets/mgr/LocalAssetsManager";
+import { RemoteAssetsManager } from "../assets/mgr/RemoteAssetsManager";
 import { OtherService } from "../assets/OtherService";
 import { Asset, AssetGroup, AssetsMap, AssetSource } from "../assets/types";
 import { VideoService } from "../assets/VideoService";
@@ -23,14 +25,16 @@ import { ProjectService } from "./ProjectService";
 import { UuidService } from "./UuidService";
 
 interface AssetsEvents {
-    deleted: Asset;
-    updated: Asset;
+    deleted: Asset<AssetType, AssetSource>;
+    updated: Asset<AssetType, AssetSource>;
 }
 
 export class AssetsService extends Service<AssetsService> implements IAssetService {
     private assetsMetadataManager: AssetsMetadataManager | null = null;
     private localAssetsManager: LocalAssetsManager | null = null;
     private groupAssetsManager: GroupAssetsManager | null = null;
+    private remoteAssetsManager: RemoteAssetsManager | null = null;
+    private editorRemoteCacheManager: EditorRemoteCacheManager | null = null;
     public imageService: ImageService | null = null;
     public audioService: AudioService | null = null;
     public videoService: VideoService | null = null;
@@ -121,6 +125,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         this.assetsMetadataManager = await new AssetsMetadataManager(this, ctx).init();
         this.groupAssetsManager = await new GroupAssetsManager(this, ctx).init();
         this.localAssetsManager = await new LocalAssetsManager(this, ctx).init();
+        this.editorRemoteCacheManager = await new EditorRemoteCacheManager(ctx).init();
+        this.remoteAssetsManager = await new RemoteAssetsManager(this, ctx, this.editorRemoteCacheManager).init();
     }
 
     public getAssetsMetadataManager(): AssetsMetadataManager {
@@ -135,6 +141,20 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             throw new RendererError("Group assets manager not initialized");
         }
         return this.groupAssetsManager;
+    }
+
+    public getRemoteAssetsManager(): RemoteAssetsManager {
+        if (!this.remoteAssetsManager) {
+            throw new RendererError("Remote assets manager not initialized");
+        }
+        return this.remoteAssetsManager;
+    }
+
+    public getEditorRemoteCacheManager(): EditorRemoteCacheManager {
+        if (!this.editorRemoteCacheManager) {
+            throw new RendererError("Editor remote cache manager not initialized");
+        }
+        return this.editorRemoteCacheManager;
     }
 
     public getLocalAssetsManager(): LocalAssetsManager {
@@ -152,16 +172,27 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getAssetsMetadataManager().list(type);
     }
 
-    public exists<T extends AssetType>(asset: Asset<T>): boolean {
+    public exists<T extends AssetType>(asset: Asset<T, AssetSource>): boolean {
         return this.getAssetsMetadataManager().exists(asset);
     }
 
-    public async fetch<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<AssetData<T>>> {
-        return this.getLocalAssetsManager().fetch(asset);
+    public async fetch<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<AssetData<T>>> {
+        if (asset.source === AssetSource.Remote) {
+            return this.getRemoteAssetsManager().fetch(asset as Asset<T, AssetSource.Remote>);
+        }
+        return this.getLocalAssetsManager().fetch(asset as Asset<T, AssetSource.Local>);
     }
 
     public async importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
         return this.getLocalAssetsManager().importLocalAssets(type);
+    }
+
+    public async importRemoteAsset<T extends AssetType>(type: T, url: string): Promise<RequestStatus<Asset<T, AssetSource.Remote>>> {
+        return this.getRemoteAssetsManager().importRemoteAsset(type, url);
+    }
+
+    public async clearRemoteCache(assetId?: string): Promise<void> {
+        await this.getEditorRemoteCacheManager().evict(assetId);
     }
 
     private async writeAssetsMetadata(type: AssetType): Promise<FsRequestResult<void>> {
@@ -236,16 +267,22 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
     // Asset operations
     public async deleteAsset<T extends AssetType>(
-        asset: Asset<T>
+        asset: Asset<T, AssetSource>
     ): Promise<RequestStatus<void>> {
-        return this.getLocalAssetsManager().deleteAsset(asset);
+        if (asset.source === AssetSource.Remote) {
+            return this.getRemoteAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Remote>);
+        }
+        return this.getLocalAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Local>);
     }
 
     /**
      * Duplicate an existing asset, returning the new asset metadata.
      */
-    public async duplicateAsset<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
-        return this.getLocalAssetsManager().duplicateAsset(asset);
+    public async duplicateAsset<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        if (asset.source !== AssetSource.Local) {
+            return { success: false, error: "Duplicating remote assets is not supported" };
+        }
+        return this.getLocalAssetsManager().duplicateAsset(asset as Asset<T, AssetSource.Local>);
     }
 
     public async importFromPaths<T extends AssetType>(

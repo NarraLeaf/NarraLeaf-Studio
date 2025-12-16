@@ -6,10 +6,7 @@ import { AssetServiceBase } from "./AssetServiceBase";
 export class AudioService extends AssetServiceBase {
 
     public async readLocalAudio(asset: Asset<AssetType.Audio>): Promise<RequestStatus<AssetData<AssetType.Audio>>> {
-        // Get storage path for the asset
         const path = this.getAssetPath(asset.id);
-
-        // Read audio file as buffer
         const fileResult = await this.getFileSystemService().readRaw(path);
         if (!fileResult.ok) {
             return {
@@ -18,10 +15,12 @@ export class AudioService extends AssetServiceBase {
             };
         }
 
-        const buffer = fileResult.data;
+        return this.readAudioFromBuffer(asset, fileResult.data);
+    }
+
+    public async readAudioFromBuffer(asset: Asset<AssetType.Audio>, buffer: Uint8Array): Promise<RequestStatus<AssetData<AssetType.Audio>>> {
         const size = buffer.byteLength;
 
-        // Get audio metadata using HTML Audio API
         try {
             const metadata = await this.getAudioMetadata(buffer, asset);
 

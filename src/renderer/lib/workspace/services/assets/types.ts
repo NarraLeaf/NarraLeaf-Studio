@@ -18,14 +18,14 @@ export type AssetResolveMeta<Source extends AssetSource> = Source extends AssetS
     query: string;
     hash: string;
     search: string;
-    searchParams: URLSearchParams;
+    searchParams: Record<string, string>;
 } : never;
 
 /**
  * Asset interface with user metadata
  * Stored in assets metadata files
  */
-export interface Asset<Type extends AssetType = AssetType, Source extends AssetSource = AssetSource.Local> {
+export interface Asset<Type extends AssetType = AssetType, Source extends AssetSource = AssetSource> {
     id: string; // Unique identifier (UUID) used for indexing and file storage
     type: Type;
     name: string;
@@ -39,7 +39,7 @@ export interface Asset<Type extends AssetType = AssetType, Source extends AssetS
 }
 
 export type AssetsMap = {
-    [K in AssetType]: Record<string, Asset<K>>;
+    [K in AssetType]: Record<string, Asset<K, AssetSource>>;
 };
 
 /**

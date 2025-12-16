@@ -6,10 +6,7 @@ import { AssetServiceBase } from "./AssetServiceBase";
 export class ImageService extends AssetServiceBase {
 
     public async readLocalImage(asset: Asset<AssetType.Image>): Promise<RequestStatus<AssetData<AssetType.Image>>> {
-        // Get storage path for the asset
         const path = this.getAssetPath(asset.id);
-
-        // Read image file as buffer
         const fileResult = await this.getFileSystemService().readRaw(path);
         if (!fileResult.ok) {
             return {
@@ -17,11 +14,12 @@ export class ImageService extends AssetServiceBase {
                 error: `Failed to read image file: ${fileResult.error?.message || 'Unknown error'}`,
             };
         }
+        return this.readImageFromBuffer(asset, fileResult.data);
+    }
 
-        const buffer = fileResult.data;
+    public async readImageFromBuffer(asset: Asset<AssetType.Image>, buffer: Uint8Array): Promise<RequestStatus<AssetData<AssetType.Image>>> {
         const size = buffer.byteLength;
 
-        // Get image metadata using HTML Image API
         try {
             const metadata = await this.getImageMetadata(buffer, asset);
 

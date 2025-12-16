@@ -4,7 +4,7 @@ import { RendererError } from "@shared/utils/error";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
 import { AssetType } from "../assetTypes";
-import { Asset, AssetsMap } from "../types";
+import { Asset, AssetSource, AssetsMap } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 
@@ -25,7 +25,7 @@ export class AssetsMetadataManager {
         return Object.keys(this.getAssets()[type]);
     }
 
-    public exists<T extends AssetType>(asset: Asset<T>): boolean {
+    public exists<T extends AssetType>(asset: Asset<T, AssetSource>): boolean {
         return this.getAssets()[asset.type][asset.id] !== undefined;
     }
 
@@ -35,7 +35,7 @@ export class AssetsMetadataManager {
     }
 
     public async updateAssetTags<T extends AssetType>(
-        asset: Asset<T>,
+        asset: Asset<T, AssetSource>,
         tags: string[]
     ): Promise<RequestStatus<void>> {
         const metadata = this.getAssets();
@@ -60,7 +60,7 @@ export class AssetsMetadataManager {
     }
 
     public async updateAssetDescription<T extends AssetType>(
-        asset: Asset<T>,
+        asset: Asset<T, AssetSource>,
         description: string
     ): Promise<RequestStatus<void>> {
         const metadata = this.getAssets();
@@ -85,7 +85,7 @@ export class AssetsMetadataManager {
     }
 
     public async renameAsset<T extends AssetType>(
-        asset: Asset<T>,
+        asset: Asset<T, AssetSource>,
         newName: string
     ): Promise<RequestStatus<void>> {
         const metadata = this.getAssets();
