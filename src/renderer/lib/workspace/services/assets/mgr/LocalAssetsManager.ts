@@ -42,56 +42,49 @@ export class LocalAssetsManager {
         };
     }
 
-    public async fetch<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<AssetData<T>>> {
-        if (asset.source === AssetSource.Local) {
-            const path = this.getLocalAssetPath(asset.id);
-            switch (asset.type) {
-                case AssetType.Image:
-                    if (!this.assetsService.imageService) {
-                        throw new RendererError("Image service not initialized");
-                    }
-                    return await this.assetsService.imageService.readLocalImage(asset as Asset<AssetType.Image>) as RequestStatus<AssetData<T>>;
-                case AssetType.Audio:
-                    if (!this.assetsService.audioService) {
-                        throw new RendererError("Audio service not initialized");
-                    }
-                    return await this.assetsService.audioService.readLocalAudio(asset as Asset<AssetType.Audio>) as RequestStatus<AssetData<T>>;
-                case AssetType.Video:
-                    if (!this.assetsService.videoService) {
-                        throw new RendererError("Video service not initialized");
-                    }
-                    return await this.assetsService.videoService.readLocalVideo(asset as Asset<AssetType.Video>) as RequestStatus<AssetData<T>>;
-                case AssetType.JSON:
-                    if (!this.assetsService.jsonService) {
-                        throw new RendererError("JSON service not initialized");
-                    }
-                    return await this.assetsService.jsonService.readLocalJSON(path) as RequestStatus<AssetData<T>>;
-                case AssetType.Font:
-                    if (!this.assetsService.fontService) {
-                        throw new RendererError("Font service not initialized");
-                    }
-                    return await this.assetsService.fontService.readLocalFont(asset as Asset<AssetType.Font>) as RequestStatus<AssetData<T>>;
-                case AssetType.Other:
-                    if (!this.assetsService.otherService) {
-                        throw new RendererError("Other service not initialized");
-                    }
-                    return await this.assetsService.otherService.readLocalOther(asset as Asset<AssetType.Other>) as RequestStatus<AssetData<T>>;
-                default:
-                    return {
-                        success: false,
-                        error: `Failed to fetch asset: ${asset.id}. Type "${asset.type}" is not supported.`,
-                    };
-            }
+    public async fetch<T extends AssetType>(asset: Asset<T, AssetSource.Local>): Promise<RequestStatus<AssetData<T>>> {
+        const path = this.getLocalAssetPath(asset.id);
+        switch (asset.type) {
+            case AssetType.Image:
+                if (!this.assetsService.imageService) {
+                    throw new RendererError("Image service not initialized");
+                }
+                return await this.assetsService.imageService.readLocalImage(asset as Asset<AssetType.Image>) as RequestStatus<AssetData<T>>;
+            case AssetType.Audio:
+                if (!this.assetsService.audioService) {
+                    throw new RendererError("Audio service not initialized");
+                }
+                return await this.assetsService.audioService.readLocalAudio(asset as Asset<AssetType.Audio>) as RequestStatus<AssetData<T>>;
+            case AssetType.Video:
+                if (!this.assetsService.videoService) {
+                    throw new RendererError("Video service not initialized");
+                }
+                return await this.assetsService.videoService.readLocalVideo(asset as Asset<AssetType.Video>) as RequestStatus<AssetData<T>>;
+            case AssetType.JSON:
+                if (!this.assetsService.jsonService) {
+                    throw new RendererError("JSON service not initialized");
+                }
+                return await this.assetsService.jsonService.readLocalJSON(path) as RequestStatus<AssetData<T>>;
+            case AssetType.Font:
+                if (!this.assetsService.fontService) {
+                    throw new RendererError("Font service not initialized");
+                }
+                return await this.assetsService.fontService.readLocalFont(asset as Asset<AssetType.Font>) as RequestStatus<AssetData<T>>;
+            case AssetType.Other:
+                if (!this.assetsService.otherService) {
+                    throw new RendererError("Other service not initialized");
+                }
+                return await this.assetsService.otherService.readLocalOther(asset as Asset<AssetType.Other>) as RequestStatus<AssetData<T>>;
+            default:
+                return {
+                    success: false,
+                    error: `Failed to fetch asset: ${asset.id}. Type "${asset.type}" is not supported.`,
+                };
         }
-
-        return {
-            success: false,
-            error: `Failed to fetch asset: ${asset.id}. Source "${asset.source}" is not supported.`,
-        };
     }
 
     public async deleteAsset<T extends AssetType>(
-        asset: Asset<T>
+        asset: Asset<T, AssetSource.Local>
     ): Promise<RequestStatus<void>> {
         const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
 
@@ -248,7 +241,7 @@ export class LocalAssetsManager {
         }
 
         const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
-        const record: Record<string, Asset<T, AssetSource.Local>> = metadata[type];
+        const record: Record<string, Asset<T>> = metadata[type];
         if (record[id]) {
             return {
                 success: true,

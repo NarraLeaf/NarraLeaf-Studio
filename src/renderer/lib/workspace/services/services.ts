@@ -138,9 +138,11 @@ interface IAssetService extends IService {
     getAssets(): AssetsMap;
 
     list<T extends AssetType>(type: T): string[];
-    fetch<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<AssetData<T>>>;
-    exists<T extends AssetType>(asset: Asset<T>): boolean;
+    fetch<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<AssetData<T>>>;
+    exists<T extends AssetType>(asset: Asset<T, AssetSource>): boolean;
     importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>>;
+    importRemoteAsset<T extends AssetType>(type: T, url: string): Promise<RequestStatus<Asset<T, AssetSource.Remote>>>;
+    clearRemoteCache(assetId?: string): Promise<void>;
 }
 
 interface IServiceAssetsService extends IService {

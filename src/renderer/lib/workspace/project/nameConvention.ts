@@ -23,6 +23,8 @@ export const ProjectNameConvention = {
     Editor: ["editor/"],
     EditorAssets: ["editor", "assets/"],
     EditorServices: ["editor", "services/"],
+    EditorRemoteAssetsCache: ["editor", "assets", "remote/"],
+    EditorRemoteAssetShard: (id: string) => ["editor", "assets", "remote", ...splitId(id)],
 } as const;
 
 /**

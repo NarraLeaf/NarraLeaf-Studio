@@ -1,7 +1,7 @@
 import { useMemo, useCallback, useState, useRef, useEffect } from "react";
 import {
     Image, Music, Video, FileJson, Type, File,
-    FolderPlus, Upload, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash
+    FolderPlus, Upload, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash, Link
 } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
@@ -94,7 +94,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
     const { clipboard, setClipboard } = useClipboard();
 
     const {
-        handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleDelete, handleImport, handleImportToGroup,
+        handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleDelete, handleImport, handleImportToGroup, handleImportRemote,
         handleCreateMagicTags, handleApplyMagicTags
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
@@ -311,6 +311,16 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                                                     title="Import"
                                                 >
                                                     <Upload className="w-3 h-3" />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleImportRemote(type);
+                                                    }}
+                                                    className="p-1 hover:text-primary"
+                                                    title="Import Remote"
+                                                >
+                                                    <Link className="w-3 h-3" />
                                                 </button>
                                                 <button
                                                     onClick={(e) => {
