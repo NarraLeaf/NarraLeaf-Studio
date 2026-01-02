@@ -144,7 +144,6 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
     } = useDragAndDrop({ context, groups, onDropCompleted: loadAssets });
 
     useKeyboardShortcuts({
-        context,
         isInitialized,
         panelId,
         onCopy: () => handleCopyRef.current(),

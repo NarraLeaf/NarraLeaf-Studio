@@ -23,8 +23,8 @@ For game compatibility, see [docs/game-compatibility.md](docs/game-compatibility
     - [x] Asset Groups
     - [ ] Asset Explorer
     - [ ] Asset Compression
-    - [ ] Remote Assets
-  - [ ] Character Manager
+    - [x] Remote Assets
+  - [x] Character Manager
   - [ ] Scene Editor
   - [ ] Script Editor
   - [ ] Visual Graph Manager

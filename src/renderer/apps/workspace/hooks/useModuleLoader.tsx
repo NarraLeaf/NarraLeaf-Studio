@@ -80,17 +80,9 @@ export function useModuleLoader() {
             }
 
             // Register panel's keybindings via UIService
-            if (panelModule.keybindings) {
-                panelModule.keybindings.forEach((keybinding) => {
-                    uiService.keybindings.register({
-                        id: keybinding.id,
-                        key: keybinding.key,
-                        description: keybinding.description,
-                        handler: keybinding.handler,
-                        when: keybinding.when,
-                    });
-                    cleanup.push(() => uiService.keybindings.unregister(keybinding.id));
-                });
+            if (panelModule.keybindings && panelModule.keybindings.length > 0) {
+                const dispose = uiService.keybindings.registerMany(panelModule.keybindings);
+                cleanup.push(dispose);
             }
         });
 

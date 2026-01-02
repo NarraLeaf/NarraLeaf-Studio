@@ -174,12 +174,6 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
         profile.setDefaultForm(next);
     };
 
-    const revokeCropperUrl = useCallback(() => {
-        if (cropperImageUrl) {
-            URL.revokeObjectURL(cropperImageUrl);
-        }
-    }, [cropperImageUrl]);
-
     const handleSelectThumbnail = async (assets: Asset[]) => {
         const selected = assets[0];
         if (!selected || !assetsService) {
@@ -201,7 +195,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
         const buffer = new Uint8Array(result.data.data);
         const blob = new Blob([buffer]);
         const nextUrl = URL.createObjectURL(blob);
-        revokeCropperUrl();
+        // Note: old cropperImageUrl will be cleaned up by the effect
         setCropperImageUrl(nextUrl);
         setCroppingAsset(selected);
         setThumbnailError(null);
@@ -284,9 +278,9 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
         setCroppingAsset(null);
         setInitialCrop(undefined);
         setCropSourceSize(null);
-        revokeCropperUrl();
+        // Note: cropperImageUrl cleanup is handled by the effect
         setCropperImageUrl(null);
-    }, [revokeCropperUrl]);
+    }, []);
 
     const handleCropConfirm = async (selection: CropRect) => {
         if (!serviceAssets || !croppingAsset || !cropperImageUrl) {
@@ -344,33 +338,72 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
         return () => unsubscribe();
     }, [character]);
 
+    // Track the current thumbnail object URL and its associated thumbnailId
+    const thumbnailUrlStateRef = useRef<{ url: string; thumbnailId: string } | null>(null);
+
+    // Cleanup cropper URL when it changes
     useEffect(() => {
+        // Store the current URL so cleanup uses the correct value
+        const urlToRevoke = cropperImageUrl;
         return () => {
-            revokeCropperUrl();
-            if (thumbnailUrl) {
-                URL.revokeObjectURL(thumbnailUrl);
+            if (urlToRevoke) {
+                URL.revokeObjectURL(urlToRevoke);
             }
         };
-    }, [revokeCropperUrl, thumbnailUrl]);
+    }, [cropperImageUrl]);
+
+    // Cleanup thumbnail URL on unmount only
+    useEffect(() => {
+        return () => {
+            if (thumbnailUrlStateRef.current) {
+                URL.revokeObjectURL(thumbnailUrlStateRef.current.url);
+                thumbnailUrlStateRef.current = null;
+            }
+        };
+    }, []);
 
     useEffect(() => {
-        if (!serviceAssets || !thumbnailId) {
+        // If no thumbnailId, clear everything
+        if (!thumbnailId) {
+            if (thumbnailUrlStateRef.current) {
+                URL.revokeObjectURL(thumbnailUrlStateRef.current.url);
+                thumbnailUrlStateRef.current = null;
+            }
             setThumbnailUrl(null);
             return;
         }
 
+        // If URL already exists for this thumbnailId, no need to reload
+        if (thumbnailUrlStateRef.current?.thumbnailId === thumbnailId) {
+            // Ensure state is in sync
+            setThumbnailUrl(thumbnailUrlStateRef.current.url);
+            return;
+        }
+
+        // Wait for services to be ready
+        if (!serviceAssets) {
+            return;
+        }
+
         let cancelled = false;
-        let objectUrl: string | null = null;
 
         const loadThumb = async () => {
             const result = await serviceAssets.readRaw(thumbnailId);
             if (!result.ok || cancelled) {
-                setThumbnailUrl(null);
+                if (!cancelled) setThumbnailUrl(null);
                 return;
             }
-            objectUrl = URL.createObjectURL(new Blob([new Uint8Array(result.data)]));
+            // Clean up previous URL before creating new one
+            if (thumbnailUrlStateRef.current) {
+                URL.revokeObjectURL(thumbnailUrlStateRef.current.url);
+            }
+            const objectUrl = URL.createObjectURL(new Blob([new Uint8Array(result.data)]));
             if (!cancelled) {
+                thumbnailUrlStateRef.current = { url: objectUrl, thumbnailId };
                 setThumbnailUrl(objectUrl);
+            } else {
+                // If cancelled after creation, clean up immediately
+                URL.revokeObjectURL(objectUrl);
             }
         };
 
@@ -378,9 +411,6 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
 
         return () => {
             cancelled = true;
-            if (objectUrl) {
-                URL.revokeObjectURL(objectUrl);
-            }
         };
     }, [serviceAssets, thumbnailId]);
 
