@@ -6,6 +6,7 @@ import {
     ActionGroup,
     EditorTabDefinition,
     EditorLayout,
+    EditorGroup,
 } from "./types";
 import {
     useActions,
@@ -15,6 +16,7 @@ import {
     usePanelVisibility,
     useUIService,
 } from "../hooks/useUIService";
+import { FocusArea } from "@/lib/workspace/services/ui/types";
 
 /**
  * Registry context provides convenient access to UI state and operations
@@ -105,17 +107,46 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
         uiService.getStore().unregisterActionGroup(id);
     }, [uiService]);
 
+    // Helper to find group in layout
+    const findGroup = useCallback((layout: EditorLayout, groupId?: string): EditorGroup | null => {
+        if ("tabs" in layout) {
+            return !groupId || layout.id === groupId ? layout : null;
+        }
+        return findGroup(layout.first, groupId) || findGroup(layout.second, groupId);
+    }, []);
+
     // Editor management - delegate to UIStore
     const openEditorTab = useCallback(<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string) => {
         uiService.getStore().openEditorTabInGroup(tab, groupId);
+        // Update focus to the new tab
+        uiService.focus.setFocus(FocusArea.Editor, tab.id);
     }, [uiService]);
 
     const closeEditorTab = useCallback((tabId: string, groupId?: string) => {
-        uiService.getStore().closeEditorTabInGroup(tabId, groupId);
-    }, [uiService]);
+        const currentFocus = uiService.focus.getFocus();
+        const store = uiService.getStore();
+        
+        // Close the tab
+        store.closeEditorTabInGroup(tabId, groupId);
+        
+        // If focus was on the closed tab, update focus to new active tab
+        if (currentFocus.area === FocusArea.Editor && currentFocus.targetId === tabId) {
+            const layout = store.getEditorLayout();
+            const group = findGroup(layout, groupId);
+            if (group && group.focus) {
+                // Update focus to the new active tab
+                uiService.focus.setFocus(FocusArea.Editor, group.focus);
+            } else {
+                // No more tabs, clear focus
+                uiService.focus.clearFocus();
+            }
+        }
+    }, [uiService, findGroup]);
 
     const setActiveEditorTab = useCallback((tabId: string, groupId: string) => {
         uiService.getStore().setActiveEditorTabInGroup(tabId, groupId);
+        // Update focus to the activated tab
+        uiService.focus.setFocus(FocusArea.Editor, tabId);
     }, [uiService]);
 
     const updateEditorTabPayload = useCallback(<TPayload = any>(tabId: string, payload: TPayload, groupId?: string) => {

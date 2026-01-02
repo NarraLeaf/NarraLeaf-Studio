@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { X, Circle } from "lucide-react";
 import { useRegistry } from "../../registry";
 import { useWorkspace } from "../../context";
@@ -6,6 +6,7 @@ import { EditorGroup as EditorGroupType } from "../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
+import { useKeybinding, contextual } from "../../hooks";
 
 interface EditorGroupProps {
     group: EditorGroupType;
@@ -56,6 +57,42 @@ export function EditorGroup({ group }: EditorGroupProps) {
         uiService.focus.setFocus(FocusArea.Editor, group.focus);
     };
 
+    // Close active tab handler for keyboard shortcut
+    const handleCloseActiveTab = useCallback(() => {
+        if (group.focus) {
+            const tab = group.tabs.find((t) => t.id === group.focus);
+            // Only close if the tab is closable
+            if (tab && tab.closable !== false) {
+                closeEditorTab(group.focus, group.id);
+            }
+        }
+    }, [group.focus, group.tabs, group.id, closeEditorTab]);
+
+    // Build set of tab IDs for efficient lookup
+    const tabIds = useMemo(() => new Set(group.tabs.map((t) => t.id)), [group.tabs]);
+
+    // Dynamic condition: check if focus is on any tab in this group
+    const whenGroupFocused = useMemo(
+        () =>
+            contextual(
+                (ctx) =>
+                    ctx.area === FocusArea.Editor &&
+                    ctx.targetId !== undefined &&
+                    tabIds.has(ctx.targetId)
+            ),
+        [tabIds]
+    );
+
+    // Register Ctrl+W to close active editor tab when this group is focused
+    useKeybinding({
+        id: `editor-group-${group.id}-close-tab`,
+        key: "ctrl+w",
+        description: "Close active editor tab",
+        handler: handleCloseActiveTab,
+        when: whenGroupFocused,
+        enabled: group.tabs.length > 0,
+    });
+
     return (
         <div 
             className={`h-full flex flex-col border transition-colors ${
@@ -66,7 +103,14 @@ export function EditorGroup({ group }: EditorGroupProps) {
         >
             {/* Tab Bar */}
             {group.tabs.length > 0 && (
-                <div className="flex items-center bg-[#0b0d12] border-b border-white/10 overflow-x-auto">
+                <div
+                    className="flex items-center bg-[#0b0d12] border-b border-white/10 overflow-x-auto"
+                    onWheel={(e) => {
+                        // Convert vertical scroll to horizontal scroll for tab navigation
+                        e.preventDefault();
+                        e.currentTarget.scrollLeft += e.deltaY;
+                    }}
+                >
                     {group.tabs.map((tab) => {
                         const isActive = tab.id === group.focus;
                         const closable = tab.closable !== false;

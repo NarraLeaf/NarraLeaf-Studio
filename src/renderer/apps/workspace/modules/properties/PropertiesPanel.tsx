@@ -1,19 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Settings } from "lucide-react";
 import { PanelComponentProps } from "../types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
+import { AssetData } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
-import { ImagePropertyEditor } from "./editors/ImagePropertyEditor";
-import { AudioPropertyEditor } from "./editors/AudioPropertyEditor";
-import { VideoPropertyEditor } from "./editors/VideoPropertyEditor";
-import { JSONPropertyEditor } from "./editors/JSONPropertyEditor";
-import { FontPropertyEditor } from "./editors/FontPropertyEditor";
-import { OtherPropertyEditor } from "./editors/OtherPropertyEditor";
 import { Character } from "@/lib/workspace/services/character/Character";
-import { CharacterPropertiesEditor } from "../characters/editors/CharacterPropertiesEditor";
+import { PropertyEditor } from "./framework";
+import {
+    getAssetPropertySchema,
+    AssetEditorContext,
+    characterPropertySchema,
+    CharacterEditorContext,
+} from "./schemas";
 
 /**
  * Properties panel component
@@ -23,39 +25,210 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const [activeAsset, setActiveAsset] = useState<Asset | null>(null);
     const [activeCharacter, setActiveCharacter] = useState<Character | null>(null);
-    const [, setCharacterVersion] = useState(0);
+    const [assetMetadata, setAssetMetadata] = useState<AssetData<any> | null>(null);
+    const [characterVersion, setCharacterVersion] = useState(0);
+    const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+    
+    // Track the current thumbnail URL and its associated thumbnailId to avoid revoking URLs still in use
+    const thumbnailUrlRef = useRef<{ url: string; thumbnailId: string } | null>(null);
 
-    // Listen selection changes
+    // Use refs to get stable references for callbacks
+    const activeAssetRef = useRef(activeAsset);
+    activeAssetRef.current = activeAsset;
+
+    const assetsService = useMemo(() => {
+        if (!context || !isInitialized) return null;
+        return context.services.get<AssetsService>(Services.Assets);
+    }, [context, isInitialized]);
+
+    const serviceAssets = useMemo(() => {
+        if (!context || !isInitialized) return null;
+        return context.services.get<ServiceAssetsService>(Services.ServiceAssets);
+    }, [context, isInitialized]);
+
+    // Listen to selection changes
     useEffect(() => {
         if (!context) return;
         const uiService = context.services.get<UIService>(Services.UI);
         const store = uiService.getStore();
 
         const setSelectionState = (selection: any) => {
-            setActiveAsset(selection.type === "asset" ? selection.data as Asset : null);
-            setActiveCharacter(selection.type === "character" ? selection.data as Character : null);
+            setActiveAsset(selection.type === "asset" ? (selection.data as Asset) : null);
+            setActiveCharacter(selection.type === "character" ? (selection.data as Character) : null);
+            setAssetMetadata(null);
         };
 
         setSelectionState(store.getSelection());
 
-        const unsub = uiService.getEvents().on("selectionChanged", sel => {
+        const unsub = uiService.getEvents().on("selectionChanged", (sel) => {
             setSelectionState(sel);
         });
 
         return unsub;
     }, [context]);
 
-    // Listen character changes so header reflects rename/group updates
+    // Load asset metadata when asset changes
+    useEffect(() => {
+        if (!activeAsset || !assetsService) {
+            setAssetMetadata(null);
+            return;
+        }
+
+        let cancelled = false;
+
+        const loadMetadata = async () => {
+            try {
+                const result = await assetsService.fetch(activeAsset);
+                if (!cancelled && result.success) {
+                    // Avoid storing raw binary data to prevent UI freeze
+                    const { metadata } = result.data as any;
+                    setAssetMetadata({ metadata } as AssetData<any>);
+                }
+            } catch (err) {
+                console.error("Failed to load asset metadata:", err);
+            }
+        };
+
+        loadMetadata();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [activeAsset?.id, assetsService]);
+
+    // Listen to character changes
     useEffect(() => {
         if (!activeCharacter) return;
         const unsub = activeCharacter.subscribe(() => {
-            setCharacterVersion(v => v + 1);
+            setCharacterVersion((v) => v + 1);
         });
         return unsub;
     }, [activeCharacter]);
 
-    // Render appropriate property editor based on asset type
+    // Get current thumbnailId - derived from activeCharacter and characterVersion
+    const thumbnailId = useMemo(() => {
+        if (!activeCharacter) return null;
+        return activeCharacter.profile.getProfile().thumbnail;
+    }, [activeCharacter, characterVersion]);
+
+    // Load character thumbnail URL - only reload when thumbnailId actually changes
+    useEffect(() => {
+        // If no character or no thumbnailId, clear everything
+        if (!activeCharacter || !thumbnailId) {
+            if (thumbnailUrlRef.current) {
+                URL.revokeObjectURL(thumbnailUrlRef.current.url);
+                thumbnailUrlRef.current = null;
+            }
+            setThumbnailUrl(null);
+            return;
+        }
+
+        // If URL already exists for this thumbnailId, reuse it
+        if (thumbnailUrlRef.current?.thumbnailId === thumbnailId) {
+            setThumbnailUrl(thumbnailUrlRef.current.url);
+            return;
+        }
+
+        // Wait for services to be ready
+        if (!serviceAssets) {
+            return;
+        }
+
+        let cancelled = false;
+
+        const loadThumb = async () => {
+            const result = await serviceAssets.readRaw(thumbnailId);
+            if (!result.ok || cancelled) {
+                if (!cancelled) setThumbnailUrl(null);
+                return;
+            }
+            // Clean up previous URL before creating new one
+            if (thumbnailUrlRef.current) {
+                URL.revokeObjectURL(thumbnailUrlRef.current.url);
+            }
+            const objectUrl = URL.createObjectURL(new Blob([new Uint8Array(result.data)]));
+            if (!cancelled) {
+                thumbnailUrlRef.current = { url: objectUrl, thumbnailId };
+                setThumbnailUrl(objectUrl);
+            } else {
+                // If cancelled after creation, clean up immediately
+                URL.revokeObjectURL(objectUrl);
+            }
+        };
+
+        void loadThumb();
+
+        return () => {
+            cancelled = true;
+            // Don't revoke here - URL might still be in state and used by React
+            // It will be cleaned up when a new URL is loaded or on unmount
+        };
+    }, [activeCharacter, serviceAssets, thumbnailId]);
+
+    // Cleanup thumbnail URL on unmount only
+    useEffect(() => {
+        return () => {
+            if (thumbnailUrlRef.current) {
+                URL.revokeObjectURL(thumbnailUrlRef.current.url);
+                thumbnailUrlRef.current = null;
+            }
+        };
+    }, []);
+
+    // Stable handler for asset field updates
+    const handleAssetUpdate = useCallback(
+        async (field: "name" | "tags" | "description", value: any) => {
+            const asset = activeAssetRef.current;
+            if (!asset || !assetsService) return;
+
+            try {
+                switch (field) {
+                    case "name":
+                        await assetsService.renameAsset(asset, value);
+                        break;
+                    case "tags":
+                        await assetsService.updateAssetTags(asset, value);
+                        break;
+                    case "description":
+                        await assetsService.updateAssetDescription(asset, value);
+                        break;
+                }
+            } catch (err) {
+                console.error(`Failed to update ${field}:`, err);
+            }
+        },
+        [assetsService]
+    );
+
+    // Build asset editor context - only recreate when necessary values change
+    const assetContext = useMemo<AssetEditorContext<any> | null>(() => {
+        if (!activeAsset) return null;
+        return {
+            asset: activeAsset,
+            metadata: assetMetadata,
+            onUpdate: handleAssetUpdate,
+        };
+    }, [activeAsset?.id, assetMetadata, handleAssetUpdate]);
+
+    // Build character editor context
+    const characterContext = useMemo<CharacterEditorContext | null>(() => {
+        if (!activeCharacter) return null;
+        return {
+            character: activeCharacter,
+            thumbnailUrl,
+            forms: [...activeCharacter.profile.appearance.getForms()],
+        };
+    }, [activeCharacter, thumbnailUrl, characterVersion]);
+
+    // Get asset schema
+    const assetSchema = useMemo(() => {
+        if (!activeAsset) return null;
+        return getAssetPropertySchema(activeAsset.type);
+    }, [activeAsset?.type]);
+
+    // Render appropriate property editor
     const renderPropertyEditor = () => {
+        // No selection
         if (!activeAsset && !activeCharacter) {
             return (
                 <div className="flex-1 flex items-center justify-center p-4">
@@ -68,31 +241,17 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             );
         }
 
-        if (activeCharacter) {
-            return <CharacterPropertiesEditor character={activeCharacter} />;
+        // Character editor
+        if (activeCharacter && characterContext) {
+            return <PropertyEditor schema={characterPropertySchema} data={characterContext} />;
         }
 
-        if (!activeAsset) {
-            return null;
+        // Asset editor
+        if (activeAsset && assetContext && assetSchema) {
+            return <PropertyEditor schema={assetSchema} data={assetContext} />;
         }
 
-        switch (activeAsset.type) {
-            case AssetType.Image:
-                return <ImagePropertyEditor asset={activeAsset as Asset<AssetType.Image>} />;
-            case AssetType.Audio:
-                return <AudioPropertyEditor asset={activeAsset as Asset<AssetType.Audio>} />;
-            case AssetType.Video:
-                return <VideoPropertyEditor asset={activeAsset as Asset<AssetType.Video>} />;
-            case AssetType.JSON:
-                return <JSONPropertyEditor asset={activeAsset as Asset<AssetType.JSON>} />;
-            case AssetType.Font:
-                return <FontPropertyEditor asset={activeAsset as Asset<AssetType.Font>} />;
-            case AssetType.Other:
-                return <OtherPropertyEditor asset={activeAsset as Asset<AssetType.Other>} />;
-
-            default:
-                return null;
-        }
+        return null;
     };
 
     return (
@@ -104,8 +263,8 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                         {activeCharacter
                             ? activeCharacter.profile.getProfile().name
                             : activeAsset
-                                ? activeAsset.name
-                                : "Properties"}
+                            ? activeAsset.name
+                            : "Properties"}
                     </span>
                 </div>
                 {(activeAsset || activeCharacter) && (
@@ -116,9 +275,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto">
-                {renderPropertyEditor()}
-            </div>
+            <div className="flex-1 overflow-y-auto">{renderPropertyEditor()}</div>
         </div>
     );
 }
