@@ -217,6 +217,60 @@ export class GroupAssetsManager {
         };
     }
 
+    /**
+     * Duplicate a group recursively, including all child groups and assets.
+     * Returns the newly created group.
+     */
+    public async duplicateGroup<T extends AssetType>(
+        type: T,
+        groupId: string,
+        newParentGroupId?: string
+    ): Promise<RequestStatus<AssetGroup>> {
+        this.assertGroups();
+
+        const originalGroup = this.assetsGroups![type][groupId];
+        if (!originalGroup) {
+            return {
+                success: false,
+                error: `Group not found: ${groupId}`,
+            };
+        }
+
+        // Create new group with the same name (with " Copy" suffix)
+        const newGroupResult = await this.createGroup(type, `${originalGroup.name} Copy`, newParentGroupId);
+        if (!newGroupResult.success || !newGroupResult.data) {
+            return newGroupResult;
+        }
+        const newGroup = newGroupResult.data;
+
+        // Duplicate all assets in this group
+        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
+        const assetsInGroup = Object.values(metadata[type]).filter(
+            a => a.groupId === groupId
+        );
+
+        for (const asset of assetsInGroup) {
+            const dupResult = await this.assetsService.duplicateAsset(asset as Asset<AssetType, AssetSource>);
+            if (dupResult.success && dupResult.data) {
+                await this.moveAssetToGroup(dupResult.data, newGroup.id);
+            }
+        }
+
+        // Recursively duplicate child groups
+        const childGroups = Object.values(this.assetsGroups![type]).filter(
+            g => g.parentGroupId === groupId
+        );
+
+        for (const childGroup of childGroups) {
+            await this.duplicateGroup(type, childGroup.id, newGroup.id);
+        }
+
+        return {
+            success: true,
+            data: newGroup,
+        };
+    }
+
     private async writeAssetsGroupsMetadata(type: AssetType): Promise<FsRequestResult<void>> {
         this.assertGroups();
 
