@@ -17,6 +17,8 @@ interface AssetsPanelContextType {
     dropTargetId?: string | null;
     clipboard: ClipboardState | null;
     isMultiSelectMode: boolean;
+    expandedGroups: Set<string>;
+    setExpandedGroups: React.Dispatch<React.SetStateAction<Set<string>>>;
 
     // Handlers
     handleItemSelect: (itemId: string, isGroup: boolean, event: React.MouseEvent) => void;

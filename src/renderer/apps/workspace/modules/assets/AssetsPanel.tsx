@@ -62,6 +62,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
 
     const [contextMenuTarget, setContextMenuTarget] = useState<ContextMenuTargetState | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
     
     // Magic Tags state
     const [magicTagDialogVisible, setMagicTagDialogVisible] = useState(false);
@@ -93,12 +94,17 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
 
     const { clipboard, setClipboard } = useClipboard();
 
+    // Function to expand a group by its ID
+    const expandGroup = useCallback((groupId: string) => {
+        setExpandedGroups(prev => new Set(prev).add(groupId));
+    }, []);
+
     const {
         handleCreateGroup, handleCopy, handleCut, handlePaste, handleRename, handleDelete, handleImport, handleImportToGroup, handleImportRemote,
         handleCreateMagicTags, handleApplyMagicTags
     } = useAssetActions({
         context, inputDialog, assets, groups, selectedItems, clipboard, contextMenuTarget,
-        focusedItemId, onActionComplete, setClipboard, setActionLoading
+        focusedItemId, onActionComplete, setClipboard, setActionLoading, expandGroup
     });
 
     // Use refs to store latest function references to avoid stale closures in action group
@@ -189,7 +195,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
 
         const groupId = "narraleaf-studio:assets-edit";
         const hasSelection = selectedItems.size > 0;
-        const hasClipboardAssets = !!clipboard && clipboard.assets.length > 0;
+        const hasClipboardContent = !!clipboard && (clipboard.assets.length > 0 || clipboard.groups.length > 0);
         const when = (focus: { area: FocusArea; targetId?: string }) => focus.area === FocusArea.LeftPanel && focus.targetId === panelId;
 
         registerActionGroup({
@@ -223,10 +229,10 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                     id: `${groupId}-paste`,
                     label: "Paste",
                     icon: <Clipboard className="w-4 h-4" />,
-                    tooltip: "Paste assets",
+                    tooltip: "Paste assets or groups",
                     shortcut: "ctrl+v",
                     onClick: (_workspace) => handlePasteRef.current(),
-                    disabled: !hasClipboardAssets || actionLoading,
+                    disabled: !hasClipboardContent || actionLoading,
                     when,
                     order: 2,
                 },
@@ -247,7 +253,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         return () => {
             unregisterActionGroup(groupId);
         };
-    }, [context, panelId, selectedItems.size, clipboard?.assets.length, actionLoading]);
+    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading]);
 
     if (loading && Object.values(assets).every(arr => arr.length === 0)) {
         return <div className="p-4 flex items-center gap-2 text-gray-400"><RefreshCw className="w-4 h-4 animate-spin" /> <span>Loading assets...</span></div>;
@@ -259,9 +265,10 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
 
     const contextValue = {
         assets, groups, filteredAssets, filteredGroups, selectedItems, focusedItemId, 
-        draggedItem, dropTargetId, clipboard, isMultiSelectMode,
+        draggedItem, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
         handleItemSelect, handleAssetClick, handleGroupFocus, showContextMenu,
         handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
+        setExpandedGroups,
         isFocused: (id: string) => focusedItemId === id,
     };
 
@@ -377,15 +384,28 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
 }
 
 function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType; level: number }) {
-    const { filteredAssets, filteredGroups, selectedItems, draggedItem, dropTargetId, handleItemSelect, handleGroupFocus, showContextMenu, handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup, isFocused } = useAssetsPanelContext();
-    const [isOpen, setIsOpen] = useState(false);
+    const { filteredAssets, filteredGroups, selectedItems, draggedItem, dropTargetId, clipboard, expandedGroups, setExpandedGroups, handleItemSelect, handleGroupFocus, showContextMenu, handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup, isFocused } = useAssetsPanelContext();
     const [isDragOverLocal, setDragOverLocal] = useState(false);
+
+    const isOpen = expandedGroups.has(group.id);
+    const toggleOpen = useCallback(() => {
+        setExpandedGroups(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(group.id)) {
+                newSet.delete(group.id);
+            } else {
+                newSet.add(group.id);
+            }
+            return newSet;
+        });
+    }, [group.id, setExpandedGroups]);
 
     const childGroups = filteredGroups[type].filter(g => g.parentGroupId === group.id);
     const groupAssets = filteredAssets[type].filter(a => a.groupId === group.id);
     const isDragging = !!draggedItem && draggedItem.isGroup && draggedItem.item.id === group.id;
     const isDropTarget = dropTargetId === `group:${group.id}`;
     const isSelected = selectedItems.has(`group:${group.id}`);
+    const isCut = clipboard?.type === 'cut' && clipboard.groups.some(g => g.id === group.id);
 
     return (
         <div
@@ -405,9 +425,9 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
         >
             <div
                 draggable
-                className={`flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`group:${group.id}`) ? 'bg-gray-600/10' : ''} ${isDragging ? 'opacity-50' : ''}`}
+                className={`flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`group:${group.id}`) ? 'bg-gray-600/10' : ''} ${isDragging ? 'opacity-50' : ''} ${isCut ? 'opacity-40' : ''}`}
                 style={{ paddingLeft: `${20 + level * 12}px` }}
-                onClick={(e) => { handleItemSelect(group.id, true, e); handleGroupFocus(group.id); setIsOpen(!isOpen); }}
+                onClick={(e) => { handleItemSelect(group.id, true, e); handleGroupFocus(group.id); toggleOpen(); }}
                 onContextMenu={(e) => showContextMenu(e, type, group, true)}
                 onDragStart={(e) => handleDragStart?.(e, type, group, true)}
                 onDragEnd={() => handleDragEnd?.()}

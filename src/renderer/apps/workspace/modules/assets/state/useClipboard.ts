@@ -1,9 +1,10 @@
-import { useState, useCallback } from 'react';
-import { Asset } from '@/lib/workspace/services/assets/types';
+import { useState } from 'react';
+import { Asset, AssetGroup } from '@/lib/workspace/services/assets/types';
 
 export interface ClipboardState {
     type: "copy" | "cut";
     assets: Asset[];
+    groups: AssetGroup[];
 }
 
 export function useClipboard() {

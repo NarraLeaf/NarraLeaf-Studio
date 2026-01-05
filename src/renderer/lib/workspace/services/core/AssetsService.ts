@@ -243,6 +243,14 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         return this.getGroupAssetsManager().moveAssetToGroup(asset, groupId);
     }
 
+    public async duplicateGroup<T extends AssetType>(
+        type: T,
+        groupId: string,
+        newParentGroupId?: string
+    ): Promise<RequestStatus<AssetGroup>> {
+        return this.getGroupAssetsManager().duplicateGroup(type, groupId, newParentGroupId);
+    }
+
     // Metadata management APIs
     public async updateAssetTags<T extends AssetType>(
         asset: Asset<T>,
