@@ -1,4 +1,5 @@
 import { CharacterProfile, CharacterProfileConfig } from "./CharacterProfile";
+import { AssetChangeCallback } from "./CharacterAppearance";
 
 export interface CharacterConfig {
     profile: CharacterProfileConfig;
@@ -7,6 +8,7 @@ export interface CharacterConfig {
 export class Character {
     public readonly profile: CharacterProfile;
     private onChange: (() => void) | null = null;
+    private onAssetChange: AssetChangeCallback | null = null;
     private listeners: Set<() => void> = new Set();
 
     constructor(private config: CharacterConfig) {
@@ -26,6 +28,11 @@ export class Character {
 
     public setOnChange(handler: (() => void) | null): void {
         this.onChange = handler;
+    }
+
+    public setOnAssetChange(handler: AssetChangeCallback | null): void {
+        this.onAssetChange = handler;
+        this.profile.setOnAssetChange(handler);
     }
 
     /**

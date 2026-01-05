@@ -437,6 +437,7 @@ export function useAssetActions({
         const ctx = contextRef.current;
         if (!ctx) { notifyLoading(false); return; }
         const uiService = ctx.services.get<UIService>(Services.UI);
+        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
         
         // Determine targets in priority order: selection > context menu target > focused item
         let targets: { isGroup: boolean; type: AssetType; item: Asset | AssetGroup }[] = [];
@@ -489,8 +490,37 @@ export function useAssetActions({
 
         if (targets.length === 0) return;
 
-        const confirmed = await uiService.showConfirm(`Delete ${targets.length} item(s)?`, 'All assets in the group will be deleted. This cannot be undone.');
-        if (!confirmed) return;
+        // Check for locked assets
+        const lockedAssets: { asset: Asset; reasons: string[] }[] = [];
+        for (const target of targets) {
+            if (!target.isGroup) {
+                const asset = target.item as Asset;
+                if (assetsService.isAssetLocked(asset.id)) {
+                    const reasons = assetsService.getAssetLocks(asset.id);
+                    lockedAssets.push({ asset, reasons });
+                }
+            }
+        }
+
+        // If there are locked assets, show warning
+        if (lockedAssets.length > 0) {
+            const lockMessages = lockedAssets.map(({ asset, reasons }) => 
+                `- ${asset.name}:\n  ${reasons.join('\n  ')}`
+            ).join('\n');
+            
+            const message = `${lockMessages}`;
+            const forceConfirmed = await uiService.showConfirm('Assets are in use', message);
+            if (!forceConfirmed) {
+                notifyLoading(false);
+                return;
+            }
+        }
+
+        const confirmed = await uiService.showConfirm(`Delete ${targets.length} items?`, 'All assets in the group will be deleted. This action cannot be undone.');
+        if (!confirmed) {
+            notifyLoading(false);
+            return;
+        }
 
         // Remove duplicate targets by id to avoid double deletion
         const uniqueTargets = Array.from(new Map(targets.map(t => [t.item.id, t])).values());

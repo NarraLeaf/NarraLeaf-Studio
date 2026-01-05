@@ -9,6 +9,7 @@ import { AssetsService } from "./AssetsService";
 import { FileSystemService } from "./FileSystem";
 import { ServiceAssetsService } from "./ServiceAssetsService";
 import { UIService } from "./UIService";
+import { AssetLockReason } from "../assets/AssetLockManager";
 
 type CharacterStore = {
     characters: ReturnType<Character["toJSON"]>[];
@@ -68,6 +69,9 @@ export class CharacterService extends Service<CharacterService> implements IChar
         if (!character) {
             return false;
         }
+
+        // Unlock all assets used by this character
+        this.unlockCharacterAssets(character);
 
         const thumbnailId = character.profile.getThumbnail();
         if (thumbnailId) {
@@ -169,6 +173,8 @@ export class CharacterService extends Service<CharacterService> implements IChar
         for (const config of store.data.characters) {
             const character = Character.fromJSON(config);
             this.registerCharacter(character);
+            // Lock all assets used by this character
+            this.lockCharacterAssets(character);
         }
     }
 
@@ -181,6 +187,9 @@ export class CharacterService extends Service<CharacterService> implements IChar
         character.setOnChange(() => {
             this.markDirty();
             this.emitChange();
+        });
+        character.setOnAssetChange((oldAssetId, newAssetId) => {
+            this.updateAssetLock(id, oldAssetId, newAssetId);
         });
     }
 
@@ -234,5 +243,61 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     private registerGroup(group: CharacterGroup): void {
         this.groups[group.id] = group;
+    }
+
+    /**
+     * Lock all assets used by a character
+     */
+    private lockCharacterAssets(character: Character): void {
+        const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
+        const characterId = character.profile.getId();
+        
+        // Lock all variant assets across all forms
+        const forms = character.profile.appearance.getForms();
+        for (const form of forms) {
+            for (const [variantName, variantData] of Object.entries(form.variantAssets)) {
+                const asset = variantData.data;
+                if (asset && asset.id) {
+                    assetsService.lockAsset(asset.id, AssetLockReason.UsedByCharacter, { characterId });
+                }
+            }
+        }
+    }
+
+    /**
+     * Unlock all assets used by a character
+     */
+    private unlockCharacterAssets(character: Character): void {
+        const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
+        const characterId = character.profile.getId();
+        
+        // Unlock all variant assets across all forms
+        const forms = character.profile.appearance.getForms();
+        for (const form of forms) {
+            for (const [variantName, variantData] of Object.entries(form.variantAssets)) {
+                const asset = variantData.data;
+                if (asset && asset.id) {
+                    assetsService.unlockAsset(asset.id, AssetLockReason.UsedByCharacter, { characterId });
+                }
+            }
+        }
+    }
+
+    /**
+     * Update asset locks when a character's variant asset changes
+     * This should be called by the character appearance when assets change
+     */
+    public updateAssetLock(characterId: string, oldAssetId: string | null, newAssetId: string | null): void {
+        const assetsService = this.getContext().services.get<AssetsService>(Services.Assets);
+        
+        // Unlock old asset
+        if (oldAssetId) {
+            assetsService.unlockAsset(oldAssetId, AssetLockReason.UsedByCharacter, { characterId });
+        }
+        
+        // Lock new asset
+        if (newAssetId) {
+            assetsService.lockAsset(newAssetId, AssetLockReason.UsedByCharacter, { characterId });
+        }
     }
 }

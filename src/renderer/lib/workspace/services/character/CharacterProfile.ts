@@ -1,4 +1,4 @@
-import { CharacterAppearance } from "./CharacterAppearance";
+import { CharacterAppearance, AssetChangeCallback } from "./CharacterAppearance";
 import { CharacterEditorProfile, ICharacterAppearance } from "./types";
 
 export interface CharacterProfileConfig extends CharacterEditorProfile {
@@ -40,6 +40,7 @@ export class CharacterProfile {
     public readonly appearance: CharacterAppearance;
     private readonly profile: CharacterEditorProfile;
     private onChange: (() => void) | null = null;
+    private onAssetChange: AssetChangeCallback | null = null;
 
     constructor(config: CharacterProfileConfig) {
         this.profile = config;
@@ -48,6 +49,11 @@ export class CharacterProfile {
 
     public setOnChange(handler: (() => void) | null): void {
         this.onChange = handler;
+    }
+
+    public setOnAssetChange(handler: AssetChangeCallback | null): void {
+        this.onAssetChange = handler;
+        this.appearance.setOnAssetChange(handler);
     }
 
     public getName(): string {
