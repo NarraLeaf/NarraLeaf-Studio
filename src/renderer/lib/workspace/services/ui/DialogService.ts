@@ -35,8 +35,8 @@ export class DialogService {
             const id = this.createDialog({
                 title: "Confirm",
                 message,
-                // content: detail ? <div className="text-sm text-gray-400">{detail}</div> : undefined
-                content: React.createElement("div", { className: "text-sm text-gray-400" }, detail),
+                // content: detail ? <div className="text-sm text-gray-400 whitespace-pre-wrap">{detail}</div> : undefined
+                content: React.createElement("div", { className: "text-sm text-gray-400 whitespace-pre-wrap" }, detail),
                 buttons: [
                     {
                         label: "Cancel",
@@ -68,7 +68,7 @@ export class DialogService {
             const id = this.createDialog({
                 title: "Alert",
                 message,
-                content: React.createElement("div", { className: "text-sm text-gray-400" }, detail),
+                content: React.createElement("div", { className: "text-sm text-gray-400 whitespace-pre-wrap" }, detail),
                 buttons: [
                     {
                         label: "OK",

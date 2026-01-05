@@ -23,6 +23,7 @@ import { FileSystemService } from "./FileSystem";
 import { MagicTagManager, MagicTagTemplate, MagicTagPreview } from "./MagicTagManager";
 import { ProjectService } from "./ProjectService";
 import { UuidService } from "./UuidService";
+import { AssetLockManager, AssetLockReason } from "../assets/AssetLockManager";
 
 interface AssetsEvents {
     deleted: Asset<AssetType, AssetSource>;
@@ -42,6 +43,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public fontService: FontService | null = null;
     public otherService: OtherService | null = null;
     public fileFormatValidator: FileFormatValidator | null = null;
+
+    /**
+     * Asset lock manager
+     */
+    private readonly lockManager = new AssetLockManager();
 
     /**
      * Event emitter for asset-level changes (added, deleted, updated)
@@ -334,5 +340,49 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         categoryMapping: Record<number, string>
     ): MagicTagPreview[] {
         return MagicTagManager.generatePreview(template, categoryMapping);
+    }
+
+    // Asset Lock Management APIs
+
+    /**
+     * Lock an asset with a specific reason
+     */
+    public lockAsset(assetId: string, reason: AssetLockReason, metadata?: Record<string, any>): void {
+        this.lockManager.lock(assetId, reason, metadata);
+    }
+
+    /**
+     * Unlock an asset for a specific reason
+     */
+    public unlockAsset(assetId: string, reason: AssetLockReason, metadata?: Record<string, any>): void {
+        this.lockManager.unlock(assetId, reason, metadata);
+    }
+
+    /**
+     * Check if an asset is locked
+     */
+    public isAssetLocked(assetId: string): boolean {
+        return this.lockManager.isLocked(assetId);
+    }
+
+    /**
+     * Get all locks on an asset
+     */
+    public getAssetLocks(assetId: string): string[] {
+        return this.lockManager.getLockReasons(assetId);
+    }
+
+    /**
+     * Get a formatted lock message for an asset
+     */
+    public getAssetLockMessage(assetId: string): string | null {
+        return this.lockManager.getLockMessage(assetId);
+    }
+
+    /**
+     * Get the lock manager instance (for internal service use)
+     */
+    public getLockManager(): AssetLockManager {
+        return this.lockManager;
     }
 }

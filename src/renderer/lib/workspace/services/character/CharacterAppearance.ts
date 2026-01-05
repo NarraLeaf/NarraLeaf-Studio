@@ -7,12 +7,20 @@ type VariantResolver = {
     variant: string;
 };
 
+export type AssetChangeCallback = (oldAssetId: string | null, newAssetId: string | null) => void;
+
 export class CharacterAppearance {
     private listeners: Set<() => void> = new Set();
+    private assetChangeCallback: AssetChangeCallback | null = null;
+    
     constructor(private appearance: ICharacterAppearance, private onChange: (() => void) | null = null) { }
 
     public setOnChange(handler: (() => void) | null): void {
         this.onChange = handler;
+    }
+
+    public setOnAssetChange(handler: AssetChangeCallback | null): void {
+        this.assetChangeCallback = handler;
     }
 
     public subscribe(handler: () => void): () => void {
@@ -25,6 +33,12 @@ export class CharacterAppearance {
             this.onChange();
         }
         this.listeners.forEach(listener => listener());
+    }
+
+    private notifyAssetChange(oldAssetId: string | null, newAssetId: string | null): void {
+        if (this.assetChangeCallback) {
+            this.assetChangeCallback(oldAssetId, newAssetId);
+        }
     }
 
     /**
@@ -93,6 +107,16 @@ export class CharacterAppearance {
     public removeForm(name: string): boolean {
         const index = this.appearance.forms.findIndex(form => form.name === name);
         if (index === -1) return false;
+        
+        // Notify asset changes for all assets in this form
+        const form = this.appearance.forms[index];
+        for (const [variantName, variantData] of Object.entries(form.variantAssets)) {
+            const oldAssetId = variantData.data?.id ?? null;
+            if (oldAssetId) {
+                this.notifyAssetChange(oldAssetId, null);
+            }
+        }
+        
         this.appearance.forms.splice(index, 1);
         this.notifyChange();
         return true;
@@ -180,10 +204,16 @@ export class CharacterAppearance {
         if (!form) return false;
         const index = form.groups.findIndex(g => g.name === groupName);
         if (index === -1) return false;
-        // Clean variant assets for variants under this group.
+        
+        // Clean variant assets for variants under this group and notify asset changes
         form.groups[index].variants.forEach(v => {
+            const oldAssetId = form.variantAssets[v.name]?.data?.id ?? null;
+            if (oldAssetId) {
+                this.notifyAssetChange(oldAssetId, null);
+            }
             delete form.variantAssets[v.name];
         });
+        
         form.groups.splice(index, 1);
         this.notifyChange();
         return true;
@@ -221,8 +251,18 @@ export class CharacterAppearance {
         if (!group) return false;
         const index = group.variants.findIndex(v => v.name === variantName);
         if (index === -1) return false;
+        
+        // Get old asset ID before removing
+        const oldAssetId = form.variantAssets[variantName]?.data?.id ?? null;
+        
         group.variants.splice(index, 1);
         delete form.variantAssets[variantName];
+        
+        // Notify asset change for lock management
+        if (oldAssetId) {
+            this.notifyAssetChange(oldAssetId, null);
+        }
+        
         // Reset default if removed variant was default.
         if (group.defaultVariant === variantName) {
             group.defaultVariant = group.variants[0]?.name ?? null;
@@ -267,11 +307,21 @@ export class CharacterAppearance {
         const hasVariant = form.groups.some(group => group.variants.some(v => v.name === variantName));
         if (!hasVariant) return;
 
+        // Get old asset ID before changing
+        const oldAssetId = form.variantAssets[variantName]?.data?.id ?? null;
+        const newAssetId = asset?.id ?? null;
+
         if (asset) {
             form.variantAssets[variantName] = { data: asset };
         } else {
             delete form.variantAssets[variantName];
         }
+
+        // Notify asset change for lock management
+        if (oldAssetId !== newAssetId) {
+            this.notifyAssetChange(oldAssetId, newAssetId);
+        }
+
         this.notifyChange();
     }
 
