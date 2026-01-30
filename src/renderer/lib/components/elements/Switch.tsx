@@ -37,12 +37,12 @@ export function Switch({
         sm: {
             track: "h-5 w-9",
             thumb: "h-3 w-3",
-            thumbOffset: checked ? "translate-x-4" : "translate-x-1"
+            thumbOffset: checked ? "translate-x-5" : "translate-x-1"
         },
         md: {
             track: "h-6 w-11",
             thumb: "h-4 w-4",
-            thumbOffset: checked ? "translate-x-5" : "translate-x-1"
+            thumbOffset: checked ? "translate-x-6" : "translate-x-1"
         },
         lg: {
             track: "h-7 w-12",
