@@ -2,6 +2,7 @@ import { ModuleAction } from "@/apps/workspace/modules";
 import { EventEmitter } from "./EventEmitter";
 import { KeybindingService } from "./KeybindingService";
 import { Keybinding } from "./types";
+import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import {
     Notification,
     ActionBarItem,
@@ -23,8 +24,12 @@ import {
 } from "@/apps/workspace/registry/types";
 
 export interface SelectionState {
-    type: "asset" | "node" | "scene" | "character" | null;
-    data: any | null;
+    type: "asset" | "character" | "element" | "scene" | null;
+    data: any | UIElementSelection | null;
+}
+
+export function isUIElementSelection(selection: SelectionState): selection is { type: "element"; data: UIElementSelection } {
+    return selection.type === "element" && Boolean(selection.data) && (selection.data as UIElementSelection).editor === "ui";
 }
 
 /**

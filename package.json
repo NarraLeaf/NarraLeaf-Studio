@@ -30,11 +30,15 @@
     "lint": "tsc --project src/main/tsconfig.json && tsc --project src/renderer/tsconfig.json"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
     "electron-store": "^9.0.0",
     "lucide-react": "^0.546.0",
     "mime-types": "^3.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-moveable": "^0.56.0",
+    "react-selecto": "^1.26.3",
     "transliteration": "^2.3.5"
   },
   "devDependencies": {
