@@ -46,6 +46,7 @@ export function useModuleLoader() {
                 component: panelModule.component as any,
                 defaultVisible: panelModule.metadata.defaultVisible,
                 order: panelModule.metadata.order,
+                payload: panelModule.metadata.payload,
             });
 
             // Register panel's global actions via UIStore

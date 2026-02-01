@@ -26,6 +26,7 @@ enum Services {
     UI = "ui",
     ProjectSettings = "projectSettings",
     ServiceAssets = "serviceAssets",
+    PanelState = "panelState",
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
@@ -87,6 +88,12 @@ interface IProjectSettingsService extends IService {
     clear(): Promise<void>;
     has(key: string): boolean;
     getSync<T = any>(key: string, defaultValue?: T): T | undefined;
+}
+
+interface IPanelStateService extends IService {
+    getPanelState<T extends Record<string, any>>(panelId: string): T | undefined;
+    setPanelState<T extends Record<string, any>>(panelId: string, partial: Partial<T>): void;
+    replacePanelState<T extends Record<string, any>>(panelId: string, next: T): void;
 }
 
 interface IStorageService extends IService {
@@ -183,7 +190,7 @@ export {
     IAssetService, IAudioService, IBuildService, ICommandService, IDebugService,
     IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
     IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService,
-    IService, IServiceAssetsService, ISettingsService, IStorageService, IStoryService,
+    IService, IServiceAssetsService, IPanelStateService, ISettingsService, IStorageService, IStoryService,
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
     ICharacterService, Services, WorkspaceContext
 };

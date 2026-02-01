@@ -1,14 +1,10 @@
-import { useMemo, useCallback, useState, useRef, useEffect } from "react";
-import {
-    Image, Music, Video, FileJson, Type, File,
-    FolderPlus, Upload, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash, Link
-} from "lucide-react";
+import { useMemo, useCallback, useState, useRef, useEffect, ComponentType } from "react";
+import { LayoutGrid, LayoutList, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash, Search, X } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { PanelComponentProps } from "../types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
-import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
+import { Asset } from "@/lib/workspace/services/assets/types";
 import { ContextMenu } from "@/lib/components/elements/ContextMenu";
 import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -25,32 +21,44 @@ import { useClipboard } from "./state/useClipboard";
 import { useAssetFocus } from "./state/useAssetFocus";
 import { useAssetActions, ContextMenuTargetState } from "./state/useAssetActions";
 import { useKeyboardShortcuts } from "./state/useKeyboardShortcuts";
-import { AssetsPanelContext, useAssetsPanelContext } from './AssetsPanelContext';
+import { AssetsPanelContext } from './AssetsPanelContext';
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { MagicTagDialog } from "./components/MagicTagDialog";
 import { MagicTagTemplate } from "@/lib/workspace/services/core/MagicTagManager";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
+import { AssetsListView } from "./views/AssetsListView";
+import { AssetsIconView } from "./views/AssetsIconView";
 
-const ASSET_TYPE_ICONS = {
-    [AssetType.Image]: Image,
-    [AssetType.Audio]: Music,
-    [AssetType.Video]: Video,
-    [AssetType.JSON]: FileJson,
-    [AssetType.Font]: Type,
-    [AssetType.Other]: File,
-};
+export type AssetViewMode = "list" | "icons";
 
-const ASSET_TYPE_LABELS = {
-    [AssetType.Image]: "Images",
-    [AssetType.Audio]: "Audio",
-    [AssetType.Video]: "Videos",
-    [AssetType.JSON]: "JSON Files",
-    [AssetType.Font]: "Fonts",
-    [AssetType.Other]: "Other",
-};
+const VIEW_MODE_OPTIONS: { id: AssetViewMode; icon: ComponentType<any>; label: string }[] = [
+    {
+        id: "list",
+        icon: LayoutList,
+        label: "List view",
+    },
+    {
+        id: "icons",
+        icon: LayoutGrid,
+        label: "Icon view",
+    },
+];
 
-export function AssetsPanel({ panelId }: PanelComponentProps) {
+interface AssetsPanelPayload {
+    defaultViewMode?: AssetViewMode;
+    defaultIconSize?: number;
+    focusArea?: FocusArea;
+    showHeader?: boolean;
+}
+
+interface AssetsPanelState {
+    viewMode?: AssetViewMode;
+    iconSize?: number;
+}
+
+export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPanelPayload>) {
     const { context, isInitialized } = useWorkspace();
     const { registerActionGroup, unregisterActionGroup } = useRegistry();
     const searchBoxRef = useRef<HTMLInputElement>(null);
@@ -68,10 +76,58 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
     const [magicTagDialogVisible, setMagicTagDialogVisible] = useState(false);
     const [magicTagTemplate, setMagicTagTemplate] = useState<MagicTagTemplate | null>(null);
     const [magicTagAssets, setMagicTagAssets] = useState<Asset[]>([]);
+    const [isSearchActive, setIsSearchActive] = useState(false);
+
+    const defaultViewMode = payload?.defaultViewMode ?? "list";
+    const defaultIconSize = payload?.defaultIconSize ?? 140;
+    const focusArea = payload?.focusArea ?? FocusArea.LeftPanel;
+    const showHeader = payload?.showHeader ?? true;
+    const [viewMode, setViewMode] = useState<AssetViewMode>(defaultViewMode);
+    const [iconSize, setIconSize] = useState<number>(defaultIconSize);
+    const [stateReady, setStateReady] = useState(false);
+    const [hasPersistedViewMode, setHasPersistedViewMode] = useState(false);
+    const [hasPersistedIconSize, setHasPersistedIconSize] = useState(false);
+
+    useEffect(() => {
+        if (!hasPersistedViewMode) {
+            setViewMode(defaultViewMode);
+        }
+    }, [defaultViewMode, hasPersistedViewMode]);
+
+    useEffect(() => {
+        if (!hasPersistedIconSize) {
+            setIconSize(defaultIconSize);
+        }
+    }, [defaultIconSize, hasPersistedIconSize]);
+
+    useEffect(() => {
+        if (!context) return;
+        setStateReady(false);
+        setHasPersistedViewMode(false);
+        setHasPersistedIconSize(false);
+
+        const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
+        const saved = panelStateService.getPanelState<AssetsPanelState>(panelId);
+        if (saved?.viewMode) {
+            setViewMode(saved.viewMode);
+            setHasPersistedViewMode(true);
+        }
+        if (typeof saved?.iconSize === "number") {
+            setIconSize(saved.iconSize);
+            setHasPersistedIconSize(true);
+        }
+        setStateReady(true);
+    }, [context, panelId]);
+
+    useEffect(() => {
+        if (!context || !stateReady) return;
+        const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
+        panelStateService.setPanelState<AssetsPanelState>(panelId, { viewMode, iconSize });
+    }, [context, panelId, viewMode, iconSize, stateReady]);
 
     const { assets, groups, loading, error, loadAssets } = useAssetData({ context, isInitialized });
 
-    const { focusedItemId, setFocusedItemId, handleAssetClick, handleGroupFocus, setFocusToPanel } = useAssetFocus({ context, panelId });
+    const { focusedItemId, setFocusedItemId, handleAssetClick, handleGroupFocus, setFocusToPanel } = useAssetFocus({ context, panelId, focusArea });
     
     const { selectedItems, isMultiSelectMode, handleItemSelect, handleClearSelection } = useMultiSelection({ 
         assets, 
@@ -196,7 +252,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         const groupId = "narraleaf-studio:assets-edit";
         const hasSelection = selectedItems.size > 0;
         const hasClipboardContent = !!clipboard && (clipboard.assets.length > 0 || clipboard.groups.length > 0);
-        const when = (focus: { area: FocusArea; targetId?: string }) => focus.area === FocusArea.LeftPanel && focus.targetId === panelId;
+        const when = (focus: { area: FocusArea; targetId?: string }) => focus.area === focusArea && focus.targetId === panelId;
 
         registerActionGroup({
             id: groupId,
@@ -253,7 +309,7 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
         return () => {
             unregisterActionGroup(groupId);
         };
-    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading]);
+    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea]);
 
     if (loading && Object.values(assets).every(arr => arr.length === 0)) {
         return <div className="p-4 flex items-center gap-2 text-gray-400"><RefreshCw className="w-4 h-4 animate-spin" /> <span>Loading assets...</span></div>;
@@ -281,92 +337,104 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
                 onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }}
                 onClick={setFocusToPanel}
             >
-                <div className="px-3 py-2 border-b border-white/10 space-y-2">
-                    <SearchBox ref={searchBoxRef} value={searchQuery} onChange={setSearchQuery} className="w-full" placeholder="Search assets..." />
-                    <FilterSystem filters={filterConfigs} activeFilters={activeFilters} onFiltersChange={setActiveFilters} onFilterOpen={handleFilterOpen} />
-                    <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-400">{Object.values(filteredAssets).flat().length} items</span>
-                        <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-white/10"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                {showHeader ? (
+                    <div className="px-3 py-2 border-b border-white/10 space-y-2">
+                        <SearchBox ref={searchBoxRef} value={searchQuery} onChange={setSearchQuery} className="w-full" placeholder="Search assets..." />
+                        <div className="flex items-center justify-between">
+                            <FilterSystem filters={filterConfigs} activeFilters={activeFilters} onFiltersChange={setActiveFilters} onFilterOpen={handleFilterOpen} />
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-400">{Object.values(filteredAssets).flat().length} items</span>
+                                <ViewModeToggle mode={viewMode} onChange={setViewMode} />
+                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-white/10"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                            </div>
+                        </div>
                     </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto">
-                    <Accordion defaultOpen={[AssetType.Image]} multiple={true}>
-                        {Object.values(AssetType).map((type) => {
-                            const TypeIcon = ASSET_TYPE_ICONS[type];
-                            const typeAssets = filteredAssets[type];
-                            const typeGroups = filteredGroups[type];
-
-                            return (
-                                <AccordionItem
-                                    key={type}
-                                    id={type}
-                                    icon={<TypeIcon className="w-4 h-4" />}
-                                    title={`${ASSET_TYPE_LABELS[type]} (${typeAssets.length})`}
-                                    actions={
-                                        actionLoading ? (
-                                            <RefreshCw className="w-3 h-3 animate-spin text-white" />
-                                        ) : (
-                                            <>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleImport(type);
-                                                    }}
-                                                    className="p-1 hover:text-primary"
-                                                    title="Import"
-                                                >
-                                                    <Upload className="w-3 h-3" />
-                                                </button>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleImportRemote(type);
-                                                    }}
-                                                    className="p-1 hover:text-primary"
-                                                    title="Import Remote"
-                                                >
-                                                    <Link className="w-3 h-3" />
-                                                </button>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleCreateGroup(type);
-                                                    }}
-                                                    className="p-1 hover:text-primary"
-                                                    title="New Group"
-                                                >
-                                                    <FolderPlus className="w-3 h-3" />
-                                                </button>
-                                            </>
-                                        )
-                                    }
-                                >
-                                    <div
-                                        className={`${dropTargetId === `root:${type}` ? 'bg-primary/10' : ''}`}
-                                        onDrop={(e) => handleRootDrop(e, type)}
-                                        onDragOver={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            if (draggedItem?.type === type || e.dataTransfer.types.includes('Files')) {
-                                                setDropTargetId(`root:${type}`);
+                ) : (
+                    <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between gap-2 overflow-hidden">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                            {isSearchActive ? (
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <SearchBox
+                                        ref={searchBoxRef}
+                                        value={searchQuery}
+                                        onChange={setSearchQuery}
+                                        className="flex-1 min-w-0"
+                                        placeholder="Search assets..."
+                                    />
+                                    <button
+                                        onClick={() => {
+                                            setIsSearchActive(false);
+                                            setSearchQuery("");
+                                            setSearchResultsVisible(false);
+                                        }}
+                                        className="h-9 w-9 flex items-center justify-center rounded-md border border-white/20 bg-white/5 text-gray-400 hover:bg-white/10"
+                                        title="Close search"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <>
+                                    <FilterSystem
+                                        className="flex-shrink-0"
+                                        filters={filterConfigs}
+                                        activeFilters={activeFilters}
+                                        onFiltersChange={setActiveFilters}
+                                        onFilterOpen={handleFilterOpen}
+                                    />
+                                    <button
+                                        onClick={() => {
+                                            setIsSearchActive(true);
+                                            if (searchQuery.trim()) {
+                                                setSearchResultsVisible(true);
                                             }
                                         }}
-                                        onContextMenu={(e) => showContextMenu(e, type, null, false)}
+                                        className={`h-9 w-9 flex items-center justify-center rounded-md border transition-colors ${
+                                            searchQuery
+                                                ? "border-primary bg-primary/10 text-primary"
+                                                : "border-white/20 bg-white/5 text-gray-400 hover:bg-white/10"
+                                        }`}
+                                        title="Search assets"
                                     >
-                                        {typeAssets.length === 0 && typeGroups.length === 0 ? (
-                                            <div className="p-4 text-center text-xs text-gray-500">No {ASSET_TYPE_LABELS[type].toLowerCase()} yet</div>
-                                        ) : (
-                                            <div className="py-1">
-                                                {typeGroups.filter(g => !g.parentGroupId).map(group => <GroupItem key={group.id} group={group} type={type} level={0} />)}
-                                                {typeAssets.filter(a => !a.groupId).map(asset => <AssetItem key={asset.id} asset={asset} type={type} level={0} />)}
-                                            </div>
-                                        )}
-                                    </div>
-                                </AccordionItem>
-                            );
-                        })}
-                    </Accordion>
+                                        <Search className="w-4 h-4" />
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                        {!isSearchActive && (
+                            <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[10px] text-gray-500 hidden sm:inline">{Object.values(filteredAssets).flat().length} items</span>
+                                <ViewModeToggle mode={viewMode} onChange={setViewMode} />
+                                <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-white/10"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <div className="flex-1 overflow-y-auto">
+                    {viewMode === "list" ? (
+                        <AssetsListView
+                            dropTargetId={dropTargetId}
+                            handleRootDrop={handleRootDrop}
+                            handleImport={handleImport}
+                            handleImportRemote={handleImportRemote}
+                            handleCreateGroup={handleCreateGroup}
+                            actionLoading={actionLoading}
+                            setDropTargetId={setDropTargetId}
+                        />
+                    ) : (
+                        <AssetsIconView
+                            dropTargetId={dropTargetId}
+                            handleRootDrop={handleRootDrop}
+                            actionLoading={actionLoading}
+                            setDropTargetId={setDropTargetId}
+                            handleImport={handleImport}
+                            handleImportRemote={handleImportRemote}
+                            handleCreateGroup={handleCreateGroup}
+                            iconSize={iconSize}
+                            onIconSizeChange={setIconSize}
+                        />
+                    )}
                 </div>
                 
                 <SearchResultsPopup results={searchResults} visible={isSearchResultsVisible} onResultClick={handleSearchResultClick} onClose={() => setSearchResultsVisible(false)} searchQuery={searchQuery} anchorRef={searchBoxRef} />
@@ -383,89 +451,21 @@ export function AssetsPanel({ panelId }: PanelComponentProps) {
     );
 }
 
-function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType; level: number }) {
-    const { filteredAssets, filteredGroups, selectedItems, draggedItem, dropTargetId, clipboard, expandedGroups, setExpandedGroups, handleItemSelect, handleGroupFocus, showContextMenu, handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup, isFocused } = useAssetsPanelContext();
-    const [isDragOverLocal, setDragOverLocal] = useState(false);
-
-    const isOpen = expandedGroups.has(group.id);
-    const toggleOpen = useCallback(() => {
-        setExpandedGroups(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(group.id)) {
-                newSet.delete(group.id);
-            } else {
-                newSet.add(group.id);
-            }
-            return newSet;
-        });
-    }, [group.id, setExpandedGroups]);
-
-    const childGroups = filteredGroups[type].filter(g => g.parentGroupId === group.id);
-    const groupAssets = filteredAssets[type].filter(a => a.groupId === group.id);
-    const isDragging = !!draggedItem && draggedItem.isGroup && draggedItem.item.id === group.id;
-    const isDropTarget = dropTargetId === `group:${group.id}`;
-    const isSelected = selectedItems.has(`group:${group.id}`);
-    const isCut = clipboard?.type === 'cut' && clipboard.groups.some(g => g.id === group.id);
-
+function ViewModeToggle({ mode, onChange }: { mode: AssetViewMode; onChange: (mode: AssetViewMode) => void }) {
     return (
-        <div
-            className={`${isDragOverLocal ? 'bg-primary/20' : ''}`}
-            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverLocal(true); }}
-            onDragLeave={(e) => { e.stopPropagation(); setDragOverLocal(false); }}
-            onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setDragOverLocal(false);
-                if (draggedItem && handleDropOnItem) {
-                    handleDropOnItem(e, type, group);
-                } else {
-                    handleImportToGroup(type, group.id, e.dataTransfer.files, e.dataTransfer);
-                }
-            }}
-        >
-            <div
-                draggable
-                className={`flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`group:${group.id}`) ? 'bg-gray-600/10' : ''} ${isDragging ? 'opacity-50' : ''} ${isCut ? 'opacity-40' : ''}`}
-                style={{ paddingLeft: `${20 + level * 12}px` }}
-                onClick={(e) => { handleItemSelect(group.id, true, e); handleGroupFocus(group.id); toggleOpen(); }}
-                onContextMenu={(e) => showContextMenu(e, type, group, true)}
-                onDragStart={(e) => handleDragStart?.(e, type, group, true)}
-                onDragEnd={() => handleDragEnd?.()}
-            >
-                <FolderPlus className="w-4 h-4 text-primary" />
-                <span className="text-sm">{group.name}</span>
-                <span className="text-xs text-gray-500">({groupAssets.length + childGroups.length})</span>
-            </div>
-
-            {isOpen && (
-                <div>
-                    {childGroups.map(child => <GroupItem key={child.id} group={child} type={type} level={level + 1} />)}
-                    {groupAssets.map(asset => <AssetItem key={asset.id} asset={asset} type={type} level={level + 1} />)}
-                </div>
-            )}
-        </div>
-    );
-}
-
-function AssetItem({ asset, type, level }: { asset: Asset; type: AssetType; level: number }) {
-    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, showContextMenu, handleDragStart, handleDragEnd, isFocused, isMultiSelectMode } = useAssetsPanelContext();
-    const Icon = ASSET_TYPE_ICONS[asset.type];
-    const isSelected = selectedItems.has(`asset:${asset.id}`);
-    const isDragging = !!draggedItem && !draggedItem.isGroup && draggedItem.item.id === asset.id;
-
-    return (
-        <div
-            draggable
-            className={`flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-gray-600/30 ${isSelected ? 'bg-primary/20 border-l-2 border-primary' : ''} ${isFocused(`asset:${asset.id}`) ? 'bg-gray-600/10' : ''} ${clipboard?.type === 'cut' && clipboard.assets.some(a => a.id === asset.id) ? 'opacity-40' : ''} ${isDragging ? 'opacity-50' : ''}`}
-            style={{ paddingLeft: `${20 + level * 12}px` }}
-            onClick={(e) => { handleItemSelect(asset.id, false, e); handleAssetClick(asset, isMultiSelectMode); }}
-            onContextMenu={(e) => showContextMenu(e, type, asset, false)}
-            onDragStart={(e) => handleDragStart?.(e, type, asset, false)}
-            onDragEnd={() => handleDragEnd?.()}
-        >
-            <Icon className="w-4 h-4 text-gray-400" />
-            <span className="text-sm flex-1 truncate">{asset.name}</span>
-            {asset.tags.length > 0 && <span className="text-xs text-gray-500">+{asset.tags.length}</span>}
+        <div className="inline-flex items-center gap-1 rounded-md border border-white/20 bg-white/5 p-1">
+            {VIEW_MODE_OPTIONS.map(({ id, icon: Icon, label }) => (
+                <button
+                    key={id}
+                    type="button"
+                    title={label}
+                    aria-pressed={mode === id}
+                    onClick={() => onChange(id)}
+                    className={`p-1 rounded ${mode === id ? "bg-primary/80 text-white" : "text-gray-400 hover:bg-white/10"}`}
+                >
+                    <Icon className="w-4 h-4" />
+                </button>
+            ))}
         </div>
     );
 }

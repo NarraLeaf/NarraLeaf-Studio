@@ -24,11 +24,15 @@ import { MagicTagManager, MagicTagTemplate, MagicTagPreview } from "./MagicTagMa
 import { ProjectService } from "./ProjectService";
 import { UuidService } from "./UuidService";
 import { AssetLockManager, AssetLockReason } from "../assets/AssetLockManager";
+import { dirname } from "@shared/utils/path";
 
 interface AssetsEvents {
     deleted: Asset<AssetType, AssetSource>;
     updated: Asset<AssetType, AssetSource>;
+    groupsUpdated: { type: AssetType; groupId?: string };
 }
+
+const THUMBNAIL_DIMENSION = 160;
 
 export class AssetsService extends Service<AssetsService> implements IAssetService {
     private assetsMetadataManager: AssetsMetadataManager | null = null;
@@ -43,6 +47,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public fontService: FontService | null = null;
     public otherService: OtherService | null = null;
     public fileFormatValidator: FileFormatValidator | null = null;
+    private readonly thumbnailCache = new Map<string, string>();
 
     /**
      * Asset lock manager
@@ -132,6 +137,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         this.groupAssetsManager = await new GroupAssetsManager(this, ctx).init();
         this.localAssetsManager = await new LocalAssetsManager(this, ctx).init();
         this.editorRemoteCacheManager = await new EditorRemoteCacheManager(ctx).init();
+        await this.ensureThumbnailRoot();
         this.remoteAssetsManager = await new RemoteAssetsManager(this, ctx, this.editorRemoteCacheManager).init();
     }
 
@@ -199,6 +205,158 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
     public async clearRemoteCache(assetId?: string): Promise<void> {
         await this.getEditorRemoteCacheManager().evict(assetId);
+    }
+
+    public async getThumbnailPath(asset: Asset): Promise<RequestStatus<string>> {
+        if (asset.type !== AssetType.Image) {
+            return { success: false, error: "Thumbnails are only supported for image assets" };
+        }
+
+        const cachePath = this.getThumbnailCachePath(asset.id);
+        const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const existing = await fs.isFileExists(cachePath);
+        if (existing.ok && existing.data) {
+            this.thumbnailCache.set(asset.id, cachePath);
+            return { success: true, data: cachePath };
+        }
+
+        if (!this.imageService) {
+            return { success: false, error: "Image service is not initialized" };
+        }
+
+        const imageResult = await this.imageService.readLocalImage(asset as Asset<AssetType.Image>);
+        if (!imageResult.success || !imageResult.data) {
+            return { success: false, error: imageResult.error ?? "Failed to read source image" };
+        }
+
+        const thumbnailBuffer = await this.createThumbnailBuffer(imageResult.data.data);
+        await this.ensureThumbnailDir(cachePath);
+        const writeResult = await fs.writeRaw(cachePath, thumbnailBuffer);
+        if (!writeResult.ok) {
+            return { success: false, error: writeResult.error?.message };
+        }
+
+        this.thumbnailCache.set(asset.id, cachePath);
+        return { success: true, data: cachePath };
+    }
+
+    public async clearThumbnailCache(assetId?: string): Promise<void> {
+        const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        if (assetId) {
+            this.thumbnailCache.delete(assetId);
+            const cachePath = this.getThumbnailCachePath(assetId);
+            const exists = await fs.isFileExists(cachePath);
+            if (exists.ok && exists.data) {
+                await fs.deleteFile(cachePath);
+            }
+            return;
+        }
+
+        this.thumbnailCache.clear();
+        const root = this.getThumbnailCacheRoot();
+        const exists = await fs.isDirExists(root);
+        if (exists.ok && exists.data) {
+            await fs.deleteDir(root);
+        }
+    }
+
+    private getThumbnailCacheRoot(): string {
+        return this.getContext().project.resolve(ProjectNameConvention.EditorThumbnailCache);
+    }
+
+    private getThumbnailCachePath(assetId: string): string {
+        return this.getContext().project.resolve(ProjectNameConvention.EditorThumbnailCacheShard(assetId));
+    }
+
+    private async ensureThumbnailRoot(): Promise<void> {
+        const root = this.getThumbnailCacheRoot();
+        const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const exists = await fs.isDirExists(root);
+        if (!exists.ok) {
+            throw new RendererError(exists.error?.message || "Failed to access thumbnail cache root");
+        }
+        if (!exists.data) {
+            const created = await fs.createDir(root);
+            if (!created.ok) {
+                throw new RendererError(created.error?.message || "Failed to create thumbnail cache root");
+            }
+        }
+    }
+
+    private async ensureThumbnailDir(path: string): Promise<void> {
+        const dir = dirname(path);
+        const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const exists = await fs.isDirExists(dir);
+        if (!exists.ok) {
+            throw new RendererError(exists.error?.message || "Failed to access thumbnail cache directory");
+        }
+        if (!exists.data) {
+            const created = await fs.createDir(dir);
+            if (!created.ok) {
+                throw new RendererError(created.error?.message || "Failed to create thumbnail cache directory");
+            }
+        }
+    }
+
+    private async createThumbnailBuffer(buffer: Uint8Array): Promise<Uint8Array> {
+        if (typeof document === "undefined" && typeof OffscreenCanvas === "undefined") {
+            throw new RendererError("Thumbnail generation requires a document or OffscreenCanvas context");
+        }
+
+        const bufferSource = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+        const blob = new Blob([bufferSource]);
+        const bitmap = await createImageBitmap(blob);
+        const canvas = this.createCanvas();
+        const context = canvas.getContext("2d");
+        if (!context) {
+            bitmap.close();
+            throw new RendererError("Failed to acquire canvas context for thumbnail rendering");
+        }
+
+        const width = bitmap.width;
+        const height = bitmap.height;
+        const ratio = Math.min(THUMBNAIL_DIMENSION / width, THUMBNAIL_DIMENSION / height, 1);
+        const drawWidth = width * ratio;
+        const drawHeight = height * ratio;
+        const offsetX = (THUMBNAIL_DIMENSION - drawWidth) / 2;
+        const offsetY = (THUMBNAIL_DIMENSION - drawHeight) / 2;
+
+        context.clearRect(0, 0, THUMBNAIL_DIMENSION, THUMBNAIL_DIMENSION);
+        context.drawImage(bitmap, offsetX, offsetY, drawWidth, drawHeight);
+        bitmap.close();
+
+        return this.canvasToUint8Array(canvas);
+    }
+
+    private createCanvas(): HTMLCanvasElement | OffscreenCanvas {
+        if (typeof OffscreenCanvas !== "undefined") {
+            return new OffscreenCanvas(THUMBNAIL_DIMENSION, THUMBNAIL_DIMENSION);
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = THUMBNAIL_DIMENSION;
+        canvas.height = THUMBNAIL_DIMENSION;
+        return canvas;
+    }
+
+    private async canvasToUint8Array(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<Uint8Array> {
+        if (typeof OffscreenCanvas !== "undefined" && canvas instanceof OffscreenCanvas) {
+            const blob = await canvas.convertToBlob({ type: "image/png" });
+            const buffer = await blob.arrayBuffer();
+            return new Uint8Array(buffer);
+        }
+
+        return await new Promise<Uint8Array>((resolve, reject) => {
+            const domCanvas = canvas as HTMLCanvasElement;
+            domCanvas.toBlob(async (blob) => {
+                if (!blob) {
+                    reject(new RendererError("Failed to encode thumbnail"));
+                    return;
+                }
+                const buffer = await blob.arrayBuffer();
+                resolve(new Uint8Array(buffer));
+            }, "image/png");
+        });
     }
 
     private async writeAssetsMetadata(type: AssetType): Promise<FsRequestResult<void>> {
@@ -283,10 +441,18 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public async deleteAsset<T extends AssetType>(
         asset: Asset<T, AssetSource>
     ): Promise<RequestStatus<void>> {
+        let result: RequestStatus<void>;
         if (asset.source === AssetSource.Remote) {
-            return this.getRemoteAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Remote>);
+            result = await this.getRemoteAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Remote>);
+        } else {
+            result = await this.getLocalAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Local>);
         }
-        return this.getLocalAssetsManager().deleteAsset(asset as Asset<T, AssetSource.Local>);
+
+        if (result.success) {
+            await this.clearThumbnailCache(asset.id);
+        }
+
+        return result;
     }
 
     /**

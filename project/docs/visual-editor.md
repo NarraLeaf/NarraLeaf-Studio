@@ -567,17 +567,17 @@ const migrations: Record<number, Migration> = {
 - 提供测量与命中所需的 ref：供交互层获取 `getBoundingClientRect()`
 - 提供可视化辅助：hover 高亮、选中描边（可由 overlay 层统一画）
 
-#### 4.4.2 CSS/主题隔离：强建议 iframe
+#### 4.4.2 CSS/主题：无需 iframe，轻量隔离即可
 
-原因：Studio 本身有 Tailwind 与全局样式，容易污染“画布内 UI”的运行时样式。
+实际情况：Studio 本身有 Tailwind 与全局样式，但它们对编辑区的影响通常**没那么大**；同时 UI 编辑器做的是**静态编辑**（关注结构/布局/属性/行为绑定），不需要为了“运行时样式完全隔离”而承担 `iframe` 的工程复杂度（坐标换算、事件桥接、资源加载差异等）。
 
-建议：
+建议采用更轻量的隔离策略即可（【待实现】）：
 
-- 编辑器 tab 中嵌入 `iframe` 作为“画布渲染环境”
-- 在 iframe 内加载与运行时一致的 CSS/主题资源
-- overlay（选框、控制点、对齐线）仍放在 iframe 外层或同层，但需要做坐标映射（见交互层）
+- 在编辑区使用专用 root container（例如 `.ui-canvas-root`），把画布内 UI 的样式作用域尽量收敛到该容器下
+- 仅在必要时对画布 root 做最小的 reset，避免 Studio 的全局样式产生明显干扰
+- 主题/变量尽量与运行时对齐（例如通过 CSS variables / theme tokens），而不是依赖“完全隔离的运行时 CSS 环境”
 
-【待实现】如果暂不做 iframe，可先用一个 root container + CSS reset，但未来大概率会回到隔离方案。
+只有当未来出现明确的“样式不可控”问题时，才考虑把 `iframe` 作为可选方案，而不是默认方案。
 
 #### 4.4.3 Host Adapter：用中立接口保证编辑/生产同构（关键补充）【待实现】
 
@@ -612,6 +612,22 @@ export type UIHostAdapter = {
 ```
 
 > 运行时 adapter 会对接 NarraLeaf React 的 Page Router（例如 navigate 到某个 Page id）；编辑器 adapter 则可以用“模拟导航栈/当前 page”来实现一致预览。
+
+#### 4.4.4 开发模式：独立预览子窗口（Test App）+ Studio Developer Tools 叠层
+
+在项目的开发模式中，Studio 会创建一个新的窗口（子窗口）用于承载“预览/测试应用”（Test App），并在该窗口内叠加 Studio 的开发者工具（Developer Tools overlay）。
+
+这个开发模式窗口的目标是：
+
+- **更贴近生产运行时**：在独立窗口中渲染 UI（以及相关宿主能力），减少与 Studio 主界面样式/布局/输入系统的耦合
+- **更好的调试体验**：Developer Tools overlay 提供调试叠层（例如命中/选中信息、布局信息、性能提示等），帮助定位渲染与行为问题
+- **避免不必要的隔离复杂度**：既然开发模式天然具备“新窗口承载预览”的形态，就不必为了隔离而默认引入 `iframe`
+
+在工程结构上（【待实现】），这意味着：
+
+- `UIRuntimeBridge` 在 Studio 主窗口用于“静态编辑视图”
+- 同一份 `UIDocument` 在开发模式子窗口中用于“更接近运行时的预览/测试”
+- 两个窗口通过统一的文档与 Host Adapter 语义保持一致，但拥有各自的渲染容器与调试叠层
 
 ---
 
@@ -651,7 +667,7 @@ export type UITool =
 - `clientToViewport(point)`
 - `clientToSurface(point)`（常用：鼠标事件 -> 文档坐标）
 
-> 注意：如果采用 iframe，client space 还会分为 parent 与 iframe 的坐标，需要额外做 iframe 偏移换算。
+> 注意：如果未来引入 `iframe`（可选方案）或采用“独立预览子窗口”承载画布，坐标换算会多一层容器/窗口偏移，需要在 `clientToSurface` 等函数中统一处理。
 
 #### 4.5.3 选择模型（Selection Model）
 
@@ -1038,7 +1054,7 @@ UI Editor 的落地要求（【待实现】）：
 
 ## 10. 风险与工程注意事项（贴合现状）
 
-- **样式污染风险**：Studio 使用 Tailwind + 全局样式；若不做 iframe/隔离，画布内 UI 样式很可能偏离运行时。
+- **样式差异风险**：Studio 使用 Tailwind + 全局样式，但对编辑区的影响通常可控；编辑区以静态编辑为主，默认不采用 `iframe`。建议通过“画布 root 作用域收敛 + 必要时最小 reset + 主题 token 对齐”降低样式偏差；开发模式的独立预览子窗口也能进一步减少与 Studio 主界面样式系统的耦合。
 - **性能风险**：大量节点时，频繁 `getBoundingClientRect()` 与 React re-render 可能成为瓶颈；需在交互层做节流/缓存。
 - **序列化风险**：不要在文档中存函数/闭包；行为必须结构化数据。
 - **兼容性风险**：UIStore.selection.data 当前为 `any`，容易被不同编辑器模块写入冲突；建议统一添加 `editor: "ui"` discriminator。

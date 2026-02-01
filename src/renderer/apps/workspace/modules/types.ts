@@ -104,6 +104,8 @@ export interface PanelModule<TPayload = any> {
         defaultVisible?: boolean;
         /** Badge text or count */
         badge?: string | number;
+        /** Payload data passed to panel component */
+        payload?: TPayload;
     };
     /** Panel component */
     component: ComponentType<PanelComponentProps<TPayload>>;

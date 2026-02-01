@@ -4,7 +4,7 @@
  * Third-party plugins can register their modules using the same pattern
  */
 
-import { assetsModule } from "./assets";
+import { assetsModule, assetsBottomModule } from "./assets";
 import { propertiesModule } from "./properties";
 import { consoleModule } from "./console";
 import { welcomeModule } from "./welcome";
@@ -21,6 +21,7 @@ import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./ty
 export const builtInPanels: PanelModule[] = [
     charactersModule,
     assetsModule,
+    assetsBottomModule,
     settingsModule,
     propertiesModule,
     consoleModule,
@@ -50,7 +51,7 @@ export const builtInActionGroups: ModuleActionGroup[] = globalActionGroups;
 /**
  * Export individual modules for direct access if needed
  */
-export { assetsModule } from "./assets";
+export { assetsModule, assetsBottomModule } from "./assets";
 export { charactersModule } from "./characters";
 export { propertiesModule } from "./properties";
 export { consoleModule } from "./console";

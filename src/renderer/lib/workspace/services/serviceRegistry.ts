@@ -9,6 +9,7 @@ import { ServiceAssetsService } from "./core/ServiceAssetsService";
 import { CharacterService } from "./core/CharacterService";
 import { UuidService } from "./core/UuidService";
 import { SettingsService } from "./core/SettingsService";
+import { PanelStateService } from "./core/PanelStateService";
 
 
 export class ServiceRegistry {
@@ -21,6 +22,7 @@ export class ServiceRegistry {
         [Services.Settings]: SettingsService.getInstance(),
         [Services.Assets]: AssetsService.getInstance(),
         [Services.ServiceAssets]: ServiceAssetsService.getInstance(),
+        [Services.PanelState]: PanelStateService.getInstance(),
         [Services.Character]: CharacterService.getInstance(),
     };
 

@@ -25,6 +25,8 @@ export const ProjectNameConvention = {
     EditorServices: ["editor", "services/"],
     EditorRemoteAssetsCache: ["editor", "assets", "remote/"],
     EditorRemoteAssetShard: (id: string) => ["editor", "assets", "remote", ...splitId(id)],
+    EditorThumbnailCache: ["editor", "cache", "thumbnail/"],
+    EditorThumbnailCacheShard: (id: string) => ["editor", "cache", "thumbnail", ...splitId(id), `${id}.png` as const],
 } as const;
 
 /**
