@@ -126,10 +126,10 @@ export function ConfirmModal({
     isOpen,
     onClose,
     onConfirm,
-    title = "确认操作",
+    title = "Confirm action",
     message,
-    confirmText = "确认",
-    cancelText = "取消",
+    confirmText = "Confirm",
+    cancelText = "Cancel",
     variant = "danger",
     isLoading = false,
 }: {
@@ -175,9 +175,9 @@ export function ConfirmModal({
 export function AlertModal({
     isOpen,
     onClose,
-    title = "提示",
+    title = "Notice",
     message,
-    confirmText = "确定",
+    confirmText = "OK",
 }: {
     isOpen: boolean;
     onClose: () => void;

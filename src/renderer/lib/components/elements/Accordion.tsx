@@ -20,7 +20,7 @@ function useAccordionContext() {
     return context;
 }
 
-// 新增：Nested toggle notification context
+// Added: Nested toggle notification context
 interface AccordionNestedContextValue {
     notifyNestedToggle: () => void;
 }
