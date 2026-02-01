@@ -226,7 +226,7 @@ export interface PropertyEditorSchema<TData = any> {
 /**
  * Selection types that can trigger property editors
  */
-export type SelectionType = "asset" | "character" | "node" | "scene" | null;
+export type SelectionType = "asset" | "character" | "element" | "scene" | null;
 
 /**
  * Property editor registration

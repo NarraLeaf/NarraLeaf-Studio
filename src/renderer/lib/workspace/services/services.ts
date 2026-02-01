@@ -8,10 +8,14 @@ import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterGroup } from "./character/types";
 import { RuntimeSettingSchema, RuntimeSettingType, TypeofSettingSchema } from "./settings/types";
-import { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
+import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { ReactElement } from "react";
 import type { ElementRendererDefinition } from "../../ui-editor/runtime/ElementRendererRegistry";
 import type { RenderSurfaceOptions } from "../../ui-editor/runtime/types";
+import type { ViewportTransform } from "../../ui-editor/geometry/types";
+import type { UITool } from "../../ui-editor/editor/types";
+import type { SelectionState } from "./ui/UIStore";
 
 interface WorkspaceContext {
     project: Porject;
@@ -33,6 +37,7 @@ enum Services {
     PanelState = "panelState",
     UIDocument = "uiDocument",
     RuntimeBridge = "runtimeBridge",
+    UIEditorState = "uiEditorState",
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
@@ -137,6 +142,26 @@ interface IUIRuntimeBridgeService extends IService {
     registerElementRenderer(definition: ElementRendererDefinition): void;
 }
 
+interface UIEditorStateEvents {
+    toolChanged: UITool;
+    viewportChanged: ViewportTransform;
+    selectionChanged: SelectionState;
+}
+
+interface IUIEditorStateService extends IService {
+    getTool(): UITool;
+    setTool(tool: UITool): void;
+    getViewportTransform(): ViewportTransform;
+    updateViewport(transform: Partial<ViewportTransform>): ViewportTransform;
+    resetViewport(): ViewportTransform;
+    getSelection(): SelectionState;
+    setSelection(selection: SelectionState): void;
+    setUIElementSelection(selection: UIElementSelection): void;
+    getDocument(): UIDocument;
+    getSurface(surfaceId: string): UISurface | undefined;
+    on<K extends keyof UIEditorStateEvents>(event: K, handler: (data: UIEditorStateEvents[K]) => void): () => void;
+}
+
 // Editor Services
 interface IEditorService extends IService { }
 
@@ -209,6 +234,7 @@ export {
     IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, ISettingsService, IStorageService, IStoryService,
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
-    ICharacterService, IUIDocumentService, IUIRuntimeBridgeService, Services, WorkspaceContext
+    ICharacterService, IUIDocumentService, IUIRuntimeBridgeService, IUIEditorStateService, UIEditorStateEvents,
+    Services, WorkspaceContext
 };
 

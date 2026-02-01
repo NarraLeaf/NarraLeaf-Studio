@@ -12,6 +12,7 @@ import { SettingsService } from "./core/SettingsService";
 import { PanelStateService } from "./core/PanelStateService";
 import { UIDocumentService } from "./ui-editor/UIDocumentService";
 import { UIRuntimeBridgeService } from "./ui-editor/UIRuntimeBridgeService";
+import { UIEditorStateService } from "./ui-editor/UIEditorStateService";
 
 
 export class ServiceRegistry {
@@ -28,6 +29,7 @@ export class ServiceRegistry {
         [Services.Character]: CharacterService.getInstance(),
         [Services.UIDocument]: UIDocumentService.getInstance(),
         [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),
+        [Services.UIEditorState]: UIEditorStateService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {
