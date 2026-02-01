@@ -1,4 +1,4 @@
-import { UI_DOCUMENT_SCHEMA_VERSION, UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import { UI_DOCUMENT_SCHEMA_VERSION, UIDocument, UIElement, UISurface, UILayout } from "@shared/types/ui-editor/document";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import { ProjectNameConvention } from "../../project/nameConvention";
@@ -7,11 +7,21 @@ import { IUIDocumentService, Services, WorkspaceContext } from "../services";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
+import { EventEmitter } from "../ui/EventEmitter";
+
+type UIDocumentServiceEvents = {
+    documentChanged: UIDocument;
+    dirtyChanged: boolean;
+};
 
 const DEFAULT_SURFACE_SIZE = { width: 1280, height: 720 };
 
 export class UIDocumentService extends Service<UIDocumentService> implements IUIDocumentService {
     private document: UIDocument | null = null;
+    private readonly events = new EventEmitter<UIDocumentServiceEvents>();
+    private revision = 0;
+    private lastSavedRevision = 0;
+    private dirty = false;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -58,6 +68,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         const migrated = this.migrateIfNeeded(result.data);
         this.document = migrated;
+        this.revision = 0;
+        this.lastSavedRevision = 0;
+        this.setDirty(false);
+        this.events.emit("documentChanged", this.document);
         return migrated;
     }
 
@@ -78,6 +92,77 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             throw new RendererError(result.error.message);
         }
         this.document = updated;
+        this.lastSavedRevision = this.revision;
+        this.setDirty(false);
+        this.events.emit("documentChanged", this.document);
+    }
+
+    public onDocumentChanged(handler: (doc: UIDocument) => void): () => void {
+        return this.events.on("documentChanged", handler);
+    }
+
+    public onDirtyChanged(handler: (dirty: boolean) => void): () => void {
+        return this.events.on("dirtyChanged", handler);
+    }
+
+    public isDirty(): boolean {
+        return this.dirty;
+    }
+
+    public getRevision(): number {
+        return this.revision;
+    }
+
+    public updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>): void {
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element) {
+                return;
+            }
+            element.layout = {
+                ...element.layout,
+                ...layoutPatch,
+            };
+        });
+    }
+
+    public updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void {
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element) {
+                return;
+            }
+            element.props = {
+                ...(element.props ?? {}),
+                ...propsPatch,
+            };
+        });
+    }
+
+    public reorderChildren(parentId: string, orderedChildIds: string[]): void {
+        this.mutateDocument(document => {
+            const parent = document.elements[parentId];
+            if (!parent) {
+                return;
+            }
+            parent.childrenIds = [...orderedChildIds];
+        });
+    }
+
+    private mutateDocument(mutator: (document: UIDocument) => void): void {
+        const document = this.getDocument();
+        mutator(document);
+        this.revision += 1;
+        this.setDirty(true);
+        this.events.emit("documentChanged", document);
+    }
+
+    private setDirty(value: boolean): void {
+        if (this.dirty === value) {
+            return;
+        }
+        this.dirty = value;
+        this.events.emit("dirtyChanged", value);
     }
 
     private migrateIfNeeded(document: UIDocument): UIDocument {
@@ -128,7 +213,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             rootElementId: rootElementId,
         };
 
-        return {
+        const doc: UIDocument = {
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
             id: documentId,
             name: "UI Document",
@@ -141,6 +226,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 updatedAt: now,
             },
         };
+        this.revision = 0;
+        this.lastSavedRevision = 0;
+        this.setDirty(false);
+        this.events.emit("documentChanged", doc);
+        return doc;
     }
 
     private getDocumentPath(): string {

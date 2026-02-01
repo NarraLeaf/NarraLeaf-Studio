@@ -41,7 +41,7 @@ export function Select({
     options,
     value,
     onChange,
-    placeholder = "请选择...",
+    placeholder = "Please select...",
     disabled = false,
     size = "md",
     variant = "default",
@@ -148,7 +148,7 @@ export function Combobox({
     options,
     value,
     onChange,
-    placeholder = "搜索或选择...",
+    placeholder = "Search or select...",
     disabled = false,
     size = "md",
     variant = "default",
@@ -274,7 +274,7 @@ export function Combobox({
 
             {isOpen && filteredOptions.length === 0 && (
                 <div className="absolute z-50 w-full mt-1 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg p-3">
-                    <p className="text-sm text-gray-400">没有找到匹配项</p>
+                    <p className="text-sm text-gray-400">No matches found</p>
                 </div>
             )}
         </div>

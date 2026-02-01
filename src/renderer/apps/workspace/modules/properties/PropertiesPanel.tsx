@@ -16,6 +16,83 @@ import {
     characterPropertySchema,
     CharacterEditorContext,
 } from "./schemas";
+import type { UIElementSelection } from "@shared/types/ui-editor/selection";
+import type { UIElement } from "@shared/types/ui-editor/document";
+import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
+import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
+import { createPropertyEditorSchema, defineField } from "./framework";
+import type { PropertyEditorSchema } from "./framework/types";
+import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { getElementInspector } from "../ui-editor/inspector/registry";
+
+type UIInspectorData = {
+    element: UIElement;
+    elements: UIElement[];
+};
+
+function createLayoutInspectorSchema(elements: UIElement[], documentService: UIDocumentService): PropertyEditorSchema<UIInspectorData> {
+    const primaryId = elements.map(element => element.id).join("-");
+    const applyLayoutPatch = (patch: Partial<UIElement["layout"]>) => {
+        elements.forEach(element => {
+            documentService.updateElementLayout(element.id, patch);
+        });
+    };
+
+    return createPropertyEditorSchema<UIInspectorData>({
+        id: `ui-layout-${primaryId}`,
+        title: "Layout",
+        fields: [
+            defineField<UIInspectorData, any>({
+                id: "layout.x",
+                type: "number",
+                label: "X",
+                getValue: (data: UIInspectorData) => data.elements[0]?.layout.x ?? 0,
+                setValue: (_data: UIInspectorData, value: number) => applyLayoutPatch({ x: Number(value) }),
+                order: 0,
+            }),
+            defineField<UIInspectorData, any>({
+                id: "layout.y",
+                type: "number",
+                label: "Y",
+                getValue: (data: UIInspectorData) => data.elements[0]?.layout.y ?? 0,
+                setValue: (_data: UIInspectorData, value: number) => applyLayoutPatch({ y: Number(value) }),
+                order: 1,
+            }),
+            defineField<UIInspectorData, any>({
+                id: "layout.width",
+                type: "number",
+                label: "Width",
+                getValue: (data: UIInspectorData) => data.elements[0]?.layout.width ?? 0,
+                setValue: (_data: UIInspectorData, value: number) => applyLayoutPatch({ width: Number(value) }),
+                order: 2,
+            }),
+            defineField<UIInspectorData, any>({
+                id: "layout.height",
+                type: "number",
+                label: "Height",
+                getValue: (data: UIInspectorData) => data.elements[0]?.layout.height ?? 0,
+                setValue: (_data: UIInspectorData, value: number) => applyLayoutPatch({ height: Number(value) }),
+                order: 3,
+            }),
+            defineField<UIInspectorData, any>({
+                id: "layout.visible",
+                type: "checkbox",
+                label: "Visible",
+                getValue: (data: UIInspectorData) => data.elements[0]?.layout.visible ?? true,
+                setValue: (_data: UIInspectorData, value: boolean) => applyLayoutPatch({ visible: Boolean(value) }),
+                order: 4,
+            }),
+            defineField<UIInspectorData, any>({
+                id: "layout.opacity",
+                type: "number",
+                label: "Opacity",
+                getValue: (data: UIInspectorData) => data.elements[0]?.layout.opacity ?? 1,
+                setValue: (_data: UIInspectorData, value: number) => applyLayoutPatch({ opacity: Number(value) }),
+                order: 5,
+            }),
+        ],
+    });
+}
 
 /**
  * Properties panel component
@@ -27,6 +104,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const [activeCharacter, setActiveCharacter] = useState<Character | null>(null);
     const [assetMetadata, setAssetMetadata] = useState<AssetData<any> | null>(null);
     const [characterVersion, setCharacterVersion] = useState(0);
+    const [uiSelection, setUISelection] = useState<UIElementSelection | null>(null);
     const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
     
     // Track the current thumbnail URL and its associated thumbnailId to avoid revoking URLs still in use
@@ -46,17 +124,23 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return context.services.get<ServiceAssetsService>(Services.ServiceAssets);
     }, [context, isInitialized]);
 
+    const documentService = useMemo<UIDocumentService | null>(() => {
+        if (!context || !isInitialized) return null;
+        return context.services.get<UIDocumentService>(Services.UIDocument);
+    }, [context, isInitialized]);
+
     // Listen to selection changes
     useEffect(() => {
         if (!context) return;
         const uiService = context.services.get<UIService>(Services.UI);
         const store = uiService.getStore();
 
-        const setSelectionState = (selection: any) => {
-            setActiveAsset(selection.type === "asset" ? (selection.data as Asset) : null);
-            setActiveCharacter(selection.type === "character" ? (selection.data as Character) : null);
-            setAssetMetadata(null);
-        };
+    const setSelectionState = (selection: SelectionState) => {
+        setActiveAsset(selection.type === "asset" ? (selection.data as Asset) : null);
+        setActiveCharacter(selection.type === "character" ? (selection.data as Character) : null);
+        setAssetMetadata(null);
+        setUISelection(isUIElementSelection(selection) ? (selection.data as UIElementSelection) : null);
+    };
 
         setSelectionState(store.getSelection());
 
@@ -66,6 +150,46 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
         return unsub;
     }, [context]);
+
+    const renderUIInspector = () => {
+        if (!uiSelection || !documentService) {
+            return null;
+        }
+        const document = documentService.getDocument();
+        const elements = uiSelection.elementIds
+            .map(id => document.elements[id])
+            .filter((element): element is UIElement => Boolean(element));
+        if (elements.length === 0) {
+            return (
+                <div className="flex-1 flex items-center justify-center p-4">
+                    <div className="text-center text-sm text-gray-500">
+                        <p>Selected UI element is missing</p>
+                    </div>
+                </div>
+            );
+        }
+
+        const layoutSchema = createLayoutInspectorSchema(elements, documentService);
+        if (elements.length === 1) {
+            const element = elements[0];
+            const inspectorSchema = getElementInspector(element, documentService);
+            const combinedSchema = inspectorSchema
+                ? createPropertyEditorSchema<UIInspectorData>({
+                      id: `ui-element:${element.id}`,
+                      title: inspectorSchema.title ?? element.name ?? "UI Element",
+                      fields: [...layoutSchema.fields, ...inspectorSchema.fields],
+                  })
+                : layoutSchema;
+            return (
+                <PropertyEditor
+                    schema={combinedSchema}
+                    data={{ element, elements }}
+                />
+            );
+        }
+
+        return <PropertyEditor schema={layoutSchema} data={{ element: elements[0], elements }} />;
+    };
 
     // Load asset metadata when asset changes
     useEffect(() => {
@@ -228,6 +352,10 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
     // Render appropriate property editor
     const renderPropertyEditor = () => {
+        const uiInspector = renderUIInspector();
+        if (uiInspector) {
+            return uiInspector;
+        }
         // No selection
         if (!activeAsset && !activeCharacter) {
             return (
