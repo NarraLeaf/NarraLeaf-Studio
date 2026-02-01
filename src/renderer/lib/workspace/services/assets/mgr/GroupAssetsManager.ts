@@ -55,6 +55,8 @@ export class GroupAssetsManager {
                 error: `Failed to save group: ${writeResult.error.code} ${writeResult.error.message}`,
             };
         }
+
+        this.assetsService.getEvents().emit("groupsUpdated", { type, groupId: id });
         
         return {
             success: true,
@@ -114,6 +116,8 @@ export class GroupAssetsManager {
         await this.writeAssetsGroupsMetadata(type);
         this.assetsService.markDirty(type);
 
+        this.assetsService.getEvents().emit("groupsUpdated", { type, groupId });
+
         return {
             success: true,
             data: void 0,
@@ -140,6 +144,8 @@ export class GroupAssetsManager {
 
         await this.writeAssetsGroupsMetadata(type);
         this.dirtyGroupTypes.add(type);
+
+        this.assetsService.getEvents().emit("groupsUpdated", { type, groupId });
 
         return {
             success: true,
@@ -175,6 +181,8 @@ export class GroupAssetsManager {
 
         await this.writeAssetsGroupsMetadata(type);
         this.dirtyGroupTypes.add(type);
+
+        this.assetsService.getEvents().emit("groupsUpdated", { type, groupId });
 
         return {
             success: true,

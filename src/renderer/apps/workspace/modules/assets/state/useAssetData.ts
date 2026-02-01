@@ -80,9 +80,17 @@ export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
         const unsubscribeAssetUpdate = assetsService.getEvents().on("updated", () => {
             loadAssets();
         });
+        const unsubscribeAssetDelete = assetsService.getEvents().on("deleted", () => {
+            loadAssets();
+        });
+        const unsubscribeGroupsUpdate = assetsService.getEvents().on("groupsUpdated", () => {
+            loadAssets();
+        });
 
         return () => {
             unsubscribeAssetUpdate();
+            unsubscribeAssetDelete();
+            unsubscribeGroupsUpdate();
         };
     }, [context, isInitialized, loadAssets]);
 
