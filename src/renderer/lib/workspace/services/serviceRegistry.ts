@@ -10,6 +10,8 @@ import { CharacterService } from "./core/CharacterService";
 import { UuidService } from "./core/UuidService";
 import { SettingsService } from "./core/SettingsService";
 import { PanelStateService } from "./core/PanelStateService";
+import { UIDocumentService } from "./ui-editor/UIDocumentService";
+import { UIRuntimeBridgeService } from "./ui-editor/UIRuntimeBridgeService";
 
 
 export class ServiceRegistry {
@@ -24,6 +26,8 @@ export class ServiceRegistry {
         [Services.ServiceAssets]: ServiceAssetsService.getInstance(),
         [Services.PanelState]: PanelStateService.getInstance(),
         [Services.Character]: CharacterService.getInstance(),
+        [Services.UIDocument]: UIDocumentService.getInstance(),
+        [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

@@ -8,6 +8,10 @@ import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterGroup } from "./character/types";
 import { RuntimeSettingSchema, RuntimeSettingType, TypeofSettingSchema } from "./settings/types";
+import { UIDocument } from "@shared/types/ui-editor/document";
+import type { ReactElement } from "react";
+import type { ElementRendererDefinition } from "../../ui-editor/runtime/ElementRendererRegistry";
+import type { RenderSurfaceOptions } from "../../ui-editor/runtime/types";
 
 interface WorkspaceContext {
     project: Porject;
@@ -27,6 +31,8 @@ enum Services {
     ProjectSettings = "projectSettings",
     ServiceAssets = "serviceAssets",
     PanelState = "panelState",
+    UIDocument = "uiDocument",
+    RuntimeBridge = "runtimeBridge",
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
@@ -120,6 +126,17 @@ interface ISettingsService extends IService {
     setValue<T extends RuntimeSettingType>(name: string, value: TypeofSettingSchema<T>): Promise<void>;
 }
 
+interface IUIDocumentService extends IService {
+    load(): Promise<UIDocument>;
+    save(document: UIDocument): Promise<void>;
+    getDocument(): UIDocument;
+}
+
+interface IUIRuntimeBridgeService extends IService {
+    renderSurface(options: RenderSurfaceOptions): ReactElement | null;
+    registerElementRenderer(definition: ElementRendererDefinition): void;
+}
+
 // Editor Services
 interface IEditorService extends IService { }
 
@@ -192,6 +209,6 @@ export {
     IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, ISettingsService, IStorageService, IStoryService,
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
-    ICharacterService, Services, WorkspaceContext
+    ICharacterService, IUIDocumentService, IUIRuntimeBridgeService, Services, WorkspaceContext
 };
 
