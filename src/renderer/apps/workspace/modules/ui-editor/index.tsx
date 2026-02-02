@@ -1,4 +1,4 @@
-import { FolderOpen } from "lucide-react";
+import { PanelsTopLeft } from "lucide-react";
 import { PanelModule } from "../types";
 import { UISurfacesPanel } from "./UISurfacesPanel";
 import { PanelPosition } from "../../registry/types";
@@ -8,7 +8,7 @@ export const uiEditorSurfacesModule: PanelModule = {
     metadata: {
         id: "narraleaf-studio:ui-surfaces",
         title: "UI",
-        icon: <FolderOpen className="w-4 h-4" />,
+        icon: <PanelsTopLeft className="w-4 h-4" />,
         position: PanelPosition.Left,
         order: 0,
         defaultVisible: true,

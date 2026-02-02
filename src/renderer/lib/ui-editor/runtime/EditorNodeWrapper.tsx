@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useMemo } from "react";
 import type { CSSProperties } from "react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 
@@ -38,17 +38,11 @@ export function EditorNodeWrapper({
         return style;
     }, [layout, isRoot, styleOverrides]);
 
-    const stopPropagation = useCallback((event: React.MouseEvent | React.PointerEvent) => {
-        event.stopPropagation();
-    }, []);
-
     return (
         <div
             data-ui-element-id={element.id}
             className={`ui-editor-node ${isRoot ? "ui-editor-node-root" : ""}`}
             style={containerStyle}
-            onClick={stopPropagation}
-            onPointerDown={stopPropagation}
         >
             {children}
         </div>

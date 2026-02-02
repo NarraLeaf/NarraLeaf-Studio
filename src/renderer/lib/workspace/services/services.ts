@@ -8,7 +8,7 @@ import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterGroup } from "./character/types";
 import { RuntimeSettingSchema, RuntimeSettingType, TypeofSettingSchema } from "./settings/types";
-import type { UIDocument, UISurface, UILayout } from "@shared/types/ui-editor/document";
+import type { UIDocument, UISurface, UISurfaceKind, UIHost, UILayout, UIElement } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { ReactElement } from "react";
 import type { ElementRendererDefinition } from "../../ui-editor/runtime/ElementRendererRegistry";
@@ -142,6 +142,10 @@ interface IUIDocumentService extends IService {
     updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>): void;
     updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void;
     reorderChildren(parentId: string, orderedChildIds: string[]): void;
+    createSurface(kind: UISurfaceKind, name: string, host: UIHost): UISurface;
+    deleteSurface(surfaceId: string): void;
+    createElement(parentId: string, type: string, layoutPatch?: Partial<UILayout>): UIElement;
+    deleteElements(elementIds: string[]): void;
 }
 
 interface IUIRuntimeBridgeService extends IService {

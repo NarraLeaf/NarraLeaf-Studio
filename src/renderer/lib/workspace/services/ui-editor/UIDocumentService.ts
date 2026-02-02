@@ -1,6 +1,16 @@
-import { UI_DOCUMENT_SCHEMA_VERSION, UIDocument, UIElement, UISurface, UILayout } from "@shared/types/ui-editor/document";
+import {
+    UI_DOCUMENT_SCHEMA_VERSION,
+    UIDocument,
+    UISurface,
+    UISurfaceKind,
+    UIHost,
+    UISurfaceDesignSize,
+    UIElement,
+    UILayout,
+} from "@shared/types/ui-editor/document";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
+import { elementTypeRegistry } from "@/lib/ui-editor/element-types/registryInstance";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IUIDocumentService, Services, WorkspaceContext } from "../services";
@@ -149,6 +159,44 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    public deleteElements(elementIds: string[]): void {
+        if (elementIds.length === 0) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const rootIds = new Set(document.surfaces.map(surface => surface.rootElementId));
+            const toRemove = new Set<string>();
+
+            const collect = (elementId: string) => {
+                if (toRemove.has(elementId) || rootIds.has(elementId)) {
+                    return;
+                }
+                const element = document.elements[elementId];
+                if (!element) {
+                    return;
+                }
+                toRemove.add(elementId);
+                element.childrenIds.forEach(childId => collect(childId));
+            };
+
+            elementIds.forEach(id => collect(id));
+
+            if (toRemove.size === 0) {
+                return;
+            }
+
+            for (const element of Object.values(document.elements)) {
+                if (element.childrenIds.length > 0) {
+                    element.childrenIds = element.childrenIds.filter(childId => !toRemove.has(childId));
+                }
+            }
+
+            for (const id of toRemove) {
+                delete document.elements[id];
+            }
+        });
+    }
+
     private mutateDocument(mutator: (document: UIDocument) => void): void {
         const document = this.getDocument();
         mutator(document);
@@ -177,9 +225,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     private createEmptyDocument(): UIDocument {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const projectService = this.getContext().services.get<ProjectService>(Services.Project);
-        const projectConfig = projectService.getProjectConfig();
-        const designSize = projectConfig.metadata?.resolution ?? DEFAULT_SURFACE_SIZE;
+        const designSize = this.getProjectDesignSize();
         const now = new Date().toISOString();
         const documentId = uuidService.generate();
         const surfaceId = uuidService.generate();
@@ -231,6 +277,135 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.setDirty(false);
         this.events.emit("documentChanged", doc);
         return doc;
+    }
+
+    public createSurface(kind: UISurfaceKind, name: string, host: UIHost): UISurface {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const designSize = this.getProjectDesignSize();
+        const rootElementId = uuidService.generate();
+        const surfaceId = uuidService.generate();
+
+        const surface: UISurface = {
+            id: surfaceId,
+            name,
+            host,
+            kind,
+            designSize,
+            rootElementId,
+        };
+
+        const rootElement: UIElement = {
+            id: rootElementId,
+            type: "nl.root",
+            name: "Root",
+            parentId: null,
+            childrenIds: [],
+            layout: {
+                x: 0,
+                y: 0,
+                width: designSize.width,
+                height: designSize.height,
+                visible: true,
+                opacity: 1,
+            },
+        };
+
+        this.mutateDocument(document => {
+            document.elements[rootElementId] = rootElement;
+            document.surfaces.push(surface);
+        });
+
+        return surface;
+    }
+
+    public deleteSurface(surfaceId: string): void {
+        this.mutateDocument(document => {
+            const index = document.surfaces.findIndex(surface => surface.id === surfaceId);
+            if (index === -1) {
+                return;
+            }
+            const surface = document.surfaces[index];
+            document.surfaces.splice(index, 1);
+
+            const toRemove = new Set<string>();
+            const collect = (elementId: string) => {
+                if (toRemove.has(elementId)) {
+                    return;
+                }
+                const element = document.elements[elementId];
+                if (!element) {
+                    return;
+                }
+                toRemove.add(elementId);
+                element.childrenIds.forEach(childId => collect(childId));
+            };
+            collect(surface.rootElementId);
+
+            for (const element of Object.values(document.elements)) {
+                if (element.childrenIds.length > 0) {
+                    element.childrenIds = element.childrenIds.filter(childId => !toRemove.has(childId));
+                }
+            }
+
+            for (const id of toRemove) {
+                delete document.elements[id];
+            }
+        });
+    }
+
+    public createElement(parentId: string, type: string, layoutPatch: Partial<UILayout> = {}): UIElement {
+        const definition = elementTypeRegistry.get(type);
+        if (!definition) {
+            throw new RendererError(`Unknown element type: ${type}`);
+        }
+        const document = this.getDocument();
+        const parent = document.elements[parentId];
+        if (!parent) {
+            throw new RendererError("Parent element not found");
+        }
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const elementId = uuidService.generate();
+
+        const defaultElement = definition.createDefaultElement();
+        const baseLayout: UILayout = {
+            x: defaultElement.layout?.x ?? 0,
+            y: defaultElement.layout?.y ?? 0,
+            width: defaultElement.layout?.width ?? 100,
+            height: defaultElement.layout?.height ?? 100,
+            visible: defaultElement.layout?.visible ?? true,
+            opacity: defaultElement.layout?.opacity ?? 1,
+            rotation: defaultElement.layout?.rotation,
+        };
+        const layout: UILayout = { ...baseLayout, ...layoutPatch };
+
+        const element: UIElement = {
+            id: elementId,
+            type: definition.type,
+            name: defaultElement.name ?? definition.displayName,
+            parentId,
+            childrenIds: [],
+            layout,
+            props: defaultElement.props,
+            style: defaultElement.style,
+            behavior: defaultElement.behavior,
+            extra: defaultElement.extra,
+        };
+
+        this.mutateDocument(documentData => {
+            documentData.elements[elementId] = element;
+            const parentElement = documentData.elements[parentId];
+            if (parentElement) {
+                parentElement.childrenIds = [...parentElement.childrenIds, elementId];
+            }
+        });
+
+        return element;
+    }
+
+    private getProjectDesignSize(): UISurfaceDesignSize {
+        const projectService = this.getContext().services.get<ProjectService>(Services.Project);
+        const projectConfig = projectService.getProjectConfig();
+        return projectConfig.metadata?.resolution ?? DEFAULT_SURFACE_SIZE;
     }
 
     private getDocumentPath(): string {
