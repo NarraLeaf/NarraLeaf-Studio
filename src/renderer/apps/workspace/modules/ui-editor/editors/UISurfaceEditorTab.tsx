@@ -8,7 +8,7 @@ import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocument
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { UIEditorInteractionLayer, UILayersPanel } from "@/lib/ui-editor/interaction";
 import { useWorkspace } from "@/apps/workspace/context";
-import { MousePointer2, Move, SquarePlus } from "lucide-react";
+import { MousePointer2, Move, SquarePlus, Eye, EyeOff, ChevronUp, ChevronDown } from "lucide-react";
 import { elementTypeRegistry } from "@/lib/ui-editor/element-types/registryInstance";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { clientToSurface, Rect2D } from "@/lib/ui-editor/geometry";
@@ -48,6 +48,8 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const [insertType, setInsertType] = useState(elementTypes[0]?.type ?? "");
     const [tool, setToolState] = useState<UITool>(() => stateService?.getTool() ?? { kind: "select" });
     const [documentVersion, setDocumentVersion] = useState(0);
+    const [outlineVisible, setOutlineVisible] = useState(true);
+    const [outlineCollapsed, setOutlineCollapsed] = useState(false);
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const lastContextPoint = useRef<{ x: number; y: number } | null>(null);
@@ -205,13 +207,23 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
 
     return (
         <div className="h-full flex overflow-hidden border border-white/10">
-            <div className="w-64 border-r border-white/5 bg-[#080a0e]">
-                <div className="px-3 py-2 border-b border-white/10 text-xs uppercase text-gray-500">
-                    UI Outline
+            <div className="w-64 border-r border-white/5 bg-[#080a0e] flex flex-col">
+                <div className="px-3 py-2 border-b border-white/10 text-xs uppercase text-gray-500 flex items-center justify-between">
+                    <span>UI Outline</span>
+                    <button
+                        type="button"
+                        className="text-gray-400 hover:text-white transition-colors"
+                        onClick={() => setOutlineCollapsed(value => !value)}
+                        title="Toggle outline panel"
+                    >
+                        {outlineCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                    </button>
                 </div>
-                <div className="h-full">
-                    <UILayersPanel surfaceId={surface.id} />
-                </div>
+                {!outlineCollapsed && (
+                    <div className="h-full">
+                        <UILayersPanel surfaceId={surface.id} />
+                    </div>
+                )}
             </div>
             <div className="flex-1 relative overflow-hidden bg-[#05060a]" onContextMenu={handleCanvasContextMenu}>
                 <div className="absolute top-3 right-3 z-20 flex items-center gap-2 rounded-md border border-white/20 bg-[#05060a]/80 px-2 py-1">
@@ -229,6 +241,14 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         title="Insert tool"
                     >
                         <SquarePlus className="w-4 h-4" />
+                    </button>
+                    <button
+                        type="button"
+                        className={toolButtonClass(outlineVisible)}
+                        onClick={() => setOutlineVisible(v => !v)}
+                        title="Toggle outlines"
+                    >
+                        {outlineVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                     </button>
                     <select
                         value={insertType}
@@ -248,7 +268,11 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         {surfaceContent}
                     </div>
                 </div>
-                <UIEditorInteractionLayer surfaceId={surface.id} containerRef={canvasRef} />
+                <UIEditorInteractionLayer
+                    surfaceId={surface.id}
+                    containerRef={canvasRef}
+                    showOutlines={outlineVisible}
+                />
                 <ContextMenu
                     items={menuItems}
                     position={menuState.position}
