@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import Selecto from "react-selecto";
 import Moveable from "react-moveable";
 import type { OnDrag, OnResize, OnDragStart, OnDragEnd, OnResizeEnd } from "react-moveable";
+import { ViewportTransform } from "../geometry";
 import { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import { isUIElementSelection } from "@services/ui/UIStore";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
+import type { UITool } from "@/lib/ui-editor/editor/types";
 
 const SELECTABLE_TARGET = ".ui-editor-node:not(.ui-editor-node-root)";
 
@@ -31,6 +33,19 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef }: Props) {
         return () => unsubscribe();
     }, [stateService]);
 
+    const [tool, setTool] = useState<UITool>(stateService.getTool());
+    const [viewport, setViewport] = useState<ViewportTransform>(stateService.getViewportTransform());
+
+    useEffect(() => {
+        const unsubscribe = stateService.on("toolChanged", setTool);
+        return () => unsubscribe();
+    }, [stateService]);
+
+    useEffect(() => {
+        const unsubscribe = stateService.on("viewportChanged", setViewport);
+        return () => unsubscribe();
+    }, [stateService]);
+
     const surfaceElement = containerRef.current ?? null;
 
     const selectedTargets = useMemo<HTMLElement[]>(() => {
@@ -44,6 +59,26 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef }: Props) {
             .map(id => surfaceElement.querySelector(`[data-ui-element-id="${id}"]`))
             .filter(isHTMLElement);
     }, [selection, surfaceElement, surfaceId]);
+
+    const selectionData = isUIElementSelection(selection) ? selection.data : null;
+    const primaryId = selectionData?.primaryId ?? selectionData?.elementIds?.[selectionData.elementIds.length - 1];
+
+    const outlineRects = useMemo(() => {
+        if (!surfaceElement) {
+            return [];
+        }
+        const surfaceRect = surfaceElement.getBoundingClientRect();
+        return selectedTargets.map(target => {
+            const rect = target.getBoundingClientRect();
+            return {
+                id: target.dataset.uiElementId ?? "",
+                left: rect.left - surfaceRect.left,
+                top: rect.top - surfaceRect.top,
+                width: rect.width,
+                height: rect.height,
+            };
+        });
+    }, [selectedTargets, surfaceElement, viewport]);
 
     const handleSelectEnd = (e: any) => {
         const targets = e.selected as HTMLElement[];
@@ -60,18 +95,92 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef }: Props) {
             primaryId: targetIds[targetIds.length - 1],
         });
     };
+    const panState = useRef<{
+        active: boolean;
+        startX: number;
+        startY: number;
+        startOffsetX: number;
+        startOffsetY: number;
+    }>({ active: false, startX: 0, startY: 0, startOffsetX: 0, startOffsetY: 0 });
+
     useEffect(() => {
         if (!surfaceElement) {
             return;
         }
+
+        const handlePointerMove = (event: PointerEvent) => {
+            if (!panState.current.active) {
+                return;
+            }
+            event.preventDefault();
+            const dx = event.clientX - panState.current.startX;
+            const dy = event.clientY - panState.current.startY;
+            stateService.updateViewport({
+                offsetX: panState.current.startOffsetX + dx,
+                offsetY: panState.current.startOffsetY + dy,
+            });
+        };
+
+        const stopPan = () => {
+            panState.current.active = false;
+        };
+
         const handlePointerDown = (event: PointerEvent) => {
-            if (event.target === surfaceElement) {
+            const target = event.target as HTMLElement | null;
+            const isInsideSurface = !!(target && surfaceElement.contains(target));
+            const isElementNode = !!target?.closest?.(SELECTABLE_TARGET);
+
+            const isPanTool = tool.kind === "pan" && event.button === 0;
+            const isMiddleMouse = event.button === 1;
+            if ((isPanTool || isMiddleMouse) && isInsideSurface) {
+                event.preventDefault();
+                event.stopPropagation();
+                panState.current.active = true;
+                panState.current.startX = event.clientX;
+                panState.current.startY = event.clientY;
+                panState.current.startOffsetX = viewport.offsetX;
+                panState.current.startOffsetY = viewport.offsetY;
+                return;
+            }
+
+            if (isInsideSurface && !isElementNode) {
                 stateService.setSelection({ type: null, data: null });
             }
         };
+
         surfaceElement.addEventListener("pointerdown", handlePointerDown);
-        return () => surfaceElement.removeEventListener("pointerdown", handlePointerDown);
-    }, [surfaceElement, stateService]);
+        window.addEventListener("pointermove", handlePointerMove);
+        window.addEventListener("pointerup", stopPan);
+        window.addEventListener("pointercancel", stopPan);
+
+        return () => {
+            surfaceElement.removeEventListener("pointerdown", handlePointerDown);
+            window.removeEventListener("pointermove", handlePointerMove);
+            window.removeEventListener("pointerup", stopPan);
+            window.removeEventListener("pointercancel", stopPan);
+        };
+    }, [surfaceElement, stateService, tool, viewport, surfaceId, documentService]);
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== "Delete" && event.key !== "Backspace") {
+                return;
+            }
+            const target = event.target as HTMLElement | null;
+            if (target?.closest?.("input, textarea, [contenteditable='true']")) {
+                return;
+            }
+            if (!selectionData || selectionData.surfaceId !== surfaceId) {
+                return;
+            }
+            event.preventDefault();
+            documentService.deleteElements(selectionData.elementIds);
+            stateService.setSelection({ type: null, data: null });
+        };
+
+        document.addEventListener("keydown", handleKeyDown);
+        return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [selectionData, surfaceId, documentService, stateService]);
 
     const handleDragStart = (e: OnDragStart) => {
         const elementId = e.target.dataset.uiElementId;
@@ -103,9 +212,10 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef }: Props) {
             return;
         }
         const [translateX, translateY] = dragDeltaCache.current.get(elementId) ?? [0, 0];
+        const scale = Math.max(0.0001, viewport.scale);
         documentService.updateElementLayout(elementId, {
-            x: initialLayout.x + translateX,
-            y: initialLayout.y + translateY,
+            x: initialLayout.x + translateX / scale,
+            y: initialLayout.y + translateY / scale,
         });
         e.target.style.transform = "";
         layoutCache.current.delete(elementId);
@@ -113,11 +223,12 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef }: Props) {
     };
 
     const handleResize = (e: OnResize) => {
-        e.target.style.width = `${e.width}px`;
-        e.target.style.height = `${e.height}px`;
+        const scale = Math.max(0.0001, viewport.scale);
+        e.target.style.width = `${e.width / scale}px`;
+        e.target.style.height = `${e.height / scale}px`;
         const elementId = e.target.dataset.uiElementId;
         if (elementId) {
-            resizeCache.current.set(elementId, { width: e.width, height: e.height });
+            resizeCache.current.set(elementId, { width: e.width / scale, height: e.height / scale });
         }
     };
 
@@ -144,32 +255,51 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef }: Props) {
 
     return (
         <>
-            <Selecto
-                container={surfaceElement ?? undefined}
-                dragContainer={surfaceElement ?? undefined}
-                selectableTargets={[SELECTABLE_TARGET]}
-                hitRate={0}
-                selectByClick={true}
-                selectFromInside={true}
-                toggleContinueSelect={["shift"]}
-                ratio={0}
-                onSelectEnd={handleSelectEnd}
-            />
-            <Moveable
-                target={selectedTargets}
-                container={surfaceElement ?? undefined}
-                draggable={true}
-                resizable={true}
-                keepRatio={false}
-                origin={true}
-                throttleDrag={0}
-                throttleResize={0}
-                onDragStart={handleDragStart}
-                onDrag={handleDrag}
-                onDragEnd={handleDragEnd}
-                onResize={handleResize}
-                onResizeEnd={handleResizeEnd}
-            />
+            <div className="pointer-events-none absolute inset-0 z-10">
+                {outlineRects.map(rect => (
+                    <div
+                        key={rect.id}
+                        className="absolute box-border"
+                        style={{
+                            left: rect.left,
+                            top: rect.top,
+                            width: rect.width,
+                            height: rect.height,
+                            border: rect.id === primaryId ? "1px solid rgba(123, 97, 255, 0.9)" : "1px dashed rgba(123, 97, 255, 0.6)",
+                        }}
+                    />
+                ))}
+            </div>
+            {tool.kind === "select" && (
+                <>
+                    <Selecto
+                        container={surfaceElement ?? undefined}
+                        dragContainer={surfaceElement ?? undefined}
+                        selectableTargets={[SELECTABLE_TARGET]}
+                        hitRate={0}
+                        selectByClick={true}
+                        selectFromInside={true}
+                        toggleContinueSelect={["shift"]}
+                        ratio={0}
+                        onSelectEnd={handleSelectEnd}
+                    />
+                    <Moveable
+                        target={selectedTargets}
+                        container={surfaceElement ?? undefined}
+                        draggable={true}
+                        resizable={true}
+                        keepRatio={false}
+                        origin={true}
+                        throttleDrag={0}
+                        throttleResize={0}
+                        onDragStart={handleDragStart}
+                        onDrag={handleDrag}
+                        onDragEnd={handleDragEnd}
+                        onResize={handleResize}
+                        onResizeEnd={handleResizeEnd}
+                    />
+                </>
+            )}
         </>
     );
 }
