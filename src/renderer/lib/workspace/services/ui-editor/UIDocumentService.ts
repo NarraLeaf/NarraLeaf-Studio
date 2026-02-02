@@ -32,6 +32,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     private revision = 0;
     private lastSavedRevision = 0;
     private dirty = false;
+    private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    private readonly autoSaveDelay = 800;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -89,6 +91,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const fs = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         await this.ensureDocumentDir();
         const documentPath = this.getDocumentPath();
+        if (this.autoSaveTimer) {
+            clearTimeout(this.autoSaveTimer);
+            this.autoSaveTimer = null;
+        }
         const updated: UIDocument = {
             ...document,
             meta: {
@@ -202,7 +208,20 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         mutator(document);
         this.revision += 1;
         this.setDirty(true);
+        this.scheduleAutoSave();
         this.events.emit("documentChanged", document);
+    }
+
+    private scheduleAutoSave(): void {
+        if (this.autoSaveTimer) {
+            clearTimeout(this.autoSaveTimer);
+        }
+        this.autoSaveTimer = setTimeout(() => {
+            this.autoSaveTimer = null;
+            void this.save(this.getDocument()).catch(err => {
+                console.warn("[UIDocumentService] auto-save failed", err);
+            });
+        }, this.autoSaveDelay);
     }
 
     private setDirty(value: boolean): void {

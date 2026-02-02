@@ -36,7 +36,7 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
             width: surface.designSize.width,
             height: surface.designSize.height,
             overflow: "hidden",
-            backgroundColor: surface.settings?.backgroundColor ?? "transparent",
+            backgroundColor: surface.settings?.backgroundColor ?? "#ffffff",
             ...options.style,
         };
 

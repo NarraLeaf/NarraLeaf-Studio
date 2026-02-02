@@ -14,13 +14,14 @@ const SELECTABLE_TARGET = ".ui-editor-node:not(.ui-editor-node-root)";
 type Props = {
     surfaceId: string;
     containerRef: React.RefObject<HTMLElement | null>;
+    showOutlines?: boolean;
 };
 
 function isHTMLElement(node: Element | null): node is HTMLElement {
     return node instanceof HTMLElement;
 }
 
-export function UIEditorInteractionLayer({ surfaceId, containerRef }: Props) {
+export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines = true }: Props) {
     const stateService = UIEditorStateService.getInstance();
     const [selection, setSelection] = useState(stateService.getSelection());
     const layoutCache = useRef<Map<string, UIElement["layout"]>>(new Map());
@@ -162,6 +163,41 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef }: Props) {
     }, [surfaceElement, stateService, tool, viewport, surfaceId, documentService]);
 
     useEffect(() => {
+        if (!surfaceElement || !stateService) {
+            return;
+        }
+        const handleWheel = (event: WheelEvent) => {
+            const shouldZoom = event.ctrlKey || tool.kind === "pan";
+            if (!shouldZoom) {
+                return;
+            }
+            event.preventDefault();
+            const rect = surfaceElement.getBoundingClientRect();
+            const pointerX = event.clientX - rect.left;
+            const pointerY = event.clientY - rect.top;
+            const currentScale = Math.max(0.0001, viewport.scale);
+            const zoomSpeed = 0.0015;
+            const scaleDelta = Math.exp(-event.deltaY * zoomSpeed);
+            const nextScale = Math.max(0.1, Math.min(10, currentScale * scaleDelta));
+            if (nextScale === currentScale) {
+                return;
+            }
+            const nextOffsetX = viewport.offsetX + pointerX * (1 / nextScale - 1 / currentScale);
+            const nextOffsetY = viewport.offsetY + pointerY * (1 / nextScale - 1 / currentScale);
+            stateService.updateViewport({
+                scale: nextScale,
+                offsetX: nextOffsetX,
+                offsetY: nextOffsetY,
+            });
+        };
+
+        surfaceElement.addEventListener("wheel", handleWheel, { passive: false });
+        return () => {
+            surfaceElement.removeEventListener("wheel", handleWheel);
+        };
+    }, [surfaceElement, stateService, tool.kind, viewport]);
+
+    useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key !== "Delete" && event.key !== "Backspace") {
                 return;
@@ -255,21 +291,26 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef }: Props) {
 
     return (
         <>
-            <div className="pointer-events-none absolute inset-0 z-10">
-                {outlineRects.map(rect => (
-                    <div
-                        key={rect.id}
-                        className="absolute box-border"
-                        style={{
-                            left: rect.left,
-                            top: rect.top,
-                            width: rect.width,
-                            height: rect.height,
-                            border: rect.id === primaryId ? "1px solid rgba(123, 97, 255, 0.9)" : "1px dashed rgba(123, 97, 255, 0.6)",
-                        }}
-                    />
-                ))}
-            </div>
+            {showOutlines && (
+                <div className="pointer-events-none absolute inset-0 z-10">
+                    {outlineRects.map(rect => (
+                        <div
+                            key={rect.id}
+                            className="absolute box-border"
+                            style={{
+                                left: rect.left,
+                                top: rect.top,
+                                width: rect.width,
+                                height: rect.height,
+                                border:
+                                    rect.id === primaryId
+                                        ? "1px solid rgba(123, 97, 255, 0.9)"
+                                        : "1px dashed rgba(123, 97, 255, 0.6)",
+                            }}
+                        />
+                    ))}
+                </div>
+            )}
             {tool.kind === "select" && (
                 <>
                     <Selecto
@@ -290,6 +331,7 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef }: Props) {
                         resizable={true}
                         keepRatio={false}
                         origin={true}
+                        zoom={viewport.scale}
                         throttleDrag={0}
                         throttleResize={0}
                         onDragStart={handleDragStart}
