@@ -12,17 +12,58 @@ import type {
     OnRotateStart,
     OnRotateEnd,
 } from "react-moveable";
-import { ViewportTransform } from "../geometry";
+import { ViewportTransform, clientToSurface, Rect2D } from "../geometry";
 import { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import { isUIElementSelection } from "@services/ui/UIStore";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
-import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
+import type { UIElement, UILayout, UISurface } from "@shared/types/ui-editor/document";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 
 const SELECTABLE_TARGET = ".ui-editor-node:not(.ui-editor-node-root)";
 
+// ─── Drag-to-Create Preview ─────────────────────────────────────────────────
+
+type InsertPreview = {
+    startX: number;
+    startY: number;
+    currentX: number;
+    currentY: number;
+};
+
+function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
+    const x = Math.min(preview.startX, preview.currentX);
+    const y = Math.min(preview.startY, preview.currentY);
+    const width = Math.abs(preview.currentX - preview.startX);
+    const height = Math.abs(preview.currentY - preview.startY);
+
+    // Convert surface coordinates to viewport(screen) coordinates.
+    // The canvas transform is: translate(offsetX, offsetY) scale(scale).
+    // Therefore: viewport = surface * scale + offset.
+    const screenX = x * viewport.scale + viewport.offsetX;
+    const screenY = y * viewport.scale + viewport.offsetY;
+    const screenWidth = width * viewport.scale;
+    const screenHeight = height * viewport.scale;
+
+    return (
+        <div
+            className="absolute pointer-events-none border-2 border-dashed border-primary bg-primary/10 rounded"
+            style={{
+                left: screenX,
+                top: screenY,
+                width: screenWidth,
+                height: screenHeight,
+            }}
+        >
+            <div className="absolute -top-6 left-0 text-[10px] text-primary font-mono whitespace-nowrap">
+                {Math.round(width)} × {Math.round(height)}
+            </div>
+        </div>
+    );
+}
+
 type Props = {
     surfaceId: string;
+    surface: UISurface;
     containerRef: React.RefObject<HTMLElement | null>;
     showOutlines?: boolean;
 };
@@ -163,7 +204,7 @@ function computeResizePreview(
     };
 }
 
-export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines = true }: Props) {
+export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, showOutlines = true }: Props) {
     const stateService = UIEditorStateService.getInstance();
     const [selection, setSelection] = useState(stateService.getSelection());
     const previousSelectedTargets = useRef<HTMLElement[]>([]);
@@ -176,6 +217,18 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
     const documentService = UIDocumentService.getInstance();
     type MoveableInstance = React.ElementRef<typeof Moveable>;
     const moveableRef = useRef<MoveableInstance | null>(null);
+
+    // Insert mode drag-to-create state
+    const [insertPreview, setInsertPreview] = useState<InsertPreview | null>(null);
+    const insertPreviewRef = useRef<InsertPreview | null>(null);
+    const insertState = useRef<{
+        active: boolean;
+        nodeType: string;
+        startClientX: number;
+        startClientY: number;
+        startSurfaceX: number;
+        startSurfaceY: number;
+    } | null>(null);
 
     const scheduleMoveableRectUpdate = useCallback(() => {
         // Keep the overlay controller aligned after DOM/layout updates.
@@ -293,12 +346,39 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
         startOffsetY: number;
     }>({ active: false, startX: 0, startY: 0, startOffsetX: 0, startOffsetY: 0 });
 
+    // Helper to convert client coords to surface coords
+    const clientToSurfaceCoords = useCallback((clientX: number, clientY: number) => {
+        if (!surfaceElement) return { x: 0, y: 0 };
+        const rect = surfaceElement.getBoundingClientRect();
+        const containerRect: Rect2D = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        return clientToSurface({ x: clientX, y: clientY }, viewport, containerRect);
+    }, [surfaceElement, viewport]);
+
     useEffect(() => {
         if (!surfaceElement) {
             return;
         }
 
+        const updateInsertPreview = (next: InsertPreview | null) => {
+            insertPreviewRef.current = next;
+            setInsertPreview(next);
+        };
+
         const handlePointerMove = (event: PointerEvent) => {
+            // Handle insert mode drag
+            if (insertState.current?.active) {
+                event.preventDefault();
+                const surfacePoint = clientToSurfaceCoords(event.clientX, event.clientY);
+                updateInsertPreview({
+                    startX: insertState.current.startSurfaceX,
+                    startY: insertState.current.startSurfaceY,
+                    currentX: surfacePoint.x,
+                    currentY: surfacePoint.y,
+                });
+                return;
+            }
+
+            // Handle pan
             if (!panState.current.active) {
                 return;
             }
@@ -313,6 +393,57 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
 
         const stopPan = () => {
             panState.current.active = false;
+        };
+
+        const finishInsert = () => {
+            if (!insertState.current?.active) return;
+
+            const state = insertState.current;
+            insertState.current = null;
+
+            // Get the final bounds BEFORE clearing preview state
+            const preview = insertPreviewRef.current;
+            if (!preview) return;
+
+            const x = Math.min(preview.startX, preview.currentX);
+            const y = Math.min(preview.startY, preview.currentY);
+            const width = Math.abs(preview.currentX - preview.startX);
+            const height = Math.abs(preview.currentY - preview.startY);
+
+            // Minimum size threshold
+            const MIN_SIZE = 10;
+            if (width < MIN_SIZE && height < MIN_SIZE) {
+                // Too small, cancel the insert
+                updateInsertPreview(null);
+                return;
+            }
+
+            // Clear preview
+            updateInsertPreview(null);
+
+            // Create the element
+            const element = documentService.createElement(surface.rootElementId, state.nodeType, {
+                x: Math.max(0, x),
+                y: Math.max(0, y),
+                width: Math.max(MIN_SIZE, width),
+                height: Math.max(MIN_SIZE, height),
+            });
+
+            // Select the new element and switch to select mode
+            stateService.setUIElementSelection({
+                editor: "ui",
+                surfaceId,
+                elementIds: [element.id],
+                primaryId: element.id,
+            });
+            stateService.setTool({ kind: "select" });
+        };
+
+        const handlePointerUp = () => {
+            if (insertState.current?.active) {
+                finishInsert();
+            }
+            stopPan();
         };
 
         const handlePointerDown = (event: PointerEvent) => {
@@ -331,6 +462,30 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
                 panState.current.startY = event.clientY;
                 panState.current.startOffsetX = viewport.offsetX;
                 panState.current.startOffsetY = viewport.offsetY;
+                return;
+            }
+
+            // Handle insert mode: start drag-to-create
+            if (tool.kind === "insert" && event.button === 0 && isInsideSurface) {
+                event.preventDefault();
+                event.stopPropagation();
+                const surfacePoint = clientToSurfaceCoords(event.clientX, event.clientY);
+                insertState.current = {
+                    active: true,
+                    nodeType: tool.nodeType,
+                    startClientX: event.clientX,
+                    startClientY: event.clientY,
+                    startSurfaceX: surfacePoint.x,
+                    startSurfaceY: surfacePoint.y,
+                };
+                updateInsertPreview({
+                    startX: surfacePoint.x,
+                    startY: surfacePoint.y,
+                    currentX: surfacePoint.x,
+                    currentY: surfacePoint.y,
+                });
+                // Clear current selection when starting insert
+                stateService.setSelection({ type: null, data: null });
                 return;
             }
 
@@ -366,43 +521,55 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
 
         surfaceElement.addEventListener("pointerdown", handlePointerDown);
         window.addEventListener("pointermove", handlePointerMove);
-        window.addEventListener("pointerup", stopPan);
-        window.addEventListener("pointercancel", stopPan);
+        window.addEventListener("pointerup", handlePointerUp);
+        window.addEventListener("pointercancel", handlePointerUp);
 
         return () => {
             surfaceElement.removeEventListener("pointerdown", handlePointerDown);
             window.removeEventListener("pointermove", handlePointerMove);
-            window.removeEventListener("pointerup", stopPan);
-            window.removeEventListener("pointercancel", stopPan);
+            window.removeEventListener("pointerup", handlePointerUp);
+            window.removeEventListener("pointercancel", handlePointerUp);
         };
-    }, [surfaceElement, stateService, tool, viewport, surfaceId, documentService, selectionData]);
+    }, [surfaceElement, stateService, tool, viewport, surfaceId, documentService, selectionData, surface, clientToSurfaceCoords]);
 
     useEffect(() => {
         if (!surfaceElement || !stateService) {
             return;
         }
+
         const handleWheel = (event: WheelEvent) => {
-            const shouldZoom = event.ctrlKey || tool.kind === "pan";
-            if (!shouldZoom) {
-                return;
-            }
+            const isZoomInteraction = event.ctrlKey || (tool.kind === "pan" && event.deltaY !== 0);
             event.preventDefault();
-            const rect = surfaceElement.getBoundingClientRect();
-            const pointerX = event.clientX - rect.left;
-            const pointerY = event.clientY - rect.top;
-            const currentScale = Math.max(0.0001, viewport.scale);
-            const zoomSpeed = 0.0015;
-            const scaleDelta = Math.exp(-event.deltaY * zoomSpeed);
-            const nextScale = Math.max(0.1, Math.min(10, currentScale * scaleDelta));
-            if (nextScale === currentScale) {
+
+            if (isZoomInteraction) {
+                const rect = surfaceElement.getBoundingClientRect();
+                const pointerX = event.clientX - rect.left;
+                const pointerY = event.clientY - rect.top;
+                const currentScale = Math.max(0.0001, viewport.scale);
+                const zoomSpeed = 0.0015;
+                const scaleDelta = Math.exp(-event.deltaY * zoomSpeed);
+                const nextScale = Math.max(0.1, Math.min(10, currentScale * scaleDelta));
+                if (nextScale === currentScale) {
+                    return;
+                }
+                const nextOffsetX = viewport.offsetX + pointerX * (1 / nextScale - 1 / currentScale);
+                const nextOffsetY = viewport.offsetY + pointerY * (1 / nextScale - 1 / currentScale);
+                stateService.updateViewport({
+                    scale: nextScale,
+                    offsetX: nextOffsetX,
+                    offsetY: nextOffsetY,
+                });
                 return;
             }
-            const nextOffsetX = viewport.offsetX + pointerX * (1 / nextScale - 1 / currentScale);
-            const nextOffsetY = viewport.offsetY + pointerY * (1 / nextScale - 1 / currentScale);
+
+            const panX = -event.deltaX + (event.shiftKey ? -event.deltaY : 0);
+            const panY = event.shiftKey ? 0 : -event.deltaY;
+            if (panX === 0 && panY === 0) {
+                return;
+            }
             stateService.updateViewport({
-                scale: nextScale,
-                offsetX: nextOffsetX,
-                offsetY: nextOffsetY,
+                offsetX: viewport.offsetX + panX,
+                offsetY: viewport.offsetY + panY,
             });
         };
 
@@ -410,7 +577,14 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
         return () => {
             surfaceElement.removeEventListener("wheel", handleWheel);
         };
-    }, [surfaceElement, stateService, tool.kind, viewport]);
+    }, [
+        surfaceElement,
+        stateService,
+        tool.kind,
+        viewport.scale,
+        viewport.offsetX,
+        viewport.offsetY,
+    ]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -657,6 +831,11 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
                         onRotateEnd={handleRotateEnd}
                     />
                 </>
+            )}
+
+            {/* Insert mode preview overlay */}
+            {tool.kind === "insert" && insertPreview && (
+                <InsertPreviewOverlay preview={insertPreview} viewport={viewport} />
             )}
         </>
     );

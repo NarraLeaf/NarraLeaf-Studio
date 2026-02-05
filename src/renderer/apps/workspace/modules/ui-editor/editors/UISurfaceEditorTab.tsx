@@ -13,6 +13,7 @@ import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryIns
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { clientToSurface, Rect2D } from "@/lib/ui-editor/geometry";
 import { ContextMenu, ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
+import type { UISurface } from "@shared/types/ui-editor/document";
 
 type ViewportTransform = {
     scale: number;
@@ -115,48 +116,6 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                 ? "border-primary bg-primary/20 text-white"
                 : "border-white/10 text-gray-400 hover:border-primary hover:text-white hover:bg-white/10"
         } disabled:opacity-50 disabled:cursor-not-allowed`;
-
-    const createElementAtCenter = useCallback((type: string) => {
-        if (!documentService || !surface || !stateService) {
-            return;
-        }
-        const canvas = canvasRef.current;
-        if (!canvas) {
-            return;
-        }
-        // Place element at the center of the current viewport
-        const rect = canvas.getBoundingClientRect();
-        const containerRect: Rect2D = {
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: rect.height,
-        };
-        const centerClient = {
-            x: rect.x + rect.width / 2,
-            y: rect.y + rect.height / 2,
-        };
-        const surfacePoint = clientToSurface(centerClient, viewport, containerRect);
-
-        // Look up the module to get default size
-        const mod = widgetModuleRegistry.get(type);
-        const defaultEl = mod?.createDefaultElement();
-        const defaultWidth = defaultEl?.layout?.width ?? 100;
-        const defaultHeight = defaultEl?.layout?.height ?? 100;
-
-        const layoutPatch = {
-            x: Math.max(0, surfacePoint.x - defaultWidth / 2),
-            y: Math.max(0, surfacePoint.y - defaultHeight / 2),
-        };
-        const element = documentService.createElement(surface.rootElementId, type, layoutPatch);
-        stateService.setUIElementSelection({
-            editor: "ui",
-            surfaceId: surface.id,
-            elementIds: [element.id],
-            primaryId: element.id,
-        });
-        stateService.setTool({ kind: "select" });
-    }, [documentService, surface, stateService, viewport]);
 
     const createElementAtClientPoint = useCallback((type: string, point: { x: number; y: number }) => {
         if (!documentService || !surface || !stateService) {
@@ -289,6 +248,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                 {/* Interaction layer */}
                 <UIEditorInteractionLayer
                     surfaceId={surface.id}
+                    surface={surface}
                     containerRef={viewportRef}
                     showOutlines={outlineVisible}
                 />
@@ -299,7 +259,6 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         surfaceId={surface.id}
                         stateService={stateService}
                         documentService={documentService}
-                        onInsertElement={createElementAtCenter}
                     />
                 )}
 
