@@ -12,27 +12,32 @@ interface NumberFieldProps<TData> {
  */
 function NumberFieldInner<TData>({ field, data, onSaving }: NumberFieldProps<TData>) {
     const currentValue = field.getValue(data);
-    const [localValue, setLocalValue] = useState(currentValue);
+    const [localValue, setLocalValue] = useState(String(currentValue));
     const [isSaving, setIsSaving] = useState(false);
     const dataRef = useRef(data);
     dataRef.current = data;
 
     useEffect(() => {
         if (!isSaving) {
-            setLocalValue(currentValue);
+            setLocalValue(String(currentValue));
         }
     }, [currentValue, isSaving]);
 
     const handleBlur = useCallback(async () => {
         const current = field.getValue(dataRef.current);
-        if (localValue !== current) {
+        const parsed = Number.parseFloat(localValue);
+        if (!Number.isFinite(parsed)) {
+            setLocalValue(String(current));
+            return;
+        }
+        if (parsed !== current) {
             setIsSaving(true);
             onSaving(true);
             try {
-                await field.setValue(dataRef.current, localValue);
+                await field.setValue(dataRef.current, parsed);
             } catch (err) {
                 console.error(`Failed to save field ${field.id}:`, err);
-                setLocalValue(current);
+                setLocalValue(String(current));
             } finally {
                 setIsSaving(false);
                 onSaving(false);
@@ -53,7 +58,7 @@ function NumberFieldInner<TData>({ field, data, onSaving }: NumberFieldProps<TDa
             <input
                 type="number"
                 value={localValue}
-                onChange={(e) => setLocalValue(parseFloat(e.target.value) || 0)}
+                onChange={(e) => setLocalValue(e.target.value)}
                 onBlur={handleBlur}
                 min={field.min}
                 max={field.max}

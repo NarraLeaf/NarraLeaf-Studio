@@ -7,7 +7,8 @@ import { UISurface, UISurfaceKind, UIHost } from "@shared/types/ui-editor/docume
 import { useRegistry } from "../../registry";
 import { UISurfaceEditorTab } from "./editors/UISurfaceEditorTab";
 import { ContextMenu, ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
-import { MoreVertical, PanelsTopLeft, Plus } from "lucide-react";
+import { createInputDialog } from "@/lib/components/dialogs";
+import { Link, MoreVertical, PanelsTopLeft, Plus } from "lucide-react";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 
 type SurfaceKindOption = {
@@ -58,6 +59,10 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (!context) return null;
         return context.services.get<UIService>(Services.UI);
     }, [context]);
+    const inputDialog = useMemo(() => {
+        if (!uiService) return null;
+        return createInputDialog(uiService);
+    }, [uiService]);
 
     useEffect(() => {
         if (!documentService) return;
@@ -137,19 +142,40 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         showMenu(event);
     }, [showMenu, handleOpenSurface, handleDeleteSurface]);
 
-    const handleCreateSurface = () => {
-        if (!documentService || !currentKindOption) {
+    const handleCreateSurface = useCallback(async () => {
+        if (!documentService || !currentKindOption || !inputDialog) {
             return;
         }
-        const document = documentService.getDocument();
-        const existingCount = document.surfaces.filter(surface => surface.kind === kind).length;
-        const name = `${currentKindOption.label} ${existingCount + 1}`;
+        const suggestedName = `${currentKindOption.label} ${filteredSurfaces.length + 1}`;
+        const name = await inputDialog.show({
+            title: "New Surface",
+            description: `Please name the ${currentKindOption.label.toLowerCase()} surface.`,
+            placeholder: "Enter surface name",
+            initialValue: suggestedName,
+            required: true,
+            maxLength: 100,
+        });
+        if (!name) {
+            return;
+        }
         const surface = documentService.createSurface(kind, name, currentKindOption.host);
         void documentService.save(documentService.getDocument()).catch(err => {
             console.warn("[UISurfacesPanel] failed to save surface", err);
         });
         handleOpenSurface(surface);
-    };
+    }, [currentKindOption, documentService, filteredSurfaces.length, handleOpenSurface, inputDialog, kind]);
+
+    const handleLinkButtonClick = useCallback(() => {
+        if (!uiService) return;
+        uiService.showAlert("Surface linking actions are not implemented yet.");
+    }, [uiService]);
+
+    const surfaceKindButtonClass = (optionKind: UISurfaceKind) =>
+        `flex-1 rounded-md px-2 py-1 text-xs font-medium border transition-colors ${
+            kind === optionKind
+                ? "border-primary bg-primary/10 text-white"
+                : "border-white/10 text-gray-300 hover:bg-white/10 hover:text-white"
+        }`;
 
     return (
         <div className="h-full flex flex-col">
@@ -160,9 +186,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                         <button
                             key={option.kind}
                             type="button"
-                            className={`flex-1 rounded-md px-2 py-1 text-xs font-medium border ${
-                                kind === option.kind ? "border-primary bg-primary/10 text-white" : "border-white/10 text-gray-300"
-                            }`}
+                            className={surfaceKindButtonClass(option.kind)}
                             onClick={() => setKind(option.kind)}
                         >
                             {option.label}
@@ -172,15 +196,25 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             </div>
 
             <div className="px-2 mt-2">
-                <button
-                    type="button"
-                    onClick={handleCreateSurface}
-                    disabled={!documentService || !currentKindOption}
-                    className="flex w-full items-center justify-center gap-2 rounded-md border border-white/20 bg-[#11131a] px-3 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:border-primary hover:text-white hover:bg-[#1a1d26]"
-                >
-                    <Plus className="w-4 h-4" />
-                    <span>Create {currentKindOption?.label ?? "Surface"}</span>
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        type="button"
+                        onClick={handleCreateSurface}
+                        disabled={!documentService || !currentKindOption || !inputDialog}
+                        className="flex-1 flex items-center justify-center gap-2 rounded-md border border-white/20 bg-[#11131a] px-3 py-2 text-xs font-semibold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white/10 hover:text-white"
+                    >
+                        <Plus className="w-4 h-4" />
+                        <span>Create {currentKindOption?.label ?? "Surface"}</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleLinkButtonClick}
+                        className="flex h-10 w-10 items-center justify-center rounded-md border border-white/20 bg-[#11131a] text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+                        title="Link surface"
+                    >
+                        <Link className="w-4 h-4" />
+                    </button>
+                </div>
             </div>
 
             <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2">
@@ -190,7 +224,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 {filteredSurfaces.map(surface => (
                     <div
                         key={surface.id}
-                        className="group w-full text-left rounded-md border border-white/10 bg-[#11131a] px-3 py-2 hover:border-primary transition-colors"
+                        className="group w-full text-left rounded-md border border-white/10 bg-[#11131a] px-3 py-2 transition-colors hover:bg-white/5"
                         onClick={() => handleOpenSurface(surface)}
                         onContextMenu={(event) => handleOpenMenu(event, surface)}
                         role="button"
