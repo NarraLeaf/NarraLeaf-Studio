@@ -19,12 +19,16 @@ export function EditorNodeWrapper({
 }: EditorNodeWrapperProps) {
     const containerStyle = useMemo<CSSProperties>(() => {
         const { x, y, width, height, rotation, opacity = 1 } = layout;
+        const normalizedWidth = Math.abs(width);
+        const normalizedHeight = Math.abs(height);
+        const offsetX = Math.min(0, width);
+        const offsetY = Math.min(0, height);
         const style: CSSProperties = {
             position: isRoot ? "relative" : "absolute",
-            left: x,
-            top: y,
-            width,
-            height,
+            left: x + offsetX,
+            top: y + offsetY,
+            width: normalizedWidth,
+            height: normalizedHeight,
             opacity,
             pointerEvents: isRoot ? "none" : "auto",
             boxSizing: "border-box",
@@ -33,7 +37,12 @@ export function EditorNodeWrapper({
             ...styleOverrides,
         };
         if (rotation) {
-            style.transform = `rotate(${rotation}deg)`;
+            const transforms = [];
+            if (rotation) {
+                transforms.push(`rotate(${rotation}deg)`);
+            }
+            style.transform = transforms.join(" ");
+            style.transformOrigin = "center center";
         }
         return style;
     }, [layout, isRoot, styleOverrides]);

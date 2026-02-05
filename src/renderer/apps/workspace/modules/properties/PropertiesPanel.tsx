@@ -24,11 +24,7 @@ import { createPropertyEditorSchema, defineField } from "./framework";
 import type { PropertyEditorSchema } from "./framework/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { getElementInspector } from "../ui-editor/inspector/registry";
-
-type UIInspectorData = {
-    element: UIElement;
-    elements: UIElement[];
-};
+import type { UIInspectorData } from "../ui-editor/inspector/registry";
 
 function createLayoutInspectorSchema(elements: UIElement[], documentService: UIDocumentService): PropertyEditorSchema<UIInspectorData> {
     const primaryId = elements.map(element => element.id).join("-");
@@ -63,7 +59,19 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                 type: "number",
                 label: "Width",
                 getValue: (data: UIInspectorData) => data.elements[0]?.layout.width ?? 0,
-                setValue: (_data: UIInspectorData, value: number) => applyLayoutPatch({ width: Number(value) }),
+                setValue: (_data: UIInspectorData, value: number) => {
+                    const next = Number(value);
+                    if (!Number.isFinite(next)) {
+                        return;
+                    }
+                    elements.forEach(element => {
+                        const patch: Partial<UIElement["layout"]> = {
+                            width: Math.abs(next),
+                            x: next < 0 ? element.layout.x + next : element.layout.x,
+                        };
+                        documentService.updateElementLayout(element.id, patch);
+                    });
+                },
                 order: 2,
             }),
             defineField<UIInspectorData, any>({
@@ -71,7 +79,19 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                 type: "number",
                 label: "Height",
                 getValue: (data: UIInspectorData) => data.elements[0]?.layout.height ?? 0,
-                setValue: (_data: UIInspectorData, value: number) => applyLayoutPatch({ height: Number(value) }),
+                setValue: (_data: UIInspectorData, value: number) => {
+                    const next = Number(value);
+                    if (!Number.isFinite(next)) {
+                        return;
+                    }
+                    elements.forEach(element => {
+                        const patch: Partial<UIElement["layout"]> = {
+                            height: Math.abs(next),
+                            y: next < 0 ? element.layout.y + next : element.layout.y,
+                        };
+                        documentService.updateElementLayout(element.id, patch);
+                    });
+                },
                 order: 3,
             }),
             defineField<UIInspectorData, any>({
@@ -160,13 +180,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             .map(id => document.elements[id])
             .filter((element): element is UIElement => Boolean(element));
         if (elements.length === 0) {
-            return (
-                <div className="flex-1 flex items-center justify-center p-4">
-                    <div className="text-center text-sm text-gray-500">
-                        <p>Selected UI element is missing</p>
-                    </div>
-                </div>
-            );
+            return null;
         }
 
         const layoutSchema = createLayoutInspectorSchema(elements, documentService);
