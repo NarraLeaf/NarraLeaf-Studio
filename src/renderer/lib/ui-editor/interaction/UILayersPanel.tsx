@@ -123,6 +123,7 @@ export function UILayersPanel({ surfaceId }: UILayersPanelProps) {
     }, [context]);
 
     const [docVersion, setDocVersion] = useState(0);
+    const [selection, setSelection] = useState(stateService.getSelection());
 
     useEffect(() => {
         if (!documentService) {
@@ -133,6 +134,11 @@ export function UILayersPanel({ surfaceId }: UILayersPanelProps) {
         });
         return unsubscribe;
     }, [documentService]);
+
+    useEffect(() => {
+        const unsubscribe = stateService.on("selectionChanged", setSelection);
+        return () => unsubscribe();
+    }, [stateService]);
 
     const document = documentService?.getDocument() ?? stateService.getDocument();
     const surface = document?.surfaces.find(surf => surf.id === surfaceId);
@@ -174,7 +180,6 @@ export function UILayersPanel({ surfaceId }: UILayersPanelProps) {
         documentService.reorderChildren(root.id, nextOrder);
     };
 
-    const selection = stateService.getSelection();
     const selectionData = isUIElementSelection(selection) ? selection.data : null;
     const selectedIds = useMemo(() => new Set(selectionData?.elementIds ?? []), [selectionData]);
     const lastPrimaryId = selectionData?.primaryId ?? selectionData?.elementIds?.[selectionData.elementIds.length - 1];

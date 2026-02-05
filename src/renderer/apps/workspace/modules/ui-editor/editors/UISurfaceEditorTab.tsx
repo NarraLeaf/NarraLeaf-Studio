@@ -73,6 +73,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const surface = surfaceId && document ? document.surfaces.find(s => s.id === surfaceId) : undefined;
 
     const canvasRef = useRef<HTMLDivElement | null>(null);
+    const viewportRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         if (!stateService) return;
@@ -205,27 +206,39 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         transformOrigin: "top left" as const,
     };
 
+    const outlinePanelClasses = `absolute inset-y-0 left-0 z-10 w-64 border-r border-white/5 bg-[#080a0e] transition-transform duration-200 ease-out ${outlineCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100 pointer-events-auto"}`;
+
     return (
         <div className="h-full flex overflow-hidden border border-white/10">
-            <div className="w-64 border-r border-white/5 bg-[#080a0e] flex flex-col">
-                <div className="px-3 py-2 border-b border-white/10 text-xs uppercase text-gray-500 flex items-center justify-between">
-                    <span>UI Outline</span>
-                    <button
-                        type="button"
-                        className="text-gray-400 hover:text-white transition-colors"
-                        onClick={() => setOutlineCollapsed(value => !value)}
-                        title="Toggle outline panel"
-                    >
-                        {outlineCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-                    </button>
-                </div>
-                {!outlineCollapsed && (
-                    <div className="h-full">
-                        <UILayersPanel surfaceId={surface.id} />
+            <div className="relative flex-1 bg-[#05060a]" onContextMenu={handleCanvasContextMenu}>
+                <div className={outlinePanelClasses}>
+                    <div className="px-3 py-2 border-b border-white/10 text-xs uppercase text-gray-500 flex items-center justify-between">
+                        <span>UI Outline</span>
+                        <button
+                            type="button"
+                            className="text-gray-400 hover:text-white transition-colors"
+                            onClick={() => setOutlineCollapsed(value => !value)}
+                            title={outlineCollapsed ? "Expand outline panel" : "Collapse outline panel"}
+                        >
+                            {outlineCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+                        </button>
                     </div>
+                    {!outlineCollapsed && (
+                        <div className="h-full">
+                            <UILayersPanel surfaceId={surface.id} />
+                        </div>
+                    )}
+                </div>
+                {outlineCollapsed && (
+                <button
+                    type="button"
+                    className="absolute left-3 top-3 z-20 h-10 w-10 flex items-center justify-center rounded-full border border-white/20 bg-[#05060a]/80 text-gray-300 hover:text-white focus:outline-none"
+                    onClick={() => setOutlineCollapsed(false)}
+                    title="Expand outline panel"
+                >
+                        <ChevronDown className="w-4 h-4" />
+                    </button>
                 )}
-            </div>
-            <div className="flex-1 relative overflow-hidden bg-[#05060a]" onContextMenu={handleCanvasContextMenu}>
                 <div className="absolute top-3 right-3 z-20 flex items-center gap-2 rounded-md border border-white/20 bg-[#05060a]/80 px-2 py-1">
                     <button type="button" className={toolButtonClass(tool.kind === "select")} onClick={handleSelectTool} title="Select tool">
                         <MousePointer2 className="w-4 h-4" />
@@ -242,35 +255,15 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                     >
                         <SquarePlus className="w-4 h-4" />
                     </button>
-                    <button
-                        type="button"
-                        className={toolButtonClass(outlineVisible)}
-                        onClick={() => setOutlineVisible(v => !v)}
-                        title="Toggle outlines"
-                    >
-                        {outlineVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    </button>
-                    <select
-                        value={insertType}
-                        onChange={handleInsertTypeChange}
-                        disabled={elementTypes.length === 0}
-                        className="h-9 min-w-[110px] rounded-md border border-white/20 bg-[#0b0d12] px-2 text-xs font-medium text-white outline-none transition-colors focus:border-primary"
-                    >
-                        {elementTypes.map(type => (
-                            <option key={type.type} value={type.type}>
-                                {type.displayName}
-                            </option>
-                        ))}
-                    </select>
                 </div>
-                <div className="absolute inset-0 overflow-hidden">
+                <div ref={viewportRef} className="absolute inset-0 overflow-hidden">
                     <div ref={canvasRef} className="relative h-full w-full" style={transformStyle}>
                         {surfaceContent}
                     </div>
                 </div>
                 <UIEditorInteractionLayer
                     surfaceId={surface.id}
-                    containerRef={canvasRef}
+                    containerRef={viewportRef}
                     showOutlines={outlineVisible}
                 />
                 <ContextMenu

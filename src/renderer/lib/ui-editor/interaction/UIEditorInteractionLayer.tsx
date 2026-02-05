@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import Selecto from "react-selecto";
 import Moveable from "react-moveable";
-import type { OnDrag, OnResize, OnDragStart, OnDragEnd, OnResizeEnd } from "react-moveable";
+import type { OnDrag, OnResize, OnDragStart, OnDragEnd, OnResizeEnd, OnResizeStart } from "react-moveable";
 import { ViewportTransform } from "../geometry";
 import { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import { isUIElementSelection } from "@services/ui/UIStore";
@@ -24,15 +24,27 @@ function isHTMLElement(node: Element | null): node is HTMLElement {
 export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines = true }: Props) {
     const stateService = UIEditorStateService.getInstance();
     const [selection, setSelection] = useState(stateService.getSelection());
+    const previousSelectedTargets = useRef<HTMLElement[]>([]);
+    const outlineCache = useRef<WeakMap<HTMLElement, { outline?: string; outlineOffset?: string }>>(new WeakMap());
     const layoutCache = useRef<Map<string, UIElement["layout"]>>(new Map());
     const dragDeltaCache = useRef<Map<string, [number, number]>>(new Map());
     const resizeCache = useRef<Map<string, { width?: number; height?: number }>>(new Map());
     const documentService = UIDocumentService.getInstance();
+    type MoveableInstance = React.ElementRef<typeof Moveable>;
+    const moveableRef = useRef<MoveableInstance | null>(null);
+
+    const scheduleMoveableRectUpdate = useCallback(() => {
+        // Keep the overlay controller aligned after DOM/layout updates.
+        requestAnimationFrame(() => {
+            moveableRef.current?.updateRect?.();
+        });
+    }, []);
 
     useEffect(() => {
         const unsubscribe = stateService.on("selectionChanged", setSelection);
         return () => unsubscribe();
     }, [stateService]);
+
 
     const [tool, setTool] = useState<UITool>(stateService.getTool());
     const [viewport, setViewport] = useState<ViewportTransform>(stateService.getViewportTransform());
@@ -64,22 +76,55 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
     const selectionData = isUIElementSelection(selection) ? selection.data : null;
     const primaryId = selectionData?.primaryId ?? selectionData?.elementIds?.[selectionData.elementIds.length - 1];
 
-    const outlineRects = useMemo(() => {
-        if (!surfaceElement) {
-            return [];
-        }
-        const surfaceRect = surfaceElement.getBoundingClientRect();
-        return selectedTargets.map(target => {
-            const rect = target.getBoundingClientRect();
-            return {
-                id: target.dataset.uiElementId ?? "",
-                left: rect.left - surfaceRect.left,
-                top: rect.top - surfaceRect.top,
-                width: rect.width,
-                height: rect.height,
-            };
+    useEffect(() => {
+        previousSelectedTargets.current.forEach(target => {
+            const cached = outlineCache.current.get(target);
+            if (cached) {
+                target.style.outline = cached.outline ?? "";
+                target.style.outlineOffset = cached.outlineOffset ?? "";
+                outlineCache.current.delete(target);
+            }
         });
-    }, [selectedTargets, surfaceElement, viewport]);
+
+        if (showOutlines) {
+            selectedTargets.forEach(target => {
+                if (!outlineCache.current.has(target)) {
+                    outlineCache.current.set(target, {
+                        outline: target.style.outline,
+                        outlineOffset: target.style.outlineOffset,
+                    });
+                }
+                const elementId = target.dataset.uiElementId ?? "";
+                target.style.outline = elementId === primaryId
+                    ? "1px solid rgba(123, 97, 255, 0.9)"
+                    : "1px dashed rgba(123, 97, 255, 0.6)";
+                target.style.outlineOffset = "0px";
+            });
+            previousSelectedTargets.current = selectedTargets;
+        } else {
+            previousSelectedTargets.current = [];
+        }
+    }, [selectedTargets, primaryId, showOutlines]);
+
+    useEffect(() => {
+        // Selection, viewport zoom/pan, or showOutlines can change the target rect in container space.
+        scheduleMoveableRectUpdate();
+    }, [
+        scheduleMoveableRectUpdate,
+        selectedTargets,
+        viewport.scale,
+        viewport.offsetX,
+        viewport.offsetY,
+        showOutlines,
+    ]);
+
+    useEffect(() => {
+        // When element layout changes, the DOM updates but this layer might not re-render.
+        const unsubscribe = documentService.onDocumentChanged?.(() => {
+            scheduleMoveableRectUpdate();
+        });
+        return () => unsubscribe?.();
+    }, [documentService, scheduleMoveableRectUpdate]);
 
     const handleSelectEnd = (e: any) => {
         const targets = e.selected as HTMLElement[];
@@ -129,7 +174,8 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
         const handlePointerDown = (event: PointerEvent) => {
             const target = event.target as HTMLElement | null;
             const isInsideSurface = !!(target && surfaceElement.contains(target));
-            const isElementNode = !!target?.closest?.(SELECTABLE_TARGET);
+            const elementNode = target?.closest?.(SELECTABLE_TARGET) as HTMLElement | null;
+            const isElementNode = !!elementNode;
 
             const isPanTool = tool.kind === "pan" && event.button === 0;
             const isMiddleMouse = event.button === 1;
@@ -141,6 +187,31 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
                 panState.current.startY = event.clientY;
                 panState.current.startOffsetX = viewport.offsetX;
                 panState.current.startOffsetY = viewport.offsetY;
+                return;
+            }
+
+            if (tool.kind === "select" && event.button === 0 && isElementNode) {
+                const elementId = elementNode?.dataset.uiElementId;
+                if (elementId) {
+                    if (event.shiftKey && selectionData && selectionData.surfaceId === surfaceId) {
+                        const nextIds = selectionData.elementIds.includes(elementId)
+                            ? selectionData.elementIds
+                            : [...selectionData.elementIds, elementId];
+                        stateService.setUIElementSelection({
+                            editor: "ui",
+                            surfaceId,
+                            elementIds: nextIds,
+                            primaryId: elementId,
+                        });
+                    } else {
+                        stateService.setUIElementSelection({
+                            editor: "ui",
+                            surfaceId,
+                            elementIds: [elementId],
+                            primaryId: elementId,
+                        });
+                    }
+                }
                 return;
             }
 
@@ -160,7 +231,7 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
             window.removeEventListener("pointerup", stopPan);
             window.removeEventListener("pointercancel", stopPan);
         };
-    }, [surfaceElement, stateService, tool, viewport, surfaceId, documentService]);
+    }, [surfaceElement, stateService, tool, viewport, surfaceId, documentService, selectionData]);
 
     useEffect(() => {
         if (!surfaceElement || !stateService) {
@@ -231,7 +302,7 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
 
     const handleDrag = (e: OnDrag) => {
         const [translateX, translateY] = e.beforeTranslate;
-        e.target.style.transform = `translate(${translateX}px, ${translateY}px)`;
+        e.target.style.transform = e.transform;
         const elementId = e.target.dataset.uiElementId;
         if (elementId) {
             dragDeltaCache.current.set(elementId, [translateX, translateY]);
@@ -248,23 +319,38 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
             return;
         }
         const [translateX, translateY] = dragDeltaCache.current.get(elementId) ?? [0, 0];
-        const scale = Math.max(0.0001, viewport.scale);
         documentService.updateElementLayout(elementId, {
-            x: initialLayout.x + translateX / scale,
-            y: initialLayout.y + translateY / scale,
+            x: initialLayout.x + translateX,
+            y: initialLayout.y + translateY,
         });
         e.target.style.transform = "";
         layoutCache.current.delete(elementId);
         dragDeltaCache.current.delete(elementId);
+        scheduleMoveableRectUpdate();
+    };
+
+    const handleResizeStart = (e: OnResizeStart) => {
+        const elementId = e.target.dataset.uiElementId;
+        if (!elementId) {
+            return;
+        }
+        const element = stateService.getDocument().elements[elementId];
+        if (element) {
+            layoutCache.current.set(elementId, element.layout);
+        }
     };
 
     const handleResize = (e: OnResize) => {
-        const scale = Math.max(0.0001, viewport.scale);
-        e.target.style.width = `${e.width / scale}px`;
-        e.target.style.height = `${e.height / scale}px`;
+        e.target.style.width = `${e.width}px`;
+        e.target.style.height = `${e.height}px`;
         const elementId = e.target.dataset.uiElementId;
         if (elementId) {
-            resizeCache.current.set(elementId, { width: e.width / scale, height: e.height / scale });
+            resizeCache.current.set(elementId, { width: e.width, height: e.height });
+            if (e.drag) {
+                e.target.style.transform = e.drag.transform;
+                const translate = e.drag.beforeTranslate;
+                dragDeltaCache.current.set(elementId, [translate[0] ?? 0, translate[1] ?? 0]);
+            }
         }
     };
 
@@ -281,36 +367,26 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
         if (cached?.height !== undefined) {
             patch.height = cached.height;
         }
+        const initialLayout = layoutCache.current.get(elementId);
+        const [translateX, translateY] = dragDeltaCache.current.get(elementId) ?? [0, 0];
+        if (initialLayout) {
+            patch.x = initialLayout.x + translateX;
+            patch.y = initialLayout.y + translateY;
+        }
         if (Object.keys(patch).length > 0) {
             documentService.updateElementLayout(elementId, patch);
         }
         layoutCache.current.delete(elementId);
         resizeCache.current.delete(elementId);
+        dragDeltaCache.current.delete(elementId);
         e.target.style.transform = "";
+        e.target.style.width = "";
+        e.target.style.height = "";
+        scheduleMoveableRectUpdate();
     };
 
     return (
         <>
-            {showOutlines && (
-                <div className="pointer-events-none absolute inset-0 z-10">
-                    {outlineRects.map(rect => (
-                        <div
-                            key={rect.id}
-                            className="absolute box-border"
-                            style={{
-                                left: rect.left,
-                                top: rect.top,
-                                width: rect.width,
-                                height: rect.height,
-                                border:
-                                    rect.id === primaryId
-                                        ? "1px solid rgba(123, 97, 255, 0.9)"
-                                        : "1px dashed rgba(123, 97, 255, 0.6)",
-                            }}
-                        />
-                    ))}
-                </div>
-            )}
             {tool.kind === "select" && (
                 <>
                     <Selecto
@@ -319,12 +395,13 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
                         selectableTargets={[SELECTABLE_TARGET]}
                         hitRate={0}
                         selectByClick={true}
-                        selectFromInside={true}
+                        selectFromInside={false}
                         toggleContinueSelect={["shift"]}
                         ratio={0}
                         onSelectEnd={handleSelectEnd}
                     />
                     <Moveable
+                        ref={moveableRef}
                         target={selectedTargets}
                         container={surfaceElement ?? undefined}
                         draggable={true}
@@ -337,6 +414,7 @@ export function UIEditorInteractionLayer({ surfaceId, containerRef, showOutlines
                         onDragStart={handleDragStart}
                         onDrag={handleDrag}
                         onDragEnd={handleDragEnd}
+                        onResizeStart={handleResizeStart}
                         onResize={handleResize}
                         onResizeEnd={handleResizeEnd}
                     />
