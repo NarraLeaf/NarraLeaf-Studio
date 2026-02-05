@@ -20,29 +20,31 @@ type SurfaceKindOption = {
 const SURFACE_KIND_OPTIONS: SurfaceKindOption[] = [
     {
         kind: "appSurface",
-        label: "App Surface",
+        label: "App",
         description: "App Surface is the main surface for the application.",
         host: "app",
     },
     {
         kind: "playerStageSurface",
-        label: "Player Stage",
+        label: "Stage",
         description: "Player Stage Surface is the main surface for the player.",
         host: "player",
     },
     {
         kind: "playerOverlaySurface",
-        label: "Player Overlay",
+        label: "Overlay",
         description: "Player Overlay Surface is the overlay surface for the player.",
         host: "player",
     },
 ];
 
+const SURFACE_TAB_PREFIX = "ui-editor:surface:";
+const getSurfaceTabId = (surfaceId: string) => `${SURFACE_TAB_PREFIX}${surfaceId}`;
 const formatSurfaceLabel = (surface: UISurface) => `${surface.name} (${surface.kind})`;
 
 export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { context } = useWorkspace();
-    const { openEditorTab } = useRegistry();
+    const { openEditorTab, closeEditorTab } = useRegistry();
     const [surfaces, setSurfaces] = useState<UISurface[]>([]);
     const [kind, setKind] = useState<UISurfaceKind>("appSurface");
     const { menuState, showMenu, hideMenu } = useContextMenu();
@@ -77,7 +79,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const currentKindOption = useMemo(() => SURFACE_KIND_OPTIONS.find(option => option.kind === kind), [kind]);
 
     const handleOpenSurface = useCallback((surface: UISurface) => {
-        const tabId = `ui-editor:surface:${surface.id}`;
+        const tabId = getSurfaceTabId(surface.id);
         openEditorTab({
             id: tabId,
             title: surface.name,
@@ -104,11 +106,12 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             return;
         }
         documentService.deleteSurface(surface.id);
+        closeEditorTab(getSurfaceTabId(surface.id));
         const remaining = documentService.getDocument().surfaces.filter(next => next.kind === surface.kind);
         if (remaining.length > 0) {
             handleOpenSurface(remaining[0]);
         }
-    }, [documentService, uiService, handleOpenSurface]);
+    }, [documentService, uiService, handleOpenSurface, closeEditorTab]);
 
     const handleOpenMenu = useCallback((event: React.MouseEvent, surface: UISurface) => {
         event.stopPropagation();
@@ -178,14 +181,11 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     <Plus className="w-4 h-4" />
                     <span>Create {currentKindOption?.label ?? "Surface"}</span>
                 </button>
-                <p className="mt-1 text-[11px] text-gray-500">Creates a new surface of the selected type and opens it in the editor.</p>
             </div>
-
-            <div className="px-2 mt-4 text-xs text-gray-500">Click a surface to open the corresponding editor tab</div>
 
             <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2">
                 {filteredSurfaces.length === 0 && (
-                    <div className="text-xs text-gray-500">No surfaces of this type available</div>
+                    <div className="text-xs text-gray-500">Creates a new surface of the selected type and opens it in the editor</div>
                 )}
                 {filteredSurfaces.map(surface => (
                     <div
