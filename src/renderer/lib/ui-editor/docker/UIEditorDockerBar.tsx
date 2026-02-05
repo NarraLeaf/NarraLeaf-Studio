@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { widgetModuleRegistry } from "../widget-modules/registryInstance";
 import type { UIWidgetModule, DockerBarItem } from "../widget-modules/types";
 import type { UIElement } from "@shared/types/ui-editor/document";
@@ -6,6 +6,7 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
+import type { UITool } from "../editor/types";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -13,29 +14,35 @@ type UIEditorDockerBarProps = {
     surfaceId: string;
     stateService: UIEditorStateService;
     documentService: UIDocumentService;
-    onInsertElement: (type: string) => void;
 };
 
 // ─── Palette Mode (no selection) ────────────────────────────────────────────
 
 function PaletteDockerBar({
     modules,
-    onInsertElement,
+    activeInsertType,
+    onSelectType,
 }: {
     modules: UIWidgetModule[];
-    onInsertElement: (type: string) => void;
+    activeInsertType: string | null;
+    onSelectType: (type: string) => void;
 }) {
     return (
         <div className="flex items-center gap-1">
             {modules.map((mod) => {
                 const Icon = mod.icon;
+                const isActive = activeInsertType === mod.type;
                 return (
                     <button
                         key={mod.type}
                         type="button"
-                        className="flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
-                        onClick={() => onInsertElement(mod.type)}
-                        title={`Insert ${mod.displayName}`}
+                        className={`flex items-center gap-1.5 h-8 px-2.5 rounded-md text-xs font-medium transition-colors ${
+                            isActive
+                                ? "bg-primary/20 text-white border border-primary/40"
+                                : "text-gray-300 hover:bg-white/10 hover:text-white border border-transparent"
+                        }`}
+                        onClick={() => onSelectType(mod.type)}
+                        title={isActive ? `Drawing ${mod.displayName} - drag on canvas to create` : `Insert ${mod.displayName}`}
                     >
                         <Icon className="w-3.5 h-3.5" />
                         <span>{mod.displayName}</span>
@@ -152,14 +159,19 @@ export function UIEditorDockerBar({
     surfaceId,
     stateService,
     documentService,
-    onInsertElement,
 }: UIEditorDockerBarProps) {
     const modules = useMemo(() => widgetModuleRegistry.list(), []);
     const [selection, setSelection] = useState<SelectionState>(stateService.getSelection());
+    const [tool, setTool] = useState<UITool>(stateService.getTool());
     const [docVersion, setDocVersion] = useState(0);
 
     useEffect(() => {
         const unsub = stateService.on("selectionChanged", setSelection);
+        return unsub;
+    }, [stateService]);
+
+    useEffect(() => {
+        const unsub = stateService.on("toolChanged", setTool);
         return unsub;
     }, [stateService]);
 
@@ -169,6 +181,20 @@ export function UIEditorDockerBar({
         });
         return unsub;
     }, [documentService]);
+
+    // Active insert type (if in insert mode)
+    const activeInsertType = tool.kind === "insert" ? tool.nodeType : null;
+
+    // Handle selecting an insert type from the palette
+    const handleSelectType = (type: string) => {
+        if (activeInsertType === type) {
+            // Toggle off: switch back to select mode
+            stateService.setTool({ kind: "select" });
+        } else {
+            // Enter insert mode with this type
+            stateService.setTool({ kind: "insert", nodeType: type });
+        }
+    };
 
     // Resolve selected element(s)
     const selectedElement = useMemo<UIElement | null>(() => {
@@ -197,11 +223,12 @@ export function UIEditorDockerBar({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedElement, selectedModule, documentService, docVersion]);
 
-    const hasSelection = selectedElement !== null && dockerItems.length > 0;
+    // Show element docker bar only when there's a selection AND not in insert mode
+    const showElementDocker = selectedElement !== null && dockerItems.length > 0 && tool.kind !== "insert";
 
     return (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex items-center rounded-lg border border-white/15 bg-[#0b0d12]/90 backdrop-blur-sm px-2 py-1.5 shadow-lg shadow-black/30">
-            {hasSelection ? (
+            {showElementDocker ? (
                 <ElementDockerBar
                     items={dockerItems}
                     moduleName={selectedModule?.displayName ?? "Element"}
@@ -209,7 +236,8 @@ export function UIEditorDockerBar({
             ) : (
                 <PaletteDockerBar
                     modules={modules}
-                    onInsertElement={onInsertElement}
+                    activeInsertType={activeInsertType}
+                    onSelectType={handleSelectType}
                 />
             )}
         </div>
