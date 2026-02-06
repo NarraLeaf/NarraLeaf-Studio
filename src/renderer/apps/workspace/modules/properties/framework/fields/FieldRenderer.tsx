@@ -8,6 +8,11 @@ import { TagsField } from "./TagsField";
 import { InfoField } from "./InfoField";
 import { SectionField } from "./SectionField";
 import { ThumbnailField } from "./ThumbnailField";
+import { ColorPickerField, ColorPickerGroupField } from "./ColorPickerField";
+import { IconButtonGroupField } from "./IconButtonGroupField";
+import { DropdownGroupField } from "./DropdownGroupField";
+import { MenuTriggerField } from "./MenuTriggerField";
+import { InputGroupField } from "./InputGroupField";
 
 interface FieldRendererProps<TData> {
     field: FieldDefinition<TData>;
@@ -57,6 +62,24 @@ function FieldRendererInner<TData>({ field, data, onSaving }: FieldRendererProps
 
         case "thumbnail":
             return <ThumbnailField field={field} data={data} onSaving={onSaving} />;
+
+        case "colorPicker":
+            return <ColorPickerField field={field} data={data} onSaving={onSaving} />;
+
+        case "colorPickerGroup":
+            return <ColorPickerGroupField field={field} data={data} onSaving={onSaving} />;
+
+        case "iconButtonGroup":
+            return <IconButtonGroupField field={field} data={data} onSaving={onSaving} />;
+
+        case "dropdownGroup":
+            return <DropdownGroupField field={field} data={data} onSaving={onSaving} />;
+
+        case "menuTrigger":
+            return <MenuTriggerField field={field} data={data} onSaving={onSaving} />;
+
+        case "inputGroup":
+            return <InputGroupField field={field} data={data} onSaving={onSaving} />;
 
         case "custom": {
             const CustomComponent = field.component;

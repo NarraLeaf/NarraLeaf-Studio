@@ -15,6 +15,8 @@ import {
     AssetEditorContext,
     characterPropertySchema,
     CharacterEditorContext,
+    scenePropertySchema,
+    type SceneEditorContext,
 } from "./schemas";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { UIElement } from "@shared/types/ui-editor/document";
@@ -25,6 +27,7 @@ import type { PropertyEditorSchema } from "./framework/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { getElementInspector } from "../ui-editor/inspector/registry";
 import type { UIInspectorData } from "../ui-editor/inspector/registry";
+import { useDocumentVersion } from "@/lib/ui-editor/hooks/useDocumentVersion";
 
 function createLayoutInspectorSchema(elements: UIElement[], documentService: UIDocumentService): PropertyEditorSchema<UIInspectorData> {
     const primaryId = elements.map(element => element.id).join("-");
@@ -125,6 +128,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const [assetMetadata, setAssetMetadata] = useState<AssetData<any> | null>(null);
     const [characterVersion, setCharacterVersion] = useState(0);
     const [uiSelection, setUISelection] = useState<UIElementSelection | null>(null);
+    const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
     const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
     
     // Track the current thumbnail URL and its associated thumbnailId to avoid revoking URLs still in use
@@ -148,6 +152,41 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         if (!context || !isInitialized) return null;
         return context.services.get<UIDocumentService>(Services.UIDocument);
     }, [context, isInitialized]);
+    const documentVersion = useDocumentVersion(documentService);
+
+    const activeSceneSurface = useMemo(() => {
+        if (!documentService || !activeSceneId) {
+            return null;
+        }
+        return (
+            documentService
+                .getDocument()
+                .surfaces.find(surface => surface.id === activeSceneId) ?? null
+        );
+    }, [activeSceneId, documentService, documentVersion]);
+
+    const sceneEditorContext = useMemo<SceneEditorContext | null>(() => {
+        if (!activeSceneSurface || !documentService) {
+            return null;
+        }
+        return {
+            surface: activeSceneSurface,
+            documentService,
+        };
+    }, [activeSceneSurface, documentService]);
+
+    const panelTitle = activeSceneSurface
+        ? activeSceneSurface.name
+        : activeCharacter
+        ? activeCharacter.profile.getProfile().name
+        : activeAsset
+        ? activeAsset.name
+        : "Properties";
+    const panelSubtitle = activeSceneSurface
+        ? "Scene"
+        : activeCharacter
+        ? "Character"
+        : activeAsset?.type;
 
     // Listen to selection changes
     useEffect(() => {
@@ -160,6 +199,13 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         setActiveCharacter(selection.type === "character" ? (selection.data as Character) : null);
         setAssetMetadata(null);
         setUISelection(isUIElementSelection(selection) ? (selection.data as UIElementSelection) : null);
+        const sceneId =
+            selection.type === "scene"
+                ? typeof selection.data === "string"
+                    ? selection.data
+                    : selection.data?.id ?? null
+                : null;
+        setActiveSceneId(sceneId);
     };
 
         setSelectionState(store.getSelection());
@@ -171,7 +217,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return unsub;
     }, [context]);
 
-    const renderUIInspector = () => {
+    const uiInspectorContent = useMemo(() => {
         if (!uiSelection || !documentService) {
             return null;
         }
@@ -203,7 +249,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         }
 
         return <PropertyEditor schema={layoutSchema} data={{ element: elements[0], elements }} />;
-    };
+    }, [uiSelection, documentService, documentVersion]);
 
     // Load asset metadata when asset changes
     useEffect(() => {
@@ -366,12 +412,14 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
     // Render appropriate property editor
     const renderPropertyEditor = () => {
-        const uiInspector = renderUIInspector();
-        if (uiInspector) {
-            return uiInspector;
+        if (uiInspectorContent) {
+            return uiInspectorContent;
+        }
+        if (sceneEditorContext) {
+            return <PropertyEditor schema={scenePropertySchema} data={sceneEditorContext} />;
         }
         // No selection
-        if (!activeAsset && !activeCharacter) {
+        if (!activeAsset && !activeCharacter && !sceneEditorContext) {
             return (
                 <div className="flex-1 flex items-center justify-center p-4">
                     <div className="text-center text-gray-500 py-8">
@@ -400,20 +448,12 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         <div className="h-full flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
-                <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-400">
-                        {activeCharacter
-                            ? activeCharacter.profile.getProfile().name
-                            : activeAsset
-                            ? activeAsset.name
-                            : "Properties"}
-                    </span>
-                </div>
-                {(activeAsset || activeCharacter) && (
-                    <span className="text-xs text-gray-500 uppercase">
-                        {activeCharacter ? "Character" : activeAsset?.type}
-                    </span>
-                )}
+            <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">{panelTitle}</span>
+            </div>
+            {panelSubtitle && (
+                <span className="text-xs text-gray-500 uppercase">{panelSubtitle}</span>
+            )}
             </div>
 
             {/* Content */}

@@ -77,6 +77,8 @@ export type DockerBarNumberInput = {
     min?: number;
     max?: number;
     step?: number;
+    disabled?: boolean;
+    readOnly?: boolean;
     onChange: (value: number) => void;
 };
 

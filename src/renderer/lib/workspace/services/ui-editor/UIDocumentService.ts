@@ -2,10 +2,16 @@ import {
     UI_DOCUMENT_SCHEMA_VERSION,
     UIDocument,
     UISurface,
+    UISurfaceId,
     UISurfaceKind,
     UIHost,
     UISurfaceDesignSize,
+    UISurfaceSettings,
+    UIStageSlotId,
+    UIStageSurfaceMount,
     UIElement,
+    UIElementId,
+    UISlotDefinition,
     UILayout,
 } from "@shared/types/ui-editor/document";
 import { FsRejectErrorCode } from "@shared/types/os";
@@ -18,13 +24,51 @@ import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
 import { EventEmitter } from "../ui/EventEmitter";
+import {
+    DEFAULT_APP_SURFACE_NAME,
+    DEFAULT_UI_DOCUMENT_NAME,
+    DEFAULT_UI_ROOT_NAME,
+    DEFAULT_UI_SURFACE_SIZE,
+} from "@shared/constants/ui-editor";
 
 type UIDocumentServiceEvents = {
     documentChanged: UIDocument;
     dirtyChanged: boolean;
 };
 
-const DEFAULT_SURFACE_SIZE = { width: 1280, height: 720 };
+type CreateSurfaceInput = {
+    kind: UISurfaceKind;
+    name: string;
+    host: UIHost;
+    settings?: UISurfaceSettings;
+    stageMount?: UIStageSurfaceMount;
+};
+
+const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = "dialog";
+
+type LegacyUISurfaceKind = "appSurface" | "playerStageSurface" | "playerOverlaySurface";
+
+type LegacyUISurface = {
+    id: UISurfaceId;
+    name: string;
+    host: UIHost;
+    kind: LegacyUISurfaceKind;
+    designSize: UISurfaceDesignSize;
+    rootElementId: UIElementId;
+    settings?: {
+        backgroundColor?: string;
+        stageElementType?: UIStageSlotId;
+    };
+    route?: {
+        id?: string;
+    };
+    slots?: Record<string, UISlotDefinition>;
+};
+
+type LegacyUIDocument = Omit<UIDocument, "surfaces" | "schemaVersion"> & {
+    schemaVersion: 1;
+    surfaces: LegacyUISurface[];
+};
 
 export class UIDocumentService extends Service<UIDocumentService> implements IUIDocumentService {
     private document: UIDocument | null = null;
@@ -239,7 +283,58 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (document.schemaVersion === UI_DOCUMENT_SCHEMA_VERSION) {
             return document;
         }
+        if (document.schemaVersion === 1) {
+            return this.migrateFromLegacyDocument(document);
+        }
         throw new RendererError("UI document migration is not implemented");
+    }
+
+    private migrateFromLegacyDocument(document: UIDocument): UIDocument {
+        const legacy = document as LegacyUIDocument;
+        const migratedSurfaces = legacy.surfaces.map(surface => this.migrateLegacySurface(surface));
+        return {
+            ...document,
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            surfaces: migratedSurfaces,
+        };
+    }
+
+    private migrateLegacySurface(surface: LegacyUISurface): UISurface {
+        const settings = surface.settings
+            ? { backgroundColor: surface.settings.backgroundColor }
+            : undefined;
+
+        if (surface.kind === "appSurface") {
+            return {
+                id: surface.id,
+                name: surface.name,
+                host: "app",
+                kind: "appSurface",
+                designSize: surface.designSize,
+                rootElementId: surface.rootElementId,
+                settings,
+            };
+        }
+
+        const stageMount: UIStageSurfaceMount =
+            surface.kind === "playerStageSurface"
+                ? {
+                      kind: "slot",
+                      slotId: surface.settings?.stageElementType ?? DEFAULT_STAGE_SLOT_ID,
+                  }
+                : { kind: "layer" };
+
+        return {
+            id: surface.id,
+            name: surface.name,
+            host: "player",
+            kind: "stageSurface",
+            designSize: surface.designSize,
+            rootElementId: surface.rootElementId,
+            settings,
+            mount: stageMount,
+            slots: surface.slots,
+        };
     }
 
     private createEmptyDocument(): UIDocument {
@@ -253,7 +348,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const rootElement: UIElement = {
             id: rootElementId,
             type: "nl.root",
-            name: "Root",
+            name: DEFAULT_UI_ROOT_NAME,
             parentId: null,
             childrenIds: [],
             layout: {
@@ -268,7 +363,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         const surface: UISurface = {
             id: surfaceId,
-            name: "Main Surface",
+            name: DEFAULT_APP_SURFACE_NAME,
             host: "app",
             kind: "appSurface",
             designSize: {
@@ -281,7 +376,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const doc: UIDocument = {
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
             id: documentId,
-            name: "UI Document",
+            name: DEFAULT_UI_DOCUMENT_NAME,
             surfaces: [surface],
             elements: {
                 [rootElementId]: rootElement,
@@ -298,20 +393,46 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return doc;
     }
 
-    public createSurface(kind: UISurfaceKind, name: string, host: UIHost): UISurface {
+    public createSurface(input: CreateSurfaceInput): UISurface {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const designSize = this.getProjectDesignSize();
         const rootElementId = uuidService.generate();
         const surfaceId = uuidService.generate();
 
-        const surface: UISurface = {
-            id: surfaceId,
-            name,
-            host,
-            kind,
-            designSize,
-            rootElementId,
-        };
+        const { kind, name, host, settings, stageMount } = input;
+        const effectiveMount =
+            kind === "stageSurface"
+                ? stageMount ?? { kind: "slot", slotId: DEFAULT_STAGE_SLOT_ID }
+                : undefined;
+
+        if (kind === "stageSurface" && host !== "player") {
+            throw new RendererError("Stage surfaces must be hosted by player");
+        }
+        if (kind === "appSurface" && host !== "app") {
+            throw new RendererError("App surfaces must be hosted by app");
+        }
+
+        const surface: UISurface =
+            kind === "stageSurface"
+                ? {
+                      id: surfaceId,
+                      name,
+                      host: "player",
+                      kind,
+                      designSize,
+                      rootElementId,
+                      settings,
+                      mount: effectiveMount ?? { kind: "slot", slotId: DEFAULT_STAGE_SLOT_ID },
+                  }
+                : {
+                      id: surfaceId,
+                      name,
+                      host: "app",
+                      kind,
+                      designSize,
+                      rootElementId,
+                      settings,
+                  };
 
         const rootElement: UIElement = {
             id: rootElementId,
@@ -372,6 +493,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    public updateSurface(surfaceId: string, updater: (surface: UISurface) => void): void {
+        this.mutateDocument(document => {
+            const surface = document.surfaces.find(next => next.id === surfaceId);
+            if (!surface) {
+                return;
+            }
+            updater(surface);
+        });
+    }
+
     public createElement(parentId: string, type: string, layoutPatch: Partial<UILayout> = {}): UIElement {
         const definition = elementTypeRegistry.get(type);
         if (!definition) {
@@ -424,7 +555,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     private getProjectDesignSize(): UISurfaceDesignSize {
         const projectService = this.getContext().services.get<ProjectService>(Services.Project);
         const projectConfig = projectService.getProjectConfig();
-        return projectConfig.metadata?.resolution ?? DEFAULT_SURFACE_SIZE;
+        return projectConfig.metadata?.resolution ?? DEFAULT_UI_SURFACE_SIZE;
     }
 
     private getDocumentPath(): string {

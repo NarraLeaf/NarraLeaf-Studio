@@ -1,4 +1,5 @@
 import { ReactNode, ComponentType, RefObject } from "react";
+import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 
 /**
  * Supported field types for property editors
@@ -13,7 +14,13 @@ export type FieldType =
     | "custom"
     | "info"
     | "thumbnail"
-    | "section";
+    | "section"
+    | "colorPicker"
+    | "colorPickerGroup"
+    | "iconButtonGroup"
+    | "dropdownGroup"
+    | "menuTrigger"
+    | "inputGroup";
 
 /**
  * Base field definition shared by all field types
@@ -78,6 +85,8 @@ export interface NumberFieldDefinition<TData = any> extends BaseFieldDefinition<
     max?: number;
     /** Step increment */
     step?: number;
+    /** Number of decimal places to format when displaying */
+    decimalPlaces?: number;
     getValue: (data: TData) => number;
     setValue: (data: TData, value: number) => void | Promise<void>;
 }
@@ -109,6 +118,98 @@ export interface SelectFieldDefinition<TData = any> extends BaseFieldDefinition<
     options: SelectOption[] | ((data: TData) => SelectOption[]);
     getValue: (data: TData) => string | number;
     setValue: (data: TData, value: string | number) => void | Promise<void>;
+}
+
+export type ColorMode = "hex" | "rgb" | "hsl";
+
+export type ColorDisplayMode = "icon" | "icon-hex";
+
+export interface ColorValue {
+    hex: string;
+    alpha?: number;
+}
+
+export interface ColorPickerFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
+    type: "colorPicker";
+    /** How the trigger displays the selected color */
+    displayMode?: ColorDisplayMode;
+    /** Allowed color modes shown in the picker */
+    colorModes?: ColorMode[];
+    getValue: (data: TData) => ColorValue;
+    setValue: (data: TData, value: ColorValue) => void | Promise<void>;
+    /** Whether opacity is editable inside the picker */
+    allowOpacity?: boolean;
+}
+
+export interface ColorPickerGroupFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
+    type: "colorPickerGroup";
+    displayMode?: ColorDisplayMode;
+    colorModes?: ColorMode[];
+    getValue: (data: TData) => ColorValue;
+    setValue: (data: TData, value: ColorValue) => void | Promise<void>;
+}
+
+export type IconButtonGroupMode = "trigger" | "multiple" | "single";
+
+export interface IconButtonGroupOption {
+    id: string;
+    icon: ReactNode;
+    label?: string;
+    disabled?: boolean;
+}
+
+export type IconButtonSelection = string | string[] | null;
+
+export interface IconButtonGroupFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
+    type: "iconButtonGroup";
+    mode?: IconButtonGroupMode;
+    options: IconButtonGroupOption[];
+    getValue: (data: TData) => IconButtonSelection;
+    setValue: (data: TData, value: IconButtonSelection) => void | Promise<void>;
+}
+
+export interface DropdownGroupItem<TData = any> {
+    id: string;
+    label?: string;
+    options: SelectOption[];
+    placeholder?: string;
+    disabled?: boolean;
+    getValue: (data: TData) => string | number | null;
+    setValue: (data: TData, value: string | number) => void | Promise<void>;
+    className?: string;
+}
+
+export interface DropdownGroupFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
+    type: "dropdownGroup";
+    dropdowns: DropdownGroupItem<TData>[];
+}
+
+export interface MenuTriggerFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
+    type: "menuTrigger";
+    menu: ContextMenuDef;
+    buttonAriaLabel?: string;
+    icon?: ReactNode;
+}
+
+export interface InputGroupItem<TData = any> {
+    id: string;
+    label?: string;
+    placeholder?: string;
+    unit?: string;
+    icon?: ReactNode;
+    type?: "text" | "number" | "search" | "tel" | "url" | "email";
+    disabled?: boolean;
+    readOnly?: boolean;
+    maxLength?: number;
+    className?: string;
+    getValue: (data: TData) => string;
+    setValue: (data: TData, value: string) => void | Promise<void>;
+}
+
+export interface InputGroupFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
+    type: "inputGroup";
+    inputs: InputGroupItem<TData>[];
+    gap?: number;
 }
 
 /**
@@ -205,7 +306,13 @@ export type FieldDefinition<TData = any> =
     | InfoFieldDefinition<TData>
     | SectionFieldDefinition<TData>
     | CustomFieldDefinition<TData>
-    | ThumbnailFieldDefinition<TData>;
+    | ThumbnailFieldDefinition<TData>
+    | ColorPickerFieldDefinition<TData>
+    | ColorPickerGroupFieldDefinition<TData>
+    | IconButtonGroupFieldDefinition<TData>
+    | DropdownGroupFieldDefinition<TData>
+    | MenuTriggerFieldDefinition<TData>
+    | InputGroupFieldDefinition<TData>;
 
 /**
  * Property editor schema definition

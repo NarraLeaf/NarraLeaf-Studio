@@ -14,3 +14,8 @@ export {
     characterPropertySchema,
 } from "./characterSchema";
 
+export {
+    type SceneEditorContext,
+    scenePropertySchema,
+} from "./sceneSchema";
+
