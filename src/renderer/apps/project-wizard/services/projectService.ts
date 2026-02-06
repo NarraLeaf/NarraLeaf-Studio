@@ -6,6 +6,19 @@ import { BaseProjectService } from "@/lib/workspace/services/core/ProjectService
 import { join } from "@shared/utils/path";
 import { WindowAppType } from "@shared/types/window";
 import { throwException } from "@shared/utils/error";
+import {
+    DEFAULT_APP_SURFACE_NAME,
+    DEFAULT_UI_DOCUMENT_NAME,
+    DEFAULT_UI_ROOT_NAME,
+    DEFAULT_UI_SURFACE_SIZE,
+} from "@shared/constants/ui-editor";
+import type {
+    UIElement,
+    UIDocument,
+    UISurface,
+    UISurfaceDesignSize,
+} from "@shared/types/ui-editor/document";
+import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
 
 /**
  * Service for handling project creation logic
@@ -47,11 +60,17 @@ export class ProjectService {
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.Editor)));
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorAssets)));
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorServices)));
+            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorUI)));
 
             // Write editor.json
             const editorConfigPath = this.resolve(basePath, ProjectNameConvention.EditorConfig);
             const editorConfig = BaseProjectService.getInitialEditorConfig();
             throwException(await BaseFileSystemService.write(editorConfigPath, JSON.stringify(editorConfig), "utf-8"));
+
+            // Write default UI document so App Surface has a default page
+            const uiDocument = createDefaultUIDocument(getDesignSizeFromResolution(projectData.resolution));
+            const uiDocumentPath = this.resolve(basePath, ProjectNameConvention.EditorUIDocument);
+            throwException(await BaseFileSystemService.write(uiDocumentPath, JSON.stringify(uiDocument, null, 2), "utf-8"));
 
             // Initialize assets metadata files for all asset types
             const assetTypes = ["image", "audio", "video", "json", "font", "other"];
@@ -119,4 +138,68 @@ export class ProjectService {
             errors
         };
     }
+}
+
+function getDesignSizeFromResolution(resolution?: string): UISurfaceDesignSize {
+    const parsed = BaseProjectService.parseResolution(resolution ?? "");
+    const width = Number.isFinite(parsed.width) ? parsed.width : DEFAULT_UI_SURFACE_SIZE.width;
+    const height = Number.isFinite(parsed.height) ? parsed.height : DEFAULT_UI_SURFACE_SIZE.height;
+    return { width, height };
+}
+
+function createDefaultUIDocument(designSize: UISurfaceDesignSize): UIDocument {
+    const now = new Date().toISOString();
+    const documentId = createId();
+    const surfaceId = createId();
+    const rootElementId = createId();
+
+    const rootElement: UIElement = {
+        id: rootElementId,
+        type: "nl.root",
+        name: DEFAULT_UI_ROOT_NAME,
+        parentId: null,
+        childrenIds: [],
+        layout: {
+            x: 0,
+            y: 0,
+            width: designSize.width,
+            height: designSize.height,
+            visible: true,
+            opacity: 1,
+        },
+    };
+
+    const surface: UISurface = {
+        id: surfaceId,
+        name: DEFAULT_APP_SURFACE_NAME,
+        host: "app",
+        kind: "appSurface",
+        designSize,
+        rootElementId,
+    };
+
+    return {
+        schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        id: documentId,
+        name: DEFAULT_UI_DOCUMENT_NAME,
+        surfaces: [surface],
+        elements: {
+            [rootElementId]: rootElement,
+        },
+        meta: {
+            createdAt: now,
+            updatedAt: now,
+        },
+    };
+}
+
+function createId(): string {
+    const context = globalThis as typeof globalThis & {
+        crypto?: { randomUUID?: () => string };
+    };
+    const uuid = context.crypto?.randomUUID?.();
+    if (uuid) {
+        return uuid;
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }

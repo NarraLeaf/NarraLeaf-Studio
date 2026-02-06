@@ -84,22 +84,22 @@ Studio 中编辑的 UI 必须同时服务于：
 
 并且强调：**Page 只是“可切换 Surface”的子概念**（用于技术映射说明）。
 
-#### 1.2.3 三种 Surface（用户可挂载内容的三种方式/位置）
+#### 1.2.3 Surface 的两类形态（App 与 Stage + Stage Mount）
 
-为了降低用户心智负担，并贴合运行时真实存在的形态，本方案把 UI 拆为三类 Surface（也是 Studio 左侧栏要呈现的三组“挂载点类型”）：
+为保持简单的用户心智并贴合运行时的真实形态，Surface 仅分为两类：应用层（App）与播放器层（Stage）。Stage Surface 又提供“挂载模型（Stage Mount）”以区分不同的存在方式：
 
 1. **应用界面（App Surface）**
    - 宿主：应用层（Electron + 自有路由器）
    - 行为特征：可切换（由应用路由决定）
-2. **播放器舞台层（Player Stage Surface）**
+2. **舞台表演面（Stage Surface）**
    - 宿主：播放器层（NarraLeaf React Player）
-   - 行为特征：**常驻**（播放器表演期间始终存在）
-3. **播放器叠层界面（Player Overlay Surface）**
-   - 宿主：播放器层（NarraLeaf React Player）
-   - 行为特征：可切换（由播放器内部路由/叠层系统决定）
-   - 技术映射：在 NarraLeaf React 中通常映射为 `Page id="..."` 并由 Page Router 切换（仅在“技术映射说明”中提及）
+   - 行为特征：始终存在于舞台上，但可以通过 **Mount** 指定呈现方式（不再用独立种类）
+   - Mount 选项：
+     - `slot`：挂载在舞台内核定义的插槽（Dialog、Menu、Notification、None 等）
+     - `persistent`：常驻舞台界面（如快捷菜单）不会通过路由切换
+     - `layer`：游戏内叠层页面（如设置/存档），由 PageLayout 系统以 `surface.id` 作为映射标识，运行时可以切换
 
-> 注意：播放器内部“Slots（插槽）”不是第四类 Surface。它属于 **Player Stage Surface 的能力**：Stage 提供若干可挂载的插槽位置，用于替换/承载特定 UI 组件（例如对话框、选项等）。
+> 注意：Stage 的 “slot” 并不是独立的 Surface 类型，它属于 Stage Surface 的一组能力。Stage Surface 本身才是 Studio 中可选的挂载面；Slot + Persistent + Layer 只是描述它在舞台上的存在方式。
 
 ---
 
@@ -107,10 +107,9 @@ Studio 中编辑的 UI 必须同时服务于：
 
 ### 2.1 目标（MVP → 可扩展）
 
-- **按 Surface 分界面**：每个 Surface 是一个“运行时可挂载目标”，并按三分类组织：
+- **按 Surface 分界面**：每个 Surface 是一个“运行时可挂载目标”，并按两类组织：
   - App Surface（应用界面）
-  - Player Stage Surface（播放器舞台层 + Slots 能力）
-  - Player Overlay Surface（播放器叠层界面；在技术映射中可对应 NarraLeaf React Page）
+  - Stage Surface（播放器舞台层；通过 Mount 定义 slot / persistent / layer 的行为，layer 通过 PageLayout 以 `surface.id` 映射）
 - **编辑核心体验偏“原型工具”**：
   - 层级（Layers）是第一入口：树状结构、拖拽排序、分组/容器化
   - 属性（Inspector）可视化编辑：布局、样式、资源引用、可见性等
@@ -349,31 +348,40 @@ export type UIDocument = {
 
 export type UIHost = "app" | "player";
 
-export type UISurfaceKind =
-  | "appSurface"          // App Surface (app runtime)
-  | "playerStageSurface"  // Player Stage Surface (always-on) + slots
-  | "playerOverlaySurface"; // Player Overlay Surface (switchable; maps to Page Router)
+export type UISurfaceKind = "appSurface" | "stageSurface";
 
-export type UISurface = {
-  id: string; // uuid
+export type UIStageSlotId = "dialog" | "menu" | "notification" | "none";
+
+export type UIStageSurfaceMount =
+  | { kind: "slot"; slotId: UIStageSlotId } // Mount in a stage slot (Dialog, Notification, etc.)
+  | { kind: "persistent" } // Always on stage (e.g., quick menu)
+  | { kind: "layer" }; // Page-like overlay; runtime maps it via `surface.id` to PageLayout
+
+export type UISurface = UIAppSurface | UIStageSurface;
+
+export type UIAppSurface = {
+  id: string;
   name: string;
-  host: UIHost;
-  kind: UISurfaceKind;
-  // Design-time size, typically from project resolution (ProjectConfig.metadata.resolution if provided)
+  host: "app";
+  kind: "appSurface";
   designSize: { width: number; height: number };
   rootElementId: string;
-  // Surface-level settings
   settings?: {
     backgroundColor?: string;
-    // [EXTENSION POINT] safe area, device presets, etc.
   };
-  // Optional routing info (meaning depends on host/kind)
-  route?: {
-    // For "playerOverlaySurface": should map to NarraLeaf React <Page id="...">
-    // For "appSurface": app route id (future)
-    id?: string;
+};
+
+export type UIStageSurface = {
+  id: string;
+  name: string;
+  host: "player";
+  kind: "stageSurface";
+  designSize: { width: number; height: number };
+  rootElementId: string;
+  settings?: {
+    backgroundColor?: string;
   };
-  // Slots exist only for playerStageSurface (by convention)
+  mount: UIStageSurfaceMount;
   slots?: Record<string, UISlotDefinition>;
 };
 
@@ -939,7 +947,7 @@ export type UICommand = {
 
 > 本节用于解决你提出的核心问题：**“游戏内叠层也是页面，但有些页面只能用叠层，有些又是静态页面”** 如何在概念上不让用户迷惑。
 >
-> 方案：对用户暴露的最高层概念不是“页面”也不是“屏幕”，而是 **挂载面（Surface）**。页面只是某些 Surface 的一种表现形式（Overlay Page / App Page），而舞台固定层（Stage）不是页面。
+> 方案：对用户暴露的最高层概念不是“页面”也不是“屏幕”，而是 **挂载面（Surface）**。页面只是某些 Surface 的一种表现形式（Stage Layer / App Page），而舞台固定层（Stage）不是页面。
 
 ### 6.1 用户侧心智模型（只记住 Surface，不强迫理解 Page）
 
@@ -947,23 +955,23 @@ export type UICommand = {
 
 - **Surface（界面挂载面）**：你要把界面“挂载到哪里/以什么方式存在”。
 
-Surface 只有三类（与运行时真实形态一一对应）：
+Surface 只有两类：App 与 Stage。Stage Surface 再通过 **Mount 模式** 表示不同的存在方式：
 
 - **App Surface**：应用层界面（可切换）
-- **Player Stage Surface**：播放器舞台常驻层（始终存在，且提供 Slots）
-- **Player Overlay Surface**：播放器叠层界面（可切换）
+- **Stage Surface**：
+  - 宿主：播放器层（常驻）
+  - Mount：`slot`（对接舞台插槽，Dialog/Menu/Notification/None）、`persistent`（常驻舞台 UI）或 `layer`（页面式叠层，映射 PageLayout）
 
-“页面（Page）”一词尽量不作为用户概念使用；它只在“技术映射说明”中出现，用于解释 Player Overlay Surface 在 NarraLeaf React 中如何落地。
+“页面（Page）”一词尽量不作为用户概念使用；它只在“技术映射说明”中出现，用于解释 Stage Surface 的 `layer` Mount 在 NarraLeaf React 中如何落地。
 
 ### 6.2 Studio 左侧栏的交互心智（与你的设计思路对齐）
 
 你描述的交互可以用非常直观的方式固化成用户心智：
 
-- **左侧栏（UI / Surfaces）**
+-- **左侧栏（UI / Surfaces）**
   - 顶部：一个水平按钮组（Segmented Control），用于选择挂载点类型：
     - App Surface
-    - Player Stage Surface
-    - Player Overlay Surface
+    - Stage Surface（选中后下方会展示 Mount filter，按 slot/persistent/layer 切换列表）
   - 下方：当前类型下的“挂载内容容器”列表（可简化命名为“界面”）
     - 新建/重命名/复制/删除
     - 点击某个容器 → 打开对应的编辑区（Editor Tab）
@@ -982,8 +990,8 @@ Surface 只有三类（与运行时真实形态一一对应）：
 
 当且仅当需要解释运行时落地时，才引入“Page”术语：
 
-- **Player Overlay Surface** → NarraLeaf React：通常映射为 `<Page id="...">...</Page>`，由 Player 的 Page Router 在播放器内部切换显示
-- **Player Stage Surface** → NarraLeaf React：对应 Player 内“常驻舞台层”，不通过 Page Router 切换
+- **Stage Surface（mount.kind === "layer"）** → NarraLeaf React：映射为 `<Page id="surface-id">...</Page>`，由 Player 的 Page Router 或 PageLayout 机制按 `surface.id`/UUID 切换
+- **Stage Surface（slot / persistent）** → NarraLeaf React：对应 Player 内“常驻舞台层”，不会走 Page Router
 - **App Surface** → App Runtime：对应 Electron 应用层路由（自有路由器），与 Player Page Router 无关
 
 ### 6.4 Surface 与分辨率（设计尺寸）关系
@@ -997,7 +1005,7 @@ Surface 只有三类（与运行时真实形态一一对应）：
   - 否则给一个默认（【由你填】）
 - Surface 的 `designSize` 是“文档坐标系基准”，不随编辑器窗口变化
 
-补充：对于 Player Overlay Surface（技术上映射到 NarraLeaf React Page），运行时会对页面做缩放适配；因此编辑器中的 viewport 缩放（设计工具层）与运行时的 Player scale（表演层）是两件事，必须在模型中区分：
+补充：对于 Stage Surface 中的 `layer`（技​术上映射到 NarraLeaf React Page/PageLayout），运行时会对页面做缩放适配；因此编辑器中的 viewport 缩放（设计工具层）与运行时的 Player scale（表演层）是两件事，必须在模型中区分：
 
 - 编辑器 viewport：仅影响“你怎么查看/编辑”，不改变文档坐标
 - 运行时 player scale：影响“游戏实际显示”，由 Player 控制；UI 文档只提供设计尺寸与布局规则
@@ -1006,7 +1014,7 @@ Surface 只有三类（与运行时真实形态一一对应）：
 
 不臆造具体 UI，但从现有 IDE 布局出发，推荐两种落地方式：
 
-- 方式 1：左侧新增一个 Panel（例如 “UI”），列表管理 surfaces（新建/重命名/复制/删除；并按三分类分组）
+- 方式 1：左侧新增一个 Panel（例如 “UI”），列表管理 surfaces（新建/重命名/复制/删除；按 App / Stage 组织，Stage 下可按 Mount 维度（slot/persistent/layer）筛选）
 - 方式 2：在 UI Editor 的 tab 内提供顶部下拉/侧边栏切换（但这不符合 IDE 风格）
 
 更贴合现有体系的是方式 1：通过 `UIStore.registerPanel({ position: Left|Right, ... })` 集成。

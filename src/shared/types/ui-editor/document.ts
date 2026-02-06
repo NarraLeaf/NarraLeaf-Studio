@@ -1,4 +1,4 @@
-export const UI_DOCUMENT_SCHEMA_VERSION = 1 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 2 as const;
 
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;
@@ -22,22 +22,45 @@ export type UIDocumentMeta = {
 
 export type UIHost = "app" | "player";
 
-export type UISurfaceKind =
-    | "appSurface"
-    | "playerStageSurface"
-    | "playerOverlaySurface";
+export type UISurfaceKind = "appSurface" | "stageSurface";
 
-export type UISurface = {
+export type UIStageSlotId = "dialog" | "menu" | "notification" | "none";
+
+export type UIStageSurfaceMount =
+    | {
+          kind: "slot";
+          slotId: UIStageSlotId;
+      }
+    | {
+          kind: "persistent";
+      }
+    | {
+          kind: "layer";
+      };
+
+export type UIAppSurface = {
     id: UISurfaceId;
     name: string;
-    host: UIHost;
-    kind: UISurfaceKind;
+    host: "app";
+    kind: "appSurface";
     designSize: UISurfaceDesignSize;
     rootElementId: UIElementId;
     settings?: UISurfaceSettings;
-    route?: UISurfaceRoute;
+};
+
+export type UIStageSurface = {
+    id: UISurfaceId;
+    name: string;
+    host: "player";
+    kind: "stageSurface";
+    designSize: UISurfaceDesignSize;
+    rootElementId: UIElementId;
+    settings?: UISurfaceSettings;
+    mount: UIStageSurfaceMount;
     slots?: Record<string, UISlotDefinition>;
 };
+
+export type UISurface = UIAppSurface | UIStageSurface;
 
 export type UISurfaceDesignSize = {
     width: number;
@@ -48,12 +71,8 @@ export type UISurfaceSettings = {
     backgroundColor?: string;
 };
 
-export type UISurfaceRoute = {
-    id?: string;
-};
-
 export type UISlotDefinition = {
-    id: string;
+    id: string; 
     name: string;
     rootElementId?: UIElementId;
 };

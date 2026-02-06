@@ -552,8 +552,9 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
                 if (nextScale === currentScale) {
                     return;
                 }
-                const nextOffsetX = viewport.offsetX + pointerX * (1 / nextScale - 1 / currentScale);
-                const nextOffsetY = viewport.offsetY + pointerY * (1 / nextScale - 1 / currentScale);
+                const surfacePoint = clientToSurfaceCoords(event.clientX, event.clientY);
+                const nextOffsetX = pointerX - surfacePoint.x * nextScale;
+                const nextOffsetY = pointerY - surfacePoint.y * nextScale;
                 stateService.updateViewport({
                     scale: nextScale,
                     offsetX: nextOffsetX,

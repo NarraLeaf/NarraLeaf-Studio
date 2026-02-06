@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, memo, useRef } from "react";
+import { useState, useCallback, memo } from "react";
 import { NumberFieldDefinition } from "../types";
+import { DeferredNumberInput } from "@/lib/components/inputs/DeferredNumberInput";
 
 interface NumberFieldProps<TData> {
     field: NumberFieldDefinition<TData>;
@@ -12,38 +13,27 @@ interface NumberFieldProps<TData> {
  */
 function NumberFieldInner<TData>({ field, data, onSaving }: NumberFieldProps<TData>) {
     const currentValue = field.getValue(data);
-    const [localValue, setLocalValue] = useState(String(currentValue));
     const [isSaving, setIsSaving] = useState(false);
-    const dataRef = useRef(data);
-    dataRef.current = data;
+    const decimalPlaces = field.decimalPlaces;
+    const formatValue =
+        typeof decimalPlaces === "number"
+            ? (value: number) => value.toFixed(decimalPlaces)
+            : undefined;
 
-    useEffect(() => {
-        if (!isSaving) {
-            setLocalValue(String(currentValue));
-        }
-    }, [currentValue, isSaving]);
+    const handleSaving = useCallback(
+        (saving: boolean) => {
+            setIsSaving(saving);
+            onSaving(saving);
+        },
+        [onSaving]
+    );
 
-    const handleBlur = useCallback(async () => {
-        const current = field.getValue(dataRef.current);
-        const parsed = Number.parseFloat(localValue);
-        if (!Number.isFinite(parsed)) {
-            setLocalValue(String(current));
-            return;
-        }
-        if (parsed !== current) {
-            setIsSaving(true);
-            onSaving(true);
-            try {
-                await field.setValue(dataRef.current, parsed);
-            } catch (err) {
-                console.error(`Failed to save field ${field.id}:`, err);
-                setLocalValue(String(current));
-            } finally {
-                setIsSaving(false);
-                onSaving(false);
-            }
-        }
-    }, [field.id, field.getValue, field.setValue, localValue, onSaving]);
+    const handleCommit = useCallback(
+        (value: number) => {
+            return field.setValue(data, value);
+        },
+        [field, data]
+    );
 
     const isDisabled = field.disabled || isSaving;
     const isReadOnly = field.readOnly;
@@ -55,20 +45,20 @@ function NumberFieldInner<TData>({ field, data, onSaving }: NumberFieldProps<TDa
                     {field.label}
                 </label>
             )}
-            <input
-                type="number"
-                value={localValue}
-                onChange={(e) => setLocalValue(e.target.value)}
-                onBlur={handleBlur}
+            <DeferredNumberInput
+                value={currentValue}
+                onCommit={handleCommit}
                 min={field.min}
                 max={field.max}
                 step={field.step}
                 placeholder={field.placeholder}
                 disabled={isDisabled}
                 readOnly={isReadOnly}
-                className={`w-full px-3 py-2 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 
+                inputClassName={`w-full px-3 py-2 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 
                     focus:outline-none focus:border-primary/50 transition-colors 
                     disabled:opacity-50 disabled:cursor-not-allowed ${field.className || ""}`}
+                onSaving={handleSaving}
+                formatValue={formatValue}
             />
             {field.helpText && (
                 <p className="mt-1 text-xs text-gray-500">{field.helpText}</p>

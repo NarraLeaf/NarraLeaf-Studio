@@ -197,7 +197,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
 
     return (
         <div className="h-full flex overflow-hidden border border-white/10">
-            <div className="relative flex-1 bg-[#05060a]" onContextMenu={handleCanvasContextMenu}>
+            <div className="relative flex-1 bg-[#050f10]" onContextMenu={handleCanvasContextMenu}>
                 {/* Outline panel */}
                 <div className={outlinePanelClasses}>
                     <div className="px-3 py-2 border-b border-white/10 text-xs uppercase text-gray-500 flex items-center justify-between">

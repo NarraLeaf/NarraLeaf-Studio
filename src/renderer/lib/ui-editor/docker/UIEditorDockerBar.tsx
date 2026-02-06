@@ -7,17 +7,16 @@ import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UI
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import type { UITool } from "../editor/types";
+import { DeferredNumberInput } from "@/lib/components/inputs/DeferredNumberInput";
 
-// ─── Props ──────────────────────────────────────────────────────────────────
-
+// Props
 type UIEditorDockerBarProps = {
     surfaceId: string;
     stateService: UIEditorStateService;
     documentService: UIDocumentService;
 };
 
-// ─── Palette Mode (no selection) ────────────────────────────────────────────
-
+// Palette Mode (no selection)
 function PaletteDockerBar({
     modules,
     activeInsertType,
@@ -45,7 +44,7 @@ function PaletteDockerBar({
                         title={isActive ? `Drawing ${mod.displayName} - drag on canvas to create` : `Insert ${mod.displayName}`}
                     >
                         <Icon className="w-3.5 h-3.5" />
-                        <span>{mod.displayName}</span>
+                        {/* <span>{mod.displayName}</span> */}
                     </button>
                 );
             })}
@@ -108,19 +107,16 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
                     {item.label && (
                         <span className="text-[11px] text-gray-500 select-none">{item.label}</span>
                     )}
-                    <input
-                        type="number"
-                        className="w-16 h-7 rounded-md border border-white/10 bg-white/5 px-2 text-xs text-gray-200 outline-none transition-colors focus:border-primary hover:border-white/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    <DeferredNumberInput
                         value={item.value}
+                        onCommit={item.onChange}
                         min={item.min}
                         max={item.max}
                         step={item.step}
-                        onChange={(e) => {
-                            const v = Number(e.target.value);
-                            if (Number.isFinite(v)) {
-                                item.onChange(v);
-                            }
-                        }}
+                        disabled={item.disabled}
+                        readOnly={item.readOnly}
+                        inputClassName="w-16 h-7 rounded-md border border-white/10 bg-white/5 px-2 text-xs text-gray-200 outline-none transition-colors focus:border-primary hover:border-white/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        inputProps={{ title: item.tooltip }}
                     />
                 </div>
             );
