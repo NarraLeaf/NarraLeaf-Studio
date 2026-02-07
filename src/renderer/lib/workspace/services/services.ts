@@ -149,6 +149,7 @@ interface IUIDocumentService extends IService {
     isDirty(): boolean;
     getRevision(): number;
     updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>): void;
+    updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>): void;
     updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void;
     reorderChildren(parentId: string, orderedChildIds: string[]): void;
     createSurface(input: {

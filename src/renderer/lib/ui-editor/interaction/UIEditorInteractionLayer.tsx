@@ -211,7 +211,7 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
     const outlineCache = useRef<WeakMap<HTMLElement, { outline?: string; outlineOffset?: string }>>(new WeakMap());
     const layoutCache = useRef<Map<string, UIElement["layout"]>>(new Map());
     const dragDeltaCache = useRef<Map<string, [number, number]>>(new Map());
-    const resizeCache = useRef<Map<string, { width?: number; height?: number }>>(new Map());
+    const resizeCache = useRef<Map<string, { width?: number; height?: number; x?: number; y?: number }>>(new Map());
     const resizeStartCache = useRef<Map<string, { clientX: number; clientY: number; layout: UILayout; direction: number[] }>>(new Map());
     const rotateCache = useRef<Map<string, number>>(new Map());
     const documentService = UIDocumentService.getInstance();
@@ -271,7 +271,137 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
     }, [selection, surfaceElement, surfaceId]);
 
     const selectionData = isUIElementSelection(selection) ? selection.data : null;
-    const primaryId = selectionData?.primaryId ?? selectionData?.elementIds?.[selectionData.elementIds.length - 1];
+    const selectionIds = selectionData?.elementIds ?? [];
+    const primaryId = selectionData?.primaryId ?? selectionIds[selectionIds.length - 1];
+    const resizeGroupState = useRef<{
+        bounds: Rect2D;
+        offsets: Map<string, { x: number; y: number }>;
+        center: { x: number; y: number };
+    } | null>(null);
+    const rotateGroupState = useRef<{
+        center: { x: number; y: number };
+        offsets: Map<string, { centerX: number; centerY: number }>;
+    } | null>(null);
+    const transformLocks = useRef(0);
+    const [selectionEnabled, setSelectionEnabled] = useState(true);
+
+    const beginTransform = () => {
+        transformLocks.current += 1;
+        if (transformLocks.current === 1) {
+            setSelectionEnabled(false);
+        }
+    };
+
+    const endTransform = () => {
+        transformLocks.current = Math.max(0, transformLocks.current - 1);
+        if (transformLocks.current === 0) {
+            setSelectionEnabled(true);
+        }
+    };
+
+    const cacheLayoutForElement = (elementId: string) => {
+        if (layoutCache.current.has(elementId)) {
+            return layoutCache.current.get(elementId);
+        }
+        const document = stateService.getDocument();
+        const element = document.elements[elementId];
+        if (!element) {
+            return null;
+        }
+        const normalized = ensureNormalizedLayout(elementId, element.layout, documentService);
+        layoutCache.current.set(elementId, normalized);
+        return normalized;
+    };
+
+    const ensureSelectionLayoutsCached = () => {
+        if (selectionIds.length === 0) {
+            return;
+        }
+        selectionIds.forEach(elementId => {
+            cacheLayoutForElement(elementId);
+        });
+    };
+
+    const computeSelectionBounds = (): Rect2D | null => {
+        if (selectionIds.length === 0) {
+            return null;
+        }
+        const document = stateService.getDocument();
+        let minX = Number.POSITIVE_INFINITY;
+        let minY = Number.POSITIVE_INFINITY;
+        let maxX = Number.NEGATIVE_INFINITY;
+        let maxY = Number.NEGATIVE_INFINITY;
+        for (const elementId of selectionIds) {
+            const layout = layoutCache.current.get(elementId);
+            if (!layout) {
+                const element = document.elements[elementId];
+                if (!element) {
+                    continue;
+                }
+                layoutCache.current.set(elementId, element.layout);
+                minX = Math.min(minX, element.layout.x);
+                minY = Math.min(minY, element.layout.y);
+                maxX = Math.max(maxX, element.layout.x + Math.abs(element.layout.width));
+                maxY = Math.max(maxY, element.layout.y + Math.abs(element.layout.height));
+                continue;
+            }
+            minX = Math.min(minX, layout.x);
+            minY = Math.min(minY, layout.y);
+            maxX = Math.max(maxX, layout.x + Math.abs(layout.width));
+            maxY = Math.max(maxY, layout.y + Math.abs(layout.height));
+        }
+        if (minX === Number.POSITIVE_INFINITY || minY === Number.POSITIVE_INFINITY) {
+            return null;
+        }
+        return {
+            x: minX,
+            y: minY,
+            width: Math.max(0, maxX - minX),
+            height: Math.max(0, maxY - minY),
+        };
+    };
+
+    const computeBoundsCenter = (bounds: Rect2D) => ({
+        x: bounds.x + bounds.width / 2,
+        y: bounds.y + bounds.height / 2,
+    });
+
+    const buildResizeGroupState = (bounds: Rect2D) => {
+        const offsets = new Map<string, { x: number; y: number }>();
+        selectionIds.forEach(elementId => {
+            const layout = layoutCache.current.get(elementId);
+            if (!layout) {
+                return;
+            }
+            offsets.set(elementId, {
+                x: layout.x - bounds.x,
+                y: layout.y - bounds.y,
+            });
+        });
+        return {
+            bounds,
+            center: computeBoundsCenter(bounds),
+            offsets,
+        };
+    };
+
+    const buildRotateGroupState = (bounds: Rect2D) => {
+        const center = computeBoundsCenter(bounds);
+        const offsets = new Map<string, { centerX: number; centerY: number }>();
+        selectionIds.forEach(elementId => {
+            const layout = layoutCache.current.get(elementId);
+            if (!layout) {
+                return;
+            }
+            const elementCenterX = layout.x + layout.width / 2;
+            const elementCenterY = layout.y + layout.height / 2;
+            offsets.set(elementId, {
+                centerX: elementCenterX - center.x,
+                centerY: elementCenterY - center.y,
+            });
+        });
+        return { center, offsets };
+    };
 
     useEffect(() => {
         previousSelectedTargets.current.forEach(target => {
@@ -304,6 +434,11 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
     }, [selectedTargets, primaryId, showOutlines]);
 
     useEffect(() => {
+        resizeGroupState.current = null;
+        rotateGroupState.current = null;
+    }, [selectionIds.length]);
+
+    useEffect(() => {
         // Selection, viewport zoom/pan, or showOutlines can change the target rect in container space.
         scheduleMoveableRectUpdate();
     }, [
@@ -324,11 +459,14 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
     }, [documentService, scheduleMoveableRectUpdate]);
 
     const handleSelectEnd = (e: any) => {
+        if (!surfaceElement) {
+            return;
+        }
         const targets = e.selected as HTMLElement[];
         const targetIds = targets
             .map(target => target.dataset.uiElementId)
             .filter(Boolean) as string[];
-        if (!surfaceElement) {
+        if (targetIds.length === 0) {
             return;
         }
         stateService.setUIElementSelection({
@@ -338,6 +476,37 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
             primaryId: targetIds[targetIds.length - 1],
         });
     };
+
+    const isMoveableControlTarget = useCallback((target: Element | null | undefined) => {
+        return Boolean(
+            target?.closest(
+                ".moveable, .moveable-control, .moveable-line, .moveable-rotation, .moveable-rotation-handle, .moveable-area",
+            ),
+        );
+    }, []);
+
+    const isTargetInsideSelection = useCallback(
+        (target: Element | null | undefined) => {
+            if (!target) {
+                return false;
+            }
+            return selectedTargets.some(selected => selected.contains(target));
+        },
+        [selectedTargets],
+    );
+
+    const handleSelectionDragStart = useCallback(
+        (e: any) => {
+            const eventTarget = e.inputEvent?.target as Element | null;
+            if (isMoveableControlTarget(eventTarget)) {
+                return false;
+            }
+            if (isTargetInsideSelection(eventTarget)) {
+                return false;
+            }
+        },
+        [isMoveableControlTarget, isTargetInsideSelection],
+    );
     const panState = useRef<{
         active: boolean;
         startX: number;
@@ -608,69 +777,128 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         return () => document.removeEventListener("keydown", handleKeyDown);
     }, [selectionData, surfaceId, documentService, stateService]);
 
-    const handleDragStart = (e: OnDragStart) => {
-        const elementId = e.target.dataset.uiElementId;
-        if (!elementId) {
-            return;
-        }
-        const element = stateService.getDocument().elements[elementId];
-        if (element) {
-            const normalized = ensureNormalizedLayout(elementId, element.layout, documentService);
-            layoutCache.current.set(elementId, normalized);
-        }
+    const handleDragStart = (_e: OnDragStart) => {
+        ensureSelectionLayoutsCached();
+        selectionIds.forEach(elementId => {
+            cacheLayoutForElement(elementId);
+        });
+        beginTransform();
     };
 
     const handleDrag = (e: OnDrag) => {
         const [translateX, translateY] = e.beforeTranslate;
-        const elementId = e.target.dataset.uiElementId;
-        if (elementId) {
+        selectedTargets.forEach(target => {
+            const elementId = target.dataset.uiElementId;
+            if (!elementId) {
+                return;
+            }
             const layout = layoutCache.current.get(elementId);
             const rotation = layout?.rotation;
-            e.target.style.transform = buildTransform(translateX, translateY, rotation);
+            target.style.transform = buildTransform(translateX, translateY, rotation);
             dragDeltaCache.current.set(elementId, [translateX, translateY]);
-        }
+        });
     };
 
-    const handleDragEnd = (e: OnDragEnd) => {
-        const elementId = e.target.dataset.uiElementId;
-        if (!elementId) {
-            return;
-        }
-        const initialLayout = layoutCache.current.get(elementId);
-        if (!initialLayout) {
-            return;
-        }
-        const [translateX, translateY] = dragDeltaCache.current.get(elementId) ?? [0, 0];
-        documentService.updateElementLayout(elementId, {
-            x: initialLayout.x + translateX,
-            y: initialLayout.y + translateY,
+    const handleDragEnd = (_e: OnDragEnd) => {
+        const patches: Record<string, Partial<UILayout>> = {};
+        selectedTargets.forEach(target => {
+            const elementId = target.dataset.uiElementId;
+            if (!elementId) {
+                return;
+            }
+            const initialLayout = layoutCache.current.get(elementId);
+            if (!initialLayout) {
+                return;
+            }
+            const [translateX, translateY] = dragDeltaCache.current.get(elementId) ?? [0, 0];
+            if (translateX === 0 && translateY === 0) {
+                applyFinalTransform(target, initialLayout.rotation);
+                layoutCache.current.delete(elementId);
+                dragDeltaCache.current.delete(elementId);
+                return;
+            }
+            patches[elementId] = {
+                x: initialLayout.x + translateX,
+                y: initialLayout.y + translateY,
+            };
+            applyFinalTransform(target, initialLayout.rotation);
+            layoutCache.current.delete(elementId);
+            dragDeltaCache.current.delete(elementId);
         });
-        applyFinalTransform(e.target, initialLayout.rotation);
-        layoutCache.current.delete(elementId);
-        dragDeltaCache.current.delete(elementId);
+        if (Object.keys(patches).length > 0) {
+            documentService.updateElementLayouts(patches);
+        }
         scheduleMoveableRectUpdate();
+        endTransform();
     };
 
     const handleResizeStart = (e: OnResizeStart) => {
-        const elementId = e.target.dataset.uiElementId;
-        if (!elementId) {
-            return;
+        ensureSelectionLayoutsCached();
+        const bounds = computeSelectionBounds();
+        if (bounds && selectionIds.length > 1) {
+            resizeGroupState.current = buildResizeGroupState(bounds);
+        } else {
+            resizeGroupState.current = null;
         }
-        const element = stateService.getDocument().elements[elementId];
-        if (element) {
-            const normalized = ensureNormalizedLayout(elementId, element.layout, documentService);
-            layoutCache.current.set(elementId, normalized);
+        selectionIds.forEach(elementId => {
+            const layout = cacheLayoutForElement(elementId);
+            if (!layout) {
+                return;
+            }
             resizeStartCache.current.set(elementId, {
                 clientX: e.clientX,
                 clientY: e.clientY,
-                layout: normalized,
+                layout,
                 direction: e.direction ?? [0, 0],
             });
-        }
+        });
         e.setMin?.([-Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER]);
+        beginTransform();
     };
 
     const handleResize = (e: OnResize) => {
+        const groupState = resizeGroupState.current;
+        if (groupState && selectionIds.length > 1) {
+            const preview = computeResizePreview(e, {
+                clientX: e.clientX,
+                clientY: e.clientY,
+                layout: groupState.bounds,
+                direction: e.direction ?? [0, 0],
+            }, viewport.scale);
+            const newGroupX = groupState.bounds.x + preview.translateX;
+            const newGroupY = groupState.bounds.y + preview.translateY;
+            const scaleX = groupState.bounds.width ? preview.width / groupState.bounds.width : 1;
+            const scaleY = groupState.bounds.height ? preview.height / groupState.bounds.height : 1;
+            selectedTargets.forEach(target => {
+                const elementId = target.dataset.uiElementId;
+                if (!elementId) {
+                    return;
+                }
+                const initialLayout = layoutCache.current.get(elementId);
+                if (!initialLayout) {
+                    return;
+                }
+                const offset = groupState.offsets.get(elementId);
+                const relativeX = groupState.bounds.width ? (offset?.x ?? 0) / groupState.bounds.width : 0;
+                const relativeY = groupState.bounds.height ? (offset?.y ?? 0) / groupState.bounds.height : 0;
+                const newX = newGroupX + relativeX * preview.width;
+                const newY = newGroupY + relativeY * preview.height;
+                const newWidth = Math.max(1, (initialLayout.width ?? 0) * scaleX);
+                const newHeight = Math.max(1, (initialLayout.height ?? 0) * scaleY);
+                target.style.width = `${newWidth}px`;
+                target.style.height = `${newHeight}px`;
+                target.style.transform = buildTransform(preview.translateX, preview.translateY, initialLayout.rotation);
+                resizeCache.current.set(elementId, {
+                    width: newWidth,
+                    height: newHeight,
+                    x: newX,
+                    y: newY,
+                });
+                dragDeltaCache.current.set(elementId, [preview.translateX, preview.translateY]);
+            });
+            return;
+        }
+
         const elementId = e.target.dataset.uiElementId;
         if (!elementId) {
             return;
@@ -690,108 +918,165 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         } = computeResizePreview(e, startData, viewport.scale);
         e.target.style.width = `${width}px`;
         e.target.style.height = `${height}px`;
-        resizeCache.current.set(elementId, { width: signedWidth, height: signedHeight });
+        resizeCache.current.set(elementId, { width: signedWidth, height: signedHeight, x: initialLayout.x + translateX, y: initialLayout.y + translateY });
         const rotation = initialLayout?.rotation;
         e.target.style.transform = buildTransform(translateX, translateY, rotation);
         dragDeltaCache.current.set(elementId, [translateX, translateY]);
     };
 
-    const handleResizeEnd = (e: OnResizeEnd) => {
-        const elementId = e.target.dataset.uiElementId;
-        if (!elementId) {
-            return;
-        }
-        const patch: Partial<UILayout> = {};
-        const cached = resizeCache.current.get(elementId);
-        if (cached?.width !== undefined) {
-            patch.width = Math.abs(cached.width);
-        }
-        if (cached?.height !== undefined) {
-            patch.height = Math.abs(cached.height);
-        }
-        const initialLayout = layoutCache.current.get(elementId);
-        const [translateX, translateY] = dragDeltaCache.current.get(elementId) ?? [0, 0];
-        if (initialLayout) {
-            patch.x = initialLayout.x + translateX;
-            patch.y = initialLayout.y + translateY;
-        }
-        if (Object.keys(patch).length > 0) {
-            documentService.updateElementLayout(elementId, patch);
-        }
-        layoutCache.current.delete(elementId);
-        resizeCache.current.delete(elementId);
-        resizeStartCache.current.delete(elementId);
-        dragDeltaCache.current.delete(elementId);
-        applyFinalTransform(e.target, initialLayout?.rotation);
-        if (cached) {
-            // Set final dimensions explicitly instead of clearing to "".
-            // React skips DOM updates for style properties whose vdom value
-            // hasn't changed between renders, so clearing an axis that didn't
-            // change during the resize would leave it without a value and
-            // cause the element to visually collapse on that axis.
-            const finalWidth = patch.width ?? (initialLayout ? Math.abs(initialLayout.width) : 0);
-            const finalHeight = patch.height ?? (initialLayout ? Math.abs(initialLayout.height) : 0);
-            e.target.style.width = `${finalWidth}px`;
-            e.target.style.height = `${finalHeight}px`;
-        } else {
-            e.target.style.width = "";
-            e.target.style.height = "";
-        }
-        // Set final position explicitly to prevent a flash when the CSS
-        // translate is cleared but React hasn't re-rendered with the new
-        // layout yet.  This is especially important for rotated elements
-        // where even a single-axis resize changes both x and y.
-        if (patch.x !== undefined) {
-            e.target.style.left = `${patch.x}px`;
-        }
-        if (patch.y !== undefined) {
-            e.target.style.top = `${patch.y}px`;
+    const handleResizeEnd = (_e: OnResizeEnd) => {
+        const patches: Record<string, Partial<UILayout>> = {};
+        selectedTargets.forEach(target => {
+            const elementId = target.dataset.uiElementId;
+            if (!elementId) {
+                return;
+            }
+            const cached = resizeCache.current.get(elementId);
+            const initialLayout = layoutCache.current.get(elementId);
+            const patch: Partial<UILayout> = {};
+            if (cached?.width !== undefined) {
+                patch.width = Math.abs(cached.width);
+            }
+            if (cached?.height !== undefined) {
+                patch.height = Math.abs(cached.height);
+            }
+            if (cached?.x !== undefined) {
+                patch.x = cached.x;
+            } else if (initialLayout) {
+                patch.x = initialLayout.x;
+            }
+            if (cached?.y !== undefined) {
+                patch.y = cached.y;
+            } else if (initialLayout) {
+                patch.y = initialLayout.y;
+            }
+            const [translateX, translateY] = dragDeltaCache.current.get(elementId) ?? [0, 0];
+            if (initialLayout && (translateX !== 0 || translateY !== 0)) {
+                patch.x = initialLayout.x + translateX;
+                patch.y = initialLayout.y + translateY;
+            }
+            if (Object.keys(patch).length > 0) {
+                patches[elementId] = patch;
+            }
+            layoutCache.current.delete(elementId);
+            resizeCache.current.delete(elementId);
+            resizeStartCache.current.delete(elementId);
+            dragDeltaCache.current.delete(elementId);
+            applyFinalTransform(target, initialLayout?.rotation);
+            if (patch.width !== undefined || patch.height !== undefined) {
+                const finalWidth = patch.width ?? (initialLayout ? Math.abs(initialLayout.width) : 0);
+                const finalHeight = patch.height ?? (initialLayout ? Math.abs(initialLayout.height) : 0);
+                target.style.width = `${finalWidth}px`;
+                target.style.height = `${finalHeight}px`;
+            } else {
+                target.style.width = "";
+                target.style.height = "";
+            }
+            if (patch.x !== undefined) {
+                target.style.left = `${patch.x}px`;
+            }
+            if (patch.y !== undefined) {
+                target.style.top = `${patch.y}px`;
+            }
+        });
+        if (Object.keys(patches).length > 0) {
+            documentService.updateElementLayouts(patches);
         }
         scheduleMoveableRectUpdate();
+        endTransform();
     };
 
-    const handleRotateStart = (e: OnRotateStart) => {
-        const elementId = e.target.dataset.uiElementId;
-        if (!elementId) {
-            return;
+    const handleRotateStart = (_e: OnRotateStart) => {
+        ensureSelectionLayoutsCached();
+        const bounds = computeSelectionBounds();
+        if (bounds && selectionIds.length > 1) {
+            rotateGroupState.current = buildRotateGroupState(bounds);
+        } else {
+            rotateGroupState.current = null;
         }
-        const element = stateService.getDocument().elements[elementId];
-        if (element) {
-            const normalized = ensureNormalizedLayout(elementId, element.layout, documentService);
-            layoutCache.current.set(elementId, normalized);
-        }
+        selectionIds.forEach(elementId => {
+            cacheLayoutForElement(elementId);
+        });
+        beginTransform();
     };
 
     const handleRotate = (e: OnRotate) => {
-        const elementId = e.target.dataset.uiElementId;
         const rotation = Number.isFinite(e.beforeRotate) ? e.beforeRotate : e.rotate;
+        const groupState = rotateGroupState.current;
+        if (groupState && selectionIds.length > 1 && Number.isFinite(rotation)) {
+            const radians = (rotation * Math.PI) / 180;
+            const cos = Math.cos(radians);
+            const sin = Math.sin(radians);
+            selectedTargets.forEach(target => {
+                const elementId = target.dataset.uiElementId;
+                if (!elementId) {
+                    return;
+                }
+                const layout = layoutCache.current.get(elementId);
+                const offsets = groupState.offsets.get(elementId);
+                if (!layout || !offsets) {
+                    return;
+                }
+                const rotatedX = offsets.centerX * cos - offsets.centerY * sin;
+                const rotatedY = offsets.centerX * sin + offsets.centerY * cos;
+                const centerX = groupState.center.x + rotatedX;
+                const centerY = groupState.center.y + rotatedY;
+                const newX = centerX - layout.width / 2;
+                const newY = centerY - layout.height / 2;
+                target.style.left = `${newX}px`;
+                target.style.top = `${newY}px`;
+                target.style.transform = buildTransform(0, 0, rotation);
+                rotateCache.current.set(elementId, rotation);
+                dragDeltaCache.current.set(elementId, [newX - layout.x, newY - layout.y]);
+            });
+            return;
+        }
+        const elementId = e.target.dataset.uiElementId;
+        const fallbackRotation = Number.isFinite(rotation) ? rotation : 0;
         if (!elementId) {
             e.target.style.transform = e.transform;
             return;
         }
         if (Number.isFinite(rotation)) {
-            rotateCache.current.set(elementId, rotation);
+            rotateCache.current.set(elementId, fallbackRotation);
         }
         const layout = layoutCache.current.get(elementId);
         const translateX = e.drag?.beforeTranslate?.[0] ?? 0;
         const translateY = e.drag?.beforeTranslate?.[1] ?? 0;
-        e.target.style.transform = buildTransform(translateX, translateY, rotation);
+        e.target.style.transform = buildTransform(translateX, translateY, fallbackRotation);
     };
 
-    const handleRotateEnd = (e: OnRotateEnd) => {
-        const elementId = e.target.dataset.uiElementId;
-        if (!elementId) {
-            return;
+    const handleRotateEnd = (_e: OnRotateEnd) => {
+        const patches: Record<string, Partial<UILayout>> = {};
+        selectedTargets.forEach(target => {
+            const elementId = target.dataset.uiElementId;
+            if (!elementId) {
+                return;
+            }
+            const rotation = rotateCache.current.get(elementId);
+            const layout = layoutCache.current.get(elementId);
+            const [translateX, translateY] = dragDeltaCache.current.get(elementId) ?? [0, 0];
+            const patch: Partial<UILayout> = {};
+            if (rotation !== undefined) {
+                patch.rotation = rotation;
+            }
+            if (layout) {
+                patch.x = layout.x + translateX;
+                patch.y = layout.y + translateY;
+            }
+            if (Object.keys(patch).length > 0) {
+                patches[elementId] = patch;
+            }
+            layoutCache.current.delete(elementId);
+            rotateCache.current.delete(elementId);
+            dragDeltaCache.current.delete(elementId);
+            applyFinalTransform(target, rotation);
+        });
+        if (Object.keys(patches).length > 0) {
+            documentService.updateElementLayouts(patches);
         }
-        const rotation = rotateCache.current.get(elementId);
-        if (rotation !== undefined) {
-            documentService.updateElementLayout(elementId, { rotation });
-        }
-        const currentLayout = layoutCache.current.get(elementId);
-        layoutCache.current.delete(elementId);
-        rotateCache.current.delete(elementId);
-        applyFinalTransform(e.target, rotation);
         scheduleMoveableRectUpdate();
+        endTransform();
     };
 
     return (
@@ -801,13 +1086,14 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
                     <Selecto
                         container={surfaceElement ?? undefined}
                         dragContainer={surfaceElement ?? undefined}
-                        selectableTargets={[SELECTABLE_TARGET]}
+                        selectableTargets={selectionEnabled ? [SELECTABLE_TARGET] : []}
                         hitRate={0}
                         selectByClick={true}
                         selectFromInside={false}
                         toggleContinueSelect={["shift"]}
                         ratio={0}
                         onSelectEnd={handleSelectEnd}
+                        onDragStart={handleSelectionDragStart}
                     />
                     <Moveable
                         ref={moveableRef}

@@ -186,6 +186,26 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    public updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>): void {
+        const elementIds = Object.keys(layoutPatches);
+        if (elementIds.length === 0) {
+            return;
+        }
+        this.mutateDocument(document => {
+            elementIds.forEach(elementId => {
+                const element = document.elements[elementId];
+                if (!element) {
+                    return;
+                }
+                const patch = layoutPatches[elementId];
+                element.layout = {
+                    ...element.layout,
+                    ...patch,
+                };
+            });
+        });
+    }
+
     public updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void {
         this.mutateDocument(document => {
             const element = document.elements[elementId];

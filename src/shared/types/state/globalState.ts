@@ -6,6 +6,37 @@ export interface GlobalStateStructure {
     app: {
         showHint: boolean;
         recentProjects: RecentlyOpenedProject[];
+        language: "en" | "zh";
+        notificationsEnabled: boolean;
+        autoCheckUpdates: boolean;
+    };
+    ui: {
+        themeMode: "dark" | "light" | "auto";
+        accentColor: string;
+        compactMode: boolean;
+        reduceMotion: boolean;
+    };
+    editor: {
+        fontSize: number;
+        fontFamily: "inter" | "system" | "monospace";
+        lineNumbers: boolean;
+        softWrap: boolean;
+    };
+    workspace: {
+        restoreLastWorkspace: boolean;
+        confirmOnClose: boolean;
+        recentProjectsLimit: number;
+        autoSave: boolean;
+    };
+    sync: {
+        autoBackup: boolean;
+        backupIntervalMinutes: number;
+        backupPath: string;
+    };
+    advanced: {
+        enableTelemetry: boolean;
+        enableDevTools: boolean;
+        experimentalFeatures: boolean;
     };
 }
 
@@ -24,4 +55,25 @@ export type GlobalState = PersistentState<GlobalStateType>;
 export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "app.showHint": true,
     "app.recentProjects": [],
+    "app.language": "en",
+    "app.notificationsEnabled": true,
+    "app.autoCheckUpdates": true,
+    "ui.themeMode": "auto",
+    "ui.accentColor": "blue",
+    "ui.compactMode": false,
+    "ui.reduceMotion": false,
+    "editor.fontSize": 14,
+    "editor.fontFamily": "inter",
+    "editor.lineNumbers": true,
+    "editor.softWrap": false,
+    "workspace.restoreLastWorkspace": true,
+    "workspace.confirmOnClose": true,
+    "workspace.recentProjectsLimit": 10,
+    "workspace.autoSave": true,
+    "sync.autoBackup": true,
+    "sync.backupIntervalMinutes": 30,
+    "sync.backupPath": "",
+    "advanced.enableTelemetry": false,
+    "advanced.enableDevTools": false,
+    "advanced.experimentalFeatures": false,
 };

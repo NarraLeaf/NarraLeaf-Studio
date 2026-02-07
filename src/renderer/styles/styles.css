@@ -182,3 +182,13 @@ input[type="radio"]:focus {
         border-style: solid !important;
     }
 }
+
+/* Adjust react-selecto selection rectangle to use the primary theme tint. */
+.selecto-area {
+    border: 1px solid #40a8c4;
+    background-color: rgba(64, 168, 196, 0.16);
+}
+
+.selecto-line {
+    background-color: rgba(64, 168, 196, 0.7);
+}

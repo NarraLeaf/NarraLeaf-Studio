@@ -13,11 +13,12 @@ export class AppSettingsWindowLaunchHandler extends IPCHandler<IPCEventType.appL
             parent: window.win,
             minWidth: 800,
             minHeight: 500,
-            width: 800,
-            height: 500,
+            width: 1200,
+            height: 800,
             center: true,
             x: undefined,
             y: undefined,
+            backgroundColor: "#0f1115",
         });
 
         return this.success(void 0);
