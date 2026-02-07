@@ -345,4 +345,6 @@ export const RectangleWidgetModule: UIWidgetModule = {
     createInspector: createRectangleInspector,
 
     createDockerBarItems: createRectangleDockerBarItems,
+
+    createMultiSelectDockerBarItems: createRectangleDockerBarItems,
 };

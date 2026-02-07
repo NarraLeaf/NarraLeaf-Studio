@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode, InputHTMLAttributes } from "react";
 import type { UIElement, UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { UIHostAdapter } from "../runtime/types";
 import type { PropertyEditorSchema } from "@/apps/workspace/modules/properties/framework/types";
@@ -80,6 +80,7 @@ export type DockerBarNumberInput = {
     disabled?: boolean;
     readOnly?: boolean;
     onChange: (value: number) => void;
+    inputProps?: InputHTMLAttributes<HTMLInputElement>;
 };
 
 export type DockerBarSeparator = {
@@ -140,4 +141,10 @@ export interface UIWidgetModule {
      * Return `undefined` or empty array for no element-specific docker items.
      */
     createDockerBarItems?(context: DockerBarContext): DockerBarItem[];
+
+    /**
+     * Returns docker bar items used when multiple elements of this type are selected.
+     * The final multi-select docker bar shows only the items whose `id` exists for every selected module.
+     */
+    createMultiSelectDockerBarItems?(context: DockerBarContext): DockerBarItem[];
 }
