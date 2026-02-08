@@ -30,9 +30,15 @@ export function DropdownGroupField<TData>({
         [data, field, onSaving]
     );
 
+    const gap = field.gap ?? 8;
+    const shouldWrap = field.wrap ?? true;
+
     return (
         <FieldLayout field={field}>
-            <div className="flex gap-2 flex-wrap">
+            <div
+                className={`flex ${shouldWrap ? "flex-wrap" : "flex-nowrap"}`}
+                style={{ gap: `${gap}px` }}
+            >
                 {field.dropdowns.map((dropdown) => {
                     const currentValue = dropdown.getValue(data);
                     return (

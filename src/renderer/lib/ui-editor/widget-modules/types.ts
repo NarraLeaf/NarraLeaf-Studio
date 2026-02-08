@@ -80,6 +80,7 @@ export type DockerBarNumberInput = {
     disabled?: boolean;
     readOnly?: boolean;
     onChange: (value: number) => void;
+    placeholder?: string;
     inputProps?: InputHTMLAttributes<HTMLInputElement>;
 };
 

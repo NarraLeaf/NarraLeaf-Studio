@@ -1,5 +1,14 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Settings } from "lucide-react";
+import {
+    ArrowLeftRight,
+    ArrowUpDown,
+    Droplets,
+    Eye,
+    EyeOff,
+    MoveHorizontal,
+    MoveVertical,
+    Settings,
+} from "lucide-react";
 import { PanelComponentProps } from "../types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
@@ -10,6 +19,7 @@ import { AssetData } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { PropertyEditor } from "./framework";
+import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import {
     getAssetPropertySchema,
     AssetEditorContext,
@@ -23,7 +33,7 @@ import type { UIElement } from "@shared/types/ui-editor/document";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import { createPropertyEditorSchema, defineField } from "./framework";
-import type { PropertyEditorSchema } from "./framework/types";
+import type { InlineRowItemContext, PropertyEditorSchema } from "./framework/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { getElementInspector } from "../ui-editor/inspector/registry";
 import type { UIInspectorData } from "../ui-editor/inspector/registry";
@@ -37,83 +47,213 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
         });
     };
 
+    const toNumber = (value: string | number) => {
+        const next = Number(value);
+        return Number.isFinite(next) ? next : null;
+    };
+
+    const updateDimension = (key: "width" | "height", value: string | number) => {
+        const next = toNumber(value);
+        if (next === null) return;
+        elements.forEach(element => {
+            const patch: Partial<UIElement["layout"]> = {
+                [key]: Math.abs(next),
+            };
+            if (key === "width") {
+                patch.x = next < 0 ? element.layout.x + next : element.layout.x;
+            }
+            if (key === "height") {
+                patch.y = next < 0 ? element.layout.y + next : element.layout.y;
+            }
+            documentService.updateElementLayout(element.id, patch);
+        });
+    };
+
+    const getPrimaryLayout = (data: UIInspectorData) => data.elements[0]?.layout;
+
     return createPropertyEditorSchema<UIInspectorData>({
         id: `ui-layout-${primaryId}`,
         title: "Layout",
         fields: [
             defineField<UIInspectorData, any>({
-                id: "layout.x",
-                type: "number",
-                label: "X",
-                getValue: (data: UIInspectorData) => data.elements[0]?.layout.x ?? 0,
-                setValue: (_data: UIInspectorData, value: number) => applyLayoutPatch({ x: Number(value) }),
+                id: "layout.position",
+                type: "inputGroup",
+                label: "Position",
+                gap: 0,
+                wrap: false,
+                inputs: [
+                    {
+                        id: "layout.x",
+                        label: "X",
+                        icon: <MoveHorizontal className="w-4 h-4 text-gray-400" />,
+                        getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.x ?? 0),
+                        setValue: (_data: UIInspectorData, raw: string) => {
+                            const number = toNumber(raw);
+                            if (number === null) {
+                                return;
+                            }
+                            applyLayoutPatch({ x: number });
+                        },
+                    },
+                    {
+                        id: "layout.y",
+                        label: "Y",
+                        icon: <MoveVertical className="w-4 h-4 text-gray-400" />,
+                        getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.y ?? 0),
+                        setValue: (_data: UIInspectorData, raw: string) => {
+                            const number = toNumber(raw);
+                            if (number === null) {
+                                return;
+                            }
+                            applyLayoutPatch({ y: number });
+                        },
+                    },
+                ],
                 order: 0,
             }),
             defineField<UIInspectorData, any>({
-                id: "layout.y",
-                type: "number",
-                label: "Y",
-                getValue: (data: UIInspectorData) => data.elements[0]?.layout.y ?? 0,
-                setValue: (_data: UIInspectorData, value: number) => applyLayoutPatch({ y: Number(value) }),
+                id: "layout.size",
+                type: "inputGroup",
+                label: "Size",
+                gap: 0,
+                wrap: false,
+                inputs: [
+                    {
+                        id: "layout.width",
+                        label: "W",
+                        icon: <ArrowLeftRight className="w-4 h-4 text-gray-400" />,
+                        getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.width ?? 0),
+                        setValue: (_data: UIInspectorData, raw: string) => updateDimension("width", raw),
+                    },
+                    {
+                        id: "layout.height",
+                        label: "H",
+                        icon: <ArrowUpDown className="w-4 h-4 text-gray-400" />,
+                        getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.height ?? 0),
+                        setValue: (_data: UIInspectorData, raw: string) => updateDimension("height", raw),
+                    },
+                ],
                 order: 1,
             }),
             defineField<UIInspectorData, any>({
-                id: "layout.width",
-                type: "number",
-                label: "Width",
-                getValue: (data: UIInspectorData) => data.elements[0]?.layout.width ?? 0,
-                setValue: (_data: UIInspectorData, value: number) => {
-                    const next = Number(value);
-                    if (!Number.isFinite(next)) {
-                        return;
-                    }
-                    elements.forEach(element => {
-                        const patch: Partial<UIElement["layout"]> = {
-                            width: Math.abs(next),
-                            x: next < 0 ? element.layout.x + next : element.layout.x,
-                        };
-                        documentService.updateElementLayout(element.id, patch);
-                    });
-                },
+                id: "layout.visibility",
+                type: "inlineRow",
+                label: "Appearance",
+                gap: 8,
+                wrap: false,
+                items: [
+                    {
+                        id: "layout.opacity-inline",
+                        className: "flex-1",
+                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                            const layout = getPrimaryLayout(data);
+                            const percent = Math.round(((layout?.opacity ?? 1) * 100));
+                            const handleChange = (next: string) => {
+                                const number = toNumber(next);
+                                if (number === null) {
+                                    return;
+                                }
+                                const clamped = Math.min(100, Math.max(0, number));
+                                onSaving(true);
+                                try {
+                                    applyLayoutPatch({ opacity: clamped / 100 });
+                                } finally {
+                                    onSaving(false);
+                                }
+                            };
+
+                            return (
+                                <EnhancedInput
+                                    value={String(percent)}
+                                    onChange={handleChange}
+                                    inputMode="numeric"
+                                    unit="%"
+                                    min={0}
+                                    max={100}
+                                    leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                                    className="w-28"
+                                />
+                            );
+                        },
+                    },
+                    {
+                        id: "layout.visible-inline",
+                        className: "flex-shrink-0",
+                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                            const layout = getPrimaryLayout(data);
+                            const visible = layout?.visible ?? true;
+                            const toggleVisibility = () => {
+                                onSaving(true);
+                                try {
+                                    applyLayoutPatch({ visible: !visible });
+                                } finally {
+                                    onSaving(false);
+                                }
+                            };
+
+                            return (
+                                <button
+                                    type="button"
+                                    onClick={toggleVisibility}
+                                    className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-transparent text-gray-300 transition hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                    aria-pressed={visible}
+                                    aria-label="Toggle visibility"
+                                >
+                                    {visible ? (
+                                        <Eye className="w-4 h-4" />
+                                    ) : (
+                                        <EyeOff className="w-4 h-4" />
+                                    )}
+                                </button>
+                            );
+                        },
+                    },
+                ],
                 order: 2,
             }),
-            defineField<UIInspectorData, any>({
-                id: "layout.height",
-                type: "number",
-                label: "Height",
-                getValue: (data: UIInspectorData) => data.elements[0]?.layout.height ?? 0,
-                setValue: (_data: UIInspectorData, value: number) => {
-                    const next = Number(value);
-                    if (!Number.isFinite(next)) {
-                        return;
-                    }
-                    elements.forEach(element => {
-                        const patch: Partial<UIElement["layout"]> = {
-                            height: Math.abs(next),
-                            y: next < 0 ? element.layout.y + next : element.layout.y,
-                        };
-                        documentService.updateElementLayout(element.id, patch);
-                    });
-                },
-                order: 3,
-            }),
-            defineField<UIInspectorData, any>({
-                id: "layout.visible",
-                type: "checkbox",
-                label: "Visible",
-                getValue: (data: UIInspectorData) => data.elements[0]?.layout.visible ?? true,
-                setValue: (_data: UIInspectorData, value: boolean) => applyLayoutPatch({ visible: Boolean(value) }),
-                order: 4,
-            }),
-            defineField<UIInspectorData, any>({
-                id: "layout.opacity",
-                type: "number",
-                label: "Opacity",
-                getValue: (data: UIInspectorData) => data.elements[0]?.layout.opacity ?? 1,
-                setValue: (_data: UIInspectorData, value: number) => applyLayoutPatch({ opacity: Number(value) }),
-                order: 5,
-            }),
         ],
+    });
+}
+
+function mergeInspectorWithLayoutSchema(
+    layoutSchema: PropertyEditorSchema<UIInspectorData>,
+    inspectorSchema: PropertyEditorSchema<UIInspectorData>,
+    element: UIElement
+): PropertyEditorSchema<UIInspectorData> {
+    const layoutFields = layoutSchema.fields ?? [];
+    const baseTitle = inspectorSchema.title ?? element.name ?? "UI Element";
+    const baseId = `ui-element:${element.id}`;
+
+    if (inspectorSchema.tabs && inspectorSchema.tabs.length > 0) {
+        const targetTabId =
+            inspectorSchema.defaultTabId ?? inspectorSchema.tabs[0]?.id ?? null;
+        const tabs = inspectorSchema.tabs.map((tab) => {
+            if (targetTabId && tab.id === targetTabId && layoutFields.length > 0) {
+                return {
+                    ...tab,
+                    fields: [...layoutFields, ...tab.fields],
+                };
+            }
+            return tab;
+        });
+
+        return createPropertyEditorSchema<UIInspectorData>({
+            id: baseId,
+            title: baseTitle,
+            fields: [],
+            tabs,
+            defaultTabId: inspectorSchema.defaultTabId ?? tabs[0]?.id,
+            onFieldChange: inspectorSchema.onFieldChange,
+            showSavingIndicator: inspectorSchema.showSavingIndicator,
+        });
+    }
+
+    return createPropertyEditorSchema<UIInspectorData>({
+        id: baseId,
+        title: baseTitle,
+        fields: [...layoutFields, ...(inspectorSchema.fields ?? [])],
+        onFieldChange: inspectorSchema.onFieldChange,
+        showSavingIndicator: inspectorSchema.showSavingIndicator,
     });
 }
 
@@ -234,11 +374,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             const element = elements[0];
             const inspectorSchema = getElementInspector(element, documentService);
             const combinedSchema = inspectorSchema
-                ? createPropertyEditorSchema<UIInspectorData>({
-                      id: `ui-element:${element.id}`,
-                      title: inspectorSchema.title ?? element.name ?? "UI Element",
-                      fields: [...layoutSchema.fields, ...inspectorSchema.fields],
-                  })
+                ? mergeInspectorWithLayoutSchema(layoutSchema, inspectorSchema, element)
                 : layoutSchema;
             return (
                 <PropertyEditor

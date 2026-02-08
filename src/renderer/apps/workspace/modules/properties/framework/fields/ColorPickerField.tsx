@@ -141,7 +141,7 @@ function deriveColorState(value: ColorValue): ColorState {
     };
 }
 
-function ColorPickerTrigger({
+export function ColorPickerTrigger({
     value,
     displayMode = "icon",
     colorModes,

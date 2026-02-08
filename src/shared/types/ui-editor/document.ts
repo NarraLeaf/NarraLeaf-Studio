@@ -1,10 +1,11 @@
+import type { UIGraphId } from "./graph";
+
 export const UI_DOCUMENT_SCHEMA_VERSION = 2 as const;
 
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;
 export type UISurfaceId = string;
 export type UIElementId = string;
-export type UIGraphId = string;
 
 export type UIDocument = {
     schemaVersion: UIDocumentVersion;
@@ -113,3 +114,5 @@ export type UIBehaviorBinding =
 
 export type UIBehaviorAction =
     | { kind: "noop" };
+
+export type { UIGraphId } from "./graph";

@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+    --narraleaf-accent: theme("colors.primary");
+    --narraleaf-accent-strong: var(--narraleaf-accent, #40a8c4);
+    --narraleaf-accent-weak: rgba(64, 168, 196, 0.65);
+    --narraleaf-accent-weak: color-mix(in srgb, var(--narraleaf-accent) 60%, transparent);
+    --narraleaf-accent-tint: rgba(64, 168, 196, 0.18);
+    --narraleaf-accent-tint: color-mix(in srgb, var(--narraleaf-accent) 18%, transparent);
+}
+
 *, *::before, *::after {
     user-select: none;
     box-sizing: border-box;
@@ -183,12 +192,20 @@ input[type="radio"]:focus {
     }
 }
 
-/* Adjust react-selecto selection rectangle to use the primary theme tint. */
-.selecto-area {
-    border: 1px solid #40a8c4;
-    background-color: rgba(64, 168, 196, 0.16);
+.selecto-selection,
+.selecto-area,
+.narraleaf-selecto {
+    border: 1px solid var(--narraleaf-accent-strong) !important;
+    border-radius: 0 !important;
+    border-style: solid !important;
+    background: var(--narraleaf-accent-tint) !important;
 }
 
 .selecto-line {
-    background-color: rgba(64, 168, 196, 0.7);
+    background-color: var(--narraleaf-accent-strong) !important;
+}
+
+.moveable,
+.moveable * {
+    --moveable-color: var(--narraleaf-accent-strong);
 }

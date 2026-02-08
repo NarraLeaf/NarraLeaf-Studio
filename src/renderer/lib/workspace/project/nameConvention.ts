@@ -29,6 +29,7 @@ export const ProjectNameConvention = {
     EditorThumbnailCacheShard: (id: string) => ["editor", "cache", "thumbnail", ...splitId(id), `${id}.png` as const],
     EditorUI: ["editor", "ui/"],
     EditorUIDocument: ["editor", "ui", "uidoc.json"],
+    EditorUIGraphs: ["editor", "ui", "uigraphs.json"],
 } as const;
 
 /**

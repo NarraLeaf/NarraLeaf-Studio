@@ -27,9 +27,15 @@ export function InputGroupField<TData>({ field, data, onSaving }: InputGroupFiel
         [data, field.disabled, onSaving]
     );
 
+    const gap = field.gap ?? 8;
+    const shouldWrap = field.wrap ?? true;
+
     return (
         <FieldLayout field={field}>
-            <div className="flex gap-2 flex-wrap">
+            <div
+                className={`flex ${shouldWrap ? "flex-wrap" : "flex-nowrap"}`}
+                style={{ gap: `${gap}px` }}
+            >
                 {field.inputs.map((item) => {
                     const value = item.getValue(data);
                     return (
