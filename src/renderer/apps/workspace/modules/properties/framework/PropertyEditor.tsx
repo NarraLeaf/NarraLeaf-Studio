@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo, memo } from "react";
-import { PropertyEditorSchema, FieldDefinition } from "./types";
+import { useState, useCallback, useMemo, memo, useEffect } from "react";
+import { PropertyEditorSchema, FieldDefinition, PropertyEditorTab } from "./types";
 import { FieldRenderer } from "./fields";
 
 interface PropertyEditorProps<TData> {
@@ -16,6 +16,24 @@ interface PropertyEditorProps<TData> {
 /**
  * Generic property editor component that renders fields based on schema
  */
+const FIELD_ORDER_MAX = Number.MAX_SAFE_INTEGER;
+
+function sortFields<TData>(fields: FieldDefinition<TData>[]): FieldDefinition<TData>[] {
+    return [...fields].sort((a, b) => {
+        const orderA = a.order ?? FIELD_ORDER_MAX;
+        const orderB = b.order ?? FIELD_ORDER_MAX;
+        return orderA - orderB;
+    });
+}
+
+function sortTabs<TData>(tabs: PropertyEditorTab<TData>[]): PropertyEditorTab<TData>[] {
+    return [...tabs].sort((a, b) => {
+        const orderA = a.order ?? FIELD_ORDER_MAX;
+        const orderB = b.order ?? FIELD_ORDER_MAX;
+        return orderA - orderB;
+    });
+}
+
 function PropertyEditorInner<TData>({
     schema,
     data,
@@ -23,36 +41,82 @@ function PropertyEditorInner<TData>({
     className = "",
 }: PropertyEditorProps<TData>) {
     const [savingCount, setSavingCount] = useState(0);
+    const [activeTabId, setActiveTabId] = useState<string | null>(
+        () => schema.defaultTabId ?? schema.tabs?.[0]?.id ?? null
+    );
+
+    const sortedTabs = useMemo<PropertyEditorTab<TData>[]>(() => {
+        if (!schema.tabs?.length) {
+            return [];
+        }
+        return sortTabs(schema.tabs);
+    }, [schema.id, schema.tabs]);
+
+    const defaultTabId = useMemo(() => {
+        if (sortedTabs.length === 0) {
+            return null;
+        }
+        if (schema.defaultTabId) {
+            const preferred = sortedTabs.find(tab => tab.id === schema.defaultTabId);
+            if (preferred) {
+                return preferred.id;
+            }
+        }
+        return sortedTabs[0].id;
+    }, [schema.defaultTabId, sortedTabs]);
+
+    useEffect(() => {
+        setActiveTabId(defaultTabId);
+    }, [defaultTabId]);
+
+    const activeTab = sortedTabs.find(tab => tab.id === activeTabId) ?? null;
 
     const handleSaving = useCallback((saving: boolean) => {
         setSavingCount((count) => (saving ? count + 1 : Math.max(0, count - 1)));
     }, []);
 
-    // Sort fields by order - use schema.id as stable key
-    const sortedFields = useMemo(() => {
-        return [...schema.fields].sort((a, b) => {
-            const orderA = a.order ?? Number.MAX_SAFE_INTEGER;
-            const orderB = b.order ?? Number.MAX_SAFE_INTEGER;
-            return orderA - orderB;
-        });
-    }, [schema.id, schema.fields.length]);
-
+    const fieldsToRender = activeTab ? activeTab.fields : schema.fields;
+    const sortedFields = useMemo(() => sortFields(fieldsToRender), [fieldsToRender, schema.id]);
     const isSaving = savingCount > 0;
+    const hasTabs = sortedTabs.length > 0;
 
     return (
-        <div className={`p-4 space-y-4 text-gray-200 ${className}`}>
-            {sortedFields.map((field) => (
-                <FieldRenderer
-                    key={field.id}
-                    field={field}
-                    data={data}
-                    onSaving={handleSaving}
-                />
-            ))}
-
-            {schema.showSavingIndicator && isSaving && (
-                <div className="text-xs text-gray-400 text-center">Saving...</div>
+        <div className={`text-gray-200 ${className}`}>
+            {hasTabs && (
+                <div className="border-b border-white/10 bg-[#05060a]/60">
+                    <div className="flex flex-wrap gap-2 px-3 py-2">
+                        {sortedTabs.map((tab) => (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                                    activeTabId === tab.id
+                                        ? "border border-white/20 bg-white/10 text-white"
+                                        : "text-gray-400 hover:text-white hover:bg-white/5"
+                                }`}
+                                onClick={() => setActiveTabId(tab.id)}
+                            >
+                                {tab.title}
+                            </button>
+                        ))}
+                    </div>
+                </div>
             )}
+
+            <div className={`p-4 space-y-4 ${hasTabs ? "pt-5" : ""}`}>
+                {sortedFields.map((field) => (
+                    <FieldRenderer
+                        key={field.id}
+                        field={field}
+                        data={data}
+                        onSaving={handleSaving}
+                    />
+                ))}
+
+                {schema.showSavingIndicator && isSaving && (
+                    <div className="text-xs text-gray-400 text-center">Saving...</div>
+                )}
+            </div>
         </div>
     );
 }

@@ -190,7 +190,7 @@ function wrapMultiSelectItem(base: DockerBarItem, sources: DockerBarItem[]): Doc
                 ...first,
                 value: uniformValue ? first.value : MULTI_SELECT_MIXED_VALUE,
                 options,
-                onChange: (nextValue) => {
+                onChange: (nextValue: string | number) => {
                     if (nextValue === MULTI_SELECT_MIXED_VALUE) {
                         return;
                     }
@@ -218,7 +218,7 @@ function wrapMultiSelectItem(base: DockerBarItem, sources: DockerBarItem[]): Doc
                 value: uniformValue ? first.value : Number.NaN,
                 placeholder,
                 inputProps,
-                onChange: (nextValue) => {
+                onChange: (nextValue: number) => {
                     numberSources.forEach((source) => {
                         source.onChange(nextValue);
                     });

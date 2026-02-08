@@ -13,6 +13,10 @@ import { IconButtonGroupField } from "./IconButtonGroupField";
 import { DropdownGroupField } from "./DropdownGroupField";
 import { MenuTriggerField } from "./MenuTriggerField";
 import { InputGroupField } from "./InputGroupField";
+import { InlineRowField } from "./InlineRowField";
+import { ImageFillField } from "./ImageFillField";
+import type { ImageFillFieldDefinition } from "../types";
+import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 
 interface FieldRendererProps<TData> {
     field: FieldDefinition<TData>;
@@ -80,6 +84,18 @@ function FieldRendererInner<TData>({ field, data, onSaving }: FieldRendererProps
 
         case "inputGroup":
             return <InputGroupField field={field} data={data} onSaving={onSaving} />;
+
+        case "inlineRow":
+            return <InlineRowField field={field} data={data} onSaving={onSaving} />;
+
+        case "imageFill":
+            return (
+                <ImageFillField
+                    field={field as ImageFillFieldDefinition<UIInspectorData>}
+                    data={data as UIInspectorData}
+                    onSaving={onSaving}
+                />
+            );
 
         case "custom": {
             const CustomComponent = field.component;

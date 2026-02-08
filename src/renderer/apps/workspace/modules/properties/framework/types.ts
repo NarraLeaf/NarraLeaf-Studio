@@ -1,5 +1,6 @@
 import { ReactNode, ComponentType, RefObject } from "react";
 import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
 /**
  * Supported field types for property editors
@@ -20,7 +21,9 @@ export type FieldType =
     | "iconButtonGroup"
     | "dropdownGroup"
     | "menuTrigger"
-    | "inputGroup";
+    | "inputGroup"
+    | "inlineRow"
+    | "imageFill";
 
 /**
  * Base field definition shared by all field types
@@ -182,6 +185,8 @@ export interface DropdownGroupItem<TData = any> {
 export interface DropdownGroupFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
     type: "dropdownGroup";
     dropdowns: DropdownGroupItem<TData>[];
+    gap?: number;
+    wrap?: boolean;
 }
 
 export interface MenuTriggerFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
@@ -210,6 +215,25 @@ export interface InputGroupFieldDefinition<TData = any> extends BaseFieldDefinit
     type: "inputGroup";
     inputs: InputGroupItem<TData>[];
     gap?: number;
+    wrap?: boolean;
+}
+
+export interface InlineRowItemContext<TData = any> {
+    data: TData;
+    onSaving: (saving: boolean) => void;
+}
+
+export interface InlineRowItem<TData = any> {
+    id: string;
+    className?: string;
+    render: (context: InlineRowItemContext<TData>) => ReactNode;
+}
+
+export interface InlineRowFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
+    type: "inlineRow";
+    items: InlineRowItem<TData>[];
+    gap?: number;
+    wrap?: boolean;
 }
 
 /**
@@ -293,6 +317,12 @@ export interface ThumbnailFieldDefinition<TData = any> extends BaseFieldDefiniti
     anchorRef?: RefObject<HTMLElement>;
 }
 
+export interface ImageFillFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
+    type: "imageFill";
+    getValue: (data: TData) => ImageFill | undefined;
+    setValue: (data: TData, value: ImageFill) => void | Promise<void>;
+}
+
 /**
  * Union of all field definitions
  */
@@ -312,11 +342,24 @@ export type FieldDefinition<TData = any> =
     | IconButtonGroupFieldDefinition<TData>
     | DropdownGroupFieldDefinition<TData>
     | MenuTriggerFieldDefinition<TData>
-    | InputGroupFieldDefinition<TData>;
+    | InputGroupFieldDefinition<TData>
+    | InlineRowFieldDefinition<TData>
+    | ImageFillFieldDefinition<TData>;
 
 /**
  * Property editor schema definition
  */
+export interface PropertyEditorTab<TData = any> {
+    /** Unique tab identifier */
+    id: string;
+    /** Tab label */
+    title: string;
+    /** Fields shown inside this tab */
+    fields: FieldDefinition<TData>[];
+    /** Optional ordering weight */
+    order?: number;
+}
+
 export interface PropertyEditorSchema<TData = any> {
     /** Unique identifier for this editor type */
     id: string;
@@ -324,6 +367,10 @@ export interface PropertyEditorSchema<TData = any> {
     title?: string;
     /** Field definitions */
     fields: FieldDefinition<TData>[];
+    /** Optional tab configuration */
+    tabs?: PropertyEditorTab<TData>[];
+    /** Preferred tab to show when schema loads */
+    defaultTabId?: string;
     /** Called when any field changes */
     onFieldChange?: (data: TData, fieldId: string, value: any) => void | Promise<void>;
     /** Whether to show saving indicator */

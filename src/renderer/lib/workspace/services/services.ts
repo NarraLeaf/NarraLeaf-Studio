@@ -18,6 +18,7 @@ import type {
     UILayout,
     UIElement,
 } from "@shared/types/ui-editor/document";
+import type { UIGraph, UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { ReactElement } from "react";
 import type { ElementRendererDefinition } from "../../ui-editor/runtime/ElementRendererRegistry";
@@ -47,6 +48,7 @@ enum Services {
     UIDocument = "uiDocument",
     RuntimeBridge = "runtimeBridge",
     UIEditorState = "uiEditorState",
+    UIGraph = "uiGraph",
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
@@ -165,15 +167,43 @@ interface IUIDocumentService extends IService {
     deleteElements(elementIds: string[]): void;
 }
 
+interface IUIGraphService extends IService {
+    load(): Promise<UIGraphDocument>;
+    save(document: UIGraphDocument): Promise<void>;
+    getDocument(): UIGraphDocument;
+    onGraphsChanged(handler: (doc: UIGraphDocument) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    createGraph(input: {
+        name?: string;
+        nodes?: Record<string, UIGraph["nodes"][string]>;
+        entries?: UIGraph["entries"];
+        edges?: UIGraph["edges"];
+        variables?: UIGraph["variables"];
+        meta?: UIGraph["meta"];
+    }): UIGraph;
+    updateGraph(graphId: string, updater: (graph: UIGraph) => void): void;
+    deleteGraph(graphId: string): void;
+}
+
 interface IUIRuntimeBridgeService extends IService {
     renderSurface(options: RenderSurfaceOptions): ReactElement | null;
     registerElementRenderer(definition: ElementRendererDefinition): void;
 }
 
+export type InteractionOverride = {
+    kind: "imageCrop";
+    surfaceId: string;
+    elementId: string;
+    source: string;
+};
+
 interface UIEditorStateEvents {
     toolChanged: UITool;
     viewportChanged: ViewportTransform;
     selectionChanged: SelectionState;
+    interactionOverrideChanged: InteractionOverride | null;
 }
 
 interface IUIEditorStateService extends IService {
@@ -262,7 +292,7 @@ export {
     IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, ISettingsService, IStorageService, IStoryService,
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
-    ICharacterService, IUIDocumentService, IUIRuntimeBridgeService, IUIEditorStateService, UIEditorStateEvents,
+    ICharacterService, IUIDocumentService, IUIGraphService, IUIRuntimeBridgeService, IUIEditorStateService, UIEditorStateEvents,
     Services, WorkspaceContext
 };
 

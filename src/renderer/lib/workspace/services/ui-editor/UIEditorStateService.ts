@@ -2,7 +2,7 @@ import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { EventEmitter } from "../ui/EventEmitter";
 import { Service } from "../Service";
-import { IUIEditorStateService, Services, UIEditorStateEvents, WorkspaceContext } from "../services";
+import { IUIEditorStateService, InteractionOverride, Services, UIEditorStateEvents, WorkspaceContext } from "../services";
 import { ProjectSettingsService } from "../ProjectSettingsService";
 import { UIDocumentService } from "./UIDocumentService";
 import { UIService } from "../core/UIService";
@@ -20,6 +20,7 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     private selection: SelectionState = { type: null, data: null };
     private tool: UITool = { kind: "select" };
     private viewport: ViewportTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+    private interactionOverride: InteractionOverride | null = null;
     private selectionUnsubscribe?: () => void;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
@@ -32,11 +33,13 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         this.documentService = uidocumentService;
         this.settingsService = projectSettings;
         this.selection = this.uiStore.getSelection();
+        this.ensureInteractionOverrideValid(this.selection);
         this.selectionUnsubscribe = this.uiStore
             .getEvents()
             .on("selectionChanged", selection => {
                 this.selection = selection;
                 this.events.emit("selectionChanged", selection);
+                this.ensureInteractionOverrideValid(selection);
             });
 
         const stored = this.settingsService.getSync<ViewportTransform>(VIEWPORT_SETTINGS_KEY);
@@ -46,6 +49,7 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
+        this.setInteractionOverride(null);
         this.selectionUnsubscribe?.();
         this.events.clear();
     }
@@ -98,6 +102,18 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         this.setSelection({ type: "element", data: selection });
     }
 
+    public getInteractionOverride(): InteractionOverride | null {
+        return this.interactionOverride;
+    }
+
+    public setInteractionOverride(next: InteractionOverride | null): void {
+        if (this.areOverridesEqual(this.interactionOverride, next)) {
+            return;
+        }
+        this.interactionOverride = next;
+        this.events.emit("interactionOverrideChanged", this.interactionOverride);
+    }
+
     public getDocument(): UIDocument {
         if (!this.documentService) {
             throw new Error("UI document service is not ready");
@@ -135,5 +151,37 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         void this.settingsService.set(VIEWPORT_SETTINGS_KEY, this.viewport).catch(err => {
             console.warn("[UIEditorStateService] failed to persist viewport", err);
         });
+    }
+
+    private ensureInteractionOverrideValid(selection: SelectionState): void {
+        if (!this.interactionOverride) {
+            return;
+        }
+        if (selection.type !== "element" || !selection.data) {
+            this.setInteractionOverride(null);
+            return;
+        }
+        const elementSelection = selection.data;
+        if (
+            !elementSelection.elementIds.includes(this.interactionOverride.elementId) ||
+            elementSelection.surfaceId !== this.interactionOverride.surfaceId
+        ) {
+            this.setInteractionOverride(null);
+        }
+    }
+
+    private areOverridesEqual(a: InteractionOverride | null, b: InteractionOverride | null): boolean {
+        if (a === b) {
+            return true;
+        }
+        if (!a || !b) {
+            return false;
+        }
+        return (
+            a.kind === b.kind &&
+            a.surfaceId === b.surfaceId &&
+            a.elementId === b.elementId &&
+            a.source === b.source
+        );
     }
 }
