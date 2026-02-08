@@ -6,6 +6,7 @@ import {
   Maximize2,
   MoreHorizontal,
   Plus,
+  RotateCw,
   Square,
 } from "lucide-react";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
@@ -417,6 +418,85 @@ export function createRectangleInspector(ctx: InspectorContext) {
                           className={controlButtonClass(visible)}
                         >
                           {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        </button>
+                      );
+                    },
+                  },
+                ],
+              }),
+            ],
+          }),
+          defineField<D, any>({
+            id: "section.transform",
+            type: "section",
+            title: "Transform",
+            fields: [
+              defineField<D, any>({
+                id: "layout.rotationControls",
+                type: "inlineRow",
+                gap: 8,
+                wrap: false,
+                label: "Rotation",
+                items: [
+                  {
+                    id: "layout.rotationValue",
+                    className: "flex-1 min-w-[140px]",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const layoutRotation = data.elements[0]?.layout.rotation;
+                      const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation : 0;
+                      const handleChange = (next: string) => {
+                        const value = Number.parseFloat(next);
+                        if (!Number.isFinite(value)) return;
+                        const clamped = Math.min(360, Math.max(-360, value));
+                        onSaving(true);
+                        try {
+                          patchLayout({ rotation: clamped });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <EnhancedInput
+                          value={String(rotationValue)}
+                          onChange={handleChange}
+                          inputMode="numeric"
+                          type="number"
+                          min={-360}
+                          max={360}
+                          unit="°"
+                          leftIcon={<RotateCw className="w-4 h-4 text-gray-400" />}
+                          className="w-28"
+                          selectAllOnFocus
+                        />
+                      );
+                    },
+                  },
+                  {
+                    id: "layout.rotationReset",
+                    className: "flex-shrink-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const layoutRotation = data.elements[0]?.layout.rotation;
+                      const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation : 0;
+                      const reset = () => {
+                        if (!rotationValue) return;
+                        onSaving(true);
+                        try {
+                          patchLayout({ rotation: 0 });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={reset}
+                          aria-label="Reset rotation"
+                          disabled={rotationValue === 0}
+                          className={controlButtonClass(rotationValue !== 0)}
+                        >
+                          <RotateCw className="w-4 h-4" />
                         </button>
                       );
                     },
