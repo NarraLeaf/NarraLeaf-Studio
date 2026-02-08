@@ -118,6 +118,8 @@ export function RectangleRenderer({ element, children }: WidgetRendererProps) {
             top: `${placement.topPct}%`,
             width: `${placement.widthPct}%`,
             height: `${placement.heightPct}%`,
+            maxWidth: "none",
+            maxHeight: "none",
             objectFit: "fill",
             opacity: normalizedFillOpacity,
             pointerEvents: imagePointerEvents,
