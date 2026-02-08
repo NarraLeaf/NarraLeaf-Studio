@@ -1,0 +1,847 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Droplets,
+  Eye,
+  EyeOff,
+  Maximize2,
+  MoreHorizontal,
+  Plus,
+  Square,
+} from "lucide-react";
+import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+import { ContextMenu } from "@/lib/components/elements/ContextMenu";
+import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
+import { Select } from "@/lib/components/elements/Select";
+import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
+import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
+import type {
+  CustomFieldProps,
+  ColorValue,
+  InlineRowItemContext,
+} from "@/apps/workspace/modules/properties/framework/types";
+import type { UIInspectorData, InspectorContext, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
+import type { RectangleProps, StrokeJoin } from "./types";
+import { getProps, normalizeImageFill } from "./helpers";
+import {
+  BORDER_STYLE_OPTIONS,
+  controlButtonClass,
+  CornerIcon,
+  FILL_TYPE_OPTIONS,
+  STROKE_ALIGN_OPTIONS,
+  STROKE_JOIN_OPTIONS,
+  STROKE_SIDE_OPTIONS,
+} from "./constants";
+
+interface InlineMenuTriggerButtonProps {
+  menu: ContextMenuDef;
+  ariaLabel?: string;
+  className?: string;
+}
+
+function InlineMenuTriggerButton({
+  menu,
+  ariaLabel = "More options",
+  className = "",
+}: InlineMenuTriggerButtonProps) {
+  const [visible, setVisible] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  const openMenu = useCallback(() => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    setPosition({ x: rect.left, y: rect.bottom + 4 });
+    setVisible(true);
+  }, []);
+
+  const closeMenu = useCallback(() => {
+    setVisible(false);
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (
+        target &&
+        (buttonRef.current?.contains(target) ||
+          (target as HTMLElement).closest?.('[data-context-menu="true"]'))
+      ) {
+        return;
+      }
+      closeMenu();
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [visible, closeMenu]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeMenu();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [visible, closeMenu]);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={visible ? closeMenu : openMenu}
+        aria-label={ariaLabel}
+        className={`${controlButtonClass()} ${className}`}
+      >
+        <MoreHorizontal className="w-4 h-4" />
+      </button>
+      {visible && <ContextMenu items={menu} position={position} onClose={closeMenu} />}
+    </>
+  );
+}
+
+function BlueprintPlaceholder(_: CustomFieldProps<UIInspectorData>) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-[#111315] px-4 py-3">
+      <div>
+        <p className="text-xs uppercase text-gray-500 tracking-wider">Blueprint</p>
+        <p className="text-sm text-gray-300">Link actions and behaviors</p>
+      </div>
+      <button
+        type="button"
+        className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/5 text-white transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary/50"
+      >
+        <Plus className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+export function createRectangleInspector(ctx: InspectorContext) {
+  const { element, documentService } = ctx;
+
+  const patchProps = (patch: Partial<RectangleProps>) => {
+    documentService.updateElementProps(element.id, {
+      ...element.props,
+      ...patch,
+    });
+  };
+
+  const patchLayout = (patch: Partial<WidgetRendererProps["element"]["layout"]>) => {
+    documentService.updateElementLayout(element.id, patch);
+  };
+
+  const buildStrokeMenu = (props: RectangleProps): ContextMenuDef => [
+    {
+      id: "stroke-style",
+      label: "Border Style",
+      submenu: BORDER_STYLE_OPTIONS.map(option => ({
+        id: `stroke-style-${option.value}`,
+        label: option.label,
+        icon: option.icon,
+        onClick: () => patchProps({ borderStyle: option.value }),
+      })),
+    },
+    {
+      separator: true,
+      id: "stroke-style-separator",
+    },
+    {
+      id: "stroke-join",
+      label: "Corner Join",
+      submenu: STROKE_JOIN_OPTIONS.map(option => ({
+        id: `stroke-join-${option.value}`,
+        label: option.label,
+        onClick: () =>
+          patchProps({
+            borderJoin: option.value as StrokeJoin,
+          }),
+      })),
+    },
+  ];
+
+  type D = UIInspectorData;
+
+  return createPropertyEditorSchema<D>({
+    id: `ui-inspector:nl.rectangle:${element.id}`,
+    title: element.name ?? "Rectangle",
+    fields: [],
+    tabs: [
+      {
+        id: "properties",
+        title: "Properties",
+        fields: [
+          defineField<D, any>({
+            id: "section.cornerRadius",
+            type: "section",
+            title: "Corner Radius",
+            fields: [
+              defineField<D, any>({
+                id: "props.cornerRadiusInline",
+                type: "inlineRow",
+                gap: 8,
+                wrap: false,
+                label: undefined,
+                items: [
+                  {
+                    id: "props.cornerRadiusValue",
+                    className: "flex-1",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const current = getProps(data.element);
+                      const allCornersEqual =
+                        current.borderRadiusTL === current.borderRadiusTR &&
+                        current.borderRadiusTL === current.borderRadiusBL &&
+                        current.borderRadiusTL === current.borderRadiusBR;
+                      const showUniformPlaceholder =
+                        current.cornerAdvanced && !allCornersEqual;
+                      const uniformValue = showUniformPlaceholder
+                        ? ""
+                        : String(
+                          current.cornerAdvanced ? current.borderRadiusTL : current.borderRadius
+                        );
+                      const uniformPlaceholder = showUniformPlaceholder ? "-" : undefined;
+                      const handleChange = (next: string) => {
+                        const radius = Number.parseFloat(next);
+                        if (!Number.isFinite(radius)) return;
+                        onSaving(true);
+                        try {
+                          const patch: Partial<RectangleProps> = {
+                            borderRadius: radius,
+                          };
+                          if (current.borderRadiusLinked) {
+                            patch.borderRadiusTL = radius;
+                            patch.borderRadiusTR = radius;
+                            patch.borderRadiusBL = radius;
+                            patch.borderRadiusBR = radius;
+                          }
+                          patchProps(patch);
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <EnhancedInput
+                          value={uniformValue}
+                          onChange={handleChange}
+                          inputMode="numeric"
+                          type="number"
+                          min={0}
+                          unit="px"
+                          leftIcon={<CornerIcon position="tl" />}
+                          className="flex-1"
+                          placeholder={uniformPlaceholder}
+                          selectAllOnFocus
+                        />
+                      );
+                    },
+                  },
+                  {
+                    id: "props.cornerRadiusToggle",
+                    className: "flex-shrink-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const current = getProps(data.element);
+                      const toggle = () => {
+                        onSaving(true);
+                        try {
+                          const next = !current.cornerAdvanced;
+                          const patch: Partial<RectangleProps> = {
+                            cornerAdvanced: next,
+                            borderRadiusLinked: !next,
+                          };
+                          if (!next) {
+                            const uniform = current.borderRadiusTL;
+                            patch.borderRadius = uniform;
+                            patch.borderRadiusTR = uniform;
+                            patch.borderRadiusBL = uniform;
+                            patch.borderRadiusBR = uniform;
+                          }
+                          patchProps(patch);
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={toggle}
+                          aria-pressed={current.cornerAdvanced}
+                          aria-label="Toggle corner breakdown"
+                          className={controlButtonClass(current.cornerAdvanced)}
+                        >
+                          <Maximize2 className="w-4 h-4" />
+                        </button>
+                      );
+                    },
+                  },
+                ],
+              }),
+              defineField<D, any>({
+                id: "props.cornerRadiusTopRow",
+                type: "inputGroup",
+                gap: 8,
+                wrap: false,
+                className: "mt-3",
+                label: undefined,
+                hidden: (data: D) => !getProps(data.element).cornerAdvanced,
+                inputs: [
+                  {
+                    id: "props.borderRadiusTL",
+                    label: "TL",
+                    icon: <CornerIcon position="tl" />,
+                    selectAllOnFocus: true,
+                    getValue: (data: D) => String(getProps(data.element).borderRadiusTL),
+                    setValue: (_data: D, raw: string) => {
+                      const value = Number.parseFloat(raw);
+                      if (!Number.isFinite(value)) return;
+                      patchProps({ borderRadiusTL: value });
+                    },
+                  },
+                  {
+                    id: "props.borderRadiusTR",
+                    label: "TR",
+                    icon: <CornerIcon position="tr" />,
+                    selectAllOnFocus: true,
+                    getValue: (data: D) => String(getProps(data.element).borderRadiusTR),
+                    setValue: (_data: D, raw: string) => {
+                      const value = Number.parseFloat(raw);
+                      if (!Number.isFinite(value)) return;
+                      patchProps({ borderRadiusTR: value });
+                    },
+                  },
+                ],
+              }),
+              defineField<D, any>({
+                id: "props.cornerRadiusBottomRow",
+                type: "inputGroup",
+                gap: 8,
+                wrap: false,
+                className: "mt-2",
+                label: undefined,
+                hidden: (data: D) => !getProps(data.element).cornerAdvanced,
+                inputs: [
+                  {
+                    id: "props.borderRadiusBL",
+                    label: "BL",
+                    icon: <CornerIcon position="bl" />,
+                    selectAllOnFocus: true,
+                    getValue: (data: D) => String(getProps(data.element).borderRadiusBL),
+                    setValue: (_data: D, raw: string) => {
+                      const value = Number.parseFloat(raw);
+                      if (!Number.isFinite(value)) return;
+                      patchProps({ borderRadiusBL: value });
+                    },
+                  },
+                  {
+                    id: "props.borderRadiusBR",
+                    label: "BR",
+                    icon: <CornerIcon position="br" />,
+                    selectAllOnFocus: true,
+                    getValue: (data: D) => String(getProps(data.element).borderRadiusBR),
+                    setValue: (_data: D, raw: string) => {
+                      const value = Number.parseFloat(raw);
+                      if (!Number.isFinite(value)) return;
+                      patchProps({ borderRadiusBR: value });
+                    },
+                  },
+                ],
+              }),
+            ],
+          }),
+          defineField<D, any>({
+            id: "section.layer",
+            type: "section",
+            title: "Layer",
+            fields: [
+              defineField<D, any>({
+                id: "layout.layerControls",
+                type: "inlineRow",
+                gap: 8,
+                wrap: false,
+                label: undefined,
+                items: [
+                  {
+                    id: "layout.layerOpacity",
+                    className: "flex-1",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const percent = Math.round((data.elements[0]?.layout.opacity ?? 1) * 100);
+                      const handleChange = (next: string) => {
+                        const value = Number.parseFloat(next);
+                        if (!Number.isFinite(value)) return;
+                        const clamped = Math.min(100, Math.max(0, value));
+                        onSaving(true);
+                        try {
+                          patchLayout({ opacity: clamped / 100 });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <EnhancedInput
+                          value={String(percent)}
+                          onChange={handleChange}
+                          inputMode="numeric"
+                          unit="%"
+                          min={0}
+                          max={100}
+                          leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                          className="w-28"
+                        />
+                      );
+                    },
+                  },
+                  {
+                    id: "layout.layerVisible",
+                    className: "flex-shrink-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const visible = data.elements[0]?.layout.visible ?? true;
+                      const toggle = () => {
+                        onSaving(true);
+                        try {
+                          patchLayout({ visible: !visible });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={toggle}
+                          aria-label="Toggle layer visibility"
+                          aria-pressed={visible}
+                          className={controlButtonClass(visible)}
+                        >
+                          {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        </button>
+                      );
+                    },
+                  },
+                ],
+              }),
+            ],
+          }),
+          defineField<D, any>({
+            id: "section.fill",
+            type: "section",
+            title: "Fill",
+            fields: [
+              defineField<D, any>({
+                id: "props.fillType",
+                type: "select",
+                label: "Fill Type",
+                options: FILL_TYPE_OPTIONS,
+                getValue: (data: D) => getProps(data.element).fillType,
+                setValue: (_data: D, value: string | number) =>
+                  patchProps({
+                    fillType: String(value) as RectangleProps["fillType"],
+                  }),
+              }),
+              defineField<D, any>({
+                id: "props.fillColorRow",
+                type: "inlineRow",
+                gap: 8,
+                wrap: true,
+                label: undefined,
+                hidden: (data: D) => getProps(data.element).fillType !== "color",
+                items: [
+                  {
+                    id: "props.fillColorPicker",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const current = getProps(data.element);
+                      const handleColor = (next: ColorValue) => {
+                        onSaving(true);
+                        try {
+                          patchProps({
+                            backgroundColor: next.hex,
+                            fillOpacity: next.alpha ?? current.fillOpacity,
+                          });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <ColorPickerTrigger
+                          value={{
+                            hex: current.backgroundColor,
+                            alpha: current.fillOpacity,
+                          }}
+                          displayMode="icon"
+                          allowOpacity={false}
+                          onChange={handleColor}
+                        />
+                      );
+                    },
+                  },
+                  {
+                    id: "props.fillOpacityRow",
+                    className: "flex-1",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const percent = Math.round(getProps(data.element).fillOpacity * 100);
+                      const handleChange = (next: string) => {
+                        const value = Number.parseFloat(next);
+                        if (!Number.isFinite(value)) return;
+                        const clamped = Math.min(100, Math.max(0, value));
+                        onSaving(true);
+                        try {
+                          patchProps({
+                            fillOpacity: clamped / 100,
+                          });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <EnhancedInput
+                          value={String(percent)}
+                          onChange={handleChange}
+                          inputMode="numeric"
+                          unit="%"
+                          min={0}
+                          max={100}
+                          leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                        />
+                      );
+                    },
+                  },
+                  {
+                    id: "props.fillVisibleToggle",
+                    className: "flex-shrink-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const visible = getProps(data.element).fillVisible;
+                      const toggle = () => {
+                        onSaving(true);
+                        try {
+                          patchProps({
+                            fillVisible: !visible,
+                          });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={toggle}
+                          aria-pressed={visible}
+                          aria-label="Toggle fill visibility"
+                          className={controlButtonClass(visible)}
+                        >
+                          {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        </button>
+                      );
+                    },
+                  },
+                ],
+              }),
+              defineField<D, any>({
+                id: "props.imageFill",
+                type: "imageFill",
+                label: "Image Fill",
+                hidden: (data: D) => getProps(data.element).fillType !== "image",
+                getValue: (data: D) => normalizeImageFill(getProps(data.element)),
+                setValue: (_data: D, value: RectangleProps["imageFill"]) =>
+                  patchProps({
+                    fillType: "image",
+                    imageFill: value,
+                  }),
+              }),
+              defineField<D, any>({
+                id: "props.fillImageControls",
+                type: "inlineRow",
+                gap: 8,
+                wrap: true,
+                label: undefined,
+                hidden: (data: D) => getProps(data.element).fillType !== "image",
+                items: [
+                  {
+                    id: "props.fillImageOpacity",
+                    className: "flex-1",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const percent = Math.round(getProps(data.element).fillOpacity * 100);
+                      const handleChange = (next: string) => {
+                        const value = Number.parseFloat(next);
+                        if (!Number.isFinite(value)) return;
+                        const clamped = Math.min(100, Math.max(0, value));
+                        onSaving(true);
+                        try {
+                          patchProps({
+                            fillOpacity: clamped / 100,
+                          });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <EnhancedInput
+                          value={String(percent)}
+                          onChange={handleChange}
+                          inputMode="numeric"
+                          unit="%"
+                          min={0}
+                          max={100}
+                          leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                        />
+                      );
+                    },
+                  },
+                  {
+                    id: "props.fillImageVisible",
+                    className: "flex-shrink-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const visible = getProps(data.element).fillVisible;
+                      const toggle = () => {
+                        onSaving(true);
+                        try {
+                          patchProps({
+                            fillVisible: !visible,
+                          });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={toggle}
+                          aria-pressed={visible}
+                          aria-label="Toggle fill visibility"
+                          className={controlButtonClass(visible)}
+                        >
+                          {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        </button>
+                      );
+                    },
+                  },
+                ],
+              }),
+            ],
+          }),
+          defineField<D, any>({
+            id: "section.stroke",
+            type: "section",
+            title: "Stroke",
+            fields: [
+              defineField<D, any>({
+                id: "props.strokeControls",
+                type: "inlineRow",
+                gap: 8,
+                wrap: false,
+                label: undefined,
+                items: [
+                  {
+                    id: "props.strokeAlign",
+                    className: "flex-1 min-w-[140px]",
+                    render: ({ data }: InlineRowItemContext<D>) => {
+                      const current = getProps(data.element);
+                      return (
+                        <Select
+                          value={current.strokeAlign}
+                          options={STROKE_ALIGN_OPTIONS}
+                          onChange={(value) =>
+                            patchProps({
+                              strokeAlign: String(value) as RectangleProps["strokeAlign"],
+                            })
+                          }
+                        />
+                      );
+                    },
+                  },
+                  {
+                    id: "props.strokeWidth",
+                    className: "flex-shrink-0 min-w-[100px]",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const current = getProps(data.element);
+                      const handleChange = (next: string) => {
+                        const width = Number.parseFloat(next);
+                        if (!Number.isFinite(width) || width < 0) return;
+                        onSaving(true);
+                        try {
+                          patchProps({ borderWidth: width });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <EnhancedInput
+                          value={String(current.borderWidth)}
+                          onChange={handleChange}
+                          inputMode="numeric"
+                          type="number"
+                          min={0}
+                          unit="px"
+                          leftIcon={<Square className="w-4 h-4 text-gray-400" />}
+                          className="w-24"
+                        />
+                      );
+                    },
+                  },
+                  {
+                    id: "props.strokeMore",
+                    className: "flex-shrink-0 ml-auto",
+                    render: ({ data }: InlineRowItemContext<D>) => {
+                      const current = getProps(data.element);
+                      return (
+                        <InlineMenuTriggerButton
+                          menu={buildStrokeMenu(current)}
+                          ariaLabel="Open stroke settings"
+                          className="ml-2 z-10"
+                        />
+                      );
+                    },
+                  },
+                ],
+              }),
+              defineField<D, any>({
+                id: "props.strokeSideGroup",
+                type: "iconButtonGroup",
+                label: "Stroke Side",
+                showLabels: false,
+                className: "mt-2",
+                options: STROKE_SIDE_OPTIONS,
+                getValue: (data: D) => getProps(data.element).strokeSide,
+                setValue: (_data: D, value: string | number) => {
+                  if (typeof value !== "string") return;
+                  patchProps({
+                    strokeSide: value as RectangleProps["strokeSide"],
+                  });
+                },
+              }),
+              defineField<D, any>({
+                id: "props.strokeColorRow",
+                type: "inlineRow",
+                gap: 8,
+                wrap: true,
+                label: undefined,
+                items: [
+                  {
+                    id: "props.strokeColorPicker",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const current = getProps(data.element);
+                      const strokeVisible = current.strokeVisible;
+                      const handleChange = (next: ColorValue) => {
+                        onSaving(true);
+                        try {
+                          patchProps({
+                            borderColor: next.hex,
+                          });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <ColorPickerTrigger
+                          value={{
+                            hex: current.borderColor,
+                            alpha: current.strokeOpacity,
+                          }}
+                          displayMode="icon"
+                          allowOpacity={false}
+                          disabled={!strokeVisible}
+                          onChange={handleChange}
+                        />
+                      );
+                    },
+                  },
+                  {
+                    id: "props.strokeOpacity",
+                    className: "flex-1",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const current = getProps(data.element);
+                      const strokeVisible = current.strokeVisible;
+                      const percent = Math.round(current.strokeOpacity * 100);
+                      const handleChange = (next: string) => {
+                        const value = Number.parseFloat(next);
+                        if (!Number.isFinite(value)) return;
+                        const clamped = Math.min(100, Math.max(0, value));
+                        onSaving(true);
+                        try {
+                          patchProps({
+                            strokeOpacity: clamped / 100,
+                          });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <EnhancedInput
+                          value={String(percent)}
+                          onChange={handleChange}
+                          inputMode="numeric"
+                          unit="%"
+                          min={0}
+                          max={100}
+                          leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                          disabled={!strokeVisible}
+                        />
+                      );
+                    },
+                  },
+                  {
+                    id: "props.strokeVisible",
+                    className: "flex-shrink-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const visible = getProps(data.element).strokeVisible;
+                      const toggle = () => {
+                        onSaving(true);
+                        try {
+                          patchProps({
+                            strokeVisible: !visible,
+                          });
+                        } finally {
+                          onSaving(false);
+                        }
+                      };
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={toggle}
+                          aria-pressed={visible}
+                          aria-label="Toggle stroke visibility"
+                          className={controlButtonClass(visible)}
+                        >
+                          {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        </button>
+                      );
+                    },
+                  },
+                ],
+              }),
+            ],
+          }),
+        ],
+      },
+      {
+        id: "interaction",
+        title: "Interaction",
+        fields: [
+          defineField<D, any>({
+            id: "section.blueprint",
+            type: "section",
+            title: "Blueprint",
+            fields: [
+              defineField<D, any>({
+                id: "interaction.blueprint.placeholder",
+                type: "custom",
+                component: BlueprintPlaceholder,
+              }),
+            ],
+          }),
+        ],
+      },
+    ],
+  });
+}

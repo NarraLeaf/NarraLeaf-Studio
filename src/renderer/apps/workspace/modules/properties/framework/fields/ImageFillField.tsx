@@ -23,6 +23,8 @@ const MODE_OPTIONS: { value: ImageFillMode; label: string }[] = [
 ];
 
 const PANEL_WIDTH = 360;
+const PANEL_SPACING = 12;
+const PANEL_MIN_MARGIN = 12;
 const DEFAULT_FILL_MODE: ImageFillMode = "cover";
 
 interface PanelPosition {
@@ -63,6 +65,7 @@ export function ImageFillField<TData extends UIInspectorData>({
     const [selectorOpen, setSelectorOpen] = useState(false);
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const previewRef = useRef<HTMLButtonElement | null>(null);
+    const panelRef = useRef<HTMLDivElement | null>(null);
     const [panelPosition, setPanelPosition] = useState<PanelPosition>({ top: 0, left: 0 });
 
     const applyValue = useCallback(
@@ -99,11 +102,13 @@ export function ImageFillField<TData extends UIInspectorData>({
         if (elementWidth === 0 || elementHeight === 0 || imageWidth === 0 || imageHeight === 0) {
             return null;
         }
-        const ratio = Math.max(1, imageWidth / elementWidth, imageHeight / elementHeight);
-        const widthPct = Math.max(100, ratio * 100);
-        const heightPct = Math.max(100, ratio * 100);
-        const leftPct = -(widthPct - 100) / 2;
-        const topPct = -(heightPct - 100) / 2;
+        const scale = Math.max(elementWidth / imageWidth, elementHeight / imageHeight);
+        const scaledWidth = imageWidth * scale;
+        const scaledHeight = imageHeight * scale;
+        const widthPct = (scaledWidth / elementWidth) * 100;
+        const heightPct = (scaledHeight / elementHeight) * 100;
+        const leftPct = (100 - widthPct) / 2;
+        const topPct = (100 - heightPct) / 2;
         return {
             leftPct,
             topPct,
@@ -176,8 +181,27 @@ export function ImageFillField<TData extends UIInspectorData>({
         }
         const rect = triggerRef.current.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
-        const left = Math.min(Math.max(rect.left, 12), viewportWidth - PANEL_WIDTH - 12);
-        const top = rect.bottom + 12;
+        const viewportHeight = window.innerHeight;
+        const panelHeight = panelRef.current?.offsetHeight ?? 360;
+
+        const left = Math.min(
+            Math.max(rect.left, PANEL_MIN_MARGIN),
+            viewportWidth - PANEL_WIDTH - PANEL_MIN_MARGIN,
+        );
+
+        const topBelow = rect.bottom + PANEL_SPACING;
+        const topAbove = rect.top - PANEL_SPACING - panelHeight;
+        let top = topBelow;
+
+        if (top + panelHeight > viewportHeight - PANEL_MIN_MARGIN && topAbove >= PANEL_MIN_MARGIN) {
+            top = topAbove;
+        } else {
+            top = Math.min(
+                Math.max(top, PANEL_MIN_MARGIN),
+                viewportHeight - panelHeight - PANEL_MIN_MARGIN,
+            );
+        }
+
         setPanelPosition({ top, left });
     }, []);
 
@@ -224,6 +248,7 @@ export function ImageFillField<TData extends UIInspectorData>({
         typeof document !== "undefined" && isOpen
             ? createPortal(
                   <div
+                      ref={panelRef}
                       className="fixed z-50 rounded-2xl border border-white/20 bg-[#0b0d12] shadow-2xl p-4 text-gray-200"
                       style={{
                           top: panelPosition.top,

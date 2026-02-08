@@ -169,6 +169,8 @@ export interface IconButtonGroupFieldDefinition<TData = any> extends BaseFieldDe
     options: IconButtonGroupOption[];
     getValue: (data: TData) => IconButtonSelection;
     setValue: (data: TData, value: IconButtonSelection) => void | Promise<void>;
+    /** Whether to show option labels next to icons */
+    showLabels?: boolean;
 }
 
 export interface DropdownGroupItem<TData = any> {
@@ -207,6 +209,7 @@ export interface InputGroupItem<TData = any> {
     readOnly?: boolean;
     maxLength?: number;
     className?: string;
+    selectAllOnFocus?: boolean;
     getValue: (data: TData) => string;
     setValue: (data: TData, value: string) => void | Promise<void>;
 }

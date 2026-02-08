@@ -79,7 +79,7 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                 id: "layout.position",
                 type: "inputGroup",
                 label: "Position",
-                gap: 0,
+                gap: 8,
                 wrap: false,
                 inputs: [
                     {
@@ -94,6 +94,7 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                             }
                             applyLayoutPatch({ x: number });
                         },
+                        selectAllOnFocus: true,
                     },
                     {
                         id: "layout.y",
@@ -107,6 +108,7 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                             }
                             applyLayoutPatch({ y: number });
                         },
+                        selectAllOnFocus: true,
                     },
                 ],
                 order: 0,
@@ -115,7 +117,7 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                 id: "layout.size",
                 type: "inputGroup",
                 label: "Size",
-                gap: 0,
+                gap: 8,
                 wrap: false,
                 inputs: [
                     {
@@ -124,6 +126,7 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                         icon: <ArrowLeftRight className="w-4 h-4 text-gray-400" />,
                         getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.width ?? 0),
                         setValue: (_data: UIInspectorData, raw: string) => updateDimension("width", raw),
+                        selectAllOnFocus: true,
                     },
                     {
                         id: "layout.height",
@@ -131,6 +134,7 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                         icon: <ArrowUpDown className="w-4 h-4 text-gray-400" />,
                         getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.height ?? 0),
                         setValue: (_data: UIInspectorData, raw: string) => updateDimension("height", raw),
+                        selectAllOnFocus: true,
                     },
                 ],
                 order: 1,
