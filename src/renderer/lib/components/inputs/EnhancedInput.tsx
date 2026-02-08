@@ -1,8 +1,10 @@
 import {
     useState,
     useCallback,
+    useMemo,
     type ChangeEvent,
     type FocusEvent,
+    type MouseEvent,
     type InputHTMLAttributes,
     type ReactNode,
 } from "react";
@@ -15,6 +17,8 @@ export interface EnhancedInputProps
     leftIcon?: ReactNode;
     className?: string;
     inputClassName?: string;
+    precision?: number | null;
+    selectAllOnFocus?: boolean;
 }
 
 /**
@@ -29,9 +33,24 @@ export function EnhancedInput({
     inputClassName = "",
     onFocus,
     onBlur,
+    precision,
+    selectAllOnFocus = false,
     ...rest
 }: EnhancedInputProps) {
     const [hasFocus, setHasFocus] = useState(false);
+    const roundingPrecision = precision === undefined ? 1 : precision;
+    const displayValue = useMemo(() => {
+        if (hasFocus) {
+            return value;
+        }
+        if (roundingPrecision !== null && typeof roundingPrecision === "number") {
+            const parsed = Number.parseFloat(value);
+            if (Number.isFinite(parsed)) {
+                return parsed.toFixed(roundingPrecision);
+            }
+        }
+        return value;
+    }, [hasFocus, roundingPrecision, value]);
 
     const handleChange = useCallback(
         (event: ChangeEvent<HTMLInputElement>) => {
@@ -43,9 +62,22 @@ export function EnhancedInput({
     const handleFocus = useCallback(
         (event: FocusEvent<HTMLInputElement>) => {
             setHasFocus(true);
+            if (selectAllOnFocus) {
+                setTimeout(() => event.target.select(), 0);
+            }
             onFocus?.(event);
         },
-        [onFocus]
+        [onFocus, selectAllOnFocus]
+    );
+
+    const handleMouseUp = useCallback(
+        (event: MouseEvent<HTMLInputElement>) => {
+            if (selectAllOnFocus) {
+                event.preventDefault();
+                event.currentTarget.select();
+            }
+        },
+        [selectAllOnFocus]
     );
 
     const handleBlur = useCallback(
@@ -62,7 +94,7 @@ export function EnhancedInput({
     return (
         <div
             className={`
-                relative flex items-center bg-[#1e1f22] border border-white/10 rounded-md text-sm
+                relative flex items-center bg-[#1e1f22] border border-white/10 rounded-md text-sm h-9 min-h-[34px] overflow-hidden
                 focus-within:border-primary/70 transition focus-within:ring-1 focus-within:ring-primary/30
                 ${className}
             `}
@@ -74,12 +106,13 @@ export function EnhancedInput({
             )}
 
             <input
-                value={value}
+                value={displayValue}
                 onChange={handleChange}
                 onFocus={handleFocus}
                 onBlur={handleBlur}
+                onMouseUp={handleMouseUp}
                 className={`
-                    flex-1 bg-transparent border-none placeholder:text-gray-500 text-gray-100 focus:outline-none
+                    flex-1 h-full bg-transparent border-none placeholder:text-gray-500 text-gray-100 focus:outline-none leading-none overflow-hidden text-ellipsis whitespace-nowrap
                     ${paddingLeftClass} ${paddingRightClass} ${inputClassName}
                 `}
                 {...rest}

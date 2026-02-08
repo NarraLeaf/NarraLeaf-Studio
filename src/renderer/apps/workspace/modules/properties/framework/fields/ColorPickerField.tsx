@@ -1,6 +1,7 @@
 import {
     useCallback,
     useEffect,
+    useLayoutEffect,
     useMemo,
     useRef,
     useState,
@@ -154,6 +155,7 @@ export function ColorPickerTrigger({
     const panelRef = useRef<HTMLDivElement>(null);
     const [isOpen, setIsOpen] = useState(false);
     const [panelPosition, setPanelPosition] = useState({ left: 0, top: 0 });
+    const [adjustedPanelPosition, setAdjustedPanelPosition] = useState(panelPosition);
     const [isDragging, setIsDragging] = useState(false);
     const [colorState, setColorState] = useState(() => deriveColorState(value));
     const actualModes = useMemo(
@@ -216,7 +218,9 @@ export function ColorPickerTrigger({
         if (disabled || readOnly) return;
         const rect = triggerRef.current?.getBoundingClientRect();
         if (!rect) return;
-        setPanelPosition({ left: rect.left, top: rect.bottom + 6 });
+        const calculated = { left: rect.left, top: rect.bottom + 6 };
+        setPanelPosition(calculated);
+        setAdjustedPanelPosition(calculated);
         setIsOpen(true);
     }, [disabled, readOnly]);
 
@@ -238,6 +242,36 @@ export function ColorPickerTrigger({
         document.addEventListener("mousedown", handleOutside);
         return () => document.removeEventListener("mousedown", handleOutside);
     }, [isOpen, closePicker]);
+
+    useEffect(() => {
+        setAdjustedPanelPosition(panelPosition);
+    }, [panelPosition]);
+
+    useLayoutEffect(() => {
+        if (!isOpen || !panelRef.current) return;
+        const rect = panelRef.current.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        let left = panelPosition.left;
+        let top = panelPosition.top;
+
+        if (left + rect.width > viewportWidth) {
+            left = Math.max(8, viewportWidth - rect.width - 8);
+        }
+        if (left < 8) {
+            left = 8;
+        }
+        if (top + rect.height > viewportHeight) {
+            top = Math.max(8, panelPosition.top - rect.height - 8);
+        }
+        if (top < 8) {
+            top = 8;
+        }
+
+        if (left !== adjustedPanelPosition.left || top !== adjustedPanelPosition.top) {
+            setAdjustedPanelPosition({ left, top });
+        }
+    }, [isOpen, panelPosition, adjustedPanelPosition]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -417,8 +451,8 @@ export function ColorPickerTrigger({
             style={{
                 position: "absolute",
                 zIndex: 60,
-                left: panelPosition.left,
-                top: panelPosition.top,
+                left: adjustedPanelPosition.left,
+                top: adjustedPanelPosition.top,
             }}
         >
             <div

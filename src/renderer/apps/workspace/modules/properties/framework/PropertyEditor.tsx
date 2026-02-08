@@ -84,15 +84,15 @@ function PropertyEditorInner<TData>({
         <div className={`text-gray-200 ${className}`}>
             {hasTabs && (
                 <div className="border-b border-white/10 bg-[#05060a]/60">
-                    <div className="flex flex-wrap gap-2 px-3 py-2">
+                    <div className="flex flex-wrap gap-3 px-3 py-2 text-sm">
                         {sortedTabs.map((tab) => (
                             <button
                                 key={tab.id}
                                 type="button"
-                                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                                className={`px-2 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
                                     activeTabId === tab.id
-                                        ? "border border-white/20 bg-white/10 text-white"
-                                        : "text-gray-400 hover:text-white hover:bg-white/5"
+                                        ? "text-white"
+                                        : "text-gray-400 hover:text-gray-200"
                                 }`}
                                 onClick={() => setActiveTabId(tab.id)}
                             >

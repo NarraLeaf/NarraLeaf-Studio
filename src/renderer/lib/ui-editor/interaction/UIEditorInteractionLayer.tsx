@@ -318,6 +318,11 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
                         ref={moveableRef}
                         targets={activeController.targets}
                         container={surfaceElement ?? undefined}
+                        className={
+                            activeController.id === "imageCrop"
+                                ? "narraleaf-moveable narraleaf-moveable--crop"
+                                : "narraleaf-moveable"
+                        }
                         {...activeController.moveableProps}
                     />
                     {activeController.overlay}

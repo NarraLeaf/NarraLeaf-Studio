@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { Button } from "./Button";
 
@@ -51,6 +51,8 @@ export function Select({
 }: SelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     const selectRef = useRef<HTMLDivElement>(null);
+    const dropdownRef = useRef<HTMLDivElement | null>(null);
+    const [dropdownDirection, setDropdownDirection] = useState<"down" | "up">("down");
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -62,6 +64,35 @@ export function Select({
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setDropdownDirection("down");
+        }
+    }, [isOpen]);
+
+    useLayoutEffect(() => {
+        if (!isOpen) return;
+
+        const updateDirection = () => {
+            if (!selectRef.current || !dropdownRef.current) return;
+            const triggerRect = selectRef.current.getBoundingClientRect();
+            const dropdownRect = dropdownRef.current.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - triggerRect.bottom;
+            const spaceAbove = triggerRect.top;
+            const shouldOpenUp =
+                dropdownRect.height > spaceBelow && spaceAbove >= dropdownRect.height;
+            setDropdownDirection(shouldOpenUp ? "up" : "down");
+        };
+
+        updateDirection();
+        window.addEventListener("resize", updateDirection);
+        window.addEventListener("scroll", updateDirection, true);
+        return () => {
+            window.removeEventListener("resize", updateDirection);
+            window.removeEventListener("scroll", updateDirection, true);
+        };
+    }, [isOpen, options.length, value]);
 
     const selectedOption = options.find(option => option.value === value);
     const displayValue = selectedOption ? selectedOption.label : placeholder;
@@ -104,7 +135,12 @@ export function Select({
             </Button>
 
             {isOpen && (
-                <div className="absolute z-50 w-full mt-1 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                <div
+                    ref={dropdownRef}
+                    className={`absolute z-50 w-full left-0 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg max-h-60 overflow-y-auto ${
+                        dropdownDirection === "down" ? "top-full mt-1" : "bottom-full mb-1"
+                    }`}
+                >
                     {options.map((option) => (
                         <button
                             key={option.value}
@@ -163,6 +199,8 @@ export function Combobox({
     const [filteredOptions, setFilteredOptions] = useState(options);
     const selectRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const dropdownRef = useRef<HTMLDivElement | null>(null);
+    const [dropdownDirection, setDropdownDirection] = useState<"down" | "up">("down");
 
     useEffect(() => {
         if (filterOptions) {
@@ -192,6 +230,35 @@ export function Combobox({
             inputRef.current.focus();
         }
     }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setDropdownDirection("down");
+        }
+    }, [isOpen]);
+
+    useLayoutEffect(() => {
+        if (!isOpen) return;
+
+        const updateDirection = () => {
+            if (!selectRef.current || !dropdownRef.current) return;
+            const triggerRect = selectRef.current.getBoundingClientRect();
+            const dropdownRect = dropdownRef.current.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - triggerRect.bottom;
+            const spaceAbove = triggerRect.top;
+            const shouldOpenUp =
+                dropdownRect.height > spaceBelow && spaceAbove >= dropdownRect.height;
+            setDropdownDirection(shouldOpenUp ? "up" : "down");
+        };
+
+        updateDirection();
+        window.addEventListener("resize", updateDirection);
+        window.addEventListener("scroll", updateDirection, true);
+        return () => {
+            window.removeEventListener("resize", updateDirection);
+            window.removeEventListener("scroll", updateDirection, true);
+        };
+    }, [isOpen, filteredOptions.length, searchTerm, value]);
 
     const selectedOption = options.find(option => option.value === value);
     const displayValue = selectedOption ? selectedOption.label : "";
@@ -245,7 +312,12 @@ export function Combobox({
             </div>
 
             {isOpen && filteredOptions.length > 0 && (
-                <div className="absolute z-50 w-full mt-1 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                <div
+                    ref={dropdownRef}
+                    className={`absolute z-50 w-full left-0 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg max-h-60 overflow-y-auto ${
+                        dropdownDirection === "down" ? "top-full mt-1" : "bottom-full mb-1"
+                    }`}
+                >
                     {filteredOptions.map((option) => (
                         <button
                             key={option.value}
@@ -273,7 +345,12 @@ export function Combobox({
             )}
 
             {isOpen && filteredOptions.length === 0 && (
-                <div className="absolute z-50 w-full mt-1 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg p-3">
+                <div
+                    ref={dropdownRef}
+                    className={`absolute z-50 w-full left-0 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg p-3 ${
+                        dropdownDirection === "down" ? "top-full mt-1" : "bottom-full mb-1"
+                    }`}
+                >
                     <p className="text-sm text-gray-400">No matches found</p>
                 </div>
             )}

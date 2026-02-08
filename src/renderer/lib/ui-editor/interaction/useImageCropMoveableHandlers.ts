@@ -10,7 +10,7 @@ import type {
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
-const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+const MIN_SIZE_PCT = 5;
 
 interface ImageCropHandlersConfig {
     documentService: UIDocumentService;
@@ -23,41 +23,70 @@ interface ImageCropHandlersConfig {
 }
 
 export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
-    const updatePlacement = useCallback(() => {
+    const resetLiveStyles = useCallback(() => {
+        if (!config.imageTarget) {
+            return;
+        }
+        config.imageTarget.style.transform = "";
+        config.imageTarget.style.width = "";
+        config.imageTarget.style.height = "";
+    }, [config]);
+
+    /**
+     * Read the current rendered placement of the image target relative to the
+     * container's padding-box and persist it as a percentage-based crop placement.
+     *
+     * Both getBoundingClientRect() calls return screen-space values, so their
+     * ratios are always correct regardless of ancestor CSS transforms (viewport
+     * zoom / pan).  This avoids any coordinate-space mismatch between Moveable
+     * event values and the percentage model used by the crop placement.
+     */
+    const commitPlacement = useCallback(() => {
         const { container, imageTarget, documentService, elementId, scheduleMoveableRectUpdate } = config;
         if (!container || !imageTarget || !elementId) {
             return;
         }
+
         const containerRect = container.getBoundingClientRect();
-        const targetRect = imageTarget.getBoundingClientRect();
         if (containerRect.width === 0 || containerRect.height === 0) {
             return;
         }
-        const widthPct = (targetRect.width / containerRect.width) * 100;
-        const heightPct = (targetRect.height / containerRect.height) * 100;
-        const leftPct = ((targetRect.left - containerRect.left) / containerRect.width) * 100;
-        const topPct = ((targetRect.top - containerRect.top) / containerRect.height) * 100;
-        const clampedWidth = Math.max(100, widthPct);
-        const clampedHeight = Math.max(100, heightPct);
-        const clampedLeft = clamp(leftPct, -(clampedWidth - 100), 0);
-        const clampedTop = clamp(topPct, -(clampedHeight - 100), 0);
-        const placement = {
-            leftPct: clampedLeft,
-            topPct: clampedTop,
-            widthPct: clampedWidth,
-            heightPct: clampedHeight,
-        };
 
-        const document = documentService.getDocument();
-        const element = document.elements[elementId];
+        // Derive the effective visual scale so we can locate the padding-box
+        // origin inside the border-box reported by getBoundingClientRect().
+        const offsetW = container.offsetWidth;
+        const scale = offsetW > 0 ? containerRect.width / offsetW : 1;
+
+        // Padding-box origin and size in screen pixels.
+        // container.clientLeft / clientTop equal the border widths in CSS px.
+        const paddingLeft = containerRect.left + container.clientLeft * scale;
+        const paddingTop = containerRect.top + container.clientTop * scale;
+        const paddingWidth = container.clientWidth * scale;
+        const paddingHeight = container.clientHeight * scale;
+
+        if (paddingWidth === 0 || paddingHeight === 0) {
+            return;
+        }
+
+        const imageRect = imageTarget.getBoundingClientRect();
+
+        const leftPct = ((imageRect.left - paddingLeft) / paddingWidth) * 100;
+        const topPct = ((imageRect.top - paddingTop) / paddingHeight) * 100;
+        const widthPct = Math.max(MIN_SIZE_PCT, (imageRect.width / paddingWidth) * 100);
+        const heightPct = Math.max(MIN_SIZE_PCT, (imageRect.height / paddingHeight) * 100);
+
+        const doc = documentService.getDocument();
+        const element = doc.elements[elementId];
         if (!element) {
             return;
         }
+
         const prevFill = (element.props?.imageFill as ImageFill) ?? { mode: "crop", assetId: null };
+
         const nextFill: ImageFill = {
             ...prevFill,
             mode: "crop",
-            cropPlacement: placement,
+            cropPlacement: { leftPct, topPct, widthPct, heightPct },
         };
         documentService.updateElementProps(elementId, {
             ...element.props,
@@ -66,6 +95,8 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
         scheduleMoveableRectUpdate();
     }, [config]);
 
+    // ── Drag ─────────────────────────────────────────────────────────────
+
     const handleDragStart = useCallback((_event: OnDragStart) => {
         if (!config.imageTarget) {
             return;
@@ -73,8 +104,12 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
         config.beginTransform();
     }, [config]);
 
-    const handleDrag = useCallback((_event: OnDrag) => {
-        // Intentionally no-op; live preview handled by Moveable
+    const handleDrag = useCallback((event: OnDrag) => {
+        if (!event.target) {
+            return;
+        }
+        // Apply Moveable's computed transform for live visual feedback.
+        event.target.style.transform = event.transform;
     }, []);
 
     const handleDragEnd = useCallback((_event: OnDragEnd) => {
@@ -82,9 +117,14 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             config.endTransform();
             return;
         }
-        updatePlacement();
+        // Commit the rendered position BEFORE clearing the live styles so
+        // that getBoundingClientRect still reflects the dragged state.
+        commitPlacement();
+        resetLiveStyles();
         config.endTransform();
-    }, [config, updatePlacement]);
+    }, [config, commitPlacement, resetLiveStyles]);
+
+    // ── Resize ───────────────────────────────────────────────────────────
 
     const handleResizeStart = useCallback((_event: OnResizeStart) => {
         if (!config.imageTarget) {
@@ -93,8 +133,16 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
         config.beginTransform();
     }, [config]);
 
-    const handleResize = useCallback((_event: OnResize) => {
-        // no-op
+    const handleResize = useCallback((event: OnResize) => {
+        if (!event.target) {
+            return;
+        }
+        // Apply Moveable's computed size / transform for live visual feedback.
+        event.target.style.width = `${event.width}px`;
+        event.target.style.height = `${event.height}px`;
+        if (event.drag) {
+            event.target.style.transform = event.drag.transform;
+        }
     }, []);
 
     const handleResizeEnd = useCallback((_event: OnResizeEnd) => {
@@ -102,9 +150,10 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             config.endTransform();
             return;
         }
-        updatePlacement();
+        commitPlacement();
+        resetLiveStyles();
         config.endTransform();
-    }, [config, updatePlacement]);
+    }, [config, commitPlacement, resetLiveStyles]);
 
     return {
         handleDragStart,

@@ -28,7 +28,8 @@ export function useImageCropController(config: ImageCropControllerConfig): Inter
                 override?.surfaceId === config.surfaceId &&
                 override?.elementId &&
                 imageTarget &&
-                primaryTarget,
+                primaryTarget &&
+                primaryTarget.dataset.uiElementId === override?.elementId,
         ) && config.selectedTargets.length === 1;
 
     const handlers = useImageCropMoveableHandlers({
@@ -46,7 +47,7 @@ export function useImageCropController(config: ImageCropControllerConfig): Inter
         resizable: true,
         rotatable: false,
         keepRatio: false,
-        origin: true,
+        origin: false,
         zoom: config.viewportScale,
         throttleDrag: 0,
         throttleResize: 0,

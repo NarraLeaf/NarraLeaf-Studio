@@ -26,6 +26,7 @@ export function IconButtonGroupField<TData>({
 }: IconButtonGroupFieldProps<TData>) {
     const mode = field.mode ?? "single";
     const selection = field.getValue(data);
+    const showLabels = field.showLabels ?? true;
 
     const handleOptionClick = useCallback(
         async (optionId: string, disabled?: boolean) => {
@@ -68,7 +69,7 @@ export function IconButtonGroupField<TData>({
 
     return (
         <FieldLayout field={field}>
-            <div className={`flex divide-x divide-white/10 rounded-[12px] overflow-hidden ${groupColors.border} ${groupColors.base}`}>
+    <div className={`flex divide-x divide-white/10 rounded-md overflow-hidden ${groupColors.border} ${groupColors.base}`}>
                 {field.options.map((option, index) => {
                     const isActive =
                         mode === "multiple"
@@ -89,9 +90,13 @@ export function IconButtonGroupField<TData>({
                             aria-pressed={isActive}
                             title={option.label}
                         >
-                            <div className="flex items-center justify-center gap-2">
+                            <div
+                                className={`flex items-center justify-center ${
+                                    showLabels && option.label ? "gap-2" : ""
+                                }`}
+                            >
                                 <span className="text-base">{option.icon}</span>
-                                {option.label && (
+                                {showLabels && option.label && (
                                     <span className="text-xs uppercase tracking-wide">
                                         {option.label}
                                     </span>

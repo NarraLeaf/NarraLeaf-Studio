@@ -21,6 +21,15 @@ export interface ContextMenuSeparatorDef {
 export type ContextMenuDef = (ContextMenuItemDef | ContextMenuSeparatorDef)[];
 
 // ContextMenu Props
+export interface ContextMenuAnchorRect {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+    width: number;
+    height: number;
+}
+
 export interface ContextMenuProps {
     /** Menu items */
     items: ContextMenuDef;
@@ -30,6 +39,8 @@ export interface ContextMenuProps {
     onClose: () => void;
     /** Whether the menu is visible */
     visible?: boolean;
+    /** Optional anchor bounds for aligning related menus */
+    anchorRect?: ContextMenuAnchorRect;
 }
 
 /**
@@ -41,6 +52,7 @@ export function ContextMenu({
     position,
     onClose,
     visible = true,
+    anchorRect,
 }: ContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
     const [adjustedPosition, setAdjustedPosition] = useState(position);
@@ -54,29 +66,37 @@ export function ContextMenu({
         const rect = menuRef.current.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
-
         let { x, y } = position;
+        const padding = 8;
 
-        // Adjust horizontal position
-        if (x + rect.width > viewportWidth) {
-            x = viewportWidth - rect.width - 8;
-        }
-        if (x < 0) {
-            x = 8;
+        if (anchorRect) {
+            const spaceRight = viewportWidth - anchorRect.right - padding;
+            const spaceLeft = anchorRect.left - padding;
+            const shouldOpenLeft = spaceRight < rect.width && spaceLeft >= rect.width;
+            if (shouldOpenLeft) {
+                x = anchorRect.left - rect.width;
+            } else if (x + rect.width > viewportWidth - padding) {
+                x = viewportWidth - rect.width - padding;
+            }
+        } else if (x + rect.width > viewportWidth - padding) {
+            x = viewportWidth - rect.width - padding;
         }
 
-        // Adjust vertical position
-        if (y + rect.height > viewportHeight) {
-            y = viewportHeight - rect.height - 8;
+        if (x < padding) {
+            x = padding;
         }
-        if (y < 0) {
-            y = 8;
+
+        if (y + rect.height > viewportHeight - padding) {
+            y = viewportHeight - rect.height - padding;
+        }
+        if (y < padding) {
+            y = padding;
         }
 
         if (x !== adjustedPosition.x || y !== adjustedPosition.y) {
             setAdjustedPosition({ x, y });
         }
-    }, [position, visible, items]);
+    }, [position, visible, items, anchorRect]);
 
     // Close on click outside
     useEffect(() => {
@@ -225,6 +245,7 @@ function ContextMenuItem({
 }: ContextMenuItemProps) {
     const itemRef = useRef<HTMLDivElement>(null);
     const [submenuPosition, setSubmenuPosition] = useState({ x: 0, y: 0 });
+    const [submenuAnchor, setSubmenuAnchor] = useState<ContextMenuAnchorRect | null>(null);
 
     const hasSubmenu = item.submenu && item.submenu.length > 0;
 
@@ -236,6 +257,16 @@ function ContextMenuItem({
                 x: rect.right,
                 y: rect.top,
             });
+            setSubmenuAnchor({
+                left: rect.left,
+                right: rect.right,
+                top: rect.top,
+                bottom: rect.bottom,
+                width: rect.width,
+                height: rect.height,
+            });
+        } else {
+            setSubmenuAnchor(null);
         }
     }, [isSubmenuOpen]);
 
@@ -301,6 +332,7 @@ function ContextMenuItem({
                     position={submenuPosition}
                     onClose={onClose}
                     visible={isSubmenuOpen}
+                    anchorRect={submenuAnchor ?? undefined}
                 />
             )}
         </>
