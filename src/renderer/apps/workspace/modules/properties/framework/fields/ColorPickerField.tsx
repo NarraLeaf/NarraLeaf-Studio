@@ -35,6 +35,8 @@ const HUE_GRADIENT_STOPS = [
     "hsl(300, 100%, 50%)",
     "hsl(360, 100%, 50%)",
 ];
+const PANEL_SPACING = 6;
+const PANEL_EDGE_PADDING = 8;
 
 interface ColorState {
     hue: number;
@@ -156,6 +158,7 @@ export function ColorPickerTrigger({
     const [isOpen, setIsOpen] = useState(false);
     const [panelPosition, setPanelPosition] = useState({ left: 0, top: 0 });
     const [adjustedPanelPosition, setAdjustedPanelPosition] = useState(panelPosition);
+    const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [colorState, setColorState] = useState(() => deriveColorState(value));
     const actualModes = useMemo(
@@ -214,18 +217,24 @@ export function ColorPickerTrigger({
         [notifyChange]
     );
 
-    const openPicker = useCallback(() => {
-        if (disabled || readOnly) return;
+    const syncAnchorRect = useCallback(() => {
         const rect = triggerRef.current?.getBoundingClientRect();
         if (!rect) return;
-        const calculated = { left: rect.left, top: rect.bottom + 6 };
+        const calculated = { left: rect.left, top: rect.bottom + PANEL_SPACING };
         setPanelPosition(calculated);
         setAdjustedPanelPosition(calculated);
+        setAnchorRect(rect);
+    }, []);
+
+    const openPicker = useCallback(() => {
+        if (disabled || readOnly) return;
+        syncAnchorRect();
         setIsOpen(true);
-    }, [disabled, readOnly]);
+    }, [disabled, readOnly, syncAnchorRect]);
 
     const closePicker = useCallback(() => {
         setIsOpen(false);
+        setAnchorRect(null);
     }, []);
 
     useEffect(() => {
@@ -252,26 +261,86 @@ export function ColorPickerTrigger({
         const rect = panelRef.current.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
-        let left = panelPosition.left;
-        let top = panelPosition.top;
+        const topLimit = Math.max(PANEL_EDGE_PADDING, viewportHeight - rect.height - PANEL_EDGE_PADDING);
+        const leftLimit = Math.max(PANEL_EDGE_PADDING, viewportWidth - rect.width - PANEL_EDGE_PADDING);
+        const clampTop = (value: number) =>
+            Math.min(Math.max(value, PANEL_EDGE_PADDING), topLimit);
+        const clampLeft = (value: number) =>
+            Math.min(Math.max(value, PANEL_EDGE_PADDING), leftLimit);
 
-        if (left + rect.width > viewportWidth) {
-            left = Math.max(8, viewportWidth - rect.width - 8);
-        }
-        if (left < 8) {
-            left = 8;
-        }
-        if (top + rect.height > viewportHeight) {
-            top = Math.max(8, panelPosition.top - rect.height - 8);
-        }
-        if (top < 8) {
-            top = 8;
+        let top = clampTop(panelPosition.top);
+        let left = clampLeft(panelPosition.left);
+
+        if (anchorRect) {
+            const belowTop = clampTop(anchorRect.bottom + PANEL_SPACING);
+            const aboveTop = clampTop(anchorRect.top - rect.height - PANEL_SPACING);
+            const spaceBelow = viewportHeight - anchorRect.bottom;
+            const spaceAbove = anchorRect.top;
+
+            if (spaceBelow >= rect.height + PANEL_SPACING) {
+                top = belowTop;
+            } else if (spaceAbove >= rect.height + PANEL_SPACING) {
+                top = aboveTop;
+            } else if (spaceBelow >= spaceAbove) {
+                top = belowTop;
+            } else {
+                top = aboveTop;
+            }
+
+            const spaceRight = viewportWidth - anchorRect.left;
+            const spaceLeft = anchorRect.right;
+            if (spaceRight >= rect.width) {
+                left = clampLeft(anchorRect.left);
+            } else if (spaceLeft >= rect.width) {
+                left = clampLeft(anchorRect.right - rect.width);
+            } else {
+                left = clampLeft(anchorRect.left + (anchorRect.width - rect.width) / 2);
+            }
         }
 
-        if (left !== adjustedPanelPosition.left || top !== adjustedPanelPosition.top) {
+        const bottomOverflow = top + rect.height + PANEL_EDGE_PADDING - viewportHeight;
+        if (bottomOverflow > 0) {
+            top = Math.max(PANEL_EDGE_PADDING, top - bottomOverflow);
+        }
+        const topOverflow = PANEL_EDGE_PADDING - top;
+        if (topOverflow > 0) {
+            top = PANEL_EDGE_PADDING;
+        }
+        const rightOverflow = left + rect.width + PANEL_EDGE_PADDING - viewportWidth;
+        if (rightOverflow > 0) {
+            left = Math.max(PANEL_EDGE_PADDING, left - rightOverflow);
+        }
+        const leftOverflow = PANEL_EDGE_PADDING - left;
+        if (leftOverflow > 0) {
+            left = PANEL_EDGE_PADDING;
+        }
+
+        if (top !== adjustedPanelPosition.top || left !== adjustedPanelPosition.left) {
             setAdjustedPanelPosition({ left, top });
         }
-    }, [isOpen, panelPosition, adjustedPanelPosition]);
+    }, [isOpen, panelPosition, adjustedPanelPosition, anchorRect]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        let rafId = 0;
+        const handleLayoutChange = () => {
+            if (rafId) {
+                cancelAnimationFrame(rafId);
+            }
+            rafId = requestAnimationFrame(() => {
+                syncAnchorRect();
+            });
+        };
+        window.addEventListener("resize", handleLayoutChange);
+        window.addEventListener("scroll", handleLayoutChange, true);
+        return () => {
+            window.removeEventListener("resize", handleLayoutChange);
+            window.removeEventListener("scroll", handleLayoutChange, true);
+            if (rafId) {
+                cancelAnimationFrame(rafId);
+            }
+        };
+    }, [isOpen, syncAnchorRect]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -449,10 +518,12 @@ export function ColorPickerTrigger({
             ref={panelRef}
             className="w-80 rounded-2xl border border-white/10 bg-[#1e1f22] p-4 shadow-2xl"
             style={{
-                position: "absolute",
+                position: "fixed",
                 zIndex: 60,
                 left: adjustedPanelPosition.left,
                 top: adjustedPanelPosition.top,
+                maxHeight: `calc(100vh - ${PANEL_EDGE_PADDING * 2}px)`,
+                overflowY: "auto",
             }}
         >
             <div

@@ -31,29 +31,23 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
         translateY: number;
     } | null>(null);
 
-    const resetLiveStyles = useCallback(() => {
-        if (!config.imageTarget) {
-            return;
-        }
-        config.imageTarget.style.transform = "";
-        config.imageTarget.style.width = "";
-        config.imageTarget.style.height = "";
-    }, [config]);
-
     /**
-     * Persist the crop placement from tracked pixel deltas.
+     * Persist the crop placement from tracked pixel deltas, then directly
+     * apply the resulting CSS to the image target so the visual state is
+     * immediately correct.
+     *
+     * We MUST write the styles ourselves instead of relying on React's
+     * reconciliation because:
+     *   1. Moveable manipulates inline styles directly (transform, width, height).
+     *   2. When we clear those overrides React still considers its previous
+     *      render values "current" and only patches properties that CHANGED
+     *      between renders.  For a pure drag (no size change) React would
+     *      skip re-applying width/height, leaving them blank after the clear.
+     *   3. Writing the authoritative values here avoids the gap entirely.
      *
      * Uses container.clientWidth / clientHeight (the padding-box in local CSS
-     * coordinates) instead of getBoundingClientRect (screen-space AABB).
-     *
-     * This is critical because:
-     *   - CSS percentage left/top/width/height resolve against the containing
-     *     block's LOCAL dimensions.
-     *   - Moveable's beforeTranslate and resize values are in the target's
-     *     local coordinate space.
-     *   - getBoundingClientRect returns the axis-aligned bounding box which is
-     *     WRONG when the element is rotated (it becomes larger than the actual
-     *     element dimensions).
+     * coordinates) which is immune to ancestor CSS transforms (rotation,
+     * viewport zoom / pan).
      */
     const updatePlacement = useCallback(
         (override?: {
@@ -68,9 +62,7 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
                 return;
             }
 
-            // Local dimensions – unaffected by ancestor CSS transforms (rotation,
-            // viewport zoom / pan).  These match the coordinate space that CSS
-            // percentage values and Moveable deltas operate in.
+            // Local dimensions – unaffected by ancestor CSS transforms.
             const containerWidth = container.clientWidth;
             const containerHeight = container.clientHeight;
             if (containerWidth === 0 || containerHeight === 0) {
@@ -100,7 +92,7 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             const baseLeftPx = (prev.leftPct / 100) * containerWidth;
             const baseTopPx = (prev.topPct / 100) * containerHeight;
 
-            // Apply overrides (resize gives new pixel size, drag gives a translate delta)
+            // Apply overrides
             const nextWidthPx = override?.widthPx ?? baseWidthPx;
             const nextHeightPx = override?.heightPx ?? baseHeightPx;
             const translateX = override?.translateX ?? 0;
@@ -114,6 +106,7 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             const widthPct = Math.max(MIN_SIZE_PCT, (nextWidthPx / containerWidth) * 100);
             const heightPct = Math.max(MIN_SIZE_PCT, (nextHeightPx / containerHeight) * 100);
 
+            // ── 1. Update the document model ────────────────────────────────
             const nextFill: ImageFill = {
                 ...prevFill,
                 mode: "crop",
@@ -123,6 +116,17 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
                 ...element.props,
                 imageFill: nextFill,
             });
+
+            // ── 2. Directly apply styles to the DOM element ─────────────────
+            // This removes the Moveable-applied transform and sets the
+            // authoritative percentage values so that the image is visually
+            // correct even before React reconciles.
+            imageTarget.style.transform = "";
+            imageTarget.style.left = `${leftPct}%`;
+            imageTarget.style.top = `${topPct}%`;
+            imageTarget.style.width = `${widthPct}%`;
+            imageTarget.style.height = `${heightPct}%`;
+
             scheduleMoveableRectUpdate();
         },
         [config],
@@ -148,7 +152,6 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             translateX: event.beforeTranslate[0],
             translateY: event.beforeTranslate[1],
         };
-        // Apply Moveable's computed transform for live visual feedback.
         event.target.style.transform = event.transform;
     }, []);
 
@@ -164,11 +167,10 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
                     translateY: lastDragRef.current.translateY,
                 });
             }
-            resetLiveStyles();
             lastDragRef.current = null;
             config.endTransform();
         },
-        [config, resetLiveStyles, updatePlacement],
+        [config, updatePlacement],
     );
 
     // ── Resize ───────────────────────────────────────────────────────────
@@ -195,7 +197,6 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             translateX,
             translateY,
         };
-        // Apply Moveable's computed size / transform for live visual feedback.
         event.target.style.width = `${event.width}px`;
         event.target.style.height = `${event.height}px`;
         if (event.drag) {
@@ -217,11 +218,10 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
                     translateY: lastResizeRef.current.translateY,
                 });
             }
-            resetLiveStyles();
             lastResizeRef.current = null;
             config.endTransform();
         },
-        [config, resetLiveStyles, updatePlacement],
+        [config, updatePlacement],
     );
 
     return {
