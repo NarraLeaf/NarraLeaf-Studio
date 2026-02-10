@@ -131,6 +131,77 @@ function hslToRgb(h: number, s: number, l: number) {
     };
 }
 
+function rgbToHsv(r: number, g: number, b: number) {
+    const rr = clamp(r / 255, 0, 1);
+    const gg = clamp(g / 255, 0, 1);
+    const bb = clamp(b / 255, 0, 1);
+    const max = Math.max(rr, gg, bb);
+    const min = Math.min(rr, gg, bb);
+    const delta = max - min;
+    let h = 0;
+
+    if (delta !== 0) {
+        if (max === rr) {
+            h = ((gg - bb) / delta) % 6;
+        } else if (max === gg) {
+            h = (bb - rr) / delta + 2;
+        } else {
+            h = (rr - gg) / delta + 4;
+        }
+        h *= 60;
+        if (h < 0) {
+            h += 360;
+        }
+    }
+
+    const v = max;
+    const s = max === 0 ? 0 : delta / max;
+
+    return {
+        h,
+        s,
+        v,
+    };
+}
+
+function hsvToRgb(h: number, s: number, v: number) {
+    const normalizedHue = ((h % 360) + 360) % 360;
+    const clampedS = clamp(s, 0, 1);
+    const clampedV = clamp(v, 0, 1);
+    const c = clampedV * clampedS;
+    const x = c * (1 - Math.abs(((normalizedHue / 60) % 2) - 1));
+    const m = clampedV - c;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+
+    if (normalizedHue >= 0 && normalizedHue < 60) {
+        r = c;
+        g = x;
+    } else if (normalizedHue >= 60 && normalizedHue < 120) {
+        r = x;
+        g = c;
+    } else if (normalizedHue >= 120 && normalizedHue < 180) {
+        g = c;
+        b = x;
+    } else if (normalizedHue >= 180 && normalizedHue < 240) {
+        g = x;
+        b = c;
+    } else if (normalizedHue >= 240 && normalizedHue < 300) {
+        r = x;
+        b = c;
+    } else {
+        r = c;
+        b = x;
+    }
+
+    return {
+        r: (r + m) * 255,
+        g: (g + m) * 255,
+        b: (b + m) * 255,
+    };
+}
+
 function deriveColorState(value: ColorValue): ColorState {
     const normalizedHex = normalizeHex(value.hex) || "#FFFFFF";
     const { r, g, b } = hexToRgb(normalizedHex);
@@ -160,6 +231,7 @@ export function ColorPickerTrigger({
     const [adjustedPanelPosition, setAdjustedPanelPosition] = useState(panelPosition);
     const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [layoutTick, setLayoutTick] = useState(0);
     const [colorState, setColorState] = useState(() => deriveColorState(value));
     const actualModes = useMemo(
         () => (colorModes && colorModes.length > 0 ? colorModes : DEFAULT_COLOR_MODES),
@@ -318,7 +390,7 @@ export function ColorPickerTrigger({
         if (top !== adjustedPanelPosition.top || left !== adjustedPanelPosition.left) {
             setAdjustedPanelPosition({ left, top });
         }
-    }, [isOpen, panelPosition, adjustedPanelPosition, anchorRect]);
+    }, [isOpen, panelPosition, adjustedPanelPosition, anchorRect, layoutTick]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -343,6 +415,17 @@ export function ColorPickerTrigger({
     }, [isOpen, syncAnchorRect]);
 
     useEffect(() => {
+        if (!isOpen || !panelRef.current) return;
+        const observer = new ResizeObserver(() => {
+            setLayoutTick((tick) => tick + 1);
+        });
+        observer.observe(panelRef.current);
+        return () => {
+            observer.disconnect();
+        };
+    }, [isOpen]);
+
+    useEffect(() => {
         if (!isOpen) return;
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Escape") {
@@ -357,14 +440,17 @@ export function ColorPickerTrigger({
         (clientX: number, clientY: number) => {
             const rect = panelRef.current?.querySelector("[data-color-map]")?.getBoundingClientRect();
             if (!rect) return;
-            const satur = clamp((clientX - rect.left) / rect.width, 0, 1) * 100;
-            const light = clamp(1 - (clientY - rect.top) / rect.height, 0, 1) * 100;
+            const saturation = clamp((clientX - rect.left) / rect.width, 0, 1);
+            const value = clamp(1 - (clientY - rect.top) / rect.height, 0, 1);
+            const { r, g, b } = hsvToRgb(colorState.hue, saturation, value);
+            const { h, s, l } = rgbToHsl(r, g, b);
             applyColorState(() => ({
-                saturation: satur,
-                lightness: light,
+                hue: h,
+                saturation: s,
+                lightness: l,
             }));
-    },
-    [applyColorState]
+        },
+        [applyColorState, colorState.hue]
     );
 
     useEffect(() => {
@@ -387,6 +473,17 @@ export function ColorPickerTrigger({
     const currentRgb = useMemo(() => {
         return hslToRgb(colorState.hue, colorState.saturation, colorState.lightness);
     }, [colorState]);
+    const mapCoordinates = useMemo(() => {
+        const { s, v } = rgbToHsv(
+            currentRgb.r,
+            currentRgb.g,
+            currentRgb.b
+        );
+        return {
+            saturation: s * 100,
+            value: v * 100,
+        };
+    }, [currentRgb]);
     const opacityGradient = useMemo(() => {
         const r = Math.round(currentRgb.r);
         const g = Math.round(currentRgb.g);
@@ -536,8 +633,12 @@ export function ColorPickerTrigger({
             >
                 <div
                     className="absolute inset-0"
+                    style={{ backgroundColor: `hsl(${colorState.hue}, 100%, 50%)` }}
+                />
+                <div
+                    className="absolute inset-0"
                     style={{
-                        background: `linear-gradient(90deg, #ffffff 0%, hsl(${colorState.hue}, 100%, 50%) 100%)`,
+                        background: "linear-gradient(90deg, #ffffff 0%, rgba(255,255,255,0) 100%)",
                     }}
                 />
                 <div
@@ -549,8 +650,8 @@ export function ColorPickerTrigger({
                 <span
                     className="absolute w-3 h-3 border border-white/80 rounded-full -translate-x-1/2 -translate-y-1/2"
                     style={{
-                        left: `${colorState.saturation}%`,
-                        top: `${100 - colorState.lightness}%`,
+                        left: `${mapCoordinates.saturation}%`,
+                        top: `${100 - mapCoordinates.value}%`,
                         boxShadow: "0 0 0 2px rgba(255,255,255,0.9)",
                     }}
                 />
