@@ -21,7 +21,7 @@ For game compatibility, see [docs/game-compatibility.md](docs/game-compatibility
   - [x] Assets Manager
     - [x] Magic Tags
     - [x] Asset Groups
-    - [ ] Asset Explorer
+    - [x] Asset Explorer
     - [ ] Asset Compression
     - [x] Remote Assets
   - [x] Character Manager
@@ -29,8 +29,28 @@ For game compatibility, see [docs/game-compatibility.md](docs/game-compatibility
   - [ ] Script Editor
   - [ ] Visual Graph Manager
   - [ ] UI Editor
-  - [ ] Debugger
-  - [ ] Live Preview
+    - [x] Surface Manager
+    - [ ] Surface Editor
+      - [ ] Element Outline
+      - [ ] Base Elements
+        - [ ] Rectangle
+          - [ ] MultiState
+        - [ ] Text
+        - [ ] Circle
+        - [ ] Video
+        - [ ] Container
+          - [ ] Flex Layout
+          - [ ] Grid Layout
+          - [ ] Scroll View
+      - [ ] Game Elements
+        - [ ] List View
+        - [ ] Grid View
+      - [ ] Behavior Graph Editor
+      - [ ] Docker Bar
+    - [ ] Template
+  - [ ] Dev Mode
+    - [ ] Live Preview
+    - [ ] Debugger
   - [ ] Build & Publish
   - [ ] Version Control
 
