@@ -9,6 +9,7 @@
 ## 1. TL;DR（你需要记住的最小事实）
 
 - **编辑对象**：以 `Surface` 为单位编辑 UI（App / Stage）。
+- **复用机制**：Stage Surface 可以通过 **Link** 复用任意 App Surface 的内容（同一份 UI 文档，同一套 element tree）。
 - **数据资产**：
   - UI 文档：`editor/ui/uidoc.json`
   - 行为图：`editor/ui/uigraphs.json`
@@ -29,6 +30,35 @@ UI Editor 以 `Surface` 作为编辑与管理单位（左侧 UI 面板管理 Sur
   - `mount.kind: "slot"`：挂载到舞台插槽（`dialog/menu/notification/none`）
   - `mount.kind: "persistent"`：常驻舞台
   - `mount.kind: "layer"`：叠层/页面式 UI
+
+#### 2.1.1 Stage Surface Link（复用 App Surface）
+
+在 Dev Mode / Player 运行时场景中，经常需要“把 App 级页面复用到游戏内叠层中”，典型例子是 **Settings 页面**：
+
+- App 外：作为 `App Surface`（例如在启动器或主界面中打开设置）
+- 游戏内：作为 `Stage Surface (mount.kind = "layer")` 叠在舞台上
+
+为避免“同一个页面维护两份 UI”，Stage Surface 需要支持 **Link 任意 App Surface**，并满足：
+
+- **同一份 UI 文档**：Link 不是复制数据；Stage Surface 与被 Link 的 App Surface 共用同一个 `UIDocument` 的 `elements`（同一棵 element tree）。
+- **按 id 解析**：运行时/编辑器预览必须通过 `surfaceId` 查找目标 App Surface，禁止依赖 `name`（因为 name 可被用户改动）。
+- **渲染语义**：
+  - Stage Surface 仍然决定 **挂载方式**（`mount`）与 **宿主环境**（player）。
+  - Stage Surface 的“内容根节点”来自被 Link 的 App Surface：渲染时使用目标 App Surface 的 `rootElementId` 作为递归入口。
+  - Stage Surface 自己的 `rootElementId` 仅用于兼容与占位（当未配置 Link 时仍正常渲染自身）。
+
+建议的数据模型（用于后续类型与迁移实现）：
+
+- 在 `UIStageSurface` 上新增可选字段：
+  - `link?: { kind: "appSurface"; surfaceId: UISurfaceId }`
+
+对应的渲染要求（用于 `UIRuntimeBridgeService.renderSurface()` 与 Player runtime）：
+
+- 渲染 `surfaceId = stageSurface.id` 时：
+  - 若 `stageSurface.link?.kind === "appSurface"`：
+    - 解析目标 `appSurface`：`document.surfaces.find(s => s.id === stageSurface.link.surfaceId)`
+    - 使用目标 `appSurface.rootElementId` 作为 element tree 入口
+  - 否则使用 `stageSurface.rootElementId`
 
 Surface 的设计分辨率为 `designSize`（宽高），编辑时视口缩放/平移不改变文档坐标系。
 

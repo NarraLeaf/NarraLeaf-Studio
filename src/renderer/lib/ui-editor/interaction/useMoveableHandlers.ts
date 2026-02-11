@@ -237,6 +237,39 @@ export function useMoveableHandlers({
         endTransform();
     }, [documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
 
+    const cancelResize = useCallback(() => {
+        selectedTargets.forEach(target => {
+            const elementId = target.dataset.uiElementId;
+            if (!elementId) {
+                return;
+            }
+            const layout = layoutCache.current.get(elementId);
+            layoutCache.current.delete(elementId);
+            resizeCache.current.delete(elementId);
+            resizeStartCache.current.delete(elementId);
+            dragDeltaCache.current.delete(elementId);
+            applyFinalTransform(target, layout?.rotation);
+        });
+        scheduleMoveableRectUpdate();
+        endTransform();
+    }, [endTransform, scheduleMoveableRectUpdate, selectedTargets]);
+
+    const cancelRotate = useCallback(() => {
+        selectedTargets.forEach(target => {
+            const elementId = target.dataset.uiElementId;
+            if (!elementId) {
+                return;
+            }
+            const layout = layoutCache.current.get(elementId);
+            layoutCache.current.delete(elementId);
+            rotateCache.current.delete(elementId);
+            dragDeltaCache.current.delete(elementId);
+            applyFinalTransform(target, layout?.rotation);
+        });
+        scheduleMoveableRectUpdate();
+        endTransform();
+    }, [endTransform, scheduleMoveableRectUpdate, selectedTargets]);
+
     const handleDragStart = useCallback(() => {
         if (isGroupSelection) {
             return;
@@ -383,9 +416,13 @@ export function useMoveableHandlers({
             if (isGroupSelection) {
                 return;
             }
+            if (!e.isDrag) {
+                cancelResize();
+                return;
+            }
             finalizeResize();
         },
-        [finalizeResize, isGroupSelection],
+        [cancelResize, finalizeResize, isGroupSelection],
     );
 
     const handleResizeGroupStart = useCallback(
@@ -437,9 +474,13 @@ export function useMoveableHandlers({
             if (!isGroupSelection) {
                 return;
             }
+            if (!e.isDrag) {
+                cancelResize();
+                return;
+            }
             finalizeResize();
         },
-        [finalizeResize, isGroupSelection],
+        [cancelResize, finalizeResize, isGroupSelection],
     );
 
     const handleRotateStart = useCallback(
@@ -480,13 +521,17 @@ export function useMoveableHandlers({
     );
 
     const handleRotateEnd = useCallback(
-        (_e: OnRotateEnd) => {
+        (e: OnRotateEnd) => {
             if (isGroupSelection) {
+                return;
+            }
+            if (!e.isDrag) {
+                cancelRotate();
                 return;
             }
             finalizeRotate();
         },
-        [finalizeRotate, isGroupSelection],
+        [cancelRotate, finalizeRotate, isGroupSelection],
     );
 
     const handleRotateGroupStart = useCallback(
@@ -530,13 +575,17 @@ export function useMoveableHandlers({
     );
 
     const handleRotateGroupEnd = useCallback(
-        (_e: OnRotateGroupEnd) => {
+        (e: OnRotateGroupEnd) => {
             if (!isGroupSelection) {
+                return;
+            }
+            if (!e.isDrag) {
+                cancelRotate();
                 return;
             }
             finalizeRotate();
         },
-        [finalizeRotate, isGroupSelection],
+        [cancelRotate, finalizeRotate, isGroupSelection],
     );
 
     return {
