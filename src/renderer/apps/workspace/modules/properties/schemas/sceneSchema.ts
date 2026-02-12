@@ -1,6 +1,12 @@
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
-import type { UIStageSlotId, UIStageSurfaceMount, UIStageSurface, UISurface } from "@shared/types/ui-editor/document";
+import type {
+    UIStageSlotId,
+    UIStageSurfaceMount,
+    UIStageSurface,
+    UISurface,
+} from "@shared/types/ui-editor/document";
+import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { colorValueToCss, parseColorValue } from "../framework/utils/colorUtils";
 import type {
     ColorPickerFieldDefinition,
@@ -44,6 +50,7 @@ const STAGE_SLOT_OPTIONS: { value: UIStageSlotId; label: string }[] = [
 const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = "dialog";
 
 const isStageSurface = (surface: UISurface): surface is UIStageSurface => surface.kind === "stageSurface";
+const NONE_LINK_VALUE = "none";
 
 const getStageMountLabel = (surface: UISurface): string => {
     if (!isStageSurface(surface)) {
@@ -85,6 +92,9 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
             label: "Name",
             getValue: (data) => data.surface.name,
             setValue: (data, value) => {
+                if (data.surface.id === MAIN_APP_SURFACE_ID) {
+                    return;
+                }
                 if (value === data.surface.name) {
                     return;
                 }
@@ -115,6 +125,50 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
                     };
                 });
             },
+        }),
+        defineField<SceneEditorContext, SelectFieldDefinition<SceneEditorContext>>({
+            id: "scene.linkedSurface",
+            type: "select",
+            label: "Linked App Surface",
+            helpText: "Link an app surface to reuse its UI inside this stage surface.",
+            options: (data) => {
+                const document = data.documentService.getDocument();
+                const appSurfaces = document.surfaces.filter(surface => surface.kind === "appSurface");
+                return [
+                    { value: NONE_LINK_VALUE, label: "None" },
+                    ...appSurfaces.map(surface => ({
+                        value: surface.id,
+                        label: surface.name,
+                        disabled: surface.id === data.surface.id,
+                    })),
+                ];
+            },
+            getValue: (data) => {
+                if (!isStageSurface(data.surface)) {
+                    return NONE_LINK_VALUE;
+                }
+                return data.surface.link?.kind === "appSurface" ? data.surface.link.surfaceId : NONE_LINK_VALUE;
+            },
+            setValue: (data, value) => {
+                if (!isStageSurface(data.surface)) {
+                    return;
+                }
+                const nextValue = String(value);
+                data.documentService.updateSurface(data.surface.id, surface => {
+                    if (surface.kind !== "stageSurface") {
+                        return;
+                    }
+                    if (nextValue === NONE_LINK_VALUE) {
+                        delete surface.link;
+                        return;
+                    }
+                    surface.link = {
+                        kind: "appSurface",
+                        surfaceId: nextValue,
+                    };
+                });
+            },
+            hidden: (data) => !isStageSurface(data.surface),
         }),
         defineField<SceneEditorContext, SelectFieldDefinition<SceneEditorContext>>({
             id: "scene.mountKind",

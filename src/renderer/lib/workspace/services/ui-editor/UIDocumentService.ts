@@ -29,6 +29,7 @@ import {
     DEFAULT_UI_DOCUMENT_NAME,
     DEFAULT_UI_ROOT_NAME,
     DEFAULT_UI_SURFACE_SIZE,
+    MAIN_APP_SURFACE_ID,
 } from "@shared/constants/ui-editor";
 
 type UIDocumentServiceEvents = {
@@ -124,6 +125,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         const migrated = this.migrateIfNeeded(result.data);
         this.document = migrated;
+        const needsSave = this.ensureMainSurface(this.document);
+        if (needsSave) {
+            await this.save(this.document);
+            this.revision = 0;
+            this.lastSavedRevision = 0;
+            this.setDirty(false);
+            return this.document;
+        }
         this.revision = 0;
         this.lastSavedRevision = 0;
         this.setDirty(false);
@@ -306,6 +315,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (document.schemaVersion === 1) {
             return this.migrateFromLegacyDocument(document);
         }
+        if (document.schemaVersion === 2) {
+            return this.migrateFromV2Document(document);
+        }
         throw new RendererError("UI document migration is not implemented");
     }
 
@@ -316,6 +328,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
             surfaces: migratedSurfaces,
+        };
+    }
+
+    private migrateFromV2Document(document: UIDocument): UIDocument {
+        return {
+            ...document,
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
         };
     }
 
@@ -362,27 +381,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const designSize = this.getProjectDesignSize();
         const now = new Date().toISOString();
         const documentId = uuidService.generate();
-        const surfaceId = uuidService.generate();
         const rootElementId = uuidService.generate();
 
-        const rootElement: UIElement = {
-            id: rootElementId,
-            type: "nl.root",
-            name: DEFAULT_UI_ROOT_NAME,
-            parentId: null,
-            childrenIds: [],
-            layout: {
-                x: 0,
-                y: 0,
-                width: designSize.width,
-                height: designSize.height,
-                visible: true,
-                opacity: 1,
-            },
-        };
+        const rootElement = this.createRootElement(rootElementId, designSize);
 
         const surface: UISurface = {
-            id: surfaceId,
+            id: MAIN_APP_SURFACE_ID,
             name: DEFAULT_APP_SURFACE_NAME,
             host: "app",
             kind: "appSurface",
@@ -390,7 +394,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 width: designSize.width,
                 height: designSize.height,
             },
-            rootElementId: rootElementId,
+            rootElementId,
         };
 
         const doc: UIDocument = {
@@ -454,21 +458,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                       settings,
                   };
 
-        const rootElement: UIElement = {
-            id: rootElementId,
-            type: "nl.root",
-            name: "Root",
-            parentId: null,
-            childrenIds: [],
-            layout: {
-                x: 0,
-                y: 0,
-                width: designSize.width,
-                height: designSize.height,
-                visible: true,
-                opacity: 1,
-            },
-        };
+        const rootElement = this.createRootElement(rootElementId, designSize);
 
         this.mutateDocument(document => {
             document.elements[rootElementId] = rootElement;
@@ -479,6 +469,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     public deleteSurface(surfaceId: string): void {
+        if (surfaceId === MAIN_APP_SURFACE_ID) {
+            return;
+        }
         this.mutateDocument(document => {
             const index = document.surfaces.findIndex(surface => surface.id === surfaceId);
             if (index === -1) {
@@ -519,7 +512,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (!surface) {
                 return;
             }
+            const isMainSurface = surface.id === MAIN_APP_SURFACE_ID;
+            const originalName = surface.name;
             updater(surface);
+            if (isMainSurface) {
+                surface.name = originalName;
+                surface.id = MAIN_APP_SURFACE_ID;
+            }
         });
     }
 
@@ -576,6 +575,73 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const projectService = this.getContext().services.get<ProjectService>(Services.Project);
         const projectConfig = projectService.getProjectConfig();
         return projectConfig.metadata?.resolution ?? DEFAULT_UI_SURFACE_SIZE;
+    }
+
+    private createRootElement(rootElementId: UIElementId, designSize: UISurfaceDesignSize): UIElement {
+        return {
+            id: rootElementId,
+            type: "nl.root",
+            name: DEFAULT_UI_ROOT_NAME,
+            parentId: null,
+            childrenIds: [],
+            layout: {
+                x: 0,
+                y: 0,
+                width: designSize.width,
+                height: designSize.height,
+                visible: true,
+                opacity: 1,
+            },
+        };
+    }
+
+    private ensureMainSurface(document: UIDocument): boolean {
+        const designSize = this.getProjectDesignSize();
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const existingMain = document.surfaces.find(surface => surface.id === MAIN_APP_SURFACE_ID);
+        let changed = false;
+        if (existingMain) {
+            if (existingMain.name !== DEFAULT_APP_SURFACE_NAME) {
+                existingMain.name = DEFAULT_APP_SURFACE_NAME;
+                changed = true;
+            }
+            if (!document.elements[existingMain.rootElementId]) {
+                const rootElementId = uuidService.generate();
+                existingMain.rootElementId = rootElementId;
+                document.elements[rootElementId] = this.createRootElement(rootElementId, designSize);
+                changed = true;
+            }
+            return changed;
+        }
+
+        const candidate = document.surfaces.find(surface => surface.kind === "appSurface");
+        if (candidate) {
+            candidate.id = MAIN_APP_SURFACE_ID;
+            candidate.name = DEFAULT_APP_SURFACE_NAME;
+            if (!document.elements[candidate.rootElementId]) {
+                const rootElementId = uuidService.generate();
+                candidate.rootElementId = rootElementId;
+                document.elements[rootElementId] = this.createRootElement(rootElementId, designSize);
+            }
+            return true;
+        }
+
+        const rootElementId = uuidService.generate();
+        const surface: UISurface = {
+            id: MAIN_APP_SURFACE_ID,
+            name: DEFAULT_APP_SURFACE_NAME,
+            host: "app",
+            kind: "appSurface",
+            designSize: {
+                width: designSize.width,
+                height: designSize.height,
+            },
+            rootElementId,
+        };
+
+        document.elements[rootElementId] = this.createRootElement(rootElementId, designSize);
+        document.surfaces.unshift(surface);
+        return true;
     }
 
     private getDocumentPath(): string {

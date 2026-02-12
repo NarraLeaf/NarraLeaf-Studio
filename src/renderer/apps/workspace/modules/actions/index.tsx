@@ -13,6 +13,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { welcomeModule } from "../welcome";
 import { getInterface } from "@/lib/app/bridge";
 import { Separator } from "../../registry/types";
+import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 
 /**
  * Global toolbar actions
@@ -32,6 +33,24 @@ export const runAction: ModuleAction = {
         // TODO: Implement run functionality
     },
     order: 2,
+};
+
+/**
+ * Dev mode action
+ * Launches dev mode window for the current project
+ */
+export const devModeAction: ModuleAction = {
+    id: "narraleaf-studio:dev-mode",
+    icon: <Play className="w-4 h-4" />,
+    tooltip: "Dev Mode",
+    onClick: (workspace: Workspace) => {
+        const projectPath = workspace.getContext().project.getConfig().projectPath;
+        void getInterface().devMode.launch(projectPath, {
+            kind: "surface",
+            surfaceId: MAIN_APP_SURFACE_ID,
+        });
+    },
+    order: 1,
 };
 
 /**
@@ -138,7 +157,7 @@ export const helpActionGroup: ModuleActionGroup = {
  * All global actions
  * Array of all actions that should be registered globally
  */
-export const globalActions: ModuleAction[] = [runAction, debugAction, buildAction];
+export const globalActions: ModuleAction[] = [devModeAction, runAction, debugAction, buildAction];
 
 /**
  * All global action groups

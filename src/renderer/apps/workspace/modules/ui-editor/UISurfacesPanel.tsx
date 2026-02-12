@@ -10,7 +10,7 @@ import { ContextMenu, ContextMenuDef, useContextMenu } from "@/lib/components/el
 import { createInputDialog } from "@/lib/components/dialogs";
 import { MoreVertical, PanelsTopLeft, Plus } from "lucide-react";
 import { UIService } from "@/lib/workspace/services/core/UIService";
-import { DEFAULT_APP_SURFACE_NAME } from "@shared/constants/ui-editor";
+import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 
 type SurfaceKindOption = {
@@ -318,18 +318,22 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 label: "Open Surface",
                 onClick: () => handleOpenSurface(surface),
             },
-            {
-                id: "surface-separator",
-                separator: true,
-            },
-            {
-                id: "delete-surface",
-                label: "Delete Surface",
-                onClick: () => {
-                    void handleDeleteSurface(surface);
-                },
-            },
         ];
+        if (surface.id !== MAIN_APP_SURFACE_ID) {
+            items.push(
+                {
+                    id: "surface-separator",
+                    separator: true,
+                },
+                {
+                    id: "delete-surface",
+                    label: "Delete Surface",
+                    onClick: () => {
+                        void handleDeleteSurface(surface);
+                    },
+                },
+            );
+        }
         setMenuItems(items);
         showMenu(event);
     }, [showMenu, handleOpenSurface, handleDeleteSurface]);

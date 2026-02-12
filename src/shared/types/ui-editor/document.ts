@@ -1,6 +1,6 @@
 import type { UIGraphId } from "./graph";
 
-export const UI_DOCUMENT_SCHEMA_VERSION = 2 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 3 as const;
 
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;
@@ -39,6 +39,11 @@ export type UIStageSurfaceMount =
           kind: "layer";
       };
 
+export type UIStageSurfaceLink = {
+    kind: "appSurface";
+    surfaceId: UISurfaceId;
+};
+
 export type UIAppSurface = {
     id: UISurfaceId;
     name: string;
@@ -59,6 +64,7 @@ export type UIStageSurface = {
     settings?: UISurfaceSettings;
     mount: UIStageSurfaceMount;
     slots?: Record<string, UISlotDefinition>;
+    link?: UIStageSurfaceLink;
 };
 
 export type UISurface = UIAppSurface | UIStageSurface;
