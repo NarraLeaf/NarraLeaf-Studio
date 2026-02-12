@@ -20,6 +20,12 @@ import {
     ProjectSettingsGetAllHandler,
     ProjectSettingsClearHandler
 } from "./window/handlers/projectSettingsAction";
+import {
+    DevModeGetStatusHandler,
+    DevModeLaunchHandler,
+    DevModeReloadHandler,
+    DevModeStopHandler,
+} from "./window/handlers/devModeAction";
 
 type WindowManagerEvents = {
     "window-created": [window: AppWindow];
@@ -94,6 +100,12 @@ export class WindowManager {
         win.registerIPCHandler(new ProjectSettingsSetBatchHandler());
         win.registerIPCHandler(new ProjectSettingsGetAllHandler());
         win.registerIPCHandler(new ProjectSettingsClearHandler());
+
+        // Register dev mode handlers
+        win.registerIPCHandler(new DevModeLaunchHandler());
+        win.registerIPCHandler(new DevModeStopHandler());
+        win.registerIPCHandler(new DevModeReloadHandler());
+        win.registerIPCHandler(new DevModeGetStatusHandler());
 
         // Register file system handlers
         win.registerIPCHandler(new FsStatHandler());

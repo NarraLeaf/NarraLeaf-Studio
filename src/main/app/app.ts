@@ -4,6 +4,7 @@ import { AppWindow, WindowConfig } from "./application/managers/window/appWindow
 import path from "path";
 import { Fs } from "@shared/utils/fs";
 import { throwException } from "@shared/utils/error";
+import { DevModeManager } from "./application/managers/devMode/DevModeManager";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -15,6 +16,13 @@ export class App extends BaseApp {
 
     constructor(public readonly config: AppConfig) {
         super(config);
+        this.devModeManager = new DevModeManager(this);
+    }
+
+    private readonly devModeManager: DevModeManager;
+
+    public getDevModeManager(): DevModeManager {
+        return this.devModeManager;
     }
 
     async launchLauncher(options: Partial<Electron.BrowserWindowConstructorOptions>): Promise<AppWindow<WindowAppType.Launcher>> {
@@ -165,6 +173,51 @@ export class App extends BaseApp {
         window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.ProjectWizard));
+
+        return window;
+    }
+
+    async launchDevMode(
+        props: WindowProps[WindowAppType.DevMode],
+        options: Partial<Electron.BrowserWindowConstructorOptions> = {},
+    ): Promise<AppWindow<WindowAppType.DevMode>> {
+        const config: WindowConfig<WindowAppType.DevMode> = {
+            windowType: WindowAppType.DevMode,
+            isolated: true,
+            autoFocus: true,
+            preload: this.getPreloadScript(),
+            options: {
+                minWidth: 900,
+                minHeight: 600,
+                width: 1400,
+                height: 900,
+                frame: false,
+                titleBarStyle: "hidden",
+                backgroundColor: "#0f1115",
+                show: false,
+                ...options,
+            },
+        };
+        const window = new AppWindow<WindowAppType.DevMode>(this, config, props);
+        window.setTitle("Dev Mode - NarraLeaf Studio");
+        window.setIcon(this.resolveResource("app-icon.ico"));
+        window.showWhenReady();
+
+        try {
+            await window.loadFile(this.getAppEntry(WindowAppType.DevMode));
+        } catch (error: any) {
+            if (error && (error.code === "ERR_ABORTED" || error.errno === -3)) {
+                this.logger.warn("[DevMode] Initial navigation aborted by reload, continuing...");
+            } else {
+                throw error;
+            }
+        }
+
+        if (this.isDevMode()) {
+            window.onKeyUp("F12", () => {
+                window.toggleDevTools();
+            });
+        }
 
         return window;
     }

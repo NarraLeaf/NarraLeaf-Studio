@@ -5,6 +5,7 @@ import { EditorNodeWrapper } from "../../../ui-editor/runtime/EditorNodeWrapper"
 import { ElementRendererRegistry, ElementRendererDefinition } from "../../../ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "../../../ui-editor/runtime/builtin";
 import type { UIHostAdapter, RenderSurfaceOptions } from "../../../ui-editor/runtime/types";
+import { resolveSurfaceRootElementId } from "../../../ui-editor/runtime/resolveSurfaceRoot";
 import { Service } from "../Service";
 import { IUIRuntimeBridgeService, Services, WorkspaceContext } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
@@ -26,7 +27,11 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
             return null;
         }
 
-        const rootElement = document.elements[surface.rootElementId];
+        const rootElementId = resolveSurfaceRootElementId(document, surface.id);
+        if (!rootElementId) {
+            return null;
+        }
+        const rootElement = document.elements[rootElementId];
         if (!rootElement) {
             return null;
         }

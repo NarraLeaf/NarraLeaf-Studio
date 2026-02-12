@@ -4,6 +4,7 @@ import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
+import { DevModeBundle, DevModeEntry, DevModeStatus } from "./devMode";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -57,6 +58,13 @@ export enum IPCEventType {
     projectSettingsSetBatch = "projectSettings.setBatch",
     projectSettingsGetAll = "projectSettings.getAll",
     projectSettingsClear = "projectSettings.clear",
+
+    devModeLaunch = "devMode.launch",
+    devModeStop = "devMode.stop",
+    devModeReload = "devMode.reload",
+    devModeGetStatus = "devMode.getStatus",
+    devModePayloadUpdate = "devMode.payload.update",
+    devModeControlReload = "devMode.control.reload",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -166,7 +174,7 @@ export type IPCEvents = {
         },
         response: void;
     };
-} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCProjectSettingsEvents;
+} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCProjectSettingsEvents & IPCDevModeEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -456,5 +464,59 @@ export type IPCProjectSettingsEvents = {
             projectPath: string;
         },
         response: void;
+    };
+};
+
+export type IPCDevModeEvents = {
+    [IPCEventType.devModeLaunch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            entry: DevModeEntry;
+        },
+        response: {
+            status: DevModeStatus;
+        };
+    };
+    [IPCEventType.devModeStop]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            status: DevModeStatus;
+        };
+    };
+    [IPCEventType.devModeReload]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            status: DevModeStatus;
+        };
+    };
+    [IPCEventType.devModeGetStatus]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            status: DevModeStatus;
+        };
+    };
+    [IPCEventType.devModePayloadUpdate]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            bundle: DevModeBundle;
+        },
+        response: never;
+    };
+    [IPCEventType.devModeControlReload]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            revision: number;
+        },
+        response: never;
     };
 };

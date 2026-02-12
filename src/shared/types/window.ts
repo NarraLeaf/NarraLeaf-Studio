@@ -4,6 +4,7 @@ export enum WindowAppType {
     Settings = "settings",
     Workspace = "workspace",
     ProjectWizard = "project-wizard",
+    DevMode = "dev-mode",
     Raw = "raw",
 }
 
@@ -17,6 +18,10 @@ export type WindowProps = {
         projectPath: string;
     },
     [WindowAppType.ProjectWizard]: {
+    },
+    [WindowAppType.DevMode]: {
+        projectPath: string;
+        entry: import("./devMode").DevModeEntry;
     },
     [WindowAppType.Raw]: {
     },
@@ -47,5 +52,6 @@ export type WindowCloseResults = {
     [WindowAppType.Settings]: null;
     [WindowAppType.Workspace]: null;
     [WindowAppType.ProjectWizard]: { created: boolean; projectPath: string } | null;
+    [WindowAppType.DevMode]: null;
     [WindowAppType.Raw]: null;
 };
