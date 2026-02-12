@@ -12,7 +12,13 @@ interface AssetObjectUrlState {
 }
 
 export function useAssetObjectUrl(assetId?: string | null) {
-    const { context } = useWorkspace();
+    let context: ReturnType<typeof useWorkspace> | null = null;
+    try {
+        const workspace = useWorkspace();
+        context = workspace.context;
+    } catch {
+        context = null;
+    }
     const assetsService = context ? context.services.get<AssetsService>(Services.Assets) : null;
     const [state, setState] = useState<AssetObjectUrlState>({
         url: null,

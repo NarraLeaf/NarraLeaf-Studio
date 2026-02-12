@@ -24,17 +24,6 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
  * Run project action
  * Executes the current project
  */
-export const runAction: ModuleAction = {
-    id: "narraleaf-studio:run",
-    icon: <Play className="w-4 h-4" />,
-    tooltip: "Run project",
-    onClick: () => {
-        console.log("Run clicked");
-        // TODO: Implement run functionality
-    },
-    order: 2,
-};
-
 /**
  * Dev mode action
  * Launches dev mode window for the current project
@@ -157,7 +146,7 @@ export const helpActionGroup: ModuleActionGroup = {
  * All global actions
  * Array of all actions that should be registered globally
  */
-export const globalActions: ModuleAction[] = [devModeAction, runAction, debugAction, buildAction];
+export const globalActions: ModuleAction[] = [devModeAction, debugAction, buildAction];
 
 /**
  * All global action groups
