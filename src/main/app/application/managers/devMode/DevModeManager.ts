@@ -15,6 +15,7 @@ type DevModeSession = {
     entry: DevModeEntry;
     status: DevModeStatus;
     window: AppWindow<WindowAppType.DevMode> | null;
+    windowReady: boolean;
     revision: number;
     watcher: FSWatcher | null;
     pendingBundle: DevModeBundle | null;
@@ -76,6 +77,7 @@ export class DevModeManager {
             entry,
             status: "starting",
             window: null,
+            windowReady: false,
             revision: 0,
             watcher: null,
             pendingBundle: null,
@@ -95,6 +97,7 @@ export class DevModeManager {
             entry: session.entry,
         });
         session.window = window;
+        session.windowReady = false;
         window.onClose(() => {
             this.disposeWatcher(session);
             this.clearReloadTimer(session);
@@ -103,6 +106,7 @@ export class DevModeManager {
             }
         });
         window.onReady(() => {
+            session.windowReady = true;
             if (session.pendingBundle) {
                 this.sendBundle(session, session.pendingBundle);
                 session.pendingBundle = null;
@@ -189,7 +193,7 @@ export class DevModeManager {
 
     private sendBundle(session: DevModeSession, bundle: DevModeBundle): void {
         const window = session.window;
-        if (!window || window.isClosed()) {
+        if (!window || window.isClosed() || !session.windowReady) {
             session.pendingBundle = bundle;
             return;
         }
