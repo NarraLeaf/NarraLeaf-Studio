@@ -25,6 +25,7 @@ import {
     DevModeLaunchHandler,
     DevModeReloadHandler,
     DevModeStopHandler,
+    DevModeResolveImageAssetUrlHandler,
 } from "./window/handlers/devModeAction";
 
 type WindowManagerEvents = {
@@ -106,6 +107,7 @@ export class WindowManager {
         win.registerIPCHandler(new DevModeStopHandler());
         win.registerIPCHandler(new DevModeReloadHandler());
         win.registerIPCHandler(new DevModeGetStatusHandler());
+        win.registerIPCHandler(new DevModeResolveImageAssetUrlHandler());
 
         // Register file system handlers
         win.registerIPCHandler(new FsStatHandler());

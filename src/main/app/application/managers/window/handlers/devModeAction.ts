@@ -2,6 +2,7 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
+import { WindowAppType } from "@shared/types/window";
 
 export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch> {
     readonly name = IPCEventType.devModeLaunch;
@@ -43,5 +44,42 @@ export class DevModeGetStatusHandler extends IPCHandler<IPCEventType.devModeGetS
     public handle(window: AppWindow): RequestStatus<{ status: IPCEvents[IPCEventType.devModeGetStatus]["response"]["status"] }> {
         const status = window.getApp().getDevModeManager().getStatus();
         return this.success({ status });
+    }
+}
+
+export class DevModeResolveImageAssetUrlHandler extends IPCHandler<IPCEventType.devModeResolveImageAssetUrl> {
+    readonly name = IPCEventType.devModeResolveImageAssetUrl;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow<WindowAppType.DevMode>,
+        { assetId }: IPCEvents[IPCEventType.devModeResolveImageAssetUrl]["data"],
+    ): Promise<RequestStatus<{ url: string }>> {
+        const props = window.getProps();
+        const workspaceWindow = window.getApp().windowManager
+            .getWindows()
+            .find(
+                w =>
+                    w.getWindowType() === WindowAppType.Workspace &&
+                    !w.isDestroyed() &&
+                    w.getProps().projectPath === props.projectPath,
+            ) as AppWindow<WindowAppType.Workspace> | undefined;
+
+        if (!workspaceWindow) {
+            return this.failed("Workspace window not available");
+        }
+
+        try {
+            const workspaceResult = await workspaceWindow.invokeIpcRequest(
+                IPCEventType.workspaceResolveImageAssetUrl,
+                { assetId },
+            );
+            if (!workspaceResult.success) {
+                return this.failed(workspaceResult.error ?? "Failed to resolve image asset");
+            }
+            return this.success(workspaceResult.data);
+        } catch (error) {
+            return this.failed(error);
+        }
     }
 }

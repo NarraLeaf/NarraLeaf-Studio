@@ -73,6 +73,7 @@ export interface RendererPreloadedInterface {
             getAll(projectPath: string): Promise<RequestStatus<{ settings: Record<string, any> }>>;
             clear(projectPath: string): Promise<RequestStatus<void>>;
         };
+        onResolveImageAssetUrl(handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
     };
 
     // App
@@ -92,6 +93,7 @@ export interface RendererPreloadedInterface {
         getStatus(): Promise<RequestStatus<{ status: DevModeStatus }>>;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
+        resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
     };
 }
 
