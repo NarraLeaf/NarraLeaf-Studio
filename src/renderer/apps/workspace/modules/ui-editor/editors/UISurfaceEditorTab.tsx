@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, UILayersPanel } from "@/lib/ui-editor/interaction";
+import { SELECTABLE_TARGET } from "@/lib/ui-editor/interaction/constants";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
 import { MousePointer2, Move, ChevronUp, ChevronDown, Play } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
@@ -11,7 +12,9 @@ import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 import { useWorkspace } from "@/apps/workspace/context";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
-import { Services } from "@/lib/workspace/services/services";
+import { InteractionOverride, Services } from "@/lib/workspace/services/services";
+import { getProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/builtin/rectangle/helpers";
+import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
 type ViewportTransform = {
     scale: number;
@@ -148,6 +151,113 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         [surface, widgetModules, showMenu, createElementAtClientPoint]
     );
 
+    const updateCropDimming = useCallback(
+        (override: InteractionOverride | null) => {
+            const canvas = canvasRef.current;
+            if (!canvas) {
+                return;
+            }
+            const nodes = canvas.querySelectorAll<HTMLElement>(".ui-editor-node:not(.ui-editor-node-root)");
+            nodes.forEach(node => {
+                if (override?.kind === "imageCrop" && override.surfaceId === surfaceId) {
+                    const isActive = node.dataset.uiElementId === override.elementId;
+                    if (isActive) {
+                        delete node.dataset.uiCropDim;
+                    } else {
+                        node.dataset.uiCropDim = "true";
+                    }
+                } else {
+                    delete node.dataset.uiCropDim;
+                }
+            });
+        },
+        [surfaceId]
+    );
+
+    useEffect(() => {
+        if (!stateService) {
+            return;
+        }
+        const current = stateService.getInteractionOverride();
+        updateCropDimming(current);
+        const unsubscribe = stateService.on("interactionOverrideChanged", updateCropDimming);
+        return () => {
+            unsubscribe();
+            updateCropDimming(null);
+        };
+    }, [stateService, updateCropDimming, documentVersion]);
+
+    const handleSurfaceDoubleClick = useCallback(
+        (event: React.MouseEvent<HTMLDivElement>) => {
+            if (!stateService || !documentService || !surfaceId) {
+                return;
+            }
+            if (tool.kind !== "select") {
+                return;
+            }
+            const target = event.target as HTMLElement | null;
+            if (!target) {
+                return;
+            }
+            if (
+                target.closest(
+                    ".moveable, .moveable-control, .moveable-line, .moveable-rotation, .moveable-rotation-handle, .moveable-area"
+                )
+            ) {
+                return;
+            }
+            const elementNode = target.closest(SELECTABLE_TARGET) as HTMLElement | null;
+            if (!elementNode) {
+                return;
+            }
+            const elementId = elementNode.dataset.uiElementId;
+            if (!elementId) {
+                return;
+            }
+            const selection = stateService.getSelection();
+            const selectionData = selection.type === "element" ? selection.data : null;
+            if (
+                !selectionData ||
+                selectionData.surfaceId !== surfaceId ||
+                selectionData.elementIds.length !== 1 ||
+                selectionData.elementIds[0] !== elementId
+            ) {
+                return;
+            }
+            const element = documentService.getDocument().elements[elementId];
+            if (!element || element.type !== "nl.rectangle") {
+                return;
+            }
+            const props = getProps(element);
+            if (props.fillType !== "image") {
+                return;
+            }
+            const fill = normalizeImageFill(props);
+            const hasImageSource = Boolean(fill?.assetId) || Boolean(props.backgroundImage?.trim());
+            if (!hasImageSource) {
+                return;
+            }
+            if (fill?.mode !== "crop") {
+                const nextFill: ImageFill = {
+                    ...(fill ?? { mode: "cover", assetId: null }),
+                    mode: "crop",
+                };
+                documentService.updateElementProps(elementId, {
+                    ...(element.props ?? {}),
+                    fillType: "image",
+                    imageFill: nextFill,
+                });
+            }
+            stateService.setInteractionOverride({
+                kind: "imageCrop",
+                surfaceId,
+                elementId,
+                source: "surfaceDoubleClick",
+            });
+        },
+        [documentService, stateService, surfaceId, tool.kind]
+    );
+
     if (!surface) {
         return (
             <div className="h-full flex items-center justify-center text-sm text-gray-500">
@@ -189,7 +299,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         type="button"
                         className={toolButtonClass(false)}
                         onClick={handleStartCurrentSurface}
-                        title="从当前场景启动"
+                        title="Start Surface"
                         disabled={!surfaceId}
                     >
                         <Play className="w-4 h-4" />
@@ -197,7 +307,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                 </div>
 
                 {/* Viewport / Canvas */}
-                <div ref={viewportRef} className="absolute inset-0 overflow-hidden">
+                <div ref={viewportRef} className="absolute inset-0 overflow-hidden" onDoubleClick={handleSurfaceDoubleClick}>
                     <div ref={canvasRef} className="relative h-full w-full" style={transformStyle}>
                         {surfaceContent}
                     </div>
