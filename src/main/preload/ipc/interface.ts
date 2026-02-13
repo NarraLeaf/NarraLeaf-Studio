@@ -72,6 +72,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             clear: (projectPath: string) =>
                 ipcClient.invoke(IPCEventType.projectSettingsClear, { projectPath }),
         },
+        onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
+            ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
     },
 
     app: {
@@ -96,6 +98,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
         onControlReload: (handler: (payload: { revision: number }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeControlReload, handler),
+        resolveImageAssetUrl: (assetId: string) =>
+            ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
     },
 };
 

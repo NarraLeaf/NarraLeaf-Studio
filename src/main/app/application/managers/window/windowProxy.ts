@@ -1,4 +1,5 @@
 import { IPCEventType, IPCEvents } from "@shared/types/ipcEvents";
+import { IPCType, OnlyRequest } from "@shared/types/ipc";
 import { App } from "@/app/app";
 import { IPCWindow } from "./ipcHost";
 import { WindowUserHandlers } from "./windowUserHandlers";
@@ -68,5 +69,12 @@ export class WindowProxy implements IPCWindow {
 
     public sendIpcEvent<T extends IPCEventType>(event: T, data: IPCEvents[T]["data"]): void {
         this.ipc.getIPCHost().send(this, event, data);
+    }
+
+    public invokeIpcRequest<K extends keyof OnlyRequest<IPCEvents, IPCType.Host>>(
+        event: K,
+        data: IPCEvents[K]["data"],
+    ): Promise<Exclude<IPCEvents[K]["response"], never>> {
+        return this.getIPC().getIPCHost().invoke(this, event, data);
     }
 } 

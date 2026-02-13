@@ -51,6 +51,7 @@ export enum IPCEventType {
     workspaceLaunch = "workspace.launch",
     workspaceSelectFolder = "workspace.selectFolder",
     workspaceClose = "workspace.close",
+    workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
     
     // Project Settings
     projectSettingsGet = "projectSettings.get",
@@ -65,6 +66,7 @@ export enum IPCEventType {
     devModeGetStatus = "devMode.getStatus",
     devModePayloadUpdate = "devMode.payload.update",
     devModeControlReload = "devMode.control.reload",
+    devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -414,6 +416,14 @@ export type IPCWorkspaceEvents = {
         data: {},
         response: void;
     };
+    [IPCEventType.workspaceResolveImageAssetUrl]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: {
+            assetId: string;
+        };
+        response: RequestStatus<{ url: string }>;
+    };
 };
 
 export type IPCProjectSettingsEvents = {
@@ -518,5 +528,15 @@ export type IPCDevModeEvents = {
             revision: number;
         },
         response: never;
+    };
+    [IPCEventType.devModeResolveImageAssetUrl]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            assetId: string;
+        };
+        response: {
+            url: string;
+        };
     };
 };

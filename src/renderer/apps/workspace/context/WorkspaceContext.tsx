@@ -1,6 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { AppHost, AppProtocol } from "@shared/types/constants";
+import { RequestStatus } from "@shared/types/ipcEvents";
+import { AssetSource } from "@/lib/workspace/services/assets/types";
+import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { getInterface } from "@/lib/app/bridge";
 import { Workspace } from "@/lib/workspace/workspace";
-import { WorkspaceContext as WorkspaceCtx } from "@/lib/workspace/services/services";
+import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
+import { Services, WorkspaceContext as WorkspaceCtx } from "@/lib/workspace/services/services";
+import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Service } from "@/lib/workspace/services/Service";
 
 interface WorkspaceProviderProps {
@@ -70,6 +77,60 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             }
         };
     }, []);
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+
+        const assetsService = context.services.get<AssetsService>(Services.Assets);
+        const iface = getInterface();
+
+        const handler = async ({ assetId }: { assetId: string }): Promise<RequestStatus<{ url: string }>> => {
+            const asset = assetsService.getAssets()[AssetType.Image][assetId];
+            if (!asset) {
+                return {
+                    success: false,
+                    error: "Image asset not found",
+                };
+            }
+
+            if (asset.source === AssetSource.Remote) {
+                const url = (asset.meta as any)?.url;
+                if (typeof url !== "string" || !url.trim()) {
+                    return {
+                        success: false,
+                        error: "Remote asset URL missing",
+                    };
+                }
+                return {
+                    success: true,
+                    data: { url },
+                };
+            }
+
+            const assetPath = context.project.resolve(ProjectNameConvention.AssetsDataShard(assetId));
+            const request = await iface.fs.requestReadRaw(assetPath);
+
+            if (!request.success || !request.data?.ok) {
+                return {
+                    success: false,
+                    error: request.error ?? "Failed to resolve asset file",
+                };
+            }
+
+            const url = `${AppProtocol}://${AppHost.Fs}/${request.data.data}`;
+            return {
+                success: true,
+                data: { url },
+            };
+        };
+
+        const token = iface.workspace.onResolveImageAssetUrl(handler);
+        return () => {
+            token.cancel();
+        };
+    }, [context]);
 
     return (
         <WorkspaceContext.Provider value={{ workspace, context, isInitialized, error }}>
