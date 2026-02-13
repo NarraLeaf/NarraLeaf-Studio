@@ -49,21 +49,8 @@ export function RectangleRenderer({ element, children }: WidgetRendererProps) {
 
   const hasStroke = props.strokeVisible && props.borderWidth > 0;
   if (hasStroke) {
-    style.borderStyle = props.borderStyle;
-    if (props.strokeAlign === "center") {
-      const sideWidth = (side: StrokeSide) =>
-        props.strokeSide === "all" || props.strokeSide === side ? `${props.borderWidth}px` : "0px";
-
-      style.borderWidth = "0px";
-      style.borderTopWidth = sideWidth("top");
-      style.borderRightWidth = sideWidth("right");
-      style.borderBottomWidth = sideWidth("bottom");
-      style.borderLeftWidth = sideWidth("left");
-      style.borderColor = strokeColor;
-    } else if (props.strokeAlign === "inside") {
-      style.border = "none";
-      style.boxShadow = `inset 0 0 0 ${props.borderWidth}px ${strokeColor}`;
-    } else if (props.strokeAlign === "outside") {
+    style.border = "none";
+    if (props.strokeAlign === "outside") {
       style.border = "none";
       style.outline = `${props.borderWidth}px ${props.borderStyle} ${strokeColor}`;
       style.outlineOffset = `${props.borderWidth}px`;
@@ -72,6 +59,37 @@ export function RectangleRenderer({ element, children }: WidgetRendererProps) {
     }
   } else {
     style.border = "none";
+  }
+
+  const strokeStyle: CSSProperties | null =
+    hasStroke && props.strokeAlign !== "outside"
+      ? {
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          borderRadius,
+          boxSizing: "border-box",
+        }
+      : null;
+
+  if (strokeStyle) {
+    strokeStyle.borderStyle = props.borderStyle;
+    if (props.strokeAlign === "center") {
+      const sideWidth = (side: StrokeSide) =>
+        props.strokeSide === "all" || props.strokeSide === side ? `${props.borderWidth}px` : "0px";
+
+      strokeStyle.borderWidth = "0px";
+      strokeStyle.borderTopWidth = sideWidth("top");
+      strokeStyle.borderRightWidth = sideWidth("right");
+      strokeStyle.borderBottomWidth = sideWidth("bottom");
+      strokeStyle.borderLeftWidth = sideWidth("left");
+      strokeStyle.borderColor = strokeColor;
+    } else if (props.strokeAlign === "inside") {
+      strokeStyle.border = "none";
+      strokeStyle.boxShadow = `inset 0 0 0 ${props.borderWidth}px ${strokeColor}`;
+    } else {
+      strokeStyle.border = "none";
+    }
   }
 
   const legacyImageUrl = props.backgroundImage?.trim() ?? "";
@@ -152,6 +170,7 @@ export function RectangleRenderer({ element, children }: WidgetRendererProps) {
     <div style={style} data-ui-image-crop-active={isCropEditing ? "true" : "false"}>
       {renderImage()}
       {isCropEditing && <div className="ui-image-crop-mask" aria-hidden="true" />}
+      {strokeStyle && <div aria-hidden="true" style={strokeStyle} />}
       {children}
     </div>
   );
