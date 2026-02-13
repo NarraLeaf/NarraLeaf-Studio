@@ -26,6 +26,7 @@ import type { RenderSurfaceOptions } from "../../ui-editor/runtime/types";
 import type { ViewportTransform } from "../../ui-editor/geometry/types";
 import type { UITool } from "../../ui-editor/editor/types";
 import type { SelectionState } from "./ui/UIStore";
+import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 
 interface WorkspaceContext {
     project: Porject;
@@ -49,6 +50,7 @@ enum Services {
     RuntimeBridge = "runtimeBridge",
     UIEditorState = "uiEditorState",
     UIGraph = "uiGraph",
+    DevMode = "devMode",
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
@@ -220,6 +222,15 @@ interface IUIEditorStateService extends IService {
     on<K extends keyof UIEditorStateEvents>(event: K, handler: (data: UIEditorStateEvents[K]) => void): () => void;
 }
 
+interface IDevModeService extends IService {
+    getStatus(): DevModeStatus;
+    refreshStatus(): Promise<DevModeStatus>;
+    launch(entry: DevModeEntry, projectPath?: string): Promise<DevModeStatus>;
+    stop(): Promise<DevModeStatus>;
+    reload(): Promise<DevModeStatus>;
+    onStatusChanged(handler: (status: DevModeStatus) => void): () => void;
+}
+
 // Editor Services
 interface IEditorService extends IService { }
 
@@ -292,7 +303,7 @@ export {
     IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, ISettingsService, IStorageService, IStoryService,
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
-    ICharacterService, IUIDocumentService, IUIGraphService, IUIRuntimeBridgeService, IUIEditorStateService, UIEditorStateEvents,
+    ICharacterService, IUIDocumentService, IUIGraphService, IUIRuntimeBridgeService, IUIEditorStateService, IDevModeService, UIEditorStateEvents,
     Services, WorkspaceContext
 };
 

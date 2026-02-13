@@ -2,13 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, UILayersPanel } from "@/lib/ui-editor/interaction";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
-import { MousePointer2, Move, ChevronUp, ChevronDown } from "lucide-react";
+import { MousePointer2, Move, ChevronUp, ChevronDown, Play } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { clientToSurface, Rect2D } from "@/lib/ui-editor/geometry";
 import { ContextMenu, ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
+import { useWorkspace } from "@/apps/workspace/context";
+import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
+import { Services } from "@/lib/workspace/services/services";
 
 type ViewportTransform = {
     scale: number;
@@ -21,6 +24,7 @@ const DEFAULT_VIEWPORT: ViewportTransform = { scale: 1, offsetX: 0, offsetY: 0 }
 export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ surfaceId: string }>) {
     const surfaceId = payload?.surfaceId;
     const { runtimeBridge, stateService, documentService, uiService, widgetModules } = useUISurfaceEditorServices();
+    const { context } = useWorkspace();
     const tool = useEditorToolState(stateService);
     const viewport = useViewportTransform(stateService);
     const { surface, documentVersion } = useSurfaceDocument(surfaceId, stateService, documentService);
@@ -63,6 +67,21 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
 
     const handleSelectTool = useCallback(() => applyTool({ kind: "select" }), [applyTool]);
     const handlePanTool = useCallback(() => applyTool({ kind: "pan" }), [applyTool]);
+    const devModeService = useMemo(() => {
+        if (!context) {
+            return null;
+        }
+        return context.services.get<DevModeService>(Services.DevMode);
+    }, [context]);
+    const handleStartCurrentSurface = useCallback(() => {
+        if (!surfaceId || !devModeService) {
+            return;
+        }
+        void devModeService.launch({
+            kind: "surface",
+            surfaceId,
+        });
+    }, [devModeService, surfaceId]);
 
     const toolButtonClass = (active: boolean) =>
         `w-9 h-9 rounded-md border flex items-center justify-center text-xs transition-colors ${
@@ -164,6 +183,16 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         title="Pan tool"
                     >
                         <Move className="w-4 h-4" />
+                    </button>
+                    <div className="mx-1 h-6 w-px bg-white/10" />
+                    <button
+                        type="button"
+                        className={toolButtonClass(false)}
+                        onClick={handleStartCurrentSurface}
+                        title="从当前场景启动"
+                        disabled={!surfaceId}
+                    >
+                        <Play className="w-4 h-4" />
                     </button>
                 </div>
 

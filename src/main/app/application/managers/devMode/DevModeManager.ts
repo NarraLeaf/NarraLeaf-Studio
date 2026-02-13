@@ -35,12 +35,10 @@ export class DevModeManager {
     }
 
     public async launch(projectPath: string, entry: DevModeEntry): Promise<DevModeStatus> {
-        if (!this.session) {
-            this.session = this.createSession(projectPath, entry);
-        } else {
-            this.session.projectPath = projectPath;
-            this.session.entry = entry;
+        if (this.session) {
+            await this.terminateSession(this.session);
         }
+        this.session = this.createSession(projectPath, entry);
         const session = this.session;
         await this.startOrFocusWindow(session);
         await this.compileAndSendBundle(session, "starting");
@@ -52,13 +50,7 @@ export class DevModeManager {
         if (!this.session) {
             return "idle";
         }
-        this.session.status = "stopping";
-        this.disposeWatcher(this.session);
-        this.clearReloadTimer(this.session);
-        if (this.session.window && !this.session.window.isClosed()) {
-            this.session.window.close();
-        }
-        this.session = null;
+        await this.terminateSession(this.session);
         return "idle";
     }
 
@@ -116,6 +108,9 @@ export class DevModeManager {
 
     private async compileAndSendBundle(session: DevModeSession, status: DevModeStatus): Promise<void> {
         session.status = status;
+        if (status === "starting" || status === "reloading") {
+            session.status = "compiling";
+        }
         const compileResult = await this.compiler.compile({ projectPath: session.projectPath });
         if (!compileResult.ok) {
             session.status = "error";
@@ -181,6 +176,18 @@ export class DevModeManager {
         }
         clearTimeout(session.reloadTimer);
         session.reloadTimer = null;
+    }
+
+    private async terminateSession(session: DevModeSession): Promise<void> {
+        session.status = "stopping";
+        this.disposeWatcher(session);
+        this.clearReloadTimer(session);
+        if (session.window && !session.window.isClosed()) {
+            session.window.close();
+        }
+        if (this.session === session) {
+            this.session = null;
+        }
     }
 
     private disposeWatcher(session: DevModeSession): void {
