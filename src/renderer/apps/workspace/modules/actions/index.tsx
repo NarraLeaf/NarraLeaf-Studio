@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import {
     Play,
     Bug,
@@ -14,6 +15,9 @@ import { welcomeModule } from "../welcome";
 import { getInterface } from "@/lib/app/bridge";
 import { Separator } from "../../registry/types";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
+import type { DevModeStatus } from "@shared/types/devMode";
+import { useWorkspace } from "../../context";
 
 /**
  * Global toolbar actions
@@ -30,17 +34,51 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
  */
 export const devModeAction: ModuleAction = {
     id: "narraleaf-studio:dev-mode",
-    icon: <Play className="w-4 h-4" />,
+    icon: <DevModeActionIcon />,
     tooltip: "Dev Mode",
     onClick: (workspace: Workspace) => {
-        const projectPath = workspace.getContext().project.getConfig().projectPath;
-        void getInterface().devMode.launch(projectPath, {
+        const devModeService = workspace.getContext().services.get<DevModeService>(Services.DevMode);
+        const status = devModeService.getStatus();
+        if (status !== "idle") {
+            void devModeService.stop();
+            return;
+        }
+        void devModeService.launch({
             kind: "surface",
             surfaceId: MAIN_APP_SURFACE_ID,
         });
     },
     order: 1,
 };
+
+function DevModeActionIcon() {
+    const { context } = useWorkspace();
+    const [status, setStatus] = useState<DevModeStatus>("idle");
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const devModeService = context.services.get<DevModeService>(Services.DevMode);
+        setStatus(devModeService.getStatus());
+        const unsub = devModeService.onStatusChanged(setStatus);
+        return () => {
+            unsub();
+        };
+    }, [context]);
+
+    const iconColor = useMemo(() => {
+        if (status === "error") {
+            return "#f87171";
+        }
+        if (status !== "idle") {
+            return "#ffffff";
+        }
+        return "rgba(255,255,255,0.6)";
+    }, [status]);
+
+    return <Play className="w-4 h-4" color={iconColor} />;
+}
 
 /**
  * Debug project action

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { AppLayout } from "@/lib/components/layout";
 import { getInterface } from "@/lib/app/bridge";
@@ -11,6 +11,7 @@ import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { FixedAspectRatioContainer } from "narraleaf-react";
 
 type DevModeState = {
     entry: DevModeEntry | null;
@@ -21,6 +22,7 @@ export function DevModeApp() {
     const [state, setState] = useState<DevModeState>({ entry: null, bundle: null });
     const pendingBundleRef = useRef<DevModeBundle | null>(null);
     const rendererRegistry = useMemo(() => new ElementRendererRegistry(BuiltinElementRenderers), []);
+    const [scale, setScale] = useState(1);
 
     useEffect(() => {
         let active = true;
@@ -68,20 +70,62 @@ export function DevModeApp() {
         return MAIN_APP_SURFACE_ID;
     }, [state.entry]);
 
+    const surface = useMemo(() => {
+        if (!state.bundle) {
+            return null;
+        }
+        return state.bundle.ui.uidoc.surfaces.find(surf => surf.id === surfaceId) ?? null;
+    }, [state.bundle, surfaceId]);
+
+    const handleAspectUpdate = useCallback((metrics: { scale: number }) => {
+        setScale(prev => (prev === metrics.scale ? prev : metrics.scale));
+    }, []);
+
     const content = useMemo(() => {
         if (!state.bundle) {
             return (
-                <div className="flex h-full items-center justify-center text-sm text-gray-400">
+                <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">
                     Waiting for Dev Mode payload...
                 </div>
             );
         }
-        return renderSurfaceFromDocument(state.bundle.ui.uidoc, surfaceId, rendererRegistry);
-    }, [rendererRegistry, state.bundle, surfaceId]);
+        if (!surface) {
+            return (
+                <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">
+                    Surface not found: {surfaceId}
+                </div>
+            );
+        }
+        const aspectRatio = surface.designSize.width / surface.designSize.height;
+        const baseWidth = surface.designSize.width;
+        const baseHeight = surface.designSize.height;
+        return (
+            <div className="h-full w-full min-h-0 overflow-hidden">
+                <FixedAspectRatioContainer
+                    aspectRatio={aspectRatio}
+                    baseWidth={baseWidth}
+                    className="overflow-hidden"
+                    debounceMs={0}
+                    onUpdate={handleAspectUpdate}
+                >
+                    <div
+                        style={{
+                            width: baseWidth,
+                            height: baseHeight,
+                            transform: `scale(${scale})`,
+                            transformOrigin: "top left",
+                        }}
+                    >
+                        {renderSurfaceFromDocument(state.bundle.ui.uidoc, surfaceId, rendererRegistry)}
+                    </div>
+                </FixedAspectRatioContainer>
+            </div>
+        );
+    }, [handleAspectUpdate, rendererRegistry, scale, state.bundle, surface, surfaceId]);
 
     return (
         <AppLayout title="Dev Mode" iconSrc="/favicon.ico">
-            <div className="flex h-full items-center justify-center bg-[#0f1115] p-6">
+            <div className="h-full w-full min-h-0 bg-[#0f1115] overflow-hidden">
                 {content}
             </div>
         </AppLayout>

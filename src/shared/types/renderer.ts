@@ -6,6 +6,8 @@ import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
+import { DevModeBundle, DevModeEntry, DevModeStatus } from "./devMode";
+import { AppEventToken } from "./app";
 
 export interface RendererPreloadedInterface {
     // Basic Information
@@ -81,6 +83,15 @@ export interface RendererPreloadedInterface {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
             setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
         };
+    };
+
+    devMode: {
+        launch(projectPath: string, entry: DevModeEntry): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        stop(): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        reload(): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        getStatus(): Promise<RequestStatus<{ status: DevModeStatus }>>;
+        onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
+        onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
     };
 }
 

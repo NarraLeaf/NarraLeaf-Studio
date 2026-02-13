@@ -28,7 +28,7 @@ export function AppLayout({
                 </div>
 
                 {/* Main Content */}
-                <main className="overflow-auto">
+                <main className="h-full min-h-0 overflow-hidden">
                     {children}
                 </main>
             </div>

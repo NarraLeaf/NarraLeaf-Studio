@@ -14,6 +14,7 @@ import { UIDocumentService } from "./ui-editor/UIDocumentService";
 import { UIRuntimeBridgeService } from "./ui-editor/UIRuntimeBridgeService";
 import { UIEditorStateService } from "./ui-editor/UIEditorStateService";
 import { UIGraphService } from "./ui-editor/UIGraphService";
+import { DevModeService } from "./core/DevModeService";
 
 
 export class ServiceRegistry {
@@ -32,6 +33,7 @@ export class ServiceRegistry {
         [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),
         [Services.UIEditorState]: UIEditorStateService.getInstance(),
         [Services.UIGraph]: UIGraphService.getInstance(),
+        [Services.DevMode]: DevModeService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

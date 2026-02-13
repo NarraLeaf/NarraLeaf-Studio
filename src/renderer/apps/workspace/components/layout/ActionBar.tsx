@@ -5,7 +5,9 @@ import { ActionDropdown } from "../ui/ActionDropdown";
 import { ActionDefinition } from "../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { FocusContext } from "@/lib/workspace/services/ui";
+import type { DevModeStatus } from "@shared/types/devMode";
 
 /**
  * Action bar component
@@ -16,6 +18,7 @@ export function ActionBar() {
     const { actions, actionGroups } = useRegistry();
     const { workspace, context } = useWorkspace();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
+    const [devModeStatus, setDevModeStatus] = useState<DevModeStatus>("idle");
 
     // Subscribe to focus changes
     useEffect(() => {
@@ -27,6 +30,18 @@ export function ActionBar() {
         return uiService.focus.onFocusChange((newContext) => {
             setFocusContext(newContext);
         });
+    }, [context]);
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const devModeService = context.services.get<DevModeService>(Services.DevMode);
+        setDevModeStatus(devModeService.getStatus());
+        const unsub = devModeService.onStatusChanged(setDevModeStatus);
+        return () => {
+            unsub();
+        };
     }, [context]);
 
     // Check if an action should be visible based on when condition
@@ -63,31 +78,38 @@ export function ActionBar() {
             ))}
 
             {/* Render standalone actions */}
-            {standaloneActions.map((action) => (
-                <button
-                    key={action.id}
-                    onClick={() => handleActionClick(action)}
-                    disabled={action.disabled}
-                    className={`
-                        h-8 px-2 rounded-md flex items-center gap-1.5 text-sm transition-colors cursor-default relative
-                        ${
-                            action.disabled
-                                ? "text-gray-500 cursor-not-allowed"
-                                : "text-gray-300 hover:bg-white/10 hover:text-white"
-                        }
-                    `}
-                    title={action.tooltip || action.label}
-                    aria-label={action.label}
-                >
-                    {action.icon && <span className="w-4 h-4">{action.icon}</span>}
-                    {action.label && <span>{String(action.label)}</span>}
-                    {action.badge && (
-                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                            {action.badge}
-                        </span>
-                    )}
-                </button>
-            ))}
+            {standaloneActions.map((action) => {
+                const isDevModeAction = action.id === "narraleaf-studio:dev-mode";
+                const isDevModeActive =
+                    isDevModeAction && devModeStatus !== "idle" && devModeStatus !== "error";
+                const stateClasses = action.disabled
+                    ? "text-gray-500 cursor-not-allowed"
+                    : isDevModeActive
+                        ? "bg-red-600 text-white hover:bg-red-700 hover:text-white"
+                        : "text-gray-300 hover:bg-white/10 hover:text-white";
+
+                return (
+                    <button
+                        key={action.id}
+                        onClick={() => handleActionClick(action)}
+                        disabled={action.disabled}
+                        className={`
+                            h-8 px-2 rounded-md flex items-center gap-1.5 text-sm transition-colors cursor-default relative
+                            ${stateClasses}
+                        `}
+                        title={action.tooltip || action.label}
+                        aria-label={action.label}
+                    >
+                        {action.icon && <span className="w-4 h-4">{action.icon}</span>}
+                        {action.label && <span>{String(action.label)}</span>}
+                        {action.badge && (
+                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
+                                {action.badge}
+                            </span>
+                        )}
+                    </button>
+                );
+            })}
         </div>
     );
 }
