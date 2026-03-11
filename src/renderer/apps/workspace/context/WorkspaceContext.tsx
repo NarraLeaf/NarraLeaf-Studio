@@ -8,6 +8,7 @@ import { Workspace } from "@/lib/workspace/workspace";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { Services, WorkspaceContext as WorkspaceCtx } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { Service } from "@/lib/workspace/services/Service";
 
 interface WorkspaceProviderProps {
@@ -56,6 +57,12 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                     setContext(ctx);
                     setWorkspace(ws);
                     setIsInitialized(true);
+
+                    // Add to recent projects only when successfully loaded
+                    const projectService = ctx.services.get<ProjectService>(Services.Project);
+                    const projectConfig = projectService.getProjectConfig();
+                    const projectPath = ctx.project.getConfig().projectPath;
+                    getInterface().app.addRecentProject(projectConfig.name, projectPath);
                 }
             } catch (err) {
                 console.error("Failed to initialize workspace:", err);

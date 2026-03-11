@@ -1,5 +1,6 @@
 import { getInterface } from "@/lib/app/bridge";
 import { ProjectData } from "../types";
+import { encodeProjectConfig, getProjectConfigFileName } from "@shared/utils/nlproj";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { BaseFileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { BaseProjectService } from "@/lib/workspace/services/core/ProjectService";
@@ -36,8 +37,9 @@ export class ProjectService {
                 throwException(await BaseFileSystemService.createDir(basePath));
             }
 
-            // Write project.json
-            const projectConfigPath = this.resolve(basePath, ProjectNameConvention.ProjectConfig);
+            // Write .nlproj (msgpack-encoded project config)
+            const projectConfigFileName = getProjectConfigFileName(projectData.name);
+            const projectConfigPath = join(basePath, projectConfigFileName);
             const projectConfig = BaseProjectService.getInitialConfig({
                 name: projectData.name,
                 identifier: projectData.appId,
@@ -49,7 +51,8 @@ export class ProjectService {
                     resolution: BaseProjectService.parseResolution(projectData.resolution),
                 },
             });
-            throwException(await BaseFileSystemService.write(projectConfigPath, JSON.stringify(projectConfig), "utf-8"));
+            const encoded = encodeProjectConfig(projectConfig);
+            throwException(await BaseFileSystemService.writeRaw(projectConfigPath, encoded));
 
             // Create directories
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.NLCache)));

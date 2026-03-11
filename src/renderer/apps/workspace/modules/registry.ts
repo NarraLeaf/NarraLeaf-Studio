@@ -10,6 +10,7 @@ import { consoleModule } from "./console";
 import { welcomeModule } from "./welcome";
 import { globalActions, globalActionGroups } from "./actions";
 import { imagePreviewModule } from "./assets/editors/imagePreviewModule";
+import { audioPreviewModule } from "./assets/editors/audioPreviewModule";
 import { charactersModule } from "./characters";
 import { settingsModule } from "./settings";
 import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
@@ -36,6 +37,7 @@ export const builtInPanels: PanelModule[] = [
 export const builtInEditors: EditorModule[] = [
     welcomeModule,
     imagePreviewModule,
+    audioPreviewModule,
 ];
 
 /**

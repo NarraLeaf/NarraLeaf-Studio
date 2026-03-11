@@ -36,7 +36,8 @@
     "lucide-react": "^0.546.0",
     "mime-types": "^3.0.1",
     "motion": "^12.34.0",
-    "narraleaf-react": "0.9.0-beta.5",
+    "msgpack-lite": "^0.1.26",
+    "narraleaf-react": "0.9.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-moveable": "^0.56.0",
@@ -46,6 +47,7 @@
   "devDependencies": {
     "@types/electron-store": "^3.2.2",
     "@types/mime-types": "^3.0.1",
+    "@types/msgpack-lite": "^0.1.12",
     "@types/node": "^24.8.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

@@ -125,8 +125,15 @@ export const fileActionGroup: ModuleActionGroup = {
             icon: <FileText className="w-4 h-4" />,
             tooltip: "Create a new workspace",
             onClick: () => {
-                console.log("New file clicked");
-                // TODO: Implement new file functionality
+                void (async () => {
+                    const result = await getInterface().app.launchProjectWizard({});
+                    if (result.success && result.data?.created) {
+                        await getInterface().workspace.launch(
+                            { projectPath: result.data.projectPath },
+                            true
+                        );
+                    }
+                })();
             },
             order: 0,
         },
@@ -136,8 +143,14 @@ export const fileActionGroup: ModuleActionGroup = {
             icon: <FolderOpen className="w-4 h-4" />,
             tooltip: "Open an existing workspace",
             onClick: () => {
-                console.log("Open file clicked");
-                // TODO: Implement open file functionality
+                void (async () => {
+                    const result = await getInterface().selectFolder();
+                    if (!result.success || !result.data?.path) return;
+                    await getInterface().workspace.launch(
+                        { projectPath: result.data.path },
+                        true
+                    );
+                })();
             },
             order: 1,
         },
