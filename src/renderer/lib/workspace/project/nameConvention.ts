@@ -2,7 +2,9 @@ import { AssetType } from "../services/assets/assetTypes";
 
 export const ProjectNameConvention = {
     // Project Root Files
+    // .nlproj is the primary format (msgpack-encoded); project.json is legacy
     ProjectConfig: ["project.json"],
+    ProjectConfigLegacy: ["project.json"],
     
     // Assets metadata and groups (stored in assets/)
     AssetsMetadataShard: (type: AssetType) => ["assets", `assets.metadata.${type}.json` as const],

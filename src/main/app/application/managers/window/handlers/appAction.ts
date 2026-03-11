@@ -136,6 +136,21 @@ export class AppGlobalStateSetHandler extends IPCHandler<IPCEventType.appGlobalS
     }
 }
 
+export class AppAddRecentProjectHandler extends IPCHandler<IPCEventType.appAddRecentProject> {
+    readonly name = IPCEventType.appAddRecentProject;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow, data: IPCEvents[IPCEventType.appAddRecentProject]["data"]) {
+        window.app.globalState.recentlyOpened.addProject({
+            name: data.name,
+            path: data.path,
+            icon: undefined,
+            openedAt: Date.now(),
+        });
+        return this.success(void 0);
+    }
+}
+
 export class AppWindowControlAbilityHandler extends IPCHandler<IPCEventType.appWindowControlAbility> {
     readonly name = IPCEventType.appWindowControlAbility;
     readonly type = IPCMessageType.request;

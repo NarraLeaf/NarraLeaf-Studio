@@ -84,6 +84,7 @@ export interface RendererPreloadedInterface {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
             setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
         };
+        addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
     };
 
     devMode: {

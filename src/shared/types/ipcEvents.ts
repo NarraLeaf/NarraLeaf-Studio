@@ -20,6 +20,7 @@ export enum IPCEventType {
     appLaunchSettings = "app.settings.launchWindow",
     appGlobalStateGet = "app.globalState.get",
     appGlobalStateSet = "app.globalState.set",
+    appAddRecentProject = "app.addRecentProject",
 
     fsStat = "fs.stat",
     fsList = "fs.list",
@@ -173,6 +174,15 @@ export type IPCEvents = {
         data: {
             key: GlobalStateKeys;
             value: GlobalStateValue<GlobalStateKeys>;
+        },
+        response: void;
+    };
+    [IPCEventType.appAddRecentProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            name: string;
+            path: string;
         },
         response: void;
     };

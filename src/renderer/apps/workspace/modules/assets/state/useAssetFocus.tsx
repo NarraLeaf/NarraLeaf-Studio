@@ -4,9 +4,10 @@ import { WorkspaceContext } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
-import { Image } from "lucide-react";
+import { Image, Music } from "lucide-react";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { ImagePreviewEditor } from "../editors/ImagePreviewEditor";
+import { AudioPreviewEditor } from "../editors/AudioPreviewEditor";
 
 export interface UseAssetFocusParams {
     context: WorkspaceContext | null;
@@ -39,6 +40,17 @@ export function useAssetFocus({ context, panelId, focusArea }: UseAssetFocusPara
                 }, undefined, { activate: true });
 
                 // Return focus to assets panel silently so keyboard shortcuts remain scoped correctly
+                uiService.focus.setFocus(FocusArea.LeftPanel, panelId, { silent: true });
+            } else if (asset.type === AssetType.Audio) {
+                uiService.editor.open({
+                    id: `narraleaf-studio:assets:audio-preview-${asset.id}`,
+                    title: asset.name,
+                    icon: <Music className="w-4 h-4" />,
+                    component: AudioPreviewEditor,
+                    closable: true,
+                    payload: { asset: asset as Asset<AssetType.Audio> },
+                }, undefined, { activate: true });
+
                 uiService.focus.setFocus(FocusArea.LeftPanel, panelId, { silent: true });
             }
             uiService.panels.show("narraleaf-studio:properties");
