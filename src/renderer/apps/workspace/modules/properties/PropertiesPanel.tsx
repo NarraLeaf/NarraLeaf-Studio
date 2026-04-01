@@ -532,7 +532,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             metadata: assetMetadata,
             onUpdate: handleAssetUpdate,
         };
-    }, [activeAsset?.id, assetMetadata, handleAssetUpdate]);
+    }, [activeAsset, assetMetadata, handleAssetUpdate]);
 
     // Build character editor context
     const characterContext = useMemo<CharacterEditorContext | null>(() => {
