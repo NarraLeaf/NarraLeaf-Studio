@@ -15,9 +15,12 @@
   - `Visual Blueprint`
   - `TypeScript Blueprint`
 - 这两类蓝图 **创建时即选择类型**，**不支持互相切换**。
-- 两类蓝图底层 **编译到统一的 Blueprint IR**，共享：
+- 两类蓝图共享同一套上层运行时契约，但不要求共享同一种底层执行载体：
+  - `Visual Blueprint` -> 图结构 / Graph IR
+  - `TypeScript Blueprint` -> 受限脚本模块 / Compiled TS Module
+- 两类蓝图共享：
   - 同一套宿主 API
-  - 同一套运行时
+  - 同一套执行会话与调用入口模型
   - 同一套调试协议
   - 同一套作用域与状态模型
 - 可视化蓝图采用 **接近 UE / Unity Visual Scripting 的图模型**：
@@ -37,7 +40,7 @@
 - 编辑器 UI 采用 **混合模式**：
   - 属性面板负责入口、概览、绑定和快速创建
   - 真正的蓝图编辑在独立 Tab 中完成
-- 编辑器底层优先推荐 **React Flow + 自研领域 IR + Monaco（TypeScript Blueprint）** 的组合，而不是把语义绑死在某个第三方节点引擎上。
+- 编辑器底层优先推荐 **React Flow + Graph IR Runtime + TS 编译进游戏的脚本模块运行时 + Monaco（TypeScript Blueprint）** 的组合，而不是把语义绑死在某个第三方节点引擎上。
 
 ---
 
@@ -157,7 +160,7 @@
 
 - 用户一开始就知道自己在用哪种方式
 - 不会产生“为什么切回图后变形了”的预期落差
-- 可以把复杂度集中在统一 IR，而不是图文双向同步
+- 可以把复杂度集中在统一的宿主协议、状态模型和调试体系，而不是图文双向同步
 
 ### 4.2 心智模型层面的影响
 
@@ -179,7 +182,7 @@
 为了避免这种分裂，必须坚持下面四条：
 
 - 两种蓝图共享同一套宿主 API
-- 两种蓝图共享同一套运行时 IR
+- 两种蓝图共享同一套运行时契约
 - 两种蓝图共享同一套调试协议
 - 两种蓝图共享同一套作用域和状态模型
 
@@ -192,7 +195,7 @@
 推荐把它们定义成：
 
 - `Visual Blueprint`：图形化前端
-- `TypeScript Blueprint`：受限脚本前端
+- `TypeScript Blueprint`：受限但真实执行的脚本前端
 
 而不是：
 
@@ -279,7 +282,8 @@
 
 - **React Flow** 作为可视化编辑器画布层
 - **Monaco** 作为 `TypeScript Blueprint` 编辑器
-- **自研 Blueprint IR**
+- **自研 Graph IR**
+- **自研 TS 编译与游戏内模块装载链**
 - **自研 Blueprint Runtime**
 - **自研节点/宿主 API 注册系统**
 
@@ -314,22 +318,23 @@ Rete 的优势在于自带较强的图执行范式，但它的代价是：
 
 真正应该自研的，是：
 
-- IR
+- Graph IR
+- TS 编译链、虚拟模块与游戏内装载链
 - 宿主 API
 - 语义校验
 - 调试协议
 - 绑定系统
-- `TypeScript Blueprint` 编译链
+- `TypeScript Blueprint` 转译与执行链
 
 ---
 
-## 7. 统一 Blueprint IR 设计
+## 7. 统一运行时契约与程序模型设计
 
-`Visual Blueprint` 和 `TypeScript Blueprint` 都必须归一到同一个 IR。
+`Visual Blueprint` 和 `TypeScript Blueprint` 不再强制归一到同一个 IR，而是归一到同一套 **Blueprint Runtime Contract**。
 
-### 7.1 为什么 IR 必须是唯一真相
+### 7.1 为什么“统一运行时契约”才是唯一真相
 
-如果没有统一 IR，就会出现下面的结构性问题：
+如果没有统一运行时契约，就会出现下面的结构性问题：
 
 - 可视化蓝图执行器一套
 - TS 蓝图执行器一套
@@ -341,11 +346,16 @@ Rete 的优势在于自带较强的图执行范式，但它的代价是：
 
 因此推荐：
 
-- `Visual Blueprint` -> 归一化为 IR
-- `TypeScript Blueprint` -> 编译为 IR
-- Dev Mode / Player / 编辑器预览 -> 都执行 IR
+- `Visual Blueprint` -> 归一化为 Graph IR / Graph Program
+- `TypeScript Blueprint` -> 编译为游戏内脚本模块
+- Dev Mode / Player / 编辑器预览 -> 都通过同一套 Runtime Contract 调用
+- 两种蓝图最终都要暴露同一种上层程序视图：
+  - 事件入口
+  - 可调用函数
+  - 可绑定符号
+  - 调试可观测点
 
-### 7.2 IR 的最小结构建议
+### 7.2 程序模型的最小结构建议
 
 可以把现有 `UIGraphDocument` 演化为更完整的 Blueprint 文档。概念上建议至少包含：
 
@@ -358,6 +368,8 @@ type BlueprintOwnerRef =
 
 type BlueprintFrontendKind = "visual" | "typescript";
 
+type BlueprintProgramKind = "graph" | "scriptModule";
+
 type BlueprintDocument = {
   schemaVersion: number;
   blueprints: Record<string, Blueprint>;
@@ -369,12 +381,26 @@ type Blueprint = {
   name: string;
   owner: BlueprintOwnerRef;
   frontend: BlueprintFrontendKind;
-  members: BlueprintMemberIndex;
-  graphs: BlueprintGraphIndex;
+  programKind: BlueprintProgramKind;
+  members?: BlueprintMemberIndex;
   bindings?: Record<string, BindingDefinition>;
-  source?: TypeScriptBlueprintSource;
+  program: BlueprintProgram;
   meta?: Record<string, unknown>;
 };
+```
+
+其中：
+
+```ts
+type BlueprintProgram =
+  | {
+      kind: "graph";
+      graphs: BlueprintGraphIndex;
+    }
+  | {
+      kind: "scriptModule";
+      source: TypeScriptBlueprintSource;
+    };
 ```
 
 ### 7.3 Blueprint 的成员体系
@@ -398,6 +424,11 @@ type BlueprintMemberIndex = {
 };
 ```
 
+说明：
+
+- `Visual Blueprint` 的 `members` 可直接来自图编辑结构
+- `TypeScript Blueprint` 的 `members` 可来自静态分析、运行时注册结果或缓存索引
+
 ### 7.4 图的分类
 
 本项目推荐图按用途分型，而不是全部混在一张图中：
@@ -408,7 +439,30 @@ type BlueprintMemberIndex = {
 
 第一阶段不建议额外发明“所有东西都用一张万能图”。
 
-### 7.5 节点语义分类
+### 7.5 TypeScript Blueprint 的程序形态
+
+推荐 `TypeScript Blueprint` 使用虚拟模块导入和注册式 API，而不是导出式声明对象：
+
+```ts
+import { bound, events } from "narraleaf-studio";
+
+bound.bindSymbol("titleText", (ctx) => {
+  return ctx.state.surface.get("title");
+});
+
+events.on("submitButton.click", async (ctx) => {
+  await ctx.host.navigation.openSurface("result");
+});
+```
+
+这意味着：
+
+- TS Blueprint 是真实脚本模块
+- 它参与游戏构建并编译进运行时产物
+- 它通过运行时注册事件、函数和绑定符号
+- 它不需要编译成图节点才能运行
+
+### 7.6 节点语义分类
 
 节点应从语义上分成两大类：
 
@@ -426,7 +480,7 @@ type BlueprintMemberIndex = {
 
 - 绑定系统是否可预测
 - 调试器是否易理解
-- TS 编译结果是否易验证
+- 可视化图执行是否易验证
 
 ---
 
@@ -613,9 +667,9 @@ type BlueprintMemberIndex = {
 
 `TypeScript Blueprint` 不是普通 TS 文件，而是：
 
-- 运行在受限上下文中的脚本前端
-- 只能访问宿主暴露的运行时 API
-- 最终编译成统一 Blueprint IR
+- 参与游戏构建的真实脚本模块
+- 只能 import 宿主暴露的虚拟模块与运行时 API
+- 编译后随游戏运行时一起装载执行
 
 ### 11.2 禁止的方向
 
@@ -627,49 +681,42 @@ type BlueprintMemberIndex = {
 
 否则它会迅速失控。
 
-### 11.3 推荐的 TS Blueprint 结构
+### 11.3 推荐的 TS Blueprint 风格
 
-推荐给 TS Blueprint 一个固定外壳，而不是完全裸写：
+推荐使用注册式 API，而不是导出式声明对象：
 
 ```ts
-export default defineBlueprint({
-  events: {
-    onClick(ctx) {
-      // ...
-    }
-  },
-  declarations: {
-    title(ctx) {
-      return ctx.surfaceState.title;
-    }
-  },
-  functions: {
-    async submit(ctx, payload) {
-      // ...
-    }
-  }
+import { bound, events } from "narraleaf-studio";
+
+bound.bindSymbol("title", (ctx) => {
+  return ctx.state.surface.get("title");
+});
+
+events.on("button.click", async (ctx) => {
+  await ctx.host.navigation.openSurface("result");
 });
 ```
 
 这能带来三件事：
 
-- 可控的编译入口
-- 可控的静态分析
-- 明确的成员语义
+- 更接近游戏脚本的心智模型
+- 允许保留真实模块执行语义
+- 仍然能通过宿主 API 与虚拟模块实现边界控制
 
 ### 11.4 为什么不建议自由 TS
 
 如果允许自由 TS，最终一定会遭遇：
 
 - 宿主 API 无法稳定收敛
-- 编译到 IR 的难度急剧上升
+- 模块边界与依赖边界失控
 - 调试协议映射困难
 - 共享资产引用和作用域解析失控
 
 因此第一阶段必须坚持：
 
 - **看起来是 TS**
-- **本质上是受限 DSL**
+- **执行起来是真实脚本模块**
+- **但模块来源、可导入包和宿主访问全部受限**
 
 ---
 
@@ -708,8 +755,9 @@ export default defineBlueprint({
   - 分类
   - 标签
   - frontend kind
-  - IR 内容
+  - 图程序或脚本模块内容
   - TS 源码（若是 TS Blueprint）
+  - 编译产物索引或构建元数据（若是 TS Blueprint）
 
 ### 12.4 推荐的文件布局
 
@@ -1041,7 +1089,7 @@ assets/
 
 - UI 中心范围
 - Visual / TypeScript 蓝图不互转
-- 同一 IR
+- 同一运行时契约
 - 实例主蓝图 + 共享蓝图资产
 - 事件图与纯绑定系统分离
 
@@ -1125,7 +1173,7 @@ assets/
 
 - Monaco
 - 受限 API 提示
-- 编译到统一 IR
+- TS 编译进游戏产物
 - 错误定位
 
 产出：
@@ -1164,7 +1212,7 @@ assets/
 
 如果必须控制风险，最推荐的 MVP 顺序不是“先做完整大而全编辑器”，而是：
 
-1. 定义统一 Blueprint IR
+1. 定义统一运行时契约与程序模型
 2. 实例主蓝图生命周期与存储
 3. 运行时事件闭环
 4. 绑定系统
@@ -1189,7 +1237,7 @@ assets/
 
 - 蓝图第一阶段只聚焦 UI 领域
 - `Visual Blueprint` 与 `TypeScript Blueprint` 创建时即选择，不做互转
-- 两者统一到底层 IR
+- 两者共享同一套宿主协议、作用域模型和调试体系
 - 绑定系统保持纯计算
 - 副作用只允许在事件执行图中发生
 - 实例主蓝图不可共享
@@ -1202,7 +1250,7 @@ assets/
 - 继续利用 `uigraphs.json` 做本地实例蓝图的第一阶段载体
 - 尽早建立调试协议
 - 在 Dev Mode 中先跑通真实蓝图执行
-- `TypeScript Blueprint` 保持受限 API + 固定入口包装
+- `TypeScript Blueprint` 保持受限 API + 虚拟模块导入 + 编译进游戏运行时
 
 ### 20.3 不建议
 
@@ -1231,7 +1279,7 @@ assets/
 
 对 NarraLeaf Studio 而言，最正确的蓝图系统不是“再加一个图编辑器”，而是：
 
-- 用统一 IR 把 UI 逻辑正式提升为一等公民
+- 用 Graph IR + 受限 TS 脚本模块把 UI 逻辑正式提升为一等公民
 - 用实例主蓝图 + 共享资产把私有逻辑与复用逻辑分层
 - 用纯绑定系统把 UI 声明能力稳定下来
 - 用受限 `TypeScript Blueprint` 承接高级用户
@@ -1240,6 +1288,6 @@ assets/
 只要坚持下面这条总原则，后续系统就不会跑偏：
 
 - **编辑方式可以有两种**
-- **底层语义只能有一种**
+- **上层运行时契约只能有一种**
 
 这条原则应当成为整个 Blueprint System 的最高设计约束。
