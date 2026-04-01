@@ -429,6 +429,7 @@ export function useAssetActions({
                 await assetsService.renameAsset(target.item as Asset, newName);
             }
         });
+
         onActionComplete();
     }, [context, contextMenuTarget, selectedItems, focusedItemId, assets, groups, inputDialog, onActionComplete, withAssetsService]);
 
