@@ -79,6 +79,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     private dirty = false;
     private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
     private readonly autoSaveDelay = 800;
+    private afterMutateHook: (() => void) | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -172,6 +173,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     public onDirtyChanged(handler: (dirty: boolean) => void): () => void {
         return this.events.on("dirtyChanged", handler);
+    }
+
+    public setAfterMutateHook(hook: (() => void) | null): void {
+        this.afterMutateHook = hook;
     }
 
     public isDirty(): boolean {
@@ -283,6 +288,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.setDirty(true);
         this.scheduleAutoSave();
         this.events.emit("documentChanged", document);
+        this.afterMutateHook?.();
     }
 
     private scheduleAutoSave(): void {

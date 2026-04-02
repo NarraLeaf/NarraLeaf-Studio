@@ -32,7 +32,6 @@ import { formatStageMountLabel, SURFACE_KIND_OPTIONS } from "./panel/constants";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const getSurfaceTabId = (surfaceId: string) => `${SURFACE_TAB_PREFIX}${surfaceId}`;
-const formatSurfaceLabel = (surface: UISurface) => `${surface.name} (${surface.kind})`;
 
 export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { context } = useWorkspace();
@@ -90,6 +89,10 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             return true;
         });
     }, [surfaces, kind, stageMountFilter]);
+    const surfacesOfKindCount = useMemo(
+        () => surfaces.filter(s => s.kind === kind).length,
+        [surfaces, kind]
+    );
     const currentKindOption = useMemo(() => SURFACE_KIND_OPTIONS.find(option => option.kind === kind), [kind]);
     const stageSurfaces = useMemo(
         () => surfaces.filter((surface): surface is UIStageSurface => surface.kind === "stageSurface"),
@@ -477,11 +480,16 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 linkDisabled={!hasStageSurfaces || !hasAppSurfaces}
                 showLinkButton={kind === "stageSurface"}
                 linkTitle={
-                    hasStageSurfaces && hasAppSurfaces ? "Link App Surface" : "Need both stage and app surfaces"
+                    hasStageSurfaces && hasAppSurfaces
+                        ? "Reuse an app surface’s UI tree on this stage (link, not a duplicate)"
+                        : "Need at least one app surface and one stage surface to configure a link"
                 }
             />
             <SurfaceList
                 surfaces={filteredSurfaces}
+                surfaceKind={kind}
+                stageMountFilter={stageMountFilter}
+                surfacesOfKindCount={surfacesOfKindCount}
                 onSurfaceClick={handleSurfaceClick}
                 onOpenMenu={handleOpenMenu}
             />

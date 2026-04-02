@@ -1,7 +1,9 @@
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
-import type { UIGraph, UIGraphDocument } from "@shared/types/ui-editor/graph";
+import { type UIGraph, type UIGraphDocument, UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import { ProjectNameConvention } from "../../project/nameConvention";
+import { createInitialBlueprintDocument, repairGlobalMainIfMissing } from "./blueprint/blueprintFactories";
+import { assertValidBlueprintDocument, BlueprintDocumentValidationError } from "./blueprint/documentValidation";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { Service } from "../Service";
@@ -13,8 +15,6 @@ type UIGraphServiceEvents = {
     graphsChanged: UIGraphDocument;
     dirtyChanged: boolean;
 };
-
-const GRAPH_DOCUMENT_SCHEMA_VERSION = 1;
 
 export class UIGraphService extends Service<UIGraphService> implements IUIGraphService {
     private document: UIGraphDocument | null = null;
@@ -166,6 +166,13 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
         });
     }
 
+    /**
+     * Public mutation entry for coordinated updates (e.g. LocalBlueprintService).
+     */
+    public applyGraphMutation(mutator: (document: UIGraphDocument) => void): void {
+        this.mutateDocument(mutator);
+    }
+
     private mutateDocument(mutator: (document: UIGraphDocument) => void): void {
         const document = this.getDocument();
         mutator(document);
@@ -196,20 +203,38 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
     }
 
     private migrateIfNeeded(document: UIGraphDocument): UIGraphDocument {
-        if (document.schemaVersion > GRAPH_DOCUMENT_SCHEMA_VERSION) {
+        if (document.schemaVersion > UI_GRAPH_DOCUMENT_SCHEMA_VERSION) {
             throw new RendererError("Graph document schema is newer than this Studio version");
         }
-        if (document.schemaVersion === GRAPH_DOCUMENT_SCHEMA_VERSION) {
-            return document;
+        if (document.schemaVersion !== UI_GRAPH_DOCUMENT_SCHEMA_VERSION) {
+            throw new RendererError(
+                `uigraphs.json must use schema version ${UI_GRAPH_DOCUMENT_SCHEMA_VERSION} (Blueprint M2). Found ${String(document.schemaVersion)}.`,
+            );
         }
-        throw new RendererError("Graph document migration is not implemented");
+        if (!document.blueprintDocument) {
+            throw new RendererError("uigraphs.json is missing blueprintDocument (Blueprint M2 required).");
+        }
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const repaired = repairGlobalMainIfMissing(document.blueprintDocument, () => uuidService.generate());
+        try {
+            assertValidBlueprintDocument(repaired);
+        } catch (e) {
+            const msg = e instanceof BlueprintDocumentValidationError ? e.message : String(e);
+            throw new RendererError(`Invalid blueprintDocument: ${msg}`);
+        }
+        return {
+            ...document,
+            blueprintDocument: repaired,
+        };
     }
 
     private createEmptyDocument(): UIGraphDocument {
         const now = new Date().toISOString();
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         return {
-            schemaVersion: GRAPH_DOCUMENT_SCHEMA_VERSION,
+            schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
             graphs: {},
+            blueprintDocument: createInitialBlueprintDocument(() => uuidService.generate()),
             meta: {
                 createdAt: now,
                 updatedAt: now,

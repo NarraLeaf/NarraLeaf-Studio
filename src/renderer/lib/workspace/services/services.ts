@@ -18,6 +18,7 @@ import type {
     UILayout,
     UIElement,
 } from "@shared/types/ui-editor/document";
+import type { BindingDefinition, BlueprintDeclaration, BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIGraph, UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { ReactElement } from "react";
@@ -50,6 +51,8 @@ enum Services {
     RuntimeBridge = "runtimeBridge",
     UIEditorState = "uiEditorState",
     UIGraph = "uiGraph",
+    LocalBlueprint = "localBlueprint",
+    UIBlueprintLifecycle = "uiBlueprintLifecycle",
     DevMode = "devMode",
     // Storage = "storage",
     // Command = "command",
@@ -152,6 +155,8 @@ interface IUIDocumentService extends IService {
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
+    /** Blueprint M2: invoked after each in-memory uidoc mutation (before auto-save). */
+    setAfterMutateHook(hook: (() => void) | null): void;
     updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>): void;
     updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>): void;
     updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void;
@@ -177,6 +182,7 @@ interface IUIGraphService extends IService {
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
+    applyGraphMutation(mutator: (document: UIGraphDocument) => void): void;
     createGraph(input: {
         name?: string;
         nodes?: Record<string, UIGraph["nodes"][string]>;
@@ -187,6 +193,43 @@ interface IUIGraphService extends IService {
     }): UIGraph;
     updateGraph(graphId: string, updater: (graph: UIGraph) => void): void;
     deleteGraph(graphId: string): void;
+}
+
+interface ILocalBlueprintService extends IService {
+    getBlueprintDocument(): BlueprintDocument;
+    applyBlueprintMutation(mutator: (bp: BlueprintDocument, doc: UIGraphDocument) => void): void;
+    ensureSurfaceMain(surfaceId: string, displayName?: string): string;
+    removeSurfaceAndWidgetOwners(surfaceId: string): void;
+    ensureWidgetMain(surfaceId: string, elementId: string, displayName?: string): string;
+    removeWidgetMain(surfaceId: string, elementId: string): void;
+    getWidgetMainBlueprintId(surfaceId: string, elementId: string): string | undefined;
+    createDeclaration(
+        blueprintId: string,
+        input: { name: string; kind?: BlueprintDeclaration["kind"] },
+    ): BlueprintDeclaration;
+    renameDeclaration(blueprintId: string, declarationId: string, name: string): void;
+    deleteDeclaration(blueprintId: string, declarationId: string): void;
+    setWidgetPropBinding(params: {
+        blueprintId: string;
+        surfaceId: string;
+        elementId: string;
+        propPath: string;
+        declarationId: string;
+        fallback?: BindingDefinition["fallback"];
+    }): string;
+    clearWidgetPropBinding(blueprintId: string, surfaceId: string, elementId: string, propPath: string): void;
+    findWidgetPropBinding(
+        blueprintId: string,
+        surfaceId: string,
+        elementId: string,
+        propPath: string,
+    ): BindingDefinition | undefined;
+    listDeclarations(blueprintId: string): BlueprintDeclaration[];
+}
+
+interface IUIBlueprintLifecycleCoordinator extends IService {
+    /** Reconcile instance main blueprints with current UIDocument (surfaces + logic-capable widgets). */
+    syncFromUidoc(): void;
 }
 
 interface IUIRuntimeBridgeService extends IService {
@@ -303,7 +346,8 @@ export {
     IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, ISettingsService, IStorageService, IStoryService,
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
-    ICharacterService, IUIDocumentService, IUIGraphService, IUIRuntimeBridgeService, IUIEditorStateService, IDevModeService, UIEditorStateEvents,
+    ICharacterService, IUIDocumentService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
+    IUIRuntimeBridgeService, IUIEditorStateService, IDevModeService, UIEditorStateEvents,
     Services, WorkspaceContext
 };
 

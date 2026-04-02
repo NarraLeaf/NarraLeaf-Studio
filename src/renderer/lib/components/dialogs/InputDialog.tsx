@@ -271,6 +271,7 @@ export class InputDialog {
             [AssetType.Audio]: 'Audio',
             [AssetType.Video]: 'Video',
             [AssetType.JSON]: 'JSON',
+            [AssetType.Blueprint]: 'Blueprint',
             [AssetType.Font]: 'Font',
             [AssetType.Other]: 'Other'
         };

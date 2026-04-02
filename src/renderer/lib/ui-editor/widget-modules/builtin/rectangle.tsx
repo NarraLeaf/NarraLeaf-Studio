@@ -6,6 +6,7 @@ import { createRectangleDockerBarItems } from "./rectangle/dockerBar";
 
 export const RectangleWidgetModule: UIWidgetModule = {
   type: "nl.rectangle",
+  supportsBlueprintLogic: true,
   displayName: "Rectangle",
   icon: Square,
 

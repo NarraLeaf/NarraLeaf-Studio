@@ -26,6 +26,8 @@ export type WidgetRendererProps = {
 export type UIInspectorData = {
     element: UIElement;
     elements: UIElement[];
+    /** Set when inspecting a canvas widget; required for Blueprint M2 binding UI. */
+    surfaceId?: string;
 };
 
 /**
@@ -112,6 +114,11 @@ export type DockerBarContext = {
 export interface UIWidgetModule {
     /** Unique type identifier (e.g. "nl.rectangle") */
     readonly type: string;
+
+    /**
+     * When true, creating this widget triggers a `widgetMain` instance blueprint (Blueprint M2).
+     */
+    readonly supportsBlueprintLogic?: boolean;
 
     /** Human-readable display name */
     readonly displayName: string;

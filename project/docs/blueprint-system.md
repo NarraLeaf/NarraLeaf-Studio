@@ -997,15 +997,18 @@ assets/
 
 重点文件：
 
+- `src/shared/types/blueprint/`（M1 已落地：**canonical 契约层**；入口 `index.ts`）
 - `src/shared/types/ui-editor/document.ts`
 - `src/shared/types/ui-editor/graph.ts`
 - `src/shared/types/devMode.ts`
+- `src/renderer/lib/ui-editor/runtime/types.ts`（`UIHostAdapter` 与 `BlueprintHostApiContract` 的契约版本字段）
 
 建议：
 
-- 在 `document.ts` 中保留实例挂载引用，但升级为更清晰的蓝图引用模型
-- 在 `graph.ts` 中逐步演化为统一 Blueprint 文档结构，或新增 `blueprint.ts`
-- 在 `devMode.ts` 中把共享蓝图资产一起纳入 bundle
+- **术语与终态模型以 `blueprint/*` 为准**；`ui-editor/*` 与 `devMode` 仅承载前向兼容桥，直到 M2/M3 完成迁移与运行时接线。
+- 在 `document.ts` 中保留 `graphId + entry`，并增加 `blueprintEvent`（`blueprintId + eventId`）供 M2+ 事件绑定收敛。
+- 在 `graph.ts` 的 `UIGraphDocument` 上可选挂载 `blueprintDocument`（完整 `BlueprintDocument` 形状）；磁盘在 M2 前可不写该字段。
+- 在 `devMode.ts` 的 `ui` 上可选 `localBlueprints` / `sharedBlueprints`；**M1 不强制** `DevModeManager` 填充，运行仍以 `uidoc` + `uigraphs` 为主。
 
 ### 17.2 Service 层
 

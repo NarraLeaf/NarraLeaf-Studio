@@ -1,4 +1,3 @@
-import type { UIGraphId } from "./graph";
 
 export const UI_DOCUMENT_SCHEMA_VERSION = 3 as const;
 
@@ -116,9 +115,9 @@ export type UIBehavior = {
 export type UIBehaviorBinding =
     | { kind: "noop" }
     | { kind: "actions"; actions: UIBehaviorAction[] }
-    | { kind: "graph"; graphId: UIGraphId; entry: string };
+    /** M2: event handler targets an event graph entry on an instance main blueprint. */
+    | { kind: "blueprintEvent"; blueprintId: string; eventId: string };
 
 export type UIBehaviorAction =
     | { kind: "noop" };
 
-export type { UIGraphId } from "./graph";

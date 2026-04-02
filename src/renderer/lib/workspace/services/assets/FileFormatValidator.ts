@@ -1,5 +1,5 @@
 import { AssetExtensions, AssetType } from "./assetTypes";
-import { RequestStatus } from "@shared/types/ipcEvents";
+import { parseSharedBlueprintAssetJson, SharedBlueprintAssetParseError } from "./blueprintAssetSchema";
 
 export type FileFormatValidationResult = {
     success: true;
@@ -58,6 +58,18 @@ export class FileFormatValidator {
                     return {
                         success: false,
                         error: 'Invalid JSON file',
+                    };
+                }
+            case AssetType.Blueprint:
+                try {
+                    const text = new TextDecoder().decode(buffer);
+                    parseSharedBlueprintAssetJson(text);
+                    return { success: true, data: void 0 };
+                } catch (e) {
+                    const msg = e instanceof SharedBlueprintAssetParseError ? e.message : "Invalid shared blueprint asset";
+                    return {
+                        success: false,
+                        error: msg,
                     };
                 }
             case AssetType.Other:
@@ -251,6 +263,7 @@ export class FileFormatValidator {
                 'eot': ['eot'],
             },
             [AssetType.JSON]: {},
+            [AssetType.Blueprint]: {},
             [AssetType.Other]: {},
         };
 

@@ -10,6 +10,7 @@ const createEmptyAssets = (): Record<AssetType, Asset[]> => ({
     [AssetType.Audio]: [],
     [AssetType.Video]: [],
     [AssetType.JSON]: [],
+    [AssetType.Blueprint]: [],
     [AssetType.Font]: [],
     [AssetType.Other]: [],
 });
@@ -19,6 +20,7 @@ const createEmptyGroups = (): Record<AssetType, AssetGroup[]> => ({
     [AssetType.Audio]: [],
     [AssetType.Video]: [],
     [AssetType.JSON]: [],
+    [AssetType.Blueprint]: [],
     [AssetType.Font]: [],
     [AssetType.Other]: [],
 });

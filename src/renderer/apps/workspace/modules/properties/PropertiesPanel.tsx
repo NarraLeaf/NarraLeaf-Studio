@@ -383,12 +383,17 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return (
                 <PropertyEditor
                     schema={combinedSchema}
-                    data={{ element, elements }}
+                    data={{ element, elements, surfaceId: uiSelection.surfaceId }}
                 />
             );
         }
 
-        return <PropertyEditor schema={layoutSchema} data={{ element: elements[0], elements }} />;
+        return (
+            <PropertyEditor
+                schema={layoutSchema}
+                data={{ element: elements[0], elements, surfaceId: uiSelection.surfaceId }}
+            />
+        );
     }, [uiSelection, documentService, documentVersion]);
 
     // Load asset metadata when asset changes

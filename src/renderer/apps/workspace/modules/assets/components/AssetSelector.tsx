@@ -5,6 +5,7 @@ import {
     Music,
     Video,
     FileJson,
+    Workflow,
     Type,
     File,
     Check,
@@ -29,6 +30,7 @@ const ASSET_TYPE_ICONS = {
     [AssetType.Audio]: Music,
     [AssetType.Video]: Video,
     [AssetType.JSON]: FileJson,
+    [AssetType.Blueprint]: Workflow,
     [AssetType.Font]: Type,
     [AssetType.Other]: File,
 };
@@ -38,6 +40,7 @@ const ASSET_TYPE_LABELS = {
     [AssetType.Audio]: "Audio",
     [AssetType.Video]: "Videos",
     [AssetType.JSON]: "JSON Files",
+    [AssetType.Blueprint]: "Blueprints",
     [AssetType.Font]: "Fonts",
     [AssetType.Other]: "Other",
 };

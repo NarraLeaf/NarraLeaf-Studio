@@ -370,6 +370,16 @@ type BlueprintDebugEvent =
 - 后续阶段不需要再推翻 owner、binding、frontend、programKind 的基础定义
 - 任何新节点、新编辑器、新调试面板都能挂到同一套协议上
 
+### 5.8 M1 代码落点与前向兼容约定（实现锚点）
+
+以下与仓库实现对齐，用于区分「**契约已冻结**」与「**行为已实现**」：
+
+- **Canonical 类型层**：`src/shared/types/blueprint/`（`schema.ts`、`document.ts`、`hostApi.ts`、`debug.ts`、`index.ts`）。宿主 API 能力表见 `BLUEPRINT_HOST_API_M1_CAPABILITIES`；契约版本见 `BLUEPRINT_HOST_API_CONTRACT_VERSION`。
+- **Legacy / 桥接**：`src/shared/types/ui-editor/document.ts` 中 `UIBehaviorBinding` 保留 `kind: "graph"`，并增加 `kind: "blueprintEvent"`；`src/shared/types/ui-editor/graph.ts` 中 `UIGraphDocument` 可选 `blueprintDocument`，`UIGraph` 可选 `blueprintId` / `ownerRef`。
+- **Dev Mode bundle 形状**：`src/shared/types/devMode.ts` 的 `ui.localBlueprints` / `ui.sharedBlueprints` 为可选；**M1 不要求** `DevModeManager` 写入，亦不改变 `uigraphs.json` 磁盘 schema 版本。
+- **运行时 substrate**：`src/renderer/lib/ui-editor/runtime/types.ts` 中 `UIHostAdapter` 可选 `blueprintHostApiVersion`，表示未来向 `BlueprintHostApiContract` 对齐，**不表示** M3 宿主能力已全部实现。
+- **本阶段明确不动（避免范围蔓延）**：`UIGraphService` 的真实 migration、`DevModeManager` 的 bundle 生产逻辑扩展、`GraphExecutor` 的派发与调试发射、属性面板与 inspector 的真实蓝图 UI。
+
 ---
 
 ## 6. M2：本地实例蓝图存储、生命周期、绑定持久化

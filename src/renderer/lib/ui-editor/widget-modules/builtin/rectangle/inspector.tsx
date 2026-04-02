@@ -5,7 +5,6 @@ import {
   EyeOff,
   Maximize2,
   MoreHorizontal,
-  Plus,
   RotateCw,
   Square,
 } from "lucide-react";
@@ -103,19 +102,22 @@ function InlineMenuTriggerButton({
   );
 }
 
-function BlueprintPlaceholder(_: CustomFieldProps<UIInspectorData>) {
+/**
+ * M1: Honest deferred state — blueprint editor entry and event wiring are milestone M4, not available here yet.
+ */
+function BlueprintDeferredNotice(_: CustomFieldProps<UIInspectorData>) {
   return (
-    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-[#111315] px-4 py-3">
-      <div>
-        <p className="text-xs uppercase text-gray-500 tracking-wider">Blueprint</p>
-        <p className="text-sm text-gray-300">Link actions and behaviors</p>
-      </div>
-      <button
-        type="button"
-        className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/5 text-white transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-primary/50"
-      >
-        <Plus className="w-4 h-4" />
-      </button>
+    <div className="rounded-lg border border-white/10 bg-[#111315] px-4 py-3 space-y-2">
+      <p className="text-xs uppercase text-gray-500 tracking-wider">Blueprint</p>
+      <p className="text-sm text-gray-300 leading-snug">
+        Event graphs and blueprint editing are not wired in the UI editor yet (planned for Visual Editor M4). Use{" "}
+        <span className="text-gray-200">Dev Mode</span> from the canvas toolbar to run and debug surface behavior when
+        runtime support lands.
+      </p>
+      <p className="text-[11px] text-gray-500 leading-snug">
+        This tab only edits layout and static preview; <code className="text-gray-400">hostAdapter.effects</code> stays
+        inert here by design.
+      </p>
     </div>
   );
 }
@@ -914,9 +916,9 @@ export function createRectangleInspector(ctx: InspectorContext) {
             title: "Blueprint",
             fields: [
               defineField<D, any>({
-                id: "interaction.blueprint.placeholder",
+                id: "interaction.blueprint.deferred",
                 type: "custom",
-                component: BlueprintPlaceholder,
+                component: BlueprintDeferredNotice,
               }),
             ],
           }),

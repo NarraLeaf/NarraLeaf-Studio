@@ -4,13 +4,23 @@ import { AssetType } from '@/lib/workspace/services/assets/assetTypes';
 import { createDefaultFilters, getUniqueTags } from '../components/FilterSystem';
 
 const createEmptyAssets = (): Record<AssetType, Asset[]> => ({
-    [AssetType.Image]: [], [AssetType.Audio]: [], [AssetType.Video]: [],
-    [AssetType.JSON]: [], [AssetType.Font]: [], [AssetType.Other]: [],
+    [AssetType.Image]: [],
+    [AssetType.Audio]: [],
+    [AssetType.Video]: [],
+    [AssetType.JSON]: [],
+    [AssetType.Blueprint]: [],
+    [AssetType.Font]: [],
+    [AssetType.Other]: [],
 });
 
 const createEmptyGroups = (): Record<AssetType, AssetGroup[]> => ({
-    [AssetType.Image]: [], [AssetType.Audio]: [], [AssetType.Video]: [],
-    [AssetType.JSON]: [], [AssetType.Font]: [], [AssetType.Other]: [],
+    [AssetType.Image]: [],
+    [AssetType.Audio]: [],
+    [AssetType.Video]: [],
+    [AssetType.JSON]: [],
+    [AssetType.Blueprint]: [],
+    [AssetType.Font]: [],
+    [AssetType.Other]: [],
 });
 
 export interface UseAssetFiltersParams {

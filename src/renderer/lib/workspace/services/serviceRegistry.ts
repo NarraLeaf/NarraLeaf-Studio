@@ -14,6 +14,8 @@ import { UIDocumentService } from "./ui-editor/UIDocumentService";
 import { UIRuntimeBridgeService } from "./ui-editor/UIRuntimeBridgeService";
 import { UIEditorStateService } from "./ui-editor/UIEditorStateService";
 import { UIGraphService } from "./ui-editor/UIGraphService";
+import { LocalBlueprintService } from "./ui-editor/LocalBlueprintService";
+import { UIBlueprintLifecycleCoordinator } from "./ui-editor/UIBlueprintLifecycleCoordinator";
 import { DevModeService } from "./core/DevModeService";
 
 
@@ -33,6 +35,8 @@ export class ServiceRegistry {
         [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),
         [Services.UIEditorState]: UIEditorStateService.getInstance(),
         [Services.UIGraph]: UIGraphService.getInstance(),
+        [Services.LocalBlueprint]: LocalBlueprintService.getInstance(),
+        [Services.UIBlueprintLifecycle]: UIBlueprintLifecycleCoordinator.getInstance(),
         [Services.DevMode]: DevModeService.getInstance(),
     };
 
