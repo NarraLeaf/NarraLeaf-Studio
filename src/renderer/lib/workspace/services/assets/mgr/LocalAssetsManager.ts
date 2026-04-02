@@ -65,6 +65,11 @@ export class LocalAssetsManager {
                     throw new RendererError("JSON service not initialized");
                 }
                 return await this.assetsService.jsonService.readLocalJSON(path) as RequestStatus<AssetData<T>>;
+            case AssetType.Blueprint:
+                if (!this.assetsService.blueprintService) {
+                    throw new RendererError("Blueprint service not initialized");
+                }
+                return await this.assetsService.blueprintService.readLocalBlueprint(path) as RequestStatus<AssetData<T>>;
             case AssetType.Font:
                 if (!this.assetsService.fontService) {
                     throw new RendererError("Font service not initialized");

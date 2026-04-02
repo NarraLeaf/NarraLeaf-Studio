@@ -523,6 +523,7 @@ export type IPCDevModeEvents = {
             status: DevModeStatus;
         };
     };
+    /** Payload includes optional blueprint forward-compat fields on `DevModeBundle.ui` (M1+). */
     [IPCEventType.devModePayloadUpdate]: {
         type: IPCMessageType.message,
         consumer: IPCType.Host,

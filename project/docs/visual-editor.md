@@ -6,6 +6,26 @@
 
 ---
 
+## 0. M1 状态快照（与里程碑对齐）
+
+本文件同时扮演 **当前代码实现基线** 与 **Visual Editor M1 冻结后的状态快照**。
+
+- **与 Blueprint 文档的关系**：蓝图系统的契约冻结见 `project/docs/blueprint-system.md` 与 `project/docs/blueprint-system-milestones.md`（Blueprint M1）。Visual Editor M1 只冻结**界面编辑器侧**的产品边界与体验基线，不重开 Blueprint M1 范围。
+- **M1 已冻结（编辑器侧）**：
+  - 继续以通用 UI Editor 为核心；不建立独立 VN 领域主模型。
+  - **编辑器内只做静态/布局预览**；真实交互与副作用以 **Dev Mode** 为主场。
+  - **第一阶段复用**只依赖 **Stage Surface → App Surface Link** 与 **复制/粘贴**；不引入模板/preset/可嵌套组件系统。
+  - **M2 第一批基础 widget 清单（已锁定为 8 项）**：`Text`、`Image`、`Button`、`Container/Frame`、`Stack`、`Scroll`、`Spacer/Divider`、`Option List / Repeater` 最小形态（实现顺序在 M2 内再定）。
+- **当前实现基线**：内置可插入 widget 在 `BuiltinWidgetModules` 中**仅有** `nl.rectangle`（见 `src/renderer/lib/ui-editor/widget-modules/builtin/index.ts`）。属性面板中 Blueprint 区块在 M1 为**延期说明**（真实入口属 M4）。
+- **M1 相关 UI 壳层文件（验收锚点）**：
+  - 左栏 Surface 列表：`src/renderer/apps/workspace/modules/ui-editor/UISurfacesPanel.tsx` 及 `panel/*`
+  - 画布编辑 Tab：`src/renderer/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab.tsx`
+  - 属性面板拼装：`src/renderer/apps/workspace/modules/properties/PropertiesPanel.tsx`
+
+更完整的阶段拆分与 M1 完成判定见 `project/docs/visual-editor-milestones.md`；方向与取舍见 `project/docs/visual-editor-implementation-guide.md`。
+
+---
+
 ## 1. TL;DR（你需要记住的最小事实）
 
 - **编辑对象**：以 `Surface` 为单位编辑 UI（App / Stage）。
@@ -113,7 +133,7 @@ UI Editor 的选中状态复用 `UIStore.selection`，并用 `UIElementSelection
 - load/save
 - dirty 状态与 revision
 - 基础编辑操作（创建/删除 Surface，创建 Element，更新 layout/props，删除元素等）
-- schema 迁移（当前 `UI_DOCUMENT_SCHEMA_VERSION = 2`，包含 legacy surface kind 的迁移逻辑）
+- schema 迁移（以 `src/shared/types/ui-editor/document.ts` 中 `UI_DOCUMENT_SCHEMA_VERSION` 为准，包含 legacy surface kind 的迁移逻辑）
 
 ### 3.3 UIGraphDocument（行为图文档）
 

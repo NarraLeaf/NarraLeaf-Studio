@@ -290,7 +290,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         type="button"
                         className={toolButtonClass(tool.kind === "pan")}
                         onClick={handlePanTool}
-                        title="Pan tool"
+                        title="Pan the canvas"
                     >
                         <Move className="w-4 h-4" />
                     </button>
@@ -299,7 +299,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         type="button"
                         className={toolButtonClass(false)}
                         onClick={handleStartCurrentSurface}
-                        title="Start Surface"
+                        title="Open this surface in Dev Mode"
                         disabled={!surfaceId}
                     >
                         <Play className="w-4 h-4" />

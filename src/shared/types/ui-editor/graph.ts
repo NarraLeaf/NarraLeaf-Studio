@@ -1,6 +1,11 @@
+import type { BlueprintDocument, BlueprintOwnerRef } from "../blueprint/document";
+
 export type UIGraphId = string;
 
-export type UIGraphDocumentVersion = number;
+/** M2: local instance blueprints live in `blueprintDocument`; `graphs` holds visual IR fragments. */
+export const UI_GRAPH_DOCUMENT_SCHEMA_VERSION = 2 as const;
+
+export type UIGraphDocumentVersion = typeof UI_GRAPH_DOCUMENT_SCHEMA_VERSION;
 
 export type UIGraphDocument = {
     schemaVersion: UIGraphDocumentVersion;
@@ -10,6 +15,8 @@ export type UIGraphDocument = {
         updatedAt?: string;
         [key: string]: unknown;
     };
+    /** Required for M2 on-disk docs: canonical local instance BlueprintDocument (global/surface/widget mains). */
+    blueprintDocument: BlueprintDocument;
 };
 
 export type UIGraph = {
@@ -20,6 +27,12 @@ export type UIGraph = {
     edges: UIGraphEdge[];
     variables?: Record<string, unknown>;
     meta?: Record<string, unknown>;
+    /**
+     * M2+ optional link: id of a Blueprint in `blueprintDocument.blueprints` that owns this graph IR.
+     */
+    blueprintId?: string;
+    /** M2+ optional owner context for instance main blueprints */
+    ownerRef?: BlueprintOwnerRef;
 };
 
 export type UIGraphEntry = {

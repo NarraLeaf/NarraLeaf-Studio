@@ -18,7 +18,7 @@ export function SurfaceActions({
     linkTitle,
 }: SurfaceActionsProps) {
     return (
-        <div className="px-2 mt-2">
+        <div className="px-2 mt-2 space-y-1.5">
             <div className="flex gap-2">
                 <button
                     type="button"

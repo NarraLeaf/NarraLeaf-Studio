@@ -1,3 +1,4 @@
+import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
@@ -35,7 +36,12 @@ export type DevModeBundle = {
     timestamp: string;
     ui: {
         uidoc: UIDocument;
+        /** UI graph document; instance blueprints live in {@link UIGraphDocument.blueprintDocument} and are mirrored in `localBlueprints`. */
         uigraphs: UIGraphDocument;
+        /** Instance {@link BlueprintDocument} (same object as `uigraphs.blueprintDocument`); explicit for Dev Mode consumers. */
+        localBlueprints: BlueprintDocument;
+        /** Shared blueprint assets loaded from project asset metadata + content files. */
+        sharedBlueprints: SharedBlueprintAsset[];
     };
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;

@@ -308,6 +308,7 @@ export class GroupAssetsManager {
             [AssetType.Audio]: {},
             [AssetType.Video]: {},
             [AssetType.JSON]: {},
+            [AssetType.Blueprint]: {},
             [AssetType.Font]: {},
             [AssetType.Other]: {},
         };
@@ -328,7 +329,13 @@ export class GroupAssetsManager {
     private async initAssetsGroups(): Promise<void> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const files = [
-            AssetType.Image, AssetType.Audio, AssetType.Video, AssetType.JSON, AssetType.Font, AssetType.Other,
+            AssetType.Image,
+            AssetType.Audio,
+            AssetType.Video,
+            AssetType.JSON,
+            AssetType.Blueprint,
+            AssetType.Font,
+            AssetType.Other,
         ].map(type => this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(type)));
 
         const tasks = files.map(async file => {

@@ -71,6 +71,8 @@ export class RemoteAssetsManager {
             case AssetType.JSON:
                 this.assertService(this.assetsService.jsonService, "JSON");
                 return this.assetsService.jsonService.readJSONFromBuffer(buffer) as Promise<RequestStatus<AssetData<T>>>;
+            case AssetType.Blueprint:
+                return { success: false, error: "Remote blueprint assets are not supported in M2" };
             case AssetType.Font:
                 this.assertService(this.assetsService.fontService, "Font");
                 return this.assetsService.fontService.readFontFromBuffer(asset as Asset<AssetType.Font>, buffer) as Promise<RequestStatus<AssetData<T>>>;

@@ -8,6 +8,7 @@ import { FileFormatValidator } from "../assets/FileFormatValidator";
 import { FontService } from "../assets/FontService";
 import { ImageService } from "../assets/ImageService";
 import { JSONService } from "../assets/JSONService";
+import { BlueprintService } from "../assets/BlueprintService";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
 import { EditorRemoteCacheManager } from "../assets/mgr/EditorRemoteCacheManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
@@ -44,6 +45,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public audioService: AudioService | null = null;
     public videoService: VideoService | null = null;
     public jsonService: JSONService | null = null;
+    public blueprintService: BlueprintService | null = null;
     public fontService: FontService | null = null;
     public otherService: OtherService | null = null;
     public fileFormatValidator: FileFormatValidator | null = null;
@@ -127,6 +129,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         this.audioService = new AudioService(ctx);
         this.videoService = new VideoService(ctx);
         this.jsonService = new JSONService(ctx);
+        this.blueprintService = new BlueprintService(ctx);
         this.fontService = new FontService(ctx);
         this.otherService = new OtherService(ctx);
 
