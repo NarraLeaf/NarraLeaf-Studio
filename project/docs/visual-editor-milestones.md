@@ -150,7 +150,7 @@
 ### 5.7 M1 结束时的已知缺口（供 M2 对照）
 
 - ~~内置可插 widget 当前仅有 `nl.rectangle`。~~ **M2-A 已补齐** Text / Image / Button / Container；其余 M2 项仍待实现。
-- 行为图/蓝图在编辑器侧无完整图编辑 UI；属性面板 Blueprint 在 M2-A 为 **只读摘要**，M4 升级为真入口。
+- 行为图/蓝图在编辑器侧无完整图编辑 UI；属性面板 Blueprint **M4-lite 已交付**真入口（轻量 Tab）；完整绑定 UI 与 Visual 画布属 **M4-full**。
 
 ---
 
@@ -210,7 +210,7 @@
 - 上下文跳转
 - 最小绑定/事件展示
 
-不要求在本阶段完成真实运行时执行闭环。
+**M4-lite（已落地）**：上述四条在 Workspace 内通过「只读摘要 + Open blueprint entry → 轻量 Tab」完成；**不**包含属性面板绑定编辑与 Visual 画布。真实执行闭环在 **Dev Mode**（见 Blueprint M3-min 与 `project/docs/implementation-plans/p2-bp-m3min-ve-m4lite-plan.md`）。
 
 ### 7.4 验收标准
 
@@ -218,7 +218,7 @@
 - 用户能知道当前元素是否接了逻辑
 - 用户能从当前编辑上下文进入对应逻辑入口
 
-**说明**：M1 阶段允许属性面板内为 Blueprint 提供**明确的延期/未实现说明**（非可点的虚假入口）；M4 完成时须满足上表三条。
+**说明**：M1 阶段允许属性面板内为 Blueprint 提供**明确的延期/未实现说明**（非可点的虚假入口）；M4 完成时须满足上表三条。**M4-full** 仍待：绑定 UI、声明选择器、React Flow 编辑器等（见 Blueprint System M4）。
 
 ---
 

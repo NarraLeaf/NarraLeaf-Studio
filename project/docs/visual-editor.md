@@ -16,7 +16,7 @@
   - **编辑器内只做静态/布局预览**；真实交互与副作用以 **Dev Mode** 为主场。
   - **第一阶段复用**只依赖 **Stage Surface → App Surface Link** 与 **复制/粘贴**；不引入模板/preset/可嵌套组件系统。
   - **M2 第一批基础 widget 清单（已锁定为 8 项）**：`Text`、`Image`、`Button`、`Container/Frame`、`Stack`、`Scroll`、`Spacer/Divider`、`Option List / Repeater` 最小形态（实现顺序在 M2 内再定）。
-- **当前实现基线**：内置可插入 widget 包含 `nl.rectangle` 与 **M2-A** 四类：`nl.text`、`nl.image`、`nl.button`、`nl.container`（Container/Frame）（见 `src/renderer/lib/ui-editor/widget-modules/builtin/index.ts`）。属性面板中 Blueprint 区块为 **M2 只读摘要**（计数与阶段说明）；完整编辑入口属 M4。
+- **当前实现基线**：内置可插入 widget 包含 `nl.rectangle` 与 **M2-A** 四类：`nl.text`、`nl.image`、`nl.button`、`nl.container`（Container/Frame）（见 `src/renderer/lib/ui-editor/widget-modules/builtin/index.ts`）。属性面板中 Blueprint 区块为 **M4-lite 真实入口**（状态摘要 +「Open blueprint entry」打开轻量 Tab）；**M4-full** 绑定编辑与 Visual 画布仍待后续里程碑。
 - **M1 相关 UI 壳层文件（验收锚点）**：
   - 左栏 Surface 列表：`src/renderer/apps/workspace/modules/ui-editor/UISurfacesPanel.tsx` 及 `panel/*`
   - 画布编辑 Tab：`src/renderer/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab.tsx`

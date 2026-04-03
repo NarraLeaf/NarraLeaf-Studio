@@ -17,6 +17,11 @@ import {
     type ReadonlyBlueprintWidgetSummary,
 } from "./blueprint/readonlyBlueprintSummary";
 import { surfaceMainOwnerKey, widgetMainOwnerKey } from "./blueprint/ownerKeys";
+import type { BlueprintDeclarationValueSource } from "@shared/types/blueprint/document";
+import {
+    buildReadonlySurfaceMainSummary,
+    type ReadonlyBlueprintSurfaceSummary,
+} from "./blueprint/readonlyBlueprintSummary";
 
 /**
  * Blueprint M2: mutations to local instance BlueprintDocument inside uigraphs.json.
@@ -129,15 +134,40 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return this.getBlueprintDocument().ownerIndex[key];
     }
 
+    public getSurfaceMainBlueprintId(surfaceId: string): string | undefined {
+        const key = surfaceMainOwnerKey(surfaceId);
+        return this.getBlueprintDocument().ownerIndex[key];
+    }
+
+    public getReadonlySurfaceMainSummary(surfaceId: string): ReadonlyBlueprintSurfaceSummary {
+        return buildReadonlySurfaceMainSummary(this.getBlueprintDocument(), surfaceId);
+    }
+
+    public setDeclarationValueSource(
+        blueprintId: string,
+        declarationId: string,
+        valueSource: BlueprintDeclarationValueSource | undefined,
+    ): void {
+        this.applyBlueprintMutation(doc => {
+            const bp = doc.blueprints[blueprintId];
+            const decl = bp?.members?.declarations?.[declarationId];
+            if (!decl) {
+                return;
+            }
+            decl.valueSource = valueSource;
+        });
+    }
+
     public createDeclaration(
         blueprintId: string,
-        input: { name: string; kind?: BlueprintDeclaration["kind"] },
+        input: { name: string; kind?: BlueprintDeclaration["kind"]; valueSource?: BlueprintDeclarationValueSource },
     ): BlueprintDeclaration {
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
         const decl: BlueprintDeclaration = {
             id: uuid.generate(),
             name: input.name,
             kind: input.kind ?? "constant",
+            valueSource: input.valueSource,
         };
         this.applyBlueprintMutation(doc => {
             const bp = doc.blueprints[blueprintId];

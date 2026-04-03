@@ -5,52 +5,44 @@ import {
     getBlueprintEntryTabId,
     type BlueprintEntryTabPayload,
 } from "@/apps/workspace/modules/blueprint-lite/blueprintEntryTabId";
-import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
-import { useReadonlyBlueprintSummary } from "./useReadonlyBlueprintSummary";
+import { useReadonlySurfaceBlueprintSummary } from "@/lib/ui-editor/widget-modules/shared/blueprint/useReadonlySurfaceBlueprintSummary";
+import type { SceneEditorContext } from "../schemas/sceneSchema";
 
-/**
- * Shared properties-panel block: instance Blueprint summary + M4-lite entry (read-only, no binding edit).
- */
-export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorData>) {
-    const surfaceId = data.surfaceId;
-    const element = data.element;
-    const summary = useReadonlyBlueprintSummary(null, surfaceId, element);
+export function SurfaceBlueprintEntrySection({ data }: CustomFieldProps<SceneEditorContext>) {
     const { openEditorTab } = useRegistry();
+    const surfaceId = data.surface.id;
+    const summary = useReadonlySurfaceBlueprintSummary(data.documentService, surfaceId);
 
     const openEntry = () => {
-        if (!summary.blueprintId || !surfaceId) {
+        if (!summary.blueprintId) {
             return;
         }
         const payload: BlueprintEntryTabPayload = {
             blueprintId: summary.blueprintId,
-            ownerKind: "widgetMain",
+            ownerKind: "surfaceMain",
             surfaceId,
-            elementId: element.id,
         };
         openEditorTab({
-            id: getBlueprintEntryTabId({ blueprintId: summary.blueprintId, surfaceId, elementId: element.id }),
-            title: `Blueprint · ${element.name ?? element.type}`,
+            id: getBlueprintEntryTabId({ blueprintId: summary.blueprintId, surfaceId }),
+            title: `Blueprint · ${data.surface.name || "Surface"}`,
             component: BlueprintEntryTab,
             payload,
             closable: true,
         });
     };
 
-    const hasWiring = summary.uiBlueprintEventCount > 0 || summary.eventGraphCount > 0;
-    const canOpenEntry = summary.hasWidgetMain && Boolean(summary.blueprintId);
-
     return (
         <div className="rounded-lg border border-white/10 bg-[#111315] px-4 py-3 space-y-2">
-            <p className="text-xs uppercase text-gray-500 tracking-wider">Blueprint</p>
-            {!summary.hasWidgetMain ? (
+            <p className="text-xs uppercase text-gray-500 tracking-wider">Surface blueprint</p>
+            {!summary.hasSurfaceMain ? (
                 <p className="text-sm text-gray-400 leading-snug">
-                    No widget main blueprint is attached to this element. Widgets that support logic receive one when
-                    needed.
+                    No surface main blueprint is registered for this surface yet. It is created when the surface is
+                    provisioned.
                 </p>
             ) : (
                 <ul className="text-sm text-gray-300 space-y-1 list-none pl-0">
                     <li>
-                        <span className="text-gray-500">Widget main</span> ·{" "}
+                        <span className="text-gray-500">Surface main</span> ·{" "}
                         <span className="text-gray-200 font-mono text-[11px]">{summary.blueprintId}</span>
                     </li>
                     <li>
@@ -65,23 +57,18 @@ export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorD
                     <li>
                         <span className="text-gray-500">Event graphs (stored)</span> · {summary.eventGraphCount}
                     </li>
-                    <li>
-                        <span className="text-gray-500">UI event hooks</span> · {summary.uiBlueprintEventCount}
-                        {!hasWiring ? <span className="text-gray-500"> (none wired)</span> : null}
-                    </li>
                 </ul>
             )}
             <button
                 type="button"
                 className="mt-2 w-full rounded-md border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs font-medium text-cyan-100 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-cyan-500/10"
-                disabled={!canOpenEntry}
+                disabled={!summary.hasSurfaceMain || !summary.blueprintId}
                 onClick={() => openEntry()}
             >
                 Open blueprint entry
             </button>
             <p className="text-[11px] text-gray-500 leading-snug border-t border-white/5 pt-2 mt-2">
-                Binding editing and graph authoring are planned for Visual Blueprint M4-full. This editor stays static /
-                layout-only; use Dev Mode for runtime execution and the Blueprint debug panel.
+                Visual graph editing is not available in this milestone. Use Dev Mode to run wired event graphs.
             </p>
         </div>
     );

@@ -1008,7 +1008,7 @@ assets/
 - **术语与终态模型以 `blueprint/*` 为准**；`ui-editor/*` 与 `devMode` 承载与 Studio / Dev Mode 的集成形状。
 - 在 `document.ts` 中事件绑定使用 `blueprintEvent`（`blueprintId + eventId`）；事件图 IR 存于 `Blueprint.program.graphs.events[eventId].graph`，**不**再以顶层 `UIGraphDocument.graphs` 为 Blueprint 事件真相。
 - 在 `graph.ts` 的 `UIGraphDocument` 上 **`blueprintDocument` 必填**（`uigraphs.json` schema v2）；顶层 `graphs` 仅保留与旧行为图执行器的兼容占位。
-- 在 `devMode.ts` 的 `DevModeBundle.ui` 中显式携带 `localBlueprints`（与 `uigraphs.blueprintDocument` 一致）；Dev Mode **本阶段不执行**蓝图逻辑，仅消费 bundle 形状。
+- 在 `devMode.ts` 的 `DevModeBundle.ui` 中显式携带 `localBlueprints`（与 `uigraphs.blueprintDocument` 一致）。**M3-min 起**：Dev Mode renderer 内可执行最小 `blueprintEvent` 链（`surface` 状态 + 绑定求值）；完整 Host API 与跨窗口调试仍属后续里程碑。
 
 ### 17.2 Service 层
 

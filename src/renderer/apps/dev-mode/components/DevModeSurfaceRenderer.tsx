@@ -1,19 +1,32 @@
 import type { CSSProperties, ReactNode } from "react";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument, UISurface, UIElement } from "@shared/types/ui-editor/document";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
+import { mergeElementWithBlueprintBindings } from "@/lib/ui-editor/blueprint-runtime/BindingEvaluator";
+import type { SurfaceStateStore } from "@/lib/ui-editor/blueprint-runtime/SurfaceStateStore";
+import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
+import type { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
 
 type DevModeSurfaceRendererProps = {
     document: UIDocument;
     surface: UISurface;
     rendererRegistry: ElementRendererRegistry;
     scale: number;
+    hostAdapter: UIHostAdapter;
+    /** When set, widgetProp bindings are evaluated against surface runtime state. */
+    blueprintBindingContext?: {
+        blueprintDocument: BlueprintDocument;
+        surfaceState: SurfaceStateStore;
+        debug: DebugBridge;
+        coalescer: BindingDebugCoalescer;
+    } | null;
 };
 
 export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
-    const { document, surface, rendererRegistry, scale } = props;
+    const { document, surface, rendererRegistry, scale, hostAdapter, blueprintBindingContext } = props;
     const rootElementId = resolveSurfaceRootElementId(document, surface.id);
     if (!rootElementId) {
         return null;
@@ -23,13 +36,6 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
     if (!rootElement) {
         return null;
     }
-
-    const hostAdapter: UIHostAdapter = {
-        host: surface.host,
-        effects: {
-            runEffect: () => {},
-        },
-    };
 
     const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
     const scaledWidth = surface.designSize.width * safeScale;
@@ -60,7 +66,14 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
             style={surfaceShellStyle}
         >
             <div style={surfaceStyle}>
-                {renderElementTree(rootElement, document, surface, hostAdapter, rendererRegistry)}
+                {renderElementTree(
+                    rootElement,
+                    document,
+                    surface,
+                    hostAdapter,
+                    rendererRegistry,
+                    blueprintBindingContext,
+                )}
             </div>
         </div>
     );
@@ -72,33 +85,53 @@ function renderElementTree(
     surface: UISurface,
     hostAdapter: UIHostAdapter,
     rendererRegistry: ElementRendererRegistry,
+    blueprintBindingContext: DevModeSurfaceRendererProps["blueprintBindingContext"],
 ): ReactNode {
-    if (element.layout.visible === false) {
+    const resolved =
+        blueprintBindingContext != null
+            ? mergeElementWithBlueprintBindings(
+                  element,
+                  surface.id,
+                  blueprintBindingContext.blueprintDocument,
+                  blueprintBindingContext.surfaceState,
+                  e => blueprintBindingContext.debug.emit(e),
+                  blueprintBindingContext.coalescer,
+              )
+            : element;
+
+    if (resolved.layout.visible === false) {
         return null;
     }
 
-    const children = element.childrenIds
+    const children = resolved.childrenIds
         .map(childId => {
             const childElement = document.elements[childId];
             if (!childElement) {
                 return null;
             }
-            return renderElementTree(childElement, document, surface, hostAdapter, rendererRegistry);
+            return renderElementTree(
+                childElement,
+                document,
+                surface,
+                hostAdapter,
+                rendererRegistry,
+                blueprintBindingContext,
+            );
         })
         .filter((node): node is ReactNode => node !== null);
 
-    const renderer = rendererRegistry.get(element.type);
+    const renderer = rendererRegistry.get(resolved.type);
     const content = renderer
-        ? renderer.render({ element, document, surface, hostAdapter, children })
-        : renderFallback(element, children);
+        ? renderer.render({ element: resolved, document, surface, hostAdapter, children })
+        : renderFallback(resolved, children);
 
-    const styleOverrides = extractStyleOverrides(element);
+    const styleOverrides = extractStyleOverrides(resolved);
     return (
         <EditorNodeWrapper
-            key={element.id}
-            element={element}
-            layout={element.layout}
-            isRoot={element.parentId === null}
+            key={resolved.id}
+            element={resolved}
+            layout={resolved.layout}
+            isRoot={resolved.parentId === null}
             styleOverrides={styleOverrides}
         >
             {content}

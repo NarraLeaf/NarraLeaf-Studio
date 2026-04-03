@@ -80,4 +80,21 @@ export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
             }
         }
     }
+
+    for (const bp of Object.values(doc.blueprints)) {
+        for (const decl of Object.values(bp.members?.declarations ?? {})) {
+            const vs = decl.valueSource;
+            if (!vs) {
+                continue;
+            }
+            if (vs.kind === "surfaceState") {
+                const key = String(vs.key ?? "").trim();
+                if (!key) {
+                    throw new BlueprintDocumentValidationError(
+                        `Declaration "${decl.id}" on blueprint "${bp.id}" has surfaceState valueSource with empty key`,
+                    );
+                }
+            }
+        }
+    }
 }
