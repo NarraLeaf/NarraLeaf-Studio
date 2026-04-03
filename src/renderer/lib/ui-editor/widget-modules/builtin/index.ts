@@ -4,6 +4,10 @@ import { TextWidgetModule } from "./text";
 import { ImageWidgetModule } from "./image";
 import { ContainerWidgetModule } from "./container";
 import { ButtonWidgetModule } from "./button";
+import { StackWidgetModule } from "./stack";
+import { ScrollWidgetModule } from "./scroll";
+import { SpacerDividerWidgetModule } from "./spacerDivider";
+import { ListRepeaterWidgetModule } from "./listRepeater";
 
 /**
  * All built-in widget modules.
@@ -15,4 +19,8 @@ export const BuiltinWidgetModules: UIWidgetModule[] = [
     ImageWidgetModule,
     ContainerWidgetModule,
     ButtonWidgetModule,
+    StackWidgetModule,
+    ScrollWidgetModule,
+    SpacerDividerWidgetModule,
+    ListRepeaterWidgetModule,
 ];

@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 3,
+  "id": "ex-doc-choice",
+  "name": "Example · Choice menu (Option list)",
+  "surfaces": [
+    {
+      "id": "ex-surf-choice",
+      "name": "Choice · Stage menu",
+      "host": "player",
+      "kind": "stageSurface",
+      "designSize": { "width": 1280, "height": 720 },
+      "rootElementId": "ex-el-choice-root",
+      "mount": { "kind": "slot", "slotId": "menu" }
+    }
+  ],
+  "elements": {
+    "ex-el-choice-root": {
+      "id": "ex-el-choice-root",
+      "type": "nl.root",
+      "name": "Root",
+      "parentId": null,
+      "childrenIds": ["ex-el-choice-frame"],
+      "layout": { "x": 0, "y": 0, "width": 1280, "height": 720, "visible": true, "opacity": 1 }
+    },
+    "ex-el-choice-frame": {
+      "id": "ex-el-choice-frame",
+      "type": "nl.container",
+      "name": "Frame",
+      "parentId": "ex-el-choice-root",
+      "childrenIds": ["ex-el-choice-scroll"],
+      "layout": { "x": 420, "y": 180, "width": 440, "height": 360, "visible": true, "opacity": 1 },
+      "props": {
+        "backgroundColor": "#111827",
+        "borderRadius": 12,
+        "borderWidth": 1,
+        "borderColor": "#374151",
+        "borderStyle": "solid",
+        "clipContent": true
+      }
+    },
+    "ex-el-choice-scroll": {
+      "id": "ex-el-choice-scroll",
+      "type": "nl.scroll",
+      "name": "Scroll",
+      "parentId": "ex-el-choice-frame",
+      "childrenIds": ["ex-el-choice-list"],
+      "layout": { "x": 0, "y": 0, "width": 440, "height": 360, "visible": true, "opacity": 1 },
+      "props": { "axis": "y" }
+    },
+    "ex-el-choice-list": {
+      "id": "ex-el-choice-list",
+      "type": "nl.listRepeater",
+      "name": "Choices",
+      "parentId": "ex-el-choice-scroll",
+      "childrenIds": ["ex-el-choice-row"],
+      "layout": { "x": 0, "y": 0, "width": 424, "height": 320, "visible": true, "opacity": 1 },
+      "props": {
+        "previewCount": 4,
+        "itemGap": 8,
+        "repeatDirection": "vertical",
+        "templateDirection": "horizontal",
+        "templateGap": 0
+      }
+    },
+    "ex-el-choice-row": {
+      "id": "ex-el-choice-row",
+      "type": "nl.button",
+      "name": "Choice row",
+      "parentId": "ex-el-choice-list",
+      "childrenIds": ["ex-el-choice-row-text"],
+      "layout": { "x": 0, "y": 0, "width": 400, "height": 44, "visible": true, "opacity": 1 },
+      "props": {
+        "backgroundColor": "#1f2937",
+        "borderRadius": 8,
+        "borderWidth": 1,
+        "borderColor": "#4b5563",
+        "borderStyle": "solid",
+        "paddingX": 16,
+        "paddingY": 10,
+        "clipContent": true
+      }
+    },
+    "ex-el-choice-row-text": {
+      "id": "ex-el-choice-row-text",
+      "type": "nl.text",
+      "name": "Choice label",
+      "parentId": "ex-el-choice-row",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 360, "height": 22, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Choice option (rename per row in real use)",
+        "fontSize": 15,
+        "color": "#f3f4f6",
+        "fontWeight": "normal",
+        "textAlign": "left",
+        "lineHeight": 1.3
+      }
+    }
+  },
+  "meta": {
+    "createdAt": "2026-04-03T00:00:00.000Z",
+    "updatedAt": "2026-04-03T00:00:00.000Z"
+  }
+}

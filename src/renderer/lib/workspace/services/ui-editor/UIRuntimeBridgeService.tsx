@@ -1,6 +1,11 @@
 import React from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { UIDocument, UISurface, UIElement } from "@shared/types/ui-editor/document";
+import {
+    type UIDocument,
+    type UISurface,
+    type UIElement,
+    isUIElementFlowLayoutChild,
+} from "@shared/types/ui-editor/document";
 import { EditorNodeWrapper } from "../../../ui-editor/runtime/EditorNodeWrapper";
 import { ElementRendererRegistry, ElementRendererDefinition } from "../../../ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "../../../ui-editor/runtime/builtin";
@@ -87,12 +92,15 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
             : this.renderFallback(element, children);
 
         const styleOverrides = this.extractStyleOverrides(element);
+        const layoutMode =
+            element.parentId === null ? "absolute" : isUIElementFlowLayoutChild(document, element) ? "flow" : "absolute";
         return (
             <EditorNodeWrapper
                 key={element.id}
                 element={element}
                 layout={element.layout}
                 isRoot={element.parentId === null}
+                layoutMode={layoutMode}
                 styleOverrides={styleOverrides}
             >
                 {content}

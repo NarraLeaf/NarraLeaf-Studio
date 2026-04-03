@@ -121,3 +121,25 @@ export type UIBehaviorBinding =
 export type UIBehaviorAction =
     | { kind: "noop" };
 
+/**
+ * Parent element types whose direct children participate in **flow layout** in the editor
+ * (flex inside the parent) instead of canvas absolute positioning.
+ * Keep in sync with builtin widget modules: Stack, Scroll, List / Repeater.
+ */
+export const UI_FLOW_LAYOUT_PARENT_ELEMENT_TYPES = ["nl.stack", "nl.scroll", "nl.listRepeater"] as const;
+
+export type UIFlowLayoutParentElementType = (typeof UI_FLOW_LAYOUT_PARENT_ELEMENT_TYPES)[number];
+
+export function isUIFlowLayoutParentElementType(type: string): type is UIFlowLayoutParentElementType {
+    return (UI_FLOW_LAYOUT_PARENT_ELEMENT_TYPES as readonly string[]).includes(type);
+}
+
+/** True when this element is a direct child of a flow-layout container (Stack / Scroll / ListRepeater). */
+export function isUIElementFlowLayoutChild(document: UIDocument, element: UIElement): boolean {
+    if (element.parentId == null) {
+        return false;
+    }
+    const parent = document.elements[element.parentId];
+    return parent != null && isUIFlowLayoutParentElementType(parent.type);
+}
+

@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 3,
+  "id": "ex-doc-pause",
+  "name": "Example · Overlay / Pause menu",
+  "surfaces": [
+    {
+      "id": "ex-surf-pause",
+      "name": "Pause · Stage layer",
+      "host": "player",
+      "kind": "stageSurface",
+      "designSize": { "width": 1280, "height": 720 },
+      "rootElementId": "ex-el-pause-root",
+      "mount": { "kind": "layer" }
+    }
+  ],
+  "elements": {
+    "ex-el-pause-root": {
+      "id": "ex-el-pause-root",
+      "type": "nl.root",
+      "name": "Root",
+      "parentId": null,
+      "childrenIds": ["ex-el-pause-dim"],
+      "layout": { "x": 0, "y": 0, "width": 1280, "height": 720, "visible": true, "opacity": 1 }
+    },
+    "ex-el-pause-dim": {
+      "id": "ex-el-pause-dim",
+      "type": "nl.container",
+      "name": "Dimmer",
+      "parentId": "ex-el-pause-root",
+      "childrenIds": ["ex-el-pause-menu"],
+      "layout": { "x": 0, "y": 0, "width": 1280, "height": 720, "visible": true, "opacity": 1 },
+      "props": {
+        "backgroundColor": "#0f172a",
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "borderColor": "#000000",
+        "borderStyle": "none",
+        "clipContent": false
+      }
+    },
+    "ex-el-pause-menu": {
+      "id": "ex-el-pause-menu",
+      "type": "nl.stack",
+      "name": "Menu stack",
+      "parentId": "ex-el-pause-dim",
+      "childrenIds": ["ex-el-pause-title", "ex-el-pause-div", "ex-el-pause-resume", "ex-el-pause-settings", "ex-el-pause-quit"],
+      "layout": { "x": 490, "y": 220, "width": 300, "height": 280, "visible": true, "opacity": 1 },
+      "props": {
+        "direction": "vertical",
+        "gap": 12,
+        "paddingTop": 20,
+        "paddingRight": 20,
+        "paddingBottom": 20,
+        "paddingLeft": 20,
+        "alignItems": "stretch",
+        "justifyContent": "start"
+      }
+    },
+    "ex-el-pause-title": {
+      "id": "ex-el-pause-title",
+      "type": "nl.text",
+      "name": "Title",
+      "parentId": "ex-el-pause-menu",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 260, "height": 32, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Paused",
+        "fontSize": 22,
+        "color": "#ffffff",
+        "fontWeight": "600",
+        "textAlign": "center",
+        "lineHeight": 1.2
+      }
+    },
+    "ex-el-pause-div": {
+      "id": "ex-el-pause-div",
+      "type": "nl.spacerDivider",
+      "name": "Divider",
+      "parentId": "ex-el-pause-menu",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 260, "height": 8, "visible": true, "opacity": 1 },
+      "props": {
+        "mode": "divider",
+        "orientation": "horizontal",
+        "thickness": 1,
+        "color": "#4b5563",
+        "insetStart": 0,
+        "insetEnd": 0
+      }
+    },
+    "ex-el-pause-resume": {
+      "id": "ex-el-pause-resume",
+      "type": "nl.button",
+      "name": "Resume",
+      "parentId": "ex-el-pause-menu",
+      "childrenIds": ["ex-el-pause-resume-t"],
+      "layout": { "x": 0, "y": 0, "width": 260, "height": 44, "visible": true, "opacity": 1 },
+      "props": {
+        "backgroundColor": "#2563eb",
+        "borderRadius": 8,
+        "borderWidth": 0,
+        "borderColor": "#000000",
+        "borderStyle": "none",
+        "paddingX": 16,
+        "paddingY": 10,
+        "clipContent": true
+      }
+    },
+    "ex-el-pause-resume-t": {
+      "id": "ex-el-pause-resume-t",
+      "type": "nl.text",
+      "name": "Resume label",
+      "parentId": "ex-el-pause-resume",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 260, "height": 22, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Resume",
+        "fontSize": 15,
+        "color": "#ffffff",
+        "fontWeight": "600",
+        "textAlign": "center",
+        "lineHeight": 1.2
+      }
+    },
+    "ex-el-pause-settings": {
+      "id": "ex-el-pause-settings",
+      "type": "nl.button",
+      "name": "Settings",
+      "parentId": "ex-el-pause-menu",
+      "childrenIds": ["ex-el-pause-settings-t"],
+      "layout": { "x": 0, "y": 0, "width": 260, "height": 44, "visible": true, "opacity": 1 },
+      "props": {
+        "backgroundColor": "#374151",
+        "borderRadius": 8,
+        "borderWidth": 0,
+        "borderColor": "#000000",
+        "borderStyle": "none",
+        "paddingX": 16,
+        "paddingY": 10,
+        "clipContent": true
+      }
+    },
+    "ex-el-pause-settings-t": {
+      "id": "ex-el-pause-settings-t",
+      "type": "nl.text",
+      "name": "Settings label",
+      "parentId": "ex-el-pause-settings",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 260, "height": 22, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Settings (link App Surface in project)",
+        "fontSize": 13,
+        "color": "#e5e7eb",
+        "fontWeight": "normal",
+        "textAlign": "center",
+        "lineHeight": 1.2
+      }
+    },
+    "ex-el-pause-quit": {
+      "id": "ex-el-pause-quit",
+      "type": "nl.button",
+      "name": "Quit",
+      "parentId": "ex-el-pause-menu",
+      "childrenIds": ["ex-el-pause-quit-t"],
+      "layout": { "x": 0, "y": 0, "width": 260, "height": 44, "visible": true, "opacity": 1 },
+      "props": {
+        "backgroundColor": "#1f2937",
+        "borderRadius": 8,
+        "borderWidth": 1,
+        "borderColor": "#4b5563",
+        "borderStyle": "solid",
+        "paddingX": 16,
+        "paddingY": 10,
+        "clipContent": true
+      }
+    },
+    "ex-el-pause-quit-t": {
+      "id": "ex-el-pause-quit-t",
+      "type": "nl.text",
+      "name": "Quit label",
+      "parentId": "ex-el-pause-quit",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 260, "height": 22, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Quit to title",
+        "fontSize": 14,
+        "color": "#fca5a5",
+        "fontWeight": "normal",
+        "textAlign": "center",
+        "lineHeight": 1.2
+      }
+    }
+  },
+  "meta": {
+    "createdAt": "2026-04-03T00:00:00.000Z",
+    "updatedAt": "2026-04-03T00:00:00.000Z"
+  }
+}

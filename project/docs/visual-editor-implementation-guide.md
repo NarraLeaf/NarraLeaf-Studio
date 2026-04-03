@@ -66,23 +66,22 @@
 
 ### 3.2 目前的关键缺口
 
-当前系统距离“能高效制作视觉小说游戏 UI”还有明显距离，主要缺口不是底层画布，而是 **创作层能力**：
+在 **M2-B + M3** 落地后，通用布局积木与官方范式示例已补齐；仍可能存在的缺口主要在 **创作反馈与运行时** 侧：
 
-- 内置 widget 几乎只有 `rectangle`
-- Blueprint 入口仍是占位 UI，不是真正工作流
+- 内置 widget 已覆盖 M1 冻结的八件套（含 Stack、Scroll、Spacer/Divider、List/Repeater）；**不再**将“只有矩形”视为当前基线
+- Blueprint **完整**图编辑与属性绑定 UI 仍属后续里程碑（M4-full 等）
 - 编辑器内与 Dev Mode 内的 `hostAdapter.effects.runEffect` 仍是空实现
 - `UIGraphService` 有数据层，但还没有工作区级图编辑体验
-- 缺少可直接服务视觉小说创作的常用控件组合与模板
+- 常用控件组合由 **`project/examples/visual-editor/`** 与 `visual-editor.md` §4.4 承载；**不**提供模板/preset 系统
 - 缺少针对 UI 创作的校验、预览、资产联动、复用机制
 
 ### 3.3 一个重要结论
 
-现在最缺的不是“再造一个新编辑器”，而是：
+在 M2/M3 基线之上，更值得投入的是：
 
-- 扩充通用 UI 编辑器的可用控件集
-- 给它加上更适合视觉小说制作的创作辅助层
-- 把 Blueprint/行为入口从占位符升级为真实入口
-- 补上预览、验证、复用、模板等生产能力
+- 预览、验证、资源与 Link 健康度（M5）
+- Blueprint 深度编辑与运行时闭环（M4-full / Dev Mode）
+- 在**不**引入模板系统的前提下，持续维护 `project/examples/visual-editor/` 与文档的一致性
 
 ---
 
@@ -246,43 +245,21 @@
 
 ### 7.1 Widget 生态太薄
 
-当前内置 widget 过少，导致编辑器虽然可用，但无法支撑真实生产。
+**M2 八件套已齐**（M2-A + M2-B），与 M1 冻结清单一致。后续更值得投入的是 **M5 校验**、**M4-full 蓝图编辑** 与资产联动，而不是继续堆叠新的主 widget 类型。
 
-**M2 第一批范围已在 M1 冻结**（共 8 项，实现顺序在 M2 内确定）：
-
-- Text
-- Image
-- Button
-- Container / Frame
-- Stack
-- Scroll
-- Spacer / Divider
-- Option List / Repeater 最小形态
-
-如果这一步不先完成，后面的组合范式、蓝图入口与校验反馈都会缺乏承载对象。
+- M2-A：Text、Image、Button、Container
+- M2-B：Stack、Scroll、SpacerDivider、ListRepeater（选择肢列表用后者组合实现）
 
 ### 7.2 Blueprint 入口还是占位
 
-当前属性面板里的 Blueprint 区域仍然是 placeholder。
+**M4-lite 已交付**：属性面板 Blueprint 区域为只读摘要 + 打开轻量 Tab 入口。**M4-full**（画布绑定编辑、声明选择器等）仍待。下列能力在 M4-full 前仍不完整：
 
-它至少应该升级为真实入口，支持：
-
-- 查看当前元素是否已有事件/绑定
-- 打开对应蓝图上下文
-- 建立最小事件绑定关系
-- 暂未实现时显示明确状态，而不是纯占位按钮
+- 在属性面板内直接编辑绑定与事件图
+- Visual 画布上的蓝图叠加编辑
 
 ### 7.3 缺少高频界面范式
 
-视觉小说项目中的很多界面高度重复。当前既然不优先引入模板系统，就更需要先沉淀一套官方推荐的组合方式。
-
-推荐优先沉淀：
-
-- Dialog 的基础层级结构
-- Choice 的基础层级结构
-- Save/Load 的基础层级结构
-- Settings 的基础层级结构
-- Overlay Menu 的基础层级结构
+**M3 已通过文档 + `project/examples/visual-editor/` 示例 `uidoc.json` 沉淀**（无编辑器内 starter）。团队应以该目录与 `visual-editor.md` §4.4 为单一对照源，避免再引入一套口头约定。
 
 ### 7.4 缺少面向创作的验证反馈
 
@@ -440,12 +417,11 @@
 - 工作区 UI 文案明确区分**编辑器布局预览**与 **Dev Mode 运行时预览**；左栏不暗示模板/组件库已存在。
 - 属性面板 Blueprint 区域为**延期说明**，无误导性可点入口。
 
-**仍属缺口、留给 M2 及以后**（不在 M1 解决）：
+**仍属缺口、留给后续里程碑**（相对当前代码基线）：
 
-- M2 八件套中 **尚未** 交付的 4 项：Stack / Auto Layout、Scroll、Spacer/Divider、Option List/Repeater（M2-A 已交付 Text / Image / Button / Container）。
-- Blueprint **真入口**与事件绑定编辑 UI（M4）；M2-A/M2 当前仅为只读摘要与数据层持久化。
+- Blueprint **M4-full**：属性面板绑定编辑、Visual 画布侧图编辑等（M4-lite 已提供入口与摘要）。
 - 编辑器内校验与资源缺失提示（M5）。
-- 组合范式文档与示例 Surface（M3）。
+- 更强的复用入口（如组件库 / 模板）仅在产品重新决策后考虑；当前仍以 **App Surface link + 复制** 为准。
 
 ---
 
