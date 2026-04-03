@@ -72,6 +72,16 @@ export type BlueprintVariable = {
 };
 
 /**
+ * M3-min: single evaluable value source for declaration-backed bindings (surface runtime state only).
+ * Further variants (global state, literals, composed refs) extend this union in later milestones.
+ */
+export type BlueprintDeclarationValueSource = {
+    kind: "surfaceState";
+    /** Key inside the current surface runtime state container */
+    key: string;
+};
+
+/**
  * Declaration members are the only binding sources (symbol-first); no arbitrary expression AST in M1.
  */
 export type BlueprintDeclaration = {
@@ -79,6 +89,11 @@ export type BlueprintDeclaration = {
     name: string;
     /** How the declaration is produced (pure graph, const, etc.); M2+ narrows */
     kind?: "computed" | "constant" | "reference";
+    /**
+     * M3-min: when set, binding evaluator reads this source (Dev Mode / runtime).
+     * Legacy declarations without `valueSource` are not evaluable until upgraded.
+     */
+    valueSource?: BlueprintDeclarationValueSource;
     meta?: Record<string, unknown>;
 };
 

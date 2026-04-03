@@ -689,6 +689,16 @@ type DevModeBundle = {
 - Dev Mode 能真实执行蓝图
 - 至少能看到节点进入/退出与错误信息
 
+### 7.13 M3-min（增量落地，与 Visual Editor M4-lite 同期）
+
+仓库已落地一版 **缩小范围** 的 M3 子集（文档与计划：`project/docs/implementation-plans/p2-bp-m3min-ve-m4lite-plan.md`），用于先行验证闭环与协议：
+
+- **状态域**：仅 `surface` 运行时状态（非 global / persistence / navigation / media）。
+- **执行**：沿用 `GraphExecutor` + 适配后的 `BlueprintGraphIr`；最小节点 `blueprint.state.set`。
+- **绑定求值**：`BlueprintDeclaration.valueSource` 仅 `surfaceState`；`BindingEvaluator` 在 Dev Mode 渲染前合并有效属性。
+- **调试**：上述六类事件在 Dev Mode 内嵌面板可见；**无** Workspace / 主进程调试桥。
+- **节点追踪**：不含 `node.enter` / `node.exit`（留给 M3-full）。
+
 ---
 
 ## 8. M4：Studio 集成与 Visual Blueprint 编辑器

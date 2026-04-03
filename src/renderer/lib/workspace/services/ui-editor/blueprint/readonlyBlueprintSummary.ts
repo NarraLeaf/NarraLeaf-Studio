@@ -1,6 +1,6 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
-import { widgetMainOwnerKey } from "./ownerKeys";
+import { surfaceMainOwnerKey, widgetMainOwnerKey } from "./ownerKeys";
 
 /** Read-only inspector summary for a widget instance main blueprint (Blueprint M2). */
 export type ReadonlyBlueprintWidgetSummary = {
@@ -21,6 +21,60 @@ export function emptyReadonlyBlueprintWidgetSummary(): ReadonlyBlueprintWidgetSu
         brokenBindingCount: 0,
         eventGraphCount: 0,
         uiBlueprintEventCount: 0,
+    };
+}
+
+/** Read-only inspector summary for surfaceMain blueprint (M4-lite entry). */
+export type ReadonlyBlueprintSurfaceSummary = {
+    hasSurfaceMain: boolean;
+    blueprintId?: string;
+    declarationCount: number;
+    bindingCount: number;
+    brokenBindingCount: number;
+    eventGraphCount: number;
+};
+
+export function emptyReadonlyBlueprintSurfaceSummary(): ReadonlyBlueprintSurfaceSummary {
+    return {
+        hasSurfaceMain: false,
+        declarationCount: 0,
+        bindingCount: 0,
+        brokenBindingCount: 0,
+        eventGraphCount: 0,
+    };
+}
+
+export function buildReadonlySurfaceMainSummary(
+    doc: BlueprintDocument,
+    surfaceId: string,
+): ReadonlyBlueprintSurfaceSummary {
+    const key = surfaceMainOwnerKey(surfaceId);
+    const blueprintId = doc.ownerIndex[key];
+    const bp = blueprintId ? doc.blueprints[blueprintId] : undefined;
+    if (!bp) {
+        return emptyReadonlyBlueprintSurfaceSummary();
+    }
+
+    const declarations = bp.members?.declarations ?? {};
+    const declarationCount = Object.keys(declarations).length;
+
+    const bindings = bp.bindings ?? {};
+    const bindingList = Object.values(bindings);
+    const bindingCount = bindingList.length;
+    const brokenBindingCount = bindingList.filter(b => b.status === "broken").length;
+
+    let eventGraphCount = 0;
+    if (bp.program.kind === "graph") {
+        eventGraphCount = Object.keys(bp.program.graphs.events ?? {}).length;
+    }
+
+    return {
+        hasSurfaceMain: true,
+        blueprintId,
+        declarationCount,
+        bindingCount,
+        brokenBindingCount,
+        eventGraphCount,
     };
 }
 

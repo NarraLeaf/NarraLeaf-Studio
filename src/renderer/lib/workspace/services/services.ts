@@ -18,8 +18,16 @@ import type {
     UILayout,
     UIElement,
 } from "@shared/types/ui-editor/document";
-import type { BindingDefinition, BlueprintDeclaration, BlueprintDocument } from "@shared/types/blueprint/document";
-import type { ReadonlyBlueprintWidgetSummary } from "./ui-editor/blueprint/readonlyBlueprintSummary";
+import type {
+    BindingDefinition,
+    BlueprintDeclaration,
+    BlueprintDeclarationValueSource,
+    BlueprintDocument,
+} from "@shared/types/blueprint/document";
+import type {
+    ReadonlyBlueprintSurfaceSummary,
+    ReadonlyBlueprintWidgetSummary,
+} from "./ui-editor/blueprint/readonlyBlueprintSummary";
 import type { SubtreeDuplicateRemapPlan } from "./ui-editor/blueprint/blueprintCopyRemap";
 import type { UIGraph, UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
@@ -215,10 +223,17 @@ interface ILocalBlueprintService extends IService {
     ensureWidgetMain(surfaceId: string, elementId: string, displayName?: string): string;
     removeWidgetMain(surfaceId: string, elementId: string): void;
     getWidgetMainBlueprintId(surfaceId: string, elementId: string): string | undefined;
+    getSurfaceMainBlueprintId(surfaceId: string): string | undefined;
+    getReadonlySurfaceMainSummary(surfaceId: string): ReadonlyBlueprintSurfaceSummary;
     createDeclaration(
         blueprintId: string,
-        input: { name: string; kind?: BlueprintDeclaration["kind"] },
+        input: { name: string; kind?: BlueprintDeclaration["kind"]; valueSource?: BlueprintDeclarationValueSource },
     ): BlueprintDeclaration;
+    setDeclarationValueSource(
+        blueprintId: string,
+        declarationId: string,
+        valueSource: BlueprintDeclarationValueSource | undefined,
+    ): void;
     renameDeclaration(blueprintId: string, declarationId: string, name: string): void;
     deleteDeclaration(blueprintId: string, declarationId: string): void;
     setWidgetPropBinding(params: {

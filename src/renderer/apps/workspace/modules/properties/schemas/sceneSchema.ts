@@ -10,11 +10,13 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { colorValueToCss, parseColorValue } from "../framework/utils/colorUtils";
 import type {
     ColorPickerFieldDefinition,
+    CustomFieldDefinition,
     InfoFieldDefinition,
     NumberFieldDefinition,
     SelectFieldDefinition,
     TextFieldDefinition,
 } from "../framework/types";
+import { SurfaceBlueprintEntrySection } from "../blueprint/SurfaceBlueprintEntrySection";
 
 export type SceneEditorContext = {
     surface: UISurface;
@@ -233,6 +235,12 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
                 });
             },
             hidden: (data) => !isStageSurface(data.surface) || data.surface.mount.kind !== "slot",
+        }),
+        defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
+            id: "scene.blueprintEntry",
+            type: "custom",
+            label: "Blueprint",
+            component: SurfaceBlueprintEntrySection,
         }),
     ],
 });
