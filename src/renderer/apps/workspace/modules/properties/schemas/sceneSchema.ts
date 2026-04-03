@@ -132,7 +132,8 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
             id: "scene.linkedSurface",
             type: "select",
             label: "Linked App Surface",
-            helpText: "Link an app surface to reuse its UI inside this stage surface.",
+            helpText:
+                "App Surface link: this stage surface renders the linked app surface’s element tree (same document). Use for settings, menus, or other pages that should exist both in-app and on stage. Duplicate the surface instead if you need an independent copy.",
             options: (data) => {
                 const document = data.documentService.getDocument();
                 const appSurfaces = document.surfaces.filter(surface => surface.kind === "appSurface");

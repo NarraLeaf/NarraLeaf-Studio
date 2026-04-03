@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { MoveableProps } from "react-moveable";
+import { isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { useMoveableHandlers } from "@/lib/ui-editor/interaction/useMoveableHandlers";
 import type { InteractionController } from "./types";
@@ -27,8 +28,16 @@ export function useTransformController(config: TransformControllerConfig): Inter
         endTransform: config.endTransform,
     });
 
+    const selectionHasFlowLayoutChild = useMemo(() => {
+        const doc = config.documentService.getDocument();
+        return config.selectionIds.some(id => {
+            const el = doc.elements[id];
+            return el != null && isUIElementFlowLayoutChild(doc, el);
+        });
+    }, [config.documentService, config.selectionIds]);
+
     const moveableProps = useMemo<Partial<MoveableProps>>(() => ({
-        draggable: true,
+        draggable: !selectionHasFlowLayoutChild,
         resizable: true,
         rotatable: true,
         keepRatio: false,
@@ -54,7 +63,7 @@ export function useTransformController(config: TransformControllerConfig): Inter
         onRotateGroupStart: handlers.handleRotateGroupStart,
         onRotateGroup: handlers.handleRotateGroup,
         onRotateGroupEnd: handlers.handleRotateGroupEnd,
-    }), [config.viewportScale, handlers]);
+    }), [config.viewportScale, handlers, selectionHasFlowLayoutChild]);
 
     return {
         id: "transform",

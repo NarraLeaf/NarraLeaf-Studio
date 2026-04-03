@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 3,
+  "id": "ex-doc-saveload",
+  "name": "Example · Save / Load grid",
+  "surfaces": [
+    {
+      "id": "ex-surf-saveload",
+      "name": "Save/Load · Stage layer",
+      "host": "player",
+      "kind": "stageSurface",
+      "designSize": { "width": 1280, "height": 720 },
+      "rootElementId": "ex-el-sl-root",
+      "mount": { "kind": "layer" }
+    }
+  ],
+  "elements": {
+    "ex-el-sl-root": {
+      "id": "ex-el-sl-root",
+      "type": "nl.root",
+      "name": "Root",
+      "parentId": null,
+      "childrenIds": ["ex-el-sl-page"],
+      "layout": { "x": 0, "y": 0, "width": 1280, "height": 720, "visible": true, "opacity": 1 }
+    },
+    "ex-el-sl-page": {
+      "id": "ex-el-sl-page",
+      "type": "nl.container",
+      "name": "Page",
+      "parentId": "ex-el-sl-root",
+      "childrenIds": ["ex-el-sl-title", "ex-el-sl-scroll"],
+      "layout": { "x": 200, "y": 80, "width": 880, "height": 560, "visible": true, "opacity": 1 },
+      "props": {
+        "backgroundColor": "#0f172a",
+        "borderRadius": 16,
+        "borderWidth": 1,
+        "borderColor": "#334155",
+        "borderStyle": "solid",
+        "clipContent": true
+      }
+    },
+    "ex-el-sl-title": {
+      "id": "ex-el-sl-title",
+      "type": "nl.text",
+      "name": "Title",
+      "parentId": "ex-el-sl-page",
+      "childrenIds": [],
+      "layout": { "x": 32, "y": 28, "width": 400, "height": 36, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Save / Load",
+        "fontSize": 24,
+        "color": "#f8fafc",
+        "fontWeight": "600",
+        "textAlign": "left",
+        "lineHeight": 1.2
+      }
+    },
+    "ex-el-sl-scroll": {
+      "id": "ex-el-sl-scroll",
+      "type": "nl.scroll",
+      "name": "Scroll",
+      "parentId": "ex-el-sl-page",
+      "childrenIds": ["ex-el-sl-list"],
+      "layout": { "x": 24, "y": 80, "width": 832, "height": 448, "visible": true, "opacity": 1 },
+      "props": { "axis": "y" }
+    },
+    "ex-el-sl-list": {
+      "id": "ex-el-sl-list",
+      "type": "nl.listRepeater",
+      "name": "Slots",
+      "parentId": "ex-el-sl-scroll",
+      "childrenIds": ["ex-el-sl-row"],
+      "layout": { "x": 0, "y": 0, "width": 800, "height": 400, "visible": true, "opacity": 1 },
+      "props": {
+        "previewCount": 3,
+        "itemGap": 12,
+        "repeatDirection": "vertical",
+        "templateDirection": "horizontal",
+        "templateGap": 12
+      }
+    },
+    "ex-el-sl-row": {
+      "id": "ex-el-sl-row",
+      "type": "nl.stack",
+      "name": "Row",
+      "parentId": "ex-el-sl-list",
+      "childrenIds": ["ex-el-sl-thumb", "ex-el-sl-meta"],
+      "layout": { "x": 0, "y": 0, "width": 784, "height": 100, "visible": true, "opacity": 1 },
+      "props": {
+        "direction": "horizontal",
+        "gap": 16,
+        "paddingTop": 0,
+        "paddingRight": 0,
+        "paddingBottom": 0,
+        "paddingLeft": 0,
+        "alignItems": "stretch",
+        "justifyContent": "start"
+      }
+    },
+    "ex-el-sl-thumb": {
+      "id": "ex-el-sl-thumb",
+      "type": "nl.container",
+      "name": "Thumbnail",
+      "parentId": "ex-el-sl-row",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 160, "height": 100, "visible": true, "opacity": 1 },
+      "props": {
+        "backgroundColor": "#1e293b",
+        "borderRadius": 8,
+        "borderWidth": 1,
+        "borderColor": "#475569",
+        "borderStyle": "dashed",
+        "clipContent": true
+      }
+    },
+    "ex-el-sl-meta": {
+      "id": "ex-el-sl-meta",
+      "type": "nl.stack",
+      "name": "Meta",
+      "parentId": "ex-el-sl-row",
+      "childrenIds": ["ex-el-sl-line1", "ex-el-sl-line2"],
+      "layout": { "x": 0, "y": 0, "width": 580, "height": 100, "visible": true, "opacity": 1 },
+      "props": {
+        "direction": "vertical",
+        "gap": 6,
+        "paddingTop": 8,
+        "paddingRight": 0,
+        "paddingBottom": 8,
+        "paddingLeft": 0,
+        "alignItems": "stretch",
+        "justifyContent": "center"
+      }
+    },
+    "ex-el-sl-line1": {
+      "id": "ex-el-sl-line1",
+      "type": "nl.text",
+      "name": "Slot title",
+      "parentId": "ex-el-sl-meta",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 560, "height": 22, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Slot title · Chapter / timestamp",
+        "fontSize": 16,
+        "color": "#e2e8f0",
+        "fontWeight": "600",
+        "textAlign": "left",
+        "lineHeight": 1.3
+      }
+    },
+    "ex-el-sl-line2": {
+      "id": "ex-el-sl-line2",
+      "type": "nl.text",
+      "name": "Slot detail",
+      "parentId": "ex-el-sl-meta",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 560, "height": 40, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Summary line (static in editor; bind in Blueprint later).",
+        "fontSize": 13,
+        "color": "#94a3b8",
+        "fontWeight": "normal",
+        "textAlign": "left",
+        "lineHeight": 1.4
+      }
+    }
+  },
+  "meta": {
+    "createdAt": "2026-04-03T00:00:00.000Z",
+    "updatedAt": "2026-04-03T00:00:00.000Z"
+  }
+}

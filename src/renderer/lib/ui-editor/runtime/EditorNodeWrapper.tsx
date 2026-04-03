@@ -2,10 +2,14 @@ import React, { useMemo } from "react";
 import type { CSSProperties } from "react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 
+export type EditorNodeLayoutMode = "absolute" | "flow";
+
 type EditorNodeWrapperProps = {
     element: UIElement;
     layout: UILayout;
     isRoot?: boolean;
+    /** Flow children are laid out by a flex parent (Stack / Scroll / ListRepeater); skip absolute x/y. */
+    layoutMode?: EditorNodeLayoutMode;
     styleOverrides?: CSSProperties;
     children?: React.ReactNode;
 };
@@ -14,6 +18,7 @@ export function EditorNodeWrapper({
     element,
     layout,
     isRoot = false,
+    layoutMode = "absolute",
     styleOverrides,
     children,
 }: EditorNodeWrapperProps) {
@@ -23,10 +28,11 @@ export function EditorNodeWrapper({
         const normalizedHeight = Math.abs(height);
         const offsetX = Math.min(0, width);
         const offsetY = Math.min(0, height);
+        const isFlow = !isRoot && layoutMode === "flow";
         const style: CSSProperties = {
-            position: isRoot ? "relative" : "absolute",
-            left: x + offsetX,
-            top: y + offsetY,
+            position: isRoot ? "relative" : isFlow ? "relative" : "absolute",
+            left: isFlow ? 0 : x + offsetX,
+            top: isFlow ? 0 : y + offsetY,
             width: normalizedWidth,
             height: normalizedHeight,
             opacity,
@@ -34,6 +40,7 @@ export function EditorNodeWrapper({
             boxSizing: "border-box",
             display: "flex",
             flexDirection: "column",
+            flexShrink: isFlow ? 0 : undefined,
             ...styleOverrides,
         };
         if (rotation) {
@@ -45,7 +52,7 @@ export function EditorNodeWrapper({
             style.transformOrigin = "center center";
         }
         return style;
-    }, [layout, isRoot, styleOverrides]);
+    }, [layout, isRoot, layoutMode, styleOverrides]);
 
     return (
         <div

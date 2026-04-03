@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 3,
+  "id": "ex-doc-settings",
+  "name": "Example · Settings App + Stage link",
+  "surfaces": [
+    {
+      "id": "ex-surf-settings-app",
+      "name": "Settings · App",
+      "host": "app",
+      "kind": "appSurface",
+      "designSize": { "width": 1280, "height": 720 },
+      "rootElementId": "ex-el-set-root"
+    },
+    {
+      "id": "ex-surf-settings-stage",
+      "name": "Settings · Stage layer (linked)",
+      "host": "player",
+      "kind": "stageSurface",
+      "designSize": { "width": 1280, "height": 720 },
+      "rootElementId": "ex-el-set-stage-root",
+      "mount": { "kind": "layer" },
+      "link": { "kind": "appSurface", "surfaceId": "ex-surf-settings-app" }
+    }
+  ],
+  "elements": {
+    "ex-el-set-root": {
+      "id": "ex-el-set-root",
+      "type": "nl.root",
+      "name": "Root",
+      "parentId": null,
+      "childrenIds": ["ex-el-set-shell"],
+      "layout": { "x": 0, "y": 0, "width": 1280, "height": 720, "visible": true, "opacity": 1 }
+    },
+    "ex-el-set-shell": {
+      "id": "ex-el-set-shell",
+      "type": "nl.container",
+      "name": "Shell",
+      "parentId": "ex-el-set-root",
+      "childrenIds": ["ex-el-set-head", "ex-el-set-scroll"],
+      "layout": { "x": 0, "y": 0, "width": 1280, "height": 720, "visible": true, "opacity": 1 },
+      "props": {
+        "backgroundColor": "#0b1220",
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "borderColor": "#000000",
+        "borderStyle": "none",
+        "clipContent": false
+      }
+    },
+    "ex-el-set-head": {
+      "id": "ex-el-set-head",
+      "type": "nl.stack",
+      "name": "Header",
+      "parentId": "ex-el-set-shell",
+      "childrenIds": ["ex-el-set-h1", "ex-el-set-h2"],
+      "layout": { "x": 0, "y": 0, "width": 1280, "height": 88, "visible": true, "opacity": 1 },
+      "props": {
+        "direction": "vertical",
+        "gap": 6,
+        "paddingTop": 28,
+        "paddingRight": 40,
+        "paddingBottom": 16,
+        "paddingLeft": 40,
+        "alignItems": "stretch",
+        "justifyContent": "center"
+      }
+    },
+    "ex-el-set-h1": {
+      "id": "ex-el-set-h1",
+      "type": "nl.text",
+      "name": "Heading",
+      "parentId": "ex-el-set-head",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 1200, "height": 30, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Settings",
+        "fontSize": 26,
+        "color": "#f1f5f9",
+        "fontWeight": "600",
+        "textAlign": "left",
+        "lineHeight": 1.2
+      }
+    },
+    "ex-el-set-h2": {
+      "id": "ex-el-set-h2",
+      "type": "nl.text",
+      "name": "Sub",
+      "parentId": "ex-el-set-head",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 1200, "height": 22, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Same tree is reused when this App Surface is linked from a Stage Surface.",
+        "fontSize": 13,
+        "color": "#94a3b8",
+        "fontWeight": "normal",
+        "textAlign": "left",
+        "lineHeight": 1.3
+      }
+    },
+    "ex-el-set-scroll": {
+      "id": "ex-el-set-scroll",
+      "type": "nl.scroll",
+      "name": "Body scroll",
+      "parentId": "ex-el-set-shell",
+      "childrenIds": ["ex-el-set-body"],
+      "layout": { "x": 0, "y": 88, "width": 1280, "height": 632, "visible": true, "opacity": 1 },
+      "props": { "axis": "y" }
+    },
+    "ex-el-set-body": {
+      "id": "ex-el-set-body",
+      "type": "nl.stack",
+      "name": "Sections",
+      "parentId": "ex-el-set-scroll",
+      "childrenIds": ["ex-el-set-sec1", "ex-el-set-div", "ex-el-set-sec2"],
+      "layout": { "x": 0, "y": 0, "width": 1200, "height": 400, "visible": true, "opacity": 1 },
+      "props": {
+        "direction": "vertical",
+        "gap": 0,
+        "paddingTop": 8,
+        "paddingRight": 40,
+        "paddingBottom": 40,
+        "paddingLeft": 40,
+        "alignItems": "stretch",
+        "justifyContent": "start"
+      }
+    },
+    "ex-el-set-sec1": {
+      "id": "ex-el-set-sec1",
+      "type": "nl.text",
+      "name": "Section A",
+      "parentId": "ex-el-set-body",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 1120, "height": 120, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Section A — use Stack + Spacer/Divider + toggles (as buttons) to mirror a real settings page.",
+        "fontSize": 14,
+        "color": "#cbd5e1",
+        "fontWeight": "normal",
+        "textAlign": "left",
+        "lineHeight": 1.5
+      }
+    },
+    "ex-el-set-div": {
+      "id": "ex-el-set-div",
+      "type": "nl.spacerDivider",
+      "name": "Divider",
+      "parentId": "ex-el-set-body",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 1120, "height": 12, "visible": true, "opacity": 1 },
+      "props": {
+        "mode": "divider",
+        "orientation": "horizontal",
+        "thickness": 1,
+        "color": "#334155",
+        "insetStart": 0,
+        "insetEnd": 0
+      }
+    },
+    "ex-el-set-sec2": {
+      "id": "ex-el-set-sec2",
+      "type": "nl.text",
+      "name": "Section B",
+      "parentId": "ex-el-set-body",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 1120, "height": 160, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Section B — add more rows below; Scroll shows overflow in the editor preview.",
+        "fontSize": 14,
+        "color": "#cbd5e1",
+        "fontWeight": "normal",
+        "textAlign": "left",
+        "lineHeight": 1.5
+      }
+    },
+    "ex-el-set-stage-root": {
+      "id": "ex-el-set-stage-root",
+      "type": "nl.root",
+      "name": "Stage root (unused when link set)",
+      "parentId": null,
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 1280, "height": 720, "visible": true, "opacity": 1 }
+    }
+  },
+  "meta": {
+    "createdAt": "2026-04-03T00:00:00.000Z",
+    "updatedAt": "2026-04-03T00:00:00.000Z"
+  }
+}

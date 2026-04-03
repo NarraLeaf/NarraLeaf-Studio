@@ -490,6 +490,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 surfaceKind={kind}
                 stageMountFilter={stageMountFilter}
                 surfacesOfKindCount={surfacesOfKindCount}
+                allSurfaces={surfaces}
                 onSurfaceClick={handleSurfaceClick}
                 onOpenMenu={handleOpenMenu}
             />

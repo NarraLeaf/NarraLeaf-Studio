@@ -16,7 +16,7 @@
   - **编辑器内只做静态/布局预览**；真实交互与副作用以 **Dev Mode** 为主场。
   - **第一阶段复用**只依赖 **Stage Surface → App Surface Link** 与 **复制/粘贴**；不引入模板/preset/可嵌套组件系统。
   - **M2 第一批基础 widget 清单（已锁定为 8 项）**：`Text`、`Image`、`Button`、`Container/Frame`、`Stack`、`Scroll`、`Spacer/Divider`、`Option List / Repeater` 最小形态（实现顺序在 M2 内再定）。
-- **当前实现基线**：内置可插入 widget 包含 `nl.rectangle` 与 **M2-A** 四类：`nl.text`、`nl.image`、`nl.button`、`nl.container`（Container/Frame）（见 `src/renderer/lib/ui-editor/widget-modules/builtin/index.ts`）。属性面板中 Blueprint 区块为 **M4-lite 真实入口**（状态摘要 +「Open blueprint entry」打开轻量 Tab）；**M4-full** 绑定编辑与 Visual 画布仍待后续里程碑。
+- **当前实现基线**：内置可插入 widget 包含 `nl.rectangle`、**M2-A** 四类（`nl.text`、`nl.image`、`nl.button`、`nl.container`）与 **M2-B** 四类：`nl.stack`、`nl.scroll`、`nl.spacerDivider`、`nl.listRepeater`（见 `src/renderer/lib/ui-editor/widget-modules/builtin/index.ts`）。`Stack` / `Scroll` / `List / Repeater` 的直接子节点在编辑器中使用 **流式布局**（flex），画布拖拽平移对这些子节点关闭，尺寸与排序仍可在属性面板与层级中调整。属性面板 Blueprint 区块为 **M4-lite 真实入口**；**M4-full** 仍待后续里程碑。
 - **M1 相关 UI 壳层文件（验收锚点）**：
   - 左栏 Surface 列表：`src/renderer/apps/workspace/modules/ui-editor/UISurfacesPanel.tsx` 及 `panel/*`
   - 画布编辑 Tab：`src/renderer/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab.tsx`
@@ -29,7 +29,7 @@
 ## 1. TL;DR（你需要记住的最小事实）
 
 - **编辑对象**：以 `Surface` 为单位编辑 UI（App / Stage）。
-- **复用机制**：Stage Surface 可以通过 **Link** 复用任意 App Surface 的内容（同一份 UI 文档，同一套 element tree）。
+- **复用机制**：Stage Surface 可以通过 **App Surface link**（`link.kind = "appSurface"`）复用任意 App Surface 的内容（同一份 `uidoc.json` 中的 element tree，按目标 Surface 的 `rootElementId` 渲染）。需要独立副本时用复制粘贴，不要与 Link 混淆。Surfaces 列表现对已链接的 Stage Surface 展示 **App Surface link · 名称** 摘要；完整配置见 Scene Properties **Linked App Surface**（与文档用语一致）。
 - **数据资产**：
   - UI 文档：`editor/ui/uidoc.json`
   - 行为图：`editor/ui/uigraphs.json`
@@ -173,7 +173,9 @@ Surface 在编辑器中的渲染入口为：
 
 - `src/renderer/lib/ui-editor/runtime/EditorNodeWrapper.tsx`
 
-它把 `UILayout` 映射为绝对定位（root 为 relative，其余为 absolute），并统一写入：
+默认把 `UILayout` 映射为绝对定位（root 为 relative，普通子节点为 absolute）。当父节点类型属于 **流式布局容器**（`nl.stack`、`nl.scroll`、`nl.listRepeater`，见 `UI_FLOW_LAYOUT_PARENT_ELEMENT_TYPES`）时，子节点使用 `layoutMode: "flow"`：`position: relative` 且 **忽略** 文档中的 `x/y` 作为画布偏移，由父级 flex 与 `width/height` 驱动排列。
+
+统一写入：
 
 - `data-ui-element-id="<id>"`
 - `className="ui-editor-node ..."`
@@ -192,6 +194,27 @@ Surface 在编辑器中的渲染入口为：
 
 ---
 
+## 4.4 M3：组合范式与示例资产（无模板系统）
+
+**不**提供编辑器内 “New from pattern” 或模板库。官方做法是：
+
+1. 阅读本文与 `project/docs/visual-editor-milestones.md` §6 中的范式说明。
+2. 对照 `project/examples/visual-editor/` 下各子目录中的 `editor/ui/uidoc.json`（及配套的 `uigraphs.json` 壳）。将 JSON 片段合并进项目的 `editor/ui/`，或按结构在画布中手搓。
+3. **选择肢列表（Option list）** 不单独占一类主 widget：使用 **`nl.listRepeater` + `nl.button` + `nl.text`**（及可选 `nl.spacerDivider`）表达；Repeater 仅设计时预览份数，无运行时数据源。
+
+子目录与用途对应：
+
+| 目录 | 范式 |
+|------|------|
+| `dialog-surface/` | 对话框：容器 + 纵向 Stack + 操作行横向 Stack |
+| `choice-menu/` | 选择菜单：`Scroll` + `List / Repeater` + 行按钮 |
+| `notification-toast/` | 通知条：横向 Stack + Spacer |
+| `settings-layer/` | 设置页 + **Stage layer 通过 App Surface link 复用同一 App 树** |
+| `save-load-grid/` | 存读档：`Scroll` + `List / Repeater` 行模板 |
+| `overlay-pause/` | 暂停/叠层菜单：全屏容器 + 纵向 Stack |
+
+---
+
 ## 5. 交互层（选择/变换/插入）
 
 交互层组件：
@@ -201,7 +224,7 @@ Surface 在编辑器中的渲染入口为：
 它负责：
 
 - 框选/点击选择（`react-selecto`）
-- 移动/缩放控制柄（`react-moveable`）
+- 移动/缩放控制柄（`react-moveable`）；**流式布局子节点**（父为 `nl.stack` / `nl.scroll` / `nl.listRepeater`）关闭拖拽平移，仍可调宽高与旋转
 - 根据 `UIStore.selection` 解析 DOM 目标（通过 `data-ui-element-id`）
 - 监听 `UIDocumentService` 变化后更新 overlay rect（`updateRect`）
 - 插入模式的拖拽预览（Insert preview overlay）

@@ -104,18 +104,18 @@
 - Button — 容器式（`nl.button`）
 - Container / Frame（`nl.container`）
 
-其余 4 项（Stack、Scroll、Spacer/Divider、Option List/Repeater）仍在 **M2 后续**，不在 M2-A 范围。
+其余 4 项（Stack、Scroll、Spacer/Divider、Option List/Repeater）已在 **M2-B** 与共享流式布局规则中交付（`nl.stack`、`nl.scroll`、`nl.spacerDivider`、`nl.listRepeater`）。
 
-#### 5.2.2 完整 M2 八件套（含未交付项）
+#### 5.2.2 完整 M2 八件套
 
 - Text
 - Image
 - Button
 - Container / Frame
-- Stack / Auto Layout 容器
-- Scroll Container
-- Spacer / Divider
-- Option List / Repeater 最小形态
+- Stack / Auto Layout 容器（`nl.stack`）
+- Scroll Container（`nl.scroll`）
+- Spacer / Divider（`nl.spacerDivider`，mode 切换）
+- Option List / Repeater 最小形态（`nl.listRepeater`；选择肢列表以组合范式表达，见 M3）
 
 ### 5.3 设计原则
 
@@ -149,7 +149,7 @@
 
 ### 5.7 M1 结束时的已知缺口（供 M2 对照）
 
-- ~~内置可插 widget 当前仅有 `nl.rectangle`。~~ **M2-A 已补齐** Text / Image / Button / Container；其余 M2 项仍待实现。
+- ~~内置可插 widget 当前仅有 `nl.rectangle`。~~ **M2 八件套已齐**：M2-A（Text / Image / Button / Container）+ M2-B（Stack / Scroll / SpacerDivider / ListRepeater）+ 流式子布局与交互规则（见 `visual-editor.md` §4.2、§5）。
 - 行为图/蓝图在编辑器侧无完整图编辑 UI；属性面板 Blueprint **M4-lite 已交付**真入口（轻量 Tab）；完整绑定 UI 与 Visual 画布属 **M4-full**。
 
 ---
@@ -168,13 +168,16 @@
 - Settings 参考结构
 - Save / Load 参考结构
 - Overlay / Pause Menu 参考结构
-- 基于 Surface Link 的常见复用约定
+- 基于 **App Surface link**（Stage → App）的常见复用约定
+
+**示例资产路径（可复制 JSON 或对照搭建）**：`project/examples/visual-editor/` 下各子目录的 `editor/ui/uidoc.json`；说明表见 `project/docs/visual-editor.md` §4.4。
 
 ### 6.3 推荐做法
 
 - 先沉淀“官方推荐结构”，而不是模板系统
 - 优先沉淀高频组合，而不是高语义主模型
 - 优先让团队能靠基础 widget 稳定拼出同一类界面
+- **Option list**：使用 `List / Repeater` + 行模板（`Button` + `Text`），不增加独立 `OptionList` 主控件
 
 ### 6.4 风险点
 
