@@ -1,5 +1,9 @@
 import type { UIWidgetModule } from "../types";
 import { RectangleWidgetModule } from "./rectangle";
+import { TextWidgetModule } from "./text";
+import { ImageWidgetModule } from "./image";
+import { ContainerWidgetModule } from "./container";
+import { ButtonWidgetModule } from "./button";
 
 /**
  * All built-in widget modules.
@@ -7,4 +11,8 @@ import { RectangleWidgetModule } from "./rectangle";
  */
 export const BuiltinWidgetModules: UIWidgetModule[] = [
     RectangleWidgetModule,
+    TextWidgetModule,
+    ImageWidgetModule,
+    ContainerWidgetModule,
+    ButtonWidgetModule,
 ];

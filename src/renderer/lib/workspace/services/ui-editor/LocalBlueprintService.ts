@@ -1,4 +1,5 @@
 import type { BindingDefinition, BlueprintDeclaration, BlueprintDocument } from "@shared/types/blueprint/document";
+import type { UIElement } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { RendererError } from "@shared/utils/error";
 import { Service } from "../Service";
@@ -9,6 +10,12 @@ import { UuidService } from "../core/UuidService";
 import { UIGraphService } from "./UIGraphService";
 import { createMainBlueprint, emptyMemberIndex } from "./blueprint/blueprintFactories";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
+import type { BlueprintEventGraph } from "@shared/types/blueprint/document";
+import { planSubtreeDuplicateBlueprintRemap, type SubtreeDuplicateRemapPlan } from "./blueprint/blueprintCopyRemap";
+import {
+    buildReadonlyWidgetMainSummary,
+    type ReadonlyBlueprintWidgetSummary,
+} from "./blueprint/readonlyBlueprintSummary";
 import { surfaceMainOwnerKey, widgetMainOwnerKey } from "./blueprint/ownerKeys";
 
 /**
@@ -308,5 +315,66 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     public listDeclarations(blueprintId: string): BlueprintDeclaration[] {
         const m = this.getBlueprintDocument().blueprints[blueprintId]?.members?.declarations;
         return m ? Object.values(m) : [];
+    }
+
+    /**
+     * Ensure an inline event graph slot exists under Blueprint.program.graphs.events[eventId].
+     * Upserts by eventId; preserves existing graph IR when present.
+     */
+    public ensureEventGraph(blueprintId: string, eventId: string, displayName?: string): void {
+        this.applyBlueprintMutation(doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp) {
+                throw new RendererError(`Blueprint not found: ${blueprintId}`);
+            }
+            if (bp.program.kind !== "graph") {
+                throw new RendererError(`Blueprint ${blueprintId} is not a graph program`);
+            }
+            const prev = bp.program.graphs.events[eventId];
+            const graphIr = prev?.graph ?? { nodes: {}, edges: [], entries: {} };
+            const next: BlueprintEventGraph = {
+                id: eventId,
+                name: displayName ?? prev?.name,
+                graph: graphIr,
+                meta: prev?.meta,
+            };
+            bp.program.graphs.events[eventId] = next;
+        });
+    }
+
+    public removeEventGraph(blueprintId: string, eventId: string): void {
+        this.applyBlueprintMutation(doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp || bp.program.kind !== "graph") {
+                return;
+            }
+            delete bp.program.graphs.events[eventId];
+        });
+    }
+
+    public listEventGraphIds(blueprintId: string): string[] {
+        const bp = this.getBlueprintDocument().blueprints[blueprintId];
+        if (!bp || bp.program.kind !== "graph") {
+            return [];
+        }
+        return Object.keys(bp.program.graphs.events ?? {});
+    }
+
+    public getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary {
+        return buildReadonlyWidgetMainSummary(this.getBlueprintDocument(), surfaceId, element);
+    }
+
+    /** Rules-only remap plan for duplicating a widget subtree (no UI). */
+    public planSubtreeDuplicateBlueprintRemap(input: {
+        surfaceId: string;
+        oldElementIds: string[];
+        generateId: () => string;
+    }): SubtreeDuplicateRemapPlan {
+        const { surfaceId } = input;
+        return planSubtreeDuplicateBlueprintRemap({
+            oldElementIds: input.oldElementIds,
+            generateId: input.generateId,
+            getWidgetMainBlueprintId: (elementId: string) => this.getWidgetMainBlueprintId(surfaceId, elementId),
+        });
     }
 }
