@@ -375,7 +375,7 @@ type BlueprintDebugEvent =
 以下与仓库实现对齐，用于区分「**契约已冻结**」与「**行为已实现**」：
 
 - **Canonical 类型层**：`src/shared/types/blueprint/`（`schema.ts`、`document.ts`、`hostApi.ts`、`debug.ts`、`index.ts`）。宿主 API 能力表见 `BLUEPRINT_HOST_API_M1_CAPABILITIES`；契约版本见 `BLUEPRINT_HOST_API_CONTRACT_VERSION`。
-- **Legacy / 桥接**：`src/shared/types/ui-editor/document.ts` 中 `UIBehaviorBinding` 保留 `kind: "graph"`，并增加 `kind: "blueprintEvent"`；`src/shared/types/ui-editor/graph.ts` 中 `UIGraphDocument` 可选 `blueprintDocument`，`UIGraph` 可选 `blueprintId` / `ownerRef`。
+- **UI 文档桥接（当前事实）**：`src/shared/types/ui-editor/document.ts` 中 `UIBehaviorBinding` 以 `kind: "blueprintEvent"`（`blueprintId` + `eventId`）为事件入口；`src/shared/types/ui-editor/graph.ts` 中磁盘 `uigraphs.json` 为 schema v2，`blueprintDocument` **必填**，顶层 `graphs` 仅作旧版行为图 IR 兼容区，**不是** Blueprint 事件图真相（事件图体在 `Blueprint.program.graphs.events[eventId].graph`）。
 - **Dev Mode bundle 形状**：`src/shared/types/devMode.ts` 的 `ui.localBlueprints` / `ui.sharedBlueprints` 为可选；**M1 不要求** `DevModeManager` 写入，亦不改变 `uigraphs.json` 磁盘 schema 版本。
 - **运行时 substrate**：`src/renderer/lib/ui-editor/runtime/types.ts` 中 `UIHostAdapter` 可选 `blueprintHostApiVersion`，表示未来向 `BlueprintHostApiContract` 对齐，**不表示** M3 宿主能力已全部实现。
 - **本阶段明确不动（避免范围蔓延）**：`UIGraphService` 的真实 migration、`DevModeManager` 的 bundle 生产逻辑扩展、`GraphExecutor` 的派发与调试发射、属性面板与 inspector 的真实蓝图 UI。
@@ -430,32 +430,21 @@ type BlueprintDebugEvent =
 
 ### 6.5 事件绑定持久化
 
-当前仓库已有：
+当前仓库已采用蓝图事件入口模型（见 `src/shared/types/ui-editor/document.ts`）：
 
 ```ts
 type UIBehaviorBinding =
   | { kind: "noop" }
   | { kind: "actions"; actions: UIBehaviorAction[] }
-  | { kind: "graph"; graphId: UIGraphId; entry: string };
+  | { kind: "blueprintEvent"; blueprintId: string; eventId: string };
 ```
 
-`M2` 需要把它升级为蓝图入口绑定模型。目标语义应该变成：
+语义要点：
 
-- 某个实例上的某个事件
-- 指向该实例主蓝图中的某个事件图入口
+- 某个实例上的某个事件名（`UIBehavior.events[eventName]`）指向 **实例主蓝图** 中的某个 **事件图**（`eventId`）。
+- 事件图体持久化在 `Blueprint.program.graphs.events[eventId].graph`；**不**再以顶层 `UIGraphDocument.graphs` 为 Blueprint 事件真相。
 
-推荐方向：
-
-```ts
-type UIBehaviorBinding =
-  | {
-      kind: "blueprintEvent";
-      blueprintId: string;
-      eventId: string;
-    };
-```
-
-如果需要兼容旧图，可在 `M2` 提供迁移层。
+旧版 `kind: "graph"` / 仅顶层 `graphs` 的路径不再作为产品方向；`uigraphs.json` 旧 schema 采用 **strict fail**，不自动迁移。
 
 ### 6.6 绑定持久化模型
 
@@ -502,7 +491,7 @@ type UIBehaviorBinding =
 - 实例创建/删除/复制不会破坏 ownerIndex
 - 控件属性绑定可以持久化
 - 绑定重命名后仍可稳定追踪
-- 旧 `uigraphs` 至少有迁移路径或兼容读取策略
+- 旧 `uigraphs`：产品决策为 **strict fail**（明确错误而非静默升级）；需要迁移时由项目维护者手工处理或在未来里程碑引入显式迁移工具
 
 ---
 

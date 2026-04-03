@@ -9,6 +9,11 @@ export type UIGraphDocumentVersion = typeof UI_GRAPH_DOCUMENT_SCHEMA_VERSION;
 
 export type UIGraphDocument = {
     schemaVersion: UIGraphDocumentVersion;
+    /**
+     * Legacy behavior-graph documents (UIGraph IR). Blueprint M2+ event graphs are stored only under
+     * {@link BlueprintDocument} at `Blueprint.program.graphs.events[eventId].graph` — do not use this map as the
+     * source of truth for blueprint events.
+     */
     graphs: Record<UIGraphId, UIGraph>;
     meta?: {
         createdAt?: string;

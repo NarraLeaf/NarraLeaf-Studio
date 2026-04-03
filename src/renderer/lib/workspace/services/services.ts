@@ -19,6 +19,8 @@ import type {
     UIElement,
 } from "@shared/types/ui-editor/document";
 import type { BindingDefinition, BlueprintDeclaration, BlueprintDocument } from "@shared/types/blueprint/document";
+import type { ReadonlyBlueprintWidgetSummary } from "./ui-editor/blueprint/readonlyBlueprintSummary";
+import type { SubtreeDuplicateRemapPlan } from "./ui-editor/blueprint/blueprintCopyRemap";
 import type { UIGraph, UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { ReactElement } from "react";
@@ -172,6 +174,16 @@ interface IUIDocumentService extends IService {
     updateSurface(surfaceId: string, updater: (surface: UISurface) => void): void;
     createElement(parentId: string, type: string, layoutPatch?: Partial<UILayout>): UIElement;
     deleteElements(elementIds: string[]): void;
+    /**
+     * Persist UIBehaviorBinding.blueprintEvent and ensure inline event graph under Blueprint.program.graphs.events.
+     */
+    setElementBlueprintEvent(
+        elementId: string,
+        eventName: string,
+        ref: { blueprintId: string; eventId: string },
+    ): void;
+    /** Remove behavior binding and drop the referenced event graph slot from the blueprint document. */
+    clearElementBlueprintEvent(elementId: string, eventName: string): void;
 }
 
 interface IUIGraphService extends IService {
@@ -225,6 +237,15 @@ interface ILocalBlueprintService extends IService {
         propPath: string,
     ): BindingDefinition | undefined;
     listDeclarations(blueprintId: string): BlueprintDeclaration[];
+    ensureEventGraph(blueprintId: string, eventId: string, displayName?: string): void;
+    removeEventGraph(blueprintId: string, eventId: string): void;
+    listEventGraphIds(blueprintId: string): string[];
+    getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary;
+    planSubtreeDuplicateBlueprintRemap(input: {
+        surfaceId: string;
+        oldElementIds: string[];
+        generateId: () => string;
+    }): SubtreeDuplicateRemapPlan;
 }
 
 interface IUIBlueprintLifecycleCoordinator extends IService {

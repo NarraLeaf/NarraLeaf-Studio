@@ -97,7 +97,7 @@
 - `UIElement.behavior`
   - 已支持 `events[eventName] -> UIBehaviorBinding`
 - `UIBehaviorBinding`
-  - 已有 `kind: "graph"`
+  - 事件入口为 `kind: "blueprintEvent"`（`blueprintId` + `eventId`），图体在 `Blueprint.program.graphs.events`
 - `UIGraphService`
   - 已有图文档加载、保存、auto-save、CRUD
 - `GraphExecutor`
@@ -1003,12 +1003,12 @@ assets/
 - `src/shared/types/devMode.ts`
 - `src/renderer/lib/ui-editor/runtime/types.ts`（`UIHostAdapter` 与 `BlueprintHostApiContract` 的契约版本字段）
 
-建议：
+建议（与当前实现对齐）：
 
-- **术语与终态模型以 `blueprint/*` 为准**；`ui-editor/*` 与 `devMode` 仅承载前向兼容桥，直到 M2/M3 完成迁移与运行时接线。
-- 在 `document.ts` 中保留 `graphId + entry`，并增加 `blueprintEvent`（`blueprintId + eventId`）供 M2+ 事件绑定收敛。
-- 在 `graph.ts` 的 `UIGraphDocument` 上可选挂载 `blueprintDocument`（完整 `BlueprintDocument` 形状）；磁盘在 M2 前可不写该字段。
-- 在 `devMode.ts` 的 `ui` 上可选 `localBlueprints` / `sharedBlueprints`；**M1 不强制** `DevModeManager` 填充，运行仍以 `uidoc` + `uigraphs` 为主。
+- **术语与终态模型以 `blueprint/*` 为准**；`ui-editor/*` 与 `devMode` 承载与 Studio / Dev Mode 的集成形状。
+- 在 `document.ts` 中事件绑定使用 `blueprintEvent`（`blueprintId + eventId`）；事件图 IR 存于 `Blueprint.program.graphs.events[eventId].graph`，**不**再以顶层 `UIGraphDocument.graphs` 为 Blueprint 事件真相。
+- 在 `graph.ts` 的 `UIGraphDocument` 上 **`blueprintDocument` 必填**（`uigraphs.json` schema v2）；顶层 `graphs` 仅保留与旧行为图执行器的兼容占位。
+- 在 `devMode.ts` 的 `DevModeBundle.ui` 中显式携带 `localBlueprints`（与 `uigraphs.blueprintDocument` 一致）；Dev Mode **本阶段不执行**蓝图逻辑，仅消费 bundle 形状。
 
 ### 17.2 Service 层
 

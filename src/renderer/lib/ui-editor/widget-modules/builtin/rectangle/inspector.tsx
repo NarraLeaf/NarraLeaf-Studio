@@ -14,13 +14,10 @@ import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { Select } from "@/lib/components/elements/Select";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
-import type {
-  CustomFieldProps,
-  ColorValue,
-  InlineRowItemContext,
-} from "@/apps/workspace/modules/properties/framework/types";
+import type { ColorValue, InlineRowItemContext } from "@/apps/workspace/modules/properties/framework/types";
 import type { UIInspectorData, InspectorContext, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import type { RectangleProps, StrokeJoin } from "./types";
+import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { getProps, normalizeImageFill } from "./helpers";
 import {
   BORDER_STYLE_OPTIONS,
@@ -99,26 +96,6 @@ function InlineMenuTriggerButton({
       </button>
       {visible && <ContextMenu items={menu} position={position} onClose={closeMenu} />}
     </>
-  );
-}
-
-/**
- * M1: Honest deferred state — blueprint editor entry and event wiring are milestone M4, not available here yet.
- */
-function BlueprintDeferredNotice(_: CustomFieldProps<UIInspectorData>) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-[#111315] px-4 py-3 space-y-2">
-      <p className="text-xs uppercase text-gray-500 tracking-wider">Blueprint</p>
-      <p className="text-sm text-gray-300 leading-snug">
-        Event graphs and blueprint editing are not wired in the UI editor yet (planned for Visual Editor M4). Use{" "}
-        <span className="text-gray-200">Dev Mode</span> from the canvas toolbar to run and debug surface behavior when
-        runtime support lands.
-      </p>
-      <p className="text-[11px] text-gray-500 leading-snug">
-        This tab only edits layout and static preview; <code className="text-gray-400">hostAdapter.effects</code> stays
-        inert here by design.
-      </p>
-    </div>
   );
 }
 
@@ -918,7 +895,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
               defineField<D, any>({
                 id: "interaction.blueprint.deferred",
                 type: "custom",
-                component: BlueprintDeferredNotice,
+                component: ReadonlyBlueprintSection,
               }),
             ],
           }),

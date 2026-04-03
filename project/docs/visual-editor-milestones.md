@@ -95,6 +95,19 @@
 
 与 M1 冻结的第一批一致，共 8 项（**实现顺序在 M2 内再定**）：
 
+#### 5.2.1 M2-A（本阶段子集，已落地）
+
+以下 4 项与 **Blueprint System M2**（本地实例蓝图、`widgetMain` 生命周期、只读摘要、`blueprintEvent` 持久化）在同一工程阶段交付：
+
+- Text（`nl.text`）
+- Image（`nl.image`）
+- Button — 容器式（`nl.button`）
+- Container / Frame（`nl.container`）
+
+其余 4 项（Stack、Scroll、Spacer/Divider、Option List/Repeater）仍在 **M2 后续**，不在 M2-A 范围。
+
+#### 5.2.2 完整 M2 八件套（含未交付项）
+
 - Text
 - Image
 - Button
@@ -136,8 +149,8 @@
 
 ### 5.7 M1 结束时的已知缺口（供 M2 对照）
 
-- 内置可插 widget 当前仅有 `nl.rectangle`。
-- 行为图/蓝图在编辑器侧无图编辑 UI；属性面板 Blueprint 为 M1 延期说明，M4 升级为真入口。
+- ~~内置可插 widget 当前仅有 `nl.rectangle`。~~ **M2-A 已补齐** Text / Image / Button / Container；其余 M2 项仍待实现。
+- 行为图/蓝图在编辑器侧无完整图编辑 UI；属性面板 Blueprint 在 M2-A 为 **只读摘要**，M4 升级为真入口。
 
 ---
 

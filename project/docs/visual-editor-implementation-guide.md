@@ -442,8 +442,8 @@
 
 **仍属缺口、留给 M2 及以后**（不在 M1 解决）：
 
-- 除 `rectangle` 外的 7+ 个基础 widget 实现与注册。
-- Blueprint 真入口、事件绑定 UI（M4）。
+- M2 八件套中 **尚未** 交付的 4 项：Stack / Auto Layout、Scroll、Spacer/Divider、Option List/Repeater（M2-A 已交付 Text / Image / Button / Container）。
+- Blueprint **真入口**与事件绑定编辑 UI（M4）；M2-A/M2 当前仅为只读摘要与数据层持久化。
 - 编辑器内校验与资源缺失提示（M5）。
 - 组合范式文档与示例 Surface（M3）。
 

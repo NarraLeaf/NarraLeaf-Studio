@@ -185,7 +185,8 @@ Dev Mode 作为全局任务，建议显式状态机：
 - `timestamp`
 - `ui`：
   - `uidoc`（完整 JSON 或增量 patch，初期可全量）
-  - `uigraphs`
+  - `uigraphs`（含必填的 `blueprintDocument`；实例蓝图与 `localBlueprints` 同源）
+  - `localBlueprints`（`BlueprintDocument`，与 `uigraphs.blueprintDocument` 一致；M2+ 起随项目保存；执行闭环属后续里程碑）
 - `scripts`：脚本/剧情内容（未来）
 - `settings`：运行时需要的项目设置（未来）
 - `compiled`：nlang 编译产物（未来）

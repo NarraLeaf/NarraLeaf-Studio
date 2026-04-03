@@ -16,7 +16,7 @@
   - **编辑器内只做静态/布局预览**；真实交互与副作用以 **Dev Mode** 为主场。
   - **第一阶段复用**只依赖 **Stage Surface → App Surface Link** 与 **复制/粘贴**；不引入模板/preset/可嵌套组件系统。
   - **M2 第一批基础 widget 清单（已锁定为 8 项）**：`Text`、`Image`、`Button`、`Container/Frame`、`Stack`、`Scroll`、`Spacer/Divider`、`Option List / Repeater` 最小形态（实现顺序在 M2 内再定）。
-- **当前实现基线**：内置可插入 widget 在 `BuiltinWidgetModules` 中**仅有** `nl.rectangle`（见 `src/renderer/lib/ui-editor/widget-modules/builtin/index.ts`）。属性面板中 Blueprint 区块在 M1 为**延期说明**（真实入口属 M4）。
+- **当前实现基线**：内置可插入 widget 包含 `nl.rectangle` 与 **M2-A** 四类：`nl.text`、`nl.image`、`nl.button`、`nl.container`（Container/Frame）（见 `src/renderer/lib/ui-editor/widget-modules/builtin/index.ts`）。属性面板中 Blueprint 区块为 **M2 只读摘要**（计数与阶段说明）；完整编辑入口属 M4。
 - **M1 相关 UI 壳层文件（验收锚点）**：
   - 左栏 Surface 列表：`src/renderer/apps/workspace/modules/ui-editor/UISurfacesPanel.tsx` 及 `panel/*`
   - 画布编辑 Tab：`src/renderer/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab.tsx`
@@ -135,7 +135,7 @@ UI Editor 的选中状态复用 `UIStore.selection`，并用 `UIElementSelection
 - 基础编辑操作（创建/删除 Surface，创建 Element，更新 layout/props，删除元素等）
 - schema 迁移（以 `src/shared/types/ui-editor/document.ts` 中 `UI_DOCUMENT_SCHEMA_VERSION` 为准，包含 legacy surface kind 的迁移逻辑）
 
-### 3.3 UIGraphDocument（行为图文档）
+### 3.3 UIGraphDocument（本地 UI 图文档壳 + 实例蓝图）
 
 类型定义在：
 
@@ -147,9 +147,9 @@ UI Editor 的选中状态复用 `UIStore.selection`，并用 `UIElementSelection
 
 它负责：
 
-- load/save
+- load/save（`blueprintDocument` 为本地实例蓝图真相；顶层 `graphs` 仅为旧版行为图 IR 兼容区）
 - dirty/revision
-- graph CRUD
+- 旧版 `UIGraph` CRUD（非 Blueprint 事件图主路径）
 
 ---
 

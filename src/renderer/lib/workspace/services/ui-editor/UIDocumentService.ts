@@ -11,6 +11,7 @@ import {
     UIStageSurfaceMount,
     UIElement,
     UIElementId,
+    UIBehaviorBinding,
     UISlotDefinition,
     UILayout,
 } from "@shared/types/ui-editor/document";
@@ -20,6 +21,7 @@ import { elementTypeRegistry } from "@/lib/ui-editor/element-types/registryInsta
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IUIDocumentService, Services, WorkspaceContext } from "../services";
+import { LocalBlueprintService } from "./LocalBlueprintService";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
@@ -575,6 +577,49 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
 
         return element;
+    }
+
+    public setElementBlueprintEvent(
+        elementId: string,
+        eventName: string,
+        ref: { blueprintId: string; eventId: string },
+    ): void {
+        const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        localBp.ensureEventGraph(ref.blueprintId, ref.eventId, eventName);
+        this.mutateDocument(document => {
+            const el = document.elements[elementId];
+            if (!el) {
+                return;
+            }
+            el.behavior = el.behavior ?? {};
+            el.behavior.events = el.behavior.events ?? {};
+            const binding: UIBehaviorBinding = {
+                kind: "blueprintEvent",
+                blueprintId: ref.blueprintId,
+                eventId: ref.eventId,
+            };
+            el.behavior.events[eventName] = binding;
+        });
+    }
+
+    public clearElementBlueprintEvent(elementId: string, eventName: string): void {
+        const el = this.getDocument().elements[elementId];
+        const cur = el?.behavior?.events?.[eventName];
+        if (cur?.kind === "blueprintEvent") {
+            const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+            localBp.removeEventGraph(cur.blueprintId, cur.eventId);
+        }
+        this.mutateDocument(document => {
+            const target = document.elements[elementId];
+            if (!target?.behavior?.events?.[eventName]) {
+                return;
+            }
+            const { [eventName]: _removed, ...rest } = target.behavior.events;
+            target.behavior = {
+                ...target.behavior,
+                events: Object.keys(rest).length > 0 ? rest : undefined,
+            };
+        });
     }
 
     private getProjectDesignSize(): UISurfaceDesignSize {
