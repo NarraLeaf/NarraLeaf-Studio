@@ -1,12 +1,12 @@
 import type { CSSProperties } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
-import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { getContainerProps } from "./helpers";
 
 export function ContainerRenderer({ element, children }: WidgetRendererProps) {
     const p = getContainerProps(element);
-    const bg = colorValueToCss({ hex: p.backgroundColor, alpha: 1 });
-    const borderColor = colorValueToCss({ hex: p.borderColor, alpha: 1 });
+    const bg = colorValueToCss(parseColorValue(p.backgroundColor, { hex: "#FFFFFF", alpha: 0 }));
+    const borderColor = colorValueToCss(parseColorValue(p.borderColor, { hex: "#000000", alpha: 1 }));
 
     const style: CSSProperties = {
         width: "100%",

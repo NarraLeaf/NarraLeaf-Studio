@@ -2,6 +2,7 @@ import { ScrollText } from "lucide-react";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ScrollRenderer } from "./scroll/renderer";
 import { createScrollInspector } from "./scroll/inspector";
+import { createScrollDockerBarItems } from "./scroll/dockerBar";
 import { defaultScrollWidgetProps } from "./scroll/types";
 
 export const ScrollWidgetModule: UIWidgetModule = {
@@ -27,4 +28,8 @@ export const ScrollWidgetModule: UIWidgetModule = {
     render: (props: WidgetRendererProps) => <ScrollRenderer {...props} />,
 
     createInspector: createScrollInspector,
+
+    createDockerBarItems: createScrollDockerBarItems,
+
+    createMultiSelectDockerBarItems: createScrollDockerBarItems,
 };

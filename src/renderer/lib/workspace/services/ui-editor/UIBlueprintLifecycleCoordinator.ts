@@ -43,7 +43,7 @@ export class UIBlueprintLifecycleCoordinator
         const surfaceIds = new Set(doc.surfaces.map(s => s.id));
 
         const bpDoc = localBp.getBlueprintDocument();
-        for (const key of [...Object.keys(bpDoc.ownerIndex)]) {
+        for (const key of [...Object.keys(bpDoc.ownerRecords)]) {
             const m = /^surfaceMain:(.+)$/.exec(key);
             if (m && !surfaceIds.has(m[1])) {
                 localBp.removeSurfaceAndWidgetOwners(m[1]);
@@ -72,7 +72,7 @@ export class UIBlueprintLifecycleCoordinator
             }
         }
 
-        for (const key of [...Object.keys(localBp.getBlueprintDocument().ownerIndex)]) {
+        for (const key of [...Object.keys(localBp.getBlueprintDocument().ownerRecords)]) {
             const m = /^widgetMain:([^:]+):(.+)$/.exec(key);
             if (m && !validWidgetKeys.has(key)) {
                 localBp.removeWidgetMain(m[1], m[2]);

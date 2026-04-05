@@ -2,6 +2,7 @@ import { Image as ImageIcon } from "lucide-react";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ImageRenderer } from "./image/renderer";
 import { createImageInspector } from "./image/inspector";
+import { createImageDockerBarItems } from "./image/dockerBar";
 import { defaultImageWidgetProps } from "./image/types";
 
 export const ImageWidgetModule: UIWidgetModule = {
@@ -27,4 +28,8 @@ export const ImageWidgetModule: UIWidgetModule = {
     render: (props: WidgetRendererProps) => <ImageRenderer {...props} />,
 
     createInspector: createImageInspector,
+
+    createDockerBarItems: createImageDockerBarItems,
+
+    createMultiSelectDockerBarItems: createImageDockerBarItems,
 };

@@ -2,6 +2,7 @@ import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import { type UIGraph, type UIGraphDocument, UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import { ProjectNameConvention } from "../../project/nameConvention";
+import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { createInitialBlueprintDocument, repairGlobalMainIfMissing } from "./blueprint/blueprintFactories";
 import { assertValidBlueprintDocument, BlueprintDocumentValidationError } from "./blueprint/documentValidation";
 import { FileSystemService } from "../core/FileSystem";
@@ -215,7 +216,8 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
             throw new RendererError("uigraphs.json is missing blueprintDocument (Blueprint M2 required).");
         }
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const repaired = repairGlobalMainIfMissing(document.blueprintDocument, () => uuidService.generate());
+        const migrated = migrateBlueprintDocumentToLatest(document.blueprintDocument);
+        const repaired = repairGlobalMainIfMissing(migrated, () => uuidService.generate());
         try {
             assertValidBlueprintDocument(repaired);
         } catch (e) {

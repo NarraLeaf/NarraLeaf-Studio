@@ -10,7 +10,7 @@ export class BlueprintDocumentValidationError extends Error {
 }
 
 /**
- * Validates persisted BlueprintDocument shape and ownerIndex <-> blueprints consistency.
+ * Validates persisted BlueprintDocument shape and ownerRecords <-> blueprints consistency.
  */
 export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
     if (doc.schemaVersion !== BLUEPRINT_DOCUMENT_SCHEMA_VERSION) {
@@ -21,30 +21,56 @@ export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
     if (!doc.blueprints || typeof doc.blueprints !== "object") {
         throw new BlueprintDocumentValidationError("BlueprintDocument.blueprints is missing or invalid");
     }
-    if (!doc.ownerIndex || typeof doc.ownerIndex !== "object") {
-        throw new BlueprintDocumentValidationError("BlueprintDocument.ownerIndex is missing or invalid");
+    if (!doc.ownerRecords || typeof doc.ownerRecords !== "object") {
+        throw new BlueprintDocumentValidationError("BlueprintDocument.ownerRecords is missing or invalid");
     }
 
-    for (const [key, blueprintId] of Object.entries(doc.ownerIndex)) {
-        const bp = doc.blueprints[blueprintId];
-        if (!bp) {
+    for (const [key, rec] of Object.entries(doc.ownerRecords)) {
+        if (!rec || typeof rec !== "object") {
+            throw new BlueprintDocumentValidationError(`ownerRecords["${key}"] is invalid`);
+        }
+        const { activeBlueprintId, privateBlueprintIds } = rec;
+        if (typeof activeBlueprintId !== "string" || !activeBlueprintId) {
+            throw new BlueprintDocumentValidationError(`ownerRecords["${key}"].activeBlueprintId is missing`);
+        }
+        if (!Array.isArray(privateBlueprintIds) || privateBlueprintIds.length === 0) {
+            throw new BlueprintDocumentValidationError(`ownerRecords["${key}"].privateBlueprintIds is empty`);
+        }
+        if (!privateBlueprintIds.includes(activeBlueprintId)) {
             throw new BlueprintDocumentValidationError(
-                `ownerIndex["${key}"] points to missing blueprint id "${blueprintId}"`,
+                `ownerRecords["${key}"].activeBlueprintId is not listed in privateBlueprintIds`,
             );
         }
-        const expectedKey = ownerRefToIndexKey(bp.owner);
-        if (expectedKey !== key) {
-            throw new BlueprintDocumentValidationError(
-                `ownerIndex key "${key}" does not match blueprint.owner derived key "${expectedKey}" for blueprint "${blueprintId}"`,
-            );
+        for (const blueprintId of privateBlueprintIds) {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp) {
+                throw new BlueprintDocumentValidationError(
+                    `ownerRecords["${key}"] lists missing blueprint id "${blueprintId}"`,
+                );
+            }
+            const expectedKey = ownerRefToIndexKey(bp.owner);
+            if (expectedKey !== key) {
+                throw new BlueprintDocumentValidationError(
+                    `ownerRecords key "${key}" does not match blueprint.owner derived key "${expectedKey}" for blueprint "${blueprintId}"`,
+                );
+            }
         }
     }
 
     for (const bp of Object.values(doc.blueprints)) {
+        if (bp.owner.kind === "sharedAsset") {
+            continue;
+        }
         const k = ownerRefToIndexKey(bp.owner);
-        if (doc.ownerIndex[k] !== bp.id) {
+        const rec = doc.ownerRecords[k];
+        if (!rec) {
             throw new BlueprintDocumentValidationError(
-                `Blueprint "${bp.id}" owner key "${k}" is not mapped in ownerIndex to this id`,
+                `Blueprint "${bp.id}" owner key "${k}" has no ownerRecords entry`,
+            );
+        }
+        if (!rec.privateBlueprintIds.includes(bp.id)) {
+            throw new BlueprintDocumentValidationError(
+                `Blueprint "${bp.id}" is not listed in ownerRecords["${k}"].privateBlueprintIds`,
             );
         }
     }
@@ -88,8 +114,8 @@ export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
                 continue;
             }
             if (vs.kind === "surfaceState") {
-                const key = String(vs.key ?? "").trim();
-                if (!key) {
+                const stateKey = String(vs.key ?? "").trim();
+                if (!stateKey) {
                     throw new BlueprintDocumentValidationError(
                         `Declaration "${decl.id}" on blueprint "${bp.id}" has surfaceState valueSource with empty key`,
                     );

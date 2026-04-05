@@ -3,8 +3,8 @@
  * M2 persists BlueprintDocument inside `uigraphs.json` under `blueprintDocument`.
  */
 
-/** Canonical schema for persisted BlueprintDocument (ownerIndex + blueprints). Bumped on incompatible changes. */
-export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 2 as const;
+/** Canonical schema for persisted BlueprintDocument (ownerRecords + blueprints). Bumped on incompatible changes. */
+export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 3 as const;
 
 export type BlueprintDocumentSchemaVersion = typeof BLUEPRINT_DOCUMENT_SCHEMA_VERSION;
 

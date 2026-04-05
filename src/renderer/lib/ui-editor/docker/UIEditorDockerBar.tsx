@@ -14,6 +14,7 @@ import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import type { UITool } from "../editor/types";
 import { DeferredNumberInput } from "@/lib/components/inputs/DeferredNumberInput";
+import { Select } from "@/lib/components/elements/Select";
 
 // Props
 type UIEditorDockerBarProps = {
@@ -91,25 +92,31 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
 
         case "select": {
             return (
-                <div className="flex items-center gap-1.5 h-8" title={item.tooltip}>
+                <div
+                    className="flex items-center gap-1.5 h-8"
+                    title={item.tooltip}
+                    onPointerDown={stopPointerPropagation}
+                    onPointerDownCapture={stopPointerPropagation}
+                    onMouseDownCapture={stopPointerPropagation}
+                >
                     {item.label && (
-                        <span className="text-[11px] text-gray-500 select-none">{item.label}</span>
+                        <span className="text-[11px] text-gray-500 select-none shrink-0">{item.label}</span>
                     )}
-                    <select
-                        className="h-7 rounded-md border border-white/10 bg-white/5 px-2 text-xs text-gray-200 outline-none transition-colors focus:border-primary hover:border-white/20"
-                        value={item.value}
-                        onChange={(e) => {
-                            const raw = e.target.value;
-                            const numVal = Number(raw);
-                            item.onChange(Number.isNaN(numVal) ? raw : numVal);
-                        }}
-                    >
-                        {item.options.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                            </option>
-                        ))}
-                    </select>
+                    {/* Fixed-width shell + fullWidth trigger avoids a gap: min-w on Select alone
+                        stretches the wrapper while the inner Button stayed content-sized. */}
+                    <div className="w-[5.5rem] shrink-0">
+                        <Select
+                            options={item.options}
+                            value={item.value}
+                            onChange={(raw) => {
+                                const numVal = Number(raw);
+                                item.onChange(Number.isNaN(numVal) ? raw : numVal);
+                            }}
+                            size="sm"
+                            placeholder="—"
+                            fullWidth
+                        />
+                    </div>
                 </div>
             );
         }

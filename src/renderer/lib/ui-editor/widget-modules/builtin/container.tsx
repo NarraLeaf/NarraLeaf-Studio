@@ -2,6 +2,7 @@ import { Box } from "lucide-react";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ContainerRenderer } from "./container/renderer";
 import { createContainerInspector } from "./container/inspector";
+import { createContainerDockerBarItems } from "./container/dockerBar";
 import { defaultContainerWidgetProps } from "./container/types";
 
 export const ContainerWidgetModule: UIWidgetModule = {
@@ -27,4 +28,8 @@ export const ContainerWidgetModule: UIWidgetModule = {
     render: (props: WidgetRendererProps) => <ContainerRenderer {...props} />,
 
     createInspector: createContainerInspector,
+
+    createDockerBarItems: createContainerDockerBarItems,
+
+    createMultiSelectDockerBarItems: createContainerDockerBarItems,
 };

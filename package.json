@@ -24,10 +24,11 @@
     "build:apps:dev": "node project/build/build-apps.js --dev",
     "build:main": "node project/build/build-main.js",
     "build:main:dev": "node project/build/build-main.js --dev",
+    "build:shared": "tsc --project src/shared/tsconfig.json",
     "dev": "rimraf dist && node project/app/dev-electron.js",
     "pack-electron": "yarn clean && node project/app/pack-electron.js",
     "clean": "rimraf dist",
-    "lint": "tsc --project src/main/tsconfig.json && tsc --project src/renderer/tsconfig.json"
+    "lint": "tsc --project src/shared/tsconfig.json && tsc --project src/main/tsconfig.json && tsc --project src/renderer/tsconfig.json"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

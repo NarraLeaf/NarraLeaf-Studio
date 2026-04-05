@@ -22,7 +22,7 @@ function SectionFieldInner<TData>({ field, data, onSaving }: SectionFieldProps<T
     }, [field.collapsible]);
 
     return (
-        <div className={`border border-white/10 rounded-md overflow-hidden ${field.className || ""}`}>
+        <div className={`border border-white/10 rounded-md overflow-visible ${field.className || ""}`}>
             <div
                 className={`flex items-center gap-2 px-3 py-2 bg-[#1e1f22] ${
                     field.collapsible ? "cursor-pointer hover:bg-[#252629]" : ""

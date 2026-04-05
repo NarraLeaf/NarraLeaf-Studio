@@ -5,6 +5,7 @@ import { SurfaceStateStore } from "@/lib/ui-editor/blueprint-runtime/SurfaceStat
 import { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
+import { mountBlueprintCompiledScripts } from "@/lib/ui-editor/blueprint-runtime/mountBlueprintScripts";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 
 export type DevModeBlueprintRuntimeBundle = {
@@ -27,6 +28,13 @@ export function useDevModeBlueprintRuntime(
         coalescer: BindingDebugCoalescer;
     } | null>(null);
     const [, bumpRender] = useState(0);
+
+    useEffect(() => {
+        if (!bundle) {
+            return;
+        }
+        mountBlueprintCompiledScripts(bundle);
+    }, [bundle?.revision, bundle?.bundleId]);
 
     useEffect(() => {
         if (!bundle || !surface) {

@@ -225,7 +225,19 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                 return;
             }
             const element = documentService.getDocument().elements[elementId];
-            if (!element || element.type !== "nl.rectangle") {
+            if (!element) {
+                return;
+            }
+            if (element.type === "nl.text") {
+                event.preventDefault();
+                stateService.setInteractionOverride({
+                    kind: "textEdit",
+                    surfaceId,
+                    elementId,
+                });
+                return;
+            }
+            if (element.type !== "nl.rectangle") {
                 return;
             }
             const props = getProps(element);

@@ -2,6 +2,7 @@ import { LayoutGrid } from "lucide-react";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { StackRenderer } from "./stack/renderer";
 import { createStackInspector } from "./stack/inspector";
+import { createStackDockerBarItems } from "./stack/dockerBar";
 import { defaultStackWidgetProps } from "./stack/types";
 
 export const StackWidgetModule: UIWidgetModule = {
@@ -27,4 +28,8 @@ export const StackWidgetModule: UIWidgetModule = {
     render: (props: WidgetRendererProps) => <StackRenderer {...props} />,
 
     createInspector: createStackInspector,
+
+    createDockerBarItems: createStackDockerBarItems,
+
+    createMultiSelectDockerBarItems: createStackDockerBarItems,
 };

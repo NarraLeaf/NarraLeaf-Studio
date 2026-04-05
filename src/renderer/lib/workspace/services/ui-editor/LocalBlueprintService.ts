@@ -1,4 +1,9 @@
-import type { BindingDefinition, BlueprintDeclaration, BlueprintDocument } from "@shared/types/blueprint/document";
+import type {
+    BindingDefinition,
+    BlueprintDeclaration,
+    BlueprintDocument,
+    BlueprintFrontendKind,
+} from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { RendererError } from "@shared/utils/error";
@@ -8,7 +13,11 @@ import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
 import { UIGraphService } from "./UIGraphService";
-import { createMainBlueprint, emptyMemberIndex } from "./blueprint/blueprintFactories";
+import {
+    createMainBlueprint,
+    createTypeScriptMainBlueprint,
+    emptyMemberIndex,
+} from "./blueprint/blueprintFactories";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
 import type { BlueprintEventGraph, BlueprintFunctionGraph, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { ensureBlueprintGraphIr } from "./blueprint/graphEditing";
@@ -23,6 +32,12 @@ import {
     buildReadonlySurfaceMainSummary,
     type ReadonlyBlueprintSurfaceSummary,
 } from "./blueprint/readonlyBlueprintSummary";
+import {
+    getActiveBlueprintId,
+    parsePrivateOwnerKeyToRef,
+    registerPrivateBlueprintAsActive,
+    setPrivateOwnerActive,
+} from "./blueprint/ownerRecords";
 
 /**
  * Blueprint M2: mutations to local instance BlueprintDocument inside uigraphs.json.
@@ -53,11 +68,11 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const key = surfaceMainOwnerKey(surfaceId);
         let outId = "";
         this.applyBlueprintMutation(doc => {
-            const existing = doc.ownerIndex[key];
-            if (existing && doc.blueprints[existing]) {
-                outId = existing;
+            const active = getActiveBlueprintId(doc, key);
+            if (active && doc.blueprints[active]) {
+                outId = active;
                 if (displayName !== undefined) {
-                    doc.blueprints[existing].name = displayName;
+                    doc.blueprints[active].name = displayName;
                 }
                 return;
             }
@@ -68,7 +83,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 owner: { kind: "surfaceMain", surfaceId },
             });
             doc.blueprints[id] = blueprint;
-            doc.ownerIndex[key] = id;
+            registerPrivateBlueprintAsActive(doc, key, id, "visual");
             outId = id;
         });
         return outId;
@@ -79,10 +94,12 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const surfaceKey = surfaceMainOwnerKey(surfaceId);
         this.applyBlueprintMutation(doc => {
             const toRemoveBlueprintIds = new Set<string>();
-            for (const [k, bid] of Object.entries(doc.ownerIndex)) {
+            for (const [k, rec] of Object.entries(doc.ownerRecords)) {
                 if (k === surfaceKey || k.startsWith(prefixWidget)) {
-                    toRemoveBlueprintIds.add(bid);
-                    delete doc.ownerIndex[k];
+                    for (const bid of rec.privateBlueprintIds) {
+                        toRemoveBlueprintIds.add(bid);
+                    }
+                    delete doc.ownerRecords[k];
                 }
             }
             for (const id of toRemoveBlueprintIds) {
@@ -97,11 +114,11 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const key = widgetMainOwnerKey(surfaceId, elementId);
         let outId = "";
         this.applyBlueprintMutation(doc => {
-            const existing = doc.ownerIndex[key];
-            if (existing && doc.blueprints[existing]) {
-                outId = existing;
+            const active = getActiveBlueprintId(doc, key);
+            if (active && doc.blueprints[active]) {
+                outId = active;
                 if (displayName !== undefined) {
-                    doc.blueprints[existing].name = displayName ?? doc.blueprints[existing].name;
+                    doc.blueprints[active].name = displayName ?? doc.blueprints[active].name;
                 }
                 return;
             }
@@ -112,7 +129,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 owner: { kind: "widgetMain", surfaceId, elementId },
             });
             doc.blueprints[id] = blueprint;
-            doc.ownerIndex[key] = id;
+            registerPrivateBlueprintAsActive(doc, key, id, "visual");
             outId = id;
         });
         return outId;
@@ -121,10 +138,12 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     public removeWidgetMain(surfaceId: string, elementId: string): void {
         const key = widgetMainOwnerKey(surfaceId, elementId);
         this.applyBlueprintMutation(doc => {
-            const bid = doc.ownerIndex[key];
-            if (bid) {
-                delete doc.blueprints[bid];
-                delete doc.ownerIndex[key];
+            const rec = doc.ownerRecords[key];
+            if (rec) {
+                for (const bid of rec.privateBlueprintIds) {
+                    delete doc.blueprints[bid];
+                }
+                delete doc.ownerRecords[key];
             }
             this.stripBindingsForElement(doc, surfaceId, elementId);
         });
@@ -132,12 +151,47 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
 
     public getWidgetMainBlueprintId(surfaceId: string, elementId: string): string | undefined {
         const key = widgetMainOwnerKey(surfaceId, elementId);
-        return this.getBlueprintDocument().ownerIndex[key];
+        return getActiveBlueprintId(this.getBlueprintDocument(), key);
     }
 
     public getSurfaceMainBlueprintId(surfaceId: string): string | undefined {
         const key = surfaceMainOwnerKey(surfaceId);
-        return this.getBlueprintDocument().ownerIndex[key];
+        return getActiveBlueprintId(this.getBlueprintDocument(), key);
+    }
+
+    public listPrivateBlueprintIdsForOwnerKey(ownerKey: string): string[] {
+        const rec = this.getBlueprintDocument().ownerRecords[ownerKey];
+        return rec ? [...rec.privateBlueprintIds] : [];
+    }
+
+    public setActivePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void {
+        this.applyBlueprintMutation(doc => {
+            setPrivateOwnerActive(doc, ownerKey, blueprintId);
+        });
+    }
+
+    public createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): string {
+        const ownerRef = parsePrivateOwnerKeyToRef(ownerKey);
+        if (!ownerRef) {
+            throw new RendererError(`Invalid private owner key: ${ownerKey}`);
+        }
+        const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
+        let outId = "";
+        this.applyBlueprintMutation(doc => {
+            const id = uuid.generate();
+            const name =
+                frontend === "typescript"
+                    ? `Script ${id.slice(0, 6)}`
+                    : `Blueprint ${id.slice(0, 6)}`;
+            const blueprint =
+                frontend === "typescript"
+                    ? createTypeScriptMainBlueprint({ id, name, owner: ownerRef })
+                    : createMainBlueprint({ id, name, owner: ownerRef });
+            doc.blueprints[id] = blueprint;
+            registerPrivateBlueprintAsActive(doc, ownerKey, id, frontend);
+            outId = id;
+        });
+        return outId;
     }
 
     public getReadonlySurfaceMainSummary(surfaceId: string): ReadonlyBlueprintSurfaceSummary {
@@ -463,6 +517,17 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             const ir = ensureBlueprintGraphIr(slot.graph);
             updater(ir);
             slot.graph = ir;
+        });
+    }
+
+    public updateScriptModuleSource(blueprintId: string, code: string): void {
+        this.applyBlueprintMutation(doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp || bp.program.kind !== "scriptModule") {
+                return;
+            }
+            bp.program.source.code = code;
+            bp.program.source.diagnostics = undefined;
         });
     }
 
