@@ -1,5 +1,7 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, type ReactElement } from "react";
 import { FieldDefinition } from "../types";
+import { BindablePropertyField } from "@/apps/workspace/modules/properties/blueprint/BindablePropertyField";
+import { isUIInspectorData, type PropertyFieldBindingMeta } from "@/apps/workspace/modules/properties/blueprint/bindingMeta";
 import { TextField } from "./TextField";
 import { NumberField } from "./NumberField";
 import { CheckboxField } from "./CheckboxField";
@@ -24,6 +26,30 @@ interface FieldRendererProps<TData> {
     onSaving: (saving: boolean) => void;
 }
 
+function wrapBindableField<TData>(
+    field: FieldDefinition<TData>,
+    data: TData,
+    onSaving: (saving: boolean) => void,
+    inner: ReactElement,
+): React.ReactNode {
+    if (!field.binding || !isUIInspectorData(data)) {
+        return inner;
+    }
+    return (
+        <BindablePropertyField
+            field={
+                field as FieldDefinition<UIInspectorData> & {
+                    binding: PropertyFieldBindingMeta;
+                }
+            }
+            data={data}
+            onSaving={onSaving}
+        >
+            {inner}
+        </BindablePropertyField>
+    );
+}
+
 /**
  * Renders the appropriate field component based on field type
  */
@@ -44,16 +70,36 @@ function FieldRendererInner<TData>({ field, data, onSaving }: FieldRendererProps
     switch (field.type) {
         case "text":
         case "textarea":
-            return <TextField field={field} data={data} onSaving={onSaving} />;
+            return wrapBindableField(
+                field,
+                data,
+                onSaving,
+                <TextField field={field} data={data} onSaving={onSaving} />,
+            );
 
         case "number":
-            return <NumberField field={field} data={data} onSaving={onSaving} />;
+            return wrapBindableField(
+                field,
+                data,
+                onSaving,
+                <NumberField field={field} data={data} onSaving={onSaving} />,
+            );
 
         case "checkbox":
-            return <CheckboxField field={field} data={data} onSaving={onSaving} />;
+            return wrapBindableField(
+                field,
+                data,
+                onSaving,
+                <CheckboxField field={field} data={data} onSaving={onSaving} />,
+            );
 
         case "select":
-            return <SelectField field={field} data={data} onSaving={onSaving} />;
+            return wrapBindableField(
+                field,
+                data,
+                onSaving,
+                <SelectField field={field} data={data} onSaving={onSaving} />,
+            );
 
         case "tags":
             return <TagsField field={field} data={data} onSaving={onSaving} />;

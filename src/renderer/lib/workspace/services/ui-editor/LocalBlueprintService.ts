@@ -10,7 +10,8 @@ import { UuidService } from "../core/UuidService";
 import { UIGraphService } from "./UIGraphService";
 import { createMainBlueprint, emptyMemberIndex } from "./blueprint/blueprintFactories";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
-import type { BlueprintEventGraph } from "@shared/types/blueprint/document";
+import type { BlueprintEventGraph, BlueprintFunctionGraph, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import { ensureBlueprintGraphIr } from "./blueprint/graphEditing";
 import { planSubtreeDuplicateBlueprintRemap, type SubtreeDuplicateRemapPlan } from "./blueprint/blueprintCopyRemap";
 import {
     buildReadonlyWidgetMainSummary,
@@ -388,6 +389,81 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             return [];
         }
         return Object.keys(bp.program.graphs.events ?? {});
+    }
+
+    public ensureFunctionGraph(blueprintId: string, functionId: string, displayName?: string): void {
+        this.applyBlueprintMutation(doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp) {
+                throw new RendererError(`Blueprint not found: ${blueprintId}`);
+            }
+            if (bp.program.kind !== "graph") {
+                throw new RendererError(`Blueprint ${blueprintId} is not a graph program`);
+            }
+            const prev = bp.program.graphs.functions[functionId];
+            const graphIr = prev?.graph ?? { nodes: {}, edges: [], entries: {} };
+            const next: BlueprintFunctionGraph = {
+                id: functionId,
+                name: displayName ?? prev?.name,
+                graph: graphIr,
+                meta: prev?.meta,
+            };
+            bp.program.graphs.functions[functionId] = next;
+        });
+    }
+
+    public removeFunctionGraph(blueprintId: string, functionId: string): void {
+        this.applyBlueprintMutation(doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp || bp.program.kind !== "graph") {
+                return;
+            }
+            delete bp.program.graphs.functions[functionId];
+        });
+    }
+
+    public listFunctionGraphIds(blueprintId: string): string[] {
+        const bp = this.getBlueprintDocument().blueprints[blueprintId];
+        if (!bp || bp.program.kind !== "graph") {
+            return [];
+        }
+        return Object.keys(bp.program.graphs.functions ?? {});
+    }
+
+    public updateEventGraphIr(blueprintId: string, eventId: string, updater: (ir: BlueprintGraphIr) => void): void {
+        this.applyBlueprintMutation(doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp || bp.program.kind !== "graph") {
+                return;
+            }
+            const slot = bp.program.graphs.events[eventId];
+            if (!slot) {
+                return;
+            }
+            const ir = ensureBlueprintGraphIr(slot.graph);
+            updater(ir);
+            slot.graph = ir;
+        });
+    }
+
+    public updateFunctionGraphIr(
+        blueprintId: string,
+        functionId: string,
+        updater: (ir: BlueprintGraphIr) => void,
+    ): void {
+        this.applyBlueprintMutation(doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp || bp.program.kind !== "graph") {
+                return;
+            }
+            const slot = bp.program.graphs.functions[functionId];
+            if (!slot) {
+                return;
+            }
+            const ir = ensureBlueprintGraphIr(slot.graph);
+            updater(ir);
+            slot.graph = ir;
+        });
     }
 
     public getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary {

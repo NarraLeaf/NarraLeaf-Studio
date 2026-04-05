@@ -22,6 +22,10 @@ export function createImageInspector(ctx: InspectorContext) {
                         type: "text",
                         label: "Asset ID",
                         placeholder: "Project asset id",
+                        binding: {
+                            propPath: "assetId",
+                            readLiteral: (d: D) => getImageProps(d.element).assetId,
+                        },
                         getValue: (d: D) => getImageProps(d.element).assetId,
                         setValue: (d: D, v: string) => {
                             documentService.updateElementProps(d.element.id, {

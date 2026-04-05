@@ -1,12 +1,41 @@
+import { useCallback, useMemo } from "react";
 import { EditorComponentProps } from "../../types";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
-import { Workflow } from "lucide-react";
+import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import {
+    ensureBlueprintGraphIr,
+    ensureDefaultGraphEntry,
+    createGraphNodeForPalette,
+} from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
+import { useBlueprintDocumentRevision } from "../hooks/useBlueprintDocumentRevision";
+import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
+import { useBlueprintEditorState } from "../state/useBlueprintEditorState";
+import { BlueprintEditorLayout } from "../components/BlueprintEditorLayout";
+import { BlueprintMemberTree } from "../components/BlueprintMemberTree";
+import { BlueprintInspectorPane } from "../components/BlueprintInspectorPane";
+import { BlueprintDiagnosticsPanel } from "../components/BlueprintDiagnosticsPanel";
+import { BlueprintFlowCanvas, cloneBlueprintIr, removeBlueprintNodeFromIr } from "../flow/BlueprintFlowCanvas";
+import { BlueprintNodePalette } from "../components/BlueprintNodePalette";
+import { BlueprintGraphToolbar } from "../components/BlueprintGraphToolbar";
+import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
+
+function getActiveIr(bp: Blueprint, view: ReturnType<typeof useBlueprintEditorState>["graphView"]): BlueprintGraphIr | null {
+    if (!view || bp.program.kind !== "graph") {
+        return null;
+    }
+    if (view.kind === "event") {
+        return ensureBlueprintGraphIr(bp.program.graphs.events[view.graphId]?.graph);
+    }
+    return ensureBlueprintGraphIr(bp.program.graphs.functions[view.graphId]?.graph);
+}
 
 export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
+    const revision = useBlueprintDocumentRevision();
 
     if (!isInitialized || !context || !payload?.blueprintId) {
         return (
@@ -17,6 +46,7 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
     }
 
     const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+    const uuid = context.services.get<UuidService>(Services.Uuid);
     const doc = localBp.getBlueprintDocument();
     const bp = doc.blueprints[payload.blueprintId];
     if (!bp) {
@@ -27,102 +57,187 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
         );
     }
 
-    const decls = Object.values(bp.members?.declarations ?? {});
-    const eventIds =
-        bp.program.kind === "graph" ? Object.keys(bp.program.graphs.events ?? {}) : [];
-    const bindings = Object.values(bp.bindings ?? {});
+    const eventIds = useMemo(() => localBp.listEventGraphIds(payload.blueprintId), [localBp, payload.blueprintId, revision]);
+    const functionIds = useMemo(
+        () => localBp.listFunctionGraphIds(payload.blueprintId),
+        [localBp, payload.blueprintId, revision],
+    );
 
-    return (
-        <div className="flex h-full flex-col gap-4 overflow-auto bg-[#0d0f11] p-6 text-sm text-gray-200">
-            <div className="flex items-start gap-3 border-b border-white/10 pb-4">
-                <Workflow className="mt-0.5 h-5 w-5 text-cyan-400/90" />
-                <div>
-                    <h1 className="text-base font-semibold text-white">Blueprint entry</h1>
-                    <p className="mt-1 text-xs text-gray-500 leading-relaxed">
-                        M4-lite: structured overview only. Editing graphs and bindings in Studio is planned for Visual
-                        Blueprint M4-full. Runtime execution and debug events live in Dev Mode.
-                    </p>
+    const editor = useBlueprintEditorState(payload, { eventIds, functionIds });
+    const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision);
+
+    const ir = getActiveIr(bp, editor.graphView);
+
+    const commitIr = useCallback(
+        (next: BlueprintGraphIr) => {
+            if (!editor.graphView) {
+                return;
+            }
+            const { blueprintId } = payload;
+            const apply = (draft: BlueprintGraphIr) => {
+                draft.nodes = next.nodes;
+                draft.edges = next.edges;
+                draft.entries = next.entries;
+                draft.meta = next.meta;
+                draft.variables = next.variables;
+            };
+            if (editor.graphView.kind === "event") {
+                localBp.updateEventGraphIr(blueprintId, editor.graphView.graphId, apply);
+            } else {
+                localBp.updateFunctionGraphIr(blueprintId, editor.graphView.graphId, apply);
+            }
+        },
+        [editor.graphView, localBp, payload],
+    );
+
+    const onPickPaletteType = useCallback(
+        (type: string) => {
+            if (!editor.graphView) {
+                return;
+            }
+            const id = uuid.generate();
+            const node = createGraphNodeForPalette(type, id);
+            const mut = (draft: BlueprintGraphIr) => {
+                const g = ensureBlueprintGraphIr(draft);
+                g.nodes = { ...g.nodes, [node.id]: node };
+                ensureDefaultGraphEntry(g, node.id);
+            };
+            if (editor.graphView.kind === "event") {
+                localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
+            } else {
+                localBp.updateFunctionGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
+            }
+        },
+        [editor.graphView, localBp, payload.blueprintId, uuid],
+    );
+
+    const onAddEvent = useCallback(() => {
+        const id = uuid.generate();
+        localBp.ensureEventGraph(payload.blueprintId, id, `Event ${id.slice(0, 8)}`);
+        editor.selectEventGraph(id);
+    }, [editor, localBp, payload.blueprintId, uuid]);
+
+    const onAddFunction = useCallback(() => {
+        const id = uuid.generate();
+        localBp.ensureFunctionGraph(payload.blueprintId, id, `Function ${id.slice(0, 8)}`);
+        editor.selectFunctionGraph(id);
+    }, [editor, localBp, payload.blueprintId, uuid]);
+
+    const onDeleteSelectedNode = useCallback(() => {
+        if (!editor.graphView || !editor.selectedNodeId || !ir) {
+            return;
+        }
+        const next = cloneBlueprintIr(ir);
+        removeBlueprintNodeFromIr(next, editor.selectedNodeId);
+        commitIr(next);
+        editor.setSelectedNodeId(null);
+    }, [commitIr, editor, ir]);
+
+    const onDiagnosticPick = useCallback(
+        (d: BlueprintGraphEditorDiagnostic) => {
+            const t = d.target;
+            if (!t) {
+                return;
+            }
+            if (t.kind === "declaration") {
+                editor.applyDiagnosticTarget({ kind: "declaration", declarationId: t.declarationId });
+                return;
+            }
+            if (t.kind === "binding") {
+                return;
+            }
+            editor.applyDiagnosticTarget({
+                kind: t.kind,
+                graphKind: t.graphKind,
+                graphId: t.graphId,
+                nodeId: t.kind === "node" ? t.nodeId : undefined,
+            });
+        },
+        [editor],
+    );
+
+    const graphKey = editor.graphView ? `${editor.graphView.kind}:${editor.graphView.graphId}` : "none";
+
+    const header = (
+        <div>
+            <h1 className="text-base font-semibold text-white">Visual Blueprint</h1>
+            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+                {payload.ownerKind} · surface <span className="text-cyan-400/80">{payload.surfaceId}</span>
+                {payload.elementId ? (
+                    <>
+                        {" "}
+                        · element <span className="text-cyan-400/80">{payload.elementId}</span>
+                    </>
+                ) : null}{" "}
+                · <span className="font-mono text-[11px] text-gray-400">{bp.name}</span>{" "}
+                <span className="font-mono text-[11px] text-gray-500">({bp.id})</span>
+            </p>
+        </div>
+    );
+
+    const canvas =
+        editor.graphView && ir ? (
+            <div className="flex h-full min-h-[400px] flex-col">
+                <BlueprintGraphToolbar
+                    graphLabel={`${editor.graphView.kind === "event" ? "Event" : "Function"} · ${editor.graphView.graphId}`}
+                    canDelete={Boolean(editor.selectedNodeId)}
+                    onDeleteSelectedNode={onDeleteSelectedNode}
+                />
+                <div className="min-h-0 flex-1">
+                    <BlueprintFlowCanvas
+                        graphKey={graphKey}
+                        ir={ir}
+                        revision={revision}
+                        selectedNodeId={editor.selectedNodeId}
+                        onSelectNodeId={editor.setSelectedNodeId}
+                        onCommitIr={commitIr}
+                    />
                 </div>
             </div>
+        ) : (
+            <div className="flex h-full min-h-[200px] items-center justify-center text-xs text-gray-500">
+                No graph to display. Add an event or function graph from the member tree.
+            </div>
+        );
 
-            <section className="space-y-2 rounded-lg border border-white/10 bg-[#111315] p-4">
-                <h2 className="text-xs font-medium uppercase tracking-wide text-gray-500">Owner</h2>
-                <p className="font-mono text-[11px] text-gray-300">
-                    {payload.ownerKind} · surface <span className="text-cyan-400/80">{payload.surfaceId}</span>
-                    {payload.elementId ? (
-                        <>
-                            {" "}
-                            · element <span className="text-cyan-400/80">{payload.elementId}</span>
-                        </>
-                    ) : null}
-                </p>
-                <p className="text-xs text-gray-400">
-                    <span className="text-gray-500">Blueprint</span> · {bp.name}{" "}
-                    <span className="font-mono text-[11px] text-gray-300">({bp.id})</span>
-                </p>
-                {payload.focusEventId ? (
-                    <p className="text-xs text-amber-400/90">Focus event: {payload.focusEventId}</p>
-                ) : null}
-            </section>
-
-            <section className="space-y-2 rounded-lg border border-white/10 bg-[#111315] p-4">
-                <h2 className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                    Declarations ({decls.length})
-                </h2>
-                {decls.length === 0 ? (
-                    <p className="text-xs text-gray-500">No declaration members yet.</p>
+    return (
+        <BlueprintEditorLayout
+            header={header}
+            memberTree={
+                <BlueprintMemberTree
+                    blueprint={bp}
+                    graphView={editor.graphView}
+                    memberFocus={editor.memberFocus}
+                    selectedNodeId={editor.selectedNodeId}
+                    diagnostics={diagnostics}
+                    onSelectEvent={editor.selectEventGraph}
+                    onSelectFunction={editor.selectFunctionGraph}
+                    onSelectDeclaration={editor.selectDeclaration}
+                    onSelectVariable={editor.selectVariable}
+                    onAddEvent={onAddEvent}
+                    onAddFunction={onAddFunction}
+                />
+            }
+            canvas={canvas}
+            palette={
+                editor.graphView ? (
+                    <BlueprintNodePalette onPickType={onPickPaletteType} />
                 ) : (
-                    <ul className="space-y-1 font-mono text-[11px] text-gray-300">
-                        {decls.map(d => (
-                            <li key={d.id}>
-                                {d.name}{" "}
-                                <span className="text-gray-500">
-                                    {d.valueSource?.kind === "surfaceState"
-                                        ? `→ surfaceState("${d.valueSource.key}")`
-                                        : "(no valueSource)"}
-                                </span>
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </section>
-
-            <section className="space-y-2 rounded-lg border border-white/10 bg-[#111315] p-4">
-                <h2 className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                    Event graphs ({eventIds.length})
-                </h2>
-                {eventIds.length === 0 ? (
-                    <p className="text-xs text-gray-500">No event graph slots stored on this blueprint.</p>
-                ) : (
-                    <ul className="space-y-1 font-mono text-[11px] text-gray-300">
-                        {eventIds.map(id => (
-                            <li key={id} className={id === payload.focusEventId ? "text-amber-300" : undefined}>
-                                {id}
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </section>
-
-            <section className="space-y-2 rounded-lg border border-white/10 bg-[#111315] p-4">
-                <h2 className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                    Bindings ({bindings.length})
-                </h2>
-                {bindings.length === 0 ? (
-                    <p className="text-xs text-gray-500">No property bindings on this blueprint.</p>
-                ) : (
-                    <ul className="space-y-1 text-[11px] text-gray-300">
-                        {bindings.map(b => (
-                            <li key={b.id} className={b.status === "broken" ? "text-amber-400" : undefined}>
-                                {b.target.kind === "widgetProp"
-                                    ? `${b.target.elementId} · ${b.target.propPath}`
-                                    : b.id}{" "}
-                                {b.status === "broken" ? `· broken (${b.brokenReason ?? "?"})` : null}
-                            </li>
-                        ))}
-                    </ul>
-                )}
-            </section>
-        </div>
+                    <p className="text-[11px] text-gray-500">Select a graph to add nodes.</p>
+                )
+            }
+            inspector={
+                <BlueprintInspectorPane
+                    blueprint={bp}
+                    blueprintId={payload.blueprintId}
+                    graphView={editor.graphView}
+                    memberFocus={editor.memberFocus}
+                    selectedNodeId={editor.selectedNodeId}
+                    ir={ir}
+                    localBp={localBp}
+                />
+            }
+            diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
+        />
     );
 }

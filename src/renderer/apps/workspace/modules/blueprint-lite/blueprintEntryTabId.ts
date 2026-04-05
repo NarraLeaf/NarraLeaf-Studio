@@ -2,13 +2,16 @@ import type { UIElementId, UISurfaceId } from "@shared/types/ui-editor/document"
 
 export type BlueprintEntryOwnerKind = "surfaceMain" | "widgetMain";
 
-/** Payload for M4-lite entry tab; stable for future M4-full editor handoff. */
+/** Payload for blueprint entry tab (M4-lite → M4-full); extended with editor focus fields. */
 export type BlueprintEntryTabPayload = {
     blueprintId: string;
     ownerKind: BlueprintEntryOwnerKind;
     surfaceId: UISurfaceId;
     elementId?: UIElementId;
     focusEventId?: string;
+    focusFunctionId?: string;
+    focusDeclarationId?: string;
+    focusNodeId?: string;
 };
 
 export function getBlueprintEntryTabId(parts: {
