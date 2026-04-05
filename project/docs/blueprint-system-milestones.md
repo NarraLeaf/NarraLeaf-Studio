@@ -974,6 +974,8 @@ import { bound, events } from "narraleaf-studio";
 - Visual / TypeScript 两种蓝图共用同一套宿主协议与调试体系
 - DevTools 已能阅读执行状态和错误
 
+**仓库当前衔接说明（P6 实施后）**：本地 `BlueprintDocument` 已升至 **schema v3**（`ownerRecords`、多私有修订 + `active`）；TypeScript 蓝图在 **Dev Mode 主进程路径** 经 esbuild 编译并以内联脚本装入 `DevModeBundle`；Workspace 侧独立 `BlueprintBuildService` / 磁盘 `editor/generated/blueprints/` manifest 仍为后续增强。TS 的 `bound.bindSymbol` 与属性绑定求值链尚未合并。
+
 ---
 
 ## 10. 每个里程碑的完成判定

@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
 import { EditorComponentProps } from "../../types";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
@@ -22,6 +23,9 @@ import { BlueprintFlowCanvas, cloneBlueprintIr, removeBlueprintNodeFromIr } from
 import { BlueprintNodePalette } from "../components/BlueprintNodePalette";
 import { BlueprintGraphToolbar } from "../components/BlueprintGraphToolbar";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
+import { TypeScriptBlueprintEditorPane } from "../ts/TypeScriptBlueprintEditorPane";
+import { BlueprintFrontendBadge } from "../components/BlueprintFrontendBadge";
+import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevisionBar";
 
 function getActiveIr(bp: Blueprint, view: ReturnType<typeof useBlueprintEditorState>["graphView"]): BlueprintGraphIr | null {
     if (!view || bp.program.kind !== "graph") {
@@ -65,6 +69,27 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
 
     const editor = useBlueprintEditorState(payload, { eventIds, functionIds });
     const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision);
+    const openBlueprint = useOpenBlueprintTarget();
+
+    const reopenRevision = useCallback(
+        (blueprintId: string) => {
+            openBlueprint({
+                blueprintId,
+                ownerKind: payload.ownerKind,
+                surfaceId: payload.surfaceId,
+                elementId: payload.elementId,
+                title: "Blueprint",
+            });
+        },
+        [openBlueprint, payload],
+    );
+
+    const onTsSourceChange = useCallback(
+        (code: string) => {
+            localBp.updateScriptModuleSource(payload.blueprintId, code);
+        },
+        [localBp, payload.blueprintId],
+    );
 
     const ir = getActiveIr(bp, editor.graphView);
 
@@ -158,9 +183,66 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
 
     const graphKey = editor.graphView ? `${editor.graphView.kind}:${editor.graphView.graphId}` : "none";
 
+    if (bp.program.kind === "scriptModule") {
+        const src = bp.program.source.code;
+        return (
+            <BlueprintEditorLayout
+                header={
+                    <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h1 className="text-base font-semibold text-white">TypeScript Blueprint</h1>
+                            <BlueprintFrontendBadge kind="typescript" />
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+                            {payload.ownerKind} · surface <span className="text-cyan-400/80">{payload.surfaceId}</span>
+                            {payload.elementId ? (
+                                <>
+                                    {" "}
+                                    · element <span className="text-cyan-400/80">{payload.elementId}</span>
+                                </>
+                            ) : null}{" "}
+                            · <span className="font-mono text-[11px] text-gray-400">{bp.name}</span>{" "}
+                            <span className="font-mono text-[11px] text-gray-500">({bp.id})</span>
+                        </p>
+                    </div>
+                }
+                memberTree={
+                    <div className="space-y-4">
+                        <BlueprintPrivateRevisionBar
+                            blueprint={bp}
+                            localBp={localBp}
+                            onReopenRevision={reopenRevision}
+                        />
+                        <p className="text-[11px] leading-relaxed text-gray-500">
+                            Use <span className="font-mono text-gray-400">events.on(&quot;…&quot;)</span> with the same
+                            event id as the UI behavior <span className="font-mono text-gray-400">blueprintEvent</span>{" "}
+                            binding. Run <span className="text-gray-400">Dev Mode</span> to compile and execute.
+                        </p>
+                    </div>
+                }
+                canvas={<TypeScriptBlueprintEditorPane code={src} onChange={onTsSourceChange} />}
+                palette={
+                    <p className="text-[11px] text-gray-500">
+                        TypeScript blueprints compile in the main process when Dev Mode starts (strict — errors block the
+                        preview).
+                    </p>
+                }
+                inspector={
+                    <p className="text-[11px] text-gray-500">
+                        Script modules register handlers at load; use DevTools in Dev Mode for execution traces.
+                    </p>
+                }
+                diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
+            />
+        );
+    }
+
     const header = (
         <div>
-            <h1 className="text-base font-semibold text-white">Visual Blueprint</h1>
+            <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-base font-semibold text-white">Visual Blueprint</h1>
+                <BlueprintFrontendBadge kind="visual" />
+            </div>
             <p className="mt-1 text-xs text-gray-500 leading-relaxed">
                 {payload.ownerKind} · surface <span className="text-cyan-400/80">{payload.surfaceId}</span>
                 {payload.elementId ? (

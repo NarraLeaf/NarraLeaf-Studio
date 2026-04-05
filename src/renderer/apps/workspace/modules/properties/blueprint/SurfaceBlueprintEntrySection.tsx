@@ -54,10 +54,11 @@ export function SurfaceBlueprintEntrySection({ data }: CustomFieldProps<SceneEdi
                 disabled={!summary.hasSurfaceMain || !summary.blueprintId}
                 onClick={() => openEntry()}
             >
-                Open Visual Blueprint editor
+                Open Blueprint editor
             </button>
             <p className="text-[11px] text-gray-500 leading-snug border-t border-white/5 pt-2 mt-2">
-                Edit graphs and members here; run and debug in Dev Mode.
+                Active surface main revision opens here (Visual or TypeScript). Switch revisions or add siblings inside
+                the editor; run and debug in Dev Mode.
             </p>
         </div>
     );

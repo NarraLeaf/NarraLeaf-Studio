@@ -10,6 +10,36 @@ export function emptyMemberIndex(): BlueprintMemberIndex {
     };
 }
 
+const TYPESCRIPT_BLUEPRINT_DEFAULT_SOURCE = `import { events } from "narraleaf-studio";
+
+events.on("click", async (ctx) => {
+  await ctx.host.devtools.log("TypeScript Blueprint");
+});
+`;
+
+export function createTypeScriptMainBlueprint(params: {
+    id: string;
+    name: string;
+    owner: BlueprintOwnerRef;
+}): Blueprint {
+    return {
+        id: params.id,
+        name: params.name,
+        owner: params.owner,
+        frontend: "typescript",
+        programKind: "scriptModule",
+        program: {
+            kind: "scriptModule",
+            source: {
+                language: "typescript",
+                code: TYPESCRIPT_BLUEPRINT_DEFAULT_SOURCE,
+            },
+        },
+        members: emptyMemberIndex(),
+        bindings: {},
+    };
+}
+
 export function createMainBlueprint(params: {
     id: string;
     name: string;
@@ -34,7 +64,7 @@ export function createMainBlueprint(params: {
 }
 
 /**
- * New project / empty graph file: one global main blueprint and owner index entry.
+ * New project / empty graph file: one global main blueprint and owner record entry.
  */
 export function createInitialBlueprintDocument(generateId: () => string): BlueprintDocument {
     const globalId = generateId();
@@ -48,14 +78,21 @@ export function createInitialBlueprintDocument(generateId: () => string): Bluepr
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: { [globalId]: globalBp },
-        ownerIndex: { [ownerKey]: globalId },
+        ownerRecords: {
+            [ownerKey]: {
+                activeBlueprintId: globalId,
+                privateBlueprintIds: [globalId],
+                initializedFrontend: "visual",
+            },
+        },
         meta: {},
     };
 }
 
 export function repairGlobalMainIfMissing(doc: BlueprintDocument, generateId: () => string): BlueprintDocument {
     const key = GLOBAL_MAIN_OWNER_KEY;
-    const existingId = doc.ownerIndex[key];
+    const rec = doc.ownerRecords[key];
+    const existingId = rec?.activeBlueprintId;
     if (existingId && doc.blueprints[existingId]?.owner.kind === "globalMain") {
         return doc;
     }
@@ -65,9 +102,18 @@ export function repairGlobalMainIfMissing(doc: BlueprintDocument, generateId: ()
         name: "Global",
         owner: { kind: "globalMain" },
     });
+    const prevIds = rec?.privateBlueprintIds ?? [];
+    const mergedIds = [...new Set([...prevIds, globalId])];
     return {
         ...doc,
         blueprints: { ...doc.blueprints, [globalId]: globalBp },
-        ownerIndex: { ...doc.ownerIndex, [key]: globalId },
+        ownerRecords: {
+            ...doc.ownerRecords,
+            [key]: {
+                activeBlueprintId: globalId,
+                privateBlueprintIds: mergedIds.length > 0 ? mergedIds : [globalId],
+                initializedFrontend: rec?.initializedFrontend ?? "visual",
+            },
+        },
     };
 }

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ContextMenu } from "@/lib/components/elements/ContextMenu";
-import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
+import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { Select } from "@/lib/components/elements/Select";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
@@ -182,30 +182,28 @@ export function createRectangleInspector(ctx: InspectorContext) {
                           current.cornerAdvanced ? current.borderRadiusTL : current.borderRadius
                         );
                       const uniformPlaceholder = showUniformPlaceholder ? "-" : undefined;
-                      const handleChange = (next: string) => {
-                        const radius = Number.parseFloat(next);
-                        if (!Number.isFinite(radius)) return;
-                        onSaving(true);
-                        try {
-                          const patch: Partial<RectangleProps> = {
-                            borderRadius: radius,
-                          };
-                          if (current.borderRadiusLinked) {
-                            patch.borderRadiusTL = radius;
-                            patch.borderRadiusTR = radius;
-                            patch.borderRadiusBL = radius;
-                            patch.borderRadiusBR = radius;
-                          }
-                          patchProps(patch);
-                        } finally {
-                          onSaving(false);
-                        }
-                      };
 
                       return (
-                        <EnhancedInput
-                          value={uniformValue}
-                          onChange={handleChange}
+                        <NumericDraftEnhancedInput
+                          committedDisplay={uniformValue}
+                          draftResetKey={element.id}
+                          onFiniteNumber={(radius) => {
+                            onSaving(true);
+                            try {
+                              const patch: Partial<RectangleProps> = {
+                                borderRadius: radius,
+                              };
+                              if (current.borderRadiusLinked) {
+                                patch.borderRadiusTL = radius;
+                                patch.borderRadiusTR = radius;
+                                patch.borderRadiusBL = radius;
+                                patch.borderRadiusBR = radius;
+                              }
+                              patchProps(patch);
+                            } finally {
+                              onSaving(false);
+                            }
+                          }}
                           inputMode="numeric"
                           type="number"
                           min={0}
@@ -348,22 +346,20 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     className: "flex-1",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const percent = Math.round((data.elements[0]?.layout.opacity ?? 1) * 100);
-                      const handleChange = (next: string) => {
-                        const value = Number.parseFloat(next);
-                        if (!Number.isFinite(value)) return;
-                        const clamped = Math.min(100, Math.max(0, value));
-                        onSaving(true);
-                        try {
-                          patchLayout({ opacity: clamped / 100 });
-                        } finally {
-                          onSaving(false);
-                        }
-                      };
 
                       return (
-                        <EnhancedInput
-                          value={String(percent)}
-                          onChange={handleChange}
+                        <NumericDraftEnhancedInput
+                          committedDisplay={String(percent)}
+                          draftResetKey={element.id}
+                          onFiniteNumber={(value) => {
+                            const clamped = Math.min(100, Math.max(0, value));
+                            onSaving(true);
+                            try {
+                              patchLayout({ opacity: clamped / 100 });
+                            } finally {
+                              onSaving(false);
+                            }
+                          }}
                           inputMode="numeric"
                           unit="%"
                           min={0}
@@ -423,22 +419,20 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const layoutRotation = data.elements[0]?.layout.rotation;
                       const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation : 0;
-                      const handleChange = (next: string) => {
-                        const value = Number.parseFloat(next);
-                        if (!Number.isFinite(value)) return;
-                        const clamped = Math.min(360, Math.max(-360, value));
-                        onSaving(true);
-                        try {
-                          patchLayout({ rotation: clamped });
-                        } finally {
-                          onSaving(false);
-                        }
-                      };
 
                       return (
-                        <EnhancedInput
-                          value={String(rotationValue)}
-                          onChange={handleChange}
+                        <NumericDraftEnhancedInput
+                          committedDisplay={String(rotationValue)}
+                          draftResetKey={element.id}
+                          onFiniteNumber={(value) => {
+                            const clamped = Math.min(360, Math.max(-360, value));
+                            onSaving(true);
+                            try {
+                              patchLayout({ rotation: clamped });
+                            } finally {
+                              onSaving(false);
+                            }
+                          }}
                           inputMode="numeric"
                           type="number"
                           min={-360}
@@ -542,24 +536,22 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     className: "flex-1",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const percent = Math.round(getProps(data.element).fillOpacity * 100);
-                      const handleChange = (next: string) => {
-                        const value = Number.parseFloat(next);
-                        if (!Number.isFinite(value)) return;
-                        const clamped = Math.min(100, Math.max(0, value));
-                        onSaving(true);
-                        try {
-                          patchProps({
-                            fillOpacity: clamped / 100,
-                          });
-                        } finally {
-                          onSaving(false);
-                        }
-                      };
 
                       return (
-                        <EnhancedInput
-                          value={String(percent)}
-                          onChange={handleChange}
+                        <NumericDraftEnhancedInput
+                          committedDisplay={String(percent)}
+                          draftResetKey={element.id}
+                          onFiniteNumber={(value) => {
+                            const clamped = Math.min(100, Math.max(0, value));
+                            onSaving(true);
+                            try {
+                              patchProps({
+                                fillOpacity: clamped / 100,
+                              });
+                            } finally {
+                              onSaving(false);
+                            }
+                          }}
                           inputMode="numeric"
                           unit="%"
                           min={0}
@@ -625,24 +617,22 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     className: "flex-1",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const percent = Math.round(getProps(data.element).fillOpacity * 100);
-                      const handleChange = (next: string) => {
-                        const value = Number.parseFloat(next);
-                        if (!Number.isFinite(value)) return;
-                        const clamped = Math.min(100, Math.max(0, value));
-                        onSaving(true);
-                        try {
-                          patchProps({
-                            fillOpacity: clamped / 100,
-                          });
-                        } finally {
-                          onSaving(false);
-                        }
-                      };
 
                       return (
-                        <EnhancedInput
-                          value={String(percent)}
-                          onChange={handleChange}
+                        <NumericDraftEnhancedInput
+                          committedDisplay={String(percent)}
+                          draftResetKey={element.id}
+                          onFiniteNumber={(value) => {
+                            const clamped = Math.min(100, Math.max(0, value));
+                            onSaving(true);
+                            try {
+                              patchProps({
+                                fillOpacity: clamped / 100,
+                              });
+                            } finally {
+                              onSaving(false);
+                            }
+                          }}
                           inputMode="numeric"
                           unit="%"
                           min={0}
@@ -720,21 +710,22 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     className: "flex-shrink-0 min-w-[100px]",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getProps(data.element);
-                      const handleChange = (next: string) => {
-                        const width = Number.parseFloat(next);
-                        if (!Number.isFinite(width) || width < 0) return;
-                        onSaving(true);
-                        try {
-                          patchProps({ borderWidth: width });
-                        } finally {
-                          onSaving(false);
-                        }
-                      };
 
                       return (
-                        <EnhancedInput
-                          value={String(current.borderWidth)}
-                          onChange={handleChange}
+                        <NumericDraftEnhancedInput
+                          committedDisplay={String(current.borderWidth)}
+                          draftResetKey={element.id}
+                          onFiniteNumber={(width) => {
+                            if (width < 0) {
+                              return;
+                            }
+                            onSaving(true);
+                            try {
+                              patchProps({ borderWidth: width });
+                            } finally {
+                              onSaving(false);
+                            }
+                          }}
                           inputMode="numeric"
                           type="number"
                           min={0}
@@ -820,24 +811,22 @@ export function createRectangleInspector(ctx: InspectorContext) {
                       const current = getProps(data.element);
                       const strokeVisible = current.strokeVisible;
                       const percent = Math.round(current.strokeOpacity * 100);
-                      const handleChange = (next: string) => {
-                        const value = Number.parseFloat(next);
-                        if (!Number.isFinite(value)) return;
-                        const clamped = Math.min(100, Math.max(0, value));
-                        onSaving(true);
-                        try {
-                          patchProps({
-                            strokeOpacity: clamped / 100,
-                          });
-                        } finally {
-                          onSaving(false);
-                        }
-                      };
 
                       return (
-                        <EnhancedInput
-                          value={String(percent)}
-                          onChange={handleChange}
+                        <NumericDraftEnhancedInput
+                          committedDisplay={String(percent)}
+                          draftResetKey={element.id}
+                          onFiniteNumber={(value) => {
+                            const clamped = Math.min(100, Math.max(0, value));
+                            onSaving(true);
+                            try {
+                              patchProps({
+                                strokeOpacity: clamped / 100,
+                              });
+                            } finally {
+                              onSaving(false);
+                            }
+                          }}
                           inputMode="numeric"
                           unit="%"
                           min={0}

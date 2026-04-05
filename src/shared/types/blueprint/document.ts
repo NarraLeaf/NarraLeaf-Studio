@@ -15,30 +15,41 @@ export type BlueprintOwnerRef =
     | { kind: "widgetMain"; surfaceId: string; elementId: string }
     | { kind: "sharedAsset"; assetId: string };
 
+export type BlueprintFrontendKind = "visual" | "typescript";
+
+export type BlueprintProgramKind = "graph" | "scriptModule";
+
 // ---------------------------------------------------------------------------
 // Document
 // ---------------------------------------------------------------------------
 
+/**
+ * Per private owner slot (global / surface / widget main): multiple blueprint revisions may exist,
+ * but only one is active for runtime resolution and default editor targeting (Blueprint M5).
+ */
+export type BlueprintPrivateOwnerRecord = {
+    activeBlueprintId: string;
+    privateBlueprintIds: string[];
+    /** Set when the owner slot was first initialized (informational). */
+    initializedFrontend?: BlueprintFrontendKind;
+};
+
 export type BlueprintDocument = {
     schemaVersion: BlueprintDocumentSchemaVersion;
     blueprints: Record<string, Blueprint>;
-    ownerIndex: Record<string, string>;
+    ownerRecords: Record<string, BlueprintPrivateOwnerRecord>;
     meta?: {
         createdAt?: string;
         updatedAt?: string;
     };
 };
 
-/** Stable string key for ownerIndex, e.g. globalMain, surfaceMain:<id>, widgetMain:<surfaceId>:<elementId> */
+/** Stable owner key, e.g. globalMain, surfaceMain:<id>, widgetMain:<surfaceId>:<elementId> */
 export type BlueprintOwnerIndexKey = string;
 
 // ---------------------------------------------------------------------------
 // Blueprint entity
 // ---------------------------------------------------------------------------
-
-export type BlueprintFrontendKind = "visual" | "typescript";
-
-export type BlueprintProgramKind = "graph" | "scriptModule";
 
 export type Blueprint = {
     id: string;

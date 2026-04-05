@@ -4,6 +4,7 @@ import chokidar, { FSWatcher } from "chokidar";
 import { App } from "@/app/app";
 import { AppWindow } from "../window/appWindow";
 import { IPCEventType } from "@shared/types/ipcEvents";
+import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type { SharedBlueprintAsset } from "@shared/types/blueprint/document";
 import { DevModeBundle, DevModeEntry, DevModeStatus } from "@shared/types/devMode";
@@ -11,6 +12,7 @@ import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { WindowAppType } from "@shared/types/window";
 import { Fs } from "@shared/utils/fs";
 import { INLangCompiler, NullNLangCompiler } from "./compiler/INLangCompiler";
+import { compileAllBlueprintScriptsForProject } from "./compiler/blueprint/compileProjectBlueprintScripts";
 
 type DevModeSession = {
     id: string;
@@ -120,16 +122,30 @@ export class DevModeManager {
             this.app.logger.error("[DevMode] nlang compile failed", compileResult.errors ?? []);
             return;
         }
-        const bundle = await this.buildBundle(session, compileResult.artifacts);
+        const blueprintScripts = await compileAllBlueprintScriptsForProject(session.projectPath);
+        if (!blueprintScripts.ok) {
+            session.status = "error";
+            this.app.logger.error("[DevMode] TypeScript blueprint compile failed", blueprintScripts.errors);
+            return;
+        }
+        const bundle = await this.buildBundle(session, compileResult.artifacts, blueprintScripts.scripts);
         this.sendBundle(session, bundle);
         session.status = "running";
     }
 
-    private async buildBundle(session: DevModeSession, compiled?: Record<string, unknown>): Promise<DevModeBundle> {
+    private async buildBundle(
+        session: DevModeSession,
+        compiled?: Record<string, unknown>,
+        blueprintCompiledScripts?: Record<string, string>,
+    ): Promise<DevModeBundle> {
         const uidocPath = path.join(session.projectPath, "editor", "ui", "uidoc.json");
         const uigraphsPath = path.join(session.projectPath, "editor", "ui", "uigraphs.json");
         const uidoc = await this.readJsonFile(uidocPath);
-        const uigraphs = await this.readJsonFile<UIGraphDocument>(uigraphsPath);
+        const uigraphsRaw = await this.readJsonFile<UIGraphDocument>(uigraphsPath);
+        const uigraphs: UIGraphDocument = {
+            ...uigraphsRaw,
+            blueprintDocument: migrateBlueprintDocumentToLatest(uigraphsRaw.blueprintDocument),
+        };
         const localBlueprints = uigraphs.blueprintDocument;
         const sharedBlueprints = await this.loadSharedBlueprints(session.projectPath);
         session.revision += 1;
@@ -144,6 +160,8 @@ export class DevModeManager {
                 sharedBlueprints,
             },
             compiled,
+            blueprintCompiledScripts,
+            blueprintScriptsCompileOk: true,
         };
     }
 

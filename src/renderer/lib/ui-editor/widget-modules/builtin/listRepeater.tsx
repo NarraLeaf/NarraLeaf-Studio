@@ -2,6 +2,7 @@ import { List } from "lucide-react";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ListRepeaterRenderer } from "./listRepeater/renderer";
 import { createListRepeaterInspector } from "./listRepeater/inspector";
+import { createListRepeaterDockerBarItems } from "./listRepeater/dockerBar";
 import { defaultListRepeaterWidgetProps } from "./listRepeater/types";
 
 export const ListRepeaterWidgetModule: UIWidgetModule = {
@@ -27,4 +28,8 @@ export const ListRepeaterWidgetModule: UIWidgetModule = {
     render: (props: WidgetRendererProps) => <ListRepeaterRenderer {...props} />,
 
     createInspector: createListRepeaterInspector,
+
+    createDockerBarItems: createListRepeaterDockerBarItems,
+
+    createMultiSelectDockerBarItems: createListRepeaterDockerBarItems,
 };

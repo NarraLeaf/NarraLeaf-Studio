@@ -56,6 +56,7 @@ function NumberFieldInner<TData>({ field, data, onSaving }: NumberFieldProps<TDa
                 readOnly={isReadOnly}
                 inputClassName={`w-full px-3 py-2 bg-[#1e1f22] border border-white/10 rounded-md text-sm text-gray-300 
                     focus:outline-none focus:border-primary/50 transition-colors 
+                    [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
                     disabled:opacity-50 disabled:cursor-not-allowed ${field.className || ""}`}
                 onSaving={handleSaving}
                 formatValue={formatValue}

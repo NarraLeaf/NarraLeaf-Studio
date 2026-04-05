@@ -118,6 +118,22 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
     const isGroupSelection = selectionIds.length > 1;
     const transformLocks = useRef(0);
     const [selectionEnabled, setSelectionEnabled] = useState(true);
+    const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
+
+    useEffect(() => {
+        const unsub = stateService.on("interactionOverrideChanged", setInteractionOverride);
+        return unsub;
+    }, [stateService]);
+
+    const inlineTextEditElementId =
+        interactionOverride?.kind === "textEdit" && interactionOverride.surfaceId === surfaceId
+            ? interactionOverride.elementId
+            : null;
+    const isInlineTextEditing =
+        Boolean(inlineTextEditElementId) &&
+        !isGroupSelection &&
+        selectionIds.length === 1 &&
+        selectionIds[0] === inlineTextEditElementId;
 
     const beginTransform = () => {
         transformLocks.current += 1;
@@ -273,6 +289,7 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         scheduleMoveableRectUpdate,
         beginTransform,
         endTransform,
+        inlineTextEditElementId,
     });
     const imageCropController = useImageCropController({
         documentService,
@@ -321,7 +338,7 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
                         className={
                             activeController.id === "imageCrop"
                                 ? "narraleaf-moveable narraleaf-moveable--crop"
-                                : "narraleaf-moveable"
+                                : `narraleaf-moveable${isInlineTextEditing ? " pointer-events-none" : ""}`
                         }
                         {...activeController.moveableProps}
                     />

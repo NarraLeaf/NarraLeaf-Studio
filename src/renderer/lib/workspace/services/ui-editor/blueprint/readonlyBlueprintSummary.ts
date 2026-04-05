@@ -1,5 +1,6 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
+import { getActiveBlueprintId } from "./ownerRecords";
 import { surfaceMainOwnerKey, widgetMainOwnerKey } from "./ownerKeys";
 
 /** Read-only inspector summary for a widget instance main blueprint (Blueprint M2). */
@@ -49,7 +50,7 @@ export function buildReadonlySurfaceMainSummary(
     surfaceId: string,
 ): ReadonlyBlueprintSurfaceSummary {
     const key = surfaceMainOwnerKey(surfaceId);
-    const blueprintId = doc.ownerIndex[key];
+    const blueprintId = getActiveBlueprintId(doc, key);
     const bp = blueprintId ? doc.blueprints[blueprintId] : undefined;
     if (!bp) {
         return emptyReadonlyBlueprintSurfaceSummary();
@@ -95,7 +96,7 @@ export function buildReadonlyWidgetMainSummary(
     element: UIElement,
 ): ReadonlyBlueprintWidgetSummary {
     const key = widgetMainOwnerKey(surfaceId, element.id);
-    const blueprintId = doc.ownerIndex[key];
+    const blueprintId = getActiveBlueprintId(doc, key);
     const bp = blueprintId ? doc.blueprints[blueprintId] : undefined;
     if (!bp) {
         return {

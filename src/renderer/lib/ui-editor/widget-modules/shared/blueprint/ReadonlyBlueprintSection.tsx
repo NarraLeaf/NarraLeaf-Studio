@@ -4,7 +4,7 @@ import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { useReadonlyBlueprintSummary } from "./useReadonlyBlueprintSummary";
 
 /**
- * Shared properties-panel block: instance Blueprint summary + entry to the Visual Blueprint editor.
+ * Shared properties-panel block: instance Blueprint summary + entry to the unified Blueprint editor.
  */
 export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorData>) {
     const surfaceId = data.surfaceId;
@@ -66,7 +66,7 @@ export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorD
                 disabled={!canOpenEntry}
                 onClick={() => openEntry()}
             >
-                Open Visual Blueprint editor
+                Open Blueprint editor
             </button>
             <p className="text-[11px] text-gray-500 leading-snug border-t border-white/5 pt-2 mt-2">
                 Use the properties binding row for Literal / Bound / Broken; run logic in Dev Mode.

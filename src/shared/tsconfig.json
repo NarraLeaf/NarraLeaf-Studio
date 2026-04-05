@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "paths": {
+      "@shared/*": ["./*"]
+    },
+    "typeRoots": ["../../node_modules/@types", "./types"],
+    "types": ["node"]
+  },
+  "include": ["./**/*.ts"]
+}

@@ -90,6 +90,10 @@ export function EnhancedInput({
 
     const paddingLeftClass = leftIcon ? "pl-10" : "pl-3";
     const paddingRightClass = unit ? "pr-10" : "pr-3";
+    const numberNoSpinnerClass =
+        rest.type === "number"
+            ? "[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            : "";
 
     return (
         <div
@@ -113,6 +117,7 @@ export function EnhancedInput({
                 onMouseUp={handleMouseUp}
                 className={`
                     flex-1 h-full bg-transparent border-none placeholder:text-gray-500 text-gray-100 focus:outline-none leading-none overflow-hidden text-ellipsis whitespace-nowrap
+                    ${numberNoSpinnerClass}
                     ${paddingLeftClass} ${paddingRightClass} ${inputClassName}
                 `}
                 {...rest}

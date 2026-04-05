@@ -52,13 +52,25 @@ export function ImageFillField<TData extends UIInspectorData>({
     const layout = element.layout;
 
     const rawFill = field.getValue(data);
+    const allowedModes = field.allowedFillModes;
     const normalizedFill: ImageFill = useMemo(() => {
-        return {
+        const base: ImageFill = {
             mode: rawFill?.mode ?? DEFAULT_FILL_MODE,
             assetId: rawFill?.assetId ?? null,
             cropPlacement: rawFill?.cropPlacement,
         };
-    }, [rawFill]);
+        if (allowedModes?.length && !allowedModes.includes(base.mode)) {
+            return { ...base, mode: allowedModes[0] };
+        }
+        return base;
+    }, [allowedModes, rawFill]);
+
+    const modeOptionsForUi = useMemo(() => {
+        if (!allowedModes?.length) {
+            return MODE_OPTIONS;
+        }
+        return MODE_OPTIONS.filter(option => allowedModes.includes(option.value));
+    }, [allowedModes]);
 
     const { url, metadata, loading } = useAssetObjectUrl(normalizedFill.assetId ?? null);
     const [isOpen, setIsOpen] = useState(false);
@@ -147,7 +159,8 @@ export function ImageFillField<TData extends UIInspectorData>({
         const override = stateService.getInteractionOverride();
         const isElementSelected =
             selection?.type === "element" && selection.data?.elementIds.includes(element.id);
-        if (isOpen && normalizedFill.mode === "crop" && surfaceId && isElementSelected) {
+        const cropAllowed = !allowedModes?.length || allowedModes.includes("crop");
+        if (isOpen && normalizedFill.mode === "crop" && cropAllowed && surfaceId && isElementSelected) {
             stateService.setInteractionOverride({
                 kind: "imageCrop",
                 surfaceId,
@@ -156,14 +169,18 @@ export function ImageFillField<TData extends UIInspectorData>({
             });
             return;
         }
-        if (override?.source === "imageFillPopover") {
+        if (override?.kind === "imageCrop" && override.source === "imageFillPopover") {
             stateService.setInteractionOverride(null);
         }
-    }, [element.id, normalizedFill.mode, isOpen, selection, surfaceId, stateService]);
+    }, [allowedModes, element.id, normalizedFill.mode, isOpen, selection, surfaceId, stateService]);
 
     useEffect(() => {
         return () => {
-            if (stateService?.getInteractionOverride()?.source === "imageFillPopover") {
+            if (!stateService) {
+                return;
+            }
+            const o = stateService.getInteractionOverride();
+            if (o?.kind === "imageCrop" && o.source === "imageFillPopover") {
                 stateService.setInteractionOverride(null);
             }
         };
@@ -220,9 +237,12 @@ export function ImageFillField<TData extends UIInspectorData>({
     }, [handlePanelPosition, isOpen]);
 
     const panelModeLabel = useMemo(
-        () => MODE_OPTIONS.find(option => option.value === normalizedFill.mode)?.label ?? normalizedFill.mode,
-        [normalizedFill.mode],
+        () =>
+            modeOptionsForUi.find(option => option.value === normalizedFill.mode)?.label ??
+            normalizedFill.mode,
+        [modeOptionsForUi, normalizedFill.mode],
     );
+    const panelTitle = field.label?.trim() ? field.label : "Image Fill";
     const previewLabel = normalizedFill.assetId ? "Image selected" : "No image";
 
     const togglePanel = useCallback(() => {
@@ -257,7 +277,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                       }}
                   >
                       <div className="flex items-center justify-between mb-3">
-                          <span className="text-sm font-semibold">Image Fill</span>
+                          <span className="text-sm font-semibold">{panelTitle}</span>
                           <button
                               type="button"
                               onClick={() => setIsOpen(false)}
@@ -272,7 +292,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                           <div>
                               <span className="text-xs text-gray-400 uppercase tracking-widest">Mode</span>
                               <Select
-                                  options={MODE_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+                                  options={modeOptionsForUi.map(option => ({ value: option.value, label: option.label }))}
                                   value={normalizedFill.mode}
                                   onChange={handleModeChange}
                                   fullWidth

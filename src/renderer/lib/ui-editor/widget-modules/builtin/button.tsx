@@ -2,6 +2,7 @@ import { MousePointerClick } from "lucide-react";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ButtonRenderer } from "./button/renderer";
 import { createButtonInspector } from "./button/inspector";
+import { createButtonDockerBarItems } from "./button/dockerBar";
 import { defaultButtonWidgetProps } from "./button/types";
 
 export const ButtonWidgetModule: UIWidgetModule = {
@@ -27,4 +28,8 @@ export const ButtonWidgetModule: UIWidgetModule = {
     render: (props: WidgetRendererProps) => <ButtonRenderer {...props} />,
 
     createInspector: createButtonInspector,
+
+    createDockerBarItems: createButtonDockerBarItems,
+
+    createMultiSelectDockerBarItems: createButtonDockerBarItems,
 };

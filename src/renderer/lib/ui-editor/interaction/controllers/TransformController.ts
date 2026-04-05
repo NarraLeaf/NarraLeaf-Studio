@@ -14,6 +14,8 @@ interface TransformControllerConfig {
     scheduleMoveableRectUpdate: () => void;
     beginTransform: () => void;
     endTransform: () => void;
+    /** When set, Moveable is non-interactive so inline editors (e.g. text) can receive pointer events. */
+    inlineTextEditElementId: string | null;
 }
 
 export function useTransformController(config: TransformControllerConfig): InteractionController {
@@ -36,10 +38,16 @@ export function useTransformController(config: TransformControllerConfig): Inter
         });
     }, [config.documentService, config.selectionIds]);
 
+    const isInlineTextEditing = Boolean(
+        config.inlineTextEditElementId &&
+            config.selectionIds.length === 1 &&
+            config.selectionIds[0] === config.inlineTextEditElementId,
+    );
+
     const moveableProps = useMemo<Partial<MoveableProps>>(() => ({
-        draggable: !selectionHasFlowLayoutChild,
-        resizable: true,
-        rotatable: true,
+        draggable: !isInlineTextEditing && !selectionHasFlowLayoutChild,
+        resizable: !isInlineTextEditing,
+        rotatable: !isInlineTextEditing,
         keepRatio: false,
         origin: true,
         zoom: config.viewportScale,
@@ -63,7 +71,7 @@ export function useTransformController(config: TransformControllerConfig): Inter
         onRotateGroupStart: handlers.handleRotateGroupStart,
         onRotateGroup: handlers.handleRotateGroup,
         onRotateGroupEnd: handlers.handleRotateGroupEnd,
-    }), [config.viewportScale, handlers, selectionHasFlowLayoutChild]);
+    }), [config.viewportScale, handlers, isInlineTextEditing, selectionHasFlowLayoutChild]);
 
     return {
         id: "transform",

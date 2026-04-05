@@ -177,11 +177,12 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         if (!a || !b) {
             return false;
         }
-        return (
-            a.kind === b.kind &&
-            a.surfaceId === b.surfaceId &&
-            a.elementId === b.elementId &&
-            a.source === b.source
-        );
+        if (a.kind !== b.kind || a.surfaceId !== b.surfaceId || a.elementId !== b.elementId) {
+            return false;
+        }
+        if (a.kind === "imageCrop" && b.kind === "imageCrop") {
+            return a.source === b.source;
+        }
+        return a.kind === "textEdit" && b.kind === "textEdit";
     }
 }

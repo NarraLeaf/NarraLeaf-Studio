@@ -46,4 +46,11 @@ export type DevModeBundle = {
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;
+    /**
+     * Blueprint M5: IIFE bundle JS per TypeScript blueprint id (local + shared), executed in Dev Mode before runtime.
+     */
+    blueprintCompiledScripts?: Record<string, string>;
+    /** When present and false, blueprint script compilation failed (strict block). */
+    blueprintScriptsCompileOk?: boolean;
+    blueprintScriptsCompileErrors?: string[];
 };

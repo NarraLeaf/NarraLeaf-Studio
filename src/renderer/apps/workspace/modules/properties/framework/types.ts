@@ -1,6 +1,6 @@
 import { ReactNode, ComponentType, RefObject } from "react";
 import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
-import type { ImageFill } from "@shared/types/ui-editor/imageFill";
+import type { ImageFill, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import type { PropertyFieldBindingMeta } from "@/apps/workspace/modules/properties/blueprint/bindingMeta";
 
 /**
@@ -327,6 +327,8 @@ export interface ImageFillFieldDefinition<TData = any> extends BaseFieldDefiniti
     type: "imageFill";
     getValue: (data: TData) => ImageFill | undefined;
     setValue: (data: TData, value: ImageFill) => void | Promise<void>;
+    /** When set, mode dropdown and canvas crop are limited to these modes (e.g. nl.image has no crop overlay). */
+    allowedFillModes?: ImageFillMode[];
 }
 
 /**

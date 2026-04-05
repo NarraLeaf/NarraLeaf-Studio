@@ -50,6 +50,10 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             eventName,
             hostAdapter: adapter,
             debug,
+            getSurfaceState: key => surfaceState.get(key),
+            setSurfaceState: (key, value) => {
+                surfaceState.set(key, value);
+            },
         });
     };
 

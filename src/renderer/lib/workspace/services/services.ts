@@ -23,6 +23,7 @@ import type {
     BlueprintDeclaration,
     BlueprintDeclarationValueSource,
     BlueprintDocument,
+    BlueprintFrontendKind,
     BlueprintGraphIr,
 } from "@shared/types/blueprint/document";
 import type {
@@ -261,12 +262,18 @@ interface ILocalBlueprintService extends IService {
     listFunctionGraphIds(blueprintId: string): string[];
     updateEventGraphIr(blueprintId: string, eventId: string, updater: (ir: BlueprintGraphIr) => void): void;
     updateFunctionGraphIr(blueprintId: string, functionId: string, updater: (ir: BlueprintGraphIr) => void): void;
+    updateScriptModuleSource(blueprintId: string, code: string): void;
     getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary;
     planSubtreeDuplicateBlueprintRemap(input: {
         surfaceId: string;
         oldElementIds: string[];
         generateId: () => string;
     }): SubtreeDuplicateRemapPlan;
+    /** Private owner slot keys: globalMain, surfaceMain:<id>, widgetMain:<surfaceId>:<elementId>. */
+    listPrivateBlueprintIdsForOwnerKey(ownerKey: string): string[];
+    setActivePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void;
+    /** Adds a new blueprint revision for the owner; becomes active; prior blueprints stay in the record. */
+    createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): string;
 }
 
 interface IUIBlueprintLifecycleCoordinator extends IService {
@@ -279,12 +286,18 @@ interface IUIRuntimeBridgeService extends IService {
     registerElementRenderer(definition: ElementRendererDefinition): void;
 }
 
-export type InteractionOverride = {
-    kind: "imageCrop";
-    surfaceId: string;
-    elementId: string;
-    source: string;
-};
+export type InteractionOverride =
+    | {
+          kind: "imageCrop";
+          surfaceId: string;
+          elementId: string;
+          source: string;
+      }
+    | {
+          kind: "textEdit";
+          surfaceId: string;
+          elementId: string;
+      };
 
 interface UIEditorStateEvents {
     toolChanged: UITool;

@@ -2,6 +2,7 @@ import { Type } from "lucide-react";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { TextRenderer } from "./text/renderer";
 import { createTextInspector } from "./text/inspector";
+import { createTextDockerBarItems } from "./text/dockerBar";
 import { defaultTextWidgetProps } from "./text/types";
 
 export const TextWidgetModule: UIWidgetModule = {
@@ -27,4 +28,8 @@ export const TextWidgetModule: UIWidgetModule = {
     render: (props: WidgetRendererProps) => <TextRenderer {...props} />,
 
     createInspector: createTextInspector,
+
+    createDockerBarItems: createTextDockerBarItems,
+
+    createMultiSelectDockerBarItems: createTextDockerBarItems,
 };

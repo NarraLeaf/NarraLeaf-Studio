@@ -1,12 +1,12 @@
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
-import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { getButtonProps } from "./helpers";
 
 export function ButtonRenderer({ element, children, hostAdapter }: WidgetRendererProps) {
     const p = getButtonProps(element);
-    const bg = colorValueToCss({ hex: p.backgroundColor, alpha: 1 });
-    const borderColor = colorValueToCss({ hex: p.borderColor, alpha: 1 });
+    const bg = colorValueToCss(parseColorValue(p.backgroundColor, { hex: "#374151", alpha: 1 }));
+    const borderColor = colorValueToCss(parseColorValue(p.borderColor, { hex: "#000000", alpha: 1 }));
     const rt = hostAdapter.blueprintRuntime;
     const dispatchClick = rt
         ? () => {
