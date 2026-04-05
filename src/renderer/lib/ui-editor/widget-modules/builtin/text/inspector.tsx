@@ -23,6 +23,10 @@ export function createTextInspector(ctx: InspectorContext) {
                         type: "textarea",
                         label: "Content",
                         rows: 4,
+                        binding: {
+                            propPath: "text",
+                            readLiteral: (d: D) => getTextProps(d.element).text,
+                        },
                         getValue: (d: D) => getTextProps(d.element).text,
                         setValue: (d: D, v: string) => {
                             documentService.updateElementProps(d.element.id, {

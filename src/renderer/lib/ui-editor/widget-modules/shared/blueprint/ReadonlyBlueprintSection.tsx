@@ -1,38 +1,27 @@
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
-import { useRegistry } from "@/apps/workspace/registry";
-import { BlueprintEntryTab } from "@/apps/workspace/modules/blueprint-lite/editors/BlueprintEntryTab";
-import {
-    getBlueprintEntryTabId,
-    type BlueprintEntryTabPayload,
-} from "@/apps/workspace/modules/blueprint-lite/blueprintEntryTabId";
+import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { useReadonlyBlueprintSummary } from "./useReadonlyBlueprintSummary";
 
 /**
- * Shared properties-panel block: instance Blueprint summary + M4-lite entry (read-only, no binding edit).
+ * Shared properties-panel block: instance Blueprint summary + entry to the Visual Blueprint editor.
  */
 export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorData>) {
     const surfaceId = data.surfaceId;
     const element = data.element;
     const summary = useReadonlyBlueprintSummary(null, surfaceId, element);
-    const { openEditorTab } = useRegistry();
+    const openBlueprint = useOpenBlueprintTarget();
 
     const openEntry = () => {
         if (!summary.blueprintId || !surfaceId) {
             return;
         }
-        const payload: BlueprintEntryTabPayload = {
+        openBlueprint({
             blueprintId: summary.blueprintId,
             ownerKind: "widgetMain",
             surfaceId,
             elementId: element.id,
-        };
-        openEditorTab({
-            id: getBlueprintEntryTabId({ blueprintId: summary.blueprintId, surfaceId, elementId: element.id }),
             title: `Blueprint · ${element.name ?? element.type}`,
-            component: BlueprintEntryTab,
-            payload,
-            closable: true,
         });
     };
 
@@ -77,11 +66,10 @@ export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorD
                 disabled={!canOpenEntry}
                 onClick={() => openEntry()}
             >
-                Open blueprint entry
+                Open Visual Blueprint editor
             </button>
             <p className="text-[11px] text-gray-500 leading-snug border-t border-white/5 pt-2 mt-2">
-                Binding editing and graph authoring are planned for Visual Blueprint M4-full. This editor stays static /
-                layout-only; use Dev Mode for runtime execution and the Blueprint debug panel.
+                Use the properties binding row for Literal / Bound / Broken; run logic in Dev Mode.
             </p>
         </div>
     );

@@ -1,6 +1,7 @@
 import { ReactNode, ComponentType, RefObject } from "react";
 import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
+import type { PropertyFieldBindingMeta } from "@/apps/workspace/modules/properties/blueprint/bindingMeta";
 
 /**
  * Supported field types for property editors
@@ -49,6 +50,8 @@ export interface BaseFieldDefinition<TData = any> {
     className?: string;
     /** Field order (lower values appear first) */
     order?: number;
+    /** When set on UI inspector fields, shows Literal / Bound / Broken and blueprint actions. */
+    binding?: PropertyFieldBindingMeta;
 }
 
 /**

@@ -1,15 +1,10 @@
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
-import { useRegistry } from "@/apps/workspace/registry";
-import { BlueprintEntryTab } from "@/apps/workspace/modules/blueprint-lite/editors/BlueprintEntryTab";
-import {
-    getBlueprintEntryTabId,
-    type BlueprintEntryTabPayload,
-} from "@/apps/workspace/modules/blueprint-lite/blueprintEntryTabId";
+import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useReadonlySurfaceBlueprintSummary } from "@/lib/ui-editor/widget-modules/shared/blueprint/useReadonlySurfaceBlueprintSummary";
 import type { SceneEditorContext } from "../schemas/sceneSchema";
 
 export function SurfaceBlueprintEntrySection({ data }: CustomFieldProps<SceneEditorContext>) {
-    const { openEditorTab } = useRegistry();
+    const openBlueprint = useOpenBlueprintTarget();
     const surfaceId = data.surface.id;
     const summary = useReadonlySurfaceBlueprintSummary(data.documentService, surfaceId);
 
@@ -17,17 +12,11 @@ export function SurfaceBlueprintEntrySection({ data }: CustomFieldProps<SceneEdi
         if (!summary.blueprintId) {
             return;
         }
-        const payload: BlueprintEntryTabPayload = {
+        openBlueprint({
             blueprintId: summary.blueprintId,
             ownerKind: "surfaceMain",
             surfaceId,
-        };
-        openEditorTab({
-            id: getBlueprintEntryTabId({ blueprintId: summary.blueprintId, surfaceId }),
             title: `Blueprint · ${data.surface.name || "Surface"}`,
-            component: BlueprintEntryTab,
-            payload,
-            closable: true,
         });
     };
 
@@ -65,10 +54,10 @@ export function SurfaceBlueprintEntrySection({ data }: CustomFieldProps<SceneEdi
                 disabled={!summary.hasSurfaceMain || !summary.blueprintId}
                 onClick={() => openEntry()}
             >
-                Open blueprint entry
+                Open Visual Blueprint editor
             </button>
             <p className="text-[11px] text-gray-500 leading-snug border-t border-white/5 pt-2 mt-2">
-                Visual graph editing is not available in this milestone. Use Dev Mode to run wired event graphs.
+                Edit graphs and members here; run and debug in Dev Mode.
             </p>
         </div>
     );

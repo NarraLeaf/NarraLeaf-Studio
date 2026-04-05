@@ -23,6 +23,7 @@ import type {
     BlueprintDeclaration,
     BlueprintDeclarationValueSource,
     BlueprintDocument,
+    BlueprintGraphIr,
 } from "@shared/types/blueprint/document";
 import type {
     ReadonlyBlueprintSurfaceSummary,
@@ -255,6 +256,11 @@ interface ILocalBlueprintService extends IService {
     ensureEventGraph(blueprintId: string, eventId: string, displayName?: string): void;
     removeEventGraph(blueprintId: string, eventId: string): void;
     listEventGraphIds(blueprintId: string): string[];
+    ensureFunctionGraph(blueprintId: string, functionId: string, displayName?: string): void;
+    removeFunctionGraph(blueprintId: string, functionId: string): void;
+    listFunctionGraphIds(blueprintId: string): string[];
+    updateEventGraphIr(blueprintId: string, eventId: string, updater: (ir: BlueprintGraphIr) => void): void;
+    updateFunctionGraphIr(blueprintId: string, functionId: string, updater: (ir: BlueprintGraphIr) => void): void;
     getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary;
     planSubtreeDuplicateBlueprintRemap(input: {
         surfaceId: string;
