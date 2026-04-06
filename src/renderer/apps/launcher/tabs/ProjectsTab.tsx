@@ -1,7 +1,7 @@
 
 import { getInterface } from "@/lib/app/bridge";
 import { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
-import { FolderOpen, Plus } from "lucide-react";
+import { FolderOpen, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function ProjectsTab() {
@@ -38,6 +38,30 @@ export function ProjectsTab() {
             console.error("Error opening recent project:", error);
         } finally {
             setIsOpening(false);
+        }
+    };
+
+    const handleRemoveRecentProject = async (project: RecentlyOpenedProject) => {
+        const next = recentProjects.filter((p) => p.path !== project.path);
+        setRecentProjects(next);
+        try {
+            const result = await getInterface().app.state.setGlobalState("app.recentProjects", next);
+            if (!result.success) {
+                const reload = await getInterface().app.state.getGlobalState("app.recentProjects");
+                if (reload.success) {
+                    setRecentProjects(reload.data.value || []);
+                }
+            }
+        } catch (error) {
+            console.error("Failed to remove recent project:", error);
+            try {
+                const reload = await getInterface().app.state.getGlobalState("app.recentProjects");
+                if (reload.success) {
+                    setRecentProjects(reload.data.value || []);
+                }
+            } catch {
+                /* ignore */
+            }
         }
     };
 
@@ -115,35 +139,52 @@ export function ProjectsTab() {
                     </div> */}
                     <div className="space-y-2">
                         {recentProjects.map((project, index) => (
-                            <button
+                            <div
                                 key={`${project.path}-${index}`}
-                                onClick={() => handleOpenRecentProject(project)}
-                                disabled={isOpening}
-                                className="w-full p-3 text-left bg-white/5 hover:bg-white/10 rounded-md transition-colors cursor-default disabled:opacity-50 disabled:cursor-not-allowed group"
-                                title={`Open ${project.name}`}
+                                className="relative group rounded-md bg-white/5 hover:bg-white/10 transition-colors"
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className="flex-shrink-0 w-8 h-8 bg-white/10 rounded-md flex items-center justify-center">
-                                        {project.icon ? (
-                                            <img
-                                                src={project.icon}
-                                                alt=""
-                                                className="w-5 h-5 object-contain"
-                                            />
-                                        ) : (
-                                            <FolderOpen className="w-4 h-4 text-gray-400" />
-                                        )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-medium text-gray-200 truncate">
-                                            {project.name}
+                                <button
+                                    type="button"
+                                    onClick={() => handleOpenRecentProject(project)}
+                                    disabled={isOpening}
+                                    className="w-full p-3 pr-11 text-left rounded-md transition-colors cursor-default disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title={`Open ${project.name}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex-shrink-0 w-8 h-8 bg-white/10 rounded-md flex items-center justify-center">
+                                            {project.icon ? (
+                                                <img
+                                                    src={project.icon}
+                                                    alt=""
+                                                    className="w-5 h-5 object-contain"
+                                                />
+                                            ) : (
+                                                <FolderOpen className="w-4 h-4 text-gray-400" />
+                                            )}
                                         </div>
-                                        <div className="text-xs text-gray-500 truncate">
-                                            {project.path}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-medium text-gray-200 truncate">
+                                                {project.name}
+                                            </div>
+                                            <div className="text-xs text-gray-500 truncate">
+                                                {project.path}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            </button>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        void handleRemoveRecentProject(project);
+                                    }}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-gray-400 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 transition-opacity cursor-default"
+                                    title="Remove from recent"
+                                    aria-label={`Remove ${project.name} from recent projects`}
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
                         ))}
                     </div>
                 </div>

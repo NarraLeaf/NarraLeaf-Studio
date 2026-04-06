@@ -17,7 +17,7 @@ import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphServic
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
-import { getProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/builtin/rectangle/helpers";
+import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
 type ViewportTransform = {
@@ -273,12 +273,12 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                 });
                 return;
             }
-            const isRectangle = element.type === "nl.rectangle";
+            const isContainer = element.type === "nl.container";
             const isImageWidget = element.type === "nl.image";
-            if (!isRectangle && !isImageWidget) {
+            if (!isContainer && !isImageWidget) {
                 return;
             }
-            const props = isImageWidget ? getImageWidgetRectangleProps(element) : getProps(element);
+            const props = isImageWidget ? getImageWidgetRectangleProps(element) : getRectangleLikeProps(element);
             if (props.fillType !== "image") {
                 return;
             }
@@ -378,7 +378,6 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                     </div>
                 </div>
 
-                {/* Interaction layer */}
                 <UIEditorInteractionLayer
                     surfaceId={surface.id}
                     surface={surface}

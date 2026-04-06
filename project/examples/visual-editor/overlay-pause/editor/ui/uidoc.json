@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "id": "ex-doc-pause",
   "name": "Example · Overlay / Pause menu",
   "surfaces": [
@@ -30,6 +30,7 @@
       "childrenIds": ["ex-el-pause-menu"],
       "layout": { "x": 0, "y": 0, "width": 1280, "height": 720, "visible": true, "opacity": 1 },
       "props": {
+        "layoutKind": "free",
         "backgroundColor": "#0f172a",
         "borderRadius": 0,
         "borderWidth": 0,
@@ -40,20 +41,26 @@
     },
     "ex-el-pause-menu": {
       "id": "ex-el-pause-menu",
-      "type": "nl.stack",
+      "type": "nl.container",
       "name": "Menu stack",
       "parentId": "ex-el-pause-dim",
       "childrenIds": ["ex-el-pause-title", "ex-el-pause-div", "ex-el-pause-resume", "ex-el-pause-settings", "ex-el-pause-quit"],
       "layout": { "x": 490, "y": 220, "width": 300, "height": 280, "visible": true, "opacity": 1 },
       "props": {
-        "direction": "vertical",
-        "gap": 12,
-        "paddingTop": 20,
-        "paddingRight": 20,
-        "paddingBottom": 20,
-        "paddingLeft": 20,
-        "alignItems": "stretch",
-        "justifyContent": "start"
+        "layoutKind": "stack",
+        "stackDirection": "vertical",
+        "stackGap": 12,
+        "stackPaddingTop": 20,
+        "stackPaddingRight": 20,
+        "stackPaddingBottom": 20,
+        "stackPaddingLeft": 20,
+        "stackAlignItems": "stretch",
+        "stackJustifyContent": "start",
+        "backgroundColor": "transparent",
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
       }
     },
     "ex-el-pause-title": {
@@ -74,18 +81,20 @@
     },
     "ex-el-pause-div": {
       "id": "ex-el-pause-div",
-      "type": "nl.spacerDivider",
+      "type": "nl.container",
       "name": "Divider",
       "parentId": "ex-el-pause-menu",
       "childrenIds": [],
-      "layout": { "x": 0, "y": 0, "width": 260, "height": 8, "visible": true, "opacity": 1 },
+      "layout": { "x": 0, "y": 0, "width": 260, "height": 1, "visible": true, "opacity": 1 },
       "props": {
-        "mode": "divider",
-        "orientation": "horizontal",
-        "thickness": 1,
-        "color": "#4b5563",
-        "insetStart": 0,
-        "insetEnd": 0
+        "layoutKind": "free",
+        "backgroundColor": "#4b5563",
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "fillType": "color",
+        "fillVisible": true,
+        "clipContent": true
       }
     },
     "ex-el-pause-resume": {

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "id": "ex-doc-dialog",
   "name": "Example · Dialog (App Surface)",
   "surfaces": [
@@ -29,6 +29,7 @@
       "childrenIds": ["ex-el-dialog-vstack"],
       "layout": { "x": 340, "y": 200, "width": 600, "height": 300, "visible": true, "opacity": 1 },
       "props": {
+        "layoutKind": "free",
         "backgroundColor": "#1f2937",
         "borderRadius": 12,
         "borderWidth": 1,
@@ -39,20 +40,26 @@
     },
     "ex-el-dialog-vstack": {
       "id": "ex-el-dialog-vstack",
-      "type": "nl.stack",
+      "type": "nl.container",
       "name": "Content stack",
       "parentId": "ex-el-dialog-panel",
       "childrenIds": ["ex-el-dialog-title", "ex-el-dialog-body", "ex-el-dialog-actions"],
       "layout": { "x": 0, "y": 0, "width": 600, "height": 300, "visible": true, "opacity": 1 },
       "props": {
-        "direction": "vertical",
-        "gap": 16,
-        "paddingTop": 24,
-        "paddingRight": 24,
-        "paddingBottom": 24,
-        "paddingLeft": 24,
-        "alignItems": "stretch",
-        "justifyContent": "start"
+        "layoutKind": "stack",
+        "stackDirection": "vertical",
+        "stackGap": 16,
+        "stackPaddingTop": 24,
+        "stackPaddingRight": 24,
+        "stackPaddingBottom": 24,
+        "stackPaddingLeft": 24,
+        "stackAlignItems": "stretch",
+        "stackJustifyContent": "start",
+        "backgroundColor": "transparent",
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
       }
     },
     "ex-el-dialog-title": {
@@ -89,20 +96,26 @@
     },
     "ex-el-dialog-actions": {
       "id": "ex-el-dialog-actions",
-      "type": "nl.stack",
+      "type": "nl.container",
       "name": "Actions",
       "parentId": "ex-el-dialog-vstack",
       "childrenIds": ["ex-el-dialog-btn-ok", "ex-el-dialog-btn-cancel"],
       "layout": { "x": 0, "y": 0, "width": 552, "height": 44, "visible": true, "opacity": 1 },
       "props": {
-        "direction": "horizontal",
-        "gap": 12,
-        "paddingTop": 0,
-        "paddingRight": 0,
-        "paddingBottom": 0,
-        "paddingLeft": 0,
-        "alignItems": "center",
-        "justifyContent": "end"
+        "layoutKind": "stack",
+        "stackDirection": "horizontal",
+        "stackGap": 12,
+        "stackPaddingTop": 0,
+        "stackPaddingRight": 0,
+        "stackPaddingBottom": 0,
+        "stackPaddingLeft": 0,
+        "stackAlignItems": "center",
+        "stackJustifyContent": "end",
+        "backgroundColor": "transparent",
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
       }
     },
     "ex-el-dialog-btn-ok": {

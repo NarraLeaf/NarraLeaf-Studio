@@ -1,7 +1,7 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
-import { getProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/builtin/rectangle/helpers";
+import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import type { UISurfaceDiagnostic } from "../types";
 
 function imageFillMissingAsset(fill: ImageFill | undefined): boolean {
@@ -35,16 +35,16 @@ export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiag
                 });
             }
         }
-        if (el.type === "nl.rectangle") {
-            const p = getProps(el);
+        if (el.type === "nl.container") {
+            const p = getRectangleLikeProps(el);
             if (p.fillType === "image") {
                 const fill = normalizeImageFill(p);
                 if (imageFillMissingAsset(fill)) {
                     out.push({
-                        id: `res:rect-image:${el.id}`,
+                        id: `res:container-image:${el.id}`,
                         severity: "warning",
                         source: "resource",
-                        message: `Rectangle “${el.name ?? el.id}” uses image fill without an asset`,
+                        message: `Container “${el.name ?? el.id}” uses image fill without an asset`,
                         hint: "Pick an image asset or switch fill type.",
                         elementId: el.id,
                     });

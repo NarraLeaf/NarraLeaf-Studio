@@ -84,6 +84,35 @@ export function useMoveableHandlers({
     const resizeCache = useRef<Map<string, ResizeCacheEntry>>(new Map());
     const resizeStartCache = useRef<Map<string, ResizeStartEntry>>(new Map());
     const rotateCache = useRef<Map<string, number>>(new Map());
+    const performanceHintCache = useRef<
+        Map<HTMLElement, { willChange: string; backfaceVisibility: string; transformOrigin: string }>
+    >(new Map());
+
+    const applyPerformanceHints = useCallback(() => {
+        selectedTargets.forEach(target => {
+            if (!performanceHintCache.current.has(target)) {
+                performanceHintCache.current.set(target, {
+                    willChange: target.style.willChange,
+                    backfaceVisibility: target.style.backfaceVisibility,
+                    transformOrigin: target.style.transformOrigin,
+                });
+            }
+            target.style.willChange = "transform,left,top,width,height";
+            target.style.backfaceVisibility = "hidden";
+            if (!target.style.transformOrigin) {
+                target.style.transformOrigin = "center center";
+            }
+        });
+    }, [selectedTargets]);
+
+    const clearPerformanceHints = useCallback(() => {
+        performanceHintCache.current.forEach((cached, target) => {
+            target.style.willChange = cached.willChange;
+            target.style.backfaceVisibility = cached.backfaceVisibility;
+            target.style.transformOrigin = cached.transformOrigin;
+        });
+        performanceHintCache.current.clear();
+    }, []);
 
     const cacheLayoutForElement = useCallback(
         (elementId: string) => {
@@ -127,10 +156,16 @@ export function useMoveableHandlers({
                 dragDeltaCache.current.delete(elementId);
                 return;
             }
+            const nextX = initialLayout.x + translateX;
+            const nextY = initialLayout.y + translateY;
             patches[elementId] = {
-                x: initialLayout.x + translateX,
-                y: initialLayout.y + translateY,
+                x: nextX,
+                y: nextY,
             };
+            // Keep the DOM at its final absolute position before React applies
+            // the updated layout, so the controller does not flash back for a frame.
+            target.style.left = `${nextX}px`;
+            target.style.top = `${nextY}px`;
             applyFinalTransform(target, initialLayout.rotation);
             layoutCache.current.delete(elementId);
             dragDeltaCache.current.delete(elementId);
@@ -138,9 +173,10 @@ export function useMoveableHandlers({
         if (Object.keys(patches).length > 0) {
             documentService.updateElementLayouts(patches);
         }
+        clearPerformanceHints();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
+    }, [clearPerformanceHints, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
 
     const finalizeResize = useCallback(() => {
         const patches: Record<string, Partial<UILayout>> = {};
@@ -200,9 +236,10 @@ export function useMoveableHandlers({
         if (Object.keys(patches).length > 0) {
             documentService.updateElementLayouts(patches);
         }
+        clearPerformanceHints();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
+    }, [clearPerformanceHints, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
 
     const finalizeRotate = useCallback(() => {
         const patches: Record<string, Partial<UILayout>> = {};
@@ -233,9 +270,10 @@ export function useMoveableHandlers({
         if (Object.keys(patches).length > 0) {
             documentService.updateElementLayouts(patches);
         }
+        clearPerformanceHints();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
+    }, [clearPerformanceHints, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
 
     const cancelResize = useCallback(() => {
         selectedTargets.forEach(target => {
@@ -250,9 +288,10 @@ export function useMoveableHandlers({
             dragDeltaCache.current.delete(elementId);
             applyFinalTransform(target, layout?.rotation);
         });
+        clearPerformanceHints();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [endTransform, scheduleMoveableRectUpdate, selectedTargets]);
+    }, [clearPerformanceHints, endTransform, scheduleMoveableRectUpdate, selectedTargets]);
 
     const cancelRotate = useCallback(() => {
         selectedTargets.forEach(target => {
@@ -266,17 +305,19 @@ export function useMoveableHandlers({
             dragDeltaCache.current.delete(elementId);
             applyFinalTransform(target, layout?.rotation);
         });
+        clearPerformanceHints();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [endTransform, scheduleMoveableRectUpdate, selectedTargets]);
+    }, [clearPerformanceHints, endTransform, scheduleMoveableRectUpdate, selectedTargets]);
 
     const handleDragStart = useCallback(() => {
         if (isGroupSelection) {
             return;
         }
         ensureSelectionLayoutsCached();
+        applyPerformanceHints();
         beginTransform();
-    }, [beginTransform, ensureSelectionLayoutsCached, isGroupSelection]);
+    }, [applyPerformanceHints, beginTransform, ensureSelectionLayoutsCached, isGroupSelection]);
 
     const handleDrag = useCallback(
         (e: OnDrag) => {
@@ -314,9 +355,10 @@ export function useMoveableHandlers({
                 return;
             }
             ensureSelectionLayoutsCached();
+            applyPerformanceHints();
             beginTransform();
         },
-        [beginTransform, ensureSelectionLayoutsCached, isGroupSelection],
+        [applyPerformanceHints, beginTransform, ensureSelectionLayoutsCached, isGroupSelection],
     );
 
     const handleDragGroup = useCallback(
@@ -372,9 +414,10 @@ export function useMoveableHandlers({
                 });
             });
             e.setMin?.([-Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER]);
+            applyPerformanceHints();
             beginTransform();
         },
-        [beginTransform, cacheLayoutForElement, ensureSelectionLayoutsCached, isGroupSelection, selectionIds],
+        [applyPerformanceHints, beginTransform, cacheLayoutForElement, ensureSelectionLayoutsCached, isGroupSelection, selectionIds],
     );
 
     const handleResize = useCallback(
@@ -432,9 +475,10 @@ export function useMoveableHandlers({
             }
             ensureSelectionLayoutsCached();
             e.setMin?.([-Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER]);
+            applyPerformanceHints();
             beginTransform();
         },
-        [beginTransform, ensureSelectionLayoutsCached, isGroupSelection],
+        [applyPerformanceHints, beginTransform, ensureSelectionLayoutsCached, isGroupSelection],
     );
 
     const handleResizeGroup = useCallback(
@@ -489,9 +533,10 @@ export function useMoveableHandlers({
                 return;
             }
             ensureSelectionLayoutsCached();
+            applyPerformanceHints();
             beginTransform();
         },
-        [beginTransform, ensureSelectionLayoutsCached, isGroupSelection],
+        [applyPerformanceHints, beginTransform, ensureSelectionLayoutsCached, isGroupSelection],
     );
 
     const handleRotate = useCallback(
@@ -540,9 +585,10 @@ export function useMoveableHandlers({
                 return;
             }
             ensureSelectionLayoutsCached();
+            applyPerformanceHints();
             beginTransform();
         },
-        [beginTransform, ensureSelectionLayoutsCached, isGroupSelection],
+        [applyPerformanceHints, beginTransform, ensureSelectionLayoutsCached, isGroupSelection],
     );
 
     const handleRotateGroup = useCallback(

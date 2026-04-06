@@ -3,12 +3,12 @@ import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget
 import { ContainerRenderer } from "./container/renderer";
 import { createContainerInspector } from "./container/inspector";
 import { createContainerDockerBarItems } from "./container/dockerBar";
-import { defaultContainerWidgetProps } from "./container/types";
+import { defaultContainerWidgetProps } from "@shared/types/ui-editor/container";
 
 export const ContainerWidgetModule: UIWidgetModule = {
     type: "nl.container",
     supportsBlueprintLogic: true,
-    displayName: "Container / Frame",
+    displayName: "Container",
     icon: Box,
 
     createDefaultElement: () => ({

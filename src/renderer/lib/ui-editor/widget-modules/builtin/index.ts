@@ -1,26 +1,17 @@
 import type { UIWidgetModule } from "../types";
-import { RectangleWidgetModule } from "./rectangle";
 import { TextWidgetModule } from "./text";
 import { ImageWidgetModule } from "./image";
 import { ContainerWidgetModule } from "./container";
 import { ButtonWidgetModule } from "./button";
-import { StackWidgetModule } from "./stack";
-import { ScrollWidgetModule } from "./scroll";
-import { SpacerDividerWidgetModule } from "./spacerDivider";
-import { ListRepeaterWidgetModule } from "./listRepeater";
+import { ListWidgetModule } from "./list";
 
 /**
- * All built-in widget modules.
- * Add new modules here to make them available in the editor.
+ * All built-in widget modules (user-insertable palette).
  */
 export const BuiltinWidgetModules: UIWidgetModule[] = [
-    RectangleWidgetModule,
+    ContainerWidgetModule,
     TextWidgetModule,
     ImageWidgetModule,
-    ContainerWidgetModule,
     ButtonWidgetModule,
-    StackWidgetModule,
-    ScrollWidgetModule,
-    SpacerDividerWidgetModule,
-    ListRepeaterWidgetModule,
+    ListWidgetModule,
 ];

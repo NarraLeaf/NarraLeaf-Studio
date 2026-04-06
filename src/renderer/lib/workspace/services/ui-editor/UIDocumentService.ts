@@ -17,7 +17,7 @@ import {
 } from "@shared/types/ui-editor/document";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
-import { elementTypeRegistry } from "@/lib/ui-editor/element-types/registryInstance";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IUIDocumentService, Services, WorkspaceContext } from "../services";
@@ -326,6 +326,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (document.schemaVersion === 2) {
             return this.migrateFromV2Document(document);
         }
+        if (document.schemaVersion === 3) {
+            return this.migrateFromV3Document(document);
+        }
         throw new RendererError("UI document migration is not implemented");
     }
 
@@ -340,6 +343,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private migrateFromV2Document(document: UIDocument): UIDocument {
+        return {
+            ...document,
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        };
+    }
+
+    private migrateFromV3Document(document: UIDocument): UIDocument {
         return {
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
@@ -531,7 +541,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     public createElement(parentId: string, type: string, layoutPatch: Partial<UILayout> = {}): UIElement {
-        const definition = elementTypeRegistry.get(type);
+        const definition = widgetModuleRegistry.get(type);
         if (!definition) {
             throw new RendererError(`Unknown element type: ${type}`);
         }

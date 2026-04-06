@@ -116,6 +116,8 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
                             size="sm"
                             placeholder="—"
                             fullWidth
+                            portalMenu
+                            menuPlacement="above"
                         />
                     </div>
                 </div>
@@ -171,7 +173,7 @@ function easeOutExpo(t: number): number {
     return 1 - Math.pow(2, -10 * t);
 }
 
-const DOCKER_BAR_WIDTH_DURATION_S = 0.55;
+const DOCKER_BAR_WIDTH_DURATION_S = 0.25;
 
 /**
  * Experimental: animates shell width to match measured inner content (easeOutExpo via Motion).

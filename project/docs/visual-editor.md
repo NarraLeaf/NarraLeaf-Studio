@@ -10,7 +10,7 @@
 
 本文件同时扮演 **当前代码实现基线** 与 **Visual Editor M1 冻结后的状态快照**。
 
-- **与 Blueprint 文档的关系**：蓝图系统的契约冻结见 `project/docs/blueprint-system.md` 与 `project/docs/blueprint-system-milestones.md`（Blueprint M1）。Visual Editor M1 只冻结**界面编辑器侧**的产品边界与体验基线，不重开 Blueprint M1 范围。
+- **与 Blueprint 文档的关系**：蓝图系统的契约与里程碑见 `project/docs/blueprint-system-arch.md`（Blueprint M1 起）。Visual Editor M1 只冻结**界面编辑器侧**的产品边界与体验基线，不重开 Blueprint M1 范围。
 - **M1 已冻结（编辑器侧）**：
   - 继续以通用 UI Editor 为核心；不建立独立 VN 领域主模型。
   - **编辑器内只做静态/布局预览**；真实交互与副作用以 **Dev Mode** 为主场。
@@ -22,7 +22,7 @@
   - 画布编辑 Tab：`src/renderer/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab.tsx`
   - 属性面板拼装：`src/renderer/apps/workspace/modules/properties/PropertiesPanel.tsx`
 
-更完整的阶段拆分与 M1 完成判定见 `project/docs/visual-editor-milestones.md`；方向与取舍见 `project/docs/visual-editor-implementation-guide.md`。
+更完整的阶段拆分、M1 冻结表与取舍见 `project/docs/visual-editor-arch.md`。
 
 ---
 
@@ -198,7 +198,7 @@ Surface 在编辑器中的渲染入口为：
 
 **不**提供编辑器内 “New from pattern” 或模板库。官方做法是：
 
-1. 阅读本文与 `project/docs/visual-editor-milestones.md` §6 中的范式说明。
+1. 阅读本文与 `project/docs/visual-editor-arch.md` §8.3（M3 范式）中的说明。
 2. 对照 `project/examples/visual-editor/` 下各子目录中的 `editor/ui/uidoc.json`（及配套的 `uigraphs.json` 壳）。将 JSON 片段合并进项目的 `editor/ui/`，或按结构在画布中手搓。
 3. **选择肢列表（Option list）** 不单独占一类主 widget：使用 **`nl.listRepeater` + `nl.button` + `nl.text`**（及可选 `nl.spacerDivider`）表达；Repeater 仅设计时预览份数，无运行时数据源。
 

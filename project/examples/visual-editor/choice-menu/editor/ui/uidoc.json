@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "id": "ex-doc-choice",
   "name": "Example · Choice menu (Option list)",
   "surfaces": [
@@ -30,6 +30,7 @@
       "childrenIds": ["ex-el-choice-scroll"],
       "layout": { "x": 420, "y": 180, "width": 440, "height": 360, "visible": true, "opacity": 1 },
       "props": {
+        "layoutKind": "free",
         "backgroundColor": "#111827",
         "borderRadius": 12,
         "borderWidth": 1,
@@ -40,16 +41,32 @@
     },
     "ex-el-choice-scroll": {
       "id": "ex-el-choice-scroll",
-      "type": "nl.scroll",
+      "type": "nl.container",
       "name": "Scroll",
       "parentId": "ex-el-choice-frame",
       "childrenIds": ["ex-el-choice-list"],
       "layout": { "x": 0, "y": 0, "width": 440, "height": 360, "visible": true, "opacity": 1 },
-      "props": { "axis": "y" }
+      "props": {
+        "layoutKind": "scroll",
+        "scrollAxis": "y",
+        "stackDirection": "vertical",
+        "stackGap": 0,
+        "stackPaddingTop": 0,
+        "stackPaddingRight": 0,
+        "stackPaddingBottom": 0,
+        "stackPaddingLeft": 0,
+        "stackAlignItems": "stretch",
+        "stackJustifyContent": "start",
+        "backgroundColor": "transparent",
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": true
+      }
     },
     "ex-el-choice-list": {
       "id": "ex-el-choice-list",
-      "type": "nl.listRepeater",
+      "type": "nl.list",
       "name": "Choices",
       "parentId": "ex-el-choice-scroll",
       "childrenIds": ["ex-el-choice-row"],

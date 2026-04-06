@@ -1,7 +1,7 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
-import { getProps, normalizeImageFill } from "../rectangle/helpers";
-import type { RectangleProps } from "../rectangle/types";
+import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
+import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 
 function objectFitLegacyToMode(fit: unknown): ImageFill["mode"] {
     if (fit === "fill") return "stretch";
@@ -13,8 +13,8 @@ function objectFitLegacyToMode(fit: unknown): ImageFill["mode"] {
 /**
  * Rectangle-shaped props for nl.image, including legacy assetId / imageUrl / objectFit / imageOpacity.
  */
-export function getImageWidgetRectangleProps(element: UIElement): RectangleProps {
-    const base = getProps(element);
+export function getImageWidgetRectangleProps(element: UIElement): RectangleLikeProps {
+    const base = getRectangleLikeProps(element);
     const raw = (element.props ?? {}) as Record<string, unknown>;
 
     let next = base;
