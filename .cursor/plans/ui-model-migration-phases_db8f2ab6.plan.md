@@ -10,7 +10,7 @@ todos:
     status: completed
   - id: uimig-p3-appearance-inspector
     content: "P3: Variant + conditional rows authoring UI (Unit 4) — widget-modules/shared/appearance/*; container/button inspectors; no dual flat appearance model; minimal PropertiesPanel/FieldRenderer touch"
-    status: pending
+    status: completed
   - id: uimig-p4-blueprint-list
     content: "P4: Blueprint boundary + List (Units 5–6) — explicit widget.setVariant (or equivalent); remove per-prop appearance binding for appearance-capable widgets; Dev Mode variant patch; behavior-graph/catalog nodes; List user concept replaces ListRepeater"
     status: pending
