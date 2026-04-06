@@ -1,8 +1,7 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
+import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { getProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/builtin/rectangle/helpers";
-import { getImageProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
-import { imageWidgetPropsToImageFill } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import type { UISurfaceDiagnostic } from "../types";
 
 function imageFillMissingAsset(fill: ImageFill | undefined): boolean {
@@ -20,9 +19,12 @@ export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiag
     const out: UISurfaceDiagnostic[] = [];
     for (const el of elements) {
         if (el.type === "nl.image") {
-            const props = getImageProps(el);
-            const fill = imageWidgetPropsToImageFill(props);
-            if (imageFillMissingAsset(fill)) {
+            const props = getImageWidgetRectangleProps(el);
+            if (props.fillType !== "image") {
+                continue;
+            }
+            const fill = normalizeImageFill(props);
+            if (imageFillMissingAsset(fill) && !props.backgroundImage?.trim()) {
                 out.push({
                     id: `res:image:${el.id}`,
                     severity: "warning",

@@ -153,7 +153,7 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                         className: "flex-1",
                         render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
                             const layout = getPrimaryLayout(data);
-                            const percent = Math.round(((layout?.opacity ?? 1) * 100));
+                            const percent = Math.round(((layout?.opacity ?? 1) * 10000)) / 100;
                             const handleChange = (next: string) => {
                                 const number = toNumber(next);
                                 if (number === null) {
@@ -172,12 +172,15 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                                 <EnhancedInput
                                     value={String(percent)}
                                     onChange={handleChange}
-                                    inputMode="numeric"
+                                    inputMode="decimal"
                                     unit="%"
                                     min={0}
                                     max={100}
+                                    precision={null}
+                                    popoverWhenNarrow
+                                    popoverThreshold={124}
                                     leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
-                                    className="w-28"
+                                    className="w-full min-w-0"
                                 />
                             );
                         },

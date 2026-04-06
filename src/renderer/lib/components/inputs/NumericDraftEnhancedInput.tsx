@@ -21,6 +21,8 @@ export function NumericDraftEnhancedInput({
     onFiniteNumber,
     draftResetKey,
     onBlur,
+    popoverWhenNarrow = true,
+    popoverThreshold = 112,
     ...rest
 }: NumericDraftEnhancedInputProps) {
     const [draft, setDraft] = useState<string | null>(null);
@@ -56,6 +58,8 @@ export function NumericDraftEnhancedInput({
             value={shown}
             onChange={handleChange}
             onBlur={handleBlur}
+            popoverWhenNarrow={popoverWhenNarrow}
+            popoverThreshold={popoverThreshold}
         />
     );
 }

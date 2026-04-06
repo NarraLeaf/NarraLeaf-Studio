@@ -1,9 +1,19 @@
+import type { UIElement } from "@shared/types/ui-editor/document";
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
 import { getProps } from "./helpers";
+import type { RectangleProps } from "./types";
 
-export function createRectangleDockerBarItems(ctx: DockerBarContext): DockerBarItem[] {
+export type RectangleDockerBarOptions = {
+  resolveProps?: (element: UIElement) => RectangleProps;
+};
+
+export function createRectangleDockerBarItems(
+  ctx: DockerBarContext,
+  options?: RectangleDockerBarOptions,
+): DockerBarItem[] {
   const { element, documentService } = ctx;
-  const props = getProps(element);
+  const resolve = options?.resolveProps ?? getProps;
+  const props = resolve(element);
 
   return [
     {

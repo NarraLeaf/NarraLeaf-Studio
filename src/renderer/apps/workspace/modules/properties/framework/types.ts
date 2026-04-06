@@ -327,7 +327,7 @@ export interface ImageFillFieldDefinition<TData = any> extends BaseFieldDefiniti
     type: "imageFill";
     getValue: (data: TData) => ImageFill | undefined;
     setValue: (data: TData, value: ImageFill) => void | Promise<void>;
-    /** When set, mode dropdown and canvas crop are limited to these modes (e.g. nl.image has no crop overlay). */
+    /** When set, mode dropdown and canvas crop are limited to these modes. */
     allowedFillModes?: ImageFillMode[];
 }
 

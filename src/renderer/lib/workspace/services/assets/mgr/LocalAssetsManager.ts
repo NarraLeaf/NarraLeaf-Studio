@@ -178,6 +178,8 @@ export class LocalAssetsManager {
         (metadata[asset.type] as Record<string, Asset<T>>)[newId] = newAsset as Asset<T>;
         this.assetsService.markDirty(asset.type);
 
+        this.assetsService.getEvents().emit("updated", newAsset as Asset<T, AssetSource>);
+
         return { success: true, data: newAsset };
     }
 
@@ -288,6 +290,9 @@ export class LocalAssetsManager {
 
         // update assets metadata
         record[id] = asset;
+
+        // Notify subscribers (e.g. AssetSelector, asset tree) so lists refresh without closing panels
+        this.assetsService.getEvents().emit("updated", asset);
 
         return {
             success: true,

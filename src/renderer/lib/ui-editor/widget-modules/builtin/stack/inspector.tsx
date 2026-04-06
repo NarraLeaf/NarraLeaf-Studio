@@ -156,7 +156,7 @@ export function createStackInspector(ctx: InspectorContext) {
                 items: [
                   {
                     id: "stack.gap",
-                    className: "flex-1 min-w-[100px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getStackProps(data.element);
                       return (
@@ -186,7 +186,7 @@ export function createStackInspector(ctx: InspectorContext) {
                   },
                   {
                     id: "stack.padding",
-                    className: "flex-1 min-w-[100px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getStackProps(data.element);
                       return (
