@@ -15,6 +15,7 @@ import { Select } from "@/lib/components/elements/Select";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type { ColorValue, InlineRowItemContext } from "@/apps/workspace/modules/properties/framework/types";
+import type { UIElement } from "@shared/types/ui-editor/document";
 import type { UIInspectorData, InspectorContext, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import type { RectangleProps, StrokeJoin } from "./types";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
@@ -99,8 +100,19 @@ function InlineMenuTriggerButton({
   );
 }
 
-export function createRectangleInspector(ctx: InspectorContext) {
+export type RectangleInspectorOptions = {
+  /** Resolve widget props (e.g. nl.image legacy merge). Defaults to rectangle getProps. */
+  getProps?: (element: UIElement) => RectangleProps;
+  titleFallback?: string;
+  /** Schema id segment after `ui-inspector:` (default nl.rectangle). */
+  schemaTypeKey?: string;
+};
+
+export function createRectangleInspector(ctx: InspectorContext, options?: RectangleInspectorOptions) {
   const { element, documentService } = ctx;
+  const resolveProps = options?.getProps ?? getProps;
+  const titleFallback = options?.titleFallback ?? "Rectangle";
+  const schemaTypeKey = options?.schemaTypeKey ?? "nl.rectangle";
 
   const patchProps = (patch: Partial<RectangleProps>) => {
     documentService.updateElementProps(element.id, {
@@ -112,6 +124,8 @@ export function createRectangleInspector(ctx: InspectorContext) {
   const patchLayout = (patch: Partial<WidgetRendererProps["element"]["layout"]>) => {
     documentService.updateElementLayout(element.id, patch);
   };
+
+  const formatPercentDisplay = (value: number) => String(Math.round(value * 10000) / 100);
 
   const buildStrokeMenu = (props: RectangleProps): ContextMenuDef => [
     {
@@ -145,8 +159,8 @@ export function createRectangleInspector(ctx: InspectorContext) {
   type D = UIInspectorData;
 
   return createPropertyEditorSchema<D>({
-    id: `ui-inspector:nl.rectangle:${element.id}`,
-    title: element.name ?? "Rectangle",
+    id: `ui-inspector:${schemaTypeKey}:${element.id}`,
+    title: element.name ?? titleFallback,
     fields: [],
     tabs: [
       {
@@ -170,7 +184,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     id: "props.cornerRadiusValue",
                     className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const current = getProps(data.element);
+                      const current = resolveProps(data.element);
                       const allCornersEqual =
                         current.borderRadiusTL === current.borderRadiusTR &&
                         current.borderRadiusTL === current.borderRadiusBL &&
@@ -221,7 +235,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     id: "props.cornerRadiusToggle",
                     className: "flex-shrink-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const current = getProps(data.element);
+                      const current = resolveProps(data.element);
                       const toggle = () => {
                         onSaving(true);
                         try {
@@ -265,14 +279,14 @@ export function createRectangleInspector(ctx: InspectorContext) {
                 wrap: false,
                 className: "mt-3",
                 label: undefined,
-                hidden: (data: D) => !getProps(data.element).cornerAdvanced,
+                hidden: (data: D) => !resolveProps(data.element).cornerAdvanced,
                 inputs: [
                   {
                     id: "props.borderRadiusTL",
                     label: "TL",
                     icon: <CornerIcon position="tl" />,
                     selectAllOnFocus: true,
-                    getValue: (data: D) => String(getProps(data.element).borderRadiusTL),
+                    getValue: (data: D) => String(resolveProps(data.element).borderRadiusTL),
                     setValue: (_data: D, raw: string) => {
                       const value = Number.parseFloat(raw);
                       if (!Number.isFinite(value)) return;
@@ -284,7 +298,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     label: "TR",
                     icon: <CornerIcon position="tr" />,
                     selectAllOnFocus: true,
-                    getValue: (data: D) => String(getProps(data.element).borderRadiusTR),
+                    getValue: (data: D) => String(resolveProps(data.element).borderRadiusTR),
                     setValue: (_data: D, raw: string) => {
                       const value = Number.parseFloat(raw);
                       if (!Number.isFinite(value)) return;
@@ -300,14 +314,14 @@ export function createRectangleInspector(ctx: InspectorContext) {
                 wrap: false,
                 className: "mt-2",
                 label: undefined,
-                hidden: (data: D) => !getProps(data.element).cornerAdvanced,
+                hidden: (data: D) => !resolveProps(data.element).cornerAdvanced,
                 inputs: [
                   {
                     id: "props.borderRadiusBL",
                     label: "BL",
                     icon: <CornerIcon position="bl" />,
                     selectAllOnFocus: true,
-                    getValue: (data: D) => String(getProps(data.element).borderRadiusBL),
+                    getValue: (data: D) => String(resolveProps(data.element).borderRadiusBL),
                     setValue: (_data: D, raw: string) => {
                       const value = Number.parseFloat(raw);
                       if (!Number.isFinite(value)) return;
@@ -319,7 +333,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     label: "BR",
                     icon: <CornerIcon position="br" />,
                     selectAllOnFocus: true,
-                    getValue: (data: D) => String(getProps(data.element).borderRadiusBR),
+                    getValue: (data: D) => String(resolveProps(data.element).borderRadiusBR),
                     setValue: (_data: D, raw: string) => {
                       const value = Number.parseFloat(raw);
                       if (!Number.isFinite(value)) return;
@@ -346,11 +360,11 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     id: "layout.layerOpacity",
                     className: "flex-1",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const percent = Math.round((data.elements[0]?.layout.opacity ?? 1) * 100);
+                      const percent = formatPercentDisplay(data.elements[0]?.layout.opacity ?? 1);
 
                       return (
                         <NumericDraftEnhancedInput
-                          committedDisplay={String(percent)}
+                          committedDisplay={percent}
                           draftResetKey={element.id}
                           onFiniteNumber={(value) => {
                             const clamped = Math.min(100, Math.max(0, value));
@@ -361,12 +375,13 @@ export function createRectangleInspector(ctx: InspectorContext) {
                               onSaving(false);
                             }
                           }}
-                          inputMode="numeric"
+                          inputMode="decimal"
                           unit="%"
                           min={0}
                           max={100}
+                          precision={null}
                           leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
-                          className="w-28"
+                          className="w-full min-w-0"
                         />
                       );
                     },
@@ -416,7 +431,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                 items: [
                   {
                     id: "layout.rotationValue",
-                    className: "flex-1 min-w-[140px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const layoutRotation = data.elements[0]?.layout.rotation;
                       const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation : 0;
@@ -440,7 +455,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                           max={360}
                           unit="°"
                           leftIcon={<RotateCw className="w-4 h-4 text-gray-400" />}
-                          className="w-28"
+                          className="w-full min-w-0"
                           selectAllOnFocus
                         />
                       );
@@ -489,7 +504,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                 type: "select",
                 label: "Fill Type",
                 options: FILL_TYPE_OPTIONS,
-                getValue: (data: D) => getProps(data.element).fillType,
+                getValue: (data: D) => resolveProps(data.element).fillType,
                 setValue: (_data: D, value: string | number) =>
                   patchProps({
                     fillType: String(value) as RectangleProps["fillType"],
@@ -501,12 +516,12 @@ export function createRectangleInspector(ctx: InspectorContext) {
                 gap: 8,
                 wrap: true,
                 label: undefined,
-                hidden: (data: D) => getProps(data.element).fillType !== "color",
+                hidden: (data: D) => resolveProps(data.element).fillType !== "color",
                 items: [
                   {
                     id: "props.fillColorPicker",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const current = getProps(data.element);
+                      const current = resolveProps(data.element);
                       const handleColor = (next: ColorValue) => {
                         onSaving(true);
                         try {
@@ -536,11 +551,11 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     id: "props.fillOpacityRow",
                     className: "flex-1",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const percent = Math.round(getProps(data.element).fillOpacity * 100);
+                      const percent = formatPercentDisplay(resolveProps(data.element).fillOpacity);
 
                       return (
                         <NumericDraftEnhancedInput
-                          committedDisplay={String(percent)}
+                          committedDisplay={percent}
                           draftResetKey={element.id}
                           onFiniteNumber={(value) => {
                             const clamped = Math.min(100, Math.max(0, value));
@@ -553,10 +568,11 @@ export function createRectangleInspector(ctx: InspectorContext) {
                               onSaving(false);
                             }
                           }}
-                          inputMode="numeric"
+                          inputMode="decimal"
                           unit="%"
                           min={0}
                           max={100}
+                          precision={null}
                           leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
                         />
                       );
@@ -566,7 +582,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     id: "props.fillVisibleToggle",
                     className: "flex-shrink-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const visible = getProps(data.element).fillVisible;
+                      const visible = resolveProps(data.element).fillVisible;
                       const toggle = () => {
                         onSaving(true);
                         try {
@@ -597,8 +613,8 @@ export function createRectangleInspector(ctx: InspectorContext) {
                 id: "props.imageFill",
                 type: "imageFill",
                 label: "Image Fill",
-                hidden: (data: D) => getProps(data.element).fillType !== "image",
-                getValue: (data: D) => normalizeImageFill(getProps(data.element)),
+                hidden: (data: D) => resolveProps(data.element).fillType !== "image",
+                getValue: (data: D) => normalizeImageFill(resolveProps(data.element)),
                 setValue: (_data: D, value: RectangleProps["imageFill"]) =>
                   patchProps({
                     fillType: "image",
@@ -611,17 +627,17 @@ export function createRectangleInspector(ctx: InspectorContext) {
                 gap: 8,
                 wrap: true,
                 label: undefined,
-                hidden: (data: D) => getProps(data.element).fillType !== "image",
+                hidden: (data: D) => resolveProps(data.element).fillType !== "image",
                 items: [
                   {
                     id: "props.fillImageOpacity",
                     className: "flex-1",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const percent = Math.round(getProps(data.element).fillOpacity * 100);
+                      const percent = formatPercentDisplay(resolveProps(data.element).fillOpacity);
 
                       return (
                         <NumericDraftEnhancedInput
-                          committedDisplay={String(percent)}
+                          committedDisplay={percent}
                           draftResetKey={element.id}
                           onFiniteNumber={(value) => {
                             const clamped = Math.min(100, Math.max(0, value));
@@ -634,10 +650,11 @@ export function createRectangleInspector(ctx: InspectorContext) {
                               onSaving(false);
                             }
                           }}
-                          inputMode="numeric"
+                          inputMode="decimal"
                           unit="%"
                           min={0}
                           max={100}
+                          precision={null}
                           leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
                         />
                       );
@@ -645,9 +662,9 @@ export function createRectangleInspector(ctx: InspectorContext) {
                   },
                   {
                     id: "props.fillImageVisible",
-                    className: "flex-shrink-0",
+                    className: "flex-1 min-w-[7.5rem] max-w-[9rem]",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const visible = getProps(data.element).fillVisible;
+                      const visible = resolveProps(data.element).fillVisible;
                       const toggle = () => {
                         onSaving(true);
                         try {
@@ -693,7 +710,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     id: "props.strokeAlign",
                     className: "flex-1 min-w-0",
                     render: ({ data }: InlineRowItemContext<D>) => {
-                      const current = getProps(data.element);
+                      const current = resolveProps(data.element);
                       return (
                         <Select
                           value={current.strokeAlign}
@@ -710,9 +727,9 @@ export function createRectangleInspector(ctx: InspectorContext) {
                   },
                   {
                     id: "props.strokeWidth",
-                    className: "flex-shrink-0",
+                    className: "min-w-0 basis-28 shrink grow-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const current = getProps(data.element);
+                      const current = resolveProps(data.element);
 
                       return (
                         <NumericDraftEnhancedInput
@@ -734,7 +751,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                           min={0}
                           unit="px"
                           leftIcon={<Square className="w-4 h-4 text-gray-400" />}
-                          className="w-20 shrink-0"
+                          className="w-full min-w-0"
                         />
                       );
                     },
@@ -743,7 +760,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     id: "props.strokeMore",
                     className: "flex-shrink-0",
                     render: ({ data }: InlineRowItemContext<D>) => {
-                      const current = getProps(data.element);
+                      const current = resolveProps(data.element);
                       return (
                         <InlineMenuTriggerButton
                           menu={buildStrokeMenu(current)}
@@ -762,7 +779,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                 showLabels: false,
                 className: "mt-2",
                 options: STROKE_SIDE_OPTIONS,
-                getValue: (data: D) => getProps(data.element).strokeSide,
+                getValue: (data: D) => resolveProps(data.element).strokeSide,
                 setValue: (_data: D, value: string | number) => {
                   if (typeof value !== "string") return;
                   patchProps({
@@ -781,7 +798,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                   {
                     id: "props.strokeColorPicker",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const current = getProps(data.element);
+                      const current = resolveProps(data.element);
                       const strokeVisible = current.strokeVisible;
                       const handleChange = (next: ColorValue) => {
                         onSaving(true);
@@ -812,13 +829,13 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     id: "props.strokeOpacity",
                     className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const current = getProps(data.element);
+                      const current = resolveProps(data.element);
                       const strokeVisible = current.strokeVisible;
-                      const percent = Math.round(current.strokeOpacity * 100);
+                      const percent = formatPercentDisplay(current.strokeOpacity);
 
                       return (
                         <NumericDraftEnhancedInput
-                          committedDisplay={String(percent)}
+                          committedDisplay={percent}
                           draftResetKey={element.id}
                           onFiniteNumber={(value) => {
                             const clamped = Math.min(100, Math.max(0, value));
@@ -831,10 +848,11 @@ export function createRectangleInspector(ctx: InspectorContext) {
                               onSaving(false);
                             }
                           }}
-                          inputMode="numeric"
+                          inputMode="decimal"
                           unit="%"
                           min={0}
                           max={100}
+                          precision={null}
                           leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
                           disabled={!strokeVisible}
                           className="w-full min-w-0"
@@ -846,7 +864,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                     id: "props.strokeVisible",
                     className: "flex-shrink-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const visible = getProps(data.element).strokeVisible;
+                      const visible = resolveProps(data.element).strokeVisible;
                       const toggle = () => {
                         onSaving(true);
                         try {

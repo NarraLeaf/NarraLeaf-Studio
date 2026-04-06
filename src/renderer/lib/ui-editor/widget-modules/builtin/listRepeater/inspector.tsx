@@ -39,7 +39,7 @@ export function createListRepeaterInspector(ctx: InspectorContext) {
                 items: [
                   {
                     id: "listRepeater.previewCountInput",
-                    className: "flex-1 max-w-[120px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getListRepeaterProps(data.element);
                       return (
@@ -93,7 +93,7 @@ export function createListRepeaterInspector(ctx: InspectorContext) {
                 items: [
                   {
                     id: "listRepeater.itemGapInput",
-                    className: "flex-1 max-w-[120px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getListRepeaterProps(data.element);
                       return (
@@ -150,7 +150,7 @@ export function createListRepeaterInspector(ctx: InspectorContext) {
                 items: [
                   {
                     id: "listRepeater.templateGapInput",
-                    className: "flex-1 max-w-[120px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getListRepeaterProps(data.element);
                       return (

@@ -95,7 +95,7 @@ export function createContainerInspector(ctx: InspectorContext) {
                 items: [
                   {
                     id: "container.borderWidth",
-                    className: "flex-1 min-w-[100px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getContainerProps(data.element);
                       return (
@@ -125,7 +125,7 @@ export function createContainerInspector(ctx: InspectorContext) {
                   },
                   {
                     id: "container.borderRadius",
-                    className: "flex-1 min-w-[100px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getContainerProps(data.element);
                       return (

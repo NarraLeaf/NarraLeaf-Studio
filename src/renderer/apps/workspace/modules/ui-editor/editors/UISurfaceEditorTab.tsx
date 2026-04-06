@@ -16,6 +16,7 @@ import { InteractionOverride, Services } from "@/lib/workspace/services/services
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import type { UIDocument } from "@shared/types/ui-editor/document";
+import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { getProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/builtin/rectangle/helpers";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
@@ -272,10 +273,12 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                 });
                 return;
             }
-            if (element.type !== "nl.rectangle") {
+            const isRectangle = element.type === "nl.rectangle";
+            const isImageWidget = element.type === "nl.image";
+            if (!isRectangle && !isImageWidget) {
                 return;
             }
-            const props = getProps(element);
+            const props = isImageWidget ? getImageWidgetRectangleProps(element) : getProps(element);
             if (props.fillType !== "image") {
                 return;
             }

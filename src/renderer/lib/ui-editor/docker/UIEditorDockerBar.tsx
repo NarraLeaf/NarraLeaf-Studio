@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { animate, motion, useMotionValue } from "motion/react";
 import { widgetModuleRegistry } from "../widget-modules/registryInstance";
 import type {
     UIWidgetModule,
@@ -162,6 +163,72 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
 }
 
 const MULTI_SELECT_MIXED_VALUE = "__multi-select-mixed__";
+
+/** Experimental docker width easing: Penner easeOutExpo (0–1), compatible with Motion `ease`. */
+function easeOutExpo(t: number): number {
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    return 1 - Math.pow(2, -10 * t);
+}
+
+const DOCKER_BAR_WIDTH_DURATION_S = 0.55;
+
+/**
+ * Experimental: animates shell width to match measured inner content (easeOutExpo via Motion).
+ * Inner uses w-max; outer clips overflow during resize.
+ */
+function DockerBarAnimatedWidthShell({ children }: { children: React.ReactNode }) {
+    const measureRef = useRef<HTMLDivElement>(null);
+    const widthMv = useMotionValue(0);
+    const widthBoundToMvRef = useRef(false);
+    const [shellUsesMvWidth, setShellUsesMvWidth] = useState(false);
+    const playbackRef = useRef<ReturnType<typeof animate> | null>(null);
+
+    useLayoutEffect(() => {
+        const el = measureRef.current;
+        if (!el) {
+            return;
+        }
+
+        const applyWidth = (next: number) => {
+            if (!widthBoundToMvRef.current) {
+                widthMv.set(next);
+                widthBoundToMvRef.current = true;
+                setShellUsesMvWidth(true);
+                return;
+            }
+            playbackRef.current?.stop();
+            playbackRef.current = animate(widthMv, next, {
+                type: "tween",
+                duration: DOCKER_BAR_WIDTH_DURATION_S,
+                ease: easeOutExpo,
+            });
+        };
+
+        const measure = () => {
+            applyWidth(Math.ceil(el.getBoundingClientRect().width));
+        };
+
+        measure();
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => {
+            ro.disconnect();
+            playbackRef.current?.stop();
+        };
+    }, [widthMv]);
+
+    return (
+        <motion.div
+            className={`inline-block overflow-hidden rounded-lg border border-white/15 bg-[#0b0d12]/90 backdrop-blur-sm shadow-lg shadow-black/30 ${shellUsesMvWidth ? "" : "w-max"}`}
+            style={shellUsesMvWidth ? { width: widthMv } : undefined}
+        >
+            <div ref={measureRef} className="flex items-center px-2 py-1.5 w-max">
+                {children}
+            </div>
+        </motion.div>
+    );
+}
 
 function wrapMultiSelectItem(base: DockerBarItem, sources: DockerBarItem[]): DockerBarItem | null {
     switch (base.kind) {
@@ -392,21 +459,23 @@ export function UIEditorDockerBar({
     const showElementDocker = selectedElement !== null && dockerItems.length > 0 && tool.kind !== "insert";
 
     return (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex items-center rounded-lg border border-white/15 bg-[#0b0d12]/90 backdrop-blur-sm px-2 py-1.5 shadow-lg shadow-black/30">
-            {showMultiSelectDocker ? (
-                <MultiSelectDockerBar items={multiSelectItems} />
-            ) : showElementDocker ? (
-                <ElementDockerBar
-                    items={dockerItems}
-                    moduleName={selectedModule?.displayName ?? "Element"}
-                />
-            ) : (
-                <PaletteDockerBar
-                    modules={modules}
-                    activeInsertType={activeInsertType}
-                    onSelectType={handleSelectType}
-                />
-            )}
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20">
+            <DockerBarAnimatedWidthShell>
+                {showMultiSelectDocker ? (
+                    <MultiSelectDockerBar items={multiSelectItems} />
+                ) : showElementDocker ? (
+                    <ElementDockerBar
+                        items={dockerItems}
+                        moduleName={selectedModule?.displayName ?? "Element"}
+                    />
+                ) : (
+                    <PaletteDockerBar
+                        modules={modules}
+                        activeInsertType={activeInsertType}
+                        onSelectType={handleSelectType}
+                    />
+                )}
+            </DockerBarAnimatedWidthShell>
         </div>
     );
 }

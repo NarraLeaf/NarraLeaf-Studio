@@ -66,7 +66,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                   },
                   {
                     id: "button.radius",
-                    className: "flex-1 min-w-[100px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getButtonProps(data.element);
                       return (
@@ -200,7 +200,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                 items: [
                   {
                     id: "button.borderWidth",
-                    className: "flex-1 min-w-[100px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getButtonProps(data.element);
                       return (

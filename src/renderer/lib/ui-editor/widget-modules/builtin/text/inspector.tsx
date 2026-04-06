@@ -67,7 +67,7 @@ export function createTextInspector(ctx: InspectorContext) {
                 items: [
                   {
                     id: "text.fontSize",
-                    className: "flex-1 min-w-[100px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getTextProps(data.element);
                       return (
@@ -94,7 +94,7 @@ export function createTextInspector(ctx: InspectorContext) {
                   },
                   {
                     id: "text.lineHeight",
-                    className: "flex-1 min-w-[100px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getTextProps(data.element);
                       return (

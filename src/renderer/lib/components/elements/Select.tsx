@@ -117,18 +117,22 @@ export function Select({
                 fullWidth={fullWidth}
                 disabled={disabled}
                 className={`
-                    justify-between bg-white/5 hover:bg-white/10
+                    min-w-0 justify-between bg-white/5 hover:bg-white/10
                     ${variantStyles[variant]}
                     ${sizeStyles[size]}
                     ${isOpen ? "border-[#40a8c4] ring-2 ring-[#40a8c4]/20" : ""}
                 `}
                 onClick={() => !disabled && setIsOpen(!isOpen)}
             >
-                <span className={selectedOption ? "text-gray-200" : "text-gray-400"}>
+                <span
+                    className={`min-w-0 flex-1 truncate text-left ${
+                        selectedOption ? "text-gray-200" : "text-gray-400"
+                    }`}
+                >
                     {displayValue}
                 </span>
                 <ChevronDown
-                    className={`w-4 h-4 text-gray-400 transition-transform duration-150 ${
+                    className={`h-4 w-4 shrink-0 text-gray-400 transition-transform duration-150 ${
                         isOpen ? "rotate-180" : ""
                     }`}
                 />
