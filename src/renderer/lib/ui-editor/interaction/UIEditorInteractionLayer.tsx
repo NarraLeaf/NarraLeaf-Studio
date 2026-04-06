@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { flushSync } from "react-dom";
 import Selecto from "react-selecto";
 import Moveable from "react-moveable";
 import { ViewportTransform, clientToSurface, Rect2D } from "../geometry";
@@ -311,10 +312,12 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
 
     const SELECTO_CLASS_NAME = "narraleaf-selecto";
 
+    const moveablePointerClass = isInlineTextEditing ? "pointer-events-none" : "pointer-events-auto";
+
     return (
         <>
             {tool.kind === "select" && (
-                <>
+                <div className="pointer-events-none absolute inset-0 z-[9]">
                     <Selecto
                         className={SELECTO_CLASS_NAME}
                         container={surfaceElement ?? undefined}
@@ -335,15 +338,18 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
                         ref={moveableRef}
                         targets={activeController.targets}
                         container={surfaceElement ?? undefined}
+                        flushSync={flushSync}
                         className={
                             activeController.id === "imageCrop"
-                                ? "narraleaf-moveable narraleaf-moveable--crop"
-                                : `narraleaf-moveable${isInlineTextEditing ? " pointer-events-none" : ""}`
+                                ? `narraleaf-moveable narraleaf-moveable--crop ${moveablePointerClass}`
+                                : `narraleaf-moveable ${moveablePointerClass}`
                         }
                         {...activeController.moveableProps}
                     />
-                    {activeController.overlay}
-                </>
+                    {activeController.overlay ? (
+                        <div className="pointer-events-auto">{activeController.overlay}</div>
+                    ) : null}
+                </div>
             )}
 
             {/* Insert mode preview overlay */}

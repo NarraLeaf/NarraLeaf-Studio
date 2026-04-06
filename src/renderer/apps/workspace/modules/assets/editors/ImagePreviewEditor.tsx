@@ -30,6 +30,8 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
     const [panStart, setPanStart] = useState({ x: 0, y: 0 });
     const containerRef = useRef<HTMLDivElement>(null);
     const imageUrl = useRef<string | null>(null);
+    const zoomRef = useRef(zoom);
+    zoomRef.current = zoom;
 
     // Access registry to register action group when this editor is focused
     const { registerActionGroup, unregisterActionGroup } = useRegistry();
@@ -130,11 +132,33 @@ export function ImagePreviewEditor({ tabId, payload }: EditorComponentProps<Imag
         };
     }, [context, asset]);
 
-    // Mouse wheel zoom
+    // Mouse wheel zoom: keep the point under the cursor fixed (scale anchor at cursor).
+    // Image is flex-centered; transform is translate(pan) + scale(zoom) with origin at image center,
+    // so visual center = viewport center + pan. Adjust pan when zoom changes.
     const handleWheel = (e: React.WheelEvent) => {
         e.preventDefault();
+        const container = containerRef.current;
+        if (!container) return;
+
+        const rect = container.getBoundingClientRect();
+        const w = rect.width;
+        const h = rect.height;
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const fx = mx - w / 2;
+        const fy = my - h / 2;
+
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        setZoom(prev => Math.max(0.1, Math.min(5, prev * delta)));
+        const prevZoom = zoomRef.current;
+        const newZoom = Math.max(0.1, Math.min(5, prevZoom * delta));
+        const ratio = newZoom / prevZoom;
+        if (ratio !== 1) {
+            setPan((p) => ({
+                x: p.x * ratio + fx * (1 - ratio),
+                y: p.y * ratio + fy * (1 - ratio),
+            }));
+        }
+        setZoom(newZoom);
     };
 
     // Pan controls

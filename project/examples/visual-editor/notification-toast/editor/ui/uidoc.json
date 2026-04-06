@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "id": "ex-doc-toast",
   "name": "Example · Notification / Toast",
   "surfaces": [
@@ -30,6 +30,7 @@
       "childrenIds": ["ex-el-toast-row"],
       "layout": { "x": 360, "y": 48, "width": 560, "height": 52, "visible": true, "opacity": 1 },
       "props": {
+        "layoutKind": "free",
         "backgroundColor": "#1e293b",
         "borderRadius": 10,
         "borderWidth": 1,
@@ -40,20 +41,26 @@
     },
     "ex-el-toast-row": {
       "id": "ex-el-toast-row",
-      "type": "nl.stack",
+      "type": "nl.container",
       "name": "Row",
       "parentId": "ex-el-toast-bar",
       "childrenIds": ["ex-el-toast-text", "ex-el-toast-spacer", "ex-el-toast-dismiss"],
       "layout": { "x": 0, "y": 0, "width": 560, "height": 52, "visible": true, "opacity": 1 },
       "props": {
-        "direction": "horizontal",
-        "gap": 12,
-        "paddingTop": 10,
-        "paddingRight": 14,
-        "paddingBottom": 10,
-        "paddingLeft": 14,
-        "alignItems": "center",
-        "justifyContent": "start"
+        "layoutKind": "stack",
+        "stackDirection": "horizontal",
+        "stackGap": 12,
+        "stackPaddingTop": 10,
+        "stackPaddingRight": 14,
+        "stackPaddingBottom": 10,
+        "stackPaddingLeft": 14,
+        "stackAlignItems": "center",
+        "stackJustifyContent": "start",
+        "backgroundColor": "transparent",
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
       }
     },
     "ex-el-toast-text": {
@@ -74,18 +81,18 @@
     },
     "ex-el-toast-spacer": {
       "id": "ex-el-toast-spacer",
-      "type": "nl.spacerDivider",
+      "type": "nl.container",
       "name": "Spacer",
       "parentId": "ex-el-toast-row",
       "childrenIds": [],
       "layout": { "x": 0, "y": 0, "width": 24, "height": 8, "visible": true, "opacity": 1 },
       "props": {
-        "mode": "spacer",
-        "orientation": "horizontal",
-        "thickness": 8,
-        "color": "#64748b",
-        "insetStart": 0,
-        "insetEnd": 0
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
       }
     },
     "ex-el-toast-dismiss": {

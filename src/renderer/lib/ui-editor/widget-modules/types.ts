@@ -112,7 +112,7 @@ export type DockerBarContext = {
  * - Docker bar creation button appearance
  */
 export interface UIWidgetModule {
-    /** Unique type identifier (e.g. "nl.rectangle") */
+    /** Unique type identifier (e.g. "nl.container") */
     readonly type: string;
 
     /**

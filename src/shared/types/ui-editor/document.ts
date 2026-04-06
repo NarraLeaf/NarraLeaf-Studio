@@ -1,5 +1,6 @@
+import { isContainerFlowLayoutParent } from "./container";
 
-export const UI_DOCUMENT_SCHEMA_VERSION = 3 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 4 as const;
 
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;
@@ -122,24 +123,22 @@ export type UIBehaviorAction =
     | { kind: "noop" };
 
 /**
- * Parent element types whose direct children participate in **flow layout** in the editor
- * (flex inside the parent) instead of canvas absolute positioning.
- * Keep in sync with builtin widget modules: Stack, Scroll, List / Repeater.
+ * True when this element acts as a flow-layout parent: direct children use flex inside the parent
+ * instead of canvas absolute positioning (`nl.list`, or `nl.container` with stack/scroll layout).
  */
-export const UI_FLOW_LAYOUT_PARENT_ELEMENT_TYPES = ["nl.stack", "nl.scroll", "nl.listRepeater"] as const;
-
-export type UIFlowLayoutParentElementType = (typeof UI_FLOW_LAYOUT_PARENT_ELEMENT_TYPES)[number];
-
-export function isUIFlowLayoutParentElementType(type: string): type is UIFlowLayoutParentElementType {
-    return (UI_FLOW_LAYOUT_PARENT_ELEMENT_TYPES as readonly string[]).includes(type);
+export function isUIFlowLayoutParentElement(element: UIElement): boolean {
+    if (element.type === "nl.list") {
+        return true;
+    }
+    return isContainerFlowLayoutParent(element);
 }
 
-/** True when this element is a direct child of a flow-layout container (Stack / Scroll / ListRepeater). */
+/** True when this element is a direct child of a flow-layout parent (Container stack/scroll or List). */
 export function isUIElementFlowLayoutChild(document: UIDocument, element: UIElement): boolean {
     if (element.parentId == null) {
         return false;
     }
     const parent = document.elements[element.parentId];
-    return parent != null && isUIFlowLayoutParentElementType(parent.type);
+    return parent != null && isUIFlowLayoutParentElement(parent);
 }
 

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Check } from "lucide-react";
 import { Button } from "./Button";
 
@@ -8,6 +9,8 @@ export interface SelectOption {
     disabled?: boolean;
     icon?: React.ReactNode;
 }
+
+export type SelectMenuPlacement = "auto" | "above" | "below";
 
 export interface SelectProps {
     options: SelectOption[];
@@ -20,6 +23,10 @@ export interface SelectProps {
     fullWidth?: boolean;
     className?: string;
     multiple?: boolean;
+    /** Render the menu in a document.body portal (avoids overflow clipping from ancestors). */
+    portalMenu?: boolean;
+    /** Where to open the menu; "auto" picks based on viewport space when not portaled, or when portaled. */
+    menuPlacement?: SelectMenuPlacement;
 }
 
 const sizeStyles = {
@@ -33,6 +40,10 @@ const variantStyles = {
     error: "border-red-500/50 hover:border-red-400/70 focus:border-red-500 focus:ring-1 focus:ring-red-500/30 focus:shadow-lg focus:shadow-red-500/10",
     success: "border-green-500/50 hover:border-green-400/70 focus:border-green-500 focus:ring-1 focus:ring-green-500/30 focus:shadow-lg focus:shadow-green-500/10",
 };
+
+const SELECT_MENU_GAP_PX = 4;
+/** Tailwind max-h-60 */
+const SELECT_MENU_MAX_HEIGHT_PX = 240;
 
 /**
  * Select dropdown component with VS Code-like styling
@@ -48,17 +59,26 @@ export function Select({
     fullWidth = false,
     className = "",
     multiple = false,
+    portalMenu = false,
+    menuPlacement = "auto",
 }: SelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     const selectRef = useRef<HTMLDivElement>(null);
     const dropdownRef = useRef<HTMLDivElement | null>(null);
     const [dropdownDirection, setDropdownDirection] = useState<"down" | "up">("down");
+    const [portalMenuStyle, setPortalMenuStyle] = useState<React.CSSProperties>({});
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (selectRef.current && !selectRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
+            const target = event.target as Node;
+            if (selectRef.current?.contains(target)) {
+                return;
             }
+            // Portaled menu is outside the trigger subtree
+            if (dropdownRef.current?.contains(target)) {
+                return;
+            }
+            setIsOpen(false);
         };
 
         document.addEventListener("mousedown", handleClickOutside);
@@ -68,11 +88,14 @@ export function Select({
     useEffect(() => {
         if (!isOpen) {
             setDropdownDirection("down");
+            setPortalMenuStyle({});
         }
     }, [isOpen]);
 
     useLayoutEffect(() => {
-        if (!isOpen) return;
+        if (!isOpen || portalMenu || menuPlacement !== "auto") {
+            return;
+        }
 
         const updateDirection = () => {
             if (!selectRef.current || !dropdownRef.current) return;
@@ -92,7 +115,80 @@ export function Select({
             window.removeEventListener("resize", updateDirection);
             window.removeEventListener("scroll", updateDirection, true);
         };
-    }, [isOpen, options.length, value]);
+    }, [isOpen, portalMenu, menuPlacement, options.length, value]);
+
+    useLayoutEffect(() => {
+        if (!isOpen || !portalMenu) {
+            return;
+        }
+
+        const positionPortalMenu = () => {
+            const trigger = selectRef.current?.getBoundingClientRect();
+            const menuEl = dropdownRef.current;
+            if (!trigger || !menuEl) {
+                return;
+            }
+
+            const menuHeight = menuEl.getBoundingClientRect().height;
+            const spaceBelow = window.innerHeight - trigger.bottom - SELECT_MENU_GAP_PX;
+            const spaceAbove = trigger.top - SELECT_MENU_GAP_PX;
+
+            let openAbove: boolean;
+            if (menuPlacement === "above") {
+                openAbove = true;
+            } else if (menuPlacement === "below") {
+                openAbove = false;
+            } else {
+                openAbove =
+                    menuHeight > spaceBelow && spaceAbove >= Math.min(menuHeight, spaceAbove);
+            }
+
+            const available = openAbove ? spaceAbove : spaceBelow;
+            const maxHeight = Math.min(
+                SELECT_MENU_MAX_HEIGHT_PX,
+                Math.max(SELECT_MENU_GAP_PX * 2, available - SELECT_MENU_GAP_PX)
+            );
+
+            let top: number;
+            if (openAbove) {
+                const usedHeight = Math.min(menuHeight || maxHeight, maxHeight);
+                top = trigger.top - usedHeight - SELECT_MENU_GAP_PX;
+                top = Math.max(SELECT_MENU_GAP_PX, top);
+            } else {
+                top = trigger.bottom + SELECT_MENU_GAP_PX;
+                const bottom = top + Math.min(menuHeight || maxHeight, maxHeight);
+                if (bottom > window.innerHeight - SELECT_MENU_GAP_PX) {
+                    top = Math.max(
+                        SELECT_MENU_GAP_PX,
+                        window.innerHeight - SELECT_MENU_GAP_PX - Math.min(menuHeight, maxHeight)
+                    );
+                }
+            }
+
+            setPortalMenuStyle({
+                position: "fixed",
+                left: trigger.left,
+                width: trigger.width,
+                top,
+                maxHeight,
+                zIndex: 100,
+            });
+        };
+
+        positionPortalMenu();
+        let raf2 = 0;
+        const raf1 = requestAnimationFrame(() => {
+            raf2 = requestAnimationFrame(positionPortalMenu);
+        });
+        window.addEventListener("resize", positionPortalMenu);
+        window.addEventListener("scroll", positionPortalMenu, true);
+        return () => {
+            cancelAnimationFrame(raf1);
+            cancelAnimationFrame(raf2);
+            window.removeEventListener("resize", positionPortalMenu);
+            window.removeEventListener("scroll", positionPortalMenu, true);
+        };
+    }, [isOpen, portalMenu, menuPlacement, options.length, value]);
 
     const selectedOption = options.find(option => option.value === value);
     const displayValue = selectedOption ? selectedOption.label : placeholder;
@@ -108,6 +204,54 @@ export function Select({
         onChange?.(option.value);
         setIsOpen(false);
     };
+
+    const openMenuDown =
+        menuPlacement === "below"
+            ? true
+            : menuPlacement === "above"
+              ? false
+              : dropdownDirection === "down";
+
+    const dropdownPanel = isOpen ? (
+        <div
+            ref={dropdownRef}
+            className={
+                portalMenu
+                    ? "bg-[#1e1f22] border border-white/20 rounded-md shadow-lg overflow-y-auto"
+                    : `absolute z-50 w-full left-0 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg max-h-60 overflow-y-auto ${
+                          openMenuDown ? "top-full mt-1" : "bottom-full mb-1"
+                      }`
+            }
+            style={portalMenu ? portalMenuStyle : undefined}
+        >
+            {options.map((option) => (
+                <button
+                    key={option.value}
+                    className={`
+                                w-full flex items-center gap-2 px-3 py-2 text-left text-sm
+                                transition-colors duration-150
+                                ${option.disabled
+                                    ? "text-gray-500 cursor-not-allowed"
+                                    : "text-gray-200 hover:bg-white/10 cursor-default"
+                                }
+                                ${option.value === value ? "bg-white/10 text-white" : ""}
+                            `}
+                    onClick={() => handleOptionClick(option)}
+                    disabled={option.disabled}
+                >
+                    {multiple && (
+                        <div className="w-4 h-4 border border-white/30 rounded flex items-center justify-center">
+                            {option.value === value && <Check className="w-3 h-3 text-[#40a8c4]" />}
+                        </div>
+                    )}
+                    {option.icon && (
+                        <div className="flex-shrink-0 text-gray-400">{option.icon}</div>
+                    )}
+                    <span className="truncate">{option.label}</span>
+                </button>
+            ))}
+        </div>
+    ) : null;
 
     return (
         <div ref={selectRef} className={`relative ${fullWidth ? "w-full min-w-0" : ""} ${className}`}>
@@ -138,45 +282,8 @@ export function Select({
                 />
             </Button>
 
-            {isOpen && (
-                <div
-                    ref={dropdownRef}
-                    className={`absolute z-50 w-full left-0 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg max-h-60 overflow-y-auto ${
-                        dropdownDirection === "down" ? "top-full mt-1" : "bottom-full mb-1"
-                    }`}
-                >
-                    {options.map((option) => (
-                        <button
-                            key={option.value}
-                            className={`
-                                w-full flex items-center gap-2 px-3 py-2 text-left text-sm
-                                transition-colors duration-150
-                                ${option.disabled
-                                    ? "text-gray-500 cursor-not-allowed"
-                                    : "text-gray-200 hover:bg-white/10 cursor-default"
-                                }
-                                ${option.value === value ? "bg-white/10 text-white" : ""}
-                            `}
-                            onClick={() => handleOptionClick(option)}
-                            disabled={option.disabled}
-                        >
-                            {multiple && (
-                                <div className="w-4 h-4 border border-white/30 rounded flex items-center justify-center">
-                                    {option.value === value && (
-                                        <Check className="w-3 h-3 text-[#40a8c4]" />
-                                    )}
-                                </div>
-                            )}
-                            {option.icon && (
-                                <div className="flex-shrink-0 text-gray-400">
-                                    {option.icon}
-                                </div>
-                            )}
-                            <span className="truncate">{option.label}</span>
-                        </button>
-                    ))}
-                </div>
-            )}
+            {dropdownPanel &&
+                (portalMenu ? createPortal(dropdownPanel, document.body) : dropdownPanel)}
         </div>
     );
 }

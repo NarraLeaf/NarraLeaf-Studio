@@ -8,7 +8,7 @@ type EditorNodeWrapperProps = {
     element: UIElement;
     layout: UILayout;
     isRoot?: boolean;
-    /** Flow children are laid out by a flex parent (Stack / Scroll / ListRepeater); skip absolute x/y. */
+    /** Flow children are laid out by a flex parent (`nl.container` stack/scroll or `nl.list`); skip absolute x/y. */
     layoutMode?: EditorNodeLayoutMode;
     styleOverrides?: CSSProperties;
     children?: React.ReactNode;

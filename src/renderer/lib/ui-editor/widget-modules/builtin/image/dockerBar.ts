@@ -1,7 +1,7 @@
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
 import type { ImageFillMode } from "@shared/types/ui-editor/imageFill";
-import { createRectangleDockerBarItems } from "../rectangle/dockerBar";
-import { normalizeImageFill } from "../rectangle/helpers";
+import { createRectangleDockerBarItems } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleDockerBar";
+import { normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { getImageWidgetRectangleProps } from "./helpers";
 
 const FIT_OPTIONS: { value: ImageFillMode; label: string }[] = [

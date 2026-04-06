@@ -210,6 +210,10 @@ input[type="radio"]:focus {
     --moveable-color: var(--narraleaf-accent-strong);
 }
 
+.moveable.narraleaf-moveable {
+    will-change: transform;
+}
+
 .moveable.narraleaf-moveable--crop,
 .moveable.narraleaf-moveable--crop * {
     --moveable-color: var(--narraleaf-accent-weak);
