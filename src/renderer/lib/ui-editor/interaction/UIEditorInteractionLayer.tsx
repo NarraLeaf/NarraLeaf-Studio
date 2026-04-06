@@ -14,6 +14,7 @@ import { PRIMARY_OUTLINE_STRONG, PRIMARY_OUTLINE_WEAK, SELECTABLE_TARGET } from 
 import type { InsertPreview } from "./useSurfaceInteractionEvents";
 import { useTransformController } from "./controllers/TransformController";
 import { useImageCropController } from "./controllers/ImageCropController";
+import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 
 function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
     const x = Math.min(preview.startX, preview.currentX);
@@ -100,6 +101,57 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
     }, [stateService]);
 
     const surfaceElement = containerRef.current ?? null;
+    const widgetRuntimeStore = useWidgetRuntimeStateStore();
+
+    useEffect(() => {
+        const root = containerRef.current;
+        if (!root || !widgetRuntimeStore) {
+            return undefined;
+        }
+        const down = (e: PointerEvent) => {
+            if (e.button !== 0) {
+                return;
+            }
+            const t = e.target as HTMLElement | null;
+            const el = t?.closest("[data-ui-element-id]") as HTMLElement | null;
+            const id = el?.dataset.uiElementId ?? null;
+            widgetRuntimeStore.setActivePointerTarget(id);
+        };
+        const up = () => widgetRuntimeStore.setActivePointerTarget(null);
+        root.addEventListener("pointerdown", down, true);
+        window.addEventListener("pointerup", up, true);
+        window.addEventListener("pointercancel", up, true);
+        return () => {
+            root.removeEventListener("pointerdown", down, true);
+            window.removeEventListener("pointerup", up, true);
+            window.removeEventListener("pointercancel", up, true);
+        };
+    }, [containerRef, widgetRuntimeStore]);
+
+    useEffect(() => {
+        const root = containerRef.current;
+        if (!root || !widgetRuntimeStore) {
+            return undefined;
+        }
+        const focusIn = (e: FocusEvent) => {
+            const t = e.target as HTMLElement | null;
+            const el = t?.closest("[data-ui-element-id]") as HTMLElement | null;
+            widgetRuntimeStore.setFocusedTarget(el?.dataset.uiElementId ?? null);
+        };
+        const focusOut = (e: FocusEvent) => {
+            const next = e.relatedTarget as Node | null;
+            if (next && root.contains(next)) {
+                return;
+            }
+            widgetRuntimeStore.setFocusedTarget(null);
+        };
+        root.addEventListener("focusin", focusIn, true);
+        root.addEventListener("focusout", focusOut, true);
+        return () => {
+            root.removeEventListener("focusin", focusIn, true);
+            root.removeEventListener("focusout", focusOut, true);
+        };
+    }, [containerRef, widgetRuntimeStore]);
 
     const selectedTargets = useMemo<HTMLElement[]>(() => {
         if (!isUIElementSelection(selection) || selection.data.surfaceId !== surfaceId) {

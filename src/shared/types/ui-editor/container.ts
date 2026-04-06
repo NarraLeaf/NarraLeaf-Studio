@@ -1,3 +1,4 @@
+import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
 /** How children of `nl.container` participate in layout inside the editor surface. */
@@ -66,6 +67,9 @@ export type ContainerWidgetProps = {
     borderJoin: ContainerStrokeJoin;
     cornerAdvanced: boolean;
     clipContent: boolean;
+
+    /** Optional variant + conditional row chrome; when absent, flat props are the sole source. */
+    appearance?: AppearanceModel | null;
 };
 
 export const defaultContainerWidgetProps: ContainerWidgetProps = {

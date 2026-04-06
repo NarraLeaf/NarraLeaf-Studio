@@ -1,14 +1,29 @@
 import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { resolveButtonVisualProps } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
+import {
+    useWidgetRuntimeSnapshot,
+    useWidgetRuntimeStateStore,
+} from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import { getButtonProps } from "./helpers";
 
 export function ButtonRenderer({ element, children, hostAdapter }: WidgetRendererProps) {
+    useWidgetRuntimeSnapshot();
+    const widgetRuntimeStore = useWidgetRuntimeStateStore();
     const p = getButtonProps(element);
-    const bg = colorValueToCss(parseColorValue(p.backgroundColor, { hex: "#374151", alpha: 1 }));
-    const borderColor = colorValueToCss(parseColorValue(p.borderColor, { hex: "#000000", alpha: 1 }));
-    const rt = hostAdapter.blueprintRuntime;
     const interactionDisabled = Boolean(p.interactionDisabled);
+    const resolveCtx = {
+        variantOverrideId: widgetRuntimeStore?.getVariantOverride(element.id) ?? null,
+        signals: widgetRuntimeStore
+            ? widgetRuntimeStore.getSignalsForElement(element.id, p.interactionDisabled)
+            : { ...DEFAULT_SYSTEM_INTERACTION_SIGNALS, disabled: interactionDisabled },
+    };
+    const v = resolveButtonVisualProps(element, p.appearance ?? undefined, resolveCtx);
+    const bg = colorValueToCss(parseColorValue(v.backgroundColor, { hex: "#374151", alpha: 1 }));
+    const borderColor = colorValueToCss(parseColorValue(v.borderColor, { hex: "#000000", alpha: 1 }));
+    const rt = hostAdapter.blueprintRuntime;
     const dispatchClick =
         rt && !interactionDisabled
             ? () => {
@@ -25,15 +40,15 @@ export function ButtonRenderer({ element, children, hostAdapter }: WidgetRendere
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: bg,
-        borderRadius: p.borderRadius,
-        padding: `${p.paddingY}px ${p.paddingX}px`,
-        overflow: p.clipContent ? "hidden" : "visible",
+        borderRadius: v.borderRadius,
+        padding: `${v.paddingY}px ${v.paddingX}px`,
+        overflow: v.clipContent ? "hidden" : "visible",
         cursor: dispatchClick ? "pointer" : interactionDisabled ? "not-allowed" : "default",
         opacity: interactionDisabled ? 0.45 : undefined,
     };
 
-    if (p.borderStyle !== "none" && p.borderWidth > 0) {
-        style.border = `${p.borderWidth}px ${p.borderStyle} ${borderColor}`;
+    if (v.borderStyle !== "none" && v.borderWidth > 0) {
+        style.border = `${v.borderWidth}px ${v.borderStyle} ${borderColor}`;
     } else {
         style.border = "none";
     }

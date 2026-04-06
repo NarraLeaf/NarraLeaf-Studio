@@ -18,6 +18,7 @@ import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSu
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
+import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
 type ViewportTransform = {
@@ -323,85 +324,87 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
 
     return (
         <div className="h-full flex overflow-hidden border border-white/10">
-            <div className="relative flex-1 bg-[#050f10]" onContextMenu={handleCanvasContextMenu}>
-                <SurfaceOutlinePanel surfaceId={surface.id} />
+            <WidgetRuntimeStateProvider key={surface.id}>
+                <div className="relative flex-1 bg-[#050f10]" onContextMenu={handleCanvasContextMenu}>
+                    <SurfaceOutlinePanel surfaceId={surface.id} />
 
-                {/* Top toolbar */}
-                <div className="absolute top-3 right-3 z-20 flex items-center gap-2 rounded-md border border-white/20 bg-[#05060a]/80 px-2 py-1">
-                    <button
-                        type="button"
-                        className={toolButtonClass(tool.kind === "select")}
-                        onClick={handleSelectTool}
-                        title="Select tool"
-                    >
-                        <MousePointer2 className="w-4 h-4" />
-                    </button>
-                    <button
-                        type="button"
-                        className={toolButtonClass(tool.kind === "pan")}
-                        onClick={handlePanTool}
-                        title="Pan the canvas"
-                    >
-                        <Move className="w-4 h-4" />
-                    </button>
-                    <div className="mx-1 h-6 w-px bg-white/10" />
-                    <button
-                        type="button"
-                        className={toolButtonClass(false)}
-                        onClick={handleStartCurrentSurface}
-                        title="Open this surface in Dev Mode"
-                        disabled={!surfaceId}
-                    >
-                        <Play className="w-4 h-4" />
-                    </button>
-                </div>
-
-                {/* Viewport / Canvas */}
-                <div ref={viewportRef} className="absolute inset-0 overflow-hidden" onDoubleClick={handleSurfaceDoubleClick}>
-                    {surfaceLevelDiagnosticMessages.length > 0 ? (
-                        <div className="absolute left-64 right-36 top-14 z-20 rounded-md border border-amber-500/35 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-100/90">
-                            <span className="font-medium text-amber-200/95">Static checks (editor only): </span>
-                            <span className="text-amber-100/85">{surfaceLevelDiagnosticMessages.join(" · ")}</span>
-                            <span className="mt-1 block text-[10px] text-gray-500">
-                                Open Dev Mode for real execution, node traces, and Host API calls.
-                            </span>
-                        </div>
-                    ) : null}
-                    <div ref={canvasRef} className="relative h-full w-full" style={transformStyle}>
-                        {surfaceContent}
-                        {documentService ? (
-                            <SurfaceLayoutDiagnosticMarkers
-                                document={documentService.getDocument()}
-                                hints={layoutInteractionHints}
-                            />
-                        ) : null}
+                    {/* Top toolbar */}
+                    <div className="absolute top-3 right-3 z-20 flex items-center gap-2 rounded-md border border-white/20 bg-[#05060a]/80 px-2 py-1">
+                        <button
+                            type="button"
+                            className={toolButtonClass(tool.kind === "select")}
+                            onClick={handleSelectTool}
+                            title="Select tool"
+                        >
+                            <MousePointer2 className="w-4 h-4" />
+                        </button>
+                        <button
+                            type="button"
+                            className={toolButtonClass(tool.kind === "pan")}
+                            onClick={handlePanTool}
+                            title="Pan the canvas"
+                        >
+                            <Move className="w-4 h-4" />
+                        </button>
+                        <div className="mx-1 h-6 w-px bg-white/10" />
+                        <button
+                            type="button"
+                            className={toolButtonClass(false)}
+                            onClick={handleStartCurrentSurface}
+                            title="Open this surface in Dev Mode"
+                            disabled={!surfaceId}
+                        >
+                            <Play className="w-4 h-4" />
+                        </button>
                     </div>
-                </div>
 
-                <UIEditorInteractionLayer
-                    surfaceId={surface.id}
-                    surface={surface}
-                    containerRef={viewportRef}
-                    showOutlines={true}
-                />
+                    {/* Viewport / Canvas */}
+                    <div ref={viewportRef} className="absolute inset-0 overflow-hidden" onDoubleClick={handleSurfaceDoubleClick}>
+                        {surfaceLevelDiagnosticMessages.length > 0 ? (
+                            <div className="absolute left-64 right-36 top-14 z-20 rounded-md border border-amber-500/35 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-100/90">
+                                <span className="font-medium text-amber-200/95">Static checks (editor only): </span>
+                                <span className="text-amber-100/85">{surfaceLevelDiagnosticMessages.join(" · ")}</span>
+                                <span className="mt-1 block text-[10px] text-gray-500">
+                                    Open Dev Mode for real execution, node traces, and Host API calls.
+                                </span>
+                            </div>
+                        ) : null}
+                        <div ref={canvasRef} className="relative h-full w-full" style={transformStyle}>
+                            {surfaceContent}
+                            {documentService ? (
+                                <SurfaceLayoutDiagnosticMarkers
+                                    document={documentService.getDocument()}
+                                    hints={layoutInteractionHints}
+                                />
+                            ) : null}
+                        </div>
+                    </div>
 
-                {/* Docker bar */}
-                {stateService && documentService && (
-                    <UIEditorDockerBar
+                    <UIEditorInteractionLayer
                         surfaceId={surface.id}
-                        stateService={stateService}
-                        documentService={documentService}
+                        surface={surface}
+                        containerRef={viewportRef}
+                        showOutlines={true}
                     />
-                )}
 
-                {/* Context menu */}
-                <ContextMenu
-                    items={menuItems}
-                    position={menuState.position}
-                    visible={menuState.visible}
-                    onClose={hideMenu}
-                />
-            </div>
+                    {/* Docker bar */}
+                    {stateService && documentService && (
+                        <UIEditorDockerBar
+                            surfaceId={surface.id}
+                            stateService={stateService}
+                            documentService={documentService}
+                        />
+                    )}
+
+                    {/* Context menu */}
+                    <ContextMenu
+                        items={menuItems}
+                        position={menuState.position}
+                        visible={menuState.visible}
+                        onClose={hideMenu}
+                    />
+                </div>
+            </WidgetRuntimeStateProvider>
         </div>
     );
 }
