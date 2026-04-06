@@ -12,7 +12,7 @@ interface FieldLayoutProps {
  */
 export function FieldLayout({ field, children, className = "" }: FieldLayoutProps) {
     return (
-        <div className={className}>
+        <div className={["min-w-0", className].filter(Boolean).join(" ")}>
             {field.label && (
                 <label className="block text-xs font-medium text-gray-400 mb-1">
                     {field.label}

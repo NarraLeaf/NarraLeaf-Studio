@@ -13,6 +13,9 @@ import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/e
 import { useWorkspace } from "@/apps/workspace/context";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { InteractionOverride, Services } from "@/lib/workspace/services/services";
+import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
+import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
+import type { UIDocument } from "@shared/types/ui-editor/document";
 import { getProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/builtin/rectangle/helpers";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
@@ -28,9 +31,41 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const surfaceId = payload?.surfaceId;
     const { runtimeBridge, stateService, documentService, uiService, widgetModules } = useUISurfaceEditorServices();
     const { context } = useWorkspace();
+    const graphService = useMemo(() => context?.services.get<UIGraphService>(Services.UIGraph) ?? null, [context]);
+    const [graphVersion, setGraphVersion] = useState(0);
+    useEffect(() => {
+        if (!graphService) {
+            return undefined;
+        }
+        return graphService.onGraphsChanged(() => {
+            setGraphVersion(v => v + 1);
+        });
+    }, [graphService]);
+
     const tool = useEditorToolState(stateService);
     const viewport = useViewportTransform(stateService);
     const { surface, documentVersion } = useSurfaceDocument(surfaceId, stateService, documentService);
+
+    const surfaceDiagnostics = useMemo(() => {
+        if (!documentService || !surface) {
+            return [];
+        }
+        const bp = graphService?.getDocument().blueprintDocument;
+        return collectSurfaceDiagnostics(documentService.getDocument(), surface.id, { blueprintDocument: bp });
+    }, [documentService, surface, graphService, documentVersion, graphVersion]);
+
+    const surfaceLevelDiagnosticMessages = useMemo(
+        () => surfaceDiagnostics.filter(d => !d.elementId).map(d => d.message),
+        [surfaceDiagnostics],
+    );
+
+    const layoutInteractionHints = useMemo(
+        () =>
+            surfaceDiagnostics
+                .filter(d => d.elementId && (d.source === "layout" || d.source === "interaction"))
+                .map(d => ({ elementId: d.elementId!, label: d.message })),
+        [surfaceDiagnostics],
+    );
     useDocumentDirtyIndicator(documentService, uiService, tabId);
 
     const { menuState, showMenu, hideMenu } = useContextMenu();
@@ -320,8 +355,23 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
 
                 {/* Viewport / Canvas */}
                 <div ref={viewportRef} className="absolute inset-0 overflow-hidden" onDoubleClick={handleSurfaceDoubleClick}>
+                    {surfaceLevelDiagnosticMessages.length > 0 ? (
+                        <div className="absolute left-64 right-36 top-14 z-20 rounded-md border border-amber-500/35 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-100/90">
+                            <span className="font-medium text-amber-200/95">Static checks (editor only): </span>
+                            <span className="text-amber-100/85">{surfaceLevelDiagnosticMessages.join(" · ")}</span>
+                            <span className="mt-1 block text-[10px] text-gray-500">
+                                Open Dev Mode for real execution, node traces, and Host API calls.
+                            </span>
+                        </div>
+                    ) : null}
                     <div ref={canvasRef} className="relative h-full w-full" style={transformStyle}>
                         {surfaceContent}
+                        {documentService ? (
+                            <SurfaceLayoutDiagnosticMarkers
+                                document={documentService.getDocument()}
+                                hints={layoutInteractionHints}
+                            />
+                        ) : null}
                     </div>
                 </div>
 
@@ -350,6 +400,35 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                     onClose={hideMenu}
                 />
             </div>
+        </div>
+    );
+}
+
+function SurfaceLayoutDiagnosticMarkers(props: { document: UIDocument; hints: { elementId: string; label: string }[] }) {
+    const { document, hints } = props;
+    if (hints.length === 0) {
+        return null;
+    }
+    return (
+        <div className="pointer-events-none absolute inset-0 z-[5]">
+            {hints.map(h => {
+                const el = document.elements[h.elementId];
+                if (!el) {
+                    return null;
+                }
+                const { x, y, width, height } = el.layout;
+                return (
+                    <div
+                        key={h.elementId}
+                        className="absolute rounded-sm border border-amber-500/45 bg-amber-500/[0.07]"
+                        style={{ left: x, top: y, width: Math.max(width, 2), height: Math.max(height, 2) }}
+                    >
+                        <span className="absolute left-0 top-full z-10 mt-0.5 max-w-[240px] truncate rounded bg-black/75 px-1 py-0.5 text-[9px] leading-tight text-amber-100/95 shadow-sm">
+                            {h.label}
+                        </span>
+                    </div>
+                );
+            })}
         </div>
     );
 }

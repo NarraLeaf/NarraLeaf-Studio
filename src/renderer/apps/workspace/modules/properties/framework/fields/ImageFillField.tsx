@@ -72,7 +72,7 @@ export function ImageFillField<TData extends UIInspectorData>({
         return MODE_OPTIONS.filter(option => allowedModes.includes(option.value));
     }, [allowedModes]);
 
-    const { url, metadata, loading } = useAssetObjectUrl(normalizedFill.assetId ?? null);
+    const { url, metadata, loading, error: assetResolveError } = useAssetObjectUrl(normalizedFill.assetId ?? null);
     const [isOpen, setIsOpen] = useState(false);
     const [selectorOpen, setSelectorOpen] = useState(false);
     const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -377,6 +377,12 @@ export function ImageFillField<TData extends UIInspectorData>({
                     </div>
                 </button>
             </FieldLayout>
+            {normalizedFill.assetId && assetResolveError ? (
+                <p className="mt-1 text-[11px] text-amber-400/90 leading-snug">
+                    Static check: image asset could not be resolved ({assetResolveError}). Preview may be wrong until the
+                    asset exists; verify in Dev Mode.
+                </p>
+            ) : null}
 
             {panelContent}
 

@@ -699,11 +699,30 @@ type DevModeBundle = {
 - **调试**：上述六类事件在 Dev Mode 内嵌面板可见；**无** Workspace / 主进程调试桥。
 - **节点追踪**：不含 `node.enter` / `node.exit`（留给 M3-full）。
 
+### 7.14 M3-full（扩展，仓库当前注记）
+
+在 M3-min 之上，仓库已增量落地 **M3-full 方向的部分能力**（不等价于里程碑 §7 全文验收已齐）：
+
+- **节点追踪**：`node.enter` / `node.exit` 已在执行器与调试类型中落地（见 `GraphExecutor.ts`、`debug.ts`）。
+- **扩展节点族**：`blueprintM3FullNodes.ts` 等；与 §7.7 列举的完整节点清单需 **逐项对照**，见 `implementation-plans/p5-ve-m5-bp-m3full-plan.md`。
+- **Host API / Scope**：`BlueprintHostApiBridge.ts`、`ScopeStoreBridge.ts`、`devModeBlueprintHostAdapter.ts`；**六大家族逐项验收**仍 partial。
+- **错误定位**：`execution.error` 与 Dev Mode 面板可读；Workspace 侧统一“打开到目标蓝图/成员”的闭环仍偏弱。
+
 ---
 
 ## 8. M4：Studio 集成与 Visual Blueprint 编辑器
 
 `M4` 才是“用户真正能操作蓝图”的阶段，但它建立在 `M2 + M3` 之上。
+
+### 8.0 仓库状态分层（避免“全未做 / 全已做”二选一）
+
+| 分层 | 含义 |
+|------|------|
+| **M4 目标清单** | 仍以 §8.1–§8.9 为长期目标描述。 |
+| **已显著落地** | 统一 Blueprint 编辑 Tab（React Flow）、成员树、图校验与诊断面板、属性绑定三态与解绑/跳转、声明创建与 **搜索绑定**（见 `blueprint-lite/`、`properties/blueprint/`）。 |
+| **仍属 partial** | 声明/绑定工作流在 P7 后继续收口；Workspace 静态诊断与图诊断的文案与跳转分工已对齐但**不等价**于“所有错误一键直达所有上下文”；编辑器画布 **不**默认承担完整运行时模拟（边界见 `visual-editor-milestones.md` §7）。 |
+
+详细差额：`implementation-plans/p4-bp-m4-ve-m4full-plan.md`。
 
 ### 8.1 M4 范围
 
@@ -974,7 +993,7 @@ import { bound, events } from "narraleaf-studio";
 - Visual / TypeScript 两种蓝图共用同一套宿主协议与调试体系
 - DevTools 已能阅读执行状态和错误
 
-**仓库当前衔接说明（P6 实施后）**：本地 `BlueprintDocument` 已升至 **schema v3**（`ownerRecords`、多私有修订 + `active`）；TypeScript 蓝图在 **Dev Mode 主进程路径** 经 esbuild 编译并以内联脚本装入 `DevModeBundle`；Workspace 侧独立 `BlueprintBuildService` / 磁盘 `editor/generated/blueprints/` manifest 仍为后续增强。TS 的 `bound.bindSymbol` 与属性绑定求值链尚未合并。
+**仓库当前衔接说明（P6 实施后，P7 复核）**：本地 `BlueprintDocument` 已升至 **schema v3**（`ownerRecords`、多私有修订 + `active`）；TypeScript 蓝图在 **Dev Mode 主进程路径** 经 esbuild 编译并以内联脚本装入 `DevModeBundle`；Workspace 侧独立 `BlueprintBuildService`、磁盘 `editor/generated/blueprints/` manifest、Monaco 级 TS 体验、完整 DevTools 多面板与 **VE-M6** 插入/搜索/remap UI **仍为 partial / 残余风险**，与 `implementation-plans/p6-bp-m5-ve-m6-plan.md` 中 Remaining risks 一致。**勿将 M5 里程碑句理解为已全部满额完成。**
 
 ---
 

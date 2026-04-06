@@ -1,7 +1,9 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
+import { BlueprintGraphExecutionError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import type { BlueprintHostApiRuntime } from "./BlueprintHostApiBridge";
 import { adaptBlueprintGraphIr } from "./adaptBlueprintGraphIr";
 import type { DebugBridge } from "./DebugBridge";
 import { pickBehaviorGraphEntry } from "./pickBehaviorGraphEntry";
@@ -15,10 +17,41 @@ function newExecutionId(): string {
 }
 
 function createScriptExecutionContext(input: {
+    hostApi?: BlueprintHostApiRuntime;
     debug: DebugBridge;
     getSurfaceState: (key: string) => unknown;
     setSurfaceState: (key: string, value: unknown) => void;
 }): Record<string, unknown> {
+    const api = input.hostApi;
+    if (api) {
+        return {
+            host: {
+                navigation: api.navigation,
+                widget: api.widget,
+                persistence: api.persistence,
+                media: api.media,
+                devtools: {
+                    log: (msg: string) => {
+                        api.devtools.log("info", String(msg));
+                    },
+                },
+            },
+            state: {
+                surface: {
+                    get: (key: string) => api.state.get("surface", key),
+                    set: (key: string, value: unknown) => {
+                        api.state.set("surface", key, value);
+                    },
+                },
+                global: {
+                    get: (key: string) => api.state.get("global", key),
+                    set: (key: string, value: unknown) => {
+                        api.state.set("global", key, value);
+                    },
+                },
+            },
+        };
+    }
     return {
         host: {
             devtools: {
@@ -102,6 +135,7 @@ export async function dispatchBlueprintUiEvent(options: {
         const executionId = newExecutionId();
         debug.emit({ type: "execution.started", executionId, blueprintId: binding.blueprintId });
         const ctx = createScriptExecutionContext({
+            hostApi: hostAdapter.blueprintRuntime?.hostApi,
             debug,
             getSurfaceState,
             setSurfaceState,
@@ -111,7 +145,13 @@ export async function dispatchBlueprintUiEvent(options: {
             debug.emit({ type: "execution.finished", executionId, blueprintId: binding.blueprintId });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            debug.emit({ type: "execution.error", executionId, message });
+            debug.emit({
+                type: "execution.error",
+                executionId,
+                message,
+                blueprintId: binding.blueprintId,
+                eventId: binding.eventId,
+            });
         }
         return;
     }
@@ -143,10 +183,27 @@ export async function dispatchBlueprintUiEvent(options: {
             entry,
             hostAdapter,
             maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+            trace: {
+                executionId,
+                graphId: graph.id,
+                blueprintId: binding.blueprintId,
+                eventId: binding.eventId,
+                emit: e => debug.emit(e),
+            },
         });
         debug.emit({ type: "execution.finished", executionId, blueprintId: binding.blueprintId });
     } catch (err) {
+        if (err instanceof BlueprintGraphExecutionError) {
+            return;
+        }
         const message = err instanceof Error ? err.message : String(err);
-        debug.emit({ type: "execution.error", executionId, message });
+        debug.emit({
+            type: "execution.error",
+            executionId,
+            message,
+            blueprintId: binding.blueprintId,
+            eventId: binding.eventId,
+            graphId: graph.id,
+        });
     }
 }

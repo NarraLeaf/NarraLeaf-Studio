@@ -7,6 +7,8 @@ export type ButtonWidgetProps = {
     paddingX: number;
     paddingY: number;
     clipContent: boolean;
+    /** Dev Mode / runtime: disables interaction without mutating saved props */
+    interactionDisabled?: boolean;
 };
 
 export const defaultButtonWidgetProps: ButtonWidgetProps = {

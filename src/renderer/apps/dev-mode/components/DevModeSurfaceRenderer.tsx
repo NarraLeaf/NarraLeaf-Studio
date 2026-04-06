@@ -9,6 +9,7 @@ import { mergeElementWithBlueprintBindings } from "@/lib/ui-editor/blueprint-run
 import type { SurfaceStateStore } from "@/lib/ui-editor/blueprint-runtime/SurfaceStateStore";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
+import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 
 type DevModeSurfaceRendererProps = {
     document: UIDocument;
@@ -23,10 +24,13 @@ type DevModeSurfaceRendererProps = {
         debug: DebugBridge;
         coalescer: BindingDebugCoalescer;
     } | null;
+    /** Runtime-only widget patches from Host API (M3-full); not persisted. */
+    widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>;
 };
 
 export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
-    const { document, surface, rendererRegistry, scale, hostAdapter, blueprintBindingContext } = props;
+    const { document, surface, rendererRegistry, scale, hostAdapter, blueprintBindingContext, widgetRuntimePatches } =
+        props;
     const rootElementId = resolveSurfaceRootElementId(document, surface.id);
     if (!rootElementId) {
         return null;
@@ -73,10 +77,30 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
                     hostAdapter,
                     rendererRegistry,
                     blueprintBindingContext,
+                    widgetRuntimePatches,
                 )}
             </div>
         </div>
     );
+}
+
+function applyWidgetRuntimePatches(element: UIElement, patches: Record<string, DevModeWidgetRuntimePatch>): UIElement {
+    const patch = patches[element.id];
+    if (!patch) {
+        return element;
+    }
+    const next: UIElement = {
+        ...element,
+        layout: { ...element.layout },
+        props: { ...(element.props ?? {}) },
+    };
+    if (patch.visible !== undefined) {
+        next.layout.visible = patch.visible;
+    }
+    if (patch.enabled !== undefined) {
+        (next.props as Record<string, unknown>).interactionDisabled = !patch.enabled;
+    }
+    return next;
 }
 
 function renderElementTree(
@@ -86,18 +110,20 @@ function renderElementTree(
     hostAdapter: UIHostAdapter,
     rendererRegistry: ElementRendererRegistry,
     blueprintBindingContext: DevModeSurfaceRendererProps["blueprintBindingContext"],
+    widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>,
 ): ReactNode {
+    const patched = applyWidgetRuntimePatches(element, widgetRuntimePatches ?? {});
     const resolved =
         blueprintBindingContext != null
             ? mergeElementWithBlueprintBindings(
-                  element,
+                  patched,
                   surface.id,
                   blueprintBindingContext.blueprintDocument,
                   blueprintBindingContext.surfaceState,
                   e => blueprintBindingContext.debug.emit(e),
                   blueprintBindingContext.coalescer,
               )
-            : element;
+            : patched;
 
     if (resolved.layout.visible === false) {
         return null;
@@ -116,6 +142,7 @@ function renderElementTree(
                 hostAdapter,
                 rendererRegistry,
                 blueprintBindingContext,
+                widgetRuntimePatches,
             );
         })
         .filter((node): node is ReactNode => node !== null);

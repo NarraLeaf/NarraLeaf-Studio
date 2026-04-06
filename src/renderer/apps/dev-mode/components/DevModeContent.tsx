@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { FixedAspectRatioContainer } from "narraleaf-react";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UISurface, UIDocument } from "@shared/types/ui-editor/document";
@@ -6,6 +7,8 @@ import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { DevModeSurfaceRenderer } from "./DevModeSurfaceRenderer";
 import { BlueprintRuntimeDebugPanel } from "./BlueprintRuntimeDebugPanel";
 import { useDevModeBlueprintRuntime } from "../hooks/useDevModeBlueprintRuntime";
+import { createDevModeBlueprintHostApi, type DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
@@ -25,7 +28,16 @@ const staticDevHostAdapter = (surface: UISurface): UIHostAdapter => ({
 
 export function DevModeContent(props: DevModeContentProps) {
     const { bundle, surface, surfaceId, rendererRegistry, scale, handleAspectUpdate } = props;
-    const bpRuntime = useDevModeBlueprintRuntime(bundle, surface);
+    const bpCore = useDevModeBlueprintRuntime(bundle);
+    const [navStack, setNavStack] = useState<string[]>([]);
+    const [widgetPatches, setWidgetPatches] = useState<Record<string, DevModeWidgetRuntimePatch>>({});
+
+    useEffect(() => {
+        if (surface?.id) {
+            setNavStack([surface.id]);
+            setWidgetPatches({});
+        }
+    }, [surface?.id, bundle?.revision, bundle?.bundleId]);
 
     if (!bundle) {
         return (
@@ -44,18 +56,58 @@ export function DevModeContent(props: DevModeContentProps) {
     }
 
     const document: UIDocument = bundle.ui.uidoc;
-    const aspectRatio = surface.designSize.width / surface.designSize.height;
-    const baseWidth = surface.designSize.width;
-    const baseHeight = surface.designSize.height;
+    const activeSurfaceId =
+        navStack.length > 0 ? navStack[navStack.length - 1]! : surface.id;
+    const activeSurface = document.surfaces.find(s => s.id === activeSurfaceId) ?? surface;
 
-    const hostAdapter = bpRuntime?.hostAdapter ?? staticDevHostAdapter(surface);
+    const hostApi = useMemo(() => {
+        if (!bpCore) {
+            return null;
+        }
+        return createDevModeBlueprintHostApi({
+            document,
+            scope: bpCore.scopeBridge,
+            activeSurfaceId: activeSurface.id,
+            emit: e => bpCore.debug.emit(e),
+            onOpenSurface: id => {
+                setNavStack(prev => [...prev, id]);
+            },
+            onCloseLayer: () => {
+                setNavStack(prev => (prev.length > 1 ? prev.slice(0, -1) : prev));
+            },
+            onWidgetPatch: (elementId, patch) => {
+                setWidgetPatches(prev => ({
+                    ...prev,
+                    [elementId]: { ...prev[elementId], ...patch },
+                }));
+            },
+        });
+    }, [bpCore, document, activeSurface.id]);
+
+    const hostAdapter = useMemo((): UIHostAdapter => {
+        if (!bpCore || !hostApi) {
+            return staticDevHostAdapter(activeSurface);
+        }
+        return createDevModeBlueprintHostAdapter({
+            bundle,
+            surface: activeSurface,
+            scopeBridge: bpCore.scopeBridge,
+            debug: bpCore.debug,
+            hostApi,
+        });
+    }, [bundle, activeSurface, bpCore, hostApi]);
+
+    const aspectRatio = activeSurface.designSize.width / activeSurface.designSize.height;
+    const baseWidth = activeSurface.designSize.width;
+    const baseHeight = activeSurface.designSize.height;
+
     const bindingContext =
-        bpRuntime != null
+        bpCore != null
             ? {
                   blueprintDocument: bundle.ui.localBlueprints,
-                  surfaceState: bpRuntime.surfaceState,
-                  debug: bpRuntime.debug,
-                  coalescer: bpRuntime.bindingDebugCoalescer,
+                  surfaceState: bpCore.scopeBridge.getSurfaceStore(activeSurface.id),
+                  debug: bpCore.debug,
+                  coalescer: bpCore.bindingDebugCoalescer,
               }
             : null;
 
@@ -71,15 +123,16 @@ export function DevModeContent(props: DevModeContentProps) {
                 >
                     <DevModeSurfaceRenderer
                         document={document}
-                        surface={surface}
+                        surface={activeSurface}
                         rendererRegistry={rendererRegistry}
                         scale={scale}
                         hostAdapter={hostAdapter}
                         blueprintBindingContext={bindingContext}
+                        widgetRuntimePatches={widgetPatches}
                     />
                 </FixedAspectRatioContainer>
             </div>
-            {bpRuntime ? <BlueprintRuntimeDebugPanel debug={bpRuntime.debug} /> : null}
+            {bpCore ? <BlueprintRuntimeDebugPanel debug={bpCore.debug} /> : null}
         </div>
     );
 }

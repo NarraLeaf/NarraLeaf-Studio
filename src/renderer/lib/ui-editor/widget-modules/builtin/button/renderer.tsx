@@ -8,11 +8,13 @@ export function ButtonRenderer({ element, children, hostAdapter }: WidgetRendere
     const bg = colorValueToCss(parseColorValue(p.backgroundColor, { hex: "#374151", alpha: 1 }));
     const borderColor = colorValueToCss(parseColorValue(p.borderColor, { hex: "#000000", alpha: 1 }));
     const rt = hostAdapter.blueprintRuntime;
-    const dispatchClick = rt
-        ? () => {
-              void rt.dispatchElementBlueprintEvent(element.id, "click");
-          }
-        : undefined;
+    const interactionDisabled = Boolean(p.interactionDisabled);
+    const dispatchClick =
+        rt && !interactionDisabled
+            ? () => {
+                  void rt.dispatchElementBlueprintEvent(element.id, "click");
+              }
+            : undefined;
 
     const style: CSSProperties = {
         width: "100%",
@@ -26,7 +28,8 @@ export function ButtonRenderer({ element, children, hostAdapter }: WidgetRendere
         borderRadius: p.borderRadius,
         padding: `${p.paddingY}px ${p.paddingX}px`,
         overflow: p.clipContent ? "hidden" : "visible",
-        cursor: dispatchClick ? "pointer" : "default",
+        cursor: dispatchClick ? "pointer" : interactionDisabled ? "not-allowed" : "default",
+        opacity: interactionDisabled ? 0.45 : undefined,
     };
 
     if (p.borderStyle !== "none" && p.borderWidth > 0) {

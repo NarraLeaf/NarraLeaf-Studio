@@ -202,6 +202,8 @@ Surface 在编辑器中的渲染入口为：
 2. 对照 `project/examples/visual-editor/` 下各子目录中的 `editor/ui/uidoc.json`（及配套的 `uigraphs.json` 壳）。将 JSON 片段合并进项目的 `editor/ui/`，或按结构在画布中手搓。
 3. **选择肢列表（Option list）** 不单独占一类主 widget：使用 **`nl.listRepeater` + `nl.button` + `nl.text`**（及可选 `nl.spacerDivider`）表达；Repeater 仅设计时预览份数，无运行时数据源。
 
+**`uigraphs.json` 与示例**：示例仓库中的 `uigraphs.json` 可能仍展示较早的 `blueprintDocument` 字面形态（例如 `schemaVersion: 2` 与 `ownerIndex`），便于阅读与手工对照。项目在 Studio 中打开时，`UIGraphService` 会将图文档壳层与 `blueprintDocument` **迁移到当前实现所要求的版本**；持久化后的真相以保存结果为准，不必手抄示例中的旧版本号作为生产约定。
+
 子目录与用途对应：
 
 | 目录 | 范式 |

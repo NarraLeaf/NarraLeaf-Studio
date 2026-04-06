@@ -98,7 +98,7 @@ export function EnhancedInput({
     return (
         <div
             className={`
-                relative flex items-center bg-[#1e1f22] border border-white/10 rounded-md text-sm h-9 min-h-[34px] overflow-hidden
+                relative flex min-w-0 max-w-full items-center bg-[#1e1f22] border border-white/10 rounded-md text-sm h-9 min-h-[34px] overflow-hidden
                 focus-within:border-primary/70 transition focus-within:ring-1 focus-within:ring-primary/30
                 ${className}
             `}
@@ -116,7 +116,7 @@ export function EnhancedInput({
                 onBlur={handleBlur}
                 onMouseUp={handleMouseUp}
                 className={`
-                    flex-1 h-full bg-transparent border-none placeholder:text-gray-500 text-gray-100 focus:outline-none leading-none overflow-hidden text-ellipsis whitespace-nowrap
+                    min-w-0 flex-1 h-full bg-transparent border-none placeholder:text-gray-500 text-gray-100 focus:outline-none leading-none overflow-hidden text-ellipsis whitespace-nowrap
                     ${numberNoSpinnerClass}
                     ${paddingLeftClass} ${paddingRightClass} ${inputClassName}
                 `}

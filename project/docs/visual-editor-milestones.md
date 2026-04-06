@@ -150,7 +150,7 @@
 ### 5.7 M1 结束时的已知缺口（供 M2 对照）
 
 - ~~内置可插 widget 当前仅有 `nl.rectangle`。~~ **M2 八件套已齐**：M2-A（Text / Image / Button / Container）+ M2-B（Stack / Scroll / SpacerDivider / ListRepeater）+ 流式子布局与交互规则（见 `visual-editor.md` §4.2、§5）。
-- 行为图/蓝图在编辑器侧无完整图编辑 UI；属性面板 Blueprint **M4-lite 已交付**真入口（轻量 Tab）；完整绑定 UI 与 Visual 画布属 **M4-full**。
+- 行为图/蓝图：属性面板 Blueprint **M4-lite** 已交付；**M4-full** 含 Tab 内 Visual 编辑与属性绑定行（含搜索/创建声明绑定），整体仍标 **partial**（见 §7.3），非“仅占位”。
 
 ---
 
@@ -213,7 +213,9 @@
 - 上下文跳转
 - 最小绑定/事件展示
 
-**M4-lite（已落地）**：上述四条在 Workspace 内通过「只读摘要 + Open blueprint entry → 轻量 Tab」完成；**不**包含属性面板绑定编辑与 Visual 画布。真实执行闭环在 **Dev Mode**（见 Blueprint M3-min 与 `project/docs/implementation-plans/p2-bp-m3min-ve-m4lite-plan.md`）。
+**M4-lite（done）**：上述四条在 Workspace 内通过「只读摘要 + Open blueprint entry → 轻量 Tab」完成；真实执行闭环在 **Dev Mode**（见 Blueprint M3-min 与 `project/docs/implementation-plans/p2-bp-m3min-ve-m4lite-plan.md`）。
+
+**M4-full（partial）**：属性面板已支持 **Literal / Bound / Broken**、解绑、跳转声明；**声明搜索 + 就地创建（无浏览器 prompt）+ 绑定到已有声明** 已在 P7 收口；**Visual 图编辑与 Tab 内诊断/跳转** 已在 `blueprint-lite` 落地。**未**纳入默认验收的项：编辑器画布挂接完整 `blueprintRuntime`（产品边界仍建议以 Dev Mode 为真实执行主场）。追溯与差额见 `implementation-plans/p4-bp-m4-ve-m4full-plan.md`。
 
 ### 7.4 验收标准
 
@@ -221,7 +223,7 @@
 - 用户能知道当前元素是否接了逻辑
 - 用户能从当前编辑上下文进入对应逻辑入口
 
-**说明**：M1 阶段允许属性面板内为 Blueprint 提供**明确的延期/未实现说明**（非可点的虚假入口）；M4 完成时须满足上表三条。**M4-full** 仍待：绑定 UI、声明选择器、React Flow 编辑器等（见 Blueprint System M4）。
+**说明**：M1 阶段允许属性面板内为 Blueprint 提供**明确的延期/未实现说明**（非可点的虚假入口）；M4-lite 与 M4-full 的完成度请按上段 **lite / full** 分层理解，勿将 M4-full 整体标为 fully done。
 
 ---
 
@@ -231,14 +233,19 @@
 
 让编辑器从“能画”变成“能发现问题”。
 
-### 8.2 推荐交付
+### 8.2 推荐交付与仓库状态（对照 `src/renderer/lib/ui-editor/diagnostics/`）
 
-- 缺失资源提示
-- link 异常提示
-- Surface / Stage 配置异常提示
-- 元素越界与可见性问题提示
-- 交互热点与尺寸检查
-- 面向 Dev Mode 的更清晰预览入口
+| 交付项 | 状态 |
+|--------|------|
+| 缺失资源提示 | **done**（`resourceDiagnostics`） |
+| link 异常提示 | **done**（`linkDiagnostics`） |
+| Surface / Stage 配置异常提示 | **partial**（`stageDiagnostics`，规则面仍偏窄） |
+| 元素越界 | **done**（`layoutDiagnostics`） |
+| 可见性问题提示 | **partial**（`interactionDiagnostics`，已覆盖核心子集） |
+| 交互热点与尺寸检查 | **done**（`interactionDiagnostics`） |
+| 面向 Dev Mode 的更清晰预览入口 | **done**（Surface 编辑 Tab 等） |
+
+聚合：`collectSurfaceDiagnostics.ts`；属性面板条带可 **跳转带 `elementId` 的诊断对应画布元素**（P7）。
 
 ### 8.3 预览策略建议
 
@@ -253,6 +260,8 @@
 - 用户能更早发现明显错误
 - 编辑器内反馈与 Dev Mode 的职责边界清楚
 - 预览结果不再严重误导用户
+
+**说明**：M5 不要求在 Workspace 内复制 Dev Mode 的实时执行轨迹；静态诊断与运行时诊断分工见 `implementation-plans/p5-ve-m5-bp-m3full-plan.md`。
 
 ---
 
@@ -281,6 +290,8 @@
 
 - 团队可以把它当成真实生产工具，而不是实验性编辑器
 - 新增 widget、组合范式、Blueprint 入口的扩展方式足够稳定
+
+**说明（partial）**：范式与示例、属性面板 Blueprint 区块与只读摘要已显著收敛；**统一插入/搜索弹层、`blueprintCopyRemap` 的完整 UI、Monaco 级 TS 体验** 等仍属 `P6` 残余或后续阶段，见 `implementation-plans/p6-bp-m5-ve-m6-plan.md` 与 `p7-doc-gap-closure-plan.md` 矩阵。**勿将 M6 理解为已全部满额完成。**
 
 ---
 

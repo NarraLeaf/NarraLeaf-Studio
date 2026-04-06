@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintHostApiContractVersion } from "@shared/types/blueprint/hostApi";
 import type { UISurfaceId } from "@shared/types/ui-editor/document";
+import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 
 export type UIHost = "app" | "player";
 
@@ -15,6 +16,8 @@ export type UIHostAdapterBlueprintRuntime = {
     getSurfaceState: (key: string) => unknown;
     emitDebug: (event: BlueprintDebugEvent) => void;
     dispatchElementBlueprintEvent: (elementId: string, eventName: string) => Promise<void>;
+    /** M3-full: Dev Mode host API (graphs + TS ctx); absent in editor preview. */
+    hostApi?: BlueprintHostApiRuntime;
 };
 
 /**

@@ -16,7 +16,10 @@ export type PropertyBindingState = {
     brokenReason: string | undefined;
     canBind: boolean;
     uiLocked: boolean;
-    bind: () => void;
+    /** Declarations on the widget main blueprint, sorted by name (for bind picker). */
+    declarationCandidates: { id: string; name: string }[];
+    bindToExistingDeclaration: (declarationId: string) => void;
+    createAndBindWithName: (name: string) => void;
     unbind: () => void;
     goToDeclaration: () => void;
 };
@@ -70,30 +73,60 @@ export function usePropertyBindingState(
         return "bound";
     }, [snapshot.binding, snapshot.declName]);
 
-    const bind = useCallback(() => {
-        if (!isInitialized || !context || !surfaceId || !snapshot.blueprintId) {
-            return;
-        }
-        const name = window.prompt("New declaration name", bindingMeta.propPath);
-        if (!name || !name.trim()) {
-            return;
+    const declarationCandidates = useMemo(() => {
+        if (!isInitialized || !context || !snapshot.blueprintId) {
+            return [];
         }
         const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
-        const decl = localBp.createDeclaration(snapshot.blueprintId, {
-            name: name.trim(),
-            kind: "constant",
-            valueSource: { kind: "surfaceState", key: bindingMeta.propPath },
-        });
-        const fallback = bindingMeta.readLiteral(data);
-        localBp.setWidgetPropBinding({
-            blueprintId: snapshot.blueprintId,
-            surfaceId,
-            elementId,
-            propPath: bindingMeta.propPath,
-            declarationId: decl.id,
-            fallback: fallback as string | number | boolean | null,
-        });
-    }, [bindingMeta, context, data, isInitialized, snapshot.blueprintId, surfaceId, elementId]);
+        const list = localBp.listDeclarations(snapshot.blueprintId);
+        return [...list]
+            .map(d => ({ id: d.id, name: d.name }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [context, isInitialized, revision, snapshot.blueprintId]);
+
+    const bindToExistingDeclaration = useCallback(
+        (declarationId: string) => {
+            if (!isInitialized || !context || !surfaceId || !snapshot.blueprintId || !declarationId) {
+                return;
+            }
+            const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+            const fallback = bindingMeta.readLiteral(data);
+            localBp.setWidgetPropBinding({
+                blueprintId: snapshot.blueprintId,
+                surfaceId,
+                elementId,
+                propPath: bindingMeta.propPath,
+                declarationId,
+                fallback: fallback as string | number | boolean | null,
+            });
+        },
+        [bindingMeta, context, data, elementId, isInitialized, snapshot.blueprintId, surfaceId],
+    );
+
+    const createAndBindWithName = useCallback(
+        (name: string) => {
+            const trimmed = name.trim();
+            if (!isInitialized || !context || !surfaceId || !snapshot.blueprintId || !trimmed) {
+                return;
+            }
+            const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+            const decl = localBp.createDeclaration(snapshot.blueprintId, {
+                name: trimmed,
+                kind: "constant",
+                valueSource: { kind: "surfaceState", key: bindingMeta.propPath },
+            });
+            const fallback = bindingMeta.readLiteral(data);
+            localBp.setWidgetPropBinding({
+                blueprintId: snapshot.blueprintId,
+                surfaceId,
+                elementId,
+                propPath: bindingMeta.propPath,
+                declarationId: decl.id,
+                fallback: fallback as string | number | boolean | null,
+            });
+        },
+        [bindingMeta, context, data, elementId, isInitialized, snapshot.blueprintId, surfaceId],
+    );
 
     const unbind = useCallback(() => {
         if (!isInitialized || !context || !surfaceId || !snapshot.blueprintId) {
@@ -125,7 +158,9 @@ export function usePropertyBindingState(
         brokenReason: snapshot.binding?.brokenReason,
         canBind: Boolean(surfaceId && snapshot.blueprintId),
         uiLocked,
-        bind,
+        declarationCandidates,
+        bindToExistingDeclaration,
+        createAndBindWithName,
         unbind,
         goToDeclaration,
     };

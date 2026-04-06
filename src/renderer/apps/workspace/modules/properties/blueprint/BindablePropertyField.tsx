@@ -1,8 +1,19 @@
-import { cloneElement, isValidElement, type ReactElement } from "react";
+import {
+    cloneElement,
+    isValidElement,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type ReactElement,
+} from "react";
+import { Search, X } from "lucide-react";
 import type { FieldDefinition } from "../framework/types";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type { PropertyFieldBindingMeta } from "./bindingMeta";
 import { usePropertyBindingState } from "./usePropertyBindingState";
+import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 
 type Props<TData> = {
     field: FieldDefinition<TData> & { binding: PropertyFieldBindingMeta };
@@ -23,6 +34,72 @@ function statusBadgeClass(status: string): string {
 
 export function BindablePropertyField<TData>({ field, data, onSaving, children }: Props<TData>) {
     const bp = usePropertyBindingState(data, field.binding);
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [query, setQuery] = useState("");
+    const [newDeclName, setNewDeclName] = useState("");
+    const wrapRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!pickerOpen) {
+            return undefined;
+        }
+        const onDoc = (e: MouseEvent) => {
+            const el = wrapRef.current;
+            if (el && e.target instanceof Node && !el.contains(e.target)) {
+                setPickerOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", onDoc);
+        return () => document.removeEventListener("mousedown", onDoc);
+    }, [pickerOpen]);
+
+    useEffect(() => {
+        if (pickerOpen) {
+            setQuery("");
+            setNewDeclName(field.binding.propPath);
+        }
+    }, [field.binding.propPath, pickerOpen]);
+
+    const filteredCandidates = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) {
+            return bp.declarationCandidates;
+        }
+        return bp.declarationCandidates.filter(
+            c => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q),
+        );
+    }, [bp.declarationCandidates, query]);
+
+    const openPicker = useCallback(() => {
+        setPickerOpen(true);
+    }, []);
+
+    const pickExisting = useCallback(
+        (id: string) => {
+            onSaving(true);
+            try {
+                bp.bindToExistingDeclaration(id);
+            } finally {
+                onSaving(false);
+            }
+            setPickerOpen(false);
+        },
+        [bp, onSaving],
+    );
+
+    const submitNew = useCallback(() => {
+        const name = newDeclName.trim();
+        if (!name) {
+            return;
+        }
+        onSaving(true);
+        try {
+            bp.createAndBindWithName(name);
+        } finally {
+            onSaving(false);
+        }
+        setPickerOpen(false);
+    }, [bp, newDeclName, onSaving]);
 
     const child = isValidElement(children)
         ? cloneElement(children as ReactElement<{ field: typeof field; data: TData; onSaving: typeof onSaving }>, {
@@ -55,17 +132,90 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                     <span className="text-[10px] text-gray-500">({bp.brokenReason})</span>
                 ) : null}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="relative flex flex-wrap gap-2" ref={wrapRef}>
                 {bp.status === "literal" ? (
-                    <button
-                        type="button"
-                        disabled={!bp.canBind}
-                        className="rounded border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[11px] text-cyan-100 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-                        onClick={() => bp.bind()}
-                        title={!bp.canBind ? "Widget main blueprint is not available for this element yet." : undefined}
-                    >
-                        Bind to declaration…
-                    </button>
+                    <>
+                        <button
+                            type="button"
+                            disabled={!bp.canBind}
+                            className="rounded border border-cyan-500/40 bg-cyan-500/10 px-2 py-1 text-[11px] text-cyan-100 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                            onClick={() => openPicker()}
+                            title={
+                                !bp.canBind
+                                    ? "Widget main blueprint is not available for this element yet."
+                                    : "Search an existing declaration or create a new one"
+                            }
+                        >
+                            Bind to declaration…
+                        </button>
+                        {pickerOpen ? (
+                            <div className="absolute left-0 top-full z-50 mt-1 w-[min(100%,20rem)] rounded-lg border border-white/15 bg-[#0b0d12] p-3 shadow-xl">
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                    <span className="text-[11px] font-medium text-gray-200">Bind property</span>
+                                    <button
+                                        type="button"
+                                        className="rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-gray-300"
+                                        aria-label="Close binding picker"
+                                        onClick={() => setPickerOpen(false)}
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                                <div className="mb-2">
+                                    <EnhancedInput
+                                        value={query}
+                                        onChange={setQuery}
+                                        placeholder="Search declarations…"
+                                        leftIcon={<Search className="h-3.5 w-3.5 text-gray-500" />}
+                                        className="w-full"
+                                        inputClassName="text-[11px]"
+                                    />
+                                </div>
+                                <div className="mb-2 max-h-32 overflow-auto rounded border border-white/10">
+                                    {filteredCandidates.length === 0 ? (
+                                        <p className="px-2 py-2 text-[10px] text-gray-500">No matching declarations.</p>
+                                    ) : (
+                                        filteredCandidates.map(c => (
+                                            <button
+                                                key={c.id}
+                                                type="button"
+                                                className="flex w-full flex-col items-start gap-0.5 px-2 py-1.5 text-left hover:bg-white/5"
+                                                onClick={() => pickExisting(c.id)}
+                                            >
+                                                <span className="text-[11px] text-gray-200">{c.name}</span>
+                                                <span className="font-mono text-[9px] text-gray-500">{c.id}</span>
+                                            </button>
+                                        ))
+                                    )}
+                                </div>
+                                <div className="border-t border-white/10 pt-2">
+                                    <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">New declaration</p>
+                                    <div className="flex gap-1.5">
+                                        <EnhancedInput
+                                            value={newDeclName}
+                                            onChange={setNewDeclName}
+                                            placeholder="Name"
+                                            className="min-w-0 flex-1"
+                                            inputClassName="text-[11px]"
+                                            onKeyDown={e => {
+                                                if (e.key === "Enter") {
+                                                    e.preventDefault();
+                                                    submitNew();
+                                                }
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="shrink-0 rounded border border-cyan-500/40 bg-cyan-500/15 px-2 py-1 text-[10px] font-medium text-cyan-100 hover:bg-cyan-500/25"
+                                            onClick={() => submitNew()}
+                                        >
+                                            Create &amp; bind
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+                    </>
                 ) : null}
                 {bp.status === "bound" ? (
                     <>

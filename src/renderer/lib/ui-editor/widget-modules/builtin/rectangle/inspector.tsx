@@ -163,11 +163,12 @@ export function createRectangleInspector(ctx: InspectorContext) {
                 type: "inlineRow",
                 gap: 8,
                 wrap: false,
+                className: "min-w-0",
                 label: undefined,
                 items: [
                   {
                     id: "props.cornerRadiusValue",
-                    className: "flex-1",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getProps(data.element);
                       const allCornersEqual =
@@ -209,7 +210,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                           min={0}
                           unit="px"
                           leftIcon={<CornerIcon position="tl" />}
-                          className="flex-1"
+                          className="w-full min-w-0"
                           placeholder={uniformPlaceholder}
                           selectAllOnFocus
                         />
@@ -685,17 +686,19 @@ export function createRectangleInspector(ctx: InspectorContext) {
                 type: "inlineRow",
                 gap: 8,
                 wrap: false,
+                className: "min-w-0",
                 label: undefined,
                 items: [
                   {
                     id: "props.strokeAlign",
-                    className: "flex-1 min-w-[140px]",
+                    className: "flex-1 min-w-0",
                     render: ({ data }: InlineRowItemContext<D>) => {
                       const current = getProps(data.element);
                       return (
                         <Select
                           value={current.strokeAlign}
                           options={STROKE_ALIGN_OPTIONS}
+                          fullWidth
                           onChange={(value) =>
                             patchProps({
                               strokeAlign: String(value) as RectangleProps["strokeAlign"],
@@ -707,7 +710,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                   },
                   {
                     id: "props.strokeWidth",
-                    className: "flex-shrink-0 min-w-[100px]",
+                    className: "flex-shrink-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getProps(data.element);
 
@@ -731,21 +734,21 @@ export function createRectangleInspector(ctx: InspectorContext) {
                           min={0}
                           unit="px"
                           leftIcon={<Square className="w-4 h-4 text-gray-400" />}
-                          className="w-24"
+                          className="w-20 shrink-0"
                         />
                       );
                     },
                   },
                   {
                     id: "props.strokeMore",
-                    className: "flex-shrink-0 ml-auto",
+                    className: "flex-shrink-0",
                     render: ({ data }: InlineRowItemContext<D>) => {
                       const current = getProps(data.element);
                       return (
                         <InlineMenuTriggerButton
                           menu={buildStrokeMenu(current)}
                           ariaLabel="Open stroke settings"
-                          className="ml-2 z-10"
+                          className="z-10"
                         />
                       );
                     },
@@ -771,7 +774,8 @@ export function createRectangleInspector(ctx: InspectorContext) {
                 id: "props.strokeColorRow",
                 type: "inlineRow",
                 gap: 8,
-                wrap: true,
+                wrap: false,
+                className: "min-w-0",
                 label: undefined,
                 items: [
                   {
@@ -806,7 +810,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                   },
                   {
                     id: "props.strokeOpacity",
-                    className: "flex-1",
+                    className: "flex-1 min-w-0",
                     render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                       const current = getProps(data.element);
                       const strokeVisible = current.strokeVisible;
@@ -833,6 +837,7 @@ export function createRectangleInspector(ctx: InspectorContext) {
                           max={100}
                           leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
                           disabled={!strokeVisible}
+                          className="w-full min-w-0"
                         />
                       );
                     },
