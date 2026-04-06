@@ -1,6 +1,7 @@
-import React, { useMemo } from "react";
-import type { CSSProperties } from "react";
+import React, { useCallback, useMemo } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
+import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 
 export type EditorNodeLayoutMode = "absolute" | "flow";
 
@@ -22,6 +23,25 @@ export function EditorNodeWrapper({
     styleOverrides,
     children,
 }: EditorNodeWrapperProps) {
+    const widgetRuntimeStore = useWidgetRuntimeStateStore();
+
+    const onMouseEnter = useCallback(() => {
+        widgetRuntimeStore?.setHoverTarget(element.id);
+    }, [widgetRuntimeStore, element.id]);
+
+    const onMouseOut = useCallback(
+        (e: MouseEvent<HTMLDivElement>) => {
+            if (!widgetRuntimeStore) {
+                return;
+            }
+            const related = e.relatedTarget;
+            if (!related || !e.currentTarget.contains(related as Node)) {
+                widgetRuntimeStore.clearHoverIf(element.id);
+            }
+        },
+        [widgetRuntimeStore, element.id]
+    );
+
     const containerStyle = useMemo<CSSProperties>(() => {
         const { x, y, width, height, rotation, opacity = 1 } = layout;
         const normalizedWidth = Math.abs(width);
@@ -59,6 +79,8 @@ export function EditorNodeWrapper({
             data-ui-element-id={element.id}
             className={`ui-editor-node ${isRoot ? "ui-editor-node-root" : ""}`}
             style={containerStyle}
+            onMouseEnter={widgetRuntimeStore ? onMouseEnter : undefined}
+            onMouseOut={widgetRuntimeStore ? onMouseOut : undefined}
         >
             {children}
         </div>

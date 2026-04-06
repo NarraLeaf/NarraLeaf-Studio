@@ -1,6 +1,12 @@
 import type { CSSProperties } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
+import { resolveContainerRectangleLike } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
+import {
+    useWidgetRuntimeSnapshot,
+    useWidgetRuntimeStateStore,
+} from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import { getContainerProps } from "./helpers";
 import type {
     ContainerStackAlignItems,
@@ -94,12 +100,19 @@ function ScrollInner({ element, children }: WidgetRendererProps) {
 
 export function ContainerRenderer(props: WidgetRendererProps) {
     const { element, children } = props;
+    useWidgetRuntimeSnapshot();
+    const widgetRuntimeStore = useWidgetRuntimeStateStore();
     const p = getContainerProps(element);
     const clip = p.clipContent;
+    const resolveCtx = {
+        variantOverrideId: widgetRuntimeStore?.getVariantOverride(element.id) ?? null,
+        signals: widgetRuntimeStore?.getSignalsForElement(element.id, false) ?? DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+    };
+    const rectangleLike = resolveContainerRectangleLike(element, p.appearance ?? undefined, resolveCtx);
 
     if (p.layoutKind === "free") {
         return (
-            <RectangleChromeRenderer {...props} clipContent={clip}>
+            <RectangleChromeRenderer {...props} clipContent={clip} rectangleLike={rectangleLike}>
                 {children}
             </RectangleChromeRenderer>
         );
@@ -108,7 +121,7 @@ export function ContainerRenderer(props: WidgetRendererProps) {
     const inner = p.layoutKind === "scroll" ? <ScrollInner {...props} /> : <StackInner {...props} />;
 
     return (
-        <RectangleChromeRenderer {...props} clipContent={clip}>
+        <RectangleChromeRenderer {...props} clipContent={clip} rectangleLike={rectangleLike}>
             {inner}
         </RectangleChromeRenderer>
     );

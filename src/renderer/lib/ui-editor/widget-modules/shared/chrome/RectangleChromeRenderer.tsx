@@ -4,7 +4,7 @@ import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/u
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { ensureCropPlacement, getRectangleLikeProps, normalizeImageFill } from "./rectangleHelpers";
-import type { StrokeSide } from "@shared/types/ui-editor/rectangleLike";
+import type { RectangleLikeProps, StrokeSide } from "@shared/types/ui-editor/rectangleLike";
 
 const objectFitMap: Record<string, CSSProperties["objectFit"] | undefined> = {
     cover: "cover",
@@ -17,10 +17,17 @@ const objectFitMap: Record<string, CSSProperties["objectFit"] | undefined> = {
 type RectangleChromeRendererProps = WidgetRendererProps & {
     /** When false, allow children to paint outside the box (matches `nl.container` clipContent off). */
     clipContent?: boolean;
+    /** Resolved chrome from AppearanceResolver; when set, `element.props` is not read for rectangle-like fields. */
+    rectangleLike?: RectangleLikeProps;
 };
 
-export function RectangleChromeRenderer({ element, children, clipContent = true }: RectangleChromeRendererProps) {
-    const props = getRectangleLikeProps(element);
+export function RectangleChromeRenderer({
+    element,
+    children,
+    clipContent = true,
+    rectangleLike,
+}: RectangleChromeRendererProps) {
+    const props = rectangleLike ?? getRectangleLikeProps(element);
     const stateService = UIEditorStateService.getInstance();
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
 

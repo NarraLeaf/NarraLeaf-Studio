@@ -7,7 +7,7 @@ todos:
     status: completed
   - id: uimig-p2-appearance-runtime
     content: "P2: Appearance runtime (Unit 3) — shared appearance types; AppearanceResolver; WidgetRuntimeStateStore + system interaction state; Container/Button renderers consume resolver; whitelist visual fields only; interaction layer feeds signals"
-    status: pending
+    status: completed
   - id: uimig-p3-appearance-inspector
     content: "P3: Variant + conditional rows authoring UI (Unit 4) — widget-modules/shared/appearance/*; container/button inspectors; no dual flat appearance model; minimal PropertiesPanel/FieldRenderer touch"
     status: pending
