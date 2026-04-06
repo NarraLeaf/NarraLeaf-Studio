@@ -17,6 +17,7 @@
 4. `P4`：`Blueprint M4` + `Visual Editor M4-full`
 5. `P5`：`Visual Editor M5` + `Blueprint M3-full`
 6. `P6`：`Blueprint M5` + `Visual Editor M6`
+7. `P7`：文档与验收缺口收口（见 `P7-Plan` / `P7-Implement`；在代码已超前于纸面定义或 P1–P6 未严格逐条交付时执行）
 
 ## 通用增强模板
 
@@ -466,8 +467,108 @@
 
 ---
 
+## P7-Plan
+
+目标：在**不重复发明系统**的前提下，补齐 **P1–P6 未落盘的计划文档**、**里程碑文档与仓库真实状态的不一致**，并对照 `visual-editor-milestones.md` / `blueprint-system-milestones.md` 做 **验收缺口清单** 与 **可实施的补全方案**（含仍缺的产品与工程项）。
+
+```md
+完全理解以下文件，并自行补充读取 docs 内相关文件：
+
+- `@project/docs/visual-editor-milestones.md`
+- `@project/docs/visual-editor.md`
+- `@project/docs/visual-editor-implementation-guide.md`
+- `@project/docs/blueprint-system-milestones.md`
+- `@project/docs/blueprint-system.md`
+- `@project/docs/dev-mode.md`
+- `@project/docs/agent-milestone-prompts.md`
+- `@project/docs/implementation-plans/p1-ve-m2a-bp-m2-plan.md`
+- `@project/docs/implementation-plans/p2-bp-m3min-ve-m4lite-plan.md`
+- `@project/docs/implementation-plans/p6-bp-m5-ve-m6-plan.md`（若存在；并核对其中 `status` 与仓库是否一致）
+
+使用子 agent 在项目中速览当前实现，然后编写一份完整的 **`P7 — 文档、验收与剩余缺口收口` 实现方案**。默认前置：P1–P6 相关能力已在仓库中**不同程度**落地；本阶段**不假设**某一子里程碑 100% 满足文档中的每一条验收句，必须以对照表为准。
+
+本阶段必须覆盖的缺口类型（在方案中逐类给出 **现状 / 缺口 / 建议动作 / 验收**；若某类已完全满足则明确写「无缺口」并给出核对依据）：
+
+1. **缺失的实施计划文件（按 prompts 原始约定应存在）**
+   - `project/docs/implementation-plans/p3-ve-m2b-ve-m3-plan.md`
+   - `project/docs/implementation-plans/p4-bp-m4-ve-m4full-plan.md`
+   - `project/docs/implementation-plans/p5-ve-m5-bp-m3full-plan.md`
+   - 方案需说明：是补写**追溯性**实施记录（Implemented + 文件索引 + 验收），还是仍含待开发条目（须拆成可执行任务）。
+
+2. **里程碑文档与代码的漂移**
+   - 例如：`visual-editor-milestones.md` 中仍暗示「M4-full / 完整绑定 / Visual 画布」未交付等表述时，与当前 `blueprint-lite`、`BindablePropertyField` 等实现是否一致；列出需修订的章节与建议措辞。
+   - `blueprint-system-milestones.md` 中 M4/M5/M3-full 验收句与实现对齐情况。
+
+3. **`Visual Editor M3` 与官方示例**
+   - `project/examples/visual-editor/` 与 `visual-editor.md` §4.4 等是否一一对应；缺示例、缺说明或命名不一致处。
+
+4. **`Visual Editor M4-full` / `Blueprint System M4` 的余量**
+   - 对照 `blueprint-system-milestones.md` M4（属性面板绑定、声明选择、校验、跳转等）：已实现项 vs 仍用临时交互（如 `window.prompt`）或缺失的「绑定到已有声明 / 搜索声明」等。
+   - 图校验、诊断与「从错误跳到节点」等是否满足 §8.8 所列范围；未满足则列为 P7 实施子项或明确延后理由。
+
+5. **`Visual Editor M5` 静态创作反馈**
+   - 对照 `visual-editor-milestones.md` M5 §8.2：缺失资源、link、Stage/Surface 配置、越界与可见性、热点与尺寸等；逐项标为已实现 / 部分 / 未做。
+
+6. **`Blueprint System M3-full`**
+   - 节点族、Host API、`node.enter`/`node.exit`、调试桥、错误定位等与里程碑 §7 / M3-full 叙述的对照；未覆盖的节点或 API 明确列入缺口或延后。
+
+7. **`Blueprint System M5` + `Visual Editor M6`（相对 `p6` 计划）**
+   - 若 `p6-bp-m5-ve-m6-plan.md` 标记已实现：复核 TS 编译链、共享蓝图资产、DevTools、编辑器收口等是否仍有「纸面完成 / 体验未达标」项；列出剩余风险与建议补做项。
+
+规划输出要求：
+- 输出到：
+  - `project/docs/implementation-plans/p7-doc-gap-closure-plan.md`
+- 必须精确到文件，至少包括：
+  - 一份 **P1–P6 与里程碑句级的对照矩阵**（可附录表格）
+  - 文档修订清单（路径 + 章节）
+  - 仍须编码的缺口清单（按优先级排序，每条对应文件与验收）
+  - 明确 **非目标**（避免在 P7 重新设计整套蓝图或重写编辑器）
+
+硬性要求：
+- 任何「补文档 vs 补代码」的优先级、以及未列在里程碑里但你认为必须做的项，须先通过编辑器工具询问我，不得自行假设为本次必做。
+- 规划阶段不直接编码。
+- 若发现前置阶段关键能力实际未完成，须在方案中单独醒目标出，并建议是否先回退到对应 Px 再收口。
+```
+
+## P7-Implement
+
+```md
+完全理解以下文件，并自行补充读取必要文件：
+
+- `@project/docs/implementation-plans/p7-doc-gap-closure-plan.md`
+- `@project/docs/visual-editor-milestones.md`
+- `@project/docs/blueprint-system-milestones.md`
+- `@project/docs/visual-editor.md`
+- `@project/docs/blueprint-system.md`
+- `@project/docs/dev-mode.md`
+
+当前前置：`p7-doc-gap-closure-plan.md` 已由 Plan 阶段产出并得到确认（若计划要求先问我，则按计划执行后再编码）。
+
+请严格按 `p7-doc-gap-closure-plan.md` 落地 **P7 — 文档、验收与剩余缺口收口**。
+
+本次允许的范围（仅限计划中列出的条目，典型包括）：
+- 补写或更新 `p3` / `p4` / `p5` 追溯性实施计划（或计划中批准的小型功能补全）
+- 修订 `visual-editor-milestones.md`、`blueprint-system-milestones.md`、`visual-editor.md` 等与实现对齐的段落（避免与 `p7` 方案矛盾）
+- 对照里程碑验收表补齐仍缺的**小粒度**工程项（例如绑定选择器、诊断规则、空状态文案、从诊断跳到画布节点等——**以计划为准**）
+
+落地要求：
+- 编码前核对计划与当前分支是否仍一致；若有分歧先问我。
+- 禁止借机做大范围重构或引入未在 `p7` 方案中的新系统。
+- 完成后更新 `p7-doc-gap-closure-plan.md` 的实施状态（或附录简短实施记录），并汇报：
+  - 文档层面：哪些文件、哪些章节已对齐
+  - 代码层面：哪些缺口已关闭、哪些刻意延后及原因
+  - 仍存风险与建议的后续阶段（若有）
+
+质量要求：
+- 与现有文档语气、结构一致；代码风格与项目一致。
+- 除非计划要求，不写新的无关 Markdown 文档。
+```
+
+---
+
 ## 最后建议
 
 - 如果你想降低单次实施复杂度，`P4` 之后可以进一步拆成更细的小阶段。
 - 如果你更重视尽快可用，优先保证 `P1 -> P2 -> P3` 连续完成；这三步完成后，系统就会从“骨架 + 契约”进入“能做界面 + 能挂最小逻辑 + 有基础范式”的状态。
 - 如果某一阶段计划产出里发现前置阶段并未真正完成，不要硬上实现，先补文档和验收缺口。
+- 若 **`implementation-plans` 中缺 `p3`/`p4`/`p5` 文件**、或 **里程碑文档与仓库实现明显不一致**，在继续扩展功能前优先跑一轮 **`P7`**，避免“纸面里程碑”与真实进度长期脱节。

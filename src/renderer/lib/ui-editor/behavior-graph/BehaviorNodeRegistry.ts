@@ -1,8 +1,18 @@
-import type { UIGraph, UIGraphEntry, UIGraphNode } from "@shared/types/ui-editor/graph";
+import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import type { UIGraph, UIGraphEntry, UIGraphId, UIGraphNode } from "@shared/types/ui-editor/graph";
 import type { UIHostAdapter } from "../runtime/types";
 
 export type BehaviorNodeExecuteResult = {
     nextPort?: string;
+};
+
+/** Optional execution trace for M3-full (node.enter / node.exit + structured errors). */
+export type BehaviorGraphExecutionTrace = {
+    executionId: string;
+    graphId: UIGraphId;
+    blueprintId?: string;
+    eventId?: string;
+    emit: (event: BlueprintDebugEvent) => void;
 };
 
 export type BehaviorNodeExecutionContext = {
@@ -11,6 +21,7 @@ export type BehaviorNodeExecutionContext = {
     node: UIGraphNode;
     params: Record<string, unknown>;
     hostAdapter: UIHostAdapter;
+    trace?: BehaviorGraphExecutionTrace;
 };
 
 export type BehaviorNodeDefinition = {

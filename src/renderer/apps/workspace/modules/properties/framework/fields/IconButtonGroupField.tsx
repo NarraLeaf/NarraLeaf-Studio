@@ -68,8 +68,10 @@ export function IconButtonGroupField<TData>({
     }, [mode, selection]);
 
     return (
-        <FieldLayout field={field}>
-    <div className={`flex divide-x divide-white/10 rounded-md overflow-hidden ${groupColors.border} ${groupColors.base}`}>
+        <FieldLayout field={field} className={field.className}>
+            <div
+                className={`flex divide-x divide-white/10 rounded-md overflow-hidden ${groupColors.border} ${groupColors.base}`}
+            >
                 {field.options.map((option, index) => {
                     const isActive =
                         mode === "multiple"

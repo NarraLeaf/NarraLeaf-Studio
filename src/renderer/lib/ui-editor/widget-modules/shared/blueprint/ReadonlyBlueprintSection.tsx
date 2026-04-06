@@ -69,7 +69,8 @@ export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorD
                 Open Blueprint editor
             </button>
             <p className="text-[11px] text-gray-500 leading-snug border-t border-white/5 pt-2 mt-2">
-                Use the properties binding row for Literal / Bound / Broken; run logic in Dev Mode.
+                Summary and wiring here are static. Binding rows show Literal / Bound / Broken. Use Dev Mode for live
+                execution, node enter/exit, Host API calls, and runtime errors (not mirrored in this panel).
             </p>
         </div>
     );

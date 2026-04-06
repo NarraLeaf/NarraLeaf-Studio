@@ -110,7 +110,7 @@ export function Select({
     };
 
     return (
-        <div ref={selectRef} className={`relative ${fullWidth ? "w-full" : ""} ${className}`}>
+        <div ref={selectRef} className={`relative ${fullWidth ? "w-full min-w-0" : ""} ${className}`}>
             <Button
                 variant="ghost"
                 size={size}
@@ -276,7 +276,7 @@ export function Combobox({
     };
 
     return (
-        <div ref={selectRef} className={`relative ${fullWidth ? "w-full" : ""} ${className}`}>
+        <div ref={selectRef} className={`relative ${fullWidth ? "w-full min-w-0" : ""} ${className}`}>
             <div className={`
                 relative bg-white/5 border rounded-md
                 ${variantStyles[variant]}

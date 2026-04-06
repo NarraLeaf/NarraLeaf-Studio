@@ -66,14 +66,14 @@
 
 ### 3.2 目前的关键缺口
 
-在 **M2-B + M3** 落地后，通用布局积木与官方范式示例已补齐；仍可能存在的缺口主要在 **创作反馈与运行时** 侧：
+在 **M2-B + M3** 落地后，通用布局积木与官方范式示例已补齐；剩余投入主要在 **M4-full / M5 / M6 的差额** 与 **运行时主场边界** 上：
 
 - 内置 widget 已覆盖 M1 冻结的八件套（含 Stack、Scroll、Spacer/Divider、List/Repeater）；**不再**将“只有矩形”视为当前基线
-- Blueprint **完整**图编辑与属性绑定 UI 仍属后续里程碑（M4-full 等）
-- 编辑器内与 Dev Mode 内的 `hostAdapter.effects.runEffect` 仍是空实现
-- `UIGraphService` 有数据层，但还没有工作区级图编辑体验
+- Blueprint：**M4-lite** 已交付；**M4-full** 已在 Workspace 具备 Visual 图编辑 Tab、属性绑定三态、声明搜索/创建绑定（见 `blueprint-lite/`、`properties/blueprint/`），**非**“仅占位”；画布侧仍 **不**默认接完整 `blueprintRuntime`（真实执行见 Dev Mode）
+- 编辑器内与 Dev Mode 内的 `hostAdapter.effects.runEffect` 在 **Surface 编辑 Tab** 仍为最小/no-op；属预期边界
 - 常用控件组合由 **`project/examples/visual-editor/`** 与 `visual-editor.md` §4.4 承载；**不**提供模板/preset 系统
-- 缺少针对 UI 创作的校验、预览、资产联动、复用机制
+- **M5 静态诊断** 已聚合多类规则（`collectSurfaceDiagnostics`），部分子类仍为 **partial**（见 `visual-editor-milestones.md` §8.2 状态表）
+- **M6** 级插入/搜索/remap 与 TS/Build 全链仍多属 **P6 残余**，见 `p6-bp-m5-ve-m6-plan.md`
 
 ### 3.3 一个重要结论
 
@@ -250,12 +250,13 @@
 - M2-A：Text、Image、Button、Container
 - M2-B：Stack、Scroll、SpacerDivider、ListRepeater（选择肢列表用后者组合实现）
 
-### 7.2 Blueprint 入口还是占位
+### 7.2 Blueprint 入口与 M4-full 进度
 
-**M4-lite 已交付**：属性面板 Blueprint 区域为只读摘要 + 打开轻量 Tab 入口。**M4-full**（画布绑定编辑、声明选择器等）仍待。下列能力在 M4-full 前仍不完整：
+**M4-lite 已交付**：属性面板 Blueprint 区域为只读摘要 + 打开统一 Blueprint Tab。  
+**M4-full（partial）**：已在独立 Tab 中编辑 Visual 图；属性面板支持绑定三态、解绑、跳转声明、**搜索已有声明并绑定**、**内联创建声明并绑定**（非浏览器 `prompt`）。下列仍不完整或属边界外：
 
-- 在属性面板内直接编辑绑定与事件图
-- Visual 画布上的蓝图叠加编辑
+- 在 **Visual 画布**上叠加完整蓝图编辑（当前以 Tab 内 React Flow 为主）
+- 编辑器预览内执行完整事件图（仍属 Dev Mode）
 
 ### 7.3 缺少高频界面范式
 
@@ -415,13 +416,18 @@
 
 - 三份 `visual-editor` 文档对范围、预览边界、复用策略、M2 八件套 widget 清单一致。
 - 工作区 UI 文案明确区分**编辑器布局预览**与 **Dev Mode 运行时预览**；左栏不暗示模板/组件库已存在。
-- 属性面板 Blueprint 区域为**延期说明**，无误导性可点入口。
 
-**仍属缺口、留给后续里程碑**（相对当前代码基线）：
+**相对 M1 快照的演进（当前仓库，供对照）**：
 
-- Blueprint **M4-full**：属性面板绑定编辑、Visual 画布侧图编辑等（M4-lite 已提供入口与摘要）。
-- 编辑器内校验与资源缺失提示（M5）。
-- 更强的复用入口（如组件库 / 模板）仅在产品重新决策后考虑；当前仍以 **App Surface link + 复制** 为准。
+- 属性面板 Blueprint 区域已从“纯延期说明”演进为 **M4-lite 真入口 + 摘要**；绑定行与 **M4-full partial** 能力见 `visual-editor-milestones.md` §7。
+- 编辑器内 **M5 静态诊断** 已部分落地；与里程碑逐项对齐见 §8.2 状态表。
+
+**仍属缺口、留给后续里程碑**：
+
+- **M4-full** 剩余项与 **不在编辑器模拟完整运行时** 的边界：`p4-bp-m4-ve-m4full-plan.md`。
+- **M5** 规则扩展（如 Stage/可见性更多规则）：`p5-ve-m5-bp-m3full-plan.md`。
+- **M6 / P6**：插入搜索、剪贴板 remap UI、Build Service 与 TS 体验：`p6-bp-m5-ve-m6-plan.md`。
+- 更强的复用入口（组件库 / 模板）仅在产品重新决策后考虑；当前仍以 **App Surface link + 复制** 为准。
 
 ---
 

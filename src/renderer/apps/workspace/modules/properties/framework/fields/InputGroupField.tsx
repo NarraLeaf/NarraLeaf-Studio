@@ -49,7 +49,7 @@ export function InputGroupField<TData>({ field, data, onSaving }: InputGroupFiel
     ].join(" ");
 
     return (
-        <FieldLayout field={field}>
+        <FieldLayout field={field} className={field.className}>
             <div
                 className={containerClass}
                 style={{ gap: `${gap}px`, rowGap: `${gap}px`, columnGap: `${gap}px` }}

@@ -19,11 +19,13 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         });
     }, [debug]);
 
-    const recent = events.slice(-80).reverse();
+    const recent = events.slice(-100).reverse();
     const errors = events.filter(e => e.type === "execution.error").slice(-12).reverse();
     const stateWrites = events.filter(e => e.type === "state.write").slice(-12).reverse();
+    const stateReads = events.filter(e => e.type === "state.read").slice(-12).reverse();
     const bindings = events.filter(e => e.type === "binding.evaluated").slice(-12).reverse();
-    const fnCalls = events.filter(e => e.type === "function.call" || e.type === "function.return").slice(-20).reverse();
+    const fnCalls = events.filter(e => e.type === "function.call" || e.type === "function.return").slice(-24).reverse();
+    const nodeTrace = events.filter(e => e.type === "node.enter" || e.type === "node.exit").slice(-40).reverse();
 
     return (
         <div className="flex w-[300px] shrink-0 flex-col border-l border-white/10 bg-[#0d0f11] text-[11px] text-gray-300">
@@ -45,7 +47,23 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                             <ul className="space-y-1">
                                 {errors.map((ev, i) => (
                                     <li key={`e-${i}`} className="break-all text-[10px] text-amber-300/90">
-                                        {ev.type === "execution.error" ? ev.message : ""}
+                                        {ev.type === "execution.error" ? formatExecutionError(ev) : ""}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </section>
+                    <section>
+                        <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Node trace</p>
+                        {nodeTrace.length === 0 ? (
+                            <p className="text-[10px] text-gray-600">No node enter/exit yet.</p>
+                        ) : (
+                            <ul className="space-y-0.5 max-h-28 overflow-auto">
+                                {nodeTrace.map((ev, i) => (
+                                    <li key={`n-${i}`} className="text-[10px] text-gray-400">
+                                        {ev.type === "node.enter" || ev.type === "node.exit"
+                                            ? `${ev.type} · ${ev.nodeId.slice(0, 12)}…`
+                                            : ""}
                                     </li>
                                 ))}
                             </ul>
@@ -66,6 +84,20 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                         )}
                     </section>
                     <section>
+                        <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">State reads</p>
+                        {stateReads.length === 0 ? (
+                            <p className="text-[10px] text-gray-600">No state reads recorded.</p>
+                        ) : (
+                            <ul className="space-y-0.5">
+                                {stateReads.map((ev, i) => (
+                                    <li key={`r-${i}`} className="text-[10px] text-gray-400">
+                                        {ev.type === "state.read" ? `${ev.scope} · ${ev.key}` : ""}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </section>
+                    <section>
                         <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Bindings</p>
                         {bindings.length === 0 ? (
                             <p className="text-[10px] text-gray-600">No binding evaluations yet.</p>
@@ -80,7 +112,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                         )}
                     </section>
                     <section>
-                        <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Host calls</p>
+                        <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Host API</p>
                         {fnCalls.length === 0 ? (
                             <p className="text-[10px] text-gray-600">No host API calls yet.</p>
                         ) : (
@@ -117,13 +149,33 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
     );
 }
 
+function formatExecutionError(ev: Extract<BlueprintDebugEvent, { type: "execution.error" }>): string {
+    const parts = [ev.message];
+    if (ev.blueprintId) {
+        parts.push(`bp:${ev.blueprintId.slice(0, 8)}…`);
+    }
+    if (ev.eventId) {
+        parts.push(`evt:${ev.eventId}`);
+    }
+    if (ev.nodeId) {
+        parts.push(`node:${ev.nodeId.slice(0, 10)}…`);
+    }
+    if (ev.graphId) {
+        parts.push(`graph:${String(ev.graphId).slice(0, 14)}…`);
+    }
+    return parts.join(" · ");
+}
+
 function formatEvent(ev: BlueprintDebugEvent): string {
     switch (ev.type) {
         case "execution.started":
         case "execution.finished":
             return `${ev.blueprintId.slice(0, 8)}… / ${ev.executionId.slice(0, 8)}…`;
         case "execution.error":
-            return `${ev.executionId.slice(0, 8)}… — ${ev.message}`;
+            return formatExecutionError(ev);
+        case "node.enter":
+        case "node.exit":
+            return `${ev.nodeId.slice(0, 12)}…`;
         case "state.read":
         case "state.write":
             return `${ev.scope} · ${ev.key}`;

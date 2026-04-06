@@ -1,3 +1,4 @@
+import { createElement, type ReactNode } from "react";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type {
@@ -17,6 +18,8 @@ import type {
     TextFieldDefinition,
 } from "../framework/types";
 import { SurfaceBlueprintEntrySection } from "../blueprint/SurfaceBlueprintEntrySection";
+import { collectLinkDiagnostics } from "@/lib/ui-editor/diagnostics/rules/linkDiagnostics";
+import { collectStageDiagnostics } from "@/lib/ui-editor/diagnostics/rules/stageDiagnostics";
 
 export type SceneEditorContext = {
     surface: UISurface;
@@ -172,6 +175,32 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
                 });
             },
             hidden: (data) => !isStageSurface(data.surface),
+        }),
+        defineField<SceneEditorContext, InfoFieldDefinition<SceneEditorContext>>({
+            id: "scene.stageLinkWarnings",
+            type: "info",
+            label: "Link / mount checks",
+            hidden: data => {
+                if (!isStageSurface(data.surface)) {
+                    return true;
+                }
+                const document = data.documentService.getDocument();
+                const link = collectLinkDiagnostics(document, data.surface);
+                const stage = collectStageDiagnostics(data.surface);
+                return link.length === 0 && stage.length === 0;
+            },
+            items: [
+                {
+                    label: "Issues",
+                    getValue: (data): ReactNode => {
+                        const document = data.documentService.getDocument();
+                        const parts = [...collectLinkDiagnostics(document, data.surface), ...collectStageDiagnostics(data.surface)];
+                        const text =
+                            parts.map(p => p.message).join(" · ") + (parts[0]?.hint ? ` — ${parts[0].hint}` : "");
+                        return createElement("span", { className: "text-amber-400/95 text-xs leading-snug" }, text);
+                    },
+                },
+            ],
         }),
         defineField<SceneEditorContext, SelectFieldDefinition<SceneEditorContext>>({
             id: "scene.mountKind",

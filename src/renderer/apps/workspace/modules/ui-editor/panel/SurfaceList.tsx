@@ -4,6 +4,8 @@ import { MoreVertical } from "lucide-react";
 
 import { formatStageMountLabel } from "./constants";
 
+export type SurfaceDiagnosticSummary = { errors: number; warnings: number };
+
 type SurfaceListProps = {
     surfaces: UISurface[];
     /** Current filter tab (app vs stage). */
@@ -14,6 +16,8 @@ type SurfaceListProps = {
     surfacesOfKindCount: number;
     /** Full surface list (unfiltered) to resolve Stage → App Surface link names. */
     allSurfaces: UISurface[];
+    /** Static editor diagnostics (Visual Editor M5); Dev Mode shows runtime traces. */
+    diagnosticSummaryBySurfaceId?: Record<string, SurfaceDiagnosticSummary>;
     onSurfaceClick: (surface: UISurface) => void;
     onOpenMenu: (event: MouseEvent<HTMLDivElement | HTMLButtonElement>, surface: UISurface) => void;
 };
@@ -37,6 +41,7 @@ export function SurfaceList({
     stageMountFilter,
     surfacesOfKindCount,
     allSurfaces,
+    diagnosticSummaryBySurfaceId,
     onSurfaceClick,
     onOpenMenu,
 }: SurfaceListProps) {
@@ -64,6 +69,13 @@ export function SurfaceList({
         <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 bg-[#0b0d12]">
             {surfaces.map(surface => {
                 const linkLine = stageLinkCaption(surface, allSurfaces);
+                const diag = diagnosticSummaryBySurfaceId?.[surface.id];
+                const diagLine =
+                    diag && (diag.errors > 0 || diag.warnings > 0)
+                        ? diag.errors > 0
+                            ? `Static issues · ${diag.errors} error(s)${diag.warnings ? `, ${diag.warnings} warning(s)` : ""}`
+                            : `Static issues · ${diag.warnings} warning(s)`
+                        : null;
                 return (
                 <div
                     key={surface.id}
@@ -84,6 +96,11 @@ export function SurfaceList({
                                 <div className="text-[11px] text-gray-500">{formatStageMountLabel(surface.mount)}</div>
                             )}
                             {linkLine ? <div className="text-[11px] text-gray-500 truncate">{linkLine}</div> : null}
+                            {diagLine ? (
+                                <div className="text-[11px] text-amber-400/90 truncate" title="Editor static checks only">
+                                    {diagLine}
+                                </div>
+                            ) : null}
                         </div>
                         <button
                             type="button"

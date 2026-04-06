@@ -35,9 +35,11 @@ import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import { createPropertyEditorSchema, defineField } from "./framework";
 import type { InlineRowItemContext, PropertyEditorSchema } from "./framework/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { getElementInspector } from "../ui-editor/inspector/registry";
 import type { UIInspectorData } from "../ui-editor/inspector/registry";
 import { useDocumentVersion } from "@/lib/ui-editor/hooks/useDocumentVersion";
+import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 
 function createLayoutInspectorSchema(elements: UIElement[], documentService: UIDocumentService): PropertyEditorSchema<UIInspectorData> {
     const primaryId = elements.map(element => element.id).join("-");
@@ -296,7 +298,23 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         if (!context || !isInitialized) return null;
         return context.services.get<UIDocumentService>(Services.UIDocument);
     }, [context, isInitialized]);
+    const graphService = useMemo(() => {
+        if (!context || !isInitialized) {
+            return null;
+        }
+        return context.services.get<UIGraphService>(Services.UIGraph);
+    }, [context, isInitialized]);
     const documentVersion = useDocumentVersion(documentService);
+    const [graphVersion, setGraphVersion] = useState(0);
+
+    useEffect(() => {
+        if (!graphService) {
+            return undefined;
+        }
+        return graphService.onGraphsChanged(() => {
+            setGraphVersion(v => v + 1);
+        });
+    }, [graphService]);
 
     const activeSceneSurface = useMemo(() => {
         if (!documentService || !activeSceneId) {
@@ -395,6 +413,62 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             />
         );
     }, [uiSelection, documentService, documentVersion]);
+
+    const selectUiCanvasElement = useCallback(
+        (surfaceId: string, elementId: string) => {
+            if (!context) {
+                return;
+            }
+            context.services.get<UIService>(Services.UI).getStore().setSelection({
+                type: "element",
+                data: { editor: "ui", surfaceId, elementIds: [elementId], primaryId: elementId },
+            });
+        },
+        [context],
+    );
+
+    const uiSelectionDiagnosticStrip = useMemo(() => {
+        if (!uiSelection || !documentService) {
+            return null;
+        }
+        const bp = graphService?.getDocument().blueprintDocument;
+        const all = collectSurfaceDiagnostics(documentService.getDocument(), uiSelection.surfaceId, {
+            blueprintDocument: bp,
+        });
+        const idSet = new Set(uiSelection.elementIds);
+        const picked = all.filter(d => !d.elementId || idSet.has(d.elementId)).slice(0, 5);
+        if (picked.length === 0) {
+            return null;
+        }
+        const surfaceId = uiSelection.surfaceId;
+        return (
+            <div className="shrink-0 border-b border-amber-500/25 bg-amber-950/30 px-3 py-2 text-[11px] text-amber-100/90">
+                <span className="font-medium text-amber-200/95">Static checks</span>
+                <ul className="mt-1 list-none space-y-1 pl-0">
+                    {picked.map(d => (
+                        <li key={d.id} className="leading-snug">
+                            {d.elementId ? (
+                                <button
+                                    type="button"
+                                    className="w-full rounded px-1 py-0.5 text-left text-amber-100/95 hover:bg-amber-500/10"
+                                    onClick={() => selectUiCanvasElement(surfaceId, d.elementId!)}
+                                >
+                                    {d.message}
+                                    <span className="ml-1 text-[10px] text-cyan-300/80">→ select on canvas</span>
+                                </button>
+                            ) : (
+                                <span className="text-amber-100/90">{d.message}</span>
+                            )}
+                        </li>
+                    ))}
+                </ul>
+                <span className="mt-2 block text-[10px] leading-snug text-gray-500">
+                    Graph structure and binding issues: open the Blueprint editor tab from the Blueprint section. Live
+                    execution, node enter/exit, and Host API traces appear in Dev Mode only.
+                </span>
+            </div>
+        );
+    }, [uiSelection, documentService, graphService, documentVersion, graphVersion, selectUiCanvasElement]);
 
     // Load asset metadata when asset changes
     useEffect(() => {
@@ -558,7 +632,12 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     // Render appropriate property editor
     const renderPropertyEditor = () => {
         if (uiInspectorContent) {
-            return uiInspectorContent;
+            return (
+                <>
+                    {uiSelectionDiagnosticStrip}
+                    {uiInspectorContent}
+                </>
+            );
         }
         if (sceneEditorContext) {
             return <PropertyEditor schema={scenePropertySchema} data={sceneEditorContext} />;

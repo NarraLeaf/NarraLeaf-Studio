@@ -12,8 +12,12 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
 
     if (diagnostics.length === 0) {
         return (
-            <div className="border-t border-white/10 bg-[#0d0f11] px-3 py-2 text-[11px] text-gray-500">
-                No graph or binding diagnostics.
+            <div className="border-t border-white/10 bg-[#0d0f11] px-3 py-2 text-[11px] text-gray-500 leading-relaxed">
+                <p>No graph or binding diagnostics for this blueprint.</p>
+                <p className="mt-1 text-[10px] text-gray-600">
+                    When issues are listed below, click a row to focus the graph, node, or declaration. Runtime traces
+                    and Host API calls stay in Dev Mode (Blueprint DevTools), not here.
+                </p>
             </div>
         );
     }
@@ -56,6 +60,10 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
                     <Row key={`n-${i}-${d.message}`} d={d} />
                 ))}
             </div>
+            <p className="mt-2 px-1 text-[10px] leading-snug text-gray-500">
+                Workspace: structure validation only — click a row to jump. Dev Mode: live execution, node enter/exit, and
+                Host API traces (Blueprint DevTools).
+            </p>
         </div>
     );
 }

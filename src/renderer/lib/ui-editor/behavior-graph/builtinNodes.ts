@@ -1,5 +1,6 @@
 import { behaviorNodeRegistry, type BehaviorNodeDefinition } from "./BehaviorNodeRegistry";
 import "./blueprintM3MinNodes";
+import "./blueprintM3FullNodes";
 
 const SequenceNode: BehaviorNodeDefinition = {
     type: "sequence",

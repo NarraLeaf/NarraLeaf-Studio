@@ -1,13 +1,15 @@
 import type { UIHostAdapter } from "../runtime/types";
 import type { UIGraph, UIGraphEntry, UIGraphNode } from "@shared/types/ui-editor/graph";
 import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
-import type { BehaviorNodeExecutionContext } from "./BehaviorNodeRegistry";
+import type { BehaviorGraphExecutionTrace, BehaviorNodeExecutionContext } from "./BehaviorNodeRegistry";
+import { BlueprintGraphExecutionError } from "./GraphExecutionError";
 
 export type ExecuteGraphOptions = {
     graph: UIGraph;
     entry: UIGraphEntry;
     hostAdapter: UIHostAdapter;
     maxSteps?: number;
+    trace?: BehaviorGraphExecutionTrace;
 };
 
 const DEFAULT_MAX_STEPS = 1024;
@@ -20,17 +22,35 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<void> 
     while (true) {
         steps += 1;
         if (steps > (options.maxSteps ?? DEFAULT_MAX_STEPS)) {
-            throw new Error(`Behavior graph execution exceeded ${options.maxSteps ?? DEFAULT_MAX_STEPS} steps`);
+            const message = `Behavior graph execution exceeded ${options.maxSteps ?? DEFAULT_MAX_STEPS} steps`;
+            const trace = options.trace;
+            if (trace) {
+                trace.emit({
+                    type: "execution.error",
+                    executionId: trace.executionId,
+                    message,
+                    blueprintId: trace.blueprintId,
+                    eventId: trace.eventId,
+                    graphId: trace.graphId,
+                    nodeId: cursorNodeId,
+                });
+            }
+            throw new BlueprintGraphExecutionError(message, cursorNodeId);
         }
 
         const node = graph.nodes[cursorNodeId];
         if (!node) {
-            throw new Error(`Behavior graph node not found: ${cursorNodeId}`);
+            throw new BlueprintGraphExecutionError(`Behavior graph node not found: ${cursorNodeId}`, cursorNodeId);
         }
 
         const definition = behaviorNodeRegistry.get(node.type);
         if (!definition) {
-            throw new Error(`Behavior node definition missing: ${node.type}`);
+            throw new BlueprintGraphExecutionError(`Behavior node definition missing: ${node.type}`, cursorNodeId);
+        }
+
+        const trace = options.trace;
+        if (trace) {
+            trace.emit({ type: "node.enter", executionId: trace.executionId, nodeId: node.id });
         }
 
         const context: BehaviorNodeExecutionContext = {
@@ -39,9 +59,32 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<void> 
             node,
             params: node.params ?? {},
             hostAdapter,
+            trace,
         };
 
-        const result = await Promise.resolve(definition.execute(context));
+        let result: Awaited<ReturnType<NonNullable<typeof definition.execute>>>;
+        try {
+            result = await Promise.resolve(definition.execute(context));
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            const nodeId = err instanceof BlueprintGraphExecutionError ? err.nodeId : node.id;
+            if (trace) {
+                trace.emit({
+                    type: "execution.error",
+                    executionId: trace.executionId,
+                    message,
+                    blueprintId: trace.blueprintId,
+                    eventId: trace.eventId,
+                    graphId: trace.graphId,
+                    nodeId,
+                });
+            }
+            throw err instanceof BlueprintGraphExecutionError ? err : new BlueprintGraphExecutionError(message, nodeId);
+        } finally {
+            if (trace) {
+                trace.emit({ type: "node.exit", executionId: trace.executionId, nodeId: node.id });
+            }
+        }
         const nextPort = result?.nextPort ?? "next";
 
         const nextEdge = graph.edges.find(

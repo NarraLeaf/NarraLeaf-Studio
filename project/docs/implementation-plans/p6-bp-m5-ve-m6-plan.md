@@ -499,6 +499,11 @@ flowchart TB
 
 - `yarn lint`（`tsc` main + renderer）通过。
 
+### P7 cross-check（文档与验收复核）
+
+- 本计划 frontmatter 的 **`implemented` 不等于** `BP-M5-01` / `VE-M6-01` 在里程碑原文下的 **句句验收已全部完成**；句级状态与证据路径以 `p7-doc-gap-closure-plan.md` 附录矩阵为准。
+- **P4 / M4-full** 中与属性绑定相关的小缺口（移除 `window.prompt`、搜索并绑定已有声明、Workspace 静态诊断与 Blueprint 诊断文案分工）由 **P7** 收口，**不**回溯改写本计划已交付的 P6 单元范围；下文 **Remaining risks** 仍仅描述 P6 目标内的残余项。
+
 ### File-level summary
 
 | Area | Files |
