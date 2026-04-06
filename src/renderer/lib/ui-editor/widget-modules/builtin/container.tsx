@@ -4,6 +4,7 @@ import { ContainerRenderer } from "./container/renderer";
 import { createContainerInspector } from "./container/inspector";
 import { createContainerDockerBarItems } from "./container/dockerBar";
 import { defaultContainerWidgetProps } from "@shared/types/ui-editor/container";
+import { createInitialContainerAppearance } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 
 export const ContainerWidgetModule: UIWidgetModule = {
     type: "nl.container",
@@ -22,7 +23,10 @@ export const ContainerWidgetModule: UIWidgetModule = {
             opacity: 1,
             visible: true,
         },
-        props: { ...defaultContainerWidgetProps },
+        props: {
+            ...defaultContainerWidgetProps,
+            appearance: createInitialContainerAppearance(defaultContainerWidgetProps),
+        },
     }),
 
     render: (props: WidgetRendererProps) => <ContainerRenderer {...props} />,

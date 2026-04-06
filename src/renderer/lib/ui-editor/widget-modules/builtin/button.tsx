@@ -4,6 +4,7 @@ import { ButtonRenderer } from "./button/renderer";
 import { createButtonInspector } from "./button/inspector";
 import { createButtonDockerBarItems } from "./button/dockerBar";
 import { defaultButtonWidgetProps } from "./button/types";
+import { createInitialButtonAppearance } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 
 export const ButtonWidgetModule: UIWidgetModule = {
     type: "nl.button",
@@ -22,7 +23,10 @@ export const ButtonWidgetModule: UIWidgetModule = {
             opacity: 1,
             visible: true,
         },
-        props: { ...defaultButtonWidgetProps },
+        props: {
+            ...defaultButtonWidgetProps,
+            appearance: createInitialButtonAppearance(defaultButtonWidgetProps),
+        },
     }),
 
     render: (props: WidgetRendererProps) => <ButtonRenderer {...props} />,
