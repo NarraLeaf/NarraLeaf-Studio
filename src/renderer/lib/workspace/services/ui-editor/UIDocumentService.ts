@@ -329,6 +329,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (document.schemaVersion === 3) {
             return this.migrateFromV3Document(document);
         }
+        if (document.schemaVersion === 4) {
+            return this.migrateFromV4Document(document);
+        }
         throw new RendererError("UI document migration is not implemented");
     }
 
@@ -350,6 +353,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private migrateFromV3Document(document: UIDocument): UIDocument {
+        return {
+            ...document,
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        };
+    }
+
+    /** P5 hard cutover marker: documents authored on schema 4 (unified container model) bump to current. */
+    private migrateFromV4Document(document: UIDocument): UIDocument {
         return {
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,

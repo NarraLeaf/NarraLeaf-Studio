@@ -1,5 +1,7 @@
+import { LayoutList, Minus } from "lucide-react";
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
 import type { ContainerLayoutKind, ContainerScrollAxis, ContainerStackDirection } from "@shared/types/ui-editor/container";
+import { buildDividerPreset, buildVerticalStackPreset } from "./dockerPresets";
 import { getContainerProps } from "./helpers";
 
 export function createContainerDockerBarItems(ctx: DockerBarContext): DockerBarItem[] {
@@ -128,5 +130,41 @@ export function createContainerDockerBarItems(ctx: DockerBarContext): DockerBarI
               ]
             : [];
 
-    return [...chrome, ...layoutMode, ...stackControls, ...scrollControls];
+    const presets: DockerBarItem[] = [
+        {
+            kind: "separator",
+            id: "docker-container-sep-presets",
+        },
+        {
+            kind: "button",
+            id: "docker-container-preset-divider",
+            icon: Minus,
+            label: "Divider",
+            tooltip: "Divider preset: thin strip (adjust width on canvas)",
+            onClick: () => {
+                const { layout, props: presetProps } = buildDividerPreset();
+                documentService.updateElementLayout(element.id, { ...element.layout, ...layout });
+                documentService.updateElementProps(element.id, {
+                    ...element.props,
+                    ...presetProps,
+                });
+            },
+        },
+        {
+            kind: "button",
+            id: "docker-container-preset-stack-v",
+            icon: LayoutList,
+            label: "V stack",
+            tooltip: "Vertical stack layout (flow children)",
+            onClick: () => {
+                const { props: presetProps } = buildVerticalStackPreset();
+                documentService.updateElementProps(element.id, {
+                    ...element.props,
+                    ...presetProps,
+                });
+            },
+        },
+    ];
+
+    return [...chrome, ...layoutMode, ...stackControls, ...scrollControls, ...presets];
 }

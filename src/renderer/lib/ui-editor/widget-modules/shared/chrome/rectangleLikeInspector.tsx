@@ -104,7 +104,7 @@ export type RectangleInspectorOptions = {
   /** Resolve widget props (e.g. nl.image legacy merge). Defaults to rectangle-like getProps. */
   getProps?: (element: UIElement) => RectangleLikeProps;
   titleFallback?: string;
-  /** Schema id segment after `ui-inspector:` (default nl.rectangle). */
+  /** Schema id segment after `ui-inspector:` (default nl.container for shared chrome). */
   schemaTypeKey?: string;
   /** Inserted before chrome sections (e.g. `nl.container` layout mode). */
   leadingPropertyFields?: unknown[];
@@ -113,8 +113,8 @@ export type RectangleInspectorOptions = {
 export function createRectangleInspector(ctx: InspectorContext, options?: RectangleInspectorOptions) {
   const { element, documentService } = ctx;
   const resolveProps = options?.getProps ?? getRectangleLikeProps;
-  const titleFallback = options?.titleFallback ?? "Rectangle";
-  const schemaTypeKey = options?.schemaTypeKey ?? "nl.rectangle";
+  const titleFallback = options?.titleFallback ?? "Container";
+  const schemaTypeKey = options?.schemaTypeKey ?? "nl.container";
 
   const patchProps = (patch: Partial<RectangleLikeProps>) => {
     documentService.updateElementProps(element.id, {

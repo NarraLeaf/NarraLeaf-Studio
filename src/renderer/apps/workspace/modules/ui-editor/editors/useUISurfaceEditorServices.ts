@@ -4,7 +4,7 @@ import { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRun
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
-import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { listInsertPaletteModules } from "@/lib/ui-editor/widget-modules/insertPalette";
 import { useWorkspace } from "@/apps/workspace/context";
 
 export function useUISurfaceEditorServices() {
@@ -30,7 +30,7 @@ export function useUISurfaceEditorServices() {
         return context.services.get<UIService>(Services.UI);
     }, [context]);
 
-    const widgetModules = useMemo(() => widgetModuleRegistry.list(), []);
+    const widgetModules = useMemo(() => listInsertPaletteModules(), []);
 
     return {
         runtimeBridge,

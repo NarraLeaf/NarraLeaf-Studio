@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { animate, motion, useMotionValue } from "motion/react";
+import { listInsertPaletteModules } from "../widget-modules/insertPalette";
 import { widgetModuleRegistry } from "../widget-modules/registryInstance";
 import type {
     UIWidgetModule,
@@ -346,7 +347,7 @@ export function UIEditorDockerBar({
     stateService,
     documentService,
 }: UIEditorDockerBarProps) {
-    const modules = useMemo(() => widgetModuleRegistry.list(), []);
+    const modules = useMemo(() => listInsertPaletteModules(), []);
     const [selection, setSelection] = useState<SelectionState>(stateService.getSelection());
     const [tool, setTool] = useState<UITool>(stateService.getTool());
     const [docVersion, setDocVersion] = useState(0);

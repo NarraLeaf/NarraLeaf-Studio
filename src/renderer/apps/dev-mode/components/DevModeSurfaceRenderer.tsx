@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
-import type { UIDocument, UISurface, UIElement } from "@shared/types/ui-editor/document";
+import { type UIDocument, type UISurface, type UIElement, isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
@@ -10,6 +10,7 @@ import type { SurfaceStateStore } from "@/lib/ui-editor/blueprint-runtime/Surfac
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import { renderUnknownWidgetTypeContent } from "@/lib/ui-editor/runtime/unknownWidgetTypeUi";
 
 type DevModeSurfaceRendererProps = {
     document: UIDocument;
@@ -150,31 +151,26 @@ function renderElementTree(
     const renderer = rendererRegistry.get(resolved.type);
     const content = renderer
         ? renderer.render({ element: resolved, document, surface, hostAdapter, children })
-        : renderFallback(resolved, children);
+        : renderUnknownWidgetTypeContent(resolved, children);
 
     const styleOverrides = extractStyleOverrides(resolved);
+    const layoutMode =
+        resolved.parentId === null
+            ? "absolute"
+            : isUIElementFlowLayoutChild(document, resolved)
+              ? "flow"
+              : "absolute";
     return (
         <EditorNodeWrapper
             key={resolved.id}
             element={resolved}
             layout={resolved.layout}
             isRoot={resolved.parentId === null}
+            layoutMode={layoutMode}
             styleOverrides={styleOverrides}
         >
             {content}
         </EditorNodeWrapper>
-    );
-}
-
-function renderFallback(element: UIElement, children: ReactNode[]): ReactNode {
-    if (children.length > 0) {
-        return <>{children}</>;
-    }
-    const label = element.name ?? element.type;
-    return (
-        <div className="flex items-center justify-center w-full h-full text-[11px] text-white/60 border border-dashed border-white/40">
-            {label}
-        </div>
     );
 }
 

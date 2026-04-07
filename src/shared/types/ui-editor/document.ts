@@ -1,6 +1,6 @@
 import { isContainerFlowLayoutParent } from "./container";
 
-export const UI_DOCUMENT_SCHEMA_VERSION = 4 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 5 as const;
 
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;

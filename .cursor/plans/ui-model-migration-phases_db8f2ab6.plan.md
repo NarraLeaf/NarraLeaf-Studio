@@ -16,7 +16,7 @@ todos:
     status: completed
   - id: uimig-p5-shell-cutover-verify
     content: "P5: Shell hard cutover + verification (Units 7–8) — docker presets for Container modes; interaction/moveable/diagnostics on new model; bump UI_DOCUMENT_SCHEMA_VERSION; delete dead old types/registry; manual pass per parent plan Verification Matrix"
-    status: pending
+    status: completed
 isProject: false
 ---
 
