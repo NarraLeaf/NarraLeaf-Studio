@@ -13,7 +13,7 @@ todos:
     status: completed
   - id: uimig-p4-blueprint-list
     content: "P4: Blueprint boundary + List (Units 5–6) — explicit widget.setVariant (or equivalent); remove per-prop appearance binding for appearance-capable widgets; Dev Mode variant patch; behavior-graph/catalog nodes; List user concept replaces ListRepeater"
-    status: pending
+    status: completed
   - id: uimig-p5-shell-cutover-verify
     content: "P5: Shell hard cutover + verification (Units 7–8) — docker presets for Container modes; interaction/moveable/diagnostics on new model; bump UI_DOCUMENT_SCHEMA_VERSION; delete dead old types/registry; manual pass per parent plan Verification Matrix"
     status: pending

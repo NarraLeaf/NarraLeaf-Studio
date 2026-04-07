@@ -1,6 +1,8 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { ScopeStoreBridge } from "./ScopeStoreBridge";
+import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
 
 export type DevModeWidgetRuntimePatch = {
     visible?: boolean;
@@ -15,6 +17,8 @@ export type BlueprintHostApiRuntime = {
     widget: {
         setVisible: (elementId: string, visible: boolean) => Promise<void>;
         setEnabled: (elementId: string, enabled: boolean) => Promise<void>;
+        /** `null` clears runtime override and restores authored default variant resolution. */
+        setVariant: (elementId: string, variantId: string | null) => Promise<void>;
     };
     state: {
         get: (scope: string, key: string) => unknown;
@@ -41,7 +45,32 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onOpenSurface: (surfaceId: string) => void;
     onCloseLayer: () => void;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
+    widgetRuntimeStore: WidgetRuntimeStateStore;
 };
+
+function assertAppearanceVariantId(document: UIDocument, elementId: string, variantId: string | null): void {
+    const el = document.elements[elementId];
+    if (!el) {
+        throw new Error(`setVariant: element not found: ${elementId}`);
+    }
+    if (!isAppearanceCapableElementType(el.type)) {
+        throw new Error(`setVariant: element type does not support appearance variants: ${el.type}`);
+    }
+    if (variantId === null) {
+        return;
+    }
+    const rawAppearance = (el.props as Record<string, unknown> | undefined)?.appearance;
+    if (!rawAppearance || typeof rawAppearance !== "object") {
+        throw new Error(`setVariant: element has no appearance model: ${elementId}`);
+    }
+    const variants = (rawAppearance as { variants?: { id: string }[] }).variants;
+    if (!Array.isArray(variants) || variants.length === 0) {
+        throw new Error(`setVariant: element has no appearance variants: ${elementId}`);
+    }
+    if (!variants.some(v => v.id === variantId)) {
+        throw new Error(`setVariant: unknown variant id "${variantId}" for element ${elementId}`);
+    }
+}
 
 function emitHostCall(emit: (event: BlueprintDebugEvent) => void, capabilityId: string, phase: "call" | "return"): void {
     if (phase === "call") {
@@ -55,7 +84,8 @@ function emitHostCall(emit: (event: BlueprintDebugEvent) => void, capabilityId: 
  * Unified Host API implementation for Dev Mode (M3-full). Workspace editor does not instantiate this.
  */
 export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRuntimeOptions): BlueprintHostApiRuntime {
-    const { document, scope, activeSurfaceId, emit, onOpenSurface, onCloseLayer, onWidgetPatch } = options;
+    const { document, scope, activeSurfaceId, emit, onOpenSurface, onCloseLayer, onWidgetPatch, widgetRuntimeStore } =
+        options;
 
     return {
         navigation: {
@@ -81,9 +111,16 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             setVisible: async (elementId: string, visible: boolean) => {
                 const cap = "widget.setVisible";
                 emitHostCall(emit, cap, "call");
-                if (!document.elements[elementId]) {
+                const el = document.elements[elementId];
+                if (!el) {
                     emitHostCall(emit, cap, "return");
                     throw new Error(`setVisible: element not found: ${elementId}`);
+                }
+                if (isAppearanceCapableElementType(el.type)) {
+                    emitHostCall(emit, cap, "return");
+                    throw new Error(
+                        `setVisible: not supported for ${el.type}; use widget.setVariant to change appearance`,
+                    );
                 }
                 onWidgetPatch(elementId, { visible });
                 emitHostCall(emit, cap, "return");
@@ -91,11 +128,25 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             setEnabled: async (elementId: string, enabled: boolean) => {
                 const cap = "widget.setEnabled";
                 emitHostCall(emit, cap, "call");
-                if (!document.elements[elementId]) {
+                const el = document.elements[elementId];
+                if (!el) {
                     emitHostCall(emit, cap, "return");
                     throw new Error(`setEnabled: element not found: ${elementId}`);
                 }
+                if (isAppearanceCapableElementType(el.type)) {
+                    emitHostCall(emit, cap, "return");
+                    throw new Error(
+                        `setEnabled: not supported for ${el.type}; use widget.setVariant to change appearance`,
+                    );
+                }
                 onWidgetPatch(elementId, { enabled });
+                emitHostCall(emit, cap, "return");
+            },
+            setVariant: async (elementId: string, variantId: string | null) => {
+                const cap = "widget.setVariant";
+                emitHostCall(emit, cap, "call");
+                assertAppearanceVariantId(document, elementId, variantId);
+                widgetRuntimeStore.setVariantOverride(elementId, variantId);
                 emitHostCall(emit, cap, "return");
             },
         },

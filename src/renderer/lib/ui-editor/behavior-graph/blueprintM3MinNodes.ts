@@ -1,5 +1,6 @@
 import { behaviorNodeRegistry, type BehaviorNodeDefinition } from "./BehaviorNodeRegistry";
 import { BlueprintGraphExecutionError } from "./GraphExecutionError";
+import { blueprintWidgetSetVariantNode } from "./blueprintWidgetSetVariantNode";
 
 const StateSetNode: BehaviorNodeDefinition = {
     type: "blueprint.state.set",
@@ -23,4 +24,5 @@ const StateSetNode: BehaviorNodeDefinition = {
     },
 };
 
-behaviorNodeRegistry.register(StateSetNode);
+// Load before blueprintM3FullNodes (see builtinNodes.ts); register setVariant here to avoid duplicate registry overwrite.
+behaviorNodeRegistry.registerMany([blueprintWidgetSetVariantNode, StateSetNode]);

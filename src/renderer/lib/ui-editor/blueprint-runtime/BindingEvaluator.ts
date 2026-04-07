@@ -4,6 +4,7 @@ import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import { evaluateDeclarationValue } from "@/lib/workspace/services/ui-editor/blueprint/declarationEvaluation";
 import type { SurfaceStateStore } from "./SurfaceStateStore";
 import type { BindingDebugCoalescer } from "./BindingDebugCoalescer";
+import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
 
 function coerceLayoutField(key: keyof UILayout, value: unknown): unknown {
     if (key === "visible") {
@@ -47,6 +48,8 @@ export function mergeElementWithBlueprintBindings(
         props: element.props ? { ...element.props } : {},
     };
 
+    const skipWidgetPropMerge = isAppearanceCapableElementType(next.type);
+
     for (const bp of Object.values(blueprintDocument.blueprints)) {
         if (!bp.bindings) {
             continue;
@@ -56,6 +59,9 @@ export function mergeElementWithBlueprintBindings(
                 continue;
             }
             if (bind.target.surfaceId !== surfaceId || bind.target.elementId !== element.id) {
+                continue;
+            }
+            if (skipWidgetPropMerge) {
                 continue;
             }
             if (bind.status === "broken") {
