@@ -6,6 +6,7 @@ import {
     type UIElement,
     isUIElementFlowLayoutChild,
 } from "@shared/types/ui-editor/document";
+import { renderUnknownWidgetTypeContent } from "../../../ui-editor/runtime/unknownWidgetTypeUi";
 import { EditorNodeWrapper } from "../../../ui-editor/runtime/EditorNodeWrapper";
 import { ElementRendererRegistry, ElementRendererDefinition } from "../../../ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "../../../ui-editor/runtime/builtin";
@@ -109,16 +110,7 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
     }
 
     private renderFallback(element: UIElement, children: React.ReactNode[]): React.ReactNode {
-        if (children.length > 0) {
-            return <>{children}</>;
-        }
-
-        const label = element.name ?? element.type;
-        return (
-            <div className="flex items-center justify-center w-full h-full text-[11px] text-white/60 border border-dashed border-white/40">
-                {label}
-            </div>
-        );
+        return renderUnknownWidgetTypeContent(element, children);
     }
 
     private extractStyleOverrides(element: UIElement): CSSProperties | undefined {

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "id": "ex-doc-saveload",
   "name": "Example · Save / Load grid",
   "surfaces": [
