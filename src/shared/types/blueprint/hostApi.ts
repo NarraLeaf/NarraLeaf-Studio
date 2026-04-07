@@ -80,6 +80,14 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: { elementId: "", enabled: true },
             output: undefined,
         },
+        setVariant: {
+            capabilityId: "widget.setVariant",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { elementId: "", variantId: "" },
+            output: undefined,
+        },
     },
     state: {
         get: {

@@ -116,6 +116,18 @@ const CATALOG: Record<string, BlueprintNodeEditorCatalogEntry> = {
             { key: "enabled", label: "Enabled (JSON)", kind: "json" },
         ],
     },
+    "blueprint.widget.setVariant": {
+        type: "blueprint.widget.setVariant",
+        category: "Widget",
+        displayName: "Set widget variant",
+        keywords: ["variant", "appearance", "container", "button"],
+        isPure: false,
+        pins: [EXEC_IN, execOut("next", "Next")],
+        inspectorParams: [
+            { key: "elementId", label: "Element id", kind: "string" },
+            { key: "variantId", label: "Variant id (JSON null clears)", kind: "json" },
+        ],
+    },
     "blueprint.persistence.get": {
         type: "blueprint.persistence.get",
         category: "Persistence",

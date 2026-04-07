@@ -5,6 +5,8 @@ const WidgetRuntimeStateContext = createContext<WidgetRuntimeStateStore | null>(
 
 export type WidgetRuntimeStateProviderProps = {
     children: React.ReactNode;
+    /** When set, use this store (e.g. Dev Mode shares one instance with Blueprint Host API). */
+    externalStore?: WidgetRuntimeStateStore;
 };
 
 /**
@@ -12,8 +14,9 @@ export type WidgetRuntimeStateProviderProps = {
  * Mount with `key={surfaceId}` when switching surfaces so state resets.
  */
 export function WidgetRuntimeStateProvider(props: WidgetRuntimeStateProviderProps): React.ReactElement {
-    const { children } = props;
-    const store = useMemo(() => new WidgetRuntimeStateStore(), []);
+    const { children, externalStore } = props;
+    const internalStore = useMemo(() => new WidgetRuntimeStateStore(), []);
+    const store = externalStore ?? internalStore;
     return <WidgetRuntimeStateContext.Provider value={store}>{children}</WidgetRuntimeStateContext.Provider>;
 }
 

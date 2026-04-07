@@ -9,6 +9,8 @@ import { BlueprintRuntimeDebugPanel } from "./BlueprintRuntimeDebugPanel";
 import { useDevModeBlueprintRuntime } from "../hooks/useDevModeBlueprintRuntime";
 import { createDevModeBlueprintHostApi, type DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
+import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
@@ -60,6 +62,11 @@ export function DevModeContent(props: DevModeContentProps) {
         navStack.length > 0 ? navStack[navStack.length - 1]! : surface.id;
     const activeSurface = document.surfaces.find(s => s.id === activeSurfaceId) ?? surface;
 
+    const widgetRuntimeStore = useMemo(
+        () => new WidgetRuntimeStateStore(),
+        [activeSurface.id, bundle.revision, bundle.bundleId],
+    );
+
     const hostApi = useMemo(() => {
         if (!bpCore) {
             return null;
@@ -81,8 +88,9 @@ export function DevModeContent(props: DevModeContentProps) {
                     [elementId]: { ...prev[elementId], ...patch },
                 }));
             },
+            widgetRuntimeStore,
         });
-    }, [bpCore, document, activeSurface.id]);
+    }, [bpCore, document, activeSurface.id, widgetRuntimeStore]);
 
     const hostAdapter = useMemo((): UIHostAdapter => {
         if (!bpCore || !hostApi) {
@@ -121,15 +129,17 @@ export function DevModeContent(props: DevModeContentProps) {
                     debounceMs={0}
                     onUpdate={handleAspectUpdate}
                 >
-                    <DevModeSurfaceRenderer
-                        document={document}
-                        surface={activeSurface}
-                        rendererRegistry={rendererRegistry}
-                        scale={scale}
-                        hostAdapter={hostAdapter}
-                        blueprintBindingContext={bindingContext}
-                        widgetRuntimePatches={widgetPatches}
-                    />
+                    <WidgetRuntimeStateProvider externalStore={widgetRuntimeStore}>
+                        <DevModeSurfaceRenderer
+                            document={document}
+                            surface={activeSurface}
+                            rendererRegistry={rendererRegistry}
+                            scale={scale}
+                            hostAdapter={hostAdapter}
+                            blueprintBindingContext={bindingContext}
+                            widgetRuntimePatches={widgetPatches}
+                        />
+                    </WidgetRuntimeStateProvider>
                 </FixedAspectRatioContainer>
             </div>
             {bpCore ? <BlueprintRuntimeDebugPanel debug={bpCore.debug} /> : null}
