@@ -11,7 +11,8 @@ import type { ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/b
 /** Stable id for the primary variant (blueprint / runtime default). */
 export const DEFAULT_APPEARANCE_VARIANT_ID = "default";
 
-const CONTAINER_KEY_ORDER: ContainerAppearancePropertyKey[] = [
+/** Stable key order for container appearance groups (used by compact inspector and migrations). */
+export const CONTAINER_KEY_ORDER: ContainerAppearancePropertyKey[] = [
     "backgroundColor",
     "borderRadius",
     "borderRadiusTL",
@@ -36,8 +37,15 @@ const CONTAINER_KEY_ORDER: ContainerAppearancePropertyKey[] = [
     "cornerAdvanced",
 ];
 
-const BUTTON_KEY_ORDER: ButtonAppearancePropertyKey[] = [
+/** Stable key order for button appearance groups. */
+export const BUTTON_KEY_ORDER: ButtonAppearancePropertyKey[] = [
     "backgroundColor",
+    "fillType",
+    "fillOpacity",
+    "fillVisible",
+    "imageFill",
+    "backgroundImage",
+    "backgroundFit",
     "borderRadius",
     "borderWidth",
     "borderColor",
@@ -106,6 +114,18 @@ function buttonRowValue(props: ButtonWidgetProps, key: ButtonAppearancePropertyK
         switch (key) {
             case "backgroundColor":
                 return props.backgroundColor;
+            case "fillType":
+                return props.fillType;
+            case "fillOpacity":
+                return props.fillOpacity;
+            case "fillVisible":
+                return props.fillVisible;
+            case "imageFill":
+                return props.imageFill ?? null;
+            case "backgroundImage":
+                return props.backgroundImage;
+            case "backgroundFit":
+                return props.backgroundFit;
             case "borderRadius":
                 return props.borderRadius;
             case "borderWidth":
@@ -159,6 +179,48 @@ export function createInitialButtonAppearance(props: ButtonWidgetProps): Appeara
             },
         ],
     };
+}
+
+/**
+ * Append missing property groups for older saved buttons (pre background-fill keys).
+ */
+export function ensureButtonAppearanceHasAllKeys(model: AppearanceModel, flat: ButtonWidgetProps): AppearanceModel {
+    let changed = false;
+    const variants = model.variants.map(v => {
+        const have = new Set(v.propertyGroups.map(g => g.key));
+        const missing = BUTTON_KEY_ORDER.filter(k => !have.has(k));
+        if (missing.length === 0) {
+            return v;
+        }
+        changed = true;
+        const extra: AppearancePropertyGroup[] = missing.map(key => ({
+            key,
+            rows: [buttonRowValue(flat, key)],
+        }));
+        return { ...v, propertyGroups: [...v.propertyGroups, ...extra] };
+    });
+    return changed ? { ...model, variants } : model;
+}
+
+/**
+ * Append missing property groups for older saved containers (pre compact background / fill keys).
+ */
+export function ensureContainerAppearanceHasAllKeys(model: AppearanceModel, flat: ContainerWidgetProps): AppearanceModel {
+    let changed = false;
+    const variants = model.variants.map(v => {
+        const have = new Set(v.propertyGroups.map(g => g.key));
+        const missing = CONTAINER_KEY_ORDER.filter(k => !have.has(k));
+        if (missing.length === 0) {
+            return v;
+        }
+        changed = true;
+        const extra: AppearancePropertyGroup[] = missing.map(key => ({
+            key,
+            rows: [containerRowValue(flat, key)],
+        }));
+        return { ...v, propertyGroups: [...v.propertyGroups, ...extra] };
+    });
+    return changed ? { ...model, variants } : model;
 }
 
 export function isUsableAppearanceModel(appearance: AppearanceModel | null | undefined): appearance is AppearanceModel {

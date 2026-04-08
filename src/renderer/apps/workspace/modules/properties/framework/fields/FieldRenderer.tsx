@@ -17,7 +17,8 @@ import { MenuTriggerField } from "./MenuTriggerField";
 import { InputGroupField } from "./InputGroupField";
 import { InlineRowField } from "./InlineRowField";
 import { ImageFillField } from "./ImageFillField";
-import type { ImageFillFieldDefinition } from "../types";
+import { FontAssetField } from "./FontAssetField";
+import type { FontAssetFieldDefinition, ImageFillFieldDefinition } from "../types";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 
 interface FieldRendererProps<TData> {
@@ -138,6 +139,15 @@ function FieldRendererInner<TData>({ field, data, onSaving }: FieldRendererProps
             return (
                 <ImageFillField
                     field={field as ImageFillFieldDefinition<UIInspectorData>}
+                    data={data as UIInspectorData}
+                    onSaving={onSaving}
+                />
+            );
+
+        case "fontAsset":
+            return (
+                <FontAssetField
+                    field={field as FontAssetFieldDefinition<UIInspectorData>}
                     data={data as UIInspectorData}
                     onSaving={onSaving}
                 />

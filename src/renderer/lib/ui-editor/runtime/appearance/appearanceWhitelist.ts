@@ -30,6 +30,12 @@ export const CONTAINER_APPEARANCE_KEYS = new Set<ContainerAppearancePropertyKey>
 
 export const BUTTON_APPEARANCE_KEYS = new Set<ButtonAppearancePropertyKey>([
     "backgroundColor",
+    "fillType",
+    "fillOpacity",
+    "fillVisible",
+    "imageFill",
+    "backgroundImage",
+    "backgroundFit",
     "borderRadius",
     "borderWidth",
     "borderColor",

@@ -1,15 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Droplets,
   Eye,
   EyeOff,
   Maximize2,
-  MoreHorizontal,
-  RotateCw,
   Square,
 } from "lucide-react";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
-import { ContextMenu } from "@/lib/components/elements/ContextMenu";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { Select } from "@/lib/components/elements/Select";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
@@ -29,76 +25,7 @@ import {
   STROKE_JOIN_OPTIONS,
   STROKE_SIDE_OPTIONS,
 } from "./constants";
-
-interface InlineMenuTriggerButtonProps {
-  menu: ContextMenuDef;
-  ariaLabel?: string;
-  className?: string;
-}
-
-function InlineMenuTriggerButton({
-  menu,
-  ariaLabel = "More options",
-  className = "",
-}: InlineMenuTriggerButtonProps) {
-  const [visible, setVisible] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-
-  const openMenu = useCallback(() => {
-    if (!buttonRef.current) return;
-    const rect = buttonRef.current.getBoundingClientRect();
-    setPosition({ x: rect.left, y: rect.bottom + 4 });
-    setVisible(true);
-  }, []);
-
-  const closeMenu = useCallback(() => {
-    setVisible(false);
-  }, []);
-
-  useEffect(() => {
-    if (!visible) return;
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (
-        target &&
-        (buttonRef.current?.contains(target) ||
-          (target as HTMLElement).closest?.('[data-context-menu="true"]'))
-      ) {
-        return;
-      }
-      closeMenu();
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [visible, closeMenu]);
-
-  useEffect(() => {
-    if (!visible) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeMenu();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [visible, closeMenu]);
-
-  return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={visible ? closeMenu : openMenu}
-        aria-label={ariaLabel}
-        className={`${controlButtonClass()} ${className}`}
-      >
-        <MoreHorizontal className="w-4 h-4" />
-      </button>
-      {visible && <ContextMenu items={menu} position={position} onClose={closeMenu} />}
-    </>
-  );
-}
+import { InlineMenuTriggerButton } from "./InlineMenuTriggerButton";
 
 export type RectangleInspectorOptions = {
   /** Resolve widget props (e.g. nl.image legacy merge). Defaults to rectangle-like getProps. */
@@ -226,6 +153,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           type="number"
                           min={0}
                           unit="px"
+                          precision={2}
                           leftIcon={<CornerIcon position="tl" />}
                           className="w-full min-w-0"
                           placeholder={uniformPlaceholder}
@@ -412,83 +340,6 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           className={controlButtonClass(visible)}
                         >
                           {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                        </button>
-                      );
-                    },
-                  },
-                ],
-              }),
-            ],
-          }),
-          defineField<D, any>({
-            id: "section.transform",
-            type: "section",
-            title: "Transform",
-            fields: [
-              defineField<D, any>({
-                id: "layout.rotationControls",
-                type: "inlineRow",
-                gap: 8,
-                wrap: false,
-                label: "Rotation",
-                items: [
-                  {
-                    id: "layout.rotationValue",
-                    className: "flex-1 min-w-0",
-                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const layoutRotation = data.elements[0]?.layout.rotation;
-                      const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation : 0;
-
-                      return (
-                        <NumericDraftEnhancedInput
-                          committedDisplay={String(rotationValue)}
-                          draftResetKey={element.id}
-                          onFiniteNumber={(value) => {
-                            const clamped = Math.min(360, Math.max(-360, value));
-                            onSaving(true);
-                            try {
-                              patchLayout({ rotation: clamped });
-                            } finally {
-                              onSaving(false);
-                            }
-                          }}
-                          inputMode="numeric"
-                          type="number"
-                          min={-360}
-                          max={360}
-                          unit="°"
-                          leftIcon={<RotateCw className="w-4 h-4 text-gray-400" />}
-                          className="w-full min-w-0"
-                          selectAllOnFocus
-                        />
-                      );
-                    },
-                  },
-                  {
-                    id: "layout.rotationReset",
-                    className: "flex-shrink-0",
-                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const layoutRotation = data.elements[0]?.layout.rotation;
-                      const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation : 0;
-                      const reset = () => {
-                        if (!rotationValue) return;
-                        onSaving(true);
-                        try {
-                          patchLayout({ rotation: 0 });
-                        } finally {
-                          onSaving(false);
-                        }
-                      };
-
-                      return (
-                        <button
-                          type="button"
-                          onClick={reset}
-                          aria-label="Reset rotation"
-                          disabled={rotationValue === 0}
-                          className={controlButtonClass(rotationValue !== 0)}
-                        >
-                          <RotateCw className="w-4 h-4" />
                         </button>
                       );
                     },
@@ -753,6 +604,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           type="number"
                           min={0}
                           unit="px"
+                          precision={2}
                           leftIcon={<Square className="w-4 h-4 text-gray-400" />}
                           className="w-full min-w-0"
                         />

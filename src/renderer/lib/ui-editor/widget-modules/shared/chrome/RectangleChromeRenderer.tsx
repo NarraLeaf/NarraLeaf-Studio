@@ -1,6 +1,6 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type HTMLAttributes } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
-import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { ensureCropPlacement, getRectangleLikeProps, normalizeImageFill } from "./rectangleHelpers";
@@ -19,6 +19,10 @@ type RectangleChromeRendererProps = WidgetRendererProps & {
     clipContent?: boolean;
     /** Resolved chrome from AppearanceResolver; when set, `element.props` is not read for rectangle-like fields. */
     rectangleLike?: RectangleLikeProps;
+    /** Merged into the root chrome div style (e.g. cursor, opacity for buttons). */
+    extraRootStyle?: CSSProperties;
+    /** Extra attributes on the root chrome div (e.g. role, tabIndex, keyboard handlers). */
+    extraRootProps?: HTMLAttributes<HTMLDivElement>;
 };
 
 export function RectangleChromeRenderer({
@@ -26,6 +30,8 @@ export function RectangleChromeRenderer({
     children,
     clipContent = true,
     rectangleLike,
+    extraRootStyle,
+    extraRootProps,
 }: RectangleChromeRendererProps) {
     const props = rectangleLike ?? getRectangleLikeProps(element);
     const stateService = UIEditorStateService.getInstance();
@@ -41,13 +47,21 @@ export function RectangleChromeRenderer({
         : `${props.borderRadiusTL}px ${props.borderRadiusTR}px ${props.borderRadiusBR}px ${props.borderRadiusBL}px`;
 
     const normalizedFillOpacity = Math.max(0, Math.min(1, props.fillOpacity));
+    const parsedBg = parseColorValue(String(props.backgroundColor ?? ""), { hex: "#FFFFFF", alpha: 1 });
     const colorFill =
         props.fillVisible && props.fillType === "color"
-            ? colorValueToCss({ hex: props.backgroundColor, alpha: normalizedFillOpacity })
+            ? colorValueToCss({
+                  hex: parsedBg.hex,
+                  alpha: normalizedFillOpacity * (parsedBg.alpha ?? 1),
+              })
             : "transparent";
 
     const normalizedStrokeOpacity = Math.max(0, Math.min(1, props.strokeOpacity));
-    const strokeColor = colorValueToCss({ hex: props.borderColor, alpha: normalizedStrokeOpacity });
+    const parsedStroke = parseColorValue(String(props.borderColor ?? ""), { hex: "#FFFFFF", alpha: 1 });
+    const strokeColor = colorValueToCss({
+        hex: parsedStroke.hex,
+        alpha: normalizedStrokeOpacity * (parsedStroke.alpha ?? 1),
+    });
 
     const style: CSSProperties = {
         width: "100%",
@@ -57,6 +71,7 @@ export function RectangleChromeRenderer({
         boxSizing: "border-box",
         overflow: clipContent ? "hidden" : "visible",
         position: "relative",
+        ...extraRootStyle,
     };
 
     const hasStroke = props.strokeVisible && props.borderWidth > 0;
@@ -179,7 +194,11 @@ export function RectangleChromeRenderer({
     };
 
     return (
-        <div style={style} data-ui-image-crop-active={isCropEditing ? "true" : "false"}>
+        <div
+            style={style}
+            data-ui-image-crop-active={isCropEditing ? "true" : "false"}
+            {...extraRootProps}
+        >
             {renderImage()}
             {isCropEditing && <div className="ui-image-crop-mask" aria-hidden="true" />}
             {strokeStyle && <div aria-hidden="true" style={strokeStyle} />}

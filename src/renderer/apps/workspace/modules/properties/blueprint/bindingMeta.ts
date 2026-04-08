@@ -13,6 +13,7 @@ export function isUIInspectorData(data: unknown): data is UIInspectorData {
             typeof data === "object" &&
             "element" in data &&
             "elements" in data &&
+            "documentService" in data &&
             (data as UIInspectorData).element &&
             typeof (data as UIInspectorData).element.id === "string",
     );

@@ -85,6 +85,7 @@ export function InputGroupField<TData>({ field, data, onSaving }: InputGroupFiel
                                 readOnly={field.readOnly || item.readOnly}
                                 maxLength={item.maxLength}
                                 selectAllOnFocus={item.selectAllOnFocus}
+                                precision={item.type === "number" ? (item.precision ?? null) : null}
                                 popoverWhenNarrow
                                 popoverThreshold={112}
                             />

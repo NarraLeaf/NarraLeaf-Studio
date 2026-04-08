@@ -18,6 +18,7 @@ import {
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { roundUILayoutGeometryFields } from "@/lib/ui-editor/layout/roundLayoutGeometry";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IUIDocumentService, Services, WorkspaceContext } from "../services";
@@ -195,10 +196,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (!element) {
                 return;
             }
-            element.layout = {
+            element.layout = roundUILayoutGeometryFields({
                 ...element.layout,
                 ...layoutPatch,
-            };
+            });
         });
     }
 
@@ -214,10 +215,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     return;
                 }
                 const patch = layoutPatches[elementId];
-                element.layout = {
+                element.layout = roundUILayoutGeometryFields({
                     ...element.layout,
                     ...patch,
-                };
+                });
             });
         });
     }
@@ -574,7 +575,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             opacity: defaultElement.layout?.opacity ?? 1,
             rotation: defaultElement.layout?.rotation,
         };
-        const layout: UILayout = { ...baseLayout, ...layoutPatch };
+        const layout: UILayout = roundUILayoutGeometryFields({ ...baseLayout, ...layoutPatch });
 
         const element: UIElement = {
             id: elementId,

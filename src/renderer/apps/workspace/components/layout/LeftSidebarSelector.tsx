@@ -36,7 +36,10 @@ export function LeftSidebarSelector({
     };
 
     return (
-        <div className="bg-[#0b0d12] border-r border-white/10 flex flex-col items-center py-2 px-1 gap-1">
+        <div
+            data-workspace-sidebar-rail=""
+            className="bg-[#0b0d12] border-r border-white/10 flex flex-col items-center py-2 px-1 gap-1"
+        >
             {panels.map((panel) => (
                 <button
                     key={panel.id}

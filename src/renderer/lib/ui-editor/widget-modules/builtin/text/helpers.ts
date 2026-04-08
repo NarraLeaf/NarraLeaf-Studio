@@ -6,5 +6,6 @@ export function getTextProps(element: UIElement): TextWidgetProps {
     return {
         ...defaultTextWidgetProps,
         ...p,
+        fontAssetId: p?.fontAssetId ?? defaultTextWidgetProps.fontAssetId,
     };
 }

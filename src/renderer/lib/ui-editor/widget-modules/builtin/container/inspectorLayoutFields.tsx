@@ -45,6 +45,8 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
             id: "section.containerLayout",
             type: "section",
             title: "Child layout",
+            collapsible: true,
+            defaultCollapsed: false,
             fields: [
                 defineField<D, any>({
                     id: "container.layoutKind",
@@ -216,6 +218,8 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
             id: "section.containerBehavior",
             type: "section",
             title: "Behavior",
+            collapsible: true,
+            defaultCollapsed: true,
             fields: [
                 defineField<D, any>({
                     id: "container.clipContent",

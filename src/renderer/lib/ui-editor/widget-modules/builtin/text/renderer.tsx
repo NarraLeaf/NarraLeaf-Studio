@@ -9,9 +9,22 @@ import {
 } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { getTextProps } from "./helpers";
+import type { TextWrapMode } from "./types";
+
+function lineWrapCss(mode: TextWrapMode): Pick<CSSProperties, "whiteSpace" | "wordBreak" | "overflowWrap"> {
+    switch (mode) {
+        case "word":
+            return { whiteSpace: "pre-wrap", wordBreak: "normal", overflowWrap: "break-word" };
+        case "character":
+            return { whiteSpace: "pre-wrap", wordBreak: "break-all", overflowWrap: "normal" };
+        case "nowrap":
+            return { whiteSpace: "nowrap", wordBreak: "normal", overflowWrap: "normal" };
+    }
+}
 
 export function TextRenderer({ element, surface }: WidgetRendererProps) {
     const stateService = UIEditorStateService.getInstance();
@@ -30,6 +43,7 @@ export function TextRenderer({ element, surface }: WidgetRendererProps) {
 
     const p = getTextProps(element);
     const color = colorValueToCss({ hex: p.color, alpha: 1 });
+    const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
 
     const sharedStyle: CSSProperties = {
         width: "100%",
@@ -42,9 +56,9 @@ export function TextRenderer({ element, surface }: WidgetRendererProps) {
         color,
         textAlign: p.textAlign,
         lineHeight: p.lineHeight,
-        whiteSpace: "pre-wrap",
-        wordBreak: "break-word",
+        ...lineWrapCss(p.textWrapMode),
         overflow: "hidden",
+        ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
     };
 
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -106,7 +120,8 @@ export function TextRenderer({ element, surface }: WidgetRendererProps) {
                     background: "transparent",
                     border: "none",
                     outline: "none",
-                    fontFamily: "inherit",
+                    ...(p.textWrapMode === "nowrap" ? { overflowX: "auto", overflowY: "hidden" } : {}),
+                    ...(!editorFontFamily ? { fontFamily: "inherit" } : {}),
                 }}
                 onBlur={handleTextareaBlur}
                 onKeyDown={handleTextareaKeyDown}

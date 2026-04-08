@@ -1,7 +1,15 @@
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
+import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
 export type ButtonWidgetProps = {
     backgroundColor: string;
+    /** Flat fill baseline; appearance overlays may override per variant / state. */
+    fillType: "color" | "image";
+    fillOpacity: number;
+    fillVisible: boolean;
+    imageFill?: ImageFill | null;
+    backgroundImage: string;
+    backgroundFit: string;
     borderRadius: number;
     borderWidth: number;
     borderColor: string;
@@ -18,6 +26,12 @@ export type ButtonWidgetProps = {
 
 export const defaultButtonWidgetProps: ButtonWidgetProps = {
     backgroundColor: "#374151",
+    fillType: "color",
+    fillOpacity: 1,
+    fillVisible: true,
+    imageFill: undefined,
+    backgroundImage: "",
+    backgroundFit: "cover",
     borderRadius: 8,
     borderWidth: 0,
     borderColor: "#000000",

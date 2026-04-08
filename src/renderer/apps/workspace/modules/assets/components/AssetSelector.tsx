@@ -45,6 +45,17 @@ const ASSET_TYPE_LABELS = {
     [AssetType.Other]: "Other",
 };
 
+/**
+ * Caller-defined section (e.g. built-in presets) shown as a collapsible group in the asset list.
+ * Workspace filter chips do not apply; only the search box filters `assets` (same rules as project assets).
+ */
+export interface AssetSelectorVirtualGroup {
+    id: string;
+    title: string;
+    assets: Asset[];
+    defaultExpanded?: boolean;
+}
+
 export interface AssetSelectorProps {
     visible: boolean;
     assetType: AssetType;
@@ -53,6 +64,15 @@ export interface AssetSelectorProps {
     anchorRef?: React.RefObject<HTMLElement | null>;
     title?: string;
     className?: string;
+    /** Extra collapsible sections controlled by the caller (built-in entries, presets, etc.) */
+    virtualGroups?: AssetSelectorVirtualGroup[];
+    /** Where virtual groups appear relative to the workspace tree. Default: before. */
+    virtualGroupsPlacement?: "before" | "after";
+    /**
+     * Optional preview URL for assets that are not served by AssetsService (e.g. built-in thumbnails).
+     * Return null/undefined to fall back to the default fetch path.
+     */
+    resolveAssetPreviewUrl?: (asset: Asset) => Promise<string | null | undefined>;
     onClose: () => void;
     onConfirm: (assets: Asset[]) => void;
 }
@@ -65,6 +85,9 @@ export function AssetSelector({
     anchorRef,
     title,
     className = "",
+    virtualGroups,
+    virtualGroupsPlacement = "before",
+    resolveAssetPreviewUrl,
     onClose,
     onConfirm,
 }: AssetSelectorProps) {
@@ -97,17 +120,56 @@ export function AssetSelector({
     const filteredTypeAssets = useMemo(() => filteredAssets[assetType] ?? [], [filteredAssets, assetType]);
     const filteredTypeGroups = useMemo(() => filteredGroups[assetType] ?? [], [filteredGroups, assetType]);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+    const [expandedVirtualGroups, setExpandedVirtualGroups] = useState<Set<string>>(new Set());
+    const selectorWasVisibleRef = useRef(false);
+
+    useEffect(() => {
+        if (!visible) {
+            selectorWasVisibleRef.current = false;
+            return;
+        }
+        if (!selectorWasVisibleRef.current) {
+            selectorWasVisibleRef.current = true;
+            if (virtualGroups?.length) {
+                setExpandedVirtualGroups(
+                    new Set(virtualGroups.filter((g) => g.defaultExpanded !== false).map((g) => g.id)),
+                );
+            } else {
+                setExpandedVirtualGroups(new Set());
+            }
+        }
+    }, [visible, virtualGroups]);
+
+    const matchesAssetSearch = useCallback((asset: Asset, q: string) => {
+        if (!q) return true;
+        const lower = q.toLowerCase();
+        if (asset.name.toLowerCase().includes(lower)) return true;
+        if (asset.description?.toLowerCase().includes(lower)) return true;
+        if (asset.tags?.some((tag) => tag.toLowerCase().includes(lower))) return true;
+        return false;
+    }, []);
 
     const displayedAssets = useMemo(() => {
-        const q = searchQuery.trim().toLowerCase();
+        const q = searchQuery.trim();
         if (!q) return filteredTypeAssets;
-        return filteredTypeAssets.filter((asset) => {
-            if (asset.name.toLowerCase().includes(q)) return true;
-            if (asset.description?.toLowerCase().includes(q)) return true;
-            if (asset.tags?.some((tag) => tag.toLowerCase().includes(q))) return true;
-            return false;
-        });
-    }, [filteredTypeAssets, searchQuery]);
+        return filteredTypeAssets.filter((asset) => matchesAssetSearch(asset, q));
+    }, [filteredTypeAssets, searchQuery, matchesAssetSearch]);
+
+    const filteredVirtualGroups = useMemo(() => {
+        if (!virtualGroups?.length) return [];
+        const q = searchQuery.trim();
+        return virtualGroups.map((group) => ({
+            ...group,
+            assets: q ? group.assets.filter((a) => matchesAssetSearch(a, q)) : group.assets,
+        }));
+    }, [virtualGroups, searchQuery, matchesAssetSearch]);
+
+    const virtualAssetsFlat = useMemo(
+        () => filteredVirtualGroups.flatMap((g) => g.assets),
+        [filteredVirtualGroups],
+    );
+
+    const virtualAssetCount = useMemo(() => virtualGroups?.reduce((n, g) => n + g.assets.length, 0) ?? 0, [virtualGroups]);
 
     useLayoutEffect(() => {
         if (!visible) return;
@@ -196,11 +258,13 @@ export function AssetSelector({
     }, [assetsByGroup, groupsByParent, displayedAssets]);
 
     const selectedAssets = useMemo(() => {
-        const map = new Map(typeAssets.map((asset) => [asset.id, asset]));
+        const map = new Map<string, Asset>();
+        typeAssets.forEach((asset) => map.set(asset.id, asset));
+        virtualAssetsFlat.forEach((asset) => map.set(asset.id, asset));
         return Array.from(selection)
             .map((id) => map.get(id))
             .filter((asset): asset is Asset => Boolean(asset));
-    }, [selection, typeAssets]);
+    }, [selection, typeAssets, virtualAssetsFlat]);
 
     const clearPreviewTimer = useCallback(() => {
         if (previewTimerRef.current) {
@@ -217,9 +281,16 @@ export function AssetSelector({
 
     const ensurePreviewUrl = useCallback(
         async (asset: Asset<AssetType.Image>) => {
-            if (!assetsService) return null;
             const cached = previewCacheRef.current[asset.id];
             if (cached) return cached;
+            if (resolveAssetPreviewUrl) {
+                const resolved = await resolveAssetPreviewUrl(asset);
+                if (resolved) {
+                    previewCacheRef.current[asset.id] = resolved;
+                    return resolved;
+                }
+            }
+            if (!assetsService) return null;
             const result = await assetsService.fetch(asset);
             if (!result.success) return null;
             const blob = new Blob([new Uint8Array(result.data.data)]);
@@ -227,7 +298,7 @@ export function AssetSelector({
             previewCacheRef.current[asset.id] = url;
             return url;
         },
-        [assetsService],
+        [assetsService, resolveAssetPreviewUrl],
     );
 
     const computePreviewPosition = useCallback((target: HTMLElement) => {
@@ -289,7 +360,9 @@ export function AssetSelector({
     useEffect(() => {
         return () => {
             hidePreview();
-            Object.values(previewCacheRef.current).forEach((url) => URL.revokeObjectURL(url));
+            Object.values(previewCacheRef.current).forEach((url) => {
+                if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+            });
         };
     }, [hidePreview]);
 
@@ -314,9 +387,6 @@ export function AssetSelector({
 
         return (
             <div key={groupId ?? "root"}>
-                {groupId === null && (
-                    <div className="px-2 text-[11px] uppercase tracking-wide text-gray-500 mb-1">Ungrouped</div>
-                )}
                 {visibleGroups.map((group) => {
                     const isExpanded = expandedGroups.has(group.id);
                     return (
@@ -349,16 +419,25 @@ export function AssetSelector({
 
                 {groupId === null && assets.length > 0 && (
                     <div className="space-y-1">
-                        {assets.map((asset) => renderAssetRow(asset, level + 1))}
+                        {assets.map((asset) => renderAssetRow(asset, level))}
                     </div>
                 )}
             </div>
         );
     };
 
+    const toggleVirtualGroup = (groupId: string) => {
+        setExpandedVirtualGroups((prev) => {
+            const next = new Set(prev);
+            if (next.has(groupId)) next.delete(groupId);
+            else next.add(groupId);
+            return next;
+        });
+    };
+
     const renderAssetRow = (asset: Asset, level: number) => {
         const isSelected = selection.has(asset.id);
-        const ItemIcon = ASSET_TYPE_ICONS[asset.type];
+        const ItemIcon = ASSET_TYPE_ICONS[asset.type] ?? File;
         return (
             <button
                 key={asset.id}
@@ -381,6 +460,41 @@ export function AssetSelector({
             </button>
         );
     };
+
+    const renderVirtualGroupsBlock = () => {
+        if (!filteredVirtualGroups.length) return null;
+        const rootHeaderPad = 20 + 8;
+        return (
+            <div className="space-y-1">
+                {filteredVirtualGroups.map((group) => {
+                    if (group.assets.length === 0) return null;
+                    const isExpanded = expandedVirtualGroups.has(group.id);
+                    return (
+                        <div key={group.id} className="mb-1">
+                            <button
+                                type="button"
+                                onClick={() => toggleVirtualGroup(group.id)}
+                                className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-white/5 transition-colors text-left"
+                                style={{ paddingLeft: `${rootHeaderPad}px` }}
+                            >
+                                <ChevronRight
+                                    className={`w-3 h-3 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? "rotate-90" : ""}`}
+                                />
+                                <span className="text-sm flex-1 truncate text-gray-100">{group.title}</span>
+                            </button>
+                            {isExpanded && (
+                                <div className="space-y-1">
+                                    {group.assets.map((asset) => renderAssetRow(asset, 1))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    };
+
+    const hasVisibleVirtualAssets = filteredVirtualGroups.some((g) => g.assets.length > 0);
 
     const handleItemClick = (asset: Asset) => {
         if (multiple) {
@@ -460,7 +574,9 @@ export function AssetSelector({
                         <Icon className="w-4 h-4 text-primary" />
                         <div className="flex flex-col">
                             <span className="text-sm font-semibold">{headerLabel}</span>
-                            <span className="text-xs text-gray-400">{typeAssets.length} items</span>
+                            <span className="text-xs text-gray-400">
+                                {virtualAssetCount > 0 ? `${typeAssets.length + virtualAssetCount} items` : `${typeAssets.length} items`}
+                            </span>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -505,26 +621,32 @@ export function AssetSelector({
                             <div className="text-xs text-red-300/80">{error}</div>
                         </div>
                     </div>
-                ) : displayedAssets.length === 0 ? (
+                ) : displayedAssets.length === 0 && !hasVisibleVirtualAssets ? (
                     <div className="px-4 py-8 text-center text-sm text-gray-500">
                         No assets match the current filters
                     </div>
                 ) : (
                     <div className="flex-1 overflow-y-auto px-2 py-3 space-y-2">
+                        {virtualGroupsPlacement === "before" && renderVirtualGroupsBlock()}
+
                         {/* Root groups */}
                         {groupsByParent.get(null)?.length ? renderGroup(null, 0) : null}
 
-                        {/* Ungrouped assets (null key handled in renderGroup) */}
+                        {/* Root-level assets when there are no top-level folders */}
                         {!groupsByParent.get(null)?.length && (assetsByGroup.get(null)?.length ?? 0) > 0 && (
                             <div className="space-y-1">{renderGroup(null, 0)}</div>
                         )}
 
-                        {/* Fallback: if no groups present, still list all displayed assets flat */}
-                        {groupsByParent.size === 0 && (
-                            <div className="space-y-1">
-                                {displayedAssets.map((asset) => renderAssetRow(asset, 0))}
-                            </div>
-                        )}
+                        {/* Orphan assets: grouped by id but no folder rows in filtered groups */}
+                        {groupsByParent.size === 0 &&
+                            (assetsByGroup.get(null)?.length ?? 0) === 0 &&
+                            displayedAssets.length > 0 && (
+                                <div className="space-y-1">
+                                    {displayedAssets.map((asset) => renderAssetRow(asset, 0))}
+                                </div>
+                            )}
+
+                        {virtualGroupsPlacement === "after" && renderVirtualGroupsBlock()}
                     </div>
                 )}
 

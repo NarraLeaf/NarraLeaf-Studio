@@ -10,7 +10,7 @@ import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framewor
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { getTextProps } from "./helpers";
-import type { TextAlign, TextWidgetProps } from "./types";
+import type { TextAlign, TextWidgetProps, TextWrapMode } from "./types";
 
 export function createTextInspector(ctx: InspectorContext) {
   type D = UIInspectorData;
@@ -58,6 +58,15 @@ export function createTextInspector(ctx: InspectorContext) {
             type: "section",
             title: "Typography",
             fields: [
+              defineField<D, any>({
+                id: "text.fontAsset",
+                type: "fontAsset",
+                label: "Font",
+                getValue: (d: D) => getTextProps(d.element).fontAssetId,
+                setValue: (_d: D, value: string | null) => {
+                  patchProps({ fontAssetId: value });
+                },
+              }),
               defineField<D, any>({
                 id: "text.typographyRow",
                 type: "inlineRow",
@@ -139,6 +148,20 @@ export function createTextInspector(ctx: InspectorContext) {
                   patchProps({
                     fontWeight: v as TextWidgetProps["fontWeight"],
                   });
+                },
+              }),
+              defineField<D, any>({
+                id: "text.wrapMode",
+                type: "select",
+                label: "Line wrap",
+                options: [
+                  { value: "word", label: "Words" },
+                  { value: "character", label: "Characters" },
+                  { value: "nowrap", label: "No wrap" },
+                ],
+                getValue: (d: D) => getTextProps(d.element).textWrapMode,
+                setValue: (_d: D, v: string | number) => {
+                  patchProps({ textWrapMode: String(v) as TextWrapMode });
                 },
               }),
               defineField<D, any>({

@@ -7,6 +7,7 @@ import {
     EyeOff,
     MoveHorizontal,
     MoveVertical,
+    RotateCw,
     Settings,
 } from "lucide-react";
 import { PanelComponentProps } from "../types";
@@ -20,6 +21,8 @@ import { Asset } from "@/lib/workspace/services/assets/types";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { PropertyEditor } from "./framework";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
+import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
+import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import {
     getAssetPropertySchema,
     AssetEditorContext,
@@ -88,6 +91,8 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                         id: "layout.x",
                         label: "X",
                         icon: <MoveHorizontal className="w-4 h-4 text-gray-400" />,
+                        type: "number",
+                        precision: 2,
                         getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.x ?? 0),
                         setValue: (_data: UIInspectorData, raw: string) => {
                             const number = toNumber(raw);
@@ -102,6 +107,8 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                         id: "layout.y",
                         label: "Y",
                         icon: <MoveVertical className="w-4 h-4 text-gray-400" />,
+                        type: "number",
+                        precision: 2,
                         getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.y ?? 0),
                         setValue: (_data: UIInspectorData, raw: string) => {
                             const number = toNumber(raw);
@@ -126,6 +133,8 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                         id: "layout.width",
                         label: "W",
                         icon: <ArrowLeftRight className="w-4 h-4 text-gray-400" />,
+                        type: "number",
+                        precision: 2,
                         getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.width ?? 0),
                         setValue: (_data: UIInspectorData, raw: string) => updateDimension("width", raw),
                         selectAllOnFocus: true,
@@ -134,12 +143,84 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                         id: "layout.height",
                         label: "H",
                         icon: <ArrowUpDown className="w-4 h-4 text-gray-400" />,
+                        type: "number",
+                        precision: 2,
                         getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.height ?? 0),
                         setValue: (_data: UIInspectorData, raw: string) => updateDimension("height", raw),
                         selectAllOnFocus: true,
                     },
                 ],
                 order: 1,
+            }),
+            defineField<UIInspectorData, any>({
+                id: "layout.rotation",
+                type: "inlineRow",
+                label: "Rotation",
+                gap: 8,
+                wrap: false,
+                items: [
+                    {
+                        id: "layout.rotationValue",
+                        className: "flex-1 min-w-0",
+                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                            const layoutRotation = getPrimaryLayout(data)?.rotation;
+                            const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation! : 0;
+                            return (
+                                <NumericDraftEnhancedInput
+                                    committedDisplay={String(rotationValue)}
+                                    draftResetKey={primaryId}
+                                    onFiniteNumber={value => {
+                                        const clamped = Math.min(360, Math.max(-360, value));
+                                        onSaving(true);
+                                        try {
+                                            applyLayoutPatch({ rotation: clamped });
+                                        } finally {
+                                            onSaving(false);
+                                        }
+                                    }}
+                                    inputMode="numeric"
+                                    type="number"
+                                    min={-360}
+                                    max={360}
+                                    unit="°"
+                                    precision={2}
+                                    leftIcon={<RotateCw className="w-4 h-4 text-gray-400" />}
+                                    className="w-full min-w-0"
+                                    selectAllOnFocus
+                                />
+                            );
+                        },
+                    },
+                    {
+                        id: "layout.rotationReset",
+                        className: "flex-shrink-0",
+                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                            const layoutRotation = getPrimaryLayout(data)?.rotation;
+                            const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation! : 0;
+                            const reset = () => {
+                                if (!rotationValue) return;
+                                onSaving(true);
+                                try {
+                                    applyLayoutPatch({ rotation: 0 });
+                                } finally {
+                                    onSaving(false);
+                                }
+                            };
+                            return (
+                                <button
+                                    type="button"
+                                    onClick={reset}
+                                    aria-label="Reset rotation"
+                                    disabled={rotationValue === 0}
+                                    className={controlButtonClass(rotationValue !== 0)}
+                                >
+                                    <RotateCw className="w-4 h-4" />
+                                </button>
+                            );
+                        },
+                    },
+                ],
+                order: 2,
             }),
             defineField<UIInspectorData, any>({
                 id: "layout.visibility",
@@ -218,7 +299,7 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
                         },
                     },
                 ],
-                order: 2,
+                order: 3,
             }),
         ],
     });
@@ -404,7 +485,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return (
                 <PropertyEditor
                     schema={combinedSchema}
-                    data={{ element, elements, surfaceId: uiSelection.surfaceId }}
+                    data={{ element, elements, documentService, surfaceId: uiSelection.surfaceId }}
                 />
             );
         }
@@ -412,7 +493,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return (
             <PropertyEditor
                 schema={layoutSchema}
-                data={{ element: elements[0], elements, surfaceId: uiSelection.surfaceId }}
+                data={{ element: elements[0], elements, documentService, surfaceId: uiSelection.surfaceId }}
             />
         );
     }, [uiSelection, documentService, documentVersion]);

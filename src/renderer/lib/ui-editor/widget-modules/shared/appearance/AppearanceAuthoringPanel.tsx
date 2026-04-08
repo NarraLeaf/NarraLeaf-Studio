@@ -1,33 +1,37 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, Star, Trash2 } from "lucide-react";
-import type {
-    AppearanceModel,
-    AppearancePropertyGroup,
-    AppearanceRowValue,
-    AppearanceValueRow,
-    AppearanceVariant,
-    ButtonAppearancePropertyKey,
-    ContainerAppearancePropertyKey,
-} from "@shared/types/ui-editor/appearance";
+import type { AppearanceModel, AppearancePropertyGroup, AppearanceVariant } from "@shared/types/ui-editor/appearance";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { Select } from "@/lib/components/elements/Select";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import {
-    addRowToGroup,
     addVariant,
     newVariantId,
-    removeRowFromGroup,
     removeVariant,
     renameVariant,
     replaceVariant,
     setDefaultVariantId,
-    setRowConditions,
-    updateRowInGroup,
 } from "./appearancePatch";
 import { isUsableAppearanceModel } from "./initialAppearanceModel";
-import { ConditionRowToggles } from "./editors/ConditionRowToggles";
-import { ContainerAppearanceValueEditor } from "./editors/containerValueEditor";
-import { ButtonAppearanceValueEditor } from "./editors/buttonValueEditor";
+import { CompactContainerAppearance } from "./compact/CompactContainerAppearance";
+import { CompactButtonAppearance } from "./compact/CompactButtonAppearance";
+import type {
+    ButtonAppearanceModuleId,
+    ContainerAppearanceModuleId,
+    ModuleEditMode,
+} from "./compact/appearanceModuleState";
+
+const DEFAULT_CONTAINER_MODULE_MODES: Record<ContainerAppearanceModuleId, ModuleEditMode> = {
+    background: "default",
+    stroke: "default",
+    corners: "default",
+};
+
+const DEFAULT_BUTTON_MODULE_MODES: Record<ButtonAppearanceModuleId, ModuleEditMode> = {
+    background: "default",
+    border: "default",
+    spacing: "default",
+};
 
 export type AppearanceAuthoringPanelProps = {
     kind: "container" | "button";
@@ -36,13 +40,6 @@ export type AppearanceAuthoringPanelProps = {
     inspectorData: UIInspectorData;
     draftResetKey: string;
 };
-
-function formatKeyLabel(key: string): string {
-    return key
-        .replace(/([A-Z])/g, " $1")
-        .replace(/^./, s => s.toUpperCase())
-        .trim();
-}
 
 function cloneVariantShallow(source: AppearanceVariant, id: string, name: string): AppearanceVariant {
     return {
@@ -62,6 +59,22 @@ export function AppearanceAuthoringPanel({
     const [selectedVariantId, setSelectedVariantId] = useState<string>(() =>
         isUsableAppearanceModel(appearance) ? appearance.defaultVariantId : ""
     );
+
+    const [containerModuleModes, setContainerModuleModes] = useState(DEFAULT_CONTAINER_MODULE_MODES);
+    const [buttonModuleModes, setButtonModuleModes] = useState(DEFAULT_BUTTON_MODULE_MODES);
+
+    const setContainerModuleMode = useCallback((module: ContainerAppearanceModuleId, mode: ModuleEditMode) => {
+        setContainerModuleModes(prev => ({ ...prev, [module]: mode }));
+    }, []);
+
+    const setButtonModuleMode = useCallback((module: ButtonAppearanceModuleId, mode: ModuleEditMode) => {
+        setButtonModuleModes(prev => ({ ...prev, [module]: mode }));
+    }, []);
+
+    useEffect(() => {
+        setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
+        setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
+    }, [draftResetKey, selectedVariantId]);
 
     useEffect(() => {
         if (!isUsableAppearanceModel(appearance)) {
@@ -138,11 +151,7 @@ export function AppearanceAuthoringPanel({
     };
 
     return (
-        <div className="space-y-4 min-w-0">
-            <p className="text-[10px] text-gray-500 leading-snug px-0.5">
-                Within each property, the last matching row wins (default row first, then conditional overrides).
-            </p>
-
+        <div className="space-y-3 min-w-0">
             <div className="flex flex-wrap gap-2 items-center min-w-0">
                 <div className="flex-1 min-w-[8rem]">
                     <Select
@@ -191,117 +200,29 @@ export function AppearanceAuthoringPanel({
             </div>
 
             {selectedVariant && (
-                <div className="space-y-6 min-w-0">
-                    {selectedVariant.propertyGroups.map(group => {
-                        const groupKey = group.key;
-                        return (
-                            <div
-                                key={groupKey}
-                                className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-2 min-w-0"
-                            >
-                                <div className="text-xs font-medium text-gray-200">{formatKeyLabel(groupKey)}</div>
-                                <div className="space-y-3">
-                                    {group.rows.map((row, rowIndex) => (
-                                        <div
-                                            key={`${groupKey}-${rowIndex}`}
-                                            className="rounded-md border border-white/5 bg-white/[0.03] p-2 space-y-2"
-                                        >
-                                            {rowIndex === 0 ? (
-                                                <div className="text-[10px] text-gray-500">Default row</div>
-                                            ) : (
-                                                <ConditionRowToggles
-                                                    conditions={row.conditions}
-                                                    onChange={next => {
-                                                        const v = setRowConditions(selectedVariant, groupKey, rowIndex, next);
-                                                        commitVariant(v);
-                                                    }}
-                                                />
-                                            )}
-                                            <div className="min-w-0">
-                                                {kind === "container" ? (
-                                                    <ContainerAppearanceValueEditor
-                                                        fieldKey={groupKey as ContainerAppearancePropertyKey}
-                                                        value={row.value}
-                                                        onChange={nextVal => {
-                                                            const vTyped = nextVal as AppearanceRowValue;
-                                                            const nextRow: AppearanceValueRow =
-                                                                rowIndex === 0
-                                                                    ? { conditions: null, value: vTyped }
-                                                                    : { ...row, value: vTyped };
-                                                            const v = updateRowInGroup(
-                                                                selectedVariant,
-                                                                groupKey,
-                                                                rowIndex,
-                                                                nextRow
-                                                            );
-                                                            commitVariant(v);
-                                                        }}
-                                                        draftResetKey={`${draftResetKey}-${groupKey}-${rowIndex}`}
-                                                        inspectorData={inspectorData}
-                                                        onSaving={saving => {
-                                                            void saving;
-                                                        }}
-                                                    />
-                                                ) : (
-                                                    <ButtonAppearanceValueEditor
-                                                        fieldKey={groupKey as ButtonAppearancePropertyKey}
-                                                        value={row.value}
-                                                        onChange={nextVal => {
-                                                            const vTyped = nextVal as AppearanceRowValue;
-                                                            const nextRow: AppearanceValueRow =
-                                                                rowIndex === 0
-                                                                    ? { conditions: null, value: vTyped }
-                                                                    : { ...row, value: vTyped };
-                                                            const v = updateRowInGroup(
-                                                                selectedVariant,
-                                                                groupKey,
-                                                                rowIndex,
-                                                                nextRow
-                                                            );
-                                                            commitVariant(v);
-                                                        }}
-                                                        draftResetKey={`${draftResetKey}-${groupKey}-${rowIndex}`}
-                                                    />
-                                                )}
-                                            </div>
-                                            {rowIndex > 0 && (
-                                                <button
-                                                    type="button"
-                                                    className="text-[10px] text-red-400 hover:underline"
-                                                    onClick={() => {
-                                                        const v = removeRowFromGroup(
-                                                            selectedVariant,
-                                                            groupKey,
-                                                            rowIndex
-                                                        );
-                                                        commitVariant(v);
-                                                    }}
-                                                >
-                                                    Remove row
-                                                </button>
-                                            )}
-                                        </div>
-                                    ))}
-                                    <button
-                                        type="button"
-                                        className="text-xs text-primary hover:underline"
-                                        onClick={() => {
-                                            const last = group.rows[group.rows.length - 1];
-                                            const newRow: AppearanceValueRow = {
-                                                conditions: { hovered: true },
-                                                value: last?.value ?? null,
-                                            };
-                                            const v = addRowToGroup(selectedVariant, groupKey, newRow);
-                                            commitVariant(v);
-                                        }}
-                                    >
-                                        + Add conditional row
-                                    </button>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
+                <>
+                    {kind === "container" ? (
+                        <CompactContainerAppearance
+                            variant={selectedVariant}
+                            commitVariant={commitVariant}
+                            inspectorData={inspectorData}
+                            draftResetKey={draftResetKey}
+                            onSaving={() => {}}
+                            containerModuleModes={containerModuleModes}
+                            setContainerModuleMode={setContainerModuleMode}
+                        />
+                    ) : (
+                        <CompactButtonAppearance
+                            variant={selectedVariant}
+                            commitVariant={commitVariant}
+                            draftResetKey={draftResetKey}
+                            inspectorData={inspectorData}
+                            onSaving={() => {}}
+                            buttonModuleModes={buttonModuleModes}
+                            setButtonModuleMode={setButtonModuleMode}
+                        />
+                    )}
+                </>
             )}
         </div>
     );
