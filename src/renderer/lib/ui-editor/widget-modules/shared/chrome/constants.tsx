@@ -101,7 +101,7 @@ function StrokeSideIcon({ side }: { side: keyof typeof STROKE_SIDE_PATHS }) {
   return (
     <svg
       viewBox="0 0 16 16"
-      className="w-4 h-4 text-gray-400"
+      className="w-4 h-4 shrink-0 text-current"
       aria-hidden="true"
       fill="none"
       stroke="currentColor"

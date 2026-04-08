@@ -1,12 +1,14 @@
 import React from "react";
 import { useRegistry } from "../../registry";
 import { PanelPosition } from "../../registry/types";
+import { SidebarPanelDropIcon } from "./SidebarPanelDropIcon";
 
 interface RightSidebarSelectorProps {
     visible: boolean;
     activeId: string | null;
     onToggleVisibility: () => void;
     onSelectPanel: (id: string) => void;
+    onActivatePanelForDrop?: (panelId: string) => void;
 }
 
 /**
@@ -18,6 +20,7 @@ export function RightSidebarSelector({
     activeId,
     onToggleVisibility,
     onSelectPanel,
+    onActivatePanelForDrop,
 }: RightSidebarSelectorProps) {
     const { getPanelsByPosition } = useRegistry();
     const panels = getPanelsByPosition(PanelPosition.Right);
@@ -39,22 +42,14 @@ export function RightSidebarSelector({
             className="w-12 bg-[#0b0d12] border-l border-white/10 flex flex-col items-center py-2 gap-1"
         >
             {panels.map((panel) => (
-                <button
+                <SidebarPanelDropIcon
                     key={panel.id}
-                    className={`
-                        w-10 h-10 rounded-md flex items-center justify-center transition-colors cursor-default
-                        ${
-                            activeId === panel.id && visible
-                                ? "bg-white/15 text-white"
-                                : "text-gray-400 hover:bg-white/10 hover:text-white"
-                        }
-                    `}
-                    onClick={() => handlePanelClick(panel.id)}
-                    title={panel.title}
-                    aria-label={panel.title}
-                >
-                    {panel.icon}
-                </button>
+                    panel={panel}
+                    active={activeId === panel.id}
+                    sidebarVisible={visible}
+                    onPanelClick={() => handlePanelClick(panel.id)}
+                    onActivateForDrop={() => onActivatePanelForDrop?.(panel.id)}
+                />
             ))}
         </div>
     );

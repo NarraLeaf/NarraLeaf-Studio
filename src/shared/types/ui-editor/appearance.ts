@@ -79,7 +79,12 @@ export type ContainerAppearancePropertyKey =
     | "strokeAlign"
     | "strokeSide"
     | "borderJoin"
-    | "cornerAdvanced";
+    | "cornerAdvanced"
+    | "transformOffsetX"
+    | "transformOffsetY"
+    | "transformScale"
+    | "transformRotation"
+    | "transformOpacity";
 
 /** Whitelisted visual keys for `nl.button`. */
 export type ButtonAppearancePropertyKey =
@@ -94,9 +99,18 @@ export type ButtonAppearancePropertyKey =
     | "borderWidth"
     | "borderColor"
     | "borderStyle"
+    | "strokeOpacity"
+    | "strokeSide"
+    | "borderJoin"
+    | "strokeAlign"
     | "paddingX"
     | "paddingY"
-    | "clipContent";
+    | "clipContent"
+    | "transformOffsetX"
+    | "transformOffsetY"
+    | "transformScale"
+    | "transformRotation"
+    | "transformOpacity";
 
 export type AppearancePropertyKey = ContainerAppearancePropertyKey | ButtonAppearancePropertyKey;
 

@@ -12,7 +12,7 @@ function roundGeometryScalar(n: number): number {
 
 /**
  * Rounds persisted geometry fields (x, y, width, height, rotation) to reduce float noise in the document.
- * Does not alter opacity, visible, or other layout keys.
+ * Does not alter opacity, visible, lockAspectRatio, or other non-geometry layout keys.
  */
 export function roundUILayoutGeometryFields(layout: UILayout): UILayout {
     const next: UILayout = {

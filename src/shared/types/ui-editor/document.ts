@@ -105,6 +105,8 @@ export type UILayout = {
     rotation?: number;
     opacity?: number;
     visible?: boolean;
+    /** When true, width and height stay proportional in the inspector and on-canvas resize. */
+    lockAspectRatio?: boolean;
 };
 
 export type UIStyle = Record<string, unknown>;

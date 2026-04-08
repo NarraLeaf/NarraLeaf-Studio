@@ -100,6 +100,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
         onControlReload: (handler: (payload: { revision: number }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeControlReload, handler),
+        onControlError: (handler: (payload: { message: string }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeControlError, handler),
         resolveImageAssetUrl: (assetId: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
     },

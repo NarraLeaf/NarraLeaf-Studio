@@ -12,8 +12,8 @@ import { findPropertyGroup } from "./appearanceCompactHelpers";
 export const SYSTEM_STATE_KEYS = ["hovered", "active", "disabled", "focused"] as const;
 export type SystemStateKey = (typeof SYSTEM_STATE_KEYS)[number];
 
-export type ContainerAppearanceModuleId = "background" | "stroke" | "corners";
-export type ButtonAppearanceModuleId = "background" | "border" | "spacing";
+export type ContainerAppearanceModuleId = "background" | "stroke" | "corners" | "transform";
+export type ButtonAppearanceModuleId = "background" | "border" | "spacing" | "transform";
 
 export type ModuleEditMode = "default" | SystemStateKey;
 
@@ -46,6 +46,13 @@ export const CONTAINER_MODULE_KEYS: Record<ContainerAppearanceModuleId, readonly
         "borderRadiusLinked",
         "cornerAdvanced",
     ],
+    transform: [
+        "transformOffsetX",
+        "transformOffsetY",
+        "transformScale",
+        "transformRotation",
+        "transformOpacity",
+    ],
 };
 
 export const BUTTON_MODULE_KEYS: Record<ButtonAppearanceModuleId, readonly ButtonAppearancePropertyKey[]> = {
@@ -58,8 +65,24 @@ export const BUTTON_MODULE_KEYS: Record<ButtonAppearanceModuleId, readonly Butto
         "backgroundImage",
         "backgroundFit",
     ],
-    border: ["borderRadius", "borderWidth", "borderColor", "borderStyle"],
+    border: [
+        "borderRadius",
+        "borderWidth",
+        "borderColor",
+        "borderStyle",
+        "strokeOpacity",
+        "strokeSide",
+        "borderJoin",
+        "strokeAlign",
+    ],
     spacing: ["paddingX", "paddingY", "clipContent"],
+    transform: [
+        "transformOffsetX",
+        "transformOffsetY",
+        "transformScale",
+        "transformRotation",
+        "transformOpacity",
+    ],
 };
 
 export function exclusiveStateCondition(state: SystemStateKey): AppearanceSystemCondition {

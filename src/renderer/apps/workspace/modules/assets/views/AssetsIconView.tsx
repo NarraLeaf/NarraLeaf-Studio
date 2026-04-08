@@ -11,7 +11,7 @@ import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 
 interface AssetsIconViewProps {
     dropTargetId: string | null;
-    handleRootDrop: (event: DragEvent, type: AssetType) => Promise<void>;
+    handleRootDrop: (event: DragEvent, type: AssetType, contextualGroup?: AssetGroup | null) => Promise<void>;
     actionLoading: boolean;
     setDropTargetId: Dispatch<SetStateAction<string | null>>;
     handleImport: (type: AssetType) => void;
@@ -151,7 +151,7 @@ export function AssetsIconView({
                         <section
                             key={type}
                             className={`border rounded-lg p-3 bg-white/5 ${dropTargetId === "root:" + type ? "border-primary" : "border-transparent"}`}
-                            onDrop={(e) => handleRootDrop(e, type)}
+                            onDrop={(e) => handleRootDrop(e, type, activeGroup?.group ?? undefined)}
                             onDragOver={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -280,6 +280,7 @@ function GroupIconTile({
         handleDragEnd,
         draggedItem,
     } = useAssetsPanelContext();
+    const [isDragOverLocal, setDragOverLocal] = useState(false);
     const isSelected = selectedItems.has("group:" + group.id);
     const isDragging = !!draggedItem && draggedItem.isGroup && draggedItem.item.id === group.id;
 
@@ -288,7 +289,7 @@ function GroupIconTile({
             draggable
             className={`border rounded-lg p-3 bg-white/5 flex flex-col gap-2 cursor-pointer hover:border-white/30 ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
-            } ${isDragging ? "opacity-50" : ""}`}
+            } ${isDragging ? "opacity-50" : ""} ${isDragOverLocal ? "ring-1 ring-primary/50 bg-primary/10" : ""}`}
             onClick={(e) => {
                 const isMultiSelectIntent = e.ctrlKey || e.metaKey || e.shiftKey;
                 handleItemSelect(group.id, true, e);
@@ -300,9 +301,25 @@ function GroupIconTile({
             onContextMenu={(e) => showContextMenu(e, type, group, true)}
             onDragStart={(e) => handleDragStart?.(e, type, group, true)}
             onDragEnd={() => handleDragEnd?.()}
+            onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const files = e.dataTransfer.types.includes("Files");
+                const internal = draggedItem && draggedItem.type === type;
+                if (!internal && !files) {
+                    return;
+                }
+                setDragOverLocal(true);
+                e.dataTransfer.dropEffect = internal ? "move" : "copy";
+            }}
+            onDragLeave={(e) => {
+                e.stopPropagation();
+                setDragOverLocal(false);
+            }}
             onDrop={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                setDragOverLocal(false);
                 if (draggedItem && handleDropOnItem) {
                     handleDropOnItem(e, type, group);
                 } else {

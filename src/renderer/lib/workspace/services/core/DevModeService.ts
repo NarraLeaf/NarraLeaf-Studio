@@ -48,6 +48,8 @@ export class DevModeService extends Service<DevModeService> {
         const result = await getInterface().devMode.launch(path, entry);
         if (result.success) {
             this.updateStatus(result.data.status);
+        } else {
+            this.updateStatus("error");
         }
         return this.status;
     }
@@ -64,6 +66,8 @@ export class DevModeService extends Service<DevModeService> {
         const result = await getInterface().devMode.reload();
         if (result.success) {
             this.updateStatus(result.data.status);
+        } else {
+            this.updateStatus("error");
         }
         return this.status;
     }

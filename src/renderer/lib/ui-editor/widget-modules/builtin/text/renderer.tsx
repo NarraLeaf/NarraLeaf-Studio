@@ -1,10 +1,12 @@
 import {
     useCallback,
     useEffect,
+    useLayoutEffect,
     useRef,
     useState,
     type CSSProperties,
     type FocusEvent,
+    type FormEvent,
     type KeyboardEvent,
 } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
@@ -12,42 +14,73 @@ import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/u
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import {
+    lineWrapCss,
+    textVerticalAlignToJustifyContent,
+} from "@/lib/ui-editor/widget-modules/shared/text/textLayoutCss";
 import { getTextProps } from "./helpers";
-import type { TextWrapMode } from "./types";
-
-function lineWrapCss(mode: TextWrapMode): Pick<CSSProperties, "whiteSpace" | "wordBreak" | "overflowWrap"> {
-    switch (mode) {
-        case "word":
-            return { whiteSpace: "pre-wrap", wordBreak: "normal", overflowWrap: "break-word" };
-        case "character":
-            return { whiteSpace: "pre-wrap", wordBreak: "break-all", overflowWrap: "normal" };
-        case "nowrap":
-            return { whiteSpace: "nowrap", wordBreak: "normal", overflowWrap: "normal" };
-    }
-}
 
 export function TextRenderer({ element, surface }: WidgetRendererProps) {
     const stateService = UIEditorStateService.getInstance();
     const documentService = UIDocumentService.getInstance();
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
+    const draftRef = useRef("");
+    const skipBlurCommitRef = useRef(false);
 
     useEffect(() => {
-        const unsub = stateService.on("interactionOverrideChanged", setInteractionOverride);
-        return unsub;
-    }, [stateService]);
+        return stateService.on("interactionOverrideChanged", payload => {
+            const { previous, next } = payload;
+            setInteractionOverride(next);
+
+            const wasHere =
+                previous?.kind === "textEdit" &&
+                previous.surfaceId === surface.id &&
+                previous.elementId === element.id;
+            const isHere =
+                next?.kind === "textEdit" &&
+                next.surfaceId === surface.id &&
+                next.elementId === element.id;
+
+            if (isHere && !wasHere) {
+                const docEl = documentService.getDocument().elements[element.id];
+                draftRef.current = docEl ? getTextProps(docEl).text : "";
+            }
+
+            if (wasHere && !isHere) {
+                if (skipBlurCommitRef.current) {
+                    skipBlurCommitRef.current = false;
+                } else {
+                    const docEl = documentService.getDocument().elements[element.id];
+                    if (docEl) {
+                        documentService.updateElementProps(element.id, {
+                            ...docEl.props,
+                            text: draftRef.current,
+                        });
+                    }
+                }
+            }
+        });
+    }, [stateService, documentService, element.id, surface.id]);
 
     const isEditing =
         interactionOverride?.kind === "textEdit" &&
         interactionOverride.surfaceId === surface.id &&
         interactionOverride.elementId === element.id;
 
+    useLayoutEffect(() => {
+        if (!isEditing) {
+            return;
+        }
+        const docEl = documentService.getDocument().elements[element.id];
+        draftRef.current = docEl ? getTextProps(docEl).text : "";
+    }, [isEditing, documentService, element.id]);
+
     const p = getTextProps(element);
     const color = colorValueToCss({ hex: p.color, alpha: 1 });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
 
-    const sharedStyle: CSSProperties = {
+    const textBodyStyle: CSSProperties = {
         width: "100%",
-        height: "100%",
         margin: 0,
         padding: 4,
         boxSizing: "border-box",
@@ -61,8 +94,18 @@ export function TextRenderer({ element, surface }: WidgetRendererProps) {
         ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
     };
 
+    const outerStyle: CSSProperties = {
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
+        boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: textVerticalAlignToJustifyContent(p.textVerticalAlign),
+        alignItems: "stretch",
+    };
+
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-    const skipBlurCommitRef = useRef(false);
 
     const commitAndClose = useCallback(
         (nextText: string) => {
@@ -86,6 +129,10 @@ export function TextRenderer({ element, surface }: WidgetRendererProps) {
         el.focus();
         el.select();
     }, [isEditing]);
+
+    const handleTextareaInput = useCallback((e: FormEvent<HTMLTextAreaElement>) => {
+        draftRef.current = e.currentTarget.value;
+    }, []);
 
     const handleTextareaKeyDown = useCallback(
         (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -111,23 +158,32 @@ export function TextRenderer({ element, surface }: WidgetRendererProps) {
 
     if (isEditing) {
         return (
-            <textarea
-                ref={textareaRef}
-                defaultValue={p.text}
-                style={{
-                    ...sharedStyle,
-                    resize: "none",
-                    background: "transparent",
-                    border: "none",
-                    outline: "none",
-                    ...(p.textWrapMode === "nowrap" ? { overflowX: "auto", overflowY: "hidden" } : {}),
-                    ...(!editorFontFamily ? { fontFamily: "inherit" } : {}),
-                }}
-                onBlur={handleTextareaBlur}
-                onKeyDown={handleTextareaKeyDown}
-            />
+            <div style={outerStyle}>
+                <textarea
+                    ref={textareaRef}
+                    defaultValue={p.text}
+                    style={{
+                        ...textBodyStyle,
+                        flex: 1,
+                        minHeight: 0,
+                        resize: "none",
+                        background: "transparent",
+                        border: "none",
+                        outline: "none",
+                        ...(p.textWrapMode === "nowrap" ? { overflowX: "auto", overflowY: "hidden" } : {}),
+                        ...(!editorFontFamily ? { fontFamily: "inherit" } : {}),
+                    }}
+                    onInput={handleTextareaInput}
+                    onBlur={handleTextareaBlur}
+                    onKeyDown={handleTextareaKeyDown}
+                />
+            </div>
         );
     }
 
-    return <p style={sharedStyle}>{p.text}</p>;
+    return (
+        <div style={outerStyle}>
+            <p style={{ ...textBodyStyle, flexShrink: 0 }}>{p.text}</p>
+        </div>
+    );
 }

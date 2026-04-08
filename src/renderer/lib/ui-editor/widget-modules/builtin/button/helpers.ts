@@ -36,5 +36,10 @@ export function buttonPropsToImageFillBaseline(p: ButtonWidgetProps): RectangleL
         strokeSide: "all",
         borderJoin: "miter",
         cornerAdvanced: false,
+        transformOffsetX: p.transformOffsetX,
+        transformOffsetY: p.transformOffsetY,
+        transformScale: p.transformScale,
+        transformRotation: p.transformRotation,
+        transformOpacity: p.transformOpacity,
     };
 }

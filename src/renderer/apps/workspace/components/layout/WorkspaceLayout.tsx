@@ -17,6 +17,8 @@ import { PanelPosition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { ProjectSettingsService } from "@/lib/workspace/services/ProjectSettingsService";
+import { UIService } from "@/lib/workspace/services/core/UIService";
+import { FocusArea } from "@/lib/workspace/services/ui/types";
 
 interface WorkspaceLayoutProps {
     title: string;
@@ -330,6 +332,42 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         setBottomPanelVisible(!bottomPanelVisible);
     };
 
+    const activateLeftPanelForDrop = useCallback(
+        (panelId: string) => {
+            setActiveLeftPanelId(panelId);
+            setLeftSidebarVisible(true);
+            if (context) {
+                const uiService = context.services.get<UIService>(Services.UI);
+                uiService.focus.setFocus(FocusArea.LeftPanel, panelId);
+            }
+        },
+        [context]
+    );
+
+    const activateRightPanelForDrop = useCallback(
+        (panelId: string) => {
+            setActiveRightPanelId(panelId);
+            setRightSidebarVisible(true);
+            if (context) {
+                const uiService = context.services.get<UIService>(Services.UI);
+                uiService.focus.setFocus(FocusArea.RightPanel, panelId);
+            }
+        },
+        [context]
+    );
+
+    const activateBottomPanelForDrop = useCallback(
+        (panelId: string) => {
+            setActiveBottomPanelId(panelId);
+            setBottomPanelVisible(true);
+            if (context) {
+                const uiService = context.services.get<UIService>(Services.UI);
+                uiService.focus.setFocus(FocusArea.BottomPanel, panelId);
+            }
+        },
+        [context]
+    );
+
     return (
         <div className="h-screen w-screen flex flex-col bg-[#0f1115] text-gray-200">
             {/* Title Bar with Action Bar and Control Bar */}
@@ -435,6 +473,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     activeId={activeBottomPanelId}
                     onToggleVisibility={() => setBottomPanelVisible(!bottomPanelVisible)}
                     onSelectPanel={setActiveBottomPanelId}
+                    onActivatePanelForDrop={activateBottomPanelForDrop}
                 />
             </div>
 

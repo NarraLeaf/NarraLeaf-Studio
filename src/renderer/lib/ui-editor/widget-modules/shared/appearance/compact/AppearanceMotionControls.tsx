@@ -70,6 +70,7 @@ export function ModuleMotionMenuButton({
             {
                 id: "motion-controls",
                 label: "Animated fields",
+                submenuIconsEnabled: true,
                 submenu: [
                     {
                         id: "motion-controls-on",

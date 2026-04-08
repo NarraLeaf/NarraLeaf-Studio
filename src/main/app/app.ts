@@ -164,6 +164,7 @@ export class App extends BaseApp {
                 minHeight: 600,
                 width: 1400,
                 height: 900,
+                center: true,
                 frame: false,
                 titleBarStyle: "hidden",
                 backgroundColor: "#0f1115",
@@ -174,7 +175,6 @@ export class App extends BaseApp {
         const window = new AppWindow<WindowAppType.DevMode>(this, config, props);
         window.setTitle("Dev Mode - NarraLeaf Studio");
         window.setIcon(this.resolveResource("app-icon.ico"));
-        window.showWhenReady();
 
         try {
             await window.loadFile(this.getAppEntry(WindowAppType.DevMode));
@@ -185,6 +185,12 @@ export class App extends BaseApp {
                 throw error;
             }
         }
+
+        // Do not rely only on renderer `appWindowReady` + showWhenReady: if the renderer never
+        // announces ready (crash, IPC timing, aborted load), the window would stay hidden while
+        // DevModeManager still reports running. Show as soon as main navigation completes.
+        await window.show();
+        window.win.focus();
 
         if (this.isDevMode()) {
             window.onKeyUp("F12", () => {

@@ -15,7 +15,11 @@ export class WidgetModuleRegistry {
         this.modules.set(module.type, module);
     }
 
-    public registerMany(modules: UIWidgetModule[]): void {
+    public registerMany(modules: UIWidgetModule[] | undefined): void {
+        if (modules == null) {
+            console.error("[WidgetModuleRegistry] registerMany called with undefined (import cycle?)");
+            return;
+        }
         for (const mod of modules) {
             this.register(mod);
         }

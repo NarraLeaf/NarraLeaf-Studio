@@ -27,6 +27,7 @@ import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
 import { EventEmitter } from "../ui/EventEmitter";
+import { applyPlannedMove, planMoveElementsInSurface, type MoveUiElementsResult } from "./uiDocumentTreeMove";
 import {
     DEFAULT_APP_SURFACE_NAME,
     DEFAULT_UI_DOCUMENT_NAME,
@@ -243,6 +244,37 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 return;
             }
             parent.childrenIds = [...orderedChildIds];
+        });
+    }
+
+    public moveElementsInSurface(
+        surfaceId: string,
+        elementIds: string[],
+        targetParentId: string,
+        beforeChildId: string | null,
+    ): MoveUiElementsResult {
+        const document = this.getDocument();
+        const planned = planMoveElementsInSurface(document, surfaceId, elementIds, targetParentId, beforeChildId);
+        if (!planned.ok) {
+            return planned;
+        }
+        this.mutateDocument(doc => {
+            applyPlannedMove(doc, planned.plan);
+        });
+        return { ok: true };
+    }
+
+    public renameElement(elementId: string, name: string): void {
+        const trimmed = name.trim();
+        if (!trimmed) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const el = document.elements[elementId];
+            if (!el || el.type === "nl.root") {
+                return;
+            }
+            el.name = trimmed;
         });
     }
 

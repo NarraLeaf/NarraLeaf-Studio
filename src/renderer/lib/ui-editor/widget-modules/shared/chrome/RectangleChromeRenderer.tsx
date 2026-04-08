@@ -5,7 +5,8 @@ import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/prope
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { ensureCropPlacement, getRectangleLikeProps, normalizeImageFill } from "./rectangleHelpers";
-import type { RectangleLikeProps, StrokeSide } from "@shared/types/ui-editor/rectangleLike";
+import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
+import { strokeSideApplies, type StrokeEdge } from "./strokeSideSpec";
 import type { AppearanceFieldTransition, AppearancePropertyKey } from "@shared/types/ui-editor/appearance";
 import { toRuntimeMotionTransition } from "../appearance/appearanceMotion";
 
@@ -28,6 +29,8 @@ type RectangleChromeRendererProps = WidgetRendererProps & {
     extraRootProps?: Omit<HTMLAttributes<HTMLDivElement>, "onDrag" | "onDragStart" | "onDragEnd">;
     /** Optional field-level appearance transitions for motion-capable chrome properties. */
     appearanceTransitions?: Partial<Record<AppearancePropertyKey, AppearanceFieldTransition>>;
+    /** Multiplied with `transformOpacity` on the chrome root (e.g. button disabled). */
+    rootOpacityFactor?: number;
 };
 
 function firstTransition(
@@ -65,13 +68,24 @@ export function RectangleChromeRenderer({
     extraRootStyle,
     extraRootProps,
     appearanceTransitions,
+    rootOpacityFactor = 1,
 }: RectangleChromeRendererProps) {
     const props = rectangleLike ?? getRectangleLikeProps(element);
+    const baseImageFlipX = props.imageFlipX === true ? -1 : 1;
+    const baseImageFlipY = props.imageFlipY === true ? -1 : 1;
+    const imageFlipVarStyle = {
+        "--nl-image-base-flip-x": String(baseImageFlipX),
+        "--nl-image-base-flip-y": String(baseImageFlipY),
+    } as CSSProperties;
+    const imageFillTransform =
+        "scale(calc(var(--nl-image-base-flip-x, 1) * var(--nl-image-drag-flip-x, 1)), calc(var(--nl-image-base-flip-y, 1) * var(--nl-image-drag-flip-y, 1)))";
     const stateService = UIEditorStateService.getInstance();
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
 
     useEffect(() => {
-        const unsubscribe = stateService.on("interactionOverrideChanged", setInteractionOverride);
+        const unsubscribe = stateService.on("interactionOverrideChanged", payload => {
+            setInteractionOverride(payload.next);
+        });
         return () => unsubscribe();
     }, [stateService]);
 
@@ -101,6 +115,14 @@ export function RectangleChromeRenderer({
         ...extraRootStyle,
     };
 
+    const tx = Number.isFinite(props.transformOffsetX) ? props.transformOffsetX : 0;
+    const ty = Number.isFinite(props.transformOffsetY) ? props.transformOffsetY : 0;
+    const ts = Number.isFinite(props.transformScale) && props.transformScale > 0 ? props.transformScale : 1;
+    const tr = Number.isFinite(props.transformRotation) ? props.transformRotation : 0;
+    const tOp = Math.max(0, Math.min(1, Number.isFinite(props.transformOpacity) ? props.transformOpacity : 1));
+    const combinedRootOpacity = Math.max(0, Math.min(1, tOp * rootOpacityFactor));
+    const transformCss = `translate(${tx}px, ${ty}px) scale(${ts}) rotate(${tr}deg)`;
+
     // Ensure first paint matches resolved chrome: motion `animate` alone can miss the initial frame.
     if (props.fillVisible && props.fillType === "color") {
         style.backgroundColor = colorFill;
@@ -119,6 +141,11 @@ export function RectangleChromeRenderer({
         borderTopRightRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusTR,
         borderBottomRightRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusBR,
         borderBottomLeftRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusBL,
+        x: tx,
+        y: ty,
+        scale: ts,
+        rotate: tr,
+        opacity: combinedRootOpacity,
     };
     const rootTransition: Record<string, unknown> = {};
     assignMotionTransition(
@@ -145,6 +172,31 @@ export function RectangleChromeRenderer({
         rootTransition,
         "borderBottomLeftRadius",
         firstTransition(appearanceTransitions, ["borderRadiusBL", "borderRadius"])
+    );
+    assignMotionTransition(
+        rootTransition,
+        "x",
+        firstTransition(appearanceTransitions, ["transformOffsetX"])
+    );
+    assignMotionTransition(
+        rootTransition,
+        "y",
+        firstTransition(appearanceTransitions, ["transformOffsetY"])
+    );
+    assignMotionTransition(
+        rootTransition,
+        "scale",
+        firstTransition(appearanceTransitions, ["transformScale"])
+    );
+    assignMotionTransition(
+        rootTransition,
+        "rotate",
+        firstTransition(appearanceTransitions, ["transformRotation"])
+    );
+    assignMotionTransition(
+        rootTransition,
+        "opacity",
+        firstTransition(appearanceTransitions, ["transformOpacity"])
     );
 
     if (wantsStroke) {
@@ -176,8 +228,8 @@ export function RectangleChromeRenderer({
     if (strokeStyle) {
         strokeStyle.borderStyle = props.borderStyle;
         if (props.strokeAlign === "center") {
-            const sideWidth = (side: StrokeSide) =>
-                props.strokeSide === "all" || props.strokeSide === side ? `${props.borderWidth}px` : "0px";
+            const sideWidth = (side: StrokeEdge) =>
+                strokeSideApplies(props.strokeSide, side) ? `${props.borderWidth}px` : "0px";
 
             strokeStyle.borderWidth = "0px";
             strokeStyle.borderTopWidth = sideWidth("top");
@@ -301,6 +353,8 @@ export function RectangleChromeRenderer({
                 maxWidth: "none",
                 maxHeight: "none",
                 objectFit: "fill",
+                transform: imageFillTransform,
+                transformOrigin: "center center",
                 pointerEvents: imagePointerEvents,
                 left: cropMotionAnimate.left,
                 top: cropMotionAnimate.top,
@@ -327,6 +381,8 @@ export function RectangleChromeRenderer({
                             maxWidth: "none",
                             maxHeight: "none",
                             objectFit: "fill",
+                            transform: imageFillTransform,
+                            transformOrigin: "center center",
                             pointerEvents: imagePointerEvents,
                         }}
                     />
@@ -350,6 +406,8 @@ export function RectangleChromeRenderer({
             width: "100%",
             height: "100%",
             objectFit,
+            transform: imageFillTransform,
+            transformOrigin: "center center",
             pointerEvents: imagePointerEvents,
             opacity: imageAnimate.opacity,
             borderTopLeftRadius: imageAnimate.borderTopLeftRadius,
@@ -373,6 +431,8 @@ export function RectangleChromeRenderer({
                         width: "100%",
                         height: "100%",
                         objectFit,
+                        transform: imageFillTransform,
+                        transformOrigin: "center center",
                         pointerEvents: imagePointerEvents,
                     }}
                 />
@@ -392,8 +452,8 @@ export function RectangleChromeRenderer({
         const strokeWidthTransition = firstTransition(appearanceTransitions, ["borderWidth"]);
 
         if (props.strokeAlign === "center") {
-            const sideWidth = (side: StrokeSide) =>
-                props.strokeSide === "all" || props.strokeSide === side ? props.borderWidth : 0;
+            const sideWidth = (side: StrokeEdge) =>
+                strokeSideApplies(props.strokeSide, side) ? props.borderWidth : 0;
             strokeAnimate.borderTopWidth = sideWidth("top");
             strokeAnimate.borderRightWidth = sideWidth("right");
             strokeAnimate.borderBottomWidth = sideWidth("bottom");
@@ -443,9 +503,15 @@ export function RectangleChromeRenderer({
     const rootMotionActive = Object.keys(rootTransition).length > 0;
     const strokeMotionActive = Boolean(strokeStyle && Object.keys(strokeTransition).length > 0);
 
-    const rootStaticStyle: CSSProperties = {
+    const rootBaseStyle: CSSProperties = {
         ...style,
+        ...imageFlipVarStyle,
+    };
+    const rootStaticStyle: CSSProperties = {
+        ...rootBaseStyle,
         ...strokeCornerRadii,
+        transform: transformCss,
+        opacity: combinedRootOpacity,
     };
 
     const chromeChildren = (
@@ -471,7 +537,7 @@ export function RectangleChromeRenderer({
 
     return rootMotionActive ? (
         <motion.div
-            style={style}
+            style={rootBaseStyle}
             initial={false}
             animate={rootAnimate}
             transition={rootTransition}

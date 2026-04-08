@@ -12,13 +12,19 @@ import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 import { useWorkspace } from "@/apps/workspace/context";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
-import { InteractionOverride, Services } from "@/lib/workspace/services/services";
+import { InteractionOverrideChange, Services } from "@/lib/workspace/services/services";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
+import { flushUIDocAndGraphIfDirty } from "@/apps/workspace/modules/actions/flushDevModeAssets";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import {
+    buildLayoutPatchForPointInSurface,
+    resolveInsertTargetParent,
+} from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
 type ViewportTransform = {
@@ -32,7 +38,7 @@ const DEFAULT_VIEWPORT: ViewportTransform = { scale: 1, offsetX: 0, offsetY: 0 }
 export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ surfaceId: string }>) {
     const surfaceId = payload?.surfaceId;
     const { runtimeBridge, stateService, documentService, uiService, widgetModules } = useUISurfaceEditorServices();
-    const { context } = useWorkspace();
+    const { context, workspace } = useWorkspace();
     const graphService = useMemo(() => context?.services.get<UIGraphService>(Services.UIGraph) ?? null, [context]);
     const [graphVersion, setGraphVersion] = useState(0);
     useEffect(() => {
@@ -73,6 +79,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const lastContextPoint = useRef<{ x: number; y: number } | null>(null);
+    const lastContextHitElementId = useRef<string | null>(null);
 
     const canvasRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -114,14 +121,21 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         return context.services.get<DevModeService>(Services.DevMode);
     }, [context]);
     const handleStartCurrentSurface = useCallback(() => {
-        if (!surfaceId || !devModeService) {
+        if (!surfaceId || !devModeService || !workspace) {
             return;
         }
-        void devModeService.launch({
-            kind: "surface",
-            surfaceId,
-        });
-    }, [devModeService, surfaceId]);
+        void (async () => {
+            try {
+                await flushUIDocAndGraphIfDirty(workspace);
+            } catch (e) {
+                console.error("[DevMode] flush before launch failed", e);
+            }
+            await devModeService.launch({
+                kind: "surface",
+                surfaceId,
+            });
+        })();
+    }, [devModeService, surfaceId, workspace]);
 
     const toolButtonClass = (active: boolean) =>
         `w-9 h-9 rounded-md border flex items-center justify-center text-xs transition-colors ${
@@ -147,11 +161,22 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                 height: rect.height,
             };
             const surfacePoint = clientToSurface({ x: point.x, y: point.y }, viewport, containerRect);
-            const layoutPatch = {
-                x: Math.max(0, surfacePoint.x),
-                y: Math.max(0, surfacePoint.y),
-            };
-            const element = documentService.createElement(surface.rootElementId, type, layoutPatch);
+            const doc = documentService.getDocument();
+            const selection = stateService.getSelection();
+            const selData = selection.type === "element" ? selection.data : null;
+            const primaryElementId =
+                selData?.surfaceId === surface.id
+                    ? (selData.primaryId ?? selData.elementIds[selData.elementIds.length - 1] ?? null)
+                    : null;
+            const target = resolveInsertTargetParent(doc, surface.id, {
+                hitElementId: lastContextHitElementId.current,
+                primaryElementId,
+            });
+            if (!target) {
+                return;
+            }
+            const layoutPatch = buildLayoutPatchForPointInSurface(doc, target.parentId, surfacePoint);
+            const element = documentService.createElement(target.parentId, type, layoutPatch);
             stateService.setUIElementSelection({
                 editor: "ui",
                 surfaceId: surface.id,
@@ -171,6 +196,8 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
             event.preventDefault();
             event.stopPropagation();
             lastContextPoint.current = { x: event.clientX, y: event.clientY };
+            const hit = (event.target as HTMLElement | null)?.closest(SELECTABLE_TARGET) as HTMLElement | null;
+            lastContextHitElementId.current = hit?.dataset.uiElementId ?? null;
             const items: ContextMenuDef = widgetModules.map((mod: UIWidgetModule) => ({
                 id: `insert-${mod.type}`,
                 label: `Insert ${mod.displayName}`,
@@ -189,11 +216,12 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     );
 
     const updateCropDimming = useCallback(
-        (override: InteractionOverride | null) => {
+        (payload: InteractionOverrideChange) => {
             const canvas = canvasRef.current;
             if (!canvas) {
                 return;
             }
+            const override = payload.next;
             const nodes = canvas.querySelectorAll<HTMLElement>(".ui-editor-node:not(.ui-editor-node-root)");
             nodes.forEach(node => {
                 if (override?.kind === "imageCrop" && override.surfaceId === surfaceId) {
@@ -216,11 +244,11 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
             return;
         }
         const current = stateService.getInteractionOverride();
-        updateCropDimming(current);
+        updateCropDimming({ previous: null, next: current });
         const unsubscribe = stateService.on("interactionOverrideChanged", updateCropDimming);
         return () => {
             unsubscribe();
-            updateCropDimming(null);
+            updateCropDimming({ previous: null, next: null });
         };
     }, [stateService, updateCropDimming, documentVersion]);
 
@@ -265,7 +293,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
             if (!element) {
                 return;
             }
-            if (element.type === "nl.text") {
+            if (element.type === "nl.text" || element.type === "nl.button") {
                 event.preventDefault();
                 stateService.setInteractionOverride({
                     kind: "textEdit",
@@ -416,20 +444,28 @@ function SurfaceLayoutDiagnosticMarkers(props: { document: UIDocument; hints: { 
     }
     return (
         <div className="pointer-events-none absolute inset-0 z-[5]">
-            {hints.map(h => {
-                const el = document.elements[h.elementId];
+            {hints.map(hint => {
+                const el = document.elements[hint.elementId];
                 if (!el) {
                     return null;
                 }
-                const { x, y, width, height } = el.layout;
+                const { width, height } = el.layout;
+                const origin = getElementSurfaceTopLeft(document, hint.elementId);
+                const boxW = Math.abs(width);
+                const boxH = Math.abs(height);
                 return (
                     <div
-                        key={h.elementId}
+                        key={hint.elementId}
                         className="absolute rounded-sm border border-amber-500/45 bg-amber-500/[0.07]"
-                        style={{ left: x, top: y, width: Math.max(width, 2), height: Math.max(height, 2) }}
+                        style={{
+                            left: origin.x,
+                            top: origin.y,
+                            width: Math.max(boxW, 2),
+                            height: Math.max(boxH, 2),
+                        }}
                     >
                         <span className="absolute left-0 top-full z-10 mt-0.5 max-w-[240px] truncate rounded bg-black/75 px-1 py-0.5 text-[9px] leading-tight text-amber-100/95 shadow-sm">
-                            {h.label}
+                            {hint.label}
                         </span>
                     </div>
                 );

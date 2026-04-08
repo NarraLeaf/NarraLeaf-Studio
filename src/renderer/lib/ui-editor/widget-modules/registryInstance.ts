@@ -1,9 +1,27 @@
 import { WidgetModuleRegistry } from "./WidgetModuleRegistry";
-import { BuiltinWidgetModules } from "./builtin";
 
 /**
  * Shared widget module registry instance.
- * This is the single source of truth for all available widget modules.
+ * Built-in modules are registered lazily via {@link ensureWidgetModulesRegistered} to avoid a circular
+ * import cycle: registry → builtin/index → button|text renderer → UIDocumentService → registry.
  */
 export const widgetModuleRegistry = new WidgetModuleRegistry();
-widgetModuleRegistry.registerMany(BuiltinWidgetModules);
+
+let seeded = false;
+let seeding: Promise<void> | null = null;
+
+/**
+ * Loads built-in widget modules and registers them once. Safe to call multiple times.
+ */
+export async function ensureWidgetModulesRegistered(): Promise<void> {
+    if (seeded) {
+        return;
+    }
+    if (!seeding) {
+        seeding = import("./builtin").then(({ BuiltinWidgetModules }) => {
+            widgetModuleRegistry.registerMany(BuiltinWidgetModules);
+            seeded = true;
+        });
+    }
+    await seeding;
+}

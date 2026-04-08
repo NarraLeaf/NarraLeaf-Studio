@@ -18,6 +18,7 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import type { DevModeStatus } from "@shared/types/devMode";
 import { useWorkspace } from "../../context";
+import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 
 /**
  * Global toolbar actions
@@ -39,14 +40,26 @@ export const devModeAction: ModuleAction = {
     onClick: (workspace: Workspace) => {
         const devModeService = workspace.getContext().services.get<DevModeService>(Services.DevMode);
         const status = devModeService.getStatus();
-        if (status !== "idle") {
+        const sessionActive =
+            status === "running" ||
+            status === "compiling" ||
+            status === "starting" ||
+            status === "reloading";
+        if (sessionActive) {
             void devModeService.stop();
             return;
         }
-        void devModeService.launch({
-            kind: "surface",
-            surfaceId: MAIN_APP_SURFACE_ID,
-        });
+        void (async () => {
+            try {
+                await flushUIDocAndGraphIfDirty(workspace);
+            } catch (e) {
+                console.error("[DevMode] flush before launch failed", e);
+            }
+            await devModeService.launch({
+                kind: "surface",
+                surfaceId: MAIN_APP_SURFACE_ID,
+            });
+        })();
     },
     order: 1,
 };

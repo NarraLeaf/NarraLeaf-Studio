@@ -4,10 +4,7 @@ import { WorkspaceContext } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
-import { Image, Music } from "lucide-react";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import { ImagePreviewEditor } from "../editors/ImagePreviewEditor";
-import { AudioPreviewEditor } from "../editors/AudioPreviewEditor";
+import { openAssetPreviewTabsInEditor } from "../dnd/openDraggedAssetsInEditor";
 
 export interface UseAssetFocusParams {
     context: WorkspaceContext | null;
@@ -27,35 +24,12 @@ export function useAssetFocus({ context, panelId, focusArea }: UseAssetFocusPara
         setFocusedItemId(`asset:${asset.id}`);
 
         if (!isMultiSelectMode) {
-            if (asset.type === AssetType.Image) {
-                // Always activate the tab so the editor shows content.
-                // We will immediately return focus to the left panel to avoid stealing global shortcuts.
-                uiService.editor.open({
-                    id: `narraleaf-studio:assets:image-preview-${asset.id}`,
-                    title: asset.name,
-                    icon: <Image className="w-4 h-4" />,
-                    component: ImagePreviewEditor,
-                    closable: true,
-                    payload: { asset: asset as Asset<AssetType.Image> },
-                }, undefined, { activate: true });
-
-                // Return focus to assets panel silently so keyboard shortcuts remain scoped correctly
-                uiService.focus.setFocus(FocusArea.LeftPanel, panelId, { silent: true });
-            } else if (asset.type === AssetType.Audio) {
-                uiService.editor.open({
-                    id: `narraleaf-studio:assets:audio-preview-${asset.id}`,
-                    title: asset.name,
-                    icon: <Music className="w-4 h-4" />,
-                    component: AudioPreviewEditor,
-                    closable: true,
-                    payload: { asset: asset as Asset<AssetType.Audio> },
-                }, undefined, { activate: true });
-
-                uiService.focus.setFocus(FocusArea.LeftPanel, panelId, { silent: true });
-            }
-            uiService.panels.show("narraleaf-studio:properties");
+            openAssetPreviewTabsInEditor(context, [asset], {
+                returnFocusToAssetsPanel: { panelId, focusArea },
+                showPropertiesPanel: true,
+            });
         }
-    }, [context, panelId]);
+    }, [context, panelId, focusArea]);
 
     const handleGroupFocus = useCallback((groupId: string) => {
         if (!context) return;
@@ -64,7 +38,7 @@ export function useAssetFocus({ context, panelId, focusArea }: UseAssetFocusPara
         // Ensure panel gets focus when group is focused
         uiService.focus.setFocus(focusArea, panelId);
         setFocusedItemId(`group:${groupId}`);
-    }, [context, panelId]);
+    }, [context, panelId, focusArea]);
 
     const setFocusToPanel = useCallback(() => {
         if (context) {

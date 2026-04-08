@@ -156,7 +156,7 @@ export interface ColorPickerGroupFieldDefinition<TData = any> extends BaseFieldD
     setValue: (data: TData, value: ColorValue) => void | Promise<void>;
 }
 
-export type IconButtonGroupMode = "trigger" | "multiple" | "single";
+export type IconButtonGroupMode = "trigger" | "multiple" | "single" | "multipleExclusivePrimary";
 
 export interface IconButtonGroupOption {
     id: string;
@@ -167,6 +167,9 @@ export interface IconButtonGroupOption {
 
 export type IconButtonSelection = string | string[] | null;
 
+/** Padding density for segmented icon button groups (`IconButtonSegGroup`). */
+export type IconButtonSegGroupDensity = "default" | "compact";
+
 export interface IconButtonGroupFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
     type: "iconButtonGroup";
     mode?: IconButtonGroupMode;
@@ -175,6 +178,13 @@ export interface IconButtonGroupFieldDefinition<TData = any> extends BaseFieldDe
     setValue: (data: TData, value: IconButtonSelection) => void | Promise<void>;
     /** Whether to show option labels next to icons */
     showLabels?: boolean;
+    /**
+     * Required when `mode` is `multipleExclusivePrimary`: id mutually exclusive with all other toggles
+     * (e.g. `"all"` vs multi-edge).
+     */
+    exclusivePrimaryId?: string;
+    /** Tighter segmented control (compact inspector rows). */
+    density?: IconButtonSegGroupDensity;
 }
 
 export interface DropdownGroupItem<TData = any> {

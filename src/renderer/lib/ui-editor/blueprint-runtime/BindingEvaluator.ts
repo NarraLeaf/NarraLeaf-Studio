@@ -7,7 +7,7 @@ import type { BindingDebugCoalescer } from "./BindingDebugCoalescer";
 import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
 
 function coerceLayoutField(key: keyof UILayout, value: unknown): unknown {
-    if (key === "visible") {
+    if (key === "visible" || key === "lockAspectRatio") {
         return Boolean(value);
     }
     if (key === "opacity") {

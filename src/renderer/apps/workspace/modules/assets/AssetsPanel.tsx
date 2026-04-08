@@ -4,7 +4,7 @@ import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { PanelComponentProps } from "../types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import { Asset } from "@/lib/workspace/services/assets/types";
+import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { ContextMenu } from "@/lib/components/elements/ContextMenu";
 import { useAssetsContextMenu } from "./hooks/useAssetsContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -30,6 +30,7 @@ import { MagicTagTemplate } from "@/lib/workspace/services/core/MagicTagManager"
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { AssetsListView } from "./views/AssetsListView";
 import { AssetsIconView } from "./views/AssetsIconView";
+import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 
 export type AssetViewMode = "list" | "icons";
 
@@ -199,11 +200,23 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         setMagicTagAssets([]);
     }, []);
 
+    const workspaceDrag = useWorkspaceAssetDragOptional();
+
     const { 
         draggedItem, dropTargetId, dragOver, 
         setDragOver, setDropTargetId, handleDragStart, handleDragEnd, 
         handlePanelDragOver, handlePanelDragLeave, handleDragOverItem, handleDropOnItem 
-    } = useDragAndDrop({ context, groups, onDropCompleted: loadAssets });
+    } = useDragAndDrop({
+        context,
+        groups,
+        onDropCompleted: loadAssets,
+        selectedItems,
+        filteredGroups,
+        filteredAssets,
+        panelId,
+        onWorkspaceDragSessionStart: workspaceDrag?.beginSession,
+        onWorkspaceDragSessionEnd: workspaceDrag?.endSession,
+    });
 
     useKeyboardShortcuts({
         isInitialized,
@@ -236,15 +249,19 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         setSearchResultsVisible(false);
     }, [assets, handleGroupFocus, handleAssetClick, setSearchResultsVisible]);
 
-    const handleRootDrop = useCallback(async (event: React.DragEvent, type: AssetType) => {
-        if (draggedItem) {
-            await handleDropOnItem(event, type, null);
-        } else {
-            await handleImport(type, undefined, event.dataTransfer.files, event.dataTransfer);
-        }
-        setDragOver(false);
-        setDropTargetId(null);
-    }, [draggedItem, handleDropOnItem, handleImport]);
+    const handleRootDrop = useCallback(
+        async (event: React.DragEvent, type: AssetType, contextualGroup?: AssetGroup | null) => {
+            const targetGroup = contextualGroup ?? null;
+            if (draggedItem) {
+                await handleDropOnItem(event, type, targetGroup);
+            } else {
+                await handleImport(type, targetGroup?.id, event.dataTransfer.files, event.dataTransfer);
+            }
+            setDragOver(false);
+            setDropTargetId(null);
+        },
+        [draggedItem, handleDropOnItem, handleImport]
+    );
 
     useEffect(() => {
         if (!context) return;

@@ -5,8 +5,13 @@ import type {
     ButtonAppearancePropertyKey,
     ContainerAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
+import type { UIElement } from "@shared/types/ui-editor/document";
+import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import type { ContainerWidgetProps } from "@shared/types/ui-editor/container";
 import type { ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
+import { buttonPropsToImageFillBaseline } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
+import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
+import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 
 /** Stable id for the primary variant (blueprint / runtime default). */
 export const DEFAULT_APPEARANCE_VARIANT_ID = "default";
@@ -35,6 +40,11 @@ export const CONTAINER_KEY_ORDER: ContainerAppearancePropertyKey[] = [
     "strokeSide",
     "borderJoin",
     "cornerAdvanced",
+    "transformOffsetX",
+    "transformOffsetY",
+    "transformScale",
+    "transformRotation",
+    "transformOpacity",
 ];
 
 /** Stable key order for button appearance groups. */
@@ -50,10 +60,87 @@ export const BUTTON_KEY_ORDER: ButtonAppearancePropertyKey[] = [
     "borderWidth",
     "borderColor",
     "borderStyle",
+    "strokeOpacity",
+    "strokeSide",
+    "borderJoin",
+    "strokeAlign",
     "paddingX",
     "paddingY",
     "clipContent",
+    "transformOffsetX",
+    "transformOffsetY",
+    "transformScale",
+    "transformRotation",
+    "transformOpacity",
 ];
+
+/** Row seed for `nl.image` / rectangle baseline (all container appearance keys map to `RectangleLikeProps`). */
+export function containerAppearanceRowFromRectangleLike(
+    rl: RectangleLikeProps,
+    key: ContainerAppearancePropertyKey
+): AppearanceValueRow {
+    const value = (() => {
+        switch (key) {
+            case "backgroundColor":
+                return rl.backgroundColor;
+            case "borderRadius":
+                return rl.borderRadius;
+            case "borderRadiusTL":
+                return rl.borderRadiusTL;
+            case "borderRadiusTR":
+                return rl.borderRadiusTR;
+            case "borderRadiusBL":
+                return rl.borderRadiusBL;
+            case "borderRadiusBR":
+                return rl.borderRadiusBR;
+            case "borderRadiusLinked":
+                return rl.borderRadiusLinked;
+            case "borderColor":
+                return rl.borderColor;
+            case "borderWidth":
+                return rl.borderWidth;
+            case "borderStyle":
+                return rl.borderStyle;
+            case "backgroundImage":
+                return rl.backgroundImage;
+            case "backgroundFit":
+                return rl.backgroundFit;
+            case "imageFill":
+                return rl.imageFill ?? null;
+            case "fillType":
+                return rl.fillType;
+            case "fillVisible":
+                return rl.fillVisible;
+            case "fillOpacity":
+                return rl.fillOpacity;
+            case "strokeVisible":
+                return rl.strokeVisible;
+            case "strokeOpacity":
+                return rl.strokeOpacity;
+            case "strokeAlign":
+                return rl.strokeAlign;
+            case "strokeSide":
+                return rl.strokeSide;
+            case "borderJoin":
+                return rl.borderJoin;
+            case "cornerAdvanced":
+                return rl.cornerAdvanced;
+            case "transformOffsetX":
+                return rl.transformOffsetX;
+            case "transformOffsetY":
+                return rl.transformOffsetY;
+            case "transformScale":
+                return rl.transformScale;
+            case "transformRotation":
+                return rl.transformRotation;
+            case "transformOpacity":
+                return rl.transformOpacity;
+            default:
+                return null;
+        }
+    })();
+    return { conditions: null, value };
+}
 
 function containerRowValue(props: ContainerWidgetProps, key: ContainerAppearancePropertyKey): AppearanceValueRow {
     const value = (() => {
@@ -102,6 +189,16 @@ function containerRowValue(props: ContainerWidgetProps, key: ContainerAppearance
                 return props.borderJoin;
             case "cornerAdvanced":
                 return props.cornerAdvanced;
+            case "transformOffsetX":
+                return props.transformOffsetX;
+            case "transformOffsetY":
+                return props.transformOffsetY;
+            case "transformScale":
+                return props.transformScale;
+            case "transformRotation":
+                return props.transformRotation;
+            case "transformOpacity":
+                return props.transformOpacity;
             default:
                 return null;
         }
@@ -134,12 +231,38 @@ function buttonRowValue(props: ButtonWidgetProps, key: ButtonAppearancePropertyK
                 return props.borderColor;
             case "borderStyle":
                 return props.borderStyle;
+            case "strokeOpacity": {
+                const bl = buttonPropsToImageFillBaseline(props);
+                return bl.strokeOpacity;
+            }
+            case "strokeSide": {
+                const bl = buttonPropsToImageFillBaseline(props);
+                return bl.strokeSide;
+            }
+            case "borderJoin": {
+                const bl = buttonPropsToImageFillBaseline(props);
+                return bl.borderJoin;
+            }
+            case "strokeAlign": {
+                const bl = buttonPropsToImageFillBaseline(props);
+                return bl.strokeAlign;
+            }
             case "paddingX":
                 return props.paddingX;
             case "paddingY":
                 return props.paddingY;
             case "clipContent":
                 return props.clipContent;
+            case "transformOffsetX":
+                return props.transformOffsetX;
+            case "transformOffsetY":
+                return props.transformOffsetY;
+            case "transformScale":
+                return props.transformScale;
+            case "transformRotation":
+                return props.transformRotation;
+            case "transformOpacity":
+                return props.transformOpacity;
             default:
                 return null;
         }
@@ -168,6 +291,24 @@ export function createInitialButtonAppearance(props: ButtonWidgetProps): Appeara
     const propertyGroups: AppearancePropertyGroup[] = BUTTON_KEY_ORDER.map(key => ({
         key,
         rows: [buttonRowValue(props, key)],
+    }));
+    return {
+        defaultVariantId: DEFAULT_APPEARANCE_VARIANT_ID,
+        variants: [
+            {
+                id: DEFAULT_APPEARANCE_VARIANT_ID,
+                name: "Default",
+                propertyGroups,
+            },
+        ],
+    };
+}
+
+/** Initial appearance for `nl.image` (same property groups as container chrome + transform). */
+export function createInitialImageAppearance(rectangleLike: RectangleLikeProps): AppearanceModel {
+    const propertyGroups: AppearancePropertyGroup[] = CONTAINER_KEY_ORDER.map(key => ({
+        key,
+        rows: [containerAppearanceRowFromRectangleLike(rectangleLike, key)],
     }));
     return {
         defaultVariantId: DEFAULT_APPEARANCE_VARIANT_ID,
@@ -221,6 +362,33 @@ export function ensureContainerAppearanceHasAllKeys(model: AppearanceModel, flat
         return { ...v, propertyGroups: [...v.propertyGroups, ...extra] };
     });
     return changed ? { ...model, variants } : model;
+}
+
+/**
+ * Append missing property groups for older `nl.image` documents (pre-appearance or pre-transform keys).
+ */
+export function ensureImageAppearanceHasAllKeys(model: AppearanceModel, element: UIElement): AppearanceModel {
+    const rl = getImageWidgetRectangleProps(element);
+    let changed = false;
+    const variants = model.variants.map(v => {
+        const have = new Set(v.propertyGroups.map(g => g.key));
+        const missing = CONTAINER_KEY_ORDER.filter(k => !have.has(k));
+        if (missing.length === 0) {
+            return v;
+        }
+        changed = true;
+        const extra: AppearancePropertyGroup[] = missing.map(key => ({
+            key,
+            rows: [containerAppearanceRowFromRectangleLike(rl, key)],
+        }));
+        return { ...v, propertyGroups: [...v.propertyGroups, ...extra] };
+    });
+    return changed ? { ...model, variants } : model;
+}
+
+/** Build initial image appearance from a plain props bag (e.g. default element factory). */
+export function createInitialImageAppearanceFromProps(props: Record<string, unknown>): AppearanceModel {
+    return createInitialImageAppearance(getRectangleLikeProps({ props }));
 }
 
 export function isUsableAppearanceModel(appearance: AppearanceModel | null | undefined): appearance is AppearanceModel {

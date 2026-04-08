@@ -1,17 +1,11 @@
 import React from "react";
-import type { CSSProperties, ReactNode } from "react";
-import {
-    type UIDocument,
-    type UISurface,
-    type UIElement,
-    isUIElementFlowLayoutChild,
-} from "@shared/types/ui-editor/document";
-import { renderUnknownWidgetTypeContent } from "../../../ui-editor/runtime/unknownWidgetTypeUi";
-import { EditorNodeWrapper } from "../../../ui-editor/runtime/EditorNodeWrapper";
+import type { CSSProperties } from "react";
+import { type UIDocument, type UISurface } from "@shared/types/ui-editor/document";
 import { ElementRendererRegistry, ElementRendererDefinition } from "../../../ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "../../../ui-editor/runtime/builtin";
 import type { UIHostAdapter, RenderSurfaceOptions } from "../../../ui-editor/runtime/types";
 import { resolveSurfaceRootElementId } from "../../../ui-editor/runtime/resolveSurfaceRoot";
+import { SurfaceElementTree } from "../../../ui-editor/runtime/surface/SurfaceElementTree";
 import { Service } from "../Service";
 import { IUIRuntimeBridgeService, Services, WorkspaceContext } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
@@ -58,74 +52,20 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
                 data-ui-surface-kind={surface.kind}
                 style={surfaceStyle}
             >
-                {this.renderElementTree(rootElement, document, surface, options.hostAdapter)}
+                <SurfaceElementTree
+                    document={document}
+                    surface={surface}
+                    rootElement={rootElement}
+                    rendererRegistry={this.rendererRegistry}
+                    hostAdapter={options.hostAdapter}
+                    useAppearanceInspectorPreview
+                />
             </div>
         );
     }
 
     public registerElementRenderer(definition: ElementRendererDefinition): void {
         this.rendererRegistry.register(definition);
-    }
-
-    private renderElementTree(
-        element: UIElement,
-        document: UIDocument,
-        surface: UISurface,
-        hostAdapter: UIHostAdapter
-    ): React.ReactNode {
-        if (element.layout.visible === false) {
-            return null;
-        }
-
-        const children = element.childrenIds
-            .map(childId => {
-                const childElement = document.elements[childId];
-                if (!childElement) {
-                    return null;
-                }
-                return this.renderElementTree(childElement, document, surface, hostAdapter);
-            })
-            .filter((node): node is ReactNode => node !== null);
-
-        const renderer = this.rendererRegistry.get(element.type);
-        const content = renderer
-            ? renderer.render({ element, document, surface, hostAdapter, children, useAppearanceInspectorPreview: true })
-            : this.renderFallback(element, children);
-
-        const styleOverrides = this.extractStyleOverrides(element);
-        const layoutMode =
-            element.parentId === null ? "absolute" : isUIElementFlowLayoutChild(document, element) ? "flow" : "absolute";
-        return (
-            <EditorNodeWrapper
-                key={element.id}
-                element={element}
-                layout={element.layout}
-                isRoot={element.parentId === null}
-                layoutMode={layoutMode}
-                styleOverrides={styleOverrides}
-            >
-                {content}
-            </EditorNodeWrapper>
-        );
-    }
-
-    private renderFallback(element: UIElement, children: React.ReactNode[]): React.ReactNode {
-        return renderUnknownWidgetTypeContent(element, children);
-    }
-
-    private extractStyleOverrides(element: UIElement): CSSProperties | undefined {
-        const style = element.style;
-        if (!style) {
-            return undefined;
-        }
-
-        const overrides: CSSProperties = {};
-        for (const [key, value] of Object.entries(style)) {
-            if (typeof value === "number" || typeof value === "string") {
-                (overrides as Record<string, string | number>)[key] = value;
-            }
-        }
-        return Object.keys(overrides).length > 0 ? overrides : undefined;
     }
 
     private ensureDocument(): UIDocument {

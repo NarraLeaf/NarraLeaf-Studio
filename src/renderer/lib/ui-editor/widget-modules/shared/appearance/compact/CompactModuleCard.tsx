@@ -10,7 +10,7 @@ type Props = {
 };
 
 /**
- * Visual wrapper aligned with image Stroke/Fill inspector modules.
+ * Visual wrapper aligned with image Border/Fill inspector modules.
  */
 export function CompactModuleCard({ title, headerRight, headerHoverAction, children }: Props) {
     return (

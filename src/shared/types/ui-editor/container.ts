@@ -22,7 +22,8 @@ export type ContainerFillType = "color" | "image";
 
 export type ContainerStrokeAlign = "none" | "center" | "inside" | "outside";
 
-export type ContainerStrokeSide = "all" | "top" | "right" | "bottom" | "left";
+/** "all", one edge, or comma-separated edges (e.g. "bottom,left"). */
+export type ContainerStrokeSide = string;
 
 export type ContainerStrokeJoin = "miter" | "round" | "bevel";
 
@@ -68,6 +69,12 @@ export type ContainerWidgetProps = {
     cornerAdvanced: boolean;
     clipContent: boolean;
 
+    transformOffsetX: number;
+    transformOffsetY: number;
+    transformScale: number;
+    transformRotation: number;
+    transformOpacity: number;
+
     /** Optional variant + conditional row chrome; when absent, flat props are the sole source. */
     appearance?: AppearanceModel | null;
 };
@@ -109,6 +116,12 @@ export const defaultContainerWidgetProps: ContainerWidgetProps = {
     borderJoin: "miter",
     cornerAdvanced: false,
     clipContent: true,
+
+    transformOffsetX: 0,
+    transformOffsetY: 0,
+    transformScale: 1,
+    transformRotation: 0,
+    transformOpacity: 1,
 };
 
 export function parseContainerLayoutKind(props: Record<string, unknown> | undefined): ContainerLayoutKind {
