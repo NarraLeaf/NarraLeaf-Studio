@@ -11,7 +11,7 @@ import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocument
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { PRIMARY_OUTLINE_STRONG, PRIMARY_OUTLINE_WEAK, SELECTABLE_TARGET } from "./constants";
-import type { InsertPreview } from "./useSurfaceInteractionEvents";
+import type { InsertPreview, InsertToolDragState } from "./useSurfaceInteractionEvents";
 import { useTransformController } from "./controllers/TransformController";
 import { useImageCropController } from "./controllers/ImageCropController";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
@@ -65,14 +65,7 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
     // Insert mode drag-to-create state
     const [insertPreview, setInsertPreview] = useState<InsertPreview | null>(null);
     const insertPreviewRef = useRef<InsertPreview | null>(null);
-    const insertState = useRef<{
-        active: boolean;
-        nodeType: string;
-        startClientX: number;
-        startClientY: number;
-        startSurfaceX: number;
-        startSurfaceY: number;
-    } | null>(null);
+    const insertState = useRef<InsertToolDragState | null>(null);
 
     const scheduleMoveableRectUpdate = useCallback(() => {
         // Keep the overlay controller aligned after DOM/layout updates.
@@ -182,7 +175,9 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
 
     useEffect(() => {
-        const unsub = stateService.on("interactionOverrideChanged", setInteractionOverride);
+        const unsub = stateService.on("interactionOverrideChanged", payload => {
+            setInteractionOverride(payload.next);
+        });
         return unsub;
     }, [stateService]);
 

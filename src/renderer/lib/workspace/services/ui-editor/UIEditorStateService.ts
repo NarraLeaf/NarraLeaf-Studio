@@ -15,7 +15,15 @@ const VIEWPORT_SETTINGS_KEY = "uiEditor.viewport";
 /** Editing-area cache: inspector appearance variant picker per widget element (project settings, not UIDocument). */
 const APPEARANCE_INSPECTOR_VARIANT_CACHE_KEY = "uiEditor.editingArea.appearanceInspectorVariantByElementId";
 
-const APPEARANCE_INSPECTOR_VARIANT_PERSIST_MS = 250;
+/** Editing-area cache: compact border "sides" row expanded (per element). */
+const APPEARANCE_BORDER_SIDES_EXPANDED_CACHE_KEY = "uiEditor.editingArea.appearanceBorderSidesExpandedByElementId";
+
+/** Outline panel: keys are element ids with collapsed branches (editor-only, project settings). */
+const OUTLINE_COLLAPSED_BRANCHES_KEY = "uiEditor.outline.collapsedBranchesByElementId";
+
+const APPEARANCE_INSPECTOR_UI_CACHE_PERSIST_MS = 250;
+
+const OUTLINE_COLLAPSE_CACHE_PERSIST_MS = 250;
 
 export class UIEditorStateService extends Service<UIEditorStateService> implements IUIEditorStateService {
     private uiStore: UIStore | null = null;
@@ -28,7 +36,12 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     private interactionOverride: InteractionOverride | null = null;
     private selectionUnsubscribe?: () => void;
     private readonly appearanceInspectorVariantByElementId = new Map<string, string>();
-    private appearanceInspectorVariantPersistTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Only stores `true` keys; missing id => collapsed. */
+    private readonly appearanceBorderSidesExpandedByElementId = new Set<string>();
+    private appearanceInspectorUiCachePersistTimer: ReturnType<typeof setTimeout> | null = null;
+    /** Presence means the outline branch is collapsed. */
+    private readonly outlineCollapsedBranchIds = new Set<string>();
+    private outlineCollapsePersistTimer: ReturnType<typeof setTimeout> | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const uiService = ctx.services.get<UIService>(Services.UI);
@@ -62,10 +75,31 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
                 }
             }
         }
+
+        const expandedCache = this.settingsService.getSync<Record<string, boolean>>(
+            APPEARANCE_BORDER_SIDES_EXPANDED_CACHE_KEY
+        );
+        if (expandedCache && typeof expandedCache === "object") {
+            for (const [elementId, expanded] of Object.entries(expandedCache)) {
+                if (typeof elementId === "string" && elementId && expanded === true) {
+                    this.appearanceBorderSidesExpandedByElementId.add(elementId);
+                }
+            }
+        }
+
+        const outlineCollapsed = this.settingsService.getSync<Record<string, boolean>>(OUTLINE_COLLAPSED_BRANCHES_KEY);
+        if (outlineCollapsed && typeof outlineCollapsed === "object") {
+            for (const [elementId, collapsed] of Object.entries(outlineCollapsed)) {
+                if (typeof elementId === "string" && elementId && collapsed === true) {
+                    this.outlineCollapsedBranchIds.add(elementId);
+                }
+            }
+        }
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
-        this.flushAppearanceInspectorVariantPersistence();
+        this.flushAppearanceInspectorUiCachePersistence();
+        this.flushOutlineCollapsePersistence();
         this.setInteractionOverride(null);
         this.selectionUnsubscribe?.();
         this.events.clear();
@@ -127,8 +161,9 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         if (this.areOverridesEqual(this.interactionOverride, next)) {
             return;
         }
+        const previous = this.interactionOverride;
         this.interactionOverride = next;
-        this.events.emit("interactionOverrideChanged", this.interactionOverride);
+        this.events.emit("interactionOverrideChanged", { previous, next });
     }
 
     public getDocument(): UIDocument {
@@ -154,7 +189,48 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         }
         this.appearanceInspectorVariantByElementId.set(elementId, variantId);
         this.events.emit("appearanceInspectorVariantChanged", { elementId });
-        this.scheduleAppearanceInspectorVariantPersistence();
+        this.scheduleAppearanceInspectorUiCachePersistence();
+    }
+
+    public getAppearanceBorderSidesExpanded(elementId: string): boolean {
+        return this.appearanceBorderSidesExpandedByElementId.has(elementId);
+    }
+
+    public setAppearanceBorderSidesExpanded(elementId: string, expanded: boolean): void {
+        const had = this.appearanceBorderSidesExpandedByElementId.has(elementId);
+        if (expanded) {
+            if (had) {
+                return;
+            }
+            this.appearanceBorderSidesExpandedByElementId.add(elementId);
+        } else {
+            if (!had) {
+                return;
+            }
+            this.appearanceBorderSidesExpandedByElementId.delete(elementId);
+        }
+        this.scheduleAppearanceInspectorUiCachePersistence();
+    }
+
+    public isOutlineBranchCollapsed(elementId: string): boolean {
+        return this.outlineCollapsedBranchIds.has(elementId);
+    }
+
+    public setOutlineBranchCollapsed(elementId: string, collapsed: boolean): void {
+        const had = this.outlineCollapsedBranchIds.has(elementId);
+        if (collapsed) {
+            if (had) {
+                return;
+            }
+            this.outlineCollapsedBranchIds.add(elementId);
+        } else {
+            if (!had) {
+                return;
+            }
+            this.outlineCollapsedBranchIds.delete(elementId);
+        }
+        this.events.emit("outlineExpansionChanged", null);
+        this.scheduleOutlineCollapsePersistence();
     }
 
     public on<K extends keyof UIEditorStateEvents>(event: K, handler: (data: UIEditorStateEvents[K]) => void): () => void {
@@ -184,37 +260,88 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         });
     }
 
-    private scheduleAppearanceInspectorVariantPersistence(): void {
+    private scheduleAppearanceInspectorUiCachePersistence(): void {
         if (!this.settingsService) {
             return;
         }
-        if (this.appearanceInspectorVariantPersistTimer) {
-            clearTimeout(this.appearanceInspectorVariantPersistTimer);
+        if (this.appearanceInspectorUiCachePersistTimer) {
+            clearTimeout(this.appearanceInspectorUiCachePersistTimer);
         }
-        this.appearanceInspectorVariantPersistTimer = setTimeout(() => {
-            this.appearanceInspectorVariantPersistTimer = null;
-            this.persistAppearanceInspectorVariantsNow();
-        }, APPEARANCE_INSPECTOR_VARIANT_PERSIST_MS);
+        this.appearanceInspectorUiCachePersistTimer = setTimeout(() => {
+            this.appearanceInspectorUiCachePersistTimer = null;
+            this.persistAppearanceInspectorUiCachesNow();
+        }, APPEARANCE_INSPECTOR_UI_CACHE_PERSIST_MS);
     }
 
-    private persistAppearanceInspectorVariantsNow(): void {
+    private persistAppearanceInspectorUiCachesNow(): void {
         if (!this.settingsService) {
             return;
         }
-        const record = Object.fromEntries(this.appearanceInspectorVariantByElementId);
-        void this.settingsService.set(APPEARANCE_INSPECTOR_VARIANT_CACHE_KEY, record).catch(err => {
+        const variantRecord = Object.fromEntries(this.appearanceInspectorVariantByElementId);
+        void this.settingsService.set(APPEARANCE_INSPECTOR_VARIANT_CACHE_KEY, variantRecord).catch(err => {
             console.warn("[UIEditorStateService] failed to persist appearance inspector variant cache", err);
+        });
+
+        const expandedRecord: Record<string, boolean> = {};
+        for (const id of this.appearanceBorderSidesExpandedByElementId) {
+            expandedRecord[id] = true;
+        }
+        void this.settingsService.set(APPEARANCE_BORDER_SIDES_EXPANDED_CACHE_KEY, expandedRecord).catch(err => {
+            console.warn("[UIEditorStateService] failed to persist appearance border sides expanded cache", err);
         });
     }
 
-    private flushAppearanceInspectorVariantPersistence(): void {
-        if (this.appearanceInspectorVariantPersistTimer) {
-            clearTimeout(this.appearanceInspectorVariantPersistTimer);
-            this.appearanceInspectorVariantPersistTimer = null;
+    private flushAppearanceInspectorUiCachePersistence(): void {
+        if (this.appearanceInspectorUiCachePersistTimer) {
+            clearTimeout(this.appearanceInspectorUiCachePersistTimer);
+            this.appearanceInspectorUiCachePersistTimer = null;
         }
-        if (this.appearanceInspectorVariantByElementId.size > 0 && this.settingsService) {
-            this.persistAppearanceInspectorVariantsNow();
+        if (!this.settingsService) {
+            return;
         }
+        if (
+            this.appearanceInspectorVariantByElementId.size > 0 ||
+            this.appearanceBorderSidesExpandedByElementId.size > 0
+        ) {
+            this.persistAppearanceInspectorUiCachesNow();
+        }
+    }
+
+    private scheduleOutlineCollapsePersistence(): void {
+        if (!this.settingsService) {
+            return;
+        }
+        if (this.outlineCollapsePersistTimer) {
+            clearTimeout(this.outlineCollapsePersistTimer);
+        }
+        this.outlineCollapsePersistTimer = setTimeout(() => {
+            this.outlineCollapsePersistTimer = null;
+            this.persistOutlineCollapsedBranchesNow();
+        }, OUTLINE_COLLAPSE_CACHE_PERSIST_MS);
+    }
+
+    private persistOutlineCollapsedBranchesNow(): void {
+        if (!this.settingsService) {
+            return;
+        }
+        const record: Record<string, boolean> = {};
+        for (const id of this.outlineCollapsedBranchIds) {
+            record[id] = true;
+        }
+        void this.settingsService.set(OUTLINE_COLLAPSED_BRANCHES_KEY, record).catch(err => {
+            console.warn("[UIEditorStateService] failed to persist outline collapse state", err);
+        });
+    }
+
+    private flushOutlineCollapsePersistence(): void {
+        if (this.outlineCollapsePersistTimer) {
+            clearTimeout(this.outlineCollapsePersistTimer);
+            this.outlineCollapsePersistTimer = null;
+        }
+        if (!this.settingsService) {
+            return;
+        }
+        this.persistOutlineCollapsedBranchesNow();
     }
 
     private ensureInteractionOverrideValid(selection: SelectionState): void {

@@ -26,6 +26,7 @@ export const ButtonWidgetModule: UIWidgetModule = {
         props: {
             ...defaultButtonWidgetProps,
             appearance: createInitialButtonAppearance(defaultButtonWidgetProps),
+            label: "Button",
         },
     }),
 

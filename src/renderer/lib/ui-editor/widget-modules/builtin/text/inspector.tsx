@@ -1,4 +1,13 @@
-import { AlignCenter, AlignLeft, AlignRight, Baseline, Type } from "lucide-react";
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyEnd,
+  AlignVerticalJustifyStart,
+  Baseline,
+  Type,
+} from "lucide-react";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type {
   ColorValue,
@@ -10,7 +19,7 @@ import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framewor
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { getTextProps } from "./helpers";
-import type { TextAlign, TextWidgetProps, TextWrapMode } from "./types";
+import type { TextAlign, TextVerticalAlign, TextWidgetProps, TextWrapMode } from "./types";
 
 export function createTextInspector(ctx: InspectorContext) {
   type D = UIInspectorData;
@@ -179,6 +188,23 @@ export function createTextInspector(ctx: InspectorContext) {
                 setValue: (_d: D, value: IconButtonSelection) => {
                   if (typeof value !== "string") return;
                   patchProps({ textAlign: value as TextAlign });
+                },
+              }),
+              defineField<D, any>({
+                id: "text.verticalAlign",
+                type: "iconButtonGroup",
+                mode: "single",
+                label: "Vertical alignment",
+                showLabels: false,
+                options: [
+                  { id: "start", icon: <AlignVerticalJustifyStart className="w-4 h-4" />, label: "Align top" },
+                  { id: "center", icon: <AlignVerticalJustifyCenter className="w-4 h-4" />, label: "Align middle" },
+                  { id: "end", icon: <AlignVerticalJustifyEnd className="w-4 h-4" />, label: "Align bottom" },
+                ],
+                getValue: (d: D) => getTextProps(d.element).textVerticalAlign,
+                setValue: (_d: D, value: IconButtonSelection) => {
+                  if (typeof value !== "string") return;
+                  patchProps({ textVerticalAlign: value as TextVerticalAlign });
                 },
               }),
             ],

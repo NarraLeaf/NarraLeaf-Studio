@@ -21,6 +21,7 @@ import {
     setGroupTransitionOnAllVariants,
 } from "./appearancePatch";
 import { isUsableAppearanceModel } from "./initialAppearanceModel";
+import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { CompactContainerAppearance } from "./compact/CompactContainerAppearance";
 import { CompactButtonAppearance } from "./compact/CompactButtonAppearance";
 import { moduleHasAnyAppearanceTransitionInModel } from "./appearanceMotion";
@@ -31,24 +32,28 @@ const DEFAULT_CONTAINER_MODULE_MODES: Record<ContainerAppearanceModuleId, Module
     background: "default",
     stroke: "default",
     corners: "default",
+    transform: "default",
 };
 
 const DEFAULT_BUTTON_MODULE_MODES: Record<ButtonAppearanceModuleId, ModuleEditMode> = {
     background: "default",
     border: "default",
     spacing: "default",
+    transform: "default",
 };
 
 const DEFAULT_CONTAINER_MOTION_VISIBILITY: Record<ContainerAppearanceModuleId, boolean> = {
     background: false,
     stroke: false,
     corners: false,
+    transform: false,
 };
 
 const DEFAULT_BUTTON_MOTION_VISIBILITY: Record<ButtonAppearanceModuleId, boolean> = {
     background: false,
     border: false,
     spacing: false,
+    transform: false,
 };
 
 function deriveContainerMotionVisibility(model: AppearanceModel): Record<ContainerAppearanceModuleId, boolean> {
@@ -56,6 +61,7 @@ function deriveContainerMotionVisibility(model: AppearanceModel): Record<Contain
         background: moduleHasAnyAppearanceTransitionInModel(model, CONTAINER_KEYS.background),
         stroke: moduleHasAnyAppearanceTransitionInModel(model, CONTAINER_KEYS.stroke),
         corners: moduleHasAnyAppearanceTransitionInModel(model, CONTAINER_KEYS.corners),
+        transform: moduleHasAnyAppearanceTransitionInModel(model, CONTAINER_KEYS.transform),
     };
 }
 
@@ -64,11 +70,12 @@ function deriveButtonMotionVisibility(model: AppearanceModel): Record<ButtonAppe
         background: moduleHasAnyAppearanceTransitionInModel(model, BUTTON_KEYS.background),
         border: moduleHasAnyAppearanceTransitionInModel(model, BUTTON_KEYS.border),
         spacing: moduleHasAnyAppearanceTransitionInModel(model, BUTTON_KEYS.spacing),
+        transform: moduleHasAnyAppearanceTransitionInModel(model, BUTTON_KEYS.transform),
     };
 }
 
 export type AppearanceAuthoringPanelProps = {
-    kind: "container" | "button";
+    kind: "container" | "button" | "image";
     appearance: AppearanceModel | null | undefined;
     onReplace: (next: AppearanceModel) => void;
     inspectorData: UIInspectorData;
@@ -197,11 +204,13 @@ export function AppearanceAuthoringPanel({
     );
 
     const appearanceDraftResetKey = useMemo(() => {
-        if (kind === "container") {
-            return `${draftResetKey}|c:${containerModuleModes.background}|${containerModuleModes.stroke}|${containerModuleModes.corners}`;
+        // Include variant id so draft-backed inputs (NumericDraftEnhancedInput, etc.) reset when switching variants.
+        const variantSeg = selectedVariantId ? `|v:${selectedVariantId}` : "";
+        if (kind === "button") {
+            return `${draftResetKey}${variantSeg}|b:${buttonModuleModes.background}|${buttonModuleModes.border}|${buttonModuleModes.spacing}|${buttonModuleModes.transform}`;
         }
-        return `${draftResetKey}|b:${buttonModuleModes.background}|${buttonModuleModes.border}|${buttonModuleModes.spacing}`;
-    }, [draftResetKey, kind, containerModuleModes, buttonModuleModes]);
+        return `${draftResetKey}${variantSeg}|c:${containerModuleModes.background}|${containerModuleModes.stroke}|${containerModuleModes.corners}|${containerModuleModes.transform}`;
+    }, [draftResetKey, kind, selectedVariantId, containerModuleModes, buttonModuleModes]);
 
     const setFieldTransition = useCallback(
         (groupKey: AppearancePropertyKey, transition: AppearanceFieldTransition | null) => {
@@ -234,6 +243,8 @@ export function AppearanceAuthoringPanel({
         const variant = cloneVariantShallow(base, id, nextName);
         onReplace(addVariant(model, variant));
         setSelectedVariantId(id);
+        setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
+        setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
     };
 
     const handleRemoveVariant = () => {
@@ -244,6 +255,8 @@ export function AppearanceAuthoringPanel({
         const nextModel = removeVariant(model, removedId);
         onReplace(nextModel);
         setSelectedVariantId(nextModel.defaultVariantId);
+        setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
+        setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
     };
 
     const handleSetDefault = () => {
@@ -268,7 +281,12 @@ export function AppearanceAuthoringPanel({
                         value={selectedVariant?.id ?? ""}
                         options={variantOptions}
                         fullWidth
-                        onChange={v => setSelectedVariantId(String(v))}
+                        onChange={v => {
+                            const id = String(v);
+                            setSelectedVariantId(id);
+                            setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
+                            setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
+                        }}
                     />
                 </div>
                 <button
@@ -311,21 +329,7 @@ export function AppearanceAuthoringPanel({
 
             {selectedVariant && (
                 <>
-                    {kind === "container" ? (
-                        <CompactContainerAppearance
-                            variant={selectedVariant}
-                            commitVariant={commitVariant}
-                            setFieldTransition={setFieldTransition}
-                            inspectorData={inspectorData}
-                            draftResetKey={appearanceDraftResetKey}
-                            onSaving={() => {}}
-                            containerModuleModes={containerModuleModes}
-                            setContainerModuleMode={setContainerModuleMode}
-                            containerMotionVisibility={containerMotionVisibility}
-                            setContainerMotionVisible={setContainerMotionVisible}
-                            motionFieldsConfigured={containerMotionFieldsConfigured}
-                        />
-                    ) : (
+                    {kind === "button" ? (
                         <CompactButtonAppearance
                             variant={selectedVariant}
                             commitVariant={commitVariant}
@@ -338,6 +342,23 @@ export function AppearanceAuthoringPanel({
                             buttonMotionVisibility={buttonMotionVisibility}
                             setButtonMotionVisible={setButtonMotionVisible}
                             motionFieldsConfigured={buttonMotionFieldsConfigured}
+                        />
+                    ) : (
+                        <CompactContainerAppearance
+                            variant={selectedVariant}
+                            commitVariant={commitVariant}
+                            setFieldTransition={setFieldTransition}
+                            inspectorData={inspectorData}
+                            draftResetKey={appearanceDraftResetKey}
+                            onSaving={() => {}}
+                            containerModuleModes={containerModuleModes}
+                            setContainerModuleMode={setContainerModuleMode}
+                            containerMotionVisibility={containerMotionVisibility}
+                            setContainerMotionVisible={setContainerMotionVisible}
+                            motionFieldsConfigured={containerMotionFieldsConfigured}
+                            resolveInspectorRectangleLike={
+                                kind === "image" ? getImageWidgetRectangleProps : undefined
+                            }
                         />
                     )}
                 </>

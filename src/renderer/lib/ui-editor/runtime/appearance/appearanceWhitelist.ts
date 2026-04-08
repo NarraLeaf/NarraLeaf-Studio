@@ -26,6 +26,11 @@ export const CONTAINER_APPEARANCE_KEYS = new Set<ContainerAppearancePropertyKey>
     "strokeSide",
     "borderJoin",
     "cornerAdvanced",
+    "transformOffsetX",
+    "transformOffsetY",
+    "transformScale",
+    "transformRotation",
+    "transformOpacity",
 ]);
 
 export const BUTTON_APPEARANCE_KEYS = new Set<ButtonAppearancePropertyKey>([
@@ -40,9 +45,18 @@ export const BUTTON_APPEARANCE_KEYS = new Set<ButtonAppearancePropertyKey>([
     "borderWidth",
     "borderColor",
     "borderStyle",
+    "strokeOpacity",
+    "strokeSide",
+    "borderJoin",
+    "strokeAlign",
     "paddingX",
     "paddingY",
     "clipContent",
+    "transformOffsetX",
+    "transformOffsetY",
+    "transformScale",
+    "transformRotation",
+    "transformOpacity",
 ]);
 
 export function isContainerAppearanceKey(k: string): k is ContainerAppearancePropertyKey {

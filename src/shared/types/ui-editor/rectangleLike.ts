@@ -15,15 +15,28 @@ export type RectangleLikeProps = {
     backgroundImage: string;
     backgroundFit: string;
     imageFill?: ImageFill | null;
+    imageFlipX?: boolean;
+    imageFlipY?: boolean;
     fillType: "color" | "image";
     fillVisible: boolean;
     fillOpacity: number;
     strokeVisible: boolean;
     strokeOpacity: number;
     strokeAlign: "none" | "center" | "inside" | "outside";
-    strokeSide: "all" | "top" | "right" | "bottom" | "left";
+    /** "all", a single edge, or comma-separated edges (canonical order), e.g. "bottom,left". */
+    strokeSide: string;
     borderJoin: "miter" | "round" | "bevel";
     cornerAdvanced: boolean;
+
+    /** Appearance transform: px offset from layout box (Motion x/y). */
+    transformOffsetX: number;
+    transformOffsetY: number;
+    /** Uniform scale; 1 = 100%. */
+    transformScale: number;
+    /** Degrees (Motion rotate). */
+    transformRotation: number;
+    /** Multiplier on chrome root opacity (0–1); combines with layer opacity upstream. */
+    transformOpacity: number;
 };
 
 export type StrokeSide = "all" | "top" | "right" | "bottom" | "left";

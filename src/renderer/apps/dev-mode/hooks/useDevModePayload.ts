@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
@@ -10,6 +10,7 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 type DevModeState = {
     entry: DevModeEntry | null;
     bundle: DevModeBundle | null;
+    sessionError: string | null;
 };
 
 type UseDevModePayloadResult = {
@@ -20,11 +21,12 @@ type UseDevModePayloadResult = {
     rendererRegistry: ElementRendererRegistry;
     scale: number;
     handleAspectUpdate: (metrics: { scale: number }) => void;
+    sessionError: string | null;
+    clearSessionError: () => void;
 };
 
 export function useDevModePayload(): UseDevModePayloadResult {
-    const [state, setState] = useState<DevModeState>({ entry: null, bundle: null });
-    const pendingBundleRef = useRef<DevModeBundle | null>(null);
+    const [state, setState] = useState<DevModeState>({ entry: null, bundle: null, sessionError: null });
     const rendererRegistry = useMemo(() => new ElementRendererRegistry(BuiltinElementRenderers), []);
     const [scale, setScale] = useState(1);
 
@@ -48,25 +50,30 @@ export function useDevModePayload(): UseDevModePayloadResult {
 
     useEffect(() => {
         const payloadToken = getInterface().devMode.onPayloadUpdate(({ bundle }) => {
-            pendingBundleRef.current = bundle;
-            setState(prev => (prev.bundle ? prev : { ...prev, bundle }));
-        });
-        const reloadToken = getInterface().devMode.onControlReload(() => {
-            if (!pendingBundleRef.current) {
-                return;
-            }
-            const nextBundle = pendingBundleRef.current;
-            pendingBundleRef.current = null;
             setState(prev => ({
                 ...prev,
-                bundle: nextBundle,
+                bundle,
+                sessionError: null,
             }));
+        });
+        const reloadToken = getInterface().devMode.onControlReload(() => {
             void tryRollbackStoryState();
+        });
+        const errorToken = getInterface().devMode.onControlError(({ message }) => {
+            setState(prev => ({
+                ...prev,
+                sessionError: message,
+            }));
         });
         return () => {
             payloadToken.cancel();
             reloadToken.cancel();
+            errorToken.cancel();
         };
+    }, []);
+
+    const clearSessionError = useCallback(() => {
+        setState(prev => ({ ...prev, sessionError: null }));
     }, []);
 
     const surfaceId = useMemo(() => {
@@ -95,6 +102,8 @@ export function useDevModePayload(): UseDevModePayloadResult {
         rendererRegistry,
         scale,
         handleAspectUpdate,
+        sessionError: state.sessionError,
+        clearSessionError,
     };
 }
 

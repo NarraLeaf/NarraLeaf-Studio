@@ -67,6 +67,7 @@ export enum IPCEventType {
     devModeGetStatus = "devMode.getStatus",
     devModePayloadUpdate = "devMode.payload.update",
     devModeControlReload = "devMode.control.reload",
+    devModeControlError = "devMode.control.error",
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
 }
 
@@ -537,6 +538,14 @@ export type IPCDevModeEvents = {
         consumer: IPCType.Host,
         data: {
             revision: number;
+        },
+        response: never;
+    };
+    [IPCEventType.devModeControlError]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            message: string;
         },
         response: never;
     };

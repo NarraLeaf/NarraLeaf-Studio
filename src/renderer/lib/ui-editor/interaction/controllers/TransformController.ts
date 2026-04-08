@@ -48,6 +48,7 @@ export function useTransformController(config: TransformControllerConfig): Inter
         draggable: !isInlineTextEditing && !selectionHasFlowLayoutChild,
         resizable: !isInlineTextEditing,
         rotatable: !isInlineTextEditing,
+        // Aspect ratio is enforced in useMoveableHandlers; Moveable keepRatio fights raw clientX/Y math.
         keepRatio: false,
         origin: true,
         zoom: config.viewportScale,

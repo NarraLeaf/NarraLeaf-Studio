@@ -18,6 +18,8 @@ export function getRectangleLikeProps(element: { props?: Record<string, unknown>
         backgroundImage: String(p.backgroundImage ?? ""),
         backgroundFit: String(p.backgroundFit ?? "cover"),
         imageFill: (p.imageFill as ImageFill | undefined) ?? undefined,
+        imageFlipX: p.imageFlipX === true,
+        imageFlipY: p.imageFlipY === true,
         fillType: String(p.fillType ?? "color") as RectangleLikeProps["fillType"],
         fillVisible: p.fillVisible !== false,
         fillOpacity: Number(p.fillOpacity ?? 1),
@@ -27,6 +29,11 @@ export function getRectangleLikeProps(element: { props?: Record<string, unknown>
         strokeSide: String(p.strokeSide ?? "all") as RectangleLikeProps["strokeSide"],
         borderJoin: String(p.borderJoin ?? "miter") as RectangleLikeProps["borderJoin"],
         cornerAdvanced: Boolean(p.cornerAdvanced),
+        transformOffsetX: Number(p.transformOffsetX ?? 0),
+        transformOffsetY: Number(p.transformOffsetY ?? 0),
+        transformScale: Number(p.transformScale ?? 1),
+        transformRotation: Number(p.transformRotation ?? 0),
+        transformOpacity: Number(p.transformOpacity ?? 1),
     };
 }
 

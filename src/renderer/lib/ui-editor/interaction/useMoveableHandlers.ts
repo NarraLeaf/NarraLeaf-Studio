@@ -19,7 +19,16 @@ import type {
     OnRotateGroupStart,
     OnRotateStart,
 } from "react-moveable";
-import { ensureNormalizedLayout, computeResizePreview, buildTransform, applyFinalTransform, isHTMLElement } from "./utils";
+import {
+    ensureNormalizedLayout,
+    computeResizeAxes,
+    computeResizeAxis1D,
+    computeResizeTranslate,
+    buildTransform,
+    applyFinalTransform,
+    isHTMLElement,
+} from "./utils";
+import { applyLockedAspectToResizePreview } from "@/lib/ui-editor/layout/aspectRatioLock";
 import type { UILayout } from "@shared/types/ui-editor/document";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 
@@ -35,7 +44,20 @@ type ResizeStartEntry = {
     clientY: number;
     layout: UILayout;
     direction: number[];
+    /** Signed axis extents at delta=0; stabilizes locked aspect scale at drag start for all handles. */
+    aspectInitialSx: number;
+    aspectInitialSy: number;
 };
+
+function setImagePreviewFlipVars(target: HTMLElement, flipX: number, flipY: number) {
+    target.style.setProperty("--nl-image-drag-flip-x", String(flipX));
+    target.style.setProperty("--nl-image-drag-flip-y", String(flipY));
+}
+
+function clearImagePreviewFlipVars(target: HTMLElement) {
+    target.style.removeProperty("--nl-image-drag-flip-x");
+    target.style.removeProperty("--nl-image-drag-flip-y");
+}
 
 type MoveableHandlersConfig = {
     documentService: UIDocumentService;
@@ -180,6 +202,8 @@ export function useMoveableHandlers({
 
     const finalizeResize = useCallback(() => {
         const patches: Record<string, Partial<UILayout>> = {};
+        const imageFlipPatches: Record<string, Record<string, unknown>> = {};
+        const document = documentService.getDocument();
         selectedTargets.forEach(target => {
             const elementId = target.dataset.uiElementId;
             if (!elementId) {
@@ -187,6 +211,7 @@ export function useMoveableHandlers({
             }
             const cached = resizeCache.current.get(elementId);
             const initialLayout = layoutCache.current.get(elementId);
+            const element = document.elements[elementId];
             const patch: Partial<UILayout> = {};
             if (cached?.width !== undefined) {
                 patch.width = Math.abs(cached.width);
@@ -212,10 +237,24 @@ export function useMoveableHandlers({
             if (Object.keys(patch).length > 0) {
                 patches[elementId] = patch;
             }
+            if (element?.type === "nl.image" && (cached?.width !== undefined || cached?.height !== undefined)) {
+                const raw = (element.props ?? {}) as Record<string, unknown>;
+                const nextProps: Record<string, unknown> = {};
+                if ((cached?.width ?? 1) < 0) {
+                    nextProps.imageFlipX = raw.imageFlipX === true ? false : true;
+                }
+                if ((cached?.height ?? 1) < 0) {
+                    nextProps.imageFlipY = raw.imageFlipY === true ? false : true;
+                }
+                if (Object.keys(nextProps).length > 0) {
+                    imageFlipPatches[elementId] = nextProps;
+                }
+            }
             layoutCache.current.delete(elementId);
             resizeCache.current.delete(elementId);
             resizeStartCache.current.delete(elementId);
             dragDeltaCache.current.delete(elementId);
+            clearImagePreviewFlipVars(target);
             applyFinalTransform(target, initialLayout?.rotation);
             if (patch.width !== undefined || patch.height !== undefined) {
                 const finalWidth = patch.width ?? (initialLayout ? Math.abs(initialLayout.width) : 0);
@@ -236,6 +275,9 @@ export function useMoveableHandlers({
         if (Object.keys(patches).length > 0) {
             documentService.updateElementLayouts(patches);
         }
+        Object.entries(imageFlipPatches).forEach(([elementId, propsPatch]) => {
+            documentService.updateElementProps(elementId, propsPatch);
+        });
         clearPerformanceHints();
         scheduleMoveableRectUpdate();
         endTransform();
@@ -286,6 +328,7 @@ export function useMoveableHandlers({
             resizeCache.current.delete(elementId);
             resizeStartCache.current.delete(elementId);
             dragDeltaCache.current.delete(elementId);
+            clearImagePreviewFlipVars(target);
             applyFinalTransform(target, layout?.rotation);
         });
         clearPerformanceHints();
@@ -406,11 +449,16 @@ export function useMoveableHandlers({
                 if (!layout) {
                     return;
                 }
+                const [dirX = 0, dirY = 0] = e.direction ?? [0, 0];
+                const ix = computeResizeAxis1D(dirX, layout.width, 0);
+                const iy = computeResizeAxis1D(dirY, layout.height, 0);
                 resizeStartCache.current.set(elementId, {
                     clientX: e.clientX,
                     clientY: e.clientY,
                     layout,
                     direction: e.direction ?? [0, 0],
+                    aspectInitialSx: ix.signedSize,
+                    aspectInitialSy: iy.signedSize,
                 });
             });
             e.setMin?.([-Number.MAX_SAFE_INTEGER, -Number.MAX_SAFE_INTEGER]);
@@ -434,11 +482,53 @@ export function useMoveableHandlers({
             if (!startData || !initialLayout) {
                 return;
             }
-            const { width, height, signedWidth, signedHeight, translateX, translateY } = computeResizePreview(
-                e,
-                startData,
-                viewportScale,
+            const element = documentService.getDocument().elements[elementId];
+            const axes = computeResizeAxes(e, startData, viewportScale);
+            const { translateX: tx0, translateY: ty0 } = computeResizeTranslate(
+                axes.layout,
+                axes.xAxis,
+                axes.yAxis,
+                axes.xAxis.size,
+                axes.yAxis.size,
+                axes.cosR,
+                axes.sinR,
             );
+            let preview = {
+                width: axes.xAxis.size,
+                height: axes.yAxis.size,
+                signedWidth: axes.xAxis.signedSize,
+                signedHeight: axes.yAxis.signedSize,
+                translateX: tx0,
+                translateY: ty0,
+            };
+            if (initialLayout.lockAspectRatio) {
+                preview = applyLockedAspectToResizePreview(
+                    true,
+                    initialLayout,
+                    axes.directionX,
+                    axes.directionY,
+                    axes.xAxis,
+                    axes.yAxis,
+                    axes.cosR,
+                    axes.sinR,
+                    preview,
+                    {
+                        sx0: startData.aspectInitialSx,
+                        sy0: startData.aspectInitialSy,
+                    },
+                );
+            }
+            const { width, height, signedWidth, signedHeight, translateX, translateY } = preview;
+            if (element?.type === "nl.image" && isHTMLElement(e.target)) {
+                const raw = (element.props ?? {}) as Record<string, unknown>;
+                const baseFlipX = raw.imageFlipX === true ? -1 : 1;
+                const baseFlipY = raw.imageFlipY === true ? -1 : 1;
+                const dragFlipX = signedWidth < 0 ? -1 : 1;
+                const dragFlipY = signedHeight < 0 ? -1 : 1;
+                setImagePreviewFlipVars(e.target, baseFlipX * dragFlipX, baseFlipY * dragFlipY);
+            } else if (isHTMLElement(e.target)) {
+                clearImagePreviewFlipVars(e.target);
+            }
             e.target.style.width = `${width}px`;
             e.target.style.height = `${height}px`;
             resizeCache.current.set(elementId, {
@@ -451,7 +541,7 @@ export function useMoveableHandlers({
             e.target.style.transform = buildTransform(translateX, translateY, rotation);
             dragDeltaCache.current.set(elementId, [translateX, translateY]);
         },
-        [isGroupSelection, viewportScale],
+        [documentService, isGroupSelection, viewportScale],
     );
 
     const handleResizeEnd = useCallback(

@@ -1,10 +1,9 @@
 import { useEffect } from "react";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
-import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
-import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
-import { Select } from "@/lib/components/elements/Select";
+import type { UIElement } from "@shared/types/ui-editor/document";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type {
     AppearanceFieldTransition,
@@ -14,16 +13,8 @@ import type {
     ContainerAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
 import type { RectangleLikeProps, StrokeJoin } from "@shared/types/ui-editor/rectangleLike";
-import { Droplets, Eye, EyeOff, Maximize2, Square } from "lucide-react";
-import {
-    BORDER_STYLE_OPTIONS,
-    CornerIcon,
-    STROKE_ALIGN_OPTIONS,
-    STROKE_JOIN_OPTIONS,
-    STROKE_SIDE_OPTIONS,
-    controlButtonClass,
-} from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
-import { InlineMenuTriggerButton } from "@/lib/ui-editor/widget-modules/shared/chrome/InlineMenuTriggerButton";
+import { Droplets, Maximize2, Move } from "lucide-react";
+import { CornerIcon, STROKE_ALIGN_OPTIONS, STROKE_JOIN_OPTIONS, controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { formatPercentDisplay, readFiniteNumber } from "./appearanceCompactHelpers";
 import {
@@ -37,6 +28,7 @@ import {
 import { CompactModuleCard } from "./CompactModuleCard";
 import { CompactModuleStateHeader } from "./CompactModuleStateHeader";
 import { CompactBackgroundAppearance } from "./CompactBackgroundAppearance";
+import { BorderStrokeCompactRows } from "./BorderStrokeCompactRows";
 import { AppearanceFieldMotionButton, ModuleMotionMenuButton } from "./AppearanceMotionControls";
 
 type Props = {
@@ -52,6 +44,8 @@ type Props = {
     setContainerMotionVisible: (module: ContainerAppearanceModuleId, visible: boolean) => void;
     /** Per-module: any variant has motion on an animatable key in that module. */
     motionFieldsConfigured: Record<ContainerAppearanceModuleId, boolean>;
+    /** Baseline for image-fill preview (default: flat rectangle props on element). */
+    resolveInspectorRectangleLike?: (element: UIElement) => RectangleLikeProps;
 };
 
 function patchManyInModule(
@@ -79,18 +73,21 @@ export function CompactContainerAppearance({
     containerMotionVisibility,
     setContainerMotionVisible,
     motionFieldsConfigured,
+    resolveInspectorRectangleLike = getRectangleLikeProps,
 }: Props) {
-    const rl = getRectangleLikeProps(inspectorData.element);
+    const rl = resolveInspectorRectangleLike(inspectorData.element);
 
     const backgroundMode = containerModuleModes.background;
     const strokeMode = containerModuleModes.stroke;
     const cornersMode = containerModuleModes.corners;
+    const transformMode = containerModuleModes.transform;
     const backgroundMotionVisible = containerMotionVisibility.background;
     const strokeMotionVisible = containerMotionVisibility.stroke;
     const cornersMotionVisible = containerMotionVisibility.corners;
+    const transformMotionVisible = containerMotionVisibility.transform;
 
     useEffect(() => {
-        (["background", "stroke", "corners"] as const).forEach(mid => {
+        (["background", "stroke", "corners", "transform"] as const).forEach(mid => {
             const m = containerModuleModes[mid];
             if (m !== "default" && !moduleFullyHasExclusiveState(variant, CONTAINER_MODULE_KEYS[mid], m)) {
                 setContainerModuleMode(mid, "default");
@@ -111,46 +108,35 @@ export function CompactContainerAppearance({
         );
     };
 
-    const strokeVisible = Boolean(getStroke("strokeVisible") ?? true);
+    const getTransform = (key: ContainerAppearancePropertyKey) =>
+        getRowValueForModuleEdit(variant, key, transformMode);
+    const patchTransform = (key: ContainerAppearancePropertyKey, value: AppearanceRowValue) => {
+        commitVariant(
+            updateRowValueForModuleEditOrEnsure(variant, CONTAINER_MODULE_KEYS.transform, key, transformMode, value)
+        );
+    };
 
-    const buildStrokeMenu = (): ContextMenuDef => [
+    const buildBorderMoreMenu = (): ContextMenuDef => [
         {
-            id: "stroke-style",
-            label: "Border Style",
-            submenu: BORDER_STYLE_OPTIONS.map(option => ({
-                id: `stroke-style-${option.value}`,
+            id: "border-align",
+            label: "Border align",
+            submenu: STROKE_ALIGN_OPTIONS.map(option => ({
+                id: `border-align-${option.value}`,
                 label: option.label,
-                icon: option.icon,
                 onClick: () => {
-                    commitVariant(
-                        updateRowValueForModuleEditOrEnsure(
-                            variant,
-                            CONTAINER_MODULE_KEYS.stroke,
-                            "borderStyle",
-                            strokeMode,
-                            option.value
-                        )
-                    );
+                    patchStroke("strokeAlign", String(option.value) as RectangleLikeProps["strokeAlign"]);
                 },
             })),
         },
-        { separator: true, id: "stroke-style-separator" },
+        { separator: true, id: "border-more-separator" },
         {
-            id: "stroke-join",
-            label: "Corner Join",
+            id: "border-join",
+            label: "Corner join",
             submenu: STROKE_JOIN_OPTIONS.map(option => ({
-                id: `stroke-join-${option.value}`,
+                id: `border-join-${option.value}`,
                 label: option.label,
                 onClick: () => {
-                    commitVariant(
-                        updateRowValueForModuleEditOrEnsure(
-                            variant,
-                            CONTAINER_MODULE_KEYS.stroke,
-                            "borderJoin",
-                            strokeMode,
-                            option.value as StrokeJoin
-                        )
-                    );
+                    patchStroke("borderJoin", option.value as StrokeJoin);
                 },
             })),
         },
@@ -206,7 +192,7 @@ export function CompactContainerAppearance({
             />
 
             <CompactModuleCard
-                title="Stroke"
+                title="Border"
                 headerHoverAction={
                     <ModuleMotionMenuButton
                         enabled={strokeMotionVisible}
@@ -224,134 +210,25 @@ export function CompactContainerAppearance({
                     />
                 }
             >
-                <div className="flex gap-2 flex-nowrap items-stretch min-w-0">
-                    <div className="flex-1 min-w-0">
-                        <Select
-                            value={String(getStroke("strokeAlign") ?? "center")}
-                            options={STROKE_ALIGN_OPTIONS}
-                            fullWidth
-                            onChange={next =>
-                                patchStroke("strokeAlign", String(next) as RectangleLikeProps["strokeAlign"])
-                            }
-                        />
-                    </div>
-                    <div className="min-w-0 basis-28 shrink grow-0">
-                        <div className="flex items-center gap-1 min-w-0">
-                            <NumericDraftEnhancedInput
-                                committedDisplay={String(readFiniteNumber(getStroke("borderWidth"), 0))}
-                                draftResetKey={`${draftResetKey}-bw`}
-                                onFiniteNumber={width => {
-                                    if (width < 0) return;
-                                    patchStroke("borderWidth", width);
-                                }}
-                                inputMode="numeric"
-                                type="number"
-                                min={0}
-                                unit="px"
-                                leftIcon={<Square className="w-4 h-4 text-gray-400" />}
-                                className="w-full min-w-0"
-                            />
-                            {strokeMotionVisible ? (
-                                <AppearanceFieldMotionButton
-                                    variant={variant}
-                                    setFieldTransition={setFieldTransition}
-                                    groupKey="borderWidth"
-                                    draftResetKey={draftResetKey}
-                                />
-                            ) : null}
-                        </div>
-                    </div>
-                    <InlineMenuTriggerButton menu={buildStrokeMenu()} ariaLabel="Open stroke settings" className="z-10 shrink-0" />
-                </div>
-
-                <div className="flex flex-wrap gap-1 mt-1">
-                    {STROKE_SIDE_OPTIONS.map(opt => {
-                        const current = String(getStroke("strokeSide") ?? "all");
-                        return (
-                            <button
-                                key={opt.id}
-                                type="button"
-                                title={opt.label}
-                                aria-label={opt.label}
-                                aria-pressed={current === opt.id}
-                                className={controlButtonClass(current === opt.id)}
-                                onClick={() => patchStroke("strokeSide", opt.id)}
-                            >
-                                {opt.icon}
-                            </button>
-                        );
-                    })}
-                </div>
-
-                <div className="flex gap-2 flex-nowrap items-center min-w-0 pt-1">
-                    <div className="flex items-center gap-1 shrink-0">
-                        <ColorPickerTrigger
-                            value={parseColorValue(String(getStroke("borderColor") ?? ""), {
-                                hex: "#000000",
-                                alpha: 1,
-                            })}
-                            displayMode="icon"
-                            allowOpacity={false}
-                            disabled={!strokeVisible}
-                            onChange={(next: ColorValue) => patchStroke("borderColor", colorValueToCss(next))}
-                        />
-                        {strokeMotionVisible ? (
-                            <AppearanceFieldMotionButton
-                                variant={variant}
-                                setFieldTransition={setFieldTransition}
-                                groupKey="borderColor"
-                                draftResetKey={draftResetKey}
-                            />
-                        ) : null}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1 min-w-0">
-                            <NumericDraftEnhancedInput
-                                committedDisplay={formatPercentDisplay(readFiniteNumber(getStroke("strokeOpacity"), 1))}
-                                draftResetKey={`${draftResetKey}-so`}
-                                onFiniteNumber={value => {
-                                    const clamped = Math.min(100, Math.max(0, value));
-                                    patchStroke("strokeOpacity", clamped / 100);
-                                }}
-                                inputMode="decimal"
-                                unit="%"
-                                min={0}
-                                max={100}
-                                precision={null}
-                                leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
-                                disabled={!strokeVisible}
-                                className="w-full min-w-0"
-                            />
-                            {strokeMotionVisible ? (
-                                <AppearanceFieldMotionButton
-                                    variant={variant}
-                                    setFieldTransition={setFieldTransition}
-                                    groupKey="strokeOpacity"
-                                    draftResetKey={draftResetKey}
-                                />
-                            ) : null}
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                        <button
-                            type="button"
-                            onClick={() => patchStroke("strokeVisible", !strokeVisible)}
-                            aria-pressed={strokeVisible}
-                            aria-label="Toggle stroke visibility"
-                            className={controlButtonClass(strokeVisible)}
-                        >
-                            {strokeVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                        </button>
-                        {strokeMotionVisible ? (
-                            <AppearanceFieldMotionButton
-                                variant={variant}
-                                setFieldTransition={setFieldTransition}
-                                groupKey="strokeVisible"
-                                draftResetKey={draftResetKey}
-                            />
-                        ) : null}
-                    </div>
-                </div>
+                <BorderStrokeCompactRows
+                    elementId={inspectorData.element.id}
+                    draftResetKey={draftResetKey}
+                    variant={variant}
+                    setFieldTransition={setFieldTransition}
+                    motionVisible={strokeMotionVisible}
+                    borderStyleValue={String(getStroke("borderStyle") ?? "solid")}
+                    onBorderStyleChange={next => patchStroke("borderStyle", next)}
+                    borderWidth={readFiniteNumber(getStroke("borderWidth"), 0)}
+                    onBorderWidthChange={width => patchStroke("borderWidth", width)}
+                    strokeSideRaw={String(getStroke("strokeSide") ?? "all")}
+                    onStrokeSideChange={next => patchStroke("strokeSide", next)}
+                    borderColorCss={String(getStroke("borderColor") ?? "")}
+                    onBorderColorChange={(next: ColorValue) => patchStroke("borderColor", colorValueToCss(next))}
+                    strokeOpacity01={readFiniteNumber(getStroke("strokeOpacity"), 1)}
+                    onStrokeOpacity01Change={o => patchStroke("strokeOpacity", o)}
+                    moreMenu={buildBorderMoreMenu()}
+                    moreMenuAriaLabel="More border options"
+                />
             </CompactModuleCard>
 
             <CompactModuleCard
@@ -492,6 +369,162 @@ export function CompactContainerAppearance({
                         </div>
                     </>
                 )}
+            </CompactModuleCard>
+
+            <CompactModuleCard
+                title="Transform"
+                headerHoverAction={
+                    <ModuleMotionMenuButton
+                        enabled={transformMotionVisible}
+                        hasConfiguredFields={motionFieldsConfigured.transform}
+                        onEnabledChange={visible => setContainerMotionVisible("transform", visible)}
+                    />
+                }
+                headerRight={
+                    <CompactModuleStateHeader
+                        variant={variant}
+                        commitVariant={commitVariant}
+                        moduleKeys={CONTAINER_MODULE_KEYS.transform}
+                        mode={transformMode}
+                        onModeChange={m => setContainerModuleMode("transform", m)}
+                    />
+                }
+            >
+                <div className="flex flex-wrap gap-2 min-w-0">
+                    <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
+                        <span className="text-xs font-medium text-gray-400">X offset</span>
+                        <div className="flex items-center gap-1 min-w-0">
+                            <NumericDraftEnhancedInput
+                                committedDisplay={String(readFiniteNumber(getTransform("transformOffsetX"), 0))}
+                                draftResetKey={`${draftResetKey}-tox`}
+                                onFiniteNumber={v => patchTransform("transformOffsetX", v)}
+                                inputMode="numeric"
+                                type="number"
+                                unit="px"
+                                leftIcon={<Move className="w-4 h-4 text-gray-400" />}
+                                className="w-full min-w-0"
+                                selectAllOnFocus
+                            />
+                            {transformMotionVisible ? (
+                                <AppearanceFieldMotionButton
+                                    variant={variant}
+                                    setFieldTransition={setFieldTransition}
+                                    groupKey="transformOffsetX"
+                                    draftResetKey={draftResetKey}
+                                />
+                            ) : null}
+                        </div>
+                    </div>
+                    <div className="flex min-w-[6rem] flex-1 flex-col gap-1">
+                        <span className="text-xs font-medium text-gray-400">Y offset</span>
+                        <div className="flex items-center gap-1 min-w-0">
+                            <NumericDraftEnhancedInput
+                                committedDisplay={String(readFiniteNumber(getTransform("transformOffsetY"), 0))}
+                                draftResetKey={`${draftResetKey}-toy`}
+                                onFiniteNumber={v => patchTransform("transformOffsetY", v)}
+                                inputMode="numeric"
+                                type="number"
+                                unit="px"
+                                leftIcon={<Move className="w-4 h-4 text-gray-400" />}
+                                className="w-full min-w-0"
+                                selectAllOnFocus
+                            />
+                            {transformMotionVisible ? (
+                                <AppearanceFieldMotionButton
+                                    variant={variant}
+                                    setFieldTransition={setFieldTransition}
+                                    groupKey="transformOffsetY"
+                                    draftResetKey={draftResetKey}
+                                />
+                            ) : null}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mt-2 flex min-w-0 flex-col gap-1">
+                    <span className="text-xs font-medium text-gray-400">Zoom</span>
+                    <div className="flex items-center gap-1 min-w-0">
+                        <NumericDraftEnhancedInput
+                            committedDisplay={formatPercentDisplay(readFiniteNumber(getTransform("transformScale"), 1))}
+                            draftResetKey={`${draftResetKey}-ts`}
+                            onFiniteNumber={value => {
+                                const clamped = Math.min(500, Math.max(1, value));
+                                patchTransform("transformScale", clamped / 100);
+                            }}
+                            inputMode="decimal"
+                            unit="%"
+                            min={1}
+                            max={500}
+                            precision={null}
+                            className="w-full min-w-0 flex-1"
+                            selectAllOnFocus
+                        />
+                        {transformMotionVisible ? (
+                            <AppearanceFieldMotionButton
+                                variant={variant}
+                                setFieldTransition={setFieldTransition}
+                                groupKey="transformScale"
+                                draftResetKey={draftResetKey}
+                            />
+                        ) : null}
+                    </div>
+                </div>
+
+                <div className="mt-2 flex min-w-0 flex-col gap-1">
+                    <span className="text-xs font-medium text-gray-400">Rotation</span>
+                    <div className="flex items-center gap-1 min-w-0">
+                        <NumericDraftEnhancedInput
+                            committedDisplay={String(readFiniteNumber(getTransform("transformRotation"), 0))}
+                            draftResetKey={`${draftResetKey}-tr`}
+                            onFiniteNumber={v => patchTransform("transformRotation", v)}
+                            inputMode="numeric"
+                            type="number"
+                            unit="°"
+                            className="w-full min-w-0 flex-1"
+                            selectAllOnFocus
+                        />
+                        {transformMotionVisible ? (
+                            <AppearanceFieldMotionButton
+                                variant={variant}
+                                setFieldTransition={setFieldTransition}
+                                groupKey="transformRotation"
+                                draftResetKey={draftResetKey}
+                            />
+                        ) : null}
+                    </div>
+                </div>
+
+                <div className="mt-2 flex min-w-0 flex-col gap-1">
+                    <span className="text-xs font-medium text-gray-400">Opacity</span>
+                    <div className="flex items-center gap-1 min-w-0">
+                        <NumericDraftEnhancedInput
+                            committedDisplay={formatPercentDisplay(
+                                readFiniteNumber(getTransform("transformOpacity"), 1)
+                            )}
+                            draftResetKey={`${draftResetKey}-top`}
+                            onFiniteNumber={value => {
+                                const clamped = Math.min(100, Math.max(0, value));
+                                patchTransform("transformOpacity", clamped / 100);
+                            }}
+                            inputMode="decimal"
+                            unit="%"
+                            min={0}
+                            max={100}
+                            precision={null}
+                            leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                            className="w-full min-w-0 flex-1"
+                            selectAllOnFocus
+                        />
+                        {transformMotionVisible ? (
+                            <AppearanceFieldMotionButton
+                                variant={variant}
+                                setFieldTransition={setFieldTransition}
+                                groupKey="transformOpacity"
+                                draftResetKey={draftResetKey}
+                            />
+                        ) : null}
+                    </div>
+                </div>
             </CompactModuleCard>
         </div>
     );

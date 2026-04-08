@@ -5,6 +5,7 @@ import {
     Droplets,
     Eye,
     EyeOff,
+    Link,
     MoveHorizontal,
     MoveVertical,
     RotateCw,
@@ -43,6 +44,7 @@ import { getElementInspector } from "../ui-editor/inspector/registry";
 import type { UIInspectorData } from "../ui-editor/inspector/registry";
 import { useDocumentVersion } from "@/lib/ui-editor/hooks/useDocumentVersion";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
+import { pairLayoutDimensionsForLock } from "@/lib/ui-editor/layout/aspectRatioLock";
 
 function createLayoutInspectorSchema(elements: UIElement[], documentService: UIDocumentService): PropertyEditorSchema<UIInspectorData> {
     const primaryId = elements.map(element => element.id).join("-");
@@ -59,17 +61,11 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
 
     const updateDimension = (key: "width" | "height", value: string | number) => {
         const next = toNumber(value);
-        if (next === null) return;
+        if (next === null) {
+            return;
+        }
         elements.forEach(element => {
-            const patch: Partial<UIElement["layout"]> = {
-                [key]: Math.abs(next),
-            };
-            if (key === "width") {
-                patch.x = next < 0 ? element.layout.x + next : element.layout.x;
-            }
-            if (key === "height") {
-                patch.y = next < 0 ? element.layout.y + next : element.layout.y;
-            }
+            const patch = pairLayoutDimensionsForLock(element.layout, key, next);
             documentService.updateElementLayout(element.id, patch);
         });
     };
@@ -124,30 +120,103 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
             }),
             defineField<UIInspectorData, any>({
                 id: "layout.size",
-                type: "inputGroup",
+                type: "inlineRow",
                 label: "Size",
                 gap: 8,
                 wrap: false,
-                inputs: [
+                items: [
                     {
                         id: "layout.width",
-                        label: "W",
-                        icon: <ArrowLeftRight className="w-4 h-4 text-gray-400" />,
-                        type: "number",
-                        precision: 2,
-                        getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.width ?? 0),
-                        setValue: (_data: UIInspectorData, raw: string) => updateDimension("width", raw),
-                        selectAllOnFocus: true,
+                        className: "min-w-0 flex-1 basis-0",
+                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                            const w = getPrimaryLayout(data)?.width ?? 0;
+                            return (
+                                <NumericDraftEnhancedInput
+                                    committedDisplay={String(w)}
+                                    draftResetKey={`${primaryId}-w`}
+                                    onFiniteNumber={value => {
+                                        onSaving(true);
+                                        try {
+                                            updateDimension("width", value);
+                                        } finally {
+                                            onSaving(false);
+                                        }
+                                    }}
+                                    inputMode="numeric"
+                                    type="number"
+                                    precision={2}
+                                    unit="px"
+                                    leftIcon={<ArrowLeftRight className="w-4 h-4 text-gray-400" />}
+                                    className="w-full min-w-0"
+                                    selectAllOnFocus
+                                    aria-label="Width"
+                                />
+                            );
+                        },
                     },
                     {
                         id: "layout.height",
-                        label: "H",
-                        icon: <ArrowUpDown className="w-4 h-4 text-gray-400" />,
-                        type: "number",
-                        precision: 2,
-                        getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.height ?? 0),
-                        setValue: (_data: UIInspectorData, raw: string) => updateDimension("height", raw),
-                        selectAllOnFocus: true,
+                        className: "min-w-0 flex-1 basis-0",
+                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                            const h = getPrimaryLayout(data)?.height ?? 0;
+                            return (
+                                <NumericDraftEnhancedInput
+                                    committedDisplay={String(h)}
+                                    draftResetKey={`${primaryId}-h`}
+                                    onFiniteNumber={value => {
+                                        onSaving(true);
+                                        try {
+                                            updateDimension("height", value);
+                                        } finally {
+                                            onSaving(false);
+                                        }
+                                    }}
+                                    inputMode="numeric"
+                                    type="number"
+                                    precision={2}
+                                    unit="px"
+                                    leftIcon={<ArrowUpDown className="w-4 h-4 text-gray-400" />}
+                                    className="w-full min-w-0"
+                                    selectAllOnFocus
+                                    aria-label="Height"
+                                />
+                            );
+                        },
+                    },
+                    {
+                        id: "layout.aspectLock",
+                        className: "flex-shrink-0",
+                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                            // Multi-select: all on when not every element is locked; all off when every element is locked.
+                            const allLocked = elements.every(el => el.layout.lockAspectRatio === true);
+                            const primaryLocked = getPrimaryLayout(data)?.lockAspectRatio === true;
+                            const pressed = elements.length === 1 ? primaryLocked : allLocked;
+                            const toggle = () => {
+                                const nextLocked = !allLocked;
+                                onSaving(true);
+                                try {
+                                    elements.forEach(el => {
+                                        documentService.updateElementLayout(el.id, {
+                                            lockAspectRatio: nextLocked,
+                                        });
+                                    });
+                                } finally {
+                                    onSaving(false);
+                                }
+                            };
+                            return (
+                                <button
+                                    type="button"
+                                    onClick={toggle}
+                                    aria-pressed={pressed}
+                                    aria-label={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                                    title={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                                    className={controlButtonClass(pressed)}
+                                >
+                                    <Link className="w-4 h-4" />
+                                </button>
+                            );
+                        },
                     },
                 ],
                 order: 1,

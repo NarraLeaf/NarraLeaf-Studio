@@ -4,6 +4,7 @@ import { WorkspaceLayout } from "./components/layout";
 import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
 import { RegistryProvider } from "./registry";
+import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 
 /**
  * Main workspace application component
@@ -41,7 +42,9 @@ export function WorkSpaceApp() {
         <WorkspaceProvider>
             <InitializedWorkspace>
                 <RegistryProvider>
-                    <WorkspaceContent />
+                    <WorkspaceAssetDragProvider>
+                        <WorkspaceContent />
+                    </WorkspaceAssetDragProvider>
                 </RegistryProvider>
             </InitializedWorkspace>
         </WorkspaceProvider>

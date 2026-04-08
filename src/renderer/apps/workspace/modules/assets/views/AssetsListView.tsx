@@ -8,7 +8,7 @@ import { ASSET_TYPE_ICONS, ASSET_TYPE_LABELS } from "../constants";
 
 interface AssetsListViewProps {
     dropTargetId: string | null;
-    handleRootDrop: (event: DragEvent, type: AssetType) => Promise<void>;
+    handleRootDrop: (event: DragEvent, type: AssetType, contextualGroup?: AssetGroup | null) => Promise<void>;
     handleImport: (type: AssetType) => void;
     handleImportRemote: (type: AssetType) => void;
     handleCreateGroup: (type: AssetType) => void;
@@ -161,7 +161,13 @@ function GroupItem({ group, type, level }: { group: AssetGroup; type: AssetType;
             onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                const files = e.dataTransfer.types.includes("Files");
+                const internal = draggedItem && draggedItem.type === type;
+                if (!internal && !files) {
+                    return;
+                }
                 setDragOverLocal(true);
+                e.dataTransfer.dropEffect = internal ? "move" : "copy";
             }}
             onDragLeave={(e) => {
                 e.stopPropagation();

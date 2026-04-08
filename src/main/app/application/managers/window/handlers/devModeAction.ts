@@ -12,8 +12,10 @@ export class DevModeLaunchHandler extends IPCHandler<IPCEventType.devModeLaunch>
         window: AppWindow,
         { projectPath, entry }: IPCEvents[IPCEventType.devModeLaunch]["data"],
     ): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeLaunch]["response"]["status"] }>> {
-        const status = await window.getApp().getDevModeManager().launch(projectPath, entry);
-        return this.success({ status });
+        return this.tryUse(async () => {
+            const status = await window.getApp().getDevModeManager().launch(projectPath, entry);
+            return { status };
+        });
     }
 }
 
@@ -32,8 +34,10 @@ export class DevModeReloadHandler extends IPCHandler<IPCEventType.devModeReload>
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ status: IPCEvents[IPCEventType.devModeReload]["response"]["status"] }>> {
-        const status = await window.getApp().getDevModeManager().reload();
-        return this.success({ status });
+        return this.tryUse(async () => {
+            const status = await window.getApp().getDevModeManager().reload();
+            return { status };
+        });
     }
 }
 

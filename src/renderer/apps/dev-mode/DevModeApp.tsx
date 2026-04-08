@@ -3,7 +3,16 @@ import { DevModeContent } from "./components/DevModeContent";
 import { useDevModePayload } from "./hooks/useDevModePayload";
 
 export function DevModeApp() {
-    const { bundle, surface, surfaceId, rendererRegistry, scale, handleAspectUpdate } = useDevModePayload();
+    const {
+        bundle,
+        surface,
+        surfaceId,
+        rendererRegistry,
+        scale,
+        handleAspectUpdate,
+        sessionError,
+        clearSessionError,
+    } = useDevModePayload();
 
     return (
         <AppLayout title="Dev Mode" iconSrc="/favicon.ico">
@@ -15,6 +24,8 @@ export function DevModeApp() {
                     rendererRegistry={rendererRegistry}
                     scale={scale}
                     handleAspectUpdate={handleAspectUpdate}
+                    sessionError={sessionError}
+                    onDismissSessionError={clearSessionError}
                 />
             </div>
         </AppLayout>

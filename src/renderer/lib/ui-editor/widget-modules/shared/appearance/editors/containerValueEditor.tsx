@@ -19,6 +19,7 @@ import {
     controlButtonClass,
 } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
+import { isValidStrokeSideSpec, parseStrokeSideSpec } from "@/lib/ui-editor/widget-modules/shared/chrome/strokeSideSpec";
 
 export type ContainerValueEditorProps = {
     fieldKey: ContainerAppearancePropertyKey;
@@ -253,7 +254,7 @@ export function ContainerAppearanceValueEditor({
                     type="button"
                     onClick={() => onChange(!visible)}
                     aria-pressed={visible}
-                    aria-label="Toggle stroke visibility"
+                    aria-label="Toggle border visibility"
                     className={controlButtonClass(visible)}
                 >
                     {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -293,6 +294,21 @@ export function ContainerAppearanceValueEditor({
         }
         case "strokeSide": {
             const v = String(value ?? "all");
+            if (!isValidStrokeSideSpec(v)) {
+                return <span className="text-xs text-amber-200/90">{v}</span>;
+            }
+            const parsed = parseStrokeSideSpec(v);
+            const isMultiSide = parsed.kind === "edges" && parsed.edges.size > 1;
+            if (isMultiSide) {
+                return (
+                    <div className="space-y-1 min-w-0">
+                        <p className="text-xs text-gray-500 leading-snug">
+                            Multiple sides — use the compact Border panel to edit.
+                        </p>
+                        <span className="text-xs font-mono text-gray-300 break-all">{v}</span>
+                    </div>
+                );
+            }
             return (
                 <Select
                     value={v}

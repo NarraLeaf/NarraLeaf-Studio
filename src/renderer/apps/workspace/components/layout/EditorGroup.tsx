@@ -7,6 +7,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
 import { useKeybinding, contextual } from "../../hooks";
+import { useEditorGroupAssetDrop } from "./useEditorGroupAssetDrop";
 
 interface EditorGroupProps {
     group: EditorGroupType;
@@ -21,6 +22,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
     const { closeEditorTab, setActiveEditorTab } = useRegistry();
     const { context } = useWorkspace();
     const [isFocused, setIsFocused] = useState(false);
+    const { dropTargetProps, overlayClassName } = useEditorGroupAssetDrop(group.id);
 
     const activeTab = group.tabs.find((tab) => tab.id === group.focus);
 
@@ -95,9 +97,10 @@ export function EditorGroup({ group }: EditorGroupProps) {
 
     return (
         <div 
+            {...dropTargetProps}
             className={`h-full flex flex-col border transition-colors ${
                 isFocused ? 'border-primary' : 'border-transparent border-b-white/10'
-            }`}
+            } ${overlayClassName}`}
             onClick={handleEditorClick}
             tabIndex={0}
         >

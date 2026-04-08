@@ -6,10 +6,15 @@ import { ChevronRight } from "lucide-react";
 export interface ContextMenuItemDef {
     id: string;
     label: string;
+    /** Leading icon; when the menu has `iconsEnabled`, the column is still reserved if this is omitted. */
     icon?: ReactNode;
     disabled?: boolean;
     onClick?: () => void;
     submenu?: ContextMenuItemDef[];
+    /**
+     * When this item opens a submenu, sets `iconsEnabled` for that submenu only (not inherited from the parent menu).
+     */
+    submenuIconsEnabled?: boolean;
     separator?: never;
 }
 
@@ -41,6 +46,12 @@ export interface ContextMenuProps {
     visible?: boolean;
     /** Optional anchor bounds for aligning related menus */
     anchorRect?: ContextMenuAnchorRect;
+    /**
+     * When true, every row in this menu reserves a fixed leading slot for `item.icon` so labels align.
+     * When false (default), an icon is only rendered if `item.icon` is set (legacy behavior).
+     * Does not apply to nested submenus; those use `submenuIconsEnabled` on the item that owns the submenu.
+     */
+    iconsEnabled?: boolean;
 }
 
 /**
@@ -53,6 +64,7 @@ export function ContextMenu({
     onClose,
     visible = true,
     anchorRect,
+    iconsEnabled = false,
 }: ContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
     const [adjustedPosition, setAdjustedPosition] = useState(position);
@@ -212,6 +224,7 @@ export function ContextMenu({
                         isSubmenuOpen={isOpen}
                         onSubmenuOpen={() => setOpenSubmenuIndex(index)}
                         onSubmenuClose={() => setOpenSubmenuIndex(null)}
+                        iconsEnabled={iconsEnabled}
                     />
                 );
             })}
@@ -233,6 +246,7 @@ interface ContextMenuItemProps {
     isSubmenuOpen: boolean;
     onSubmenuOpen: () => void;
     onSubmenuClose: () => void;
+    iconsEnabled: boolean;
 }
 
 function ContextMenuItem({
@@ -242,6 +256,7 @@ function ContextMenuItem({
     isSubmenuOpen,
     onSubmenuOpen,
     onSubmenuClose,
+    iconsEnabled,
 }: ContextMenuItemProps) {
     const itemRef = useRef<HTMLDivElement>(null);
     const [submenuPosition, setSubmenuPosition] = useState({ x: 0, y: 0 });
@@ -309,11 +324,15 @@ function ContextMenuItem({
                 onMouseEnter={handleMouseEnter}
                 onMouseDown={(e) => e.stopPropagation()}
             >
-                {/* Icon */}
-                {item.icon && (
-                    <span className="w-4 h-4 flex-shrink-0">
-                        {item.icon}
+                {/* Icon column: optional slot; reserved when iconsEnabled */}
+                {iconsEnabled ? (
+                    <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                        {item.icon ?? null}
                     </span>
+                ) : (
+                    item.icon ? (
+                        <span className="h-4 w-4 flex-shrink-0">{item.icon}</span>
+                    ) : null
                 )}
 
                 {/* Label */}
@@ -333,6 +352,7 @@ function ContextMenuItem({
                     onClose={onClose}
                     visible={isSubmenuOpen}
                     anchorRect={submenuAnchor ?? undefined}
+                    iconsEnabled={item.submenuIconsEnabled ?? false}
                 />
             )}
         </>
