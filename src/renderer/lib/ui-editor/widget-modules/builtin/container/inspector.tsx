@@ -34,6 +34,7 @@ function ContainerAppearanceField(props: CustomFieldProps<UIInspectorData>) {
 
     return (
         <AppearanceAuthoringPanel
+            key={element.id}
             kind="container"
             appearance={appearance ?? null}
             onReplace={next => {

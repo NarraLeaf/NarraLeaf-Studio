@@ -1,4 +1,5 @@
 import type {
+    AppearanceFieldTransition,
     AppearanceModel,
     AppearancePropertyGroup,
     AppearanceSystemCondition,
@@ -129,6 +130,36 @@ export function setRowConditions(
         ...row,
         conditions: conditions && Object.keys(conditions).length ? conditions : null,
     };
+    return next;
+}
+
+export function setGroupTransition(
+    variant: AppearanceVariant,
+    groupKey: string,
+    transition: AppearanceFieldTransition | null
+): AppearanceVariant {
+    const next = cloneVariant(variant);
+    const g = next.propertyGroups.find(gr => gr.key === groupKey);
+    if (!g) {
+        return variant;
+    }
+    g.transition = transition;
+    return next;
+}
+
+/** Apply the same field-level transition to every variant (motion is shared across variants). */
+export function setGroupTransitionOnAllVariants(
+    model: AppearanceModel,
+    groupKey: string,
+    transition: AppearanceFieldTransition | null
+): AppearanceModel {
+    const next = cloneModel(model);
+    for (const v of next.variants) {
+        const g = v.propertyGroups.find(gr => gr.key === groupKey);
+        if (g) {
+            g.transition = transition;
+        }
+    }
     return next;
 }
 

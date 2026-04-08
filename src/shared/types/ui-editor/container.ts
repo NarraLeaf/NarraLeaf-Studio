@@ -86,14 +86,14 @@ export const defaultContainerWidgetProps: ContainerWidgetProps = {
 
     scrollAxis: "y",
 
-    backgroundColor: "transparent",
+    backgroundColor: "#ffffff",
     borderRadius: 0,
     borderRadiusTL: 0,
     borderRadiusTR: 0,
     borderRadiusBL: 0,
     borderRadiusBR: 0,
     borderRadiusLinked: true,
-    borderColor: "#ffffff33",
+    borderColor: "#000000",
     borderWidth: 1,
     borderStyle: "solid",
     backgroundImage: "",

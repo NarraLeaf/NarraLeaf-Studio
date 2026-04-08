@@ -34,6 +34,7 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
 
     return (
         <AppearanceAuthoringPanel
+            key={element.id}
             kind="button"
             appearance={appearance ?? null}
             onReplace={next => {
