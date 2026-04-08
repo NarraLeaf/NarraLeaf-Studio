@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef } from "react";
 import { flushSync } from "react-dom";
 import Selecto from "react-selecto";
 import Moveable from "react-moveable";
@@ -100,7 +100,15 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         return () => unsubscribe();
     }, [stateService]);
 
-    const surfaceElement = containerRef.current ?? null;
+    // containerRef.current is often null on the first render (sibling viewport not committed yet).
+    // Reading it only during render leaves Selecto's dragContainer stuck on the pointer-events-none
+    // overlay parent, so mousedown never reaches the listener. Sync after layout so Selecto/Moveable
+    // attach to the real viewport.
+    const [surfaceElement, setSurfaceElement] = useState<HTMLElement | null>(null);
+    useLayoutEffect(() => {
+        setSurfaceElement(containerRef.current);
+    }, [containerRef]);
+
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
 
     useEffect(() => {
@@ -368,14 +376,14 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
 
     return (
         <>
-            {tool.kind === "select" && (
+            {tool.kind === "select" && surfaceElement && (
                 <div className="pointer-events-none absolute inset-0 z-[9]">
                     <Selecto
                         className={SELECTO_CLASS_NAME}
-                        container={surfaceElement ?? undefined}
-                        rootContainer={surfaceElement ?? undefined}
-                        dragContainer={surfaceElement ?? undefined}
-                        boundContainer={surfaceElement ?? undefined}
+                        container={surfaceElement}
+                        rootContainer={surfaceElement}
+                        dragContainer={surfaceElement}
+                        boundContainer={surfaceElement}
                         checkOverflow={true}
                         selectableTargets={selectionEnabled ? [SELECTABLE_TARGET] : []}
                         hitRate={0}
@@ -389,7 +397,7 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
                     <Moveable
                         ref={moveableRef}
                         targets={activeController.targets}
-                        container={surfaceElement ?? undefined}
+                        container={surfaceElement}
                         flushSync={flushSync}
                         className={
                             activeController.id === "imageCrop"

@@ -7,6 +7,8 @@ import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftE
 import { Select } from "@/lib/components/elements/Select";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type {
+    AppearanceFieldTransition,
+    AppearancePropertyKey,
     AppearanceRowValue,
     AppearanceVariant,
     ContainerAppearancePropertyKey,
@@ -35,15 +37,21 @@ import {
 import { CompactModuleCard } from "./CompactModuleCard";
 import { CompactModuleStateHeader } from "./CompactModuleStateHeader";
 import { CompactBackgroundAppearance } from "./CompactBackgroundAppearance";
+import { AppearanceFieldMotionButton, ModuleMotionMenuButton } from "./AppearanceMotionControls";
 
 type Props = {
     variant: AppearanceVariant;
     commitVariant: (v: AppearanceVariant) => void;
+    setFieldTransition: (groupKey: AppearancePropertyKey, transition: AppearanceFieldTransition | null) => void;
     inspectorData: UIInspectorData;
     draftResetKey: string;
     onSaving: (saving: boolean) => void;
     containerModuleModes: Record<ContainerAppearanceModuleId, ModuleEditMode>;
     setContainerModuleMode: (module: ContainerAppearanceModuleId, mode: ModuleEditMode) => void;
+    containerMotionVisibility: Record<ContainerAppearanceModuleId, boolean>;
+    setContainerMotionVisible: (module: ContainerAppearanceModuleId, visible: boolean) => void;
+    /** Per-module: any variant has motion on an animatable key in that module. */
+    motionFieldsConfigured: Record<ContainerAppearanceModuleId, boolean>;
 };
 
 function patchManyInModule(
@@ -62,17 +70,24 @@ function patchManyInModule(
 export function CompactContainerAppearance({
     variant,
     commitVariant,
+    setFieldTransition,
     inspectorData,
     draftResetKey,
     onSaving,
     containerModuleModes,
     setContainerModuleMode,
+    containerMotionVisibility,
+    setContainerMotionVisible,
+    motionFieldsConfigured,
 }: Props) {
     const rl = getRectangleLikeProps(inspectorData.element);
 
     const backgroundMode = containerModuleModes.background;
     const strokeMode = containerModuleModes.stroke;
     const cornersMode = containerModuleModes.corners;
+    const backgroundMotionVisible = containerMotionVisibility.background;
+    const strokeMotionVisible = containerMotionVisibility.stroke;
+    const cornersMotionVisible = containerMotionVisibility.corners;
 
     useEffect(() => {
         (["background", "stroke", "corners"] as const).forEach(mid => {
@@ -184,10 +199,21 @@ export function CompactContainerAppearance({
                 onModeChange={m => setContainerModuleMode("background", m)}
                 imageFillBaseline={rl}
                 imageFillFieldId="compact.container.imageFill"
+                motionVisible={backgroundMotionVisible}
+                onMotionVisibleChange={visible => setContainerMotionVisible("background", visible)}
+                moduleMotionFieldsConfigured={motionFieldsConfigured.background}
+                setFieldTransition={setFieldTransition}
             />
 
             <CompactModuleCard
                 title="Stroke"
+                headerHoverAction={
+                    <ModuleMotionMenuButton
+                        enabled={strokeMotionVisible}
+                        hasConfiguredFields={motionFieldsConfigured.stroke}
+                        onEnabledChange={visible => setContainerMotionVisible("stroke", visible)}
+                    />
+                }
                 headerRight={
                     <CompactModuleStateHeader
                         variant={variant}
@@ -210,20 +236,30 @@ export function CompactContainerAppearance({
                         />
                     </div>
                     <div className="min-w-0 basis-28 shrink grow-0">
-                        <NumericDraftEnhancedInput
-                            committedDisplay={String(readFiniteNumber(getStroke("borderWidth"), 0))}
-                            draftResetKey={`${draftResetKey}-bw`}
-                            onFiniteNumber={width => {
-                                if (width < 0) return;
-                                patchStroke("borderWidth", width);
-                            }}
-                            inputMode="numeric"
-                            type="number"
-                            min={0}
-                            unit="px"
-                            leftIcon={<Square className="w-4 h-4 text-gray-400" />}
-                            className="w-full min-w-0"
-                        />
+                        <div className="flex items-center gap-1 min-w-0">
+                            <NumericDraftEnhancedInput
+                                committedDisplay={String(readFiniteNumber(getStroke("borderWidth"), 0))}
+                                draftResetKey={`${draftResetKey}-bw`}
+                                onFiniteNumber={width => {
+                                    if (width < 0) return;
+                                    patchStroke("borderWidth", width);
+                                }}
+                                inputMode="numeric"
+                                type="number"
+                                min={0}
+                                unit="px"
+                                leftIcon={<Square className="w-4 h-4 text-gray-400" />}
+                                className="w-full min-w-0"
+                            />
+                            {strokeMotionVisible ? (
+                                <AppearanceFieldMotionButton
+                                    variant={variant}
+                                    setFieldTransition={setFieldTransition}
+                                    groupKey="borderWidth"
+                                    draftResetKey={draftResetKey}
+                                />
+                            ) : null}
+                        </div>
                     </div>
                     <InlineMenuTriggerButton menu={buildStrokeMenu()} ariaLabel="Open stroke settings" className="z-10 shrink-0" />
                 </div>
@@ -248,48 +284,85 @@ export function CompactContainerAppearance({
                 </div>
 
                 <div className="flex gap-2 flex-nowrap items-center min-w-0 pt-1">
-                    <ColorPickerTrigger
-                        value={parseColorValue(String(getStroke("borderColor") ?? ""), {
-                            hex: "#000000",
-                            alpha: 1,
-                        })}
-                        displayMode="icon"
-                        allowOpacity={false}
-                        disabled={!strokeVisible}
-                        onChange={(next: ColorValue) => patchStroke("borderColor", colorValueToCss(next))}
-                    />
-                    <div className="flex-1 min-w-0">
-                        <NumericDraftEnhancedInput
-                            committedDisplay={formatPercentDisplay(readFiniteNumber(getStroke("strokeOpacity"), 1))}
-                            draftResetKey={`${draftResetKey}-so`}
-                            onFiniteNumber={value => {
-                                const clamped = Math.min(100, Math.max(0, value));
-                                patchStroke("strokeOpacity", clamped / 100);
-                            }}
-                            inputMode="decimal"
-                            unit="%"
-                            min={0}
-                            max={100}
-                            precision={null}
-                            leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                    <div className="flex items-center gap-1 shrink-0">
+                        <ColorPickerTrigger
+                            value={parseColorValue(String(getStroke("borderColor") ?? ""), {
+                                hex: "#000000",
+                                alpha: 1,
+                            })}
+                            displayMode="icon"
+                            allowOpacity={false}
                             disabled={!strokeVisible}
-                            className="w-full min-w-0"
+                            onChange={(next: ColorValue) => patchStroke("borderColor", colorValueToCss(next))}
                         />
+                        {strokeMotionVisible ? (
+                            <AppearanceFieldMotionButton
+                                variant={variant}
+                                setFieldTransition={setFieldTransition}
+                                groupKey="borderColor"
+                                draftResetKey={draftResetKey}
+                            />
+                        ) : null}
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => patchStroke("strokeVisible", !strokeVisible)}
-                        aria-pressed={strokeVisible}
-                        aria-label="Toggle stroke visibility"
-                        className={controlButtonClass(strokeVisible)}
-                    >
-                        {strokeVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    </button>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1 min-w-0">
+                            <NumericDraftEnhancedInput
+                                committedDisplay={formatPercentDisplay(readFiniteNumber(getStroke("strokeOpacity"), 1))}
+                                draftResetKey={`${draftResetKey}-so`}
+                                onFiniteNumber={value => {
+                                    const clamped = Math.min(100, Math.max(0, value));
+                                    patchStroke("strokeOpacity", clamped / 100);
+                                }}
+                                inputMode="decimal"
+                                unit="%"
+                                min={0}
+                                max={100}
+                                precision={null}
+                                leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                                disabled={!strokeVisible}
+                                className="w-full min-w-0"
+                            />
+                            {strokeMotionVisible ? (
+                                <AppearanceFieldMotionButton
+                                    variant={variant}
+                                    setFieldTransition={setFieldTransition}
+                                    groupKey="strokeOpacity"
+                                    draftResetKey={draftResetKey}
+                                />
+                            ) : null}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => patchStroke("strokeVisible", !strokeVisible)}
+                            aria-pressed={strokeVisible}
+                            aria-label="Toggle stroke visibility"
+                            className={controlButtonClass(strokeVisible)}
+                        >
+                            {strokeVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        </button>
+                        {strokeMotionVisible ? (
+                            <AppearanceFieldMotionButton
+                                variant={variant}
+                                setFieldTransition={setFieldTransition}
+                                groupKey="strokeVisible"
+                                draftResetKey={draftResetKey}
+                            />
+                        ) : null}
+                    </div>
                 </div>
             </CompactModuleCard>
 
             <CompactModuleCard
                 title="Corners"
+                headerHoverAction={
+                    <ModuleMotionMenuButton
+                        enabled={cornersMotionVisible}
+                        hasConfiguredFields={motionFieldsConfigured.corners}
+                        onEnabledChange={visible => setContainerMotionVisible("corners", visible)}
+                    />
+                }
                 headerRight={
                     <CompactModuleStateHeader
                         variant={variant}
@@ -302,34 +375,44 @@ export function CompactContainerAppearance({
             >
                 <div className="flex gap-2 flex-nowrap items-stretch min-w-0">
                     <div className="flex-1 min-w-0">
-                        <NumericDraftEnhancedInput
-                            committedDisplay={uniformDisplay}
-                            draftResetKey={`${draftResetKey}-br-u`}
-                            onFiniteNumber={radius => {
-                                if (radius < 0) return;
-                                const linked = borderRadiusLinked;
-                                const patch: { key: ContainerAppearancePropertyKey; value: AppearanceRowValue }[] = [
-                                    { key: "borderRadius", value: radius },
-                                ];
-                                if (linked || !cornerAdvanced) {
-                                    patch.push(
-                                        { key: "borderRadiusTL", value: radius },
-                                        { key: "borderRadiusTR", value: radius },
-                                        { key: "borderRadiusBL", value: radius },
-                                        { key: "borderRadiusBR", value: radius }
-                                    );
-                                }
-                                commitVariant(patchManyInModule(variant, CONTAINER_MODULE_KEYS.corners, cornersMode, patch));
-                            }}
-                            inputMode="numeric"
-                            type="number"
-                            min={0}
-                            unit="px"
-                            leftIcon={<CornerIcon position="tl" />}
-                            className="w-full min-w-0"
-                            placeholder={uniformPlaceholder}
-                            selectAllOnFocus
-                        />
+                        <div className="flex items-center gap-1 min-w-0">
+                            <NumericDraftEnhancedInput
+                                committedDisplay={uniformDisplay}
+                                draftResetKey={`${draftResetKey}-br-u`}
+                                onFiniteNumber={radius => {
+                                    if (radius < 0) return;
+                                    const linked = borderRadiusLinked;
+                                    const patch: { key: ContainerAppearancePropertyKey; value: AppearanceRowValue }[] = [
+                                        { key: "borderRadius", value: radius },
+                                    ];
+                                    if (linked || !cornerAdvanced) {
+                                        patch.push(
+                                            { key: "borderRadiusTL", value: radius },
+                                            { key: "borderRadiusTR", value: radius },
+                                            { key: "borderRadiusBL", value: radius },
+                                            { key: "borderRadiusBR", value: radius }
+                                        );
+                                    }
+                                    commitVariant(patchManyInModule(variant, CONTAINER_MODULE_KEYS.corners, cornersMode, patch));
+                                }}
+                                inputMode="numeric"
+                                type="number"
+                                min={0}
+                                unit="px"
+                                leftIcon={<CornerIcon position="tl" />}
+                                className="w-full min-w-0"
+                                placeholder={uniformPlaceholder}
+                                selectAllOnFocus
+                            />
+                            {cornersMotionVisible ? (
+                                <AppearanceFieldMotionButton
+                                    variant={variant}
+                                    setFieldTransition={setFieldTransition}
+                                    groupKey="borderRadius"
+                                    draftResetKey={draftResetKey}
+                                />
+                            ) : null}
+                        </div>
                     </div>
                     <button
                         type="button"
@@ -364,38 +447,47 @@ export function CompactContainerAppearance({
                                     ["borderRadiusBR", "br"],
                                 ] as const
                             ).map(([key, pos]) => (
-                                <NumericDraftEnhancedInput
-                                    key={key}
-                                    committedDisplay={String(readFiniteNumber(getCorners(key), 0))}
-                                    draftResetKey={`${draftResetKey}-${key}`}
-                                    onFiniteNumber={v => {
-                                        if (v < 0) return;
-                                        let next = updateRowValueForModuleEditOrEnsure(
-                                            variant,
-                                            CONTAINER_MODULE_KEYS.corners,
-                                            key,
-                                            cornersMode,
-                                            v
-                                        );
-                                        if (borderRadiusLinked) {
-                                            next = patchManyInModule(next, CONTAINER_MODULE_KEYS.corners, cornersMode, [
-                                                { key: "borderRadiusTL", value: v },
-                                                { key: "borderRadiusTR", value: v },
-                                                { key: "borderRadiusBL", value: v },
-                                                { key: "borderRadiusBR", value: v },
-                                            ]);
-                                        }
-                                        commitVariant(next);
-                                    }}
-                                    inputMode="numeric"
-                                    type="number"
-                                    min={0}
-                                    unit="px"
-                                    leftIcon={<CornerIcon position={pos} />}
-                                    className="w-full min-w-0"
-                                    disabled={borderRadiusLinked}
-                                    selectAllOnFocus
-                                />
+                                <div key={key} className="flex items-center gap-1 min-w-0">
+                                    <NumericDraftEnhancedInput
+                                        committedDisplay={String(readFiniteNumber(getCorners(key), 0))}
+                                        draftResetKey={`${draftResetKey}-${key}`}
+                                        onFiniteNumber={v => {
+                                            if (v < 0) return;
+                                            let next = updateRowValueForModuleEditOrEnsure(
+                                                variant,
+                                                CONTAINER_MODULE_KEYS.corners,
+                                                key,
+                                                cornersMode,
+                                                v
+                                            );
+                                            if (borderRadiusLinked) {
+                                                next = patchManyInModule(next, CONTAINER_MODULE_KEYS.corners, cornersMode, [
+                                                    { key: "borderRadiusTL", value: v },
+                                                    { key: "borderRadiusTR", value: v },
+                                                    { key: "borderRadiusBL", value: v },
+                                                    { key: "borderRadiusBR", value: v },
+                                                ]);
+                                            }
+                                            commitVariant(next);
+                                        }}
+                                        inputMode="numeric"
+                                        type="number"
+                                        min={0}
+                                        unit="px"
+                                        leftIcon={<CornerIcon position={pos} />}
+                                        className="w-full min-w-0"
+                                        disabled={borderRadiusLinked}
+                                        selectAllOnFocus
+                                    />
+                                    {cornersMotionVisible ? (
+                                        <AppearanceFieldMotionButton
+                                            variant={variant}
+                                            setFieldTransition={setFieldTransition}
+                                            groupKey={key}
+                                            draftResetKey={draftResetKey}
+                                        />
+                                    ) : null}
+                                </div>
                             ))}
                         </div>
                     </>

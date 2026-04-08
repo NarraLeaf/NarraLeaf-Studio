@@ -16,6 +16,11 @@ export type WidgetRendererProps = {
     document: UIDocument;
     hostAdapter: UIHostAdapter;
     children?: ReactNode;
+    /**
+     * When true, canvas appearance resolves the variant from the inspector cache (editing-area preview).
+     * Dev Mode and other hosts omit this so runtime/blueprint variant overrides stay authoritative.
+     */
+    useAppearanceInspectorPreview?: boolean;
 };
 
 // ─── Property Inspector ─────────────────────────────────────────────────────

@@ -1,14 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { MoreHorizontal } from "lucide-react";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { ContextMenu } from "@/lib/components/elements/ContextMenu";
 import { controlButtonClass } from "./constants";
 
+/** `control` = bordered square (default). `iconGhost` = borderless icon-only for compact rows. */
+export type InlineMenuTriggerButtonStyle = "control" | "iconGhost";
+
 export type InlineMenuTriggerButtonProps = {
     menu: ContextMenuDef;
     ariaLabel?: string;
     className?: string;
+    icon?: ReactNode;
+    /** Defaults to `control` (matches stroke/corners more-options triggers). */
+    buttonStyle?: InlineMenuTriggerButtonStyle;
 };
+
+const ICON_GHOST_TRIGGER_BASE =
+    "grid h-7 w-7 shrink-0 place-items-center rounded border-0 bg-transparent p-0 text-gray-500 transition-colors hover:text-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40";
 
 /**
  * Square trigger that opens a positioned ContextMenu (used in compact inspector rows).
@@ -17,6 +26,8 @@ export function InlineMenuTriggerButton({
     menu,
     ariaLabel = "More options",
     className = "",
+    icon,
+    buttonStyle = "control",
 }: InlineMenuTriggerButtonProps) {
     const [visible, setVisible] = useState(false);
     const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -68,9 +79,13 @@ export function InlineMenuTriggerButton({
                 type="button"
                 onClick={visible ? closeMenu : openMenu}
                 aria-label={ariaLabel}
-                className={`${controlButtonClass()} ${className}`}
+                className={
+                    buttonStyle === "iconGhost"
+                        ? `${ICON_GHOST_TRIGGER_BASE} ${className}`.trim()
+                        : `${controlButtonClass()} ${className}`.trim()
+                }
             >
-                <MoreHorizontal className="w-4 h-4" />
+                {icon ?? <MoreHorizontal className="w-4 h-4" />}
             </button>
             {visible && <ContextMenu items={menu} position={position} onClose={closeMenu} />}
         </>

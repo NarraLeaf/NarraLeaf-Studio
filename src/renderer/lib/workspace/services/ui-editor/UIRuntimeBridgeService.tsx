@@ -89,7 +89,7 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
 
         const renderer = this.rendererRegistry.get(element.type);
         const content = renderer
-            ? renderer.render({ element, document, surface, hostAdapter, children })
+            ? renderer.render({ element, document, surface, hostAdapter, children, useAppearanceInspectorPreview: true })
             : this.renderFallback(element, children);
 
         const styleOverrides = this.extractStyleOverrides(element);

@@ -154,25 +154,29 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                             render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                                 const current = getContainerProps(data.element);
                                 return (
-                                    <NumericDraftEnhancedInput
-                                        committedDisplay={String(current.stackGap)}
-                                        draftResetKey={element.id}
-                                        onFiniteNumber={(v) => {
-                                            if (v < 0) return;
-                                            onSaving(true);
-                                            try {
-                                                patch({ stackGap: Math.min(256, v) });
-                                            } finally {
-                                                onSaving(false);
-                                            }
-                                        }}
-                                        inputMode="numeric"
-                                        type="number"
-                                        min={0}
-                                        max={256}
-                                        unit="px"
-                                        title="Gap between children"
-                                    />
+                                    <div className="flex min-w-0 flex-col gap-1">
+                                        <span className="text-xs font-medium text-gray-400">Gap</span>
+                                        <NumericDraftEnhancedInput
+                                            committedDisplay={String(current.stackGap)}
+                                            draftResetKey={element.id}
+                                            onFiniteNumber={(v) => {
+                                                if (v < 0) return;
+                                                onSaving(true);
+                                                try {
+                                                    patch({ stackGap: Math.min(256, v) });
+                                                } finally {
+                                                    onSaving(false);
+                                                }
+                                            }}
+                                            inputMode="numeric"
+                                            type="number"
+                                            min={0}
+                                            max={256}
+                                            unit="px"
+                                            aria-label="Gap between children"
+                                            title="Gap between children"
+                                        />
+                                    </div>
                                 );
                             },
                         },
@@ -182,31 +186,35 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                             render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                                 const current = getContainerProps(data.element);
                                 return (
-                                    <NumericDraftEnhancedInput
-                                        committedDisplay={String(current.stackPaddingTop)}
-                                        draftResetKey={element.id}
-                                        onFiniteNumber={(v) => {
-                                            if (v < 0) return;
-                                            const clamped = Math.min(256, v);
-                                            onSaving(true);
-                                            try {
-                                                patch({
-                                                    stackPaddingTop: clamped,
-                                                    stackPaddingRight: clamped,
-                                                    stackPaddingBottom: clamped,
-                                                    stackPaddingLeft: clamped,
-                                                });
-                                            } finally {
-                                                onSaving(false);
-                                            }
-                                        }}
-                                        inputMode="numeric"
-                                        type="number"
-                                        min={0}
-                                        max={256}
-                                        unit="px"
-                                        title="Padding (all sides)"
-                                    />
+                                    <div className="flex min-w-0 flex-col gap-1">
+                                        <span className="text-xs font-medium text-gray-400">Padding</span>
+                                        <NumericDraftEnhancedInput
+                                            committedDisplay={String(current.stackPaddingTop)}
+                                            draftResetKey={element.id}
+                                            onFiniteNumber={(v) => {
+                                                if (v < 0) return;
+                                                const clamped = Math.min(256, v);
+                                                onSaving(true);
+                                                try {
+                                                    patch({
+                                                        stackPaddingTop: clamped,
+                                                        stackPaddingRight: clamped,
+                                                        stackPaddingBottom: clamped,
+                                                        stackPaddingLeft: clamped,
+                                                    });
+                                                } finally {
+                                                    onSaving(false);
+                                                }
+                                            }}
+                                            inputMode="numeric"
+                                            type="number"
+                                            min={0}
+                                            max={256}
+                                            unit="px"
+                                            aria-label="Padding on all sides"
+                                            title="Padding (all sides)"
+                                        />
+                                    </div>
                                 );
                             },
                         },

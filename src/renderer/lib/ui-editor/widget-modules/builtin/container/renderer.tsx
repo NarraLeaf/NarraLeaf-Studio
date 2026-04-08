@@ -1,11 +1,15 @@
 import type { CSSProperties } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
-import { resolveContainerRectangleLike } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
+import {
+    resolveContainerAppearanceTransitions,
+    resolveContainerRectangleLike,
+} from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import {
     useWidgetRuntimeSnapshot,
     useWidgetRuntimeStateStore,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
 import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import { getContainerProps } from "./helpers";
 import type {
@@ -99,20 +103,28 @@ function ScrollInner({ element, children }: WidgetRendererProps) {
 }
 
 export function ContainerRenderer(props: WidgetRendererProps) {
-    const { element, children } = props;
+    const { element, children, useAppearanceInspectorPreview } = props;
     useWidgetRuntimeSnapshot();
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
+    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
     const p = getContainerProps(element);
     const clip = p.clipContent;
     const resolveCtx = {
-        variantOverrideId: widgetRuntimeStore?.getVariantOverride(element.id) ?? null,
+        variantOverrideId:
+            widgetRuntimeStore?.getVariantOverride(element.id) ?? inspectorVariantId ?? null,
         signals: widgetRuntimeStore?.getSignalsForElement(element.id, false) ?? DEFAULT_SYSTEM_INTERACTION_SIGNALS,
     };
     const rectangleLike = resolveContainerRectangleLike(element, p.appearance ?? undefined, resolveCtx);
+    const appearanceTransitions = resolveContainerAppearanceTransitions(p.appearance ?? undefined, resolveCtx);
 
     if (p.layoutKind === "free") {
         return (
-            <RectangleChromeRenderer {...props} clipContent={clip} rectangleLike={rectangleLike}>
+            <RectangleChromeRenderer
+                {...props}
+                clipContent={clip}
+                rectangleLike={rectangleLike}
+                appearanceTransitions={appearanceTransitions}
+            >
                 {children}
             </RectangleChromeRenderer>
         );
@@ -121,7 +133,12 @@ export function ContainerRenderer(props: WidgetRendererProps) {
     const inner = p.layoutKind === "scroll" ? <ScrollInner {...props} /> : <StackInner {...props} />;
 
     return (
-        <RectangleChromeRenderer {...props} clipContent={clip} rectangleLike={rectangleLike}>
+        <RectangleChromeRenderer
+            {...props}
+            clipContent={clip}
+            rectangleLike={rectangleLike}
+            appearanceTransitions={appearanceTransitions}
+        >
             {inner}
         </RectangleChromeRenderer>
     );

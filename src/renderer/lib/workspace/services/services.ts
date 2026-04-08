@@ -306,6 +306,8 @@ interface UIEditorStateEvents {
     viewportChanged: ViewportTransform;
     selectionChanged: SelectionState;
     interactionOverrideChanged: InteractionOverride | null;
+    /** Editor-only: appearance variant picker in the inspector (per element); drives canvas preview. */
+    appearanceInspectorVariantChanged: { elementId: string };
 }
 
 interface IUIEditorFontFaceService extends IService {
@@ -327,6 +329,9 @@ interface IUIEditorStateService extends IService {
     setUIElementSelection(selection: UIElementSelection): void;
     getDocument(): UIDocument;
     getSurface(surfaceId: string): UISurface | undefined;
+    /** Cached appearance variant id for inspector authoring (editing-area cache, not saved in UIDocument). */
+    getAppearanceInspectorVariant(elementId: string): string | null;
+    setAppearanceInspectorVariant(elementId: string, variantId: string): void;
     on<K extends keyof UIEditorStateEvents>(event: K, handler: (data: UIEditorStateEvents[K]) => void): () => void;
 }
 
