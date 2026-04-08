@@ -60,6 +60,12 @@ export type ContainerAppearancePropertyKey =
 /** Whitelisted visual keys for `nl.button`. */
 export type ButtonAppearancePropertyKey =
     | "backgroundColor"
+    | "fillType"
+    | "fillOpacity"
+    | "fillVisible"
+    | "imageFill"
+    | "backgroundImage"
+    | "backgroundFit"
     | "borderRadius"
     | "borderWidth"
     | "borderColor"

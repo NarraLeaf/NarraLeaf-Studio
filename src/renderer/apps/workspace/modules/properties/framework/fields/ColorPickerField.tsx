@@ -37,6 +37,8 @@ const HUE_GRADIENT_STOPS = [
 ];
 const PANEL_SPACING = 6;
 const PANEL_EDGE_PADDING = 8;
+/** Ignore stale `value` from async setValue briefly after map drag (ms). */
+const MAP_PUSH_STALE_MS = 180;
 
 interface ColorState {
     hue: number;
@@ -215,6 +217,11 @@ function deriveColorState(value: ColorValue): ColorState {
     };
 }
 
+/** HSL has no unique hue for grays / white / black; rgbToHsl reports h=0. */
+function isAchromaticHsl(s: number, l: number): boolean {
+    return s < 0.01 || l < 0.01 || l > 99.99;
+}
+
 export function ColorPickerTrigger({
     value,
     displayMode = "icon",
@@ -231,8 +238,13 @@ export function ColorPickerTrigger({
     const [adjustedPanelPosition, setAdjustedPanelPosition] = useState(panelPosition);
     const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const isDraggingMapRef = useRef(false);
     const [layoutTick, setLayoutTick] = useState(0);
     const [colorState, setColorState] = useState(() => deriveColorState(value));
+    const colorStateRef = useRef(colorState);
+    const pendingPushHexRef = useRef<string | null>(null);
+    const lastMapPushAtRef = useRef(0);
+    const lastMapInteractionRef = useRef(false);
     const actualModes = useMemo(
         () => (colorModes && colorModes.length > 0 ? colorModes : DEFAULT_COLOR_MODES),
         [colorModes]
@@ -248,16 +260,63 @@ export function ColorPickerTrigger({
 
     useEffect(() => {
         setColorState((prev) => {
+            const incomingHex = normalizeHex(value.hex) || "#FFFFFF";
+
+            if (isDraggingMapRef.current) {
+                return prev;
+            }
+
+            // Async field.setValue: parent may still hold an older hex while local state already matches our last push.
+            const mapPushStale =
+                lastMapInteractionRef.current &&
+                pendingPushHexRef.current != null &&
+                performance.now() - lastMapPushAtRef.current < MAP_PUSH_STALE_MS &&
+                incomingHex !== prev.hex &&
+                prev.hex === pendingPushHexRef.current;
+
+            if (mapPushStale) {
+                return prev;
+            }
+
+            // Same hex: do not re-derive HSL (float/hex rounding differs from HSV map path and causes thumb flicker).
+            if (incomingHex === prev.hex) {
+                if (value.alpha !== undefined && Math.abs((value.alpha ?? 1) - prev.alpha) > 1e-6) {
+                    const next = { ...prev, alpha: clamp(value.alpha, 0, 1) };
+                    colorStateRef.current = next;
+                    pendingPushHexRef.current = null;
+                    lastMapInteractionRef.current = false;
+                    return next;
+                }
+                pendingPushHexRef.current = null;
+                lastMapInteractionRef.current = false;
+                return prev;
+            }
+
             const next = deriveColorState(value);
             if (value.alpha === undefined) {
                 next.alpha = prev.alpha;
             }
+            if (isAchromaticHsl(next.saturation, next.lightness)) {
+                next.hue = prev.hue;
+            }
+            pendingPushHexRef.current = null;
+            lastMapInteractionRef.current = false;
+            colorStateRef.current = next;
             return next;
         });
     }, [value]);
 
+    useEffect(() => {
+        colorStateRef.current = colorState;
+    }, [colorState]);
+
+    useEffect(() => {
+        isDraggingMapRef.current = isDragging;
+    }, [isDragging]);
+
     const notifyChange = useCallback(
         (state: ColorState) => {
+            pendingPushHexRef.current = state.hex;
             onChange({
                 hex: state.hex,
                 alpha: state.alpha,
@@ -265,6 +324,30 @@ export function ColorPickerTrigger({
         },
         [onChange]
     );
+
+    const mapDragNotifyRafRef = useRef<number | null>(null);
+
+    const flushPendingMapDragNotify = useCallback(() => {
+        if (mapDragNotifyRafRef.current != null) {
+            cancelAnimationFrame(mapDragNotifyRafRef.current);
+            mapDragNotifyRafRef.current = null;
+        }
+        lastMapPushAtRef.current = performance.now();
+        lastMapInteractionRef.current = true;
+        notifyChange(colorStateRef.current);
+    }, [notifyChange]);
+
+    const scheduleMapDragNotify = useCallback(() => {
+        if (mapDragNotifyRafRef.current != null) {
+            return;
+        }
+        mapDragNotifyRafRef.current = requestAnimationFrame(() => {
+            mapDragNotifyRafRef.current = null;
+            lastMapPushAtRef.current = performance.now();
+            lastMapInteractionRef.current = true;
+            notifyChange(colorStateRef.current);
+        });
+    }, [notifyChange]);
 
     const applyColorState = useCallback(
         (change: (prev: ColorState) => Partial<ColorState>) => {
@@ -282,6 +365,8 @@ export function ColorPickerTrigger({
                     ...intermediate,
                     hex: rgbToHex(r, g, b),
                 };
+                colorStateRef.current = normalized;
+                lastMapInteractionRef.current = false;
                 notifyChange(normalized);
                 return normalized;
             });
@@ -305,9 +390,14 @@ export function ColorPickerTrigger({
     }, [disabled, readOnly, syncAnchorRect]);
 
     const closePicker = useCallback(() => {
+        if (mapDragNotifyRafRef.current != null || isDraggingMapRef.current) {
+            flushPendingMapDragNotify();
+        }
+        isDraggingMapRef.current = false;
+        setIsDragging(false);
         setIsOpen(false);
         setAnchorRect(null);
-    }, []);
+    }, [flushPendingMapDragNotify]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -436,21 +526,33 @@ export function ColorPickerTrigger({
         return () => document.removeEventListener("keydown", handleKeyDown);
     }, [isOpen, closePicker]);
 
+    // 2D map is HSV(s,v) at fixed hue. rgbToHsl maps achromatic RGB to h=0 — preserve prior hue for grays/white/black.
     const handleMapInteraction = useCallback(
         (clientX: number, clientY: number) => {
             const rect = panelRef.current?.querySelector("[data-color-map]")?.getBoundingClientRect();
             if (!rect) return;
             const saturation = clamp((clientX - rect.left) / rect.width, 0, 1);
-            const value = clamp(1 - (clientY - rect.top) / rect.height, 0, 1);
-            const { r, g, b } = hsvToRgb(colorState.hue, saturation, value);
-            const { h, s, l } = rgbToHsl(r, g, b);
-            applyColorState(() => ({
-                hue: h,
-                saturation: s,
-                lightness: l,
-            }));
+            const v = clamp(1 - (clientY - rect.top) / rect.height, 0, 1);
+            setColorState((prev) => {
+                const { r, g, b } = hsvToRgb(prev.hue, saturation, v);
+                const { h, s, l } = rgbToHsl(r, g, b);
+                const achromatic = isAchromaticHsl(s, l);
+                const intermediate = {
+                    ...prev,
+                    hue: achromatic ? prev.hue : h,
+                    saturation: s,
+                    lightness: l,
+                };
+                const normalized: ColorState = {
+                    ...intermediate,
+                    hex: rgbToHex(r, g, b),
+                };
+                colorStateRef.current = normalized;
+                return normalized;
+            });
+            scheduleMapDragNotify();
         },
-        [applyColorState, colorState.hue]
+        [scheduleMapDragNotify]
     );
 
     useEffect(() => {
@@ -459,6 +561,8 @@ export function ColorPickerTrigger({
             handleMapInteraction(event.clientX, event.clientY);
         };
         const handleMouseUp = () => {
+            flushPendingMapDragNotify();
+            isDraggingMapRef.current = false;
             setIsDragging(false);
         };
         window.addEventListener("mousemove", handleMouseMove);
@@ -467,7 +571,16 @@ export function ColorPickerTrigger({
             window.removeEventListener("mousemove", handleMouseMove);
             window.removeEventListener("mouseup", handleMouseUp);
         };
-    }, [isDragging, handleMapInteraction]);
+    }, [isDragging, handleMapInteraction, flushPendingMapDragNotify]);
+
+    useEffect(() => {
+        return () => {
+            if (mapDragNotifyRafRef.current != null) {
+                cancelAnimationFrame(mapDragNotifyRafRef.current);
+                mapDragNotifyRafRef.current = null;
+            }
+        };
+    }, []);
 
     const displayColor = useMemo(() => colorValueToCss(colorState), [colorState]);
     const currentRgb = useMemo(() => {
@@ -627,6 +740,7 @@ export function ColorPickerTrigger({
                 className="relative h-32 rounded-xl border border-white/10 overflow-hidden cursor-crosshair"
                 data-color-map
                 onMouseDown={(event) => {
+                    isDraggingMapRef.current = true;
                     setIsDragging(true);
                     handleMapInteraction(event.clientX, event.clientY);
                 }}

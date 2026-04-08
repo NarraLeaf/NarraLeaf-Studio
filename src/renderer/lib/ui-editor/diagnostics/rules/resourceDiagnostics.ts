@@ -1,6 +1,12 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
+import { getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
+import {
+    buttonResolvedVisualToRectangleLike,
+    resolveButtonVisualProps,
+} from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
+import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import type { UISurfaceDiagnostic } from "../types";
 
@@ -46,6 +52,28 @@ export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiag
                         source: "resource",
                         message: `Container “${el.name ?? el.id}” uses image fill without an asset`,
                         hint: "Pick an image asset or switch fill type.",
+                        elementId: el.id,
+                    });
+                }
+            }
+        }
+        if (el.type === "nl.button") {
+            const flat = getButtonProps(el);
+            const signals = { ...DEFAULT_SYSTEM_INTERACTION_SIGNALS, disabled: Boolean(flat.interactionDisabled) };
+            const v = resolveButtonVisualProps(el, flat.appearance ?? undefined, {
+                variantOverrideId: null,
+                signals,
+            });
+            if (v.fillType === "image") {
+                const rl = buttonResolvedVisualToRectangleLike(v);
+                const fill = normalizeImageFill(rl);
+                if (imageFillMissingAsset(fill) && !rl.backgroundImage?.trim()) {
+                    out.push({
+                        id: `res:button-image:${el.id}`,
+                        severity: "warning",
+                        source: "resource",
+                        message: `Button “${el.name ?? el.id}” uses image background without an asset`,
+                        hint: "Pick an image asset or switch background type.",
                         elementId: el.id,
                     });
                 }

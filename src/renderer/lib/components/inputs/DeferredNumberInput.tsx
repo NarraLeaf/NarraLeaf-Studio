@@ -3,6 +3,7 @@ import {
     useEffect,
     useRef,
     useCallback,
+    useMemo,
     type ChangeEvent,
     type FocusEvent,
     type KeyboardEvent,
@@ -10,6 +11,14 @@ import {
 } from "react";
 
 type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "onBlur" | "onKeyDown">;
+
+/** Full-precision string for editing; avoids scientific notation for typical UI numbers. */
+function numberToFullDisplayString(n: number): string {
+    if (!Number.isFinite(n)) {
+        return "";
+    }
+    return String(n);
+}
 
 export interface DeferredNumberInputProps {
     value: number;
@@ -22,6 +31,7 @@ export interface DeferredNumberInputProps {
     readOnly?: boolean;
     inputClassName?: string;
     onSaving?: (saving: boolean) => void;
+    /** When set, unfocused display uses this formatter (e.g. toFixed). Focused shows full stored value. */
     formatValue?: (value: number) => string;
     inputProps?: InputProps;
 }
@@ -40,7 +50,7 @@ export function DeferredNumberInput({
     formatValue,
     inputProps,
 }: DeferredNumberInputProps) {
-    const formatDisplayValue = useCallback(
+    const formatBlurredDisplay = useCallback(
         (nextValue: number) => {
             if (!Number.isFinite(nextValue)) {
                 return "";
@@ -50,17 +60,24 @@ export function DeferredNumberInput({
         [formatValue]
     );
 
-    const [localValue, setLocalValue] = useState(() => formatDisplayValue(value));
+    const [hasFocus, setHasFocus] = useState(false);
+    const [localValue, setLocalValue] = useState(() => numberToFullDisplayString(value));
     const [isSaving, setIsSaving] = useState(false);
     const lastExternalValueRef = useRef(value);
 
-    useEffect(() => {
-        if (value === lastExternalValueRef.current) {
-            return;
+    const displayValue = useMemo(() => {
+        if (hasFocus) {
+            return localValue;
         }
+        return formatBlurredDisplay(value);
+    }, [hasFocus, localValue, value, formatBlurredDisplay]);
+
+    useEffect(() => {
         lastExternalValueRef.current = value;
-        setLocalValue(formatDisplayValue(value));
-    }, [value, formatDisplayValue]);
+        if (hasFocus) {
+            setLocalValue(numberToFullDisplayString(value));
+        }
+    }, [value, hasFocus]);
 
     const handleCommit = useCallback(async () => {
         if (disabled || readOnly || isSaving) {
@@ -68,11 +85,11 @@ export function DeferredNumberInput({
         }
         const parsed = Number.parseFloat(localValue);
         if (!Number.isFinite(parsed)) {
-            setLocalValue(formatDisplayValue(lastExternalValueRef.current));
+            setLocalValue(numberToFullDisplayString(lastExternalValueRef.current));
             return;
         }
         if (parsed === lastExternalValueRef.current) {
-            setLocalValue(formatDisplayValue(parsed));
+            setLocalValue(numberToFullDisplayString(parsed));
             return;
         }
         setIsSaving(true);
@@ -80,21 +97,32 @@ export function DeferredNumberInput({
         try {
             await Promise.resolve(onCommit(parsed));
             lastExternalValueRef.current = parsed;
-            setLocalValue(formatDisplayValue(parsed));
+            setLocalValue(numberToFullDisplayString(parsed));
         } catch (error) {
             console.error("DeferredNumberInput: commit failed", error);
-            setLocalValue(formatDisplayValue(lastExternalValueRef.current));
+            setLocalValue(numberToFullDisplayString(lastExternalValueRef.current));
         } finally {
             setIsSaving(false);
             onSaving?.(false);
         }
-    }, [disabled, readOnly, isSaving, localValue, onCommit, onSaving, formatDisplayValue]);
+    }, [disabled, readOnly, isSaving, localValue, onCommit, onSaving]);
 
-    const { onBlur, onChange, onKeyDown, ...restInputProps } = inputProps as InputHTMLAttributes<HTMLInputElement> ?? {};
+    const { onBlur, onChange, onKeyDown, onFocus, ...restInputProps } =
+        (inputProps as InputHTMLAttributes<HTMLInputElement>) ?? {};
+
+    const handleFocus = useCallback(
+        (event: FocusEvent<HTMLInputElement>) => {
+            setHasFocus(true);
+            setLocalValue(numberToFullDisplayString(value));
+            onFocus?.(event);
+        },
+        [onFocus, value]
+    );
 
     const handleBlur = useCallback(
-        (event: FocusEvent<HTMLInputElement>) => {
-            handleCommit();
+        async (event: FocusEvent<HTMLInputElement>) => {
+            await handleCommit();
+            setHasFocus(false);
             onBlur?.(event);
         },
         [handleCommit, onBlur]
@@ -112,20 +140,21 @@ export function DeferredNumberInput({
         (event: KeyboardEvent<HTMLInputElement>) => {
             if (event.key === "Enter") {
                 event.preventDefault();
-                handleCommit();
+                void handleCommit();
             } else if (event.key === "Escape") {
                 event.preventDefault();
-                setLocalValue(formatDisplayValue(lastExternalValueRef.current));
+                setLocalValue(numberToFullDisplayString(value));
+                setHasFocus(false);
             }
             onKeyDown?.(event);
         },
-        [handleCommit, onKeyDown, formatDisplayValue]
+        [handleCommit, onKeyDown, value]
     );
 
     return (
         <input
             type="number"
-            value={localValue}
+            value={displayValue}
             min={min}
             max={max}
             step={step}
@@ -133,6 +162,7 @@ export function DeferredNumberInput({
             disabled={disabled}
             readOnly={readOnly}
             className={inputClassName}
+            onFocus={handleFocus}
             onBlur={handleBlur}
             onChange={handleChange}
             onKeyDown={handleKeyDown}

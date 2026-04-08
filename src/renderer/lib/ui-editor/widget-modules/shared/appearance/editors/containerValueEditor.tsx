@@ -1,4 +1,4 @@
-import { Eye, EyeOff, Maximize2, Square } from "lucide-react";
+import { Droplets, Eye, EyeOff, Maximize2, Square } from "lucide-react";
 import type { ImageFillFieldDefinition } from "@/apps/workspace/modules/properties/framework/types";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
@@ -241,7 +241,7 @@ export function ContainerAppearanceValueEditor({
                     min={0}
                     max={100}
                     precision={null}
-                    leftIcon={<Eye className="w-4 h-4 text-gray-400" />}
+                    leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
                     className="w-full min-w-0"
                 />
             );

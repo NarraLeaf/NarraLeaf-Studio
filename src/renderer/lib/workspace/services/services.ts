@@ -66,6 +66,8 @@ enum Services {
     LocalBlueprint = "localBlueprint",
     UIBlueprintLifecycle = "uiBlueprintLifecycle",
     DevMode = "devMode",
+    /** Ref-counted FontFace + blob URLs for UI editor widgets */
+    UIEditorFontFace = "uiEditorFontFace",
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
@@ -306,6 +308,14 @@ interface UIEditorStateEvents {
     interactionOverrideChanged: InteractionOverride | null;
 }
 
+interface IUIEditorFontFaceService extends IService {
+    acquire(
+        assetId: string,
+    ): Promise<{ ok: true; cssFamily: string } | { ok: false; error: string }>;
+    release(assetId: string): void;
+    invalidate(assetId: string): void;
+}
+
 interface IUIEditorStateService extends IService {
     getTool(): UITool;
     setTool(tool: UITool): void;
@@ -402,7 +412,7 @@ export {
     IService, IServiceAssetsService, IPanelStateService, ISettingsService, IStorageService, IStoryService,
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
     ICharacterService, IUIDocumentService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
-    IUIRuntimeBridgeService, IUIEditorStateService, IDevModeService, UIEditorStateEvents,
+    IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, UIEditorStateEvents,
     Services, WorkspaceContext
 };
 

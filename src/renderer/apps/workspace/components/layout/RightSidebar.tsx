@@ -6,6 +6,7 @@ import { PanelPosition } from "../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
+import { blurSidebarRailFocusIfLeavingRail } from "./blurSidebarRailFocus";
 
 interface RightSidebarProps {
     panelId: string;
@@ -63,7 +64,7 @@ export function RightSidebar({ panelId, onClose, width }: RightSidebarProps) {
             }`}
             style={{ width: `${width}px` }}
             onClick={handleClick}
-            tabIndex={0}
+            tabIndex={-1}
         >
             {/* Panel Header */}
             <div className="h-12 flex items-center justify-between px-4 bg-[#0b0d12] border-b border-white/10">
@@ -82,7 +83,10 @@ export function RightSidebar({ panelId, onClose, width }: RightSidebarProps) {
             </div>
 
             {/* Panel Content with payload */}
-            <div className="flex-1 overflow-auto">
+            <div
+                className="flex-1 overflow-auto"
+                onPointerDownCapture={e => blurSidebarRailFocusIfLeavingRail(e.target)}
+            >
                 <PanelComponent panelId={panelId} payload={panel.payload} />
             </div>
         </div>

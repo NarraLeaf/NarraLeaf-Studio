@@ -26,6 +26,8 @@ export type WidgetRendererProps = {
 export type UIInspectorData = {
     element: UIElement;
     elements: UIElement[];
+    /** Document mutations from inspector fields (stable custom components use this instead of per-schema closures). */
+    documentService: UIDocumentService;
     /** Set when inspecting a canvas widget; required for Blueprint M2 binding UI. */
     surfaceId?: string;
 };

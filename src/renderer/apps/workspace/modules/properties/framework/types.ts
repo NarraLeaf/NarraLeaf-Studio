@@ -24,7 +24,8 @@ export type FieldType =
     | "menuTrigger"
     | "inputGroup"
     | "inlineRow"
-    | "imageFill";
+    | "imageFill"
+    | "fontAsset";
 
 /**
  * Base field definition shared by all field types
@@ -213,6 +214,8 @@ export interface InputGroupItem<TData = any> {
     maxLength?: number;
     className?: string;
     selectAllOnFocus?: boolean;
+    /** When set on number inputs, unfocused display uses toFixed(precision); focused shows full numeric string. */
+    precision?: number | null;
     getValue: (data: TData) => string;
     setValue: (data: TData, value: string) => void | Promise<void>;
 }
@@ -331,6 +334,12 @@ export interface ImageFillFieldDefinition<TData = any> extends BaseFieldDefiniti
     allowedFillModes?: ImageFillMode[];
 }
 
+export interface FontAssetFieldDefinition<TData = any> extends BaseFieldDefinition<TData> {
+    type: "fontAsset";
+    getValue: (data: TData) => string | null;
+    setValue: (data: TData, value: string | null) => void | Promise<void>;
+}
+
 /**
  * Union of all field definitions
  */
@@ -352,7 +361,8 @@ export type FieldDefinition<TData = any> =
     | MenuTriggerFieldDefinition<TData>
     | InputGroupFieldDefinition<TData>
     | InlineRowFieldDefinition<TData>
-    | ImageFillFieldDefinition<TData>;
+    | ImageFillFieldDefinition<TData>
+    | FontAssetFieldDefinition<TData>;
 
 /**
  * Property editor schema definition

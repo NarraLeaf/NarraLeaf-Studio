@@ -65,9 +65,10 @@ export function EnhancedInput({
         }
         return value;
     }, [hasFocus, roundingPrecision, value]);
+    // Do not gate on hasFocus: focusing the popover input must keep this true, otherwise
+    // shouldUsePopover flips off, the close-on-false effect runs, and the popover vanishes.
     const shouldUsePopover =
         popoverWhenNarrow &&
-        !hasFocus &&
         containerWidth !== null &&
         containerWidth < popoverThreshold;
 

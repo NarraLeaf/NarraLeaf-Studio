@@ -1,6 +1,23 @@
 import React, { useEffect } from "react";
 import { X } from "lucide-react";
-import { Button } from "./Button";
+
+/** Footer action buttons — same classes as DialogContainer (workspace input / info dialogs). */
+export function dialogFooterButtonClass(options: {
+    variant: "secondary" | "primary" | "danger";
+    disabled?: boolean;
+}): string {
+    const base = "px-4 py-2 text-sm rounded transition-colors";
+    if (options.disabled) {
+        return `${base} bg-gray-700 text-gray-500 cursor-not-allowed`;
+    }
+    if (options.variant === "primary") {
+        return `${base} bg-primary hover:bg-primary/80 text-white font-medium`;
+    }
+    if (options.variant === "danger") {
+        return `${base} bg-red-600 hover:bg-red-700 text-white font-medium`;
+    }
+    return `${base} bg-white/5 hover:bg-white/10 text-gray-300`;
+}
 
 export interface ModalProps {
     isOpen: boolean;
@@ -16,15 +33,15 @@ export interface ModalProps {
 }
 
 const sizeStyles = {
-    sm: "max-w-md",
+    /** Align with DialogContainer default width (500px). */
+    sm: "max-w-[500px]",
     md: "max-w-lg",
     lg: "max-w-2xl",
     xl: "max-w-4xl",
 };
 
 /**
- * Modal dialog component with VS Code-like styling
- * Provides overlay and backdrop blur effects
+ * Modal shell aligned with workspace DialogContainer (layout, colors, motion).
  */
 export function Modal({
     isOpen,
@@ -65,52 +82,46 @@ export function Modal({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-            {/* Backdrop */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop — match workspace DialogContainer */}
             <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-150"
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
                 onClick={handleOverlayClick}
             />
 
-            {/* Modal */}
+            {/* Modal panel */}
             <div
                 className={`
-                    relative bg-[#1e1f22] border border-white/20 rounded-lg shadow-2xl
-                    transition-all duration-150 transform
-                    ${sizeStyles[size]} w-full mx-4 max-h-[90vh] overflow-hidden
+                    relative bg-[#1e1e1e] border border-white/10 rounded-lg shadow-2xl animate-scale-in
+                    ${sizeStyles[size]} w-full max-h-[90vh] overflow-hidden
                     ${className}
                 `}
             >
                 {/* Header */}
                 {(title || showCloseButton) && (
-                    <div className="flex items-center justify-between p-4 border-b border-white/10">
-                        {title && (
-                            <h2 className="text-lg font-semibold text-gray-200">
-                                {title}
-                            </h2>
-                        )}
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+                        {title && <h2 className="text-lg font-semibold text-white">{title}</h2>}
                         {showCloseButton && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
+                            <button
+                                type="button"
                                 onClick={onClose}
-                                className="ml-auto"
+                                className="p-1 rounded hover:bg-white/10 transition-colors ml-auto"
                                 aria-label="Close modal"
                             >
-                                <X className="w-4 h-4" />
-                            </Button>
+                                <X className="w-5 h-5 text-gray-400" strokeWidth={2} />
+                            </button>
                         )}
                     </div>
                 )}
 
                 {/* Content */}
-                <div className="p-4 overflow-y-auto max-h-[calc(90vh-120px)]">
+                <div className="px-6 py-4 overflow-y-auto max-h-[calc(90vh-140px)] text-gray-200">
                     {children}
                 </div>
 
                 {/* Footer */}
                 {footer && (
-                    <div className="flex items-center justify-end gap-2 p-4 border-t border-white/10 bg-white/5">
+                    <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-white/10 bg-[#252525]">
                         {footer}
                     </div>
                 )}
@@ -151,20 +162,29 @@ export function ConfirmModal({
             size="sm"
             footer={
                 <div className="flex items-center gap-2">
-                    <Button variant="ghost" onClick={onClose} disabled={isLoading}>
+                    <button
+                        type="button"
+                        className={dialogFooterButtonClass({ variant: "secondary", disabled: isLoading })}
+                        onClick={onClose}
+                        disabled={isLoading}
+                    >
                         {cancelText}
-                    </Button>
-                    <Button
-                        variant={variant}
+                    </button>
+                    <button
+                        type="button"
+                        className={dialogFooterButtonClass({
+                            variant: variant === "danger" ? "danger" : "primary",
+                            disabled: isLoading,
+                        })}
                         onClick={onConfirm}
                         disabled={isLoading}
                     >
                         {confirmText}
-                    </Button>
+                    </button>
                 </div>
             }
         >
-            <p className="text-sm text-gray-300">{message}</p>
+            <p className="text-sm text-gray-200 whitespace-pre-wrap">{message}</p>
         </Modal>
     );
 }
@@ -192,12 +212,16 @@ export function AlertModal({
             title={title}
             size="sm"
             footer={
-                <Button variant="primary" onClick={onClose} className="ml-auto">
+                <button
+                    type="button"
+                    className={dialogFooterButtonClass({ variant: "primary" })}
+                    onClick={onClose}
+                >
                     {confirmText}
-                </Button>
+                </button>
             }
         >
-            <p className="text-sm text-gray-300">{message}</p>
+            <p className="text-sm text-gray-200 whitespace-pre-wrap">{message}</p>
         </Modal>
     );
 }
@@ -213,7 +237,7 @@ export function ModalHeader({
     children: React.ReactNode;
 }) {
     return (
-        <div className={`flex items-center justify-between p-4 border-b border-white/10 ${className}`}>
+        <div className={`flex items-center justify-between px-6 py-4 border-b border-white/10 ${className}`}>
             {children}
         </div>
     );
@@ -230,7 +254,7 @@ export function ModalBody({
     children: React.ReactNode;
 }) {
     return (
-        <div className={`p-4 ${className}`}>
+        <div className={`px-6 py-4 text-gray-200 ${className}`}>
             {children}
         </div>
     );
@@ -247,7 +271,9 @@ export function ModalFooter({
     children: React.ReactNode;
 }) {
     return (
-        <div className={`flex items-center justify-end gap-2 p-4 border-t border-white/10 bg-white/5 ${className}`}>
+        <div
+            className={`flex items-center justify-end gap-2 px-6 py-4 border-t border-white/10 bg-[#252525] ${className}`}
+        >
             {children}
         </div>
     );

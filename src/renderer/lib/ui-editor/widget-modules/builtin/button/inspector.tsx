@@ -1,10 +1,52 @@
+import { useLayoutEffect } from "react";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
+import {
+    ensureButtonAppearanceHasAllKeys,
+    isUsableAppearanceModel,
+} from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { getButtonProps } from "./helpers";
 import type { ButtonWidgetProps } from "./types";
+
+/** Module-level so FieldRenderer keeps a stable component identity across schema rebuilds (preserves variant selection). */
+function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
+    const flat = getButtonProps(props.data.element);
+    const appearance = flat.appearance;
+    const { documentService } = props.data;
+    const element = props.data.element;
+
+    useLayoutEffect(() => {
+        if (!isUsableAppearanceModel(appearance)) {
+            return;
+        }
+        const f = getButtonProps(element);
+        const next = ensureButtonAppearanceHasAllKeys(appearance, f);
+        if (next !== appearance) {
+            documentService.updateElementProps(element.id, {
+                ...element.props,
+                appearance: next,
+            });
+        }
+    }, [appearance, documentService, element]);
+
+    return (
+        <AppearanceAuthoringPanel
+            kind="button"
+            appearance={appearance ?? null}
+            onReplace={next => {
+                documentService.updateElementProps(element.id, {
+                    ...element.props,
+                    appearance: next,
+                });
+            }}
+            inspectorData={props.data}
+            draftResetKey={element.id}
+        />
+    );
+}
 
 export function createButtonInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
@@ -16,24 +58,6 @@ export function createButtonInspector(ctx: InspectorContext) {
             ...partial,
         });
     };
-
-    function ButtonAppearanceField(props: CustomFieldProps<D>) {
-        const appearance = getButtonProps(props.data.element).appearance;
-        return (
-            <AppearanceAuthoringPanel
-                kind="button"
-                appearance={appearance ?? null}
-                onReplace={next => {
-                    documentService.updateElementProps(props.data.element.id, {
-                        ...props.data.element.props,
-                        appearance: next,
-                    });
-                }}
-                inspectorData={props.data}
-                draftResetKey={props.data.element.id}
-            />
-        );
-    }
 
     return createPropertyEditorSchema<D>({
         id: `ui-inspector:nl.button:${element.id}`,
@@ -48,7 +72,7 @@ export function createButtonInspector(ctx: InspectorContext) {
                         id: "section.appearanceAuthoring",
                         type: "section",
                         title: "Appearance",
-                        helpText: "Variants and conditional rows (last matching row wins per property).",
+                        helpText: "Compact modules with per-module state overrides (header menu: add or remove).",
                         fields: [
                             defineField<D, any>({
                                 id: "button.appearance.panel",
@@ -61,6 +85,8 @@ export function createButtonInspector(ctx: InspectorContext) {
                         id: "section.behavior",
                         type: "section",
                         title: "Behavior",
+                        collapsible: true,
+                        defaultCollapsed: true,
                         fields: [
                             defineField<D, any>({
                                 id: "button.interactionDisabled",
@@ -81,6 +107,8 @@ export function createButtonInspector(ctx: InspectorContext) {
                         id: "section.blueprint",
                         type: "section",
                         title: "Blueprint",
+                        collapsible: true,
+                        defaultCollapsed: true,
                         fields: [
                             defineField<D, any>({
                                 id: "interaction.blueprint.readonly",

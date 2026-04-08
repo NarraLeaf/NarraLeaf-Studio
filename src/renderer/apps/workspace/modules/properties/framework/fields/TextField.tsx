@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, memo, useRef } from "react";
+import { useState, useEffect, useCallback, memo, useRef, useId } from "react";
 import { TextFieldDefinition, TextareaFieldDefinition } from "../types";
 
 interface TextFieldProps<TData> {
@@ -11,6 +11,7 @@ interface TextFieldProps<TData> {
  * Renders a text input or textarea field
  */
 function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>) {
+    const inputId = useId();
     const currentValue = field.getValue(data);
     const [localValue, setLocalValue] = useState(currentValue);
     const [isSaving, setIsSaving] = useState(false);
@@ -53,11 +54,12 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
         return (
             <div>
                 {field.label && (
-                    <label className="block text-xs font-medium text-gray-400 mb-1">
+                    <label htmlFor={inputId} className="block text-xs font-medium text-gray-400 mb-1">
                         {field.label}
                     </label>
                 )}
                 <textarea
+                    id={inputId}
                     value={localValue}
                     onChange={(e) => setLocalValue(e.target.value)}
                     onBlur={handleBlur}
@@ -79,11 +81,12 @@ function TextFieldInner<TData>({ field, data, onSaving }: TextFieldProps<TData>)
     return (
         <div>
             {field.label && (
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label htmlFor={inputId} className="block text-xs font-medium text-gray-400 mb-1">
                     {field.label}
                 </label>
             )}
             <input
+                id={inputId}
                 type="text"
                 value={localValue}
                 onChange={(e) => setLocalValue(e.target.value)}

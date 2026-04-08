@@ -1,33 +1,56 @@
+import { useLayoutEffect } from "react";
 import type { CustomFieldProps } from "@/apps/workspace/modules/properties/framework/types";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type { InspectorContext, UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
-import { buildRectangleLayoutAndTransformFields } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleLayoutAndTransformFields";
+import {
+    ensureContainerAppearanceHasAllKeys,
+    isUsableAppearanceModel,
+} from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { getContainerProps } from "./helpers";
 import { buildContainerLayoutLeadingFields } from "./inspectorLayoutFields";
 
+/** Module-level so FieldRenderer keeps a stable component identity across schema rebuilds (preserves variant selection). */
+function ContainerAppearanceField(props: CustomFieldProps<UIInspectorData>) {
+    const flat = getContainerProps(props.data.element);
+    const appearance = flat.appearance;
+    const { documentService } = props.data;
+    const element = props.data.element;
+
+    useLayoutEffect(() => {
+        if (!isUsableAppearanceModel(appearance)) {
+            return;
+        }
+        const f = getContainerProps(element);
+        const next = ensureContainerAppearanceHasAllKeys(appearance, f);
+        if (next !== appearance) {
+            documentService.updateElementProps(element.id, {
+                ...element.props,
+                appearance: next,
+            });
+        }
+    }, [appearance, documentService, element]);
+
+    return (
+        <AppearanceAuthoringPanel
+            kind="container"
+            appearance={appearance ?? null}
+            onReplace={next => {
+                documentService.updateElementProps(props.data.element.id, {
+                    ...props.data.element.props,
+                    appearance: next,
+                });
+            }}
+            inspectorData={props.data}
+            draftResetKey={props.data.element.id}
+        />
+    );
+}
+
 export function createContainerInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
-    const { element, documentService } = ctx;
-
-    function ContainerAppearanceField(props: CustomFieldProps<D>) {
-        const appearance = getContainerProps(props.data.element).appearance;
-        return (
-            <AppearanceAuthoringPanel
-                kind="container"
-                appearance={appearance ?? null}
-                onReplace={next => {
-                    documentService.updateElementProps(props.data.element.id, {
-                        ...props.data.element.props,
-                        appearance: next,
-                    });
-                }}
-                inspectorData={props.data}
-                draftResetKey={props.data.element.id}
-            />
-        );
-    }
+    const { element } = ctx;
 
     return createPropertyEditorSchema<D>({
         id: `ui-inspector:nl.container:${element.id}`,
@@ -39,12 +62,11 @@ export function createContainerInspector(ctx: InspectorContext) {
                 title: "Properties",
                 fields: [
                     ...(buildContainerLayoutLeadingFields(ctx) as ReturnType<typeof defineField<D, any>>[]),
-                    ...(buildRectangleLayoutAndTransformFields(ctx) as ReturnType<typeof defineField<D, any>>[]),
                     defineField<D, any>({
                         id: "section.appearanceAuthoring",
                         type: "section",
                         title: "Appearance",
-                        helpText: "Variants and conditional rows (last matching row wins per property).",
+                        helpText: "Compact modules with per-module state overrides (header menu: add or remove).",
                         fields: [
                             defineField<D, any>({
                                 id: "container.appearance.panel",
@@ -63,6 +85,8 @@ export function createContainerInspector(ctx: InspectorContext) {
                         id: "section.blueprint",
                         type: "section",
                         title: "Blueprint",
+                        collapsible: true,
+                        defaultCollapsed: true,
                         fields: [
                             defineField<D, any>({
                                 id: "interaction.blueprint.readonly",

@@ -250,6 +250,48 @@ function applyButtonKey(target: ButtonWidgetProps, key: ButtonAppearanceProperty
             }
             break;
         }
+        case "backgroundImage": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.backgroundImage = s;
+            }
+            break;
+        }
+        case "backgroundFit": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.backgroundFit = s;
+            }
+            break;
+        }
+        case "imageFill": {
+            const f = coerceImageFill(raw);
+            if (f !== undefined) {
+                target.imageFill = f;
+            }
+            break;
+        }
+        case "fillType": {
+            const s = coerceString(raw);
+            if (s === "color" || s === "image") {
+                target.fillType = s;
+            }
+            break;
+        }
+        case "fillVisible": {
+            const b = coerceBool(raw);
+            if (b !== undefined) {
+                target.fillVisible = b;
+            }
+            break;
+        }
+        case "fillOpacity": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.fillOpacity = n;
+            }
+            break;
+        }
         case "borderRadius": {
             const n = coerceNumber(raw);
             if (n !== undefined) {
@@ -348,11 +390,30 @@ export function resolveButtonVisualProps(
     ctx: AppearanceResolveContext
 ): Pick<
     ButtonWidgetProps,
-    "backgroundColor" | "borderRadius" | "borderWidth" | "borderColor" | "borderStyle" | "paddingX" | "paddingY" | "clipContent"
+    | "backgroundColor"
+    | "fillType"
+    | "fillOpacity"
+    | "fillVisible"
+    | "imageFill"
+    | "backgroundImage"
+    | "backgroundFit"
+    | "borderRadius"
+    | "borderWidth"
+    | "borderColor"
+    | "borderStyle"
+    | "paddingX"
+    | "paddingY"
+    | "clipContent"
 > {
     const flat = getButtonProps(element);
     const baseline = {
         backgroundColor: flat.backgroundColor,
+        fillType: flat.fillType,
+        fillOpacity: flat.fillOpacity,
+        fillVisible: flat.fillVisible,
+        imageFill: flat.imageFill,
+        backgroundImage: flat.backgroundImage,
+        backgroundFit: flat.backgroundFit,
         borderRadius: flat.borderRadius,
         borderWidth: flat.borderWidth,
         borderColor: flat.borderColor,
@@ -381,4 +442,49 @@ export function resolveButtonVisualProps(
         applyButtonKey(next as ButtonWidgetProps, key, raw);
     }
     return next;
+}
+
+/** Map resolved button visuals to rectangle chrome for `RectangleChromeRenderer` and image-fill diagnostics. */
+export function buttonResolvedVisualToRectangleLike(
+    v: Pick<
+        ButtonWidgetProps,
+        | "backgroundColor"
+        | "fillType"
+        | "fillOpacity"
+        | "fillVisible"
+        | "imageFill"
+        | "backgroundImage"
+        | "backgroundFit"
+        | "borderRadius"
+        | "borderWidth"
+        | "borderColor"
+        | "borderStyle"
+    >
+): RectangleLikeProps {
+    const r = v.borderRadius;
+    const hasBorder = v.borderStyle !== "none" && v.borderWidth > 0;
+    return {
+        backgroundColor: v.backgroundColor,
+        borderRadius: r,
+        borderRadiusTL: r,
+        borderRadiusTR: r,
+        borderRadiusBL: r,
+        borderRadiusBR: r,
+        borderRadiusLinked: true,
+        borderColor: v.borderColor,
+        borderWidth: v.borderWidth,
+        borderStyle: v.borderStyle === "none" ? "solid" : v.borderStyle,
+        backgroundImage: v.backgroundImage,
+        backgroundFit: v.backgroundFit,
+        imageFill: v.imageFill,
+        fillType: v.fillType,
+        fillVisible: v.fillVisible,
+        fillOpacity: v.fillOpacity,
+        strokeVisible: hasBorder,
+        strokeOpacity: 1,
+        strokeAlign: "center",
+        strokeSide: "all",
+        borderJoin: "miter",
+        cornerAdvanced: false,
+    };
 }

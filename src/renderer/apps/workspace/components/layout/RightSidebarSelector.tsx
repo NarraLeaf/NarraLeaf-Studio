@@ -34,7 +34,10 @@ export function RightSidebarSelector({
     };
 
     return (
-        <div className="w-12 bg-[#0b0d12] border-l border-white/10 flex flex-col items-center py-2 gap-1">
+        <div
+            data-workspace-sidebar-rail=""
+            className="w-12 bg-[#0b0d12] border-l border-white/10 flex flex-col items-center py-2 gap-1"
+        >
             {panels.map((panel) => (
                 <button
                     key={panel.id}

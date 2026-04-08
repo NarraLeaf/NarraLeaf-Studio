@@ -90,46 +90,65 @@ export function Accordion({
         }
     };
 
+    const toggleItemRef = useRef(toggleItem);
+    toggleItemRef.current = toggleItem;
+
     const handleSetFocusedItem = (id: string | null) => {
         setFocusedItemId(id);
         onItemFocus?.(id);
     };
 
-    // Keyboard navigation
+    // Keyboard navigation (scoped to this accordion only; never steal keys from other panels or editable fields)
     useEffect(() => {
         if (!isActive || !containerRef.current) return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Get all accordion items
-            const items = containerRef.current?.querySelectorAll('[data-accordion-item]');
+            const root = containerRef.current;
+            if (!root) return;
+
+            const raw = e.target;
+            const el =
+                raw instanceof Element ? raw : raw instanceof Node ? (raw.parentElement as Element | null) : null;
+            if (!el || !root.contains(el)) return;
+
+            // Nested accordion: let the innermost accordion instance handle the event
+            const nearestRoot = el.closest("[data-accordion-root]");
+            if (nearestRoot !== root) return;
+
+            if (el.closest("input, textarea, select, [contenteditable='true']")) return;
+
+            const items = root.querySelectorAll("[data-accordion-item]");
             if (!items || items.length === 0) return;
 
-            const itemIds = Array.from(items).map(item => item.getAttribute('data-accordion-item')!);
+            const itemIds = Array.from(items).map(item => item.getAttribute("data-accordion-item")!);
             const currentIndex = focusedItemId ? itemIds.indexOf(focusedItemId) : -1;
 
             switch (e.key) {
-                case 'ArrowDown':
+                case "ArrowDown":
                     e.preventDefault();
-                    const nextIndex = (currentIndex + 1) % itemIds.length;
-                    handleSetFocusedItem(itemIds[nextIndex]);
-                    break;
-                case 'ArrowUp':
-                    e.preventDefault();
-                    const prevIndex = currentIndex <= 0 ? itemIds.length - 1 : currentIndex - 1;
-                    handleSetFocusedItem(itemIds[prevIndex]);
-                    break;
-                case 'Enter':
-                case ' ':
-                    e.preventDefault();
-                    if (focusedItemId) {
-                        toggleItem(focusedItemId);
+                    {
+                        const nextIndex = (currentIndex + 1) % itemIds.length;
+                        handleSetFocusedItem(itemIds[nextIndex]);
                     }
+                    break;
+                case "ArrowUp":
+                    e.preventDefault();
+                    {
+                        const prevIndex = currentIndex <= 0 ? itemIds.length - 1 : currentIndex - 1;
+                        handleSetFocusedItem(itemIds[prevIndex]);
+                    }
+                    break;
+                case "Enter":
+                case " ":
+                    if (!focusedItemId) return;
+                    e.preventDefault();
+                    toggleItemRef.current(focusedItemId);
                     break;
             }
         };
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
     }, [isActive, focusedItemId, openItems, multiple]);
 
     return (
@@ -142,7 +161,7 @@ export function Accordion({
                 isActive,
             }}
         >
-            <div ref={containerRef} className={`${className}`}>
+            <div ref={containerRef} data-accordion-root="" className={`${className}`}>
                 {children}
             </div>
         </AccordionContext.Provider>
