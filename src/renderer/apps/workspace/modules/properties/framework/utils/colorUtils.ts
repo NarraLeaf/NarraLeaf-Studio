@@ -62,6 +62,17 @@ export function parseColorValue(raw: string | undefined, fallback: ColorValue): 
             alpha: a,
         };
     }
+    const hexBody = trimmed.replace(/^#/, "");
+    if (/^[0-9a-fA-F]{8}$/.test(hexBody)) {
+        const r = Number.parseInt(hexBody.slice(0, 2), 16);
+        const g = Number.parseInt(hexBody.slice(2, 4), 16);
+        const b = Number.parseInt(hexBody.slice(4, 6), 16);
+        const aByte = Number.parseInt(hexBody.slice(6, 8), 16);
+        return {
+            hex: rgbToHex(r, g, b),
+            alpha: clamp(aByte / 255, 0, 1),
+        };
+    }
     const normalized = normalizeHex(trimmed);
     if (normalized) {
         return {

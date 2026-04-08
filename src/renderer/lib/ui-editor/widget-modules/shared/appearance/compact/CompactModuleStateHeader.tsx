@@ -45,6 +45,9 @@ export function CompactModuleStateHeader({ variant, commitVariant, moduleKeys, m
         [variant, moduleKeys]
     );
 
+    // Hide the Default chip when it is the only option; still show if mode is stuck on a removed state.
+    const showDefaultChip = presentStates.length > 0 || mode !== "default";
+
     const menu = useMemo((): ContextMenuDef => {
         return SYSTEM_STATE_KEYS.map(state => {
             const exists = moduleFullyHasExclusiveState(variant, moduleKeys, state);
@@ -79,13 +82,15 @@ export function CompactModuleStateHeader({ variant, commitVariant, moduleKeys, m
     return (
         <>
             <div className="flex flex-wrap items-center gap-1 justify-end min-w-0">
-                <button
-                    type="button"
-                    className={chipClass(mode === "default")}
-                    onClick={() => onModeChange("default")}
-                >
-                    Default
-                </button>
+                {showDefaultChip ? (
+                    <button
+                        type="button"
+                        className={chipClass(mode === "default")}
+                        onClick={() => onModeChange("default")}
+                    >
+                        Default
+                    </button>
+                ) : null}
                 {presentStates.map(s => (
                     <button key={s} type="button" className={chipClass(mode === s)} onClick={() => onModeChange(s)}>
                         {stateLabel(s)}

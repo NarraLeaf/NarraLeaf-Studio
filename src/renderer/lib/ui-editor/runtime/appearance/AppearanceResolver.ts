@@ -1,4 +1,5 @@
 import type {
+    AppearanceFieldTransition,
     AppearanceModel,
     AppearanceValueRow,
     ButtonAppearancePropertyKey,
@@ -12,6 +13,11 @@ import { conditionMatches, type SystemInteractionSignals } from "./SystemInterac
 import { isButtonAppearanceKey, isContainerAppearanceKey } from "./appearanceWhitelist";
 import { getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
 import type { ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
+import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/helpers";
+import {
+    isMotionCapableButtonAppearanceKey,
+    isMotionCapableContainerAppearanceKey,
+} from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 
 export type AppearanceResolveContext = {
     /** Runtime override for active variant (e.g. blueprint setVariant in P4). */
@@ -41,6 +47,28 @@ function resolveActiveVariant(appearance: AppearanceModel, variantOverrideId?: s
         return byDefault;
     }
     return appearance.variants[0] ?? null;
+}
+
+function collectActiveVariantTransitions<K extends string>(
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext,
+    isEligibleKey: (key: string) => key is K
+): Partial<Record<K, AppearanceFieldTransition>> {
+    if (!isUsableAppearance(appearance)) {
+        return {};
+    }
+    const variant = resolveActiveVariant(appearance, ctx.variantOverrideId);
+    if (!variant) {
+        return {};
+    }
+    const out: Partial<Record<K, AppearanceFieldTransition>> = {};
+    for (const group of variant.propertyGroups) {
+        if (!group.transition || !isEligibleKey(group.key)) {
+            continue;
+        }
+        out[group.key] = group.transition;
+    }
+    return out;
 }
 
 function coerceString(v: unknown): string | undefined {
@@ -358,7 +386,9 @@ export function resolveContainerRectangleLike(
     appearance: AppearanceModel | null | undefined,
     ctx: AppearanceResolveContext
 ): RectangleLikeProps {
-    const baseline = getRectangleLikeProps(element);
+    // Match `getContainerProps` so sparse on-disk props still get widget defaults before appearance overlay.
+    const mergedFlat = getContainerProps(element) as unknown as Record<string, unknown>;
+    const baseline = getRectangleLikeProps({ props: mergedFlat });
     if (!isUsableAppearance(appearance)) {
         return baseline;
     }
@@ -379,6 +409,13 @@ export function resolveContainerRectangleLike(
         applyContainerKey(next, key, raw);
     }
     return next;
+}
+
+export function resolveContainerAppearanceTransitions(
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext
+): Partial<Record<ContainerAppearancePropertyKey, AppearanceFieldTransition>> {
+    return collectActiveVariantTransitions(appearance, ctx, isMotionCapableContainerAppearanceKey);
 }
 
 /**
@@ -442,6 +479,13 @@ export function resolveButtonVisualProps(
         applyButtonKey(next as ButtonWidgetProps, key, raw);
     }
     return next;
+}
+
+export function resolveButtonAppearanceTransitions(
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext
+): Partial<Record<ButtonAppearancePropertyKey, AppearanceFieldTransition>> {
+    return collectActiveVariantTransitions(appearance, ctx, isMotionCapableButtonAppearanceKey);
 }
 
 /** Map resolved button visuals to rectangle chrome for `RectangleChromeRenderer` and image-fill diagnostics. */

@@ -8,6 +8,8 @@ export type ElementRendererProps = {
     document: UIDocument;
     hostAdapter: UIHostAdapter;
     children?: ReactNode;
+    /** Passed by the workspace editor bridge; omitted in Dev Mode and other hosts. */
+    useAppearanceInspectorPreview?: boolean;
 };
 
 export type ElementRendererDefinition = {

@@ -32,6 +32,30 @@ export type AppearanceValueRow = {
     value: AppearanceRowValue;
 };
 
+export type AppearanceTransitionTweenEasing =
+    | "linear"
+    | "easeIn"
+    | "easeOut"
+    | "easeInOut"
+    | "circIn"
+    | "circOut"
+    | "circInOut";
+
+export type AppearanceFieldTransition =
+    | {
+          type: "tween";
+          durationMs: number;
+          delayMs?: number;
+          easing: AppearanceTransitionTweenEasing;
+      }
+    | {
+          type: "spring";
+          delayMs?: number;
+          stiffness: number;
+          damping: number;
+          mass: number;
+      };
+
 /** Whitelisted chrome keys for `nl.container` (maps to RectangleLike + container fill typing). */
 export type ContainerAppearancePropertyKey =
     | "backgroundColor"
@@ -74,14 +98,18 @@ export type ButtonAppearancePropertyKey =
     | "paddingY"
     | "clipContent";
 
+export type AppearancePropertyKey = ContainerAppearancePropertyKey | ButtonAppearancePropertyKey;
+
 export type AppearancePropertyGroup =
     | {
           key: ContainerAppearancePropertyKey;
           rows: AppearanceValueRow[];
+          transition?: AppearanceFieldTransition | null;
       }
     | {
           key: ButtonAppearancePropertyKey;
           rows: AppearanceValueRow[];
+          transition?: AppearanceFieldTransition | null;
       };
 
 export type AppearanceVariant = {
