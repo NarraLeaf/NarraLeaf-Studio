@@ -31,6 +31,7 @@ import type {
     ReadonlyBlueprintWidgetSummary,
 } from "./ui-editor/blueprint/readonlyBlueprintSummary";
 import type { SubtreeDuplicateRemapPlan } from "./ui-editor/blueprint/blueprintCopyRemap";
+import type { MoveUiElementsResult } from "./ui-editor/uiDocumentTreeMove";
 import type { UIGraph, UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { ReactElement } from "react";
@@ -187,6 +188,17 @@ interface IUIDocumentService extends IService {
     createElement(parentId: string, type: string, layoutPatch?: Partial<UILayout>): UIElement;
     deleteElements(elementIds: string[]): void;
     /**
+     * Reparent one or more elements within the editable tree of a surface (uses effective root for linked stage surfaces).
+     * Inserts `elementIds` (normalized) before `beforeChildId` under `targetParentId`, or appends when `beforeChildId` is null.
+     */
+    moveElementsInSurface(
+        surfaceId: string,
+        elementIds: string[],
+        targetParentId: string,
+        beforeChildId: string | null,
+    ): MoveUiElementsResult;
+    renameElement(elementId: string, name: string): void;
+    /**
      * Persist UIBehaviorBinding.blueprintEvent and ensure inline event graph under Blueprint.program.graphs.events.
      */
     setElementBlueprintEvent(
@@ -301,13 +313,20 @@ export type InteractionOverride =
           elementId: string;
       };
 
+export type InteractionOverrideChange = {
+    previous: InteractionOverride | null;
+    next: InteractionOverride | null;
+};
+
 interface UIEditorStateEvents {
     toolChanged: UITool;
     viewportChanged: ViewportTransform;
     selectionChanged: SelectionState;
-    interactionOverrideChanged: InteractionOverride | null;
+    interactionOverrideChanged: InteractionOverrideChange;
     /** Editor-only: appearance variant picker in the inspector (per element); drives canvas preview. */
     appearanceInspectorVariantChanged: { elementId: string };
+    /** Outline panel expand/collapse memory (persisted); payload unused. */
+    outlineExpansionChanged: null;
 }
 
 interface IUIEditorFontFaceService extends IService {
@@ -332,6 +351,12 @@ interface IUIEditorStateService extends IService {
     /** Cached appearance variant id for inspector authoring (editing-area cache, not saved in UIDocument). */
     getAppearanceInspectorVariant(elementId: string): string | null;
     setAppearanceInspectorVariant(elementId: string, variantId: string): void;
+    /** Whether compact Border panel "sides" row is expanded (per element, persisted with project settings). */
+    getAppearanceBorderSidesExpanded(elementId: string): boolean;
+    setAppearanceBorderSidesExpanded(elementId: string, expanded: boolean): void;
+    /** Outline: branch is collapsed when true (editor-only, project settings). */
+    isOutlineBranchCollapsed(elementId: string): boolean;
+    setOutlineBranchCollapsed(elementId: string, collapsed: boolean): void;
     on<K extends keyof UIEditorStateEvents>(event: K, handler: (data: UIEditorStateEvents[K]) => void): () => void;
 }
 

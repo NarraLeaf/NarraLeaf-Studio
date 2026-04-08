@@ -51,6 +51,11 @@ export const CONTAINER_ANIMATABLE_KEYS: readonly ContainerAppearancePropertyKey[
     "borderRadiusTR",
     "borderRadiusBL",
     "borderRadiusBR",
+    "transformOffsetX",
+    "transformOffsetY",
+    "transformScale",
+    "transformRotation",
+    "transformOpacity",
 ];
 
 export const BUTTON_ANIMATABLE_KEYS: readonly ButtonAppearancePropertyKey[] = [
@@ -60,8 +65,17 @@ export const BUTTON_ANIMATABLE_KEYS: readonly ButtonAppearancePropertyKey[] = [
     "borderRadius",
     "borderWidth",
     "borderColor",
+    "strokeOpacity",
+    "strokeSide",
+    "borderJoin",
+    "strokeAlign",
     "paddingX",
     "paddingY",
+    "transformOffsetX",
+    "transformOffsetY",
+    "transformScale",
+    "transformRotation",
+    "transformOpacity",
 ];
 
 function findPropertyGroup(variant: AppearanceVariant, key: string) {
@@ -126,9 +140,15 @@ export function getAppearanceFieldLabel(key: AppearancePropertyKey): string {
         case "borderColor":
             return "Border color";
         case "strokeOpacity":
-            return "Stroke opacity";
+            return "Border opacity";
         case "strokeVisible":
-            return "Stroke visibility";
+            return "Border visibility";
+        case "strokeAlign":
+            return "Border align";
+        case "strokeSide":
+            return "Border sides";
+        case "borderJoin":
+            return "Corner join";
         case "borderRadius":
             return "Corner radius";
         case "borderRadiusTL":
@@ -143,6 +163,16 @@ export function getAppearanceFieldLabel(key: AppearancePropertyKey): string {
             return "Horizontal padding";
         case "paddingY":
             return "Vertical padding";
+        case "transformOffsetX":
+            return "Offset X";
+        case "transformOffsetY":
+            return "Offset Y";
+        case "transformScale":
+            return "Zoom";
+        case "transformRotation":
+            return "Rotation";
+        case "transformOpacity":
+            return "Transform opacity";
         default:
             return key;
     }

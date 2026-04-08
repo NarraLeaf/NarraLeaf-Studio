@@ -74,7 +74,8 @@ export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorD
             </p>
             <p className="text-[11px] text-gray-500 leading-snug">
                 Appearance-capable widgets (<span className="font-mono text-[10px]">nl.container</span>,{" "}
-                <span className="font-mono text-[10px]">nl.button</span>): Dev Mode can switch the active variant via
+                <span className="font-mono text-[10px]">nl.button</span>,{" "}
+                <span className="font-mono text-[10px]">nl.image</span>): Dev Mode can switch the active variant via
                 Host API / graph node <span className="font-mono text-[10px]">widget.setVariant</span> only. Property
                 bindings on those types are not applied at runtime.
             </p>

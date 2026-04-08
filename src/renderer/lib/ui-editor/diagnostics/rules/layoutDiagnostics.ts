@@ -2,6 +2,7 @@ import type { UIElement } from "@shared/types/ui-editor/document";
 import { isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UISurface } from "@shared/types/ui-editor/document";
+import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import type { UISurfaceDiagnostic } from "../types";
 
 const MIN_VISIBLE_SIZE = 2;
@@ -36,9 +37,12 @@ export function collectLayoutDiagnostics(
                 elementId: el.id,
             });
         }
-        const right = x + width;
-        const bottom = y + height;
-        if (right < 0 || bottom < 0 || x > dw || y > dh) {
+        const origin = getElementSurfaceTopLeft(document, el.id);
+        const wAbs = Math.abs(width);
+        const hAbs = Math.abs(height);
+        const right = origin.x + wAbs;
+        const bottom = origin.y + hAbs;
+        if (right < 0 || bottom < 0 || origin.x > dw || origin.y > dh) {
             out.push({
                 id: `layout:oob:${el.id}`,
                 severity: "warning",

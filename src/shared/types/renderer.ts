@@ -94,6 +94,7 @@ export interface RendererPreloadedInterface {
         getStatus(): Promise<RequestStatus<{ status: DevModeStatus }>>;
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
+        onControlError(handler: (payload: { message: string }) => void): AppEventToken;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
     };
 }

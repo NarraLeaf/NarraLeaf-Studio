@@ -7,14 +7,20 @@ import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { SELECTABLE_TARGET } from "./constants";
+import {
+    buildLayoutPatchForNewElementFromSurfaceRect,
+    resolveInsertTargetParent,
+} from "@/lib/ui-editor/tree/resolveInsertTargetParent";
 
-type InsertState = {
+export type InsertToolDragState = {
     active: boolean;
     nodeType: string;
     startClientX: number;
     startClientY: number;
     startSurfaceX: number;
     startSurfaceY: number;
+    hitElementId: string | null;
+    primaryElementId: string | null;
 };
 
 type PanState = {
@@ -35,7 +41,7 @@ type UseSurfaceInteractionEventsParams = {
     clientToSurfaceCoords: (clientX: number, clientY: number) => { x: number; y: number };
     setInsertPreview: (preview: InsertPreview | null) => void;
     insertPreviewRef: MutableRefObject<InsertPreview | null>;
-    insertStateRef: MutableRefObject<InsertState | null>;
+    insertStateRef: MutableRefObject<InsertToolDragState | null>;
     panStateRef: MutableRefObject<PanState>;
     documentService: UIDocumentService;
     stateService: UIEditorStateService;
@@ -103,12 +109,21 @@ export function useSurfaceInteractionEvents({
 
             updateInsertPreview(null);
 
-            const element = documentService.createElement(surface.rootElementId, state.nodeType, {
-                x: Math.max(0, x),
-                y: Math.max(0, y),
-                width: Math.max(MIN_SIZE, width),
-                height: Math.max(MIN_SIZE, height),
+            const doc = documentService.getDocument();
+            const target = resolveInsertTargetParent(doc, surfaceId, {
+                hitElementId: state.hitElementId,
+                primaryElementId: state.primaryElementId,
             });
+            if (!target) {
+                return;
+            }
+            const layoutPatch = buildLayoutPatchForNewElementFromSurfaceRect(doc, target.parentId, {
+                x,
+                y,
+                width,
+                height,
+            });
+            const element = documentService.createElement(target.parentId, state.nodeType, layoutPatch);
 
             stateService.setUIElementSelection({
                 editor: "ui",
@@ -174,6 +189,15 @@ export function useSurfaceInteractionEvents({
                 event.preventDefault();
                 event.stopPropagation();
                 const surfacePoint = clientToSurfaceCoords(event.clientX, event.clientY);
+                const hitNode = target?.closest?.(SELECTABLE_TARGET) as HTMLElement | null;
+                const hitElementId = hitNode?.dataset.uiElementId ?? null;
+                let primaryElementId: string | null = null;
+                if (selectionData?.surfaceId === surfaceId) {
+                    primaryElementId =
+                        selectionData.primaryId ??
+                        selectionData.elementIds[selectionData.elementIds.length - 1] ??
+                        null;
+                }
                 insertStateRef.current = {
                     active: true,
                     nodeType: tool.nodeType,
@@ -181,6 +205,8 @@ export function useSurfaceInteractionEvents({
                     startClientY: event.clientY,
                     startSurfaceX: surfacePoint.x,
                     startSurfaceY: surfacePoint.y,
+                    hitElementId,
+                    primaryElementId,
                 };
                 updateInsertPreview({
                     startX: surfacePoint.x,
@@ -195,7 +221,18 @@ export function useSurfaceInteractionEvents({
             if (tool.kind === "select" && event.button === 0 && isElementNode) {
                 const elementId = elementNode?.dataset.uiElementId;
                 if (elementId) {
-                    if (event.shiftKey && selectionData && selectionData.surfaceId === surfaceId) {
+                    if ((event.metaKey || event.ctrlKey) && selectionData && selectionData.surfaceId === surfaceId) {
+                        const cur = selectionData.elementIds;
+                        const nextIds = cur.includes(elementId)
+                            ? cur.filter(id => id !== elementId)
+                            : [...cur, elementId];
+                        stateService.setUIElementSelection({
+                            editor: "ui",
+                            surfaceId,
+                            elementIds: nextIds.length > 0 ? nextIds : [elementId],
+                            primaryId: elementId,
+                        });
+                    } else if (event.shiftKey && selectionData && selectionData.surfaceId === surfaceId) {
                         const nextIds = selectionData.elementIds.includes(elementId)
                             ? selectionData.elementIds
                             : [...selectionData.elementIds, elementId];

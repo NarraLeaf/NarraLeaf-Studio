@@ -16,6 +16,7 @@ import type { UIInspectorData, InspectorContext, WidgetRendererProps } from "@/l
 import type { RectangleLikeProps, StrokeJoin } from "@shared/types/ui-editor/rectangleLike";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { getRectangleLikeProps, normalizeImageFill } from "./rectangleHelpers";
+import { strokeSideSelectedIds, strokeSideSpecFromSelectedIds } from "./strokeSideSpec";
 import {
   BORDER_STYLE_OPTIONS,
   controlButtonClass,
@@ -73,7 +74,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
     },
     {
       id: "stroke-join",
-      label: "Corner Join",
+      label: "Corner join",
       submenu: STROKE_JOIN_OPTIONS.map(option => ({
         id: `stroke-join-${option.value}`,
         label: option.label,
@@ -550,7 +551,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
           defineField<D, any>({
             id: "section.stroke",
             type: "section",
-            title: "Stroke",
+            title: "Border",
             fields: [
               defineField<D, any>({
                 id: "props.strokeControls",
@@ -619,7 +620,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                       return (
                         <InlineMenuTriggerButton
                           menu={buildStrokeMenu(current)}
-                          ariaLabel="Open stroke settings"
+                          ariaLabel="More border options"
                           className="z-10"
                         />
                       );
@@ -630,16 +631,20 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
               defineField<D, any>({
                 id: "props.strokeSideGroup",
                 type: "iconButtonGroup",
-                label: "Stroke Side",
+                mode: "multipleExclusivePrimary",
+                exclusivePrimaryId: "all",
+                label: "Border sides",
                 showLabels: false,
+                density: "compact",
                 className: "mt-2",
                 options: STROKE_SIDE_OPTIONS,
-                getValue: (data: D) => resolveProps(data.element).strokeSide,
-                setValue: (_data: D, value: string | number) => {
-                  if (typeof value !== "string") return;
-                  patchProps({
-                    strokeSide: value as RectangleLikeProps["strokeSide"],
-                  });
+                getValue: (data: D) => strokeSideSelectedIds(String(resolveProps(data.element).strokeSide ?? "all")),
+                setValue: (_data: D, value: unknown) => {
+                  if (Array.isArray(value)) {
+                    patchProps({
+                      strokeSide: strokeSideSpecFromSelectedIds(value as string[]),
+                    });
+                  }
                 },
               }),
               defineField<D, any>({
@@ -736,7 +741,7 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
                           type="button"
                           onClick={toggle}
                           aria-pressed={visible}
-                          aria-label="Toggle stroke visibility"
+                          aria-label="Toggle border visibility"
                           className={controlButtonClass(visible)}
                         >
                           {visible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}

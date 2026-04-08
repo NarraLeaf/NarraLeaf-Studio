@@ -14,6 +14,8 @@ export type InlineMenuTriggerButtonProps = {
     icon?: ReactNode;
     /** Defaults to `control` (matches stroke/corners more-options triggers). */
     buttonStyle?: InlineMenuTriggerButtonStyle;
+    /** When true, this menu surface reserves a leading icon column (see ContextMenu `iconsEnabled`). Submenus are controlled per item via `submenuIconsEnabled`, not this flag. */
+    menuIconsEnabled?: boolean;
 };
 
 const ICON_GHOST_TRIGGER_BASE =
@@ -28,6 +30,7 @@ export function InlineMenuTriggerButton({
     className = "",
     icon,
     buttonStyle = "control",
+    menuIconsEnabled = false,
 }: InlineMenuTriggerButtonProps) {
     const [visible, setVisible] = useState(false);
     const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -87,7 +90,14 @@ export function InlineMenuTriggerButton({
             >
                 {icon ?? <MoreHorizontal className="w-4 h-4" />}
             </button>
-            {visible && <ContextMenu items={menu} position={position} onClose={closeMenu} />}
+            {visible && (
+                <ContextMenu
+                    items={menu}
+                    position={position}
+                    onClose={closeMenu}
+                    iconsEnabled={menuIconsEnabled}
+                />
+            )}
         </>
     );
 }
