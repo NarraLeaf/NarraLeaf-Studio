@@ -8,26 +8,6 @@ export function createButtonDockerBarItems(ctx: DockerBarContext): DockerBarItem
   return [
     {
       kind: "number",
-      id: "docker-button-radius",
-      label: "Radius",
-      tooltip: "Corner radius",
-      value: props.borderRadius,
-      min: 0,
-      max: 999,
-      step: 1,
-      onChange: (value: number) => {
-        documentService.updateElementProps(element.id, {
-          ...element.props,
-          borderRadius: Math.max(0, value),
-        });
-      },
-    },
-    {
-      kind: "separator",
-      id: "docker-button-sep",
-    },
-    {
-      kind: "number",
       id: "docker-button-pad-x",
       label: "Pad X",
       tooltip: "Horizontal padding",

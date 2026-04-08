@@ -14,52 +14,7 @@ export function createContainerDockerBarItems(ctx: DockerBarContext): DockerBarI
         });
     };
 
-    const chrome: DockerBarItem[] = [
-        {
-            kind: "number",
-            id: "docker-container-radius",
-            label: "Radius",
-            tooltip: "Corner radius",
-            value: props.borderRadius,
-            min: 0,
-            max: 999,
-            step: 1,
-            onChange: (value: number) => {
-                const v = Math.max(0, value);
-                const next: Record<string, unknown> = { ...element.props, borderRadius: v };
-                if (props.borderRadiusLinked) {
-                    next.borderRadiusTL = v;
-                    next.borderRadiusTR = v;
-                    next.borderRadiusBL = v;
-                    next.borderRadiusBR = v;
-                }
-                documentService.updateElementProps(element.id, next);
-            },
-        },
-        {
-            kind: "separator",
-            id: "docker-container-sep-chrome",
-        },
-        {
-            kind: "number",
-            id: "docker-container-border",
-            label: "Border",
-            tooltip: "Border width",
-            value: props.borderWidth,
-            min: 0,
-            max: 64,
-            step: 1,
-            onChange: (value: number) => {
-                patch({ borderWidth: Math.max(0, value) });
-            },
-        },
-    ];
-
     const layoutMode: DockerBarItem[] = [
-        {
-            kind: "separator",
-            id: "docker-container-sep-layout",
-        },
         {
             kind: "select",
             id: "docker-container-layout-kind",
@@ -166,5 +121,5 @@ export function createContainerDockerBarItems(ctx: DockerBarContext): DockerBarI
         },
     ];
 
-    return [...chrome, ...layoutMode, ...stackControls, ...scrollControls, ...presets];
+    return [...layoutMode, ...stackControls, ...scrollControls, ...presets];
 }
