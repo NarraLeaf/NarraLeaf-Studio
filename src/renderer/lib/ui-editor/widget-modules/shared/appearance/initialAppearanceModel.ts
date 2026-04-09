@@ -1,10 +1,12 @@
 import type {
     AppearanceModel,
     AppearancePropertyGroup,
+    AppearanceSystemCondition,
     AppearanceValueRow,
     ButtonAppearancePropertyKey,
     ContainerAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
+import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import type { ContainerWidgetProps } from "@shared/types/ui-editor/container";
@@ -382,6 +384,68 @@ export function ensureImageAppearanceHasAllKeys(model: AppearanceModel, element:
             rows: [containerAppearanceRowFromRectangleLike(rl, key)],
         }));
         return { ...v, propertyGroups: [...v.propertyGroups, ...extra] };
+    });
+    return changed ? { ...model, variants } : model;
+}
+
+function imageFillValuesEqual(a: ImageFill, b: ImageFill): boolean {
+    if (a.mode !== b.mode) {
+        return false;
+    }
+    if ((a.assetId ?? null) !== (b.assetId ?? null)) {
+        return false;
+    }
+    return JSON.stringify(a.cropPlacement ?? null) === JSON.stringify(b.cropPlacement ?? null);
+}
+
+function appearanceImageFillRowIsUnconditional(conditions: AppearanceSystemCondition | null | undefined): boolean {
+    if (conditions == null || Object.keys(conditions).length === 0) {
+        return true;
+    }
+    return Object.values(conditions).every(v => v === undefined);
+}
+
+function coerceAppearanceRowImageFill(v: unknown): ImageFill | undefined {
+    if (v == null || typeof v !== "object" || !("mode" in v)) {
+        return undefined;
+    }
+    return v as ImageFill;
+}
+
+/**
+ * Mirror `props.imageFill` into appearance so runtime resolution (baseline + appearance overlay)
+ * does not keep stale `imageFill` rows when props are edited outside AppearanceAuthoringPanel.
+ */
+export function syncImageAppearanceImageFillFromProps(model: AppearanceModel, nextFill: ImageFill): AppearanceModel {
+    let changed = false;
+    const variants = model.variants.map(v => {
+        const propertyGroups = v.propertyGroups.map(g => {
+            if (g.key !== "imageFill") {
+                return g;
+            }
+            const rows = g.rows.map(row => {
+                const prev = coerceAppearanceRowImageFill(row.value);
+                if (appearanceImageFillRowIsUnconditional(row.conditions)) {
+                    if (prev && imageFillValuesEqual(prev, nextFill)) {
+                        return row;
+                    }
+                    changed = true;
+                    return { ...row, value: { ...nextFill } };
+                }
+                const merged: ImageFill = {
+                    mode: nextFill.mode,
+                    assetId: prev?.assetId ?? nextFill.assetId ?? null,
+                    cropPlacement: nextFill.cropPlacement ?? prev?.cropPlacement,
+                };
+                if (prev && imageFillValuesEqual(prev, merged)) {
+                    return row;
+                }
+                changed = true;
+                return { ...row, value: merged };
+            });
+            return { ...g, rows };
+        });
+        return { ...v, propertyGroups };
     });
     return changed ? { ...model, variants } : model;
 }

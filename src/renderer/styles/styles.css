@@ -173,6 +173,33 @@ input[type="radio"]:focus {
     .titlebar-drag { -webkit-app-region: drag; }
     .no-drag { -webkit-app-region: no-drag; }
 
+    /**
+     * Global `*` sets -webkit-user-drag: none (prevents accidental image/window drags).
+     * Opt HTML5 drag sources back in for Chromium/Electron (required for draggable="true" to work).
+     */
+    .nl-asset-drag-source,
+    .nl-asset-drag-source * {
+        -webkit-user-drag: element;
+    }
+
+    /* Ephemeral node for dataTransfer.setDragImage (multi-select asset drag) */
+    .nl-dnd-multi-asset-ghost {
+        position: fixed;
+        left: -10000px;
+        top: 0;
+        z-index: 2147483647;
+        padding: 8px 14px;
+        border-radius: 8px;
+        background: rgba(30, 32, 38, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        font-size: 13px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.92);
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
     /* Template selection states */
     .template-selected {
         box-shadow: 0 4px 12px -2px rgba(64, 168, 196, 0.15), 0 0 0 1px #40a8c4 !important;

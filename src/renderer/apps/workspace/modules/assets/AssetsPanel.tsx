@@ -1,5 +1,6 @@
 import { useMemo, useCallback, useState, useRef, useEffect, ComponentType } from "react";
-import { LayoutGrid, LayoutList, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash, Search, X } from "lucide-react";
+import { flushSync } from "react-dom";
+import { LayoutGrid, LayoutList, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash, Search, X, ChevronLeft } from "lucide-react";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { PanelComponentProps } from "../types";
@@ -16,12 +17,12 @@ import { useAssetData } from "./state/useAssetData";
 import { useMultiSelection } from "./state/useMultiSelection";
 import { useAssetSearch, SearchResult } from "./state/useAssetSearch";
 import { useAssetFilters } from "./state/useAssetFilters";
-import { useDragAndDrop } from "./state/useDragAndDrop";
+import { useDragAndDrop, type InternalAssetDropCompletedInfo } from "./state/useDragAndDrop";
 import { useClipboard } from "./state/useClipboard";
 import { useAssetFocus } from "./state/useAssetFocus";
 import { useAssetActions, ContextMenuTargetState } from "./state/useAssetActions";
 import { useKeyboardShortcuts } from "./state/useKeyboardShortcuts";
-import { AssetsPanelContext } from './AssetsPanelContext';
+import { AssetsPanelContext, type AssetsIconViewToolbarCenter } from './AssetsPanelContext';
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
@@ -78,6 +79,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const [magicTagTemplate, setMagicTagTemplate] = useState<MagicTagTemplate | null>(null);
     const [magicTagAssets, setMagicTagAssets] = useState<Asset[]>([]);
     const [isSearchActive, setIsSearchActive] = useState(false);
+    const [assetsIconToolbarCenter, setAssetsIconToolbarCenter] = useState<AssetsIconViewToolbarCenter | null>(null);
 
     const defaultViewMode = payload?.defaultViewMode ?? "list";
     const defaultIconSize = payload?.defaultIconSize ?? 140;
@@ -202,6 +204,35 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
     const workspaceDrag = useWorkspaceAssetDragOptional();
 
+    const handleAssetsPanelDropCompleted = useCallback(
+        (info?: InternalAssetDropCompletedInfo) => {
+            if (info) {
+                const movedAny =
+                    (info.movedAssetIds?.length ?? 0) > 0 || (info.movedGroupIds?.length ?? 0) > 0;
+                if (movedAny) {
+                    // Commit clipboard prune before async loadAssets so cut styling cannot flash stale state.
+                    flushSync(() => {
+                        setClipboard((prev) => {
+                            if (!prev || prev.type !== "cut") {
+                                return prev;
+                            }
+                            const movedA = new Set(info.movedAssetIds);
+                            const movedG = new Set(info.movedGroupIds);
+                            const nextAssets = prev.assets.filter((a) => !movedA.has(a.id));
+                            const nextGroups = prev.groups.filter((g) => !movedG.has(g.id));
+                            if (nextAssets.length === 0 && nextGroups.length === 0) {
+                                return null;
+                            }
+                            return { ...prev, assets: nextAssets, groups: nextGroups };
+                        });
+                    });
+                }
+            }
+            void loadAssets();
+        },
+        [loadAssets, setClipboard]
+    );
+
     const { 
         draggedItem, dropTargetId, dragOver, 
         setDragOver, setDropTargetId, handleDragStart, handleDragEnd, 
@@ -209,7 +240,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     } = useDragAndDrop({
         context,
         groups,
-        onDropCompleted: loadAssets,
+        onDropCompleted: handleAssetsPanelDropCompleted,
         selectedItems,
         filteredGroups,
         filteredAssets,
@@ -328,6 +359,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         };
     }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea]);
 
+    useEffect(() => {
+        if (showHeader) {
+            setAssetsIconToolbarCenter(null);
+        }
+    }, [showHeader]);
+
     if (loading && Object.values(assets).every(arr => arr.length === 0)) {
         return <div className="p-4 flex items-center gap-2 text-gray-400"><RefreshCw className="w-4 h-4 animate-spin" /> <span>Loading assets...</span></div>;
     }
@@ -343,6 +380,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
         setExpandedGroups,
         isFocused: (id: string) => focusedItemId === id,
+        compactToolbar: !showHeader,
+        setAssetsIconToolbarCenter,
     };
 
     return (
@@ -367,10 +406,26 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                         </div>
                     </div>
                 ) : (
-                    <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between gap-2 overflow-hidden">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div
+                        className={
+                            isSearchActive
+                                ? "px-3 py-2 border-b border-white/10 flex items-center gap-2 overflow-hidden"
+                                : assetsIconToolbarCenter
+                                  ? "px-3 py-2 border-b border-white/10 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 overflow-hidden"
+                                  : "px-3 py-2 border-b border-white/10 flex items-center justify-between gap-2 overflow-hidden"
+                        }
+                    >
+                        <div
+                            className={
+                                isSearchActive
+                                    ? "flex items-center gap-2 flex-1 min-w-0"
+                                    : assetsIconToolbarCenter
+                                      ? "flex items-center gap-2 min-w-0 justify-self-start"
+                                      : "flex items-center gap-2 min-w-0 flex-1"
+                            }
+                        >
                             {isSearchActive ? (
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <>
                                     <SearchBox
                                         ref={searchBoxRef}
                                         value={searchQuery}
@@ -389,7 +444,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                     >
                                         <X className="w-4 h-4" />
                                     </button>
-                                </div>
+                                </>
                             ) : (
                                 <>
                                     <FilterSystem
@@ -418,8 +473,27 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                                 </>
                             )}
                         </div>
+                        {!isSearchActive && assetsIconToolbarCenter && (
+                            <div className="flex items-center justify-center gap-1 min-w-0 max-w-[min(280px,45vw)] px-1 justify-self-center">
+                                <button
+                                    type="button"
+                                    onClick={assetsIconToolbarCenter.onBack}
+                                    className="p-1 rounded hover:bg-white/10 shrink-0"
+                                    title="Back to parent group"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <span className="text-sm font-semibold truncate text-center">{assetsIconToolbarCenter.title}</span>
+                            </div>
+                        )}
                         {!isSearchActive && (
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div
+                                className={
+                                    assetsIconToolbarCenter
+                                        ? "flex items-center gap-2 shrink-0 justify-self-end"
+                                        : "flex items-center gap-2 shrink-0"
+                                }
+                            >
                                 <span className="text-[10px] text-gray-500 hidden sm:inline">{Object.values(filteredAssets).flat().length} items</span>
                                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
                                 <button onClick={loadAssets} disabled={loading} className="p-1 rounded hover:bg-white/10"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>

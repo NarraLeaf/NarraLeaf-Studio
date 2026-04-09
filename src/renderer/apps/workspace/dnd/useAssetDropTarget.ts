@@ -142,7 +142,10 @@ export function useAssetDropTarget(options: UseAssetDropTargetOptions) {
             if (canDrop && !canDrop(ctx)) {
                 return;
             }
-            onDrop(ctx);
+            onDrop({
+                ...ctx,
+                clientPosition: { x: e.clientX, y: e.clientY },
+            });
         },
         [buildContext, canDrop, onDrop]
     );

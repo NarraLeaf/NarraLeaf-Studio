@@ -1,7 +1,9 @@
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
-import type { ImageFillMode } from "@shared/types/ui-editor/imageFill";
+import type { ImageFill, ImageFillMode } from "@shared/types/ui-editor/imageFill";
+import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { createRectangleDockerBarItems } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleDockerBar";
 import { normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
+import { syncImageAppearanceImageFillFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { getImageWidgetRectangleProps } from "./helpers";
 
 const FIT_OPTIONS: { value: ImageFillMode; label: string }[] = [
@@ -30,15 +32,23 @@ export function createImageDockerBarItems(ctx: DockerBarContext): DockerBarItem[
             onChange: (value: string | number) => {
                 const nextMode = String(value) as ImageFillMode;
                 const currentFill = normalizeImageFill(getImageWidgetRectangleProps(element));
+                const nextImageFill: ImageFill = {
+                    ...currentFill,
+                    mode: nextMode,
+                    assetId: currentFill?.assetId ?? null,
+                    cropPlacement: currentFill?.cropPlacement,
+                };
+                const rawAppearance = (element.props as { appearance?: unknown } | undefined)?.appearance;
+                const nextAppearance =
+                    isAppearanceModel(rawAppearance) ?
+                        syncImageAppearanceImageFillFromProps(rawAppearance, nextImageFill)
+                    :   rawAppearance;
+
                 documentService.updateElementProps(element.id, {
                     ...element.props,
                     fillType: "image",
-                    imageFill: {
-                        ...currentFill,
-                        mode: nextMode,
-                        assetId: currentFill?.assetId ?? null,
-                        cropPlacement: currentFill?.cropPlacement,
-                    },
+                    imageFill: nextImageFill,
+                    ...(nextAppearance !== rawAppearance ? { appearance: nextAppearance } : {}),
                 });
             },
         },

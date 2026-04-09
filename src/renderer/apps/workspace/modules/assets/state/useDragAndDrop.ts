@@ -10,6 +10,13 @@ import {
     encodeAssetDragPayload,
     isWorkspaceAssetDragEvent,
 } from "@/apps/workspace/modules/assets/dnd/assetDragContract";
+import { applyMultiAssetDragImage } from "@/apps/workspace/modules/assets/dnd/multiAssetDragImage";
+
+/** Report ids moved by an in-panel drop so cut-clipboard styling can be updated. */
+export interface InternalAssetDropCompletedInfo {
+    movedAssetIds: string[];
+    movedGroupIds: string[];
+}
 
 export interface DraggedItemState {
     type: AssetType;
@@ -20,7 +27,8 @@ export interface DraggedItemState {
 export interface UseDragAndDropParams {
     context: WorkspaceContext | null;
     groups: Record<AssetType, AssetGroup[]>;
-    onDropCompleted: () => void; // To trigger a reload of assets
+    /** Called after a successful in-panel move; pass moved ids so cut clipboard can be pruned. */
+    onDropCompleted: (info?: InternalAssetDropCompletedInfo) => void;
     /** Current selection keys (`asset:id` / `group:id`) for multi-asset workspace drag. */
     selectedItems: Set<string>;
     filteredGroups: Record<AssetType, AssetGroup[]>;
@@ -71,6 +79,7 @@ export function useDragAndDrop({
             event.dataTransfer.setData(ASSET_DRAG_MIME, payload);
             const plainLabel = dragAssets.map(a => a.name).join(", ") || asset.name || " ";
             event.dataTransfer.setData("text/plain", plainLabel);
+            applyMultiAssetDragImage(event, dragAssets.length);
             onWorkspaceDragSessionStart?.(dragAssets, asset.id, panelId);
         },
         [
@@ -149,7 +158,19 @@ export function useDragAndDrop({
                     setDropTargetId(null);
                     return;
                 }
-                await assetsService.moveGroupToParent(targetType, group.id, targetGroupId ?? undefined);
+                const groupStatus = await assetsService.moveGroupToParent(
+                    targetType,
+                    group.id,
+                    targetGroupId ?? undefined
+                );
+                if (!groupStatus.success) {
+                    setDragOver(false);
+                    setDropTargetId(null);
+                    return;
+                }
+                setDraggedItem(null);
+                onWorkspaceDragSessionEnd?.();
+                onDropCompleted({ movedAssetIds: [], movedGroupIds: [group.id] });
             } else {
                 const primary = draggedItem.item as Asset;
                 const candidates = collectAssetsForWorkspaceDrag(
@@ -165,12 +186,21 @@ export function useDragAndDrop({
                     return;
                 }
 
+                const movedAssetIds: string[] = [];
                 for (const asset of candidates) {
-                    await assetsService.moveAssetToGroup(asset, targetGroup?.id);
+                    const status = await assetsService.moveAssetToGroup(asset, targetGroup?.id);
+                    if (!status.success) {
+                        setDragOver(false);
+                        setDropTargetId(null);
+                        return;
+                    }
+                    movedAssetIds.push(asset.id);
                 }
+                setDraggedItem(null);
+                onWorkspaceDragSessionEnd?.();
+                onDropCompleted({ movedAssetIds, movedGroupIds: [] });
             }
 
-            onDropCompleted();
             setDragOver(false);
             setDropTargetId(null);
         },
@@ -182,6 +212,7 @@ export function useDragAndDrop({
             groups,
             isDescendantGroup,
             onDropCompleted,
+            onWorkspaceDragSessionEnd,
             selectedItems,
         ]
     );
