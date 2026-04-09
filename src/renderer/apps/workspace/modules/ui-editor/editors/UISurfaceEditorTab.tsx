@@ -20,10 +20,17 @@ import type { UIDocument } from "@shared/types/ui-editor/document";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import {
+    buildLayoutPatchForNewElementFromSurfaceRect,
     buildLayoutPatchForPointInSurface,
     resolveInsertTargetParent,
 } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { useAssetDropTarget } from "@/apps/workspace/dnd/useAssetDropTarget";
+import type { AssetDropContext } from "@/apps/workspace/dnd/types";
+import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import type { Asset } from "@/lib/workspace/services/assets/types";
+import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 
@@ -34,6 +41,17 @@ type ViewportTransform = {
 };
 
 const DEFAULT_VIEWPORT: ViewportTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+
+const DEFAULT_IMAGE_PLACEHOLDER_SIZE = 200;
+
+/** Match {@link UIEditorInteractionLayer} / wheel zoom: `clientToSurface` uses viewport bounds, not the inner transformed canvas node. */
+function getViewportContainerRect(viewportEl: HTMLElement | null): Rect2D | null {
+    if (!viewportEl) {
+        return null;
+    }
+    const rect = viewportEl.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+}
 
 export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ surfaceId: string }>) {
     const surfaceId = payload?.surfaceId;
@@ -149,17 +167,10 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
             if (!documentService || !surface || !stateService) {
                 return;
             }
-            const canvas = canvasRef.current;
-            if (!canvas) {
+            const containerRect = getViewportContainerRect(viewportRef.current);
+            if (!containerRect) {
                 return;
             }
-            const rect = canvas.getBoundingClientRect();
-            const containerRect: Rect2D = {
-                x: rect.x,
-                y: rect.y,
-                width: rect.width,
-                height: rect.height,
-            };
             const surfacePoint = clientToSurface({ x: point.x, y: point.y }, viewport, containerRect);
             const doc = documentService.getDocument();
             const selection = stateService.getSelection();
@@ -187,6 +198,122 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         },
         [documentService, surface, stateService, viewport]
     );
+
+    const handleImageAssetsDropped = useCallback(
+        (dropCtx: AssetDropContext) => {
+            const { clientPosition, resolved } = dropCtx;
+            if (!clientPosition || !documentService || !surface || !stateService || !context) {
+                return;
+            }
+            void (async () => {
+                const containerRect = getViewportContainerRect(viewportRef.current);
+                if (!containerRect) {
+                    return;
+                }
+                const surfacePoint = clientToSurface(
+                    { x: clientPosition.x, y: clientPosition.y },
+                    viewport,
+                    containerRect
+                );
+                const assetsService = context.services.get<AssetsService>(Services.Assets);
+                const dimList = await Promise.all(
+                    resolved.map(async asset => {
+                        if (asset.type !== AssetType.Image) {
+                            return {
+                                width: DEFAULT_IMAGE_PLACEHOLDER_SIZE,
+                                height: DEFAULT_IMAGE_PLACEHOLDER_SIZE,
+                            };
+                        }
+                        const r = await assetsService.fetch(asset as Asset<AssetType.Image>);
+                        if (!r.success || !r.data?.metadata) {
+                            return {
+                                width: DEFAULT_IMAGE_PLACEHOLDER_SIZE,
+                                height: DEFAULT_IMAGE_PLACEHOLDER_SIZE,
+                            };
+                        }
+                        const { width, height } = r.data.metadata;
+                        return {
+                            width: Number.isFinite(width) && width > 0 ? width : DEFAULT_IMAGE_PLACEHOLDER_SIZE,
+                            height: Number.isFinite(height) && height > 0 ? height : DEFAULT_IMAGE_PLACEHOLDER_SIZE,
+                        };
+                    })
+                );
+
+                const doc = documentService.getDocument();
+                const selection = stateService.getSelection();
+                const selData = selection.type === "element" ? selection.data : null;
+                const primaryElementId =
+                    selData?.surfaceId === surface.id
+                        ? (selData.primaryId ?? selData.elementIds[selData.elementIds.length - 1] ?? null)
+                        : null;
+                const hitEl = window.document
+                    .elementFromPoint(clientPosition.x, clientPosition.y)
+                    ?.closest(SELECTABLE_TARGET) as HTMLElement | null;
+                const hitElementId = hitEl?.dataset.uiElementId ?? null;
+                const target = resolveInsertTargetParent(doc, surface.id, {
+                    hitElementId,
+                    primaryElementId,
+                });
+                if (!target) {
+                    return;
+                }
+
+                const createdIds: string[] = [];
+                for (let i = 0; i < resolved.length; i++) {
+                    const asset = resolved[i];
+                    const { width: imgW, height: imgH } = dimList[i];
+                    const freshDoc = documentService.getDocument();
+                    // Anchor drop at pointer: widget center aligns with surfacePoint (not top-left).
+                    const layoutPatch = buildLayoutPatchForNewElementFromSurfaceRect(freshDoc, target.parentId, {
+                        x: surfacePoint.x - imgW / 2,
+                        y: surfacePoint.y - imgH / 2,
+                        width: imgW,
+                        height: imgH,
+                    });
+                    const element = documentService.createElement(target.parentId, "nl.image", layoutPatch);
+                    const nextProps: Record<string, unknown> = {
+                        ...(element.props ?? {}),
+                        fillType: "image",
+                        imageFill: {
+                            mode: "stretch",
+                            assetId: asset.id,
+                        },
+                        borderWidth: 0,
+                        strokeVisible: false,
+                        appearance: createInitialImageAppearanceFromProps({
+                            ...(element.props ?? {}),
+                            fillType: "image",
+                            imageFill: {
+                                mode: "stretch",
+                                assetId: asset.id,
+                            },
+                            borderWidth: 0,
+                            strokeVisible: false,
+                        }),
+                    };
+                    documentService.updateElementProps(element.id, nextProps);
+                    createdIds.push(element.id);
+                }
+
+                if (createdIds.length > 0) {
+                    stateService.setUIElementSelection({
+                        editor: "ui",
+                        surfaceId: surface.id,
+                        elementIds: createdIds,
+                        primaryId: createdIds[0],
+                    });
+                    stateService.setTool({ kind: "select" });
+                }
+            })();
+        },
+        [context, documentService, surface, stateService, viewport]
+    );
+
+    const { dropTargetProps: surfaceImageDropTargetProps, overlayClassName: surfaceImageDropOverlayClass } =
+        useAssetDropTarget({
+            canDrop: ({ resolved }) => resolved.length > 0 && resolved.every(a => a.type === AssetType.Image),
+            onDrop: handleImageAssetsDropped,
+        });
 
     const handleCanvasContextMenu = useCallback(
         (event: React.MouseEvent<HTMLDivElement>) => {
@@ -387,7 +514,12 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                     </div>
 
                     {/* Viewport / Canvas */}
-                    <div ref={viewportRef} className="absolute inset-0 overflow-hidden" onDoubleClick={handleSurfaceDoubleClick}>
+                    <div
+                        ref={viewportRef}
+                        className={`absolute inset-0 overflow-hidden ${surfaceImageDropOverlayClass}`}
+                        {...surfaceImageDropTargetProps}
+                        onDoubleClick={handleSurfaceDoubleClick}
+                    >
                         {surfaceLevelDiagnosticMessages.length > 0 ? (
                             <div className="absolute left-64 right-36 top-14 z-20 rounded-md border border-amber-500/35 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-100/90">
                                 <span className="font-medium text-amber-200/95">Static checks (editor only): </span>

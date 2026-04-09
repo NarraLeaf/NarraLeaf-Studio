@@ -15,6 +15,8 @@ export interface AssetDropContext {
     wire: AssetDragWirePayloadV1;
     /** Assets resolved from AssetsService metadata at drop time (may be subset if deleted). */
     resolved: Asset[];
+    /** Screen coordinates of the drop (clientX / clientY), when delivered by {@link useAssetDropTarget}. */
+    clientPosition?: { x: number; y: number };
 }
 
 export interface UseAssetDropTargetOptions {

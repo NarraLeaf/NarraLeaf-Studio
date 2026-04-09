@@ -42,9 +42,6 @@ export function MainEditorEmptyDropZone({ groupId }: MainEditorEmptyDropZoneProp
 
                 <div className="space-y-4">
                     <h1 className="text-4xl font-light text-white/5">NarraLeaf Studio</h1>
-                    <p className="text-xs text-gray-600 max-w-sm mx-auto">
-                        Drop assets here to open preview tabs
-                    </p>
                 </div>
             </div>
         </div>

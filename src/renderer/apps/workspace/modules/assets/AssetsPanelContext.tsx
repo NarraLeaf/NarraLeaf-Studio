@@ -4,6 +4,12 @@ import { createContext, useContext } from 'react';
 import { ClipboardState } from './state/useClipboard';
 import { DraggedItemState } from './state/useDragAndDrop';
 
+/** Breadcrumb shown in the panel toolbar center when the assets panel uses a compact (bottom) toolbar. */
+export interface AssetsIconViewToolbarCenter {
+    title: string;
+    onBack: () => void;
+}
+
 interface AssetsPanelContextType {
     assets: Record<AssetType, Asset[]>;
     groups: Record<AssetType, AssetGroup[]>;
@@ -31,6 +37,10 @@ interface AssetsPanelContextType {
     handleDropOnItem?: (e: React.DragEvent, targetType: AssetType, targetGroup: AssetGroup | null) => void;
     handleImportToGroup: (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => void;
     isFocused: (id: string) => boolean;
+
+    /** True when the panel uses the compact toolbar (e.g. bottom dock). Icon view can merge group navigation there. */
+    compactToolbar: boolean;
+    setAssetsIconToolbarCenter: (state: AssetsIconViewToolbarCenter | null) => void;
 }
 
 export const AssetsPanelContext = createContext<AssetsPanelContextType | null>(null);

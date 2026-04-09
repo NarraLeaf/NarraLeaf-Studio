@@ -59,6 +59,27 @@ function clearImagePreviewFlipVars(target: HTMLElement) {
     target.style.removeProperty("--nl-image-drag-flip-y");
 }
 
+function hasResizeAxisCrossed(initialSignedSize: number | undefined, currentSignedSize: number | undefined) {
+    if (initialSignedSize === undefined || currentSignedSize === undefined) {
+        return false;
+    }
+    return initialSignedSize * currentSignedSize < 0;
+}
+
+function getResizeFlipBaseline(
+    layout: UILayout | undefined,
+    startData: ResizeStartEntry | undefined,
+    axis: "x" | "y"
+) {
+    if (!layout) {
+        return undefined;
+    }
+    if (layout.lockAspectRatio) {
+        return axis === "x" ? layout.width : layout.height;
+    }
+    return axis === "x" ? startData?.aspectInitialSx : startData?.aspectInitialSy;
+}
+
 type MoveableHandlersConfig = {
     documentService: UIDocumentService;
     selectionIds: string[];
@@ -211,7 +232,10 @@ export function useMoveableHandlers({
             }
             const cached = resizeCache.current.get(elementId);
             const initialLayout = layoutCache.current.get(elementId);
+            const startData = resizeStartCache.current.get(elementId);
             const element = document.elements[elementId];
+            const flipBaselineX = getResizeFlipBaseline(initialLayout, startData, "x");
+            const flipBaselineY = getResizeFlipBaseline(initialLayout, startData, "y");
             const patch: Partial<UILayout> = {};
             if (cached?.width !== undefined) {
                 patch.width = Math.abs(cached.width);
@@ -240,10 +264,10 @@ export function useMoveableHandlers({
             if (element?.type === "nl.image" && (cached?.width !== undefined || cached?.height !== undefined)) {
                 const raw = (element.props ?? {}) as Record<string, unknown>;
                 const nextProps: Record<string, unknown> = {};
-                if ((cached?.width ?? 1) < 0) {
+                if (hasResizeAxisCrossed(flipBaselineX, cached?.width)) {
                     nextProps.imageFlipX = raw.imageFlipX === true ? false : true;
                 }
-                if ((cached?.height ?? 1) < 0) {
+                if (hasResizeAxisCrossed(flipBaselineY, cached?.height)) {
                     nextProps.imageFlipY = raw.imageFlipY === true ? false : true;
                 }
                 if (Object.keys(nextProps).length > 0) {
@@ -520,12 +544,13 @@ export function useMoveableHandlers({
             }
             const { width, height, signedWidth, signedHeight, translateX, translateY } = preview;
             if (element?.type === "nl.image" && isHTMLElement(e.target)) {
-                const raw = (element.props ?? {}) as Record<string, unknown>;
-                const baseFlipX = raw.imageFlipX === true ? -1 : 1;
-                const baseFlipY = raw.imageFlipY === true ? -1 : 1;
-                const dragFlipX = signedWidth < 0 ? -1 : 1;
-                const dragFlipY = signedHeight < 0 ? -1 : 1;
-                setImagePreviewFlipVars(e.target, baseFlipX * dragFlipX, baseFlipY * dragFlipY);
+                const flipBaselineX = getResizeFlipBaseline(initialLayout, startData, "x");
+                const flipBaselineY = getResizeFlipBaseline(initialLayout, startData, "y");
+                const dragFlipX = hasResizeAxisCrossed(flipBaselineX, signedWidth) ? -1 : 1;
+                const dragFlipY = hasResizeAxisCrossed(flipBaselineY, signedHeight) ? -1 : 1;
+                // Preview vars only represent the transient drag-side flip.
+                // The persisted imageFlipX/Y state is already applied in RectangleChromeRenderer.
+                setImagePreviewFlipVars(e.target, dragFlipX, dragFlipY);
             } else if (isHTMLElement(e.target)) {
                 clearImagePreviewFlipVars(e.target);
             }
