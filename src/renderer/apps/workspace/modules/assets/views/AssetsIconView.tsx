@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, DragEvent, useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { Dispatch, SetStateAction, DragEvent, useMemo, useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import { FolderPlus, Link, Upload, ChevronLeft } from "lucide-react";
@@ -37,6 +37,8 @@ export function AssetsIconView({
         filteredGroups,
         draggedItem,
         handleGroupFocus,
+        compactToolbar,
+        setAssetsIconToolbarCenter,
     } = useAssetsPanelContext();
     const { context } = useWorkspace();
     const [groupStack, setGroupStack] = useState<Array<{ group: AssetGroup; type: AssetType }>>([]);
@@ -109,6 +111,25 @@ export function AssetsIconView({
         setGroupStack((prev) => prev.slice(0, -1));
     }, []);
 
+    useLayoutEffect(() => {
+        if (!compactToolbar) {
+            setAssetsIconToolbarCenter(null);
+            return;
+        }
+        if (activeGroup) {
+            setAssetsIconToolbarCenter({
+                title: activeGroup.group.name,
+                onBack: handleBack,
+            });
+        } else {
+            setAssetsIconToolbarCenter(null);
+        }
+    }, [compactToolbar, activeGroup, handleBack, setAssetsIconToolbarCenter]);
+
+    useEffect(() => {
+        return () => setAssetsIconToolbarCenter(null);
+    }, [setAssetsIconToolbarCenter]);
+
     const displayTypes = activeGroup ? [activeGroup.type] : Object.values(AssetType);
     const minIconSize = 120;
     const maxIconSize = 240;
@@ -127,7 +148,7 @@ export function AssetsIconView({
                 }
             }}
         >
-            {activeGroup && (
+            {activeGroup && !compactToolbar && (
                 <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-[#0f1115] border-b border-white/10">
                     <button
                         onClick={handleBack}
@@ -271,6 +292,7 @@ function GroupIconTile({
 }) {
     const {
         selectedItems,
+        clipboard,
         showContextMenu,
         handleItemSelect,
         handleGroupFocus,
@@ -283,13 +305,14 @@ function GroupIconTile({
     const [isDragOverLocal, setDragOverLocal] = useState(false);
     const isSelected = selectedItems.has("group:" + group.id);
     const isDragging = !!draggedItem && draggedItem.isGroup && draggedItem.item.id === group.id;
+    const isCut = clipboard?.type === "cut" && clipboard.groups.some((g) => g.id === group.id);
 
     return (
         <div
             draggable
-            className={`border rounded-lg p-3 bg-white/5 flex flex-col gap-2 cursor-pointer hover:border-white/30 ${
+            className={`nl-asset-drag-source border rounded-lg p-3 bg-white/5 flex flex-col gap-2 cursor-pointer hover:border-white/30 ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
-            } ${isDragging ? "opacity-50" : ""} ${isDragOverLocal ? "ring-1 ring-primary/50 bg-primary/10" : ""}`}
+            } ${isDragging ? "opacity-50" : ""} ${isCut ? "opacity-40" : ""} ${isDragOverLocal ? "ring-1 ring-primary/50 bg-primary/10" : ""}`}
             onClick={(e) => {
                 const isMultiSelectIntent = e.ctrlKey || e.metaKey || e.shiftKey;
                 handleItemSelect(group.id, true, e);
@@ -366,9 +389,11 @@ function AssetIconTile({
     return (
         <div
             draggable
-            className={`border rounded-lg p-3 bg-white/5 flex items-start gap-3 cursor-pointer hover:border-white/30 ${
+            className={`nl-asset-drag-source border rounded-lg p-3 bg-white/5 flex items-start gap-3 cursor-pointer hover:border-white/30 ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
-            } ${isDragging ? "opacity-50" : ""}`}
+            } ${isDragging ? "opacity-50" : ""} ${
+                clipboard?.type === "cut" && clipboard.assets.some((a) => a.id === asset.id) ? "opacity-40" : ""
+            }`}
             onClick={(e) => {
                 const isMultiSelectIntent = e.ctrlKey || e.metaKey || e.shiftKey;
                 handleItemSelect(asset.id, false, e);
@@ -380,7 +405,7 @@ function AssetIconTile({
         >
             <div className="w-16 h-16 shrink-0 rounded-lg bg-gray-900/30 overflow-hidden flex items-center justify-center">
                 {thumbnailUrl ? (
-                    <img src={thumbnailUrl} alt={asset.name} className="w-full h-full object-cover" />
+                    <img src={thumbnailUrl} alt={asset.name} draggable={false} className="w-full h-full object-cover" />
                 ) : (
                     <Icon className="w-5 h-5 text-gray-400" />
                 )}
