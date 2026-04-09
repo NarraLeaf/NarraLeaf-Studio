@@ -9,6 +9,7 @@ import type {
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
+import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 import type { ContainerWidgetProps } from "@shared/types/ui-editor/container";
 import type { ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
 import { buttonPropsToImageFillBaseline } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
@@ -47,6 +48,13 @@ export const CONTAINER_KEY_ORDER: ContainerAppearancePropertyKey[] = [
     "transformScale",
     "transformRotation",
     "transformOpacity",
+    "effectBlur",
+    "effectBackgroundBlur",
+    "effectShadow",
+    "effectInnerShadow",
+    "effectBlend",
+    "effectGlow",
+    "effectFilter",
 ];
 
 /** Stable key order for button appearance groups. */
@@ -74,6 +82,13 @@ export const BUTTON_KEY_ORDER: ButtonAppearancePropertyKey[] = [
     "transformScale",
     "transformRotation",
     "transformOpacity",
+    "effectBlur",
+    "effectBackgroundBlur",
+    "effectShadow",
+    "effectInnerShadow",
+    "effectBlend",
+    "effectGlow",
+    "effectFilter",
 ];
 
 /** Row seed for `nl.image` / rectangle baseline (all container appearance keys map to `RectangleLikeProps`). */
@@ -137,6 +152,20 @@ export function containerAppearanceRowFromRectangleLike(
                 return rl.transformRotation;
             case "transformOpacity":
                 return rl.transformOpacity;
+            case "effectBlur":
+                return rl.effects.effectBlur;
+            case "effectBackgroundBlur":
+                return rl.effects.effectBackgroundBlur;
+            case "effectShadow":
+                return rl.effects.effectShadow;
+            case "effectInnerShadow":
+                return rl.effects.effectInnerShadow;
+            case "effectBlend":
+                return rl.effects.effectBlend;
+            case "effectGlow":
+                return rl.effects.effectGlow;
+            case "effectFilter":
+                return rl.effects.effectFilter;
             default:
                 return null;
         }
@@ -201,6 +230,20 @@ function containerRowValue(props: ContainerWidgetProps, key: ContainerAppearance
                 return props.transformRotation;
             case "transformOpacity":
                 return props.transformOpacity;
+            case "effectBlur":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectBlur;
+            case "effectBackgroundBlur":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectBackgroundBlur;
+            case "effectShadow":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectShadow;
+            case "effectInnerShadow":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectInnerShadow;
+            case "effectBlend":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectBlend;
+            case "effectGlow":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectGlow;
+            case "effectFilter":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectFilter;
             default:
                 return null;
         }
@@ -265,6 +308,20 @@ function buttonRowValue(props: ButtonWidgetProps, key: ButtonAppearancePropertyK
                 return props.transformRotation;
             case "transformOpacity":
                 return props.transformOpacity;
+            case "effectBlur":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectBlur;
+            case "effectBackgroundBlur":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectBackgroundBlur;
+            case "effectShadow":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectShadow;
+            case "effectInnerShadow":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectInnerShadow;
+            case "effectBlend":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectBlend;
+            case "effectGlow":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectGlow;
+            case "effectFilter":
+                return DEFAULT_ELEMENT_EFFECT_VALUES.effectFilter;
             default:
                 return null;
         }

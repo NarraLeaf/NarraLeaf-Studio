@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import type { ViewportTransform } from "../geometry";
@@ -7,6 +7,12 @@ import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { SELECTABLE_TARGET } from "./constants";
+import {
+    isUiContainerDrillLockHit,
+    isEmptyOrAbsentUiSelection,
+    markSuppressNextCanvasWidgetDoubleClick,
+    promoteHitToDirectChildOfSurfaceRoot,
+} from "./containerDrillSelection";
 import {
     buildLayoutPatchForNewElementFromSurfaceRect,
     resolveInsertTargetParent,
@@ -19,7 +25,6 @@ export type InsertToolDragState = {
     startClientY: number;
     startSurfaceX: number;
     startSurfaceY: number;
-    hitElementId: string | null;
     primaryElementId: string | null;
 };
 
@@ -69,6 +74,9 @@ export function useSurfaceInteractionEvents({
     documentService,
     stateService,
 }: UseSurfaceInteractionEventsParams) {
+    /** Pointer events often keep `detail` at 0; use timing + target to emulate double-activation for container drill. */
+    const containerDrillLastPointerRef = useRef<{ elementId: string; t: number } | null>(null);
+
     useEffect(() => {
         if (!surfaceElement) {
             return;
@@ -111,7 +119,7 @@ export function useSurfaceInteractionEvents({
 
             const doc = documentService.getDocument();
             const target = resolveInsertTargetParent(doc, surfaceId, {
-                hitElementId: state.hitElementId,
+                hitElementId: null,
                 primaryElementId: state.primaryElementId,
             });
             if (!target) {
@@ -189,8 +197,6 @@ export function useSurfaceInteractionEvents({
                 event.preventDefault();
                 event.stopPropagation();
                 const surfacePoint = clientToSurfaceCoords(event.clientX, event.clientY);
-                const hitNode = target?.closest?.(SELECTABLE_TARGET) as HTMLElement | null;
-                const hitElementId = hitNode?.dataset.uiElementId ?? null;
                 let primaryElementId: string | null = null;
                 if (selectionData?.surfaceId === surfaceId) {
                     primaryElementId =
@@ -205,7 +211,6 @@ export function useSurfaceInteractionEvents({
                     startClientY: event.clientY,
                     startSurfaceX: surfacePoint.x,
                     startSurfaceY: surfacePoint.y,
-                    hitElementId,
                     primaryElementId,
                 };
                 updateInsertPreview({
@@ -226,12 +231,16 @@ export function useSurfaceInteractionEvents({
                         const nextIds = cur.includes(elementId)
                             ? cur.filter(id => id !== elementId)
                             : [...cur, elementId];
-                        stateService.setUIElementSelection({
-                            editor: "ui",
-                            surfaceId,
-                            elementIds: nextIds.length > 0 ? nextIds : [elementId],
-                            primaryId: elementId,
-                        });
+                        if (nextIds.length === 0) {
+                            stateService.setSelection({ type: null, data: null });
+                        } else {
+                            stateService.setUIElementSelection({
+                                editor: "ui",
+                                surfaceId,
+                                elementIds: nextIds,
+                                primaryId: elementId,
+                            });
+                        }
                     } else if (event.shiftKey && selectionData && selectionData.surfaceId === surfaceId) {
                         const nextIds = selectionData.elementIds.includes(elementId)
                             ? selectionData.elementIds
@@ -243,11 +252,37 @@ export function useSurfaceInteractionEvents({
                             primaryId: elementId,
                         });
                     } else {
+                        const doc = documentService.getDocument();
+                        const hitId = elementId;
+                        const drillLock = isUiContainerDrillLockHit(doc, surfaceId, selectionData, hitId);
+                        const pickId =
+                            !drillLock && isEmptyOrAbsentUiSelection(selectionData, surfaceId)
+                                ? promoteHitToDirectChildOfSurfaceRoot(doc, surfaceId, hitId)
+                                : hitId;
+                        if (!drillLock) {
+                            containerDrillLastPointerRef.current = null;
+                        } else {
+                            const now = performance.now();
+                            const last = containerDrillLastPointerRef.current;
+                            const rapidSameTarget =
+                                last != null && last.elementId === hitId && now - last.t < 400;
+                            if (rapidSameTarget) {
+                                containerDrillLastPointerRef.current = null;
+                            } else {
+                                containerDrillLastPointerRef.current = { elementId: hitId, t: now };
+                            }
+                            const detail = typeof event.detail === "number" ? event.detail : 0;
+                            const allowDrillIntoChild = detail >= 2 || rapidSameTarget;
+                            if (!allowDrillIntoChild) {
+                                return;
+                            }
+                            markSuppressNextCanvasWidgetDoubleClick();
+                        }
                         stateService.setUIElementSelection({
                             editor: "ui",
                             surfaceId,
-                            elementIds: [elementId],
-                            primaryId: elementId,
+                            elementIds: [drillLock ? hitId : pickId],
+                            primaryId: drillLock ? hitId : pickId,
                         });
                     }
                 }
@@ -340,24 +375,4 @@ export function useSurfaceInteractionEvents({
         clientToSurfaceCoords,
     ]);
 
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key !== "Delete" && event.key !== "Backspace") {
-                return;
-            }
-            const target = event.target as HTMLElement | null;
-            if (target?.closest?.("input, textarea, [contenteditable='true']")) {
-                return;
-            }
-            if (!selectionData || selectionData.surfaceId !== surfaceId) {
-                return;
-            }
-            event.preventDefault();
-            documentService.deleteElements(selectionData.elementIds);
-            stateService.setSelection({ type: null, data: null });
-        };
-
-        document.addEventListener("keydown", handleKeyDown);
-        return () => document.removeEventListener("keydown", handleKeyDown);
-    }, [selectionData, surfaceId, documentService, stateService]);
 }

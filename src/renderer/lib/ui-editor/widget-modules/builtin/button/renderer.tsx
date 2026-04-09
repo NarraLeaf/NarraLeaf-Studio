@@ -27,11 +27,9 @@ import {
     resolveButtonVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import {
-    useWidgetRuntimeSnapshot,
-    useWidgetRuntimeStateStore,
+    useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
-import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
@@ -39,8 +37,6 @@ import { getButtonProps } from "./helpers";
 
 export function ButtonRenderer(props: WidgetRendererProps) {
     const { element, children, surface, hostAdapter, useAppearanceInspectorPreview } = props;
-    useWidgetRuntimeSnapshot();
-    const widgetRuntimeStore = useWidgetRuntimeStateStore();
     const stateService = UIEditorStateService.getInstance();
     const documentService = UIDocumentService.getInstance();
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
@@ -98,12 +94,10 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
     const p = getButtonProps(element);
     const interactionDisabled = Boolean(p.interactionDisabled);
+    const runtimeState = useWidgetRuntimeElementState(element.id, interactionDisabled);
     const resolveCtx = {
-        variantOverrideId:
-            widgetRuntimeStore?.getVariantOverride(element.id) ?? inspectorVariantId ?? null,
-        signals: widgetRuntimeStore
-            ? widgetRuntimeStore.getSignalsForElement(element.id, p.interactionDisabled)
-            : { ...DEFAULT_SYSTEM_INTERACTION_SIGNALS, disabled: interactionDisabled },
+        variantOverrideId: runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        signals: runtimeState.signals,
     };
     const v = resolveButtonVisualProps(element, p.appearance ?? undefined, resolveCtx);
     const appearanceTransitions = resolveButtonAppearanceTransitions(p.appearance ?? undefined, resolveCtx);

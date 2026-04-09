@@ -5,6 +5,8 @@ import type {
     ButtonAppearancePropertyKey,
     ContainerAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
+import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
+import { DEFAULT_ELEMENT_EFFECT_VALUES, normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
@@ -51,6 +53,7 @@ export type ButtonResolvedVisualProps = Pick<
     strokeSide: string;
     strokeAlign: RectangleLikeProps["strokeAlign"];
     borderJoin: RectangleLikeProps["borderJoin"];
+    effects: ElementEffectValues;
 };
 
 export type AppearanceResolveContext = {
@@ -123,6 +126,10 @@ function coerceNumber(v: unknown): number | undefined {
         }
     }
     return undefined;
+}
+
+function patchRectangleLikeEffects(target: RectangleLikeProps, patch: Partial<ElementEffectValues>): void {
+    target.effects = { ...target.effects, ...patch };
 }
 
 function coerceBool(v: unknown): boolean | undefined {
@@ -337,6 +344,51 @@ function applyContainerKey(target: RectangleLikeProps, key: ContainerAppearanceP
             }
             break;
         }
+        case "effectBlur": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                patchRectangleLikeEffects(target, { effectBlur: Math.max(0, n) });
+            }
+            break;
+        }
+        case "effectBackgroundBlur": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                patchRectangleLikeEffects(target, { effectBackgroundBlur: Math.max(0, n) });
+            }
+            break;
+        }
+        case "effectShadow": {
+            patchRectangleLikeEffects(target, {
+                effectShadow: normalizeElementEffectValues({ effectShadow: raw }).effectShadow,
+            });
+            break;
+        }
+        case "effectInnerShadow": {
+            patchRectangleLikeEffects(target, {
+                effectInnerShadow: normalizeElementEffectValues({ effectInnerShadow: raw }).effectInnerShadow,
+            });
+            break;
+        }
+        case "effectBlend": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                patchRectangleLikeEffects(target, { effectBlend: s });
+            }
+            break;
+        }
+        case "effectGlow": {
+            patchRectangleLikeEffects(target, {
+                effectGlow: normalizeElementEffectValues({ effectGlow: raw }).effectGlow,
+            });
+            break;
+        }
+        case "effectFilter": {
+            patchRectangleLikeEffects(target, {
+                effectFilter: normalizeElementEffectValues({ effectFilter: raw }).effectFilter,
+            });
+            break;
+        }
         default:
             break;
     }
@@ -509,6 +561,55 @@ function applyButtonKey(target: ButtonResolvedVisualProps, key: ButtonAppearance
             }
             break;
         }
+        case "effectBlur": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.effects = { ...target.effects, effectBlur: Math.max(0, n) };
+            }
+            break;
+        }
+        case "effectBackgroundBlur": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.effects = { ...target.effects, effectBackgroundBlur: Math.max(0, n) };
+            }
+            break;
+        }
+        case "effectShadow": {
+            target.effects = {
+                ...target.effects,
+                effectShadow: normalizeElementEffectValues({ effectShadow: raw }).effectShadow,
+            };
+            break;
+        }
+        case "effectInnerShadow": {
+            target.effects = {
+                ...target.effects,
+                effectInnerShadow: normalizeElementEffectValues({ effectInnerShadow: raw }).effectInnerShadow,
+            };
+            break;
+        }
+        case "effectBlend": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.effects = { ...target.effects, effectBlend: s };
+            }
+            break;
+        }
+        case "effectGlow": {
+            target.effects = {
+                ...target.effects,
+                effectGlow: normalizeElementEffectValues({ effectGlow: raw }).effectGlow,
+            };
+            break;
+        }
+        case "effectFilter": {
+            target.effects = {
+                ...target.effects,
+                effectFilter: normalizeElementEffectValues({ effectFilter: raw }).effectFilter,
+            };
+            break;
+        }
         default:
             break;
     }
@@ -520,6 +621,8 @@ function isUsableAppearance(appearance: AppearanceModel | null | undefined): app
 
 /**
  * Resolve rectangle-like chrome for `nl.container`: legacy baseline from element props, then appearance overlays.
+ * `clipContent` stays on flat `element.props` (merged via `getContainerProps`); it is not driven by appearance
+ * rows so variant/hover cannot silently change overflow clipping for containers.
  */
 export function resolveContainerRectangleLike(
     element: UIElement,
@@ -631,6 +734,9 @@ export function resolveButtonVisualProps(
         strokeSide: bl.strokeSide,
         strokeAlign: bl.strokeAlign,
         borderJoin: bl.borderJoin,
+        effects: normalizeElementEffectValues(
+            (flat as unknown as Record<string, unknown>).effects ?? DEFAULT_ELEMENT_EFFECT_VALUES
+        ),
     };
     if (!isUsableAppearance(appearance)) {
         return baseline;
@@ -693,5 +799,6 @@ export function buttonResolvedVisualToRectangleLike(v: ButtonResolvedVisualProps
         transformScale: v.transformScale,
         transformRotation: v.transformRotation,
         transformOpacity: v.transformOpacity,
+        effects: { ...v.effects },
     };
 }

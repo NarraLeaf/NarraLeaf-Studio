@@ -7,6 +7,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
 import { blurSidebarRailFocusIfLeavingRail } from "./blurSidebarRailFocus";
+import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 
 interface LeftSidebarProps {
     panelId: string;
@@ -87,7 +88,9 @@ export function LeftSidebar({ panelId, onClose, width }: LeftSidebarProps) {
                 className="flex-1 overflow-auto"
                 onPointerDownCapture={e => blurSidebarRailFocusIfLeavingRail(e.target)}
             >
-                <PanelComponent panelId={panelId} payload={panel.payload} />
+                <WorkspacePanelErrorBoundary regionLabel={panel.title} isolationKey={panelId}>
+                    <PanelComponent panelId={panelId} payload={panel.payload} />
+                </WorkspacePanelErrorBoundary>
             </div>
         </div>
     );

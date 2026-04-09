@@ -4,6 +4,19 @@ import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 /** How children of `nl.container` participate in layout inside the editor surface. */
 export type ContainerLayoutKind = "free" | "stack" | "scroll";
 
+/**
+ * Layout axis for `nl.container` (orthogonal to clipping):
+ * - `absolute`: direct children use canvas `UILayout` x/y inside the container.
+ * - `flow`: direct children are flex items; order comes from `childrenIds` (see `isUIElementFlowLayoutChild`).
+ */
+export type ContainerChildLayoutParticipation = "absolute" | "flow";
+
+/** CSS overflow on the scroll viewport inner wrapper (single-axis scroll). */
+export type ContainerScrollViewportOverflow = {
+    overflowX: "hidden" | "auto";
+    overflowY: "hidden" | "auto";
+};
+
 export type ContainerStackDirection = "horizontal" | "vertical";
 
 export type ContainerStackAlignItems = "start" | "center" | "end" | "stretch";
@@ -67,6 +80,11 @@ export type ContainerWidgetProps = {
     strokeSide: ContainerStrokeSide;
     borderJoin: ContainerStrokeJoin;
     cornerAdvanced: boolean;
+    /**
+     * Clip child painting to the container's box (maps to `overflow: hidden` on the clipping layer).
+     * Not a CSS overflow enum: it does not add `auto`/`scroll` axes. For `layoutKind: "scroll"`, the
+     * scroll viewport still owns single-axis scrolling; this flag clips the outer chrome/content stack.
+     */
     clipContent: boolean;
 
     transformOffsetX: number;
@@ -130,6 +148,44 @@ export function parseContainerLayoutKind(props: Record<string, unknown> | undefi
         return raw;
     }
     return "free";
+}
+
+/** Map `layoutKind` to how direct children participate in layout (absolute vs flow). */
+export function getContainerChildLayoutParticipation(kind: ContainerLayoutKind): ContainerChildLayoutParticipation {
+    return kind === "free" ? "absolute" : "flow";
+}
+
+/** True when the container uses an inner scroll viewport (`ScrollInner`), independent of `clipContent`. */
+export function containerLayoutUsesScrollViewport(kind: ContainerLayoutKind): boolean {
+    return kind === "scroll";
+}
+
+/**
+ * Normalize serialized `clipContent`. Only real booleans are accepted; anything else falls back to the
+ * widget default so on-disk noise does not flip clipping unexpectedly.
+ */
+export function normalizeContainerClipContent(raw: unknown): boolean {
+    if (typeof raw === "boolean") {
+        return raw;
+    }
+    return defaultContainerWidgetProps.clipContent;
+}
+
+/**
+ * Overflow for the scroll viewport: one axis scrolls, the other clips. This is part of `layoutKind: "scroll"`,
+ * not a second overflow mode the author configures separately from `scrollAxis`.
+ */
+export function resolveContainerScrollViewportOverflow(axis: ContainerScrollAxis): ContainerScrollViewportOverflow {
+    const isY = axis === "y";
+    return {
+        overflowX: isY ? "hidden" : "auto",
+        overflowY: isY ? "auto" : "hidden",
+    };
+}
+
+/** Host wrapper overflow for `layoutKind: "free"` (absolute children live on this host). */
+export function resolveContainerFreeHostOverflow(clipContent: boolean): "hidden" | "visible" {
+    return clipContent ? "hidden" : "visible";
 }
 
 type ContainerElementLike = { type: string; props?: Record<string, unknown> };

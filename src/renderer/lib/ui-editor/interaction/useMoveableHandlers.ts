@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, startTransition } from "react";
 import type {
     OnDrag,
     OnDragEnd,
@@ -214,7 +214,9 @@ export function useMoveableHandlers({
             dragDeltaCache.current.delete(elementId);
         });
         if (Object.keys(patches).length > 0) {
-            documentService.updateElementLayouts(patches);
+            startTransition(() => {
+                documentService.updateElementLayouts(patches);
+            });
         }
         clearPerformanceHints();
         scheduleMoveableRectUpdate();
@@ -296,12 +298,16 @@ export function useMoveableHandlers({
                 target.style.top = `${patch.y}px`;
             }
         });
-        if (Object.keys(patches).length > 0) {
-            documentService.updateElementLayouts(patches);
+        if (Object.keys(patches).length > 0 || Object.keys(imageFlipPatches).length > 0) {
+            startTransition(() => {
+                if (Object.keys(patches).length > 0) {
+                    documentService.updateElementLayouts(patches);
+                }
+                Object.entries(imageFlipPatches).forEach(([elementId, propsPatch]) => {
+                    documentService.updateElementProps(elementId, propsPatch);
+                });
+            });
         }
-        Object.entries(imageFlipPatches).forEach(([elementId, propsPatch]) => {
-            documentService.updateElementProps(elementId, propsPatch);
-        });
         clearPerformanceHints();
         scheduleMoveableRectUpdate();
         endTransform();
@@ -334,7 +340,9 @@ export function useMoveableHandlers({
             applyFinalTransform(target, rotation);
         });
         if (Object.keys(patches).length > 0) {
-            documentService.updateElementLayouts(patches);
+            startTransition(() => {
+                documentService.updateElementLayouts(patches);
+            });
         }
         clearPerformanceHints();
         scheduleMoveableRectUpdate();

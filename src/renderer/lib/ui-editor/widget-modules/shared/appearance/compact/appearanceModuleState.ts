@@ -12,8 +12,8 @@ import { findPropertyGroup } from "./appearanceCompactHelpers";
 export const SYSTEM_STATE_KEYS = ["hovered", "active", "disabled", "focused"] as const;
 export type SystemStateKey = (typeof SYSTEM_STATE_KEYS)[number];
 
-export type ContainerAppearanceModuleId = "background" | "stroke" | "corners" | "transform";
-export type ButtonAppearanceModuleId = "background" | "border" | "spacing" | "transform";
+export type ContainerAppearanceModuleId = "background" | "stroke" | "corners" | "transform" | "effects";
+export type ButtonAppearanceModuleId = "background" | "border" | "spacing" | "transform" | "effects";
 
 export type ModuleEditMode = "default" | SystemStateKey;
 
@@ -53,6 +53,15 @@ export const CONTAINER_MODULE_KEYS: Record<ContainerAppearanceModuleId, readonly
         "transformRotation",
         "transformOpacity",
     ],
+    effects: [
+        "effectBlur",
+        "effectBackgroundBlur",
+        "effectShadow",
+        "effectInnerShadow",
+        "effectBlend",
+        "effectGlow",
+        "effectFilter",
+    ],
 };
 
 export const BUTTON_MODULE_KEYS: Record<ButtonAppearanceModuleId, readonly ButtonAppearancePropertyKey[]> = {
@@ -82,6 +91,15 @@ export const BUTTON_MODULE_KEYS: Record<ButtonAppearanceModuleId, readonly Butto
         "transformScale",
         "transformRotation",
         "transformOpacity",
+    ],
+    effects: [
+        "effectBlur",
+        "effectBackgroundBlur",
+        "effectShadow",
+        "effectInnerShadow",
+        "effectBlend",
+        "effectGlow",
+        "effectFilter",
     ],
 };
 

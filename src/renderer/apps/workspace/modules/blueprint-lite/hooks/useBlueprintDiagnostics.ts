@@ -1,10 +1,18 @@
 import { useMemo } from "react";
-import { validateBlueprintDocumentGraphs } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
+import {
+    validateBlueprintDocumentGraphs,
+    type ValidateBlueprintDocumentGraphsOptions,
+} from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 
-export function useBlueprintDiagnostics(doc: BlueprintDocument, blueprintId: string, revision: number) {
+export function useBlueprintDiagnostics(
+    doc: BlueprintDocument,
+    blueprintId: string,
+    revision: number,
+    options?: ValidateBlueprintDocumentGraphsOptions,
+) {
     return useMemo(
-        () => validateBlueprintDocumentGraphs(doc, blueprintId),
-        [doc, blueprintId, revision],
+        () => validateBlueprintDocumentGraphs(doc, blueprintId, options),
+        [doc, blueprintId, revision, options?.widgetElement, options?.widgetSurfaceId],
     );
 }

@@ -15,6 +15,13 @@ import type { InsertPreview, InsertToolDragState } from "./useSurfaceInteraction
 import { useTransformController } from "./controllers/TransformController";
 import { useImageCropController } from "./controllers/ImageCropController";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
+import {
+    isUiContainerDrillLockHit,
+    isEmptyOrAbsentUiSelection,
+    markSuppressNextCanvasWidgetDoubleClick,
+    promoteHitToDirectChildOfSurfaceRoot,
+} from "./containerDrillSelection";
 
 function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
     const x = Math.min(preview.startX, preview.currentX);
@@ -59,6 +66,7 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
     const previousSelectedTargets = useRef<HTMLElement[]>([]);
     const outlineCache = useRef<WeakMap<HTMLElement, { outline?: string; outlineOffset?: string }>>(new WeakMap());
     const documentService = UIDocumentService.getInstance();
+    const documentRevision = useUIDocumentRevision(documentService);
     type MoveableInstance = React.ElementRef<typeof Moveable>;
     const moveableRef = useRef<MoveableInstance | null>(null);
 
@@ -154,17 +162,27 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         };
     }, [containerRef, widgetRuntimeStore]);
 
-    const selectedTargets = useMemo<HTMLElement[]>(() => {
-        if (!isUIElementSelection(selection) || selection.data.surfaceId !== surfaceId) {
-            return [];
+    // Resolve DOM nodes after commit: querySelector during render cannot see widgets inserted in the same commit.
+    const [selectedTargets, setSelectedTargets] = useState<HTMLElement[]>([]);
+    useLayoutEffect(() => {
+        if (!isUIElementSelection(selection) || selection.data.surfaceId !== surfaceId || !surfaceElement) {
+            setSelectedTargets([]);
+            scheduleMoveableRectUpdate();
+            return;
         }
-        if (!surfaceElement) {
-            return [];
-        }
-        return selection.data.elementIds
+        const ids = selection.data.elementIds;
+        const next = ids
             .map(id => surfaceElement.querySelector(`[data-ui-element-id="${id}"]`))
             .filter(isHTMLElement);
-    }, [selection, surfaceElement, surfaceId]);
+        setSelectedTargets(prev => {
+            if (prev.length === next.length && prev.every((el, i) => el === next[i])) {
+                return prev;
+            }
+            return next;
+        });
+        // Defer: Moveable reads `targets` after this commit; avoid flushSync inside useLayoutEffect (React warning).
+        scheduleMoveableRectUpdate();
+    }, [selection, surfaceElement, surfaceId, documentRevision, scheduleMoveableRectUpdate]);
 
     const selectionData = isUIElementSelection(selection) ? selection.data : null;
     const selectionIds = selectionData?.elementIds ?? [];
@@ -235,11 +253,9 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         }
     }, [selectedTargets, primaryId, showOutlines]);
 
-    useEffect(() => {
-        // Selection, viewport zoom/pan, or showOutlines can change the target rect in container space.
-        scheduleMoveableRectUpdate();
+    useLayoutEffect(() => {
+        moveableRef.current?.updateRect?.();
     }, [
-        scheduleMoveableRectUpdate,
         selectedTargets,
         viewport.scale,
         viewport.offsetX,
@@ -247,32 +263,69 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         showOutlines,
     ]);
 
-    useEffect(() => {
-        // When element layout changes, the DOM updates but this layer might not re-render.
-        const unsubscribe = documentService.onDocumentChanged?.(() => {
-            scheduleMoveableRectUpdate();
-        });
-        return () => unsubscribe?.();
-    }, [documentService, scheduleMoveableRectUpdate]);
+    const handleSelectEnd = useCallback(
+        (e: any) => {
+            if (!surfaceElement) {
+                return;
+            }
+            const targets = e.selected as HTMLElement[];
+            const targetIds = targets
+                .map(target => target.dataset.uiElementId)
+                .filter(Boolean) as string[];
+            if (targetIds.length === 0) {
+                return;
+            }
 
-    const handleSelectEnd = (e: any) => {
-        if (!surfaceElement) {
-            return;
-        }
-        const targets = e.selected as HTMLElement[];
-        const targetIds = targets
-            .map(target => target.dataset.uiElementId)
-            .filter(Boolean) as string[];
-        if (targetIds.length === 0) {
-            return;
-        }
-        stateService.setUIElementSelection({
-            editor: "ui",
-            surfaceId,
-            elementIds: targetIds,
-            primaryId: targetIds[targetIds.length - 1],
-        });
-    };
+            const input = e.inputEvent as MouseEvent | PointerEvent | undefined;
+            const multiIntent = Boolean(input?.shiftKey || input?.metaKey || input?.ctrlKey);
+            const doc = documentService.getDocument();
+            const prev = stateService.getSelection();
+
+            let elementIds = targetIds;
+            let primaryId = targetIds[targetIds.length - 1];
+
+            if (
+                !multiIntent &&
+                targetIds.length === 1 &&
+                isUIElementSelection(prev) &&
+                prev.data.surfaceId === surfaceId &&
+                prev.data.elementIds.length === 1
+            ) {
+                const hitId = targetIds[0];
+                // `useSurfaceInteractionEvents` pointerdown also updates selection; drill lock is applied there too.
+                // Selecto immediate click ends on mousedown (not mouseup); marquee ends on mouseup — only block mousedown.
+                const immediateClickEnd = input?.type === "mousedown";
+                if (
+                    immediateClickEnd &&
+                    !e.isDouble &&
+                    isUiContainerDrillLockHit(doc, surfaceId, prev.data, hitId)
+                ) {
+                    return;
+                }
+                if (e.isDouble && isUiContainerDrillLockHit(doc, surfaceId, prev.data, hitId)) {
+                    markSuppressNextCanvasWidgetDoubleClick();
+                }
+            }
+
+            if (!multiIntent && targetIds.length === 1) {
+                const hitId = targetIds[0];
+                const selData = isUIElementSelection(prev) && prev.data.surfaceId === surfaceId ? prev.data : null;
+                if (isEmptyOrAbsentUiSelection(selData, surfaceId)) {
+                    const promoted = promoteHitToDirectChildOfSurfaceRoot(doc, surfaceId, hitId);
+                    elementIds = [promoted];
+                    primaryId = promoted;
+                }
+            }
+
+            stateService.setUIElementSelection({
+                editor: "ui",
+                surfaceId,
+                elementIds,
+                primaryId,
+            });
+        },
+        [documentService, stateService, surfaceElement, surfaceId],
+    );
 
     const isMoveableControlTarget = useCallback((target: Element | null | undefined) => {
         return Boolean(

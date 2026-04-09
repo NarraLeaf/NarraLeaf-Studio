@@ -84,6 +84,13 @@ export type UISlotDefinition = {
     rootElementId?: UIElementId;
 };
 
+/** Types that may own `childrenIds` (structural parents). Leaf widgets must stay childless. */
+const UI_PARENT_CAPABLE_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.list", "nl.button"]);
+
+export function uiElementTypeAcceptsChildren(elementType: string): boolean {
+    return UI_PARENT_CAPABLE_ELEMENT_TYPES.has(elementType);
+}
+
 export type UIElement = {
     id: UIElementId;
     type: string;
@@ -127,6 +134,9 @@ export type UIBehaviorAction =
 /**
  * True when this element acts as a flow-layout parent: direct children use flex inside the parent
  * instead of canvas absolute positioning (`nl.list`, or `nl.container` with stack/scroll layout).
+ *
+ * This is the **child layout** axis (`getContainerChildLayoutParticipation` for containers), not
+ * `clipContent`: clipping can still hide overflow without changing flex vs absolute rules.
  */
 export function isUIFlowLayoutParentElement(element: UIElement): boolean {
     if (element.type === "nl.list") {

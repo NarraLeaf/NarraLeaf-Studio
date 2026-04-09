@@ -8,6 +8,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
 import { useKeybinding, contextual } from "../../hooks";
 import { useEditorGroupAssetDrop } from "./useEditorGroupAssetDrop";
+import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 
 interface EditorGroupProps {
     group: EditorGroupType;
@@ -169,7 +170,12 @@ export function EditorGroup({ group }: EditorGroupProps) {
             {/* Editor Content with payload support */}
             <div className="flex-1 overflow-auto">
                 {activeTab ? (
-                    <activeTab.component tabId={activeTab.id} payload={activeTab.payload} />
+                    <WorkspacePanelErrorBoundary
+                        regionLabel={String(activeTab.title)}
+                        isolationKey={activeTab.id}
+                    >
+                        <activeTab.component tabId={activeTab.id} payload={activeTab.payload} />
+                    </WorkspacePanelErrorBoundary>
                 ) : (
                     <div className="h-full flex items-center justify-center text-gray-500">
                         <p>No active editor</p>

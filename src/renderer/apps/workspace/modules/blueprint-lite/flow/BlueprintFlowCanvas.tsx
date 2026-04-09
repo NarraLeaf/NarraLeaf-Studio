@@ -14,7 +14,7 @@ import {
     type Node,
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
-import { isValidBlueprintExecConnection } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
+import { isValidBlueprintIrExecConnection } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import { blueprintFlowNodeTypes } from "./nodeTypes";
 import { applyFlowPositionsToIr, blueprintIrToFlowEdges, blueprintIrToFlowNodes } from "./useBlueprintFlowProjection";
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
@@ -65,22 +65,20 @@ function BlueprintFlowCanvasInner({
         onCommitIr(next);
     }, [getNodes, onCommitIr]);
 
+    const isValidConnection = useCallback((connection: Connection | Edge) => {
+        const conn: Connection = {
+            source: connection.source,
+            target: connection.target,
+            sourceHandle: connection.sourceHandle ?? null,
+            targetHandle: connection.targetHandle ?? null,
+        };
+        return isValidBlueprintIrExecConnection(irRef.current, conn);
+    }, []);
+
     const onConnect = useCallback(
         (connection: Connection) => {
             const snap = irRef.current;
-            const srcNode = snap.nodes?.[connection.source ?? ""];
-            const tgtNode = snap.nodes?.[connection.target ?? ""];
-            if (!srcNode || !tgtNode || !connection.sourceHandle || !connection.targetHandle) {
-                return;
-            }
-            if (
-                !isValidBlueprintExecConnection({
-                    sourceType: srcNode.type,
-                    sourcePort: connection.sourceHandle,
-                    targetType: tgtNode.type,
-                    targetPort: connection.targetHandle,
-                })
-            ) {
+            if (!isValidBlueprintIrExecConnection(snap, connection)) {
                 return;
             }
             const next = cloneBlueprintIr(snap);
@@ -88,18 +86,21 @@ function BlueprintFlowCanvasInner({
             const dup = edgesNext.some(
                 e =>
                     e.from.nodeId === connection.source &&
-                    e.from.port === connection.sourceHandle &&
+                    e.from.port === (connection.sourceHandle ?? "") &&
                     e.to.nodeId === connection.target &&
-                    e.to.port === connection.targetHandle,
+                    e.to.port === (connection.targetHandle ?? ""),
             );
             if (dup) {
+                return;
+            }
+            if (!connection.sourceHandle || !connection.targetHandle) {
                 return;
             }
             next.edges = [
                 ...edgesNext,
                 {
-                    from: { nodeId: connection.source, port: connection.sourceHandle },
-                    to: { nodeId: connection.target, port: connection.targetHandle },
+                    from: { nodeId: connection.source!, port: connection.sourceHandle },
+                    to: { nodeId: connection.target!, port: connection.targetHandle },
                 },
             ];
             onCommitIr(next);
@@ -152,6 +153,7 @@ function BlueprintFlowCanvasInner({
             nodeTypes={blueprintFlowNodeTypes}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            isValidConnection={isValidConnection}
             onConnect={onConnect}
             onNodeDragStop={onNodeDragStop}
             onEdgesDelete={onEdgesDelete}
@@ -164,6 +166,10 @@ function BlueprintFlowCanvasInner({
             proOptions={{ hideAttribution: true }}
             deleteKeyCode={["Backspace", "Delete"]}
         >
+            <div className="pointer-events-none absolute left-2 top-2 z-10 max-w-[min(100%,20rem)] rounded border border-white/10 bg-[#0b0d12]/95 px-2 py-1.5 text-[10px] leading-snug text-gray-400 shadow-md backdrop-blur-sm">
+                <span className="font-medium text-gray-300">Execution graph</span> — connect white execution pins only.
+                Data pins (e.g. Branch condition) are edited in the inspector until typed data edges ship.
+            </div>
             <Background color="#334155" gap={20} size={1} />
             <Controls className="!bg-[#1a1d21] !border-white/10 !shadow-lg" />
             <MiniMap
