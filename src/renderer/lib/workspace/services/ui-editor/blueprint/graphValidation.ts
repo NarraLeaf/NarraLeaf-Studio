@@ -1,4 +1,5 @@
 import type { Blueprint, BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { UIElement } from "@shared/types/ui-editor/document";
 import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBehaviorGraphEntry";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
 import { behaviorNodeRegistry } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
@@ -16,6 +17,113 @@ export type BlueprintGraphEditorDiagnostic = {
     code?: string;
     target?: BlueprintGraphDiagnosticTarget;
 };
+
+/** Optional UI document context when validating a widgetMain blueprint from the graph editor. */
+export type ValidateBlueprintDocumentGraphsOptions = {
+    widgetElement?: UIElement | null;
+    /** Surface id for the widget; used with widgetElement to match blueprint owner. */
+    widgetSurfaceId?: string;
+};
+
+type BlueprintEventHook = {
+    slotName: string;
+    binding: { kind: "blueprintEvent"; blueprintId: string; eventId: string };
+};
+
+function collectBlueprintEventHooks(element: UIElement): BlueprintEventHook[] {
+    const events = element.behavior?.events;
+    if (!events) {
+        return [];
+    }
+    const out: BlueprintEventHook[] = [];
+    for (const [slotName, b] of Object.entries(events)) {
+        if (b?.kind === "blueprintEvent") {
+            out.push({ slotName, binding: b });
+        }
+    }
+    return out;
+}
+
+/**
+ * Cross-checks widget UI `blueprintEvent` hooks against blueprint event graph slots (Workspace-only).
+ */
+export function validateBlueprintWidgetMainEventWiring(
+    doc: BlueprintDocument,
+    blueprintId: string,
+    ctx: { element: UIElement; surfaceId: string } | null | undefined,
+): BlueprintGraphEditorDiagnostic[] {
+    if (!ctx?.element) {
+        return [];
+    }
+    const { element, surfaceId } = ctx;
+    const bp: Blueprint | undefined = doc.blueprints[blueprintId];
+    if (!bp || bp.owner.kind !== "widgetMain") {
+        return [];
+    }
+    if (bp.owner.elementId !== element.id || bp.owner.surfaceId !== surfaceId) {
+        return [];
+    }
+
+    const out: BlueprintGraphEditorDiagnostic[] = [];
+    const hooks = collectBlueprintEventHooks(element);
+    const uiHookCount = hooks.length;
+
+    if (bp.program.kind !== "graph") {
+        if (uiHookCount > 0) {
+            out.push({
+                severity: "error",
+                code: "blueprint.ui_events_non_graph_program",
+                message:
+                    "Widget UI events are wired to this blueprint, but its program is not a visual graph — Dev Mode cannot run event graphs here.",
+            });
+        }
+        return out;
+    }
+
+    const eventGraphs = bp.program.graphs.events ?? {};
+    const eventGraphIds = Object.keys(eventGraphs);
+    const eventGraphCount = eventGraphIds.length;
+
+    if (eventGraphCount > 0 && uiHookCount === 0) {
+        out.push({
+            severity: "warning",
+            code: "blueprint.event_graphs_not_wired_to_ui",
+            message:
+                "This blueprint has stored event graph slot(s), but no widget UI event is wired to them. Use Properties → Blueprint events to attach supported events so Dev Mode can dispatch.",
+            target: { kind: "graph", graphKind: "event", graphId: eventGraphIds[0]! },
+        });
+    }
+
+    if (uiHookCount > 0 && eventGraphCount === 0) {
+        out.push({
+            severity: "error",
+            code: "blueprint.ui_events_without_graph_slots",
+            message:
+                "Widget UI events reference this blueprint, but it has no event graph slots — the UI document and blueprint may be out of sync.",
+        });
+    }
+
+    for (const h of hooks) {
+        if (h.binding.blueprintId !== blueprintId) {
+            out.push({
+                severity: "error",
+                code: "blueprint.event_wiring_wrong_blueprint",
+                message: `UI event "${h.slotName}" targets blueprint "${h.binding.blueprintId}" but the open editor is "${blueprintId}".`,
+            });
+            continue;
+        }
+        if (!eventGraphs[h.binding.eventId]) {
+            out.push({
+                severity: "error",
+                code: "blueprint.event_wiring_missing_graph",
+                message: `UI event "${h.slotName}" references missing event graph slot "${h.binding.eventId}".`,
+                target: { kind: "graph", graphKind: "event", graphId: h.binding.eventId },
+            });
+        }
+    }
+
+    return out;
+}
 
 function entryKeys(ir: BlueprintGraphIr): string[] {
     return Object.keys(ir.entries ?? {});
@@ -138,6 +246,18 @@ export function validateBlueprintBindingsForBlueprint(doc: BlueprintDocument, bl
     const decls = bp.members?.declarations ?? {};
     const out: BlueprintGraphEditorDiagnostic[] = [];
     for (const b of Object.values(bp.bindings)) {
+        if (b.status === "broken") {
+            const detail = b.brokenReason?.trim()
+                ? ` (${b.brokenReason})`
+                : " — fix or recreate the declaration, or clear the binding.";
+            out.push({
+                severity: "error",
+                code: "binding.broken",
+                message: `Binding "${b.id}" is marked broken${detail}`,
+                target: { kind: "binding", bindingId: b.id },
+            });
+            continue;
+        }
         if (b.source.kind !== "declaration") {
             continue;
         }
@@ -159,10 +279,22 @@ export function validateBlueprintBindingsForBlueprint(doc: BlueprintDocument, bl
 export function validateBlueprintDocumentGraphs(
     doc: BlueprintDocument,
     blueprintId: string,
+    options?: ValidateBlueprintDocumentGraphsOptions,
 ): BlueprintGraphEditorDiagnostic[] {
     const bp = doc.blueprints[blueprintId];
     if (!bp || bp.program.kind !== "graph") {
-        return [];
+        const base =
+            bp && bp.program.kind !== "graph"
+                ? validateBlueprintBindingsForBlueprint(doc, blueprintId)
+                : [];
+        const wiring =
+            bp && options?.widgetElement && options.widgetSurfaceId
+                ? validateBlueprintWidgetMainEventWiring(doc, blueprintId, {
+                      element: options.widgetElement,
+                      surfaceId: options.widgetSurfaceId,
+                  })
+                : [];
+        return [...base, ...wiring];
     }
     const out: BlueprintGraphEditorDiagnostic[] = [];
     for (const [eventId, eg] of Object.entries(bp.program.graphs.events ?? {})) {
@@ -172,6 +304,14 @@ export function validateBlueprintDocumentGraphs(
         out.push(...validateBlueprintGraphIr(ensureIr(fg.graph), { blueprintId, graphKind: "function", graphId: fnId }));
     }
     out.push(...validateBlueprintBindingsForBlueprint(doc, blueprintId));
+    if (options?.widgetElement && options.widgetSurfaceId) {
+        out.push(
+            ...validateBlueprintWidgetMainEventWiring(doc, blueprintId, {
+                element: options.widgetElement,
+                surfaceId: options.widgetSurfaceId,
+            }),
+        );
+    }
     return out;
 }
 

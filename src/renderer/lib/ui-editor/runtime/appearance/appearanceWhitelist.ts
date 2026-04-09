@@ -31,6 +31,13 @@ export const CONTAINER_APPEARANCE_KEYS = new Set<ContainerAppearancePropertyKey>
     "transformScale",
     "transformRotation",
     "transformOpacity",
+    "effectBlur",
+    "effectBackgroundBlur",
+    "effectShadow",
+    "effectInnerShadow",
+    "effectBlend",
+    "effectGlow",
+    "effectFilter",
 ]);
 
 export const BUTTON_APPEARANCE_KEYS = new Set<ButtonAppearancePropertyKey>([
@@ -57,6 +64,13 @@ export const BUTTON_APPEARANCE_KEYS = new Set<ButtonAppearancePropertyKey>([
     "transformScale",
     "transformRotation",
     "transformOpacity",
+    "effectBlur",
+    "effectBackgroundBlur",
+    "effectShadow",
+    "effectInnerShadow",
+    "effectBlend",
+    "effectGlow",
+    "effectFilter",
 ]);
 
 export function isContainerAppearanceKey(k: string): k is ContainerAppearancePropertyKey {

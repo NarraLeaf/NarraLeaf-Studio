@@ -14,6 +14,8 @@ import {
     UIBehaviorBinding,
     UISlotDefinition,
     UILayout,
+    isUIFlowLayoutParentElement,
+    uiElementTypeAcceptsChildren,
 } from "@shared/types/ui-editor/document";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
@@ -27,7 +29,20 @@ import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
 import { EventEmitter } from "../ui/EventEmitter";
-import { applyPlannedMove, planMoveElementsInSurface, type MoveUiElementsResult } from "./uiDocumentTreeMove";
+import {
+    applyPlannedMove,
+    collectSubtreeElementIds,
+    layoutPatchForReparent,
+    planMoveElementsInSurface,
+    type MoveUiElementsResult,
+} from "./uiDocumentTreeMove";
+import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
+import { isValidUIInsertParent } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
+import { cloneWidgetMainBlueprintForPaste, remapElementBehaviorBlueprintIds } from "./blueprint/cloneBlueprintForPaste";
+import { registerPrivateBlueprintAsActive } from "./blueprint/ownerRecords";
+import { widgetMainOwnerKey } from "./blueprint/ownerKeys";
+import type { Blueprint } from "@shared/types/blueprint/document";
 import {
     DEFAULT_APP_SURFACE_NAME,
     DEFAULT_UI_DOCUMENT_NAME,
@@ -594,6 +609,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (!parent) {
             throw new RendererError("Parent element not found");
         }
+        if (!uiElementTypeAcceptsChildren(parent.type)) {
+            throw new RendererError(`Parent type ${parent.type} cannot have child elements`);
+        }
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const elementId = uuidService.generate();
 
@@ -631,6 +649,151 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
 
         return element;
+    }
+
+    public pasteClipboardPayload(
+        surfaceId: string,
+        targetParentId: string,
+        beforeChildId: string | null,
+        payload: UIEditorClipboardPayload,
+    ): { ok: true; newRootIds: string[] } | { ok: false; reason: "invalid_clipboard" | "invalid_target" } {
+        if (payload.v !== 1 || payload.topLevelElementIds.length === 0 || Object.keys(payload.elements).length === 0) {
+            return { ok: false, reason: "invalid_clipboard" };
+        }
+
+        const document = this.getDocument();
+        const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
+        if (!effectiveRootId) {
+            return { ok: false, reason: "invalid_target" };
+        }
+        const allowed = collectSubtreeElementIds(document, effectiveRootId);
+        const target = document.elements[targetParentId];
+        if (!target || !allowed.has(targetParentId) || !isValidUIInsertParent(target)) {
+            return { ok: false, reason: "invalid_target" };
+        }
+        if (beforeChildId != null) {
+            const beforeEl = document.elements[beforeChildId];
+            if (!beforeEl || beforeEl.parentId !== targetParentId) {
+                return { ok: false, reason: "invalid_target" };
+            }
+        }
+
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+
+        const elementIdMap: Record<string, string> = {};
+        for (const oldId of Object.keys(payload.elements)) {
+            elementIdMap[oldId] = uuidService.generate();
+        }
+
+        const blueprintIdMap: Record<string, string> = {};
+        for (const oldBpId of Object.keys(payload.widgetMainBlueprints)) {
+            blueprintIdMap[oldBpId] = uuidService.generate();
+        }
+
+        const newRootIds: string[] = [];
+
+        this.mutateDocument(doc => {
+            const parentEl = doc.elements[targetParentId];
+            if (!parentEl) {
+                return;
+            }
+
+            for (const oldId of Object.keys(payload.elements)) {
+                const oldEl = payload.elements[oldId];
+                const newId = elementIdMap[oldId];
+                const isTop = payload.topLevelElementIds.includes(oldId);
+                const copy = JSON.parse(JSON.stringify(oldEl)) as UIElement;
+                copy.id = newId;
+                if (isTop) {
+                    copy.parentId = targetParentId;
+                } else if (oldEl.parentId && payload.elements[oldEl.parentId]) {
+                    copy.parentId = elementIdMap[oldEl.parentId];
+                } else {
+                    copy.parentId = null;
+                }
+                copy.childrenIds = oldEl.childrenIds
+                    .filter(cid => payload.elements[cid])
+                    .map(cid => elementIdMap[cid]);
+
+                if (copy.behavior?.events) {
+                    const remapped = remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap);
+                    copy.behavior = { ...copy.behavior, events: remapped };
+                }
+
+                if (isTop) {
+                    const mergeLookup = (id: string) => doc.elements[id] ?? payload.elements[id];
+                    const patch = layoutPatchForReparent(doc, oldEl, targetParentId, mergeLookup);
+                    let layout = { ...copy.layout, ...patch };
+                    const sameParentAsSource = oldEl.parentId === targetParentId;
+                    if (!isUIFlowLayoutParentElement(parentEl) && sameParentAsSource) {
+                        layout = {
+                            ...layout,
+                            x: (layout.x ?? 0) + 16,
+                            y: (layout.y ?? 0) + 16,
+                        };
+                    }
+                    copy.layout = roundUILayoutGeometryFields(layout);
+                } else {
+                    copy.layout = roundUILayoutGeometryFields({ ...copy.layout });
+                }
+
+                doc.elements[newId] = copy;
+            }
+
+            newRootIds.length = 0;
+            for (const oldRoot of payload.topLevelElementIds) {
+                const mapped = elementIdMap[oldRoot];
+                if (mapped) {
+                    newRootIds.push(mapped);
+                }
+            }
+
+            let children = [...parentEl.childrenIds];
+            children = children.filter(cid => !newRootIds.includes(cid));
+            let insertAt = children.length;
+            if (beforeChildId != null) {
+                const idx = children.indexOf(beforeChildId);
+                insertAt = idx === -1 ? children.length : idx;
+            }
+            children.splice(insertAt, 0, ...newRootIds);
+            parentEl.childrenIds = children;
+        });
+
+        localBp.applyBlueprintMutation(bpDoc => {
+            for (const [oldBpId, sourceBp] of Object.entries(payload.widgetMainBlueprints)) {
+                const newBpId = blueprintIdMap[oldBpId];
+                if (!newBpId) {
+                    continue;
+                }
+                const owner = sourceBp.owner;
+                if (owner.kind !== "widgetMain" || owner.surfaceId !== payload.sourceSurfaceId) {
+                    continue;
+                }
+                const newElementId = elementIdMap[owner.elementId];
+                if (!newElementId || !payload.elements[owner.elementId]) {
+                    continue;
+                }
+                const cloned: Blueprint = cloneWidgetMainBlueprintForPaste({
+                    source: sourceBp,
+                    newBlueprintId: newBpId,
+                    surfaceId,
+                    newOwnerElementId: newElementId,
+                    elementIdMap,
+                    oldBlueprintId: oldBpId,
+                    newBlueprintIdForSourceRemap: newBpId,
+                });
+                bpDoc.blueprints[newBpId] = cloned;
+                registerPrivateBlueprintAsActive(
+                    bpDoc,
+                    widgetMainOwnerKey(surfaceId, newElementId),
+                    newBpId,
+                    cloned.frontend,
+                );
+            }
+        });
+
+        return { ok: true, newRootIds };
     }
 
     public setElementBlueprintEvent(

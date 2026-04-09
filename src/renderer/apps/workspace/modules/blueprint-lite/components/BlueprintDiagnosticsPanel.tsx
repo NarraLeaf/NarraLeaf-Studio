@@ -15,8 +15,11 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
             <div className="border-t border-white/10 bg-[#0d0f11] px-3 py-2 text-[11px] text-gray-500 leading-relaxed">
                 <p>No graph or binding diagnostics for this blueprint.</p>
                 <p className="mt-1 text-[10px] text-gray-600">
-                    When issues are listed below, click a row to focus the graph, node, or declaration. Runtime traces
-                    and Host API calls stay in Dev Mode (Blueprint DevTools), not here.
+                    When issues are listed below, click a row to focus the graph, node, or declaration. Codes such as{" "}
+                    <span className="font-mono">blueprint.event_graphs_not_wired_to_ui</span>,{" "}
+                    <span className="font-mono">binding.broken</span>, and{" "}
+                    <span className="font-mono">graph.empty</span> distinguish “not wired”, “broken binding”, and “empty
+                    graph”. Runtime traces stay in Dev Mode (Blueprint DevTools).
                 </p>
             </div>
         );
@@ -61,8 +64,8 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
                 ))}
             </div>
             <p className="mt-2 px-1 text-[10px] leading-snug text-gray-500">
-                Workspace: structure validation only — click a row to jump. Dev Mode: live execution, node enter/exit, and
-                Host API traces (Blueprint DevTools).
+                Workspace: structure + UI↔graph wiring checks for widget blueprints — click a row to jump. Dev Mode: live
+                execution and Host API traces (Blueprint DevTools).
             </p>
         </div>
     );

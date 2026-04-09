@@ -66,6 +66,10 @@ export function BlueprintMemberTree({
     return (
         <div className="flex flex-col gap-3 text-xs text-gray-300">
             <section>
+                <p className="mb-1 text-[10px] leading-snug text-gray-600">
+                    Member tree lists <span className="text-gray-400">execution</span> event/function graphs. Runtime
+                    dispatch uses graphs you wire from the properties panel.
+                </p>
                 <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wide text-gray-500">
                     <span>Events</span>
                     <button

@@ -56,6 +56,13 @@ export const CONTAINER_ANIMATABLE_KEYS: readonly ContainerAppearancePropertyKey[
     "transformScale",
     "transformRotation",
     "transformOpacity",
+    "effectBlur",
+    "effectBackgroundBlur",
+    "effectShadow",
+    "effectInnerShadow",
+    "effectBlend",
+    "effectGlow",
+    "effectFilter",
 ];
 
 export const BUTTON_ANIMATABLE_KEYS: readonly ButtonAppearancePropertyKey[] = [
@@ -76,6 +83,13 @@ export const BUTTON_ANIMATABLE_KEYS: readonly ButtonAppearancePropertyKey[] = [
     "transformScale",
     "transformRotation",
     "transformOpacity",
+    "effectBlur",
+    "effectBackgroundBlur",
+    "effectShadow",
+    "effectInnerShadow",
+    "effectBlend",
+    "effectGlow",
+    "effectFilter",
 ];
 
 function findPropertyGroup(variant: AppearanceVariant, key: string) {
@@ -173,6 +187,20 @@ export function getAppearanceFieldLabel(key: AppearancePropertyKey): string {
             return "Rotation";
         case "transformOpacity":
             return "Transform opacity";
+        case "effectBlur":
+            return "Blur";
+        case "effectBackgroundBlur":
+            return "Backdrop blur";
+        case "effectShadow":
+            return "Shadow";
+        case "effectInnerShadow":
+            return "Inner shadow";
+        case "effectBlend":
+            return "Blend mode";
+        case "effectGlow":
+            return "Glow";
+        case "effectFilter":
+            return "Filter";
         default:
             return key;
     }

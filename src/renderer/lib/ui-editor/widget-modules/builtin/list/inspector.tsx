@@ -1,10 +1,30 @@
+import { getSupportedEffectKindsForWidgetType } from "@shared/types/ui-editor/effects";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
-import type { InlineRowItemContext } from "@/apps/workspace/modules/properties/framework/types";
+import type { CustomFieldProps, InlineRowItemContext } from "@/apps/workspace/modules/properties/framework/types";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { getListProps } from "./helpers";
 import type { ListDirection, ListWidgetProps } from "./types";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
+import { StaticEffectsSection } from "@/lib/ui-editor/widget-modules/shared/effects/StaticEffectsSection";
+
+function ListEffectsField(props: CustomFieldProps<UIInspectorData>) {
+    const el = props.data.element;
+    const flat = getListProps(el);
+    return (
+        <StaticEffectsSection
+            effects={flat.effects}
+            onChange={next =>
+                props.data.documentService.updateElementProps(el.id, {
+                    ...el.props,
+                    effects: next,
+                })
+            }
+            supportedKinds={getSupportedEffectKindsForWidgetType("nl.list")}
+            draftResetKey={el.id}
+        />
+    );
+}
 
 export function createListInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
@@ -179,6 +199,20 @@ export function createListInspector(ctx: InspectorContext) {
                                         },
                                     },
                                 ],
+                            }),
+                        ],
+                    }),
+                    defineField<D, any>({
+                        id: "section.effects",
+                        type: "section",
+                        title: "Effects",
+                        collapsible: true,
+                        defaultCollapsed: true,
+                        fields: [
+                            defineField<D, any>({
+                                id: "list.effects.panel",
+                                type: "custom",
+                                component: ListEffectsField,
                             }),
                         ],
                     }),

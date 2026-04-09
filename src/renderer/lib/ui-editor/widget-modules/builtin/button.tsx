@@ -9,6 +9,13 @@ import { createInitialButtonAppearance } from "@/lib/ui-editor/widget-modules/sh
 export const ButtonWidgetModule: UIWidgetModule = {
     type: "nl.button",
     supportsBlueprintLogic: true,
+    blueprintEvents: [
+        {
+            id: "click",
+            displayName: "Click",
+            description: "Pointer or keyboard activation (Enter / Space)",
+        },
+    ],
     displayName: "Button",
     icon: MousePointerClick,
 

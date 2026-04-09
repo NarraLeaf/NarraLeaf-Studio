@@ -1,4 +1,4 @@
-import type { UIDocument, UIElementId } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement, UIElementId } from "@shared/types/ui-editor/document";
 
 const ROOT_WIDGET_TYPE = "nl.root";
 
@@ -6,17 +6,21 @@ const ROOT_WIDGET_TYPE = "nl.root";
  * Top-left of the element's layout box in surface (root) space, matching EditorNodeWrapper
  * (`left = x + min(0, width)` per ancestor).
  */
-export function getElementSurfaceTopLeft(document: UIDocument, elementId: string): { x: number; y: number } {
+export function getElementSurfaceTopLeftEx(
+    resolve: (id: UIElementId) => UIElement | undefined,
+    elementId: string,
+): { x: number; y: number } {
     const chain: UIElementId[] = [];
     let cur: string | null | undefined = elementId;
     while (cur) {
         chain.unshift(cur);
-        cur = document.elements[cur]?.parentId ?? null;
+        const el = resolve(cur);
+        cur = el?.parentId ?? null;
     }
     let x = 0;
     let y = 0;
     for (const id of chain) {
-        const el = document.elements[id];
+        const el = resolve(id);
         if (!el || el.type === ROOT_WIDGET_TYPE) {
             continue;
         }
@@ -27,6 +31,10 @@ export function getElementSurfaceTopLeft(document: UIDocument, elementId: string
         y += layout.y + oy;
     }
     return { x, y };
+}
+
+export function getElementSurfaceTopLeft(document: UIDocument, elementId: string): { x: number; y: number } {
+    return getElementSurfaceTopLeftEx(id => document.elements[id], elementId);
 }
 
 /** Map a surface-space axis-aligned rect into the parent's local layout coordinates. */

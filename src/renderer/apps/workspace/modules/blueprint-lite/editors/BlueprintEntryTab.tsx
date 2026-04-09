@@ -4,6 +4,7 @@ import { EditorComponentProps } from "../../types";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
@@ -51,6 +52,7 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
 
     const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
     const uuid = context.services.get<UuidService>(Services.Uuid);
+    const uidoc = context.services.get<UIDocumentService>(Services.UIDocument);
     const doc = localBp.getBlueprintDocument();
     const bp = doc.blueprints[payload.blueprintId];
     if (!bp) {
@@ -68,7 +70,14 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
     );
 
     const editor = useBlueprintEditorState(payload, { eventIds, functionIds });
-    const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision);
+    const widgetElement =
+        payload.ownerKind === "widgetMain" && payload.elementId
+            ? uidoc.getDocument().elements[payload.elementId]
+            : undefined;
+    const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision, {
+        widgetElement,
+        widgetSurfaceId: payload.surfaceId,
+    });
     const openBlueprint = useOpenBlueprintTarget();
 
     const reopenRevision = useCallback(
@@ -243,6 +252,10 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
                 <h1 className="text-base font-semibold text-white">Visual Blueprint</h1>
                 <BlueprintFrontendBadge kind="visual" />
             </div>
+            <p className="mt-1 text-[11px] text-gray-600 leading-relaxed">
+                Execution-first graphs: connect cyan execution pins. Bindings and declarations are edited from the
+                surface properties panel; validate here, then run in Dev Mode.
+            </p>
             <p className="mt-1 text-xs text-gray-500 leading-relaxed">
                 {payload.ownerKind} · surface <span className="text-cyan-400/80">{payload.surfaceId}</span>
                 {payload.elementId ? (

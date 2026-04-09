@@ -6,15 +6,14 @@ import {
     resolveContainerRectangleLike,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import {
-    useWidgetRuntimeSnapshot,
-    useWidgetRuntimeStateStore,
+    useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
-import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import { getContainerProps } from "./helpers";
-import type {
-    ContainerStackAlignItems,
-    ContainerStackJustifyContent,
+import {
+    resolveContainerScrollViewportOverflow,
+    type ContainerStackAlignItems,
+    type ContainerStackJustifyContent,
 } from "@shared/types/ui-editor/container";
 
 function mapAlign(v: ContainerStackAlignItems): CSSProperties["alignItems"] {
@@ -71,7 +70,6 @@ function StackInner({ element, children }: WidgetRendererProps) {
 
 function ScrollInner({ element, children }: WidgetRendererProps) {
     const p = getContainerProps(element);
-    const isY = p.scrollAxis === "y";
     const innerDir = p.stackDirection === "horizontal" ? "row" : "column";
     const flexStyle: CSSProperties = {
         display: "flex",
@@ -87,13 +85,14 @@ function ScrollInner({ element, children }: WidgetRendererProps) {
         minWidth: innerDir === "column" ? "100%" : undefined,
         minHeight: innerDir === "row" ? "100%" : undefined,
     };
+    const scrollOverflow = resolveContainerScrollViewportOverflow(p.scrollAxis);
     const viewport: CSSProperties = {
         width: "100%",
         height: "100%",
         boxSizing: "border-box",
         position: "relative",
-        overflowX: isY ? "hidden" : "auto",
-        overflowY: isY ? "auto" : "hidden",
+        overflowX: scrollOverflow.overflowX,
+        overflowY: scrollOverflow.overflowY,
     };
     return (
         <div style={viewport}>
@@ -104,32 +103,62 @@ function ScrollInner({ element, children }: WidgetRendererProps) {
 
 export function ContainerRenderer(props: WidgetRendererProps) {
     const { element, children, useAppearanceInspectorPreview } = props;
-    useWidgetRuntimeSnapshot();
-    const widgetRuntimeStore = useWidgetRuntimeStateStore();
     const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
     const p = getContainerProps(element);
+    const runtimeState = useWidgetRuntimeElementState(element.id);
     const clip = p.clipContent;
     const resolveCtx = {
-        variantOverrideId:
-            widgetRuntimeStore?.getVariantOverride(element.id) ?? inspectorVariantId ?? null,
-        signals: widgetRuntimeStore?.getSignalsForElement(element.id, false) ?? DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+        variantOverrideId: runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        signals: runtimeState.signals,
     };
     const rectangleLike = resolveContainerRectangleLike(element, p.appearance ?? undefined, resolveCtx);
     const appearanceTransitions = resolveContainerAppearanceTransitions(p.appearance ?? undefined, resolveCtx);
 
+    // Free layout: keep absolute children OUTSIDE appearance transform (scale/rotate on chrome).
+    // Otherwise layout x/y are in unscaled space but the containing block is scaled — parent drags look "proportional".
+    // Host stays overflow: visible so chrome box-shadow / filter are not clipped; when clipContent is on, only the
+    // children layer clips (same bounds as the host).
     if (p.layoutKind === "free") {
+        const hostStyle: CSSProperties = {
+            position: "relative",
+            width: "100%",
+            height: "100%",
+            boxSizing: "border-box",
+            overflow: "visible",
+        };
+        const chromeLayerStyle: CSSProperties = {
+            position: "absolute",
+            inset: 0,
+            zIndex: 0,
+            pointerEvents: "none",
+        };
+        const childrenLayerStyle: CSSProperties = {
+            position: "absolute",
+            inset: 0,
+            zIndex: 1,
+            pointerEvents: "auto",
+            overflow: clip ? "hidden" : "visible",
+        };
         return (
-            <RectangleChromeRenderer
-                {...props}
-                clipContent={clip}
-                rectangleLike={rectangleLike}
-                appearanceTransitions={appearanceTransitions}
-            >
-                {children}
-            </RectangleChromeRenderer>
+            <div style={hostStyle}>
+                <div style={chromeLayerStyle}>
+                    <RectangleChromeRenderer
+                        {...props}
+                        clipContent={false}
+                        rectangleLike={rectangleLike}
+                        appearanceTransitions={appearanceTransitions}
+                    >
+                        {null}
+                    </RectangleChromeRenderer>
+                </div>
+                <div style={childrenLayerStyle}>{children}</div>
+            </div>
         );
     }
 
+    // Stack: flex inner uses overflow visible; optional clip is only on RectangleChromeRenderer.
+    // Scroll: single-axis viewport overflow is owned by ScrollInner (see resolveContainerScrollViewportOverflow);
+    // clipContent still clips the outer chrome + viewport stack to the container box when true.
     const inner = p.layoutKind === "scroll" ? <ScrollInner {...props} /> : <StackInner {...props} />;
 
     return (

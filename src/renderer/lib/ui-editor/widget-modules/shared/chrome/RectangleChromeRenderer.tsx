@@ -8,7 +8,9 @@ import { ensureCropPlacement, getRectangleLikeProps, normalizeImageFill } from "
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { strokeSideApplies, type StrokeEdge } from "./strokeSideSpec";
 import type { AppearanceFieldTransition, AppearancePropertyKey } from "@shared/types/ui-editor/appearance";
+import { DEFAULT_ELEMENT_EFFECT_VALUES, effectFilterStoredToCss } from "@shared/types/ui-editor/effects";
 import { toRuntimeMotionTransition } from "../appearance/appearanceMotion";
+import { composeChromeEffectLayers } from "../effects/effectStyleComposer";
 
 const objectFitMap: Record<string, CSSProperties["objectFit"] | undefined> = {
     cover: "cover",
@@ -19,7 +21,11 @@ const objectFitMap: Record<string, CSSProperties["objectFit"] | undefined> = {
 };
 
 type RectangleChromeRendererProps = WidgetRendererProps & {
-    /** When false, allow children to paint outside the box (matches `nl.container` clipContent off). */
+    /**
+     * When false, allow children to paint outside the chrome box (`overflow: visible`).
+     * For `nl.container` stack/scroll, this mirrors widget `clipContent`; for `free` layout the host wrapper
+     * owns clipping instead and chrome typically passes false to avoid double-clipping.
+     */
     clipContent?: boolean;
     /** Resolved chrome from AppearanceResolver; when set, `element.props` is not read for rectangle-like fields. */
     rectangleLike?: RectangleLikeProps;
@@ -71,6 +77,8 @@ export function RectangleChromeRenderer({
     rootOpacityFactor = 1,
 }: RectangleChromeRendererProps) {
     const props = rectangleLike ?? getRectangleLikeProps(element);
+    const effectValues = props.effects ?? DEFAULT_ELEMENT_EFFECT_VALUES;
+    const composedEffects = composeChromeEffectLayers(effectValues);
     const baseImageFlipX = props.imageFlipX === true ? -1 : 1;
     const baseImageFlipY = props.imageFlipY === true ? -1 : 1;
     const imageFlipVarStyle = {
@@ -110,7 +118,6 @@ export function RectangleChromeRenderer({
         width: "100%",
         height: "100%",
         boxSizing: "border-box",
-        overflow: clipContent ? "hidden" : "visible",
         position: "relative",
         ...extraRootStyle,
     };
@@ -198,6 +205,18 @@ export function RectangleChromeRenderer({
         "opacity",
         firstTransition(appearanceTransitions, ["transformOpacity"])
     );
+    if (!effectFilterStoredToCss(effectValues.effectFilter).trim()) {
+        assignMotionTransition(
+            rootTransition,
+            "filter",
+            firstTransition(appearanceTransitions, ["effectBlur"])
+        );
+    }
+    assignMotionTransition(
+        rootTransition,
+        "backdropFilter",
+        firstTransition(appearanceTransitions, ["effectBackgroundBlur"])
+    );
 
     if (wantsStroke) {
         style.border = "none";
@@ -257,9 +276,17 @@ export function RectangleChromeRenderer({
         interactionOverride?.kind === "imageCrop" &&
         interactionOverride.elementId === element.id;
 
-    if (isCropEditing) {
-        style.overflow = "visible";
-    }
+    // `overflow: hidden` on the same node clips `box-shadow` and can trim `filter` / `backdrop-filter` output.
+    const hasChromeVisualOverflowEffects =
+        Boolean(composedEffects.rootBoxShadow && composedEffects.rootBoxShadow !== "none") ||
+        Boolean(composedEffects.rootFilter && composedEffects.rootFilter !== "none") ||
+        Boolean(composedEffects.backdropFilter && composedEffects.backdropFilter !== "none");
+    const useClipIsolation = clipContent && hasChromeVisualOverflowEffects;
+    style.overflow = useClipIsolation
+        ? "visible"
+        : isCropEditing || !clipContent
+          ? "visible"
+          : "hidden";
 
     if (shouldRenderImage && activeMode === "tile" && displayUrl) {
         Object.assign(style, {
@@ -493,6 +520,15 @@ export function RectangleChromeRenderer({
         assignMotionTransition(rootTransition, "outlineOffset", firstTransition(appearanceTransitions, ["borderWidth"]));
     }
 
+    const hasAnimatedFilter = Object.prototype.hasOwnProperty.call(rootTransition, "filter");
+    const hasAnimatedBackdrop = Object.prototype.hasOwnProperty.call(rootTransition, "backdropFilter");
+    if (hasAnimatedFilter) {
+        rootAnimate.filter = composedEffects.rootFilter ?? "none";
+    }
+    if (hasAnimatedBackdrop) {
+        rootAnimate.backdropFilter = composedEffects.backdropFilter ?? "none";
+    }
+
     const strokeCornerRadii: CSSProperties = {
         borderTopLeftRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusTL,
         borderTopRightRadius: props.borderRadiusLinked ? props.borderRadius : props.borderRadiusTR,
@@ -506,15 +542,22 @@ export function RectangleChromeRenderer({
     const rootBaseStyle: CSSProperties = {
         ...style,
         ...imageFlipVarStyle,
+        ...(composedEffects.mixBlendMode ? { mixBlendMode: composedEffects.mixBlendMode } : {}),
+        ...(composedEffects.rootBoxShadow ? { boxShadow: composedEffects.rootBoxShadow } : {}),
+        ...(!hasAnimatedFilter && composedEffects.rootFilter ? { filter: composedEffects.rootFilter } : {}),
+        ...(!hasAnimatedBackdrop && composedEffects.backdropFilter ? { backdropFilter: composedEffects.backdropFilter } : {}),
     };
     const rootStaticStyle: CSSProperties = {
         ...rootBaseStyle,
         ...strokeCornerRadii,
         transform: transformCss,
         opacity: combinedRootOpacity,
+        ...(composedEffects.rootFilter ? { filter: composedEffects.rootFilter } : {}),
+        ...(composedEffects.backdropFilter ? { backdropFilter: composedEffects.backdropFilter } : {}),
+        ...(composedEffects.rootBoxShadow ? { boxShadow: composedEffects.rootBoxShadow } : {}),
     };
 
-    const chromeChildren = (
+    const chromeInner = (
         <>
             {renderImage()}
             {isCropEditing && <div className="ui-image-crop-mask" aria-hidden="true" />}
@@ -534,6 +577,16 @@ export function RectangleChromeRenderer({
             {children}
         </>
     );
+
+    const innerClipStyle: CSSProperties = {
+        width: "100%",
+        height: "100%",
+        position: "relative",
+        overflow: isCropEditing || !clipContent ? "visible" : "hidden",
+        borderRadius: "inherit",
+    };
+
+    const chromeChildren = useClipIsolation ? <div style={innerClipStyle}>{chromeInner}</div> : chromeInner;
 
     return rootMotionActive ? (
         <motion.div

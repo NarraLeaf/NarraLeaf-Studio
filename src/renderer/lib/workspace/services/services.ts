@@ -197,6 +197,15 @@ interface IUIDocumentService extends IService {
         targetParentId: string,
         beforeChildId: string | null,
     ): MoveUiElementsResult;
+    /** Paste a snapshot from `buildUiEditorClipboardPayload` under `targetParentId`. */
+    pasteClipboardPayload(
+        surfaceId: string,
+        targetParentId: string,
+        beforeChildId: string | null,
+        payload: import("@/lib/ui-editor/commands/uiEditorClipboard").UIEditorClipboardPayload,
+    ):
+        | { ok: true; newRootIds: string[] }
+        | { ok: false; reason: "invalid_clipboard" | "invalid_target" };
     renameElement(elementId: string, name: string): void;
     /**
      * Persist UIBehaviorBinding.blueprintEvent and ensure inline event graph under Blueprint.program.graphs.events.

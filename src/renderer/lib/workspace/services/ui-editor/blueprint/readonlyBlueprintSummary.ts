@@ -2,6 +2,7 @@ import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { getActiveBlueprintId } from "./ownerRecords";
 import { surfaceMainOwnerKey, widgetMainOwnerKey } from "./ownerKeys";
+import { validateBlueprintWidgetMainEventWiring } from "./graphValidation";
 
 /** Read-only inspector summary for a widget instance main blueprint (Blueprint M2). */
 export type ReadonlyBlueprintWidgetSummary = {
@@ -12,6 +13,8 @@ export type ReadonlyBlueprintWidgetSummary = {
     brokenBindingCount: number;
     eventGraphCount: number;
     uiBlueprintEventCount: number;
+    /** Errors/warnings from cross-checking UI event hooks vs blueprint event graph slots. */
+    eventWiringIssueCount: number;
 };
 
 export function emptyReadonlyBlueprintWidgetSummary(): ReadonlyBlueprintWidgetSummary {
@@ -22,6 +25,7 @@ export function emptyReadonlyBlueprintWidgetSummary(): ReadonlyBlueprintWidgetSu
         brokenBindingCount: 0,
         eventGraphCount: 0,
         uiBlueprintEventCount: 0,
+        eventWiringIssueCount: 0,
     };
 }
 
@@ -98,10 +102,11 @@ export function buildReadonlyWidgetMainSummary(
     const key = widgetMainOwnerKey(surfaceId, element.id);
     const blueprintId = getActiveBlueprintId(doc, key);
     const bp = blueprintId ? doc.blueprints[blueprintId] : undefined;
-    if (!bp) {
+    if (!bp || !blueprintId) {
         return {
             ...emptyReadonlyBlueprintWidgetSummary(),
             uiBlueprintEventCount: countUiBlueprintEvents(element),
+            eventWiringIssueCount: 0,
         };
     }
 
@@ -118,6 +123,12 @@ export function buildReadonlyWidgetMainSummary(
         eventGraphCount = Object.keys(bp.program.graphs.events ?? {}).length;
     }
 
+    const eventWiringDiags = validateBlueprintWidgetMainEventWiring(doc, blueprintId, {
+        element,
+        surfaceId,
+    });
+    const eventWiringIssueCount = eventWiringDiags.filter(d => d.severity !== "info").length;
+
     return {
         hasWidgetMain: true,
         blueprintId,
@@ -126,5 +137,6 @@ export function buildReadonlyWidgetMainSummary(
         brokenBindingCount,
         eventGraphCount,
         uiBlueprintEventCount: countUiBlueprintEvents(element),
+        eventWiringIssueCount,
     };
 }

@@ -3,6 +3,7 @@ import { useRegistry } from "../../registry";
 import { EditorGroup as EditorGroupType, EditorSplit } from "../../registry/types";
 import { EditorGroup } from "./EditorGroup";
 import { MainEditorEmptyDropZone } from "./MainEditorEmptyDropZone";
+import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 
 /**
  * Main editor area component
@@ -46,9 +47,17 @@ export function MainEditorArea() {
 
     // Empty state when no tabs are open
     if ("tabs" in editorLayout && editorLayout.tabs.length === 0) {
-        return <MainEditorEmptyDropZone groupId={editorLayout.id} />;
+        return (
+            <WorkspacePanelErrorBoundary regionLabel="Main editor" isolationKey="main-editor-empty">
+                <MainEditorEmptyDropZone groupId={editorLayout.id} />
+            </WorkspacePanelErrorBoundary>
+        );
     }
 
-    return <div className="h-full bg-[#0f1115]">{renderLayout(editorLayout)}</div>;
+    return (
+        <WorkspacePanelErrorBoundary regionLabel="Main editor" isolationKey="main-editor-layout">
+            <div className="h-full bg-[#0f1115]">{renderLayout(editorLayout)}</div>
+        </WorkspacePanelErrorBoundary>
+    );
 }
 

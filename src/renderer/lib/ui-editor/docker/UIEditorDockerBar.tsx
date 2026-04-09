@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { animate, motion, useMotionValue } from "motion/react";
 import { listInsertPaletteModules } from "../widget-modules/insertPalette";
 import { widgetModuleRegistry } from "../widget-modules/registryInstance";
@@ -353,7 +353,11 @@ export function UIEditorDockerBar({
     const [docVersion, setDocVersion] = useState(0);
 
     useEffect(() => {
-        const unsub = stateService.on("selectionChanged", setSelection);
+        const unsub = stateService.on("selectionChanged", selection => {
+            startTransition(() => {
+                setSelection(selection);
+            });
+        });
         return unsub;
     }, [stateService]);
 
@@ -364,7 +368,9 @@ export function UIEditorDockerBar({
 
     useEffect(() => {
         const unsub = documentService.onDocumentChanged(() => {
-            setDocVersion((v) => v + 1);
+            startTransition(() => {
+                setDocVersion((v) => v + 1);
+            });
         });
         return unsub;
     }, [documentService]);

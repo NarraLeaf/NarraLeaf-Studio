@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { startTransition, useDeferredValue, useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
     ArrowLeftRight,
     ArrowUpDown,
@@ -459,6 +459,9 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     }, [context, isInitialized]);
     const documentVersion = useDocumentVersion(documentService);
     const [graphVersion, setGraphVersion] = useState(0);
+    const deferredUiSelection = useDeferredValue(uiSelection);
+    const deferredDocumentVersion = useDeferredValue(documentVersion);
+    const deferredGraphVersion = useDeferredValue(graphVersion);
 
     useEffect(() => {
         if (!graphService) {
@@ -526,18 +529,20 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         setSelectionState(store.getSelection());
 
         const unsub = uiService.getEvents().on("selectionChanged", (sel) => {
-            setSelectionState(sel);
+            startTransition(() => {
+                setSelectionState(sel);
+            });
         });
 
         return unsub;
     }, [context]);
 
     const uiInspectorContent = useMemo(() => {
-        if (!uiSelection || !documentService) {
+        if (!deferredUiSelection || !documentService) {
             return null;
         }
         const document = documentService.getDocument();
-        const elements = uiSelection.elementIds
+        const elements = deferredUiSelection.elementIds
             .map(id => document.elements[id])
             .filter((element): element is UIElement => Boolean(element));
         if (elements.length === 0) {
@@ -554,7 +559,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return (
                 <PropertyEditor
                     schema={combinedSchema}
-                    data={{ element, elements, documentService, surfaceId: uiSelection.surfaceId }}
+                    data={{ element, elements, documentService, surfaceId: deferredUiSelection.surfaceId }}
                 />
             );
         }
@@ -562,10 +567,10 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return (
             <PropertyEditor
                 schema={layoutSchema}
-                data={{ element: elements[0], elements, documentService, surfaceId: uiSelection.surfaceId }}
+                data={{ element: elements[0], elements, documentService, surfaceId: deferredUiSelection.surfaceId }}
             />
         );
-    }, [uiSelection, documentService, documentVersion]);
+    }, [deferredUiSelection, documentService, deferredDocumentVersion]);
 
     const selectUiCanvasElement = useCallback(
         (surfaceId: string, elementId: string) => {
@@ -581,19 +586,19 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     );
 
     const uiSelectionDiagnosticStrip = useMemo(() => {
-        if (!uiSelection || !documentService) {
+        if (!deferredUiSelection || !documentService) {
             return null;
         }
         const bp = graphService?.getDocument().blueprintDocument;
-        const all = collectSurfaceDiagnostics(documentService.getDocument(), uiSelection.surfaceId, {
+        const all = collectSurfaceDiagnostics(documentService.getDocument(), deferredUiSelection.surfaceId, {
             blueprintDocument: bp,
         });
-        const idSet = new Set(uiSelection.elementIds);
+        const idSet = new Set(deferredUiSelection.elementIds);
         const picked = all.filter(d => !d.elementId || idSet.has(d.elementId)).slice(0, 5);
         if (picked.length === 0) {
             return null;
         }
-        const surfaceId = uiSelection.surfaceId;
+        const surfaceId = deferredUiSelection.surfaceId;
         return (
             <div className="shrink-0 border-b border-amber-500/25 bg-amber-950/30 px-3 py-2 text-[11px] text-amber-100/90">
                 <span className="font-medium text-amber-200/95">Static checks</span>
@@ -621,7 +626,14 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 </span>
             </div>
         );
-    }, [uiSelection, documentService, graphService, documentVersion, graphVersion, selectUiCanvasElement]);
+    }, [
+        deferredUiSelection,
+        documentService,
+        graphService,
+        deferredDocumentVersion,
+        deferredGraphVersion,
+        selectUiCanvasElement,
+    ]);
 
     // Load asset metadata when asset changes
     useEffect(() => {

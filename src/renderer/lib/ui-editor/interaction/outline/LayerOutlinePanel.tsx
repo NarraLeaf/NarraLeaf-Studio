@@ -1,4 +1,5 @@
 import {
+    startTransition,
     useCallback,
     useEffect,
     useMemo,
@@ -28,6 +29,27 @@ import {
     defaultLayoutPatchForOutlineInsert,
     resolveNearestInsertParentInSurface,
 } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import { buildOutlineContextMenu } from "@/lib/ui-editor/context-menu/buildOutlineContextMenu";
+import {
+    resolveCanvasContextSelection,
+    shouldApplyCanvasContextRetarget,
+} from "@/lib/ui-editor/context-menu/resolveCanvasContextSelection";
+import { hasUiEditorClipboard } from "@/lib/ui-editor/commands/uiEditorClipboard";
+import {
+    uiEditorCopySelection,
+    uiEditorCutSelection,
+    uiEditorDeleteSelection,
+    uiEditorDuplicateSelection,
+    uiEditorGroupIntoLeaderContainer,
+    uiEditorPaste,
+    uiEditorPasteIntoParent,
+    uiEditorSelectAllInSurface,
+} from "@/lib/ui-editor/commands/uiEditorCommands";
+import {
+    canAddRestToLeaderContainer,
+    getMoversToGroupIntoLeaderContainer,
+} from "@/lib/ui-editor/commands/uiEditorSelection";
+import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 
 type UILayersPanelProps = {
     surfaceId: string;
@@ -85,11 +107,13 @@ function SortableOutlineRow({
     const isPrimary = primaryId === element.id;
 
     return (
-        <div ref={setNodeRef} style={style} className="select-none">
+        <div ref={setNodeRef} style={style} className="select-none" data-outline-row>
             <div
                 className={`group flex items-center gap-1 rounded-md text-xs min-h-[28px] pr-1 ${
                     selectedIds.has(element.id)
-                        ? "bg-primary/20 text-white"
+                        ? isPrimary
+                            ? "bg-primary/30 ring-1 ring-primary/50 text-white"
+                            : "bg-primary/15 text-white"
                         : "text-gray-300 hover:bg-white/5"
                 } ${isDimmed ? "opacity-60" : ""}`}
                 style={{ paddingLeft: 6 + depth * 12 }}
@@ -252,6 +276,13 @@ export function UILayersPanel({ surfaceId }: UILayersPanelProps) {
         return context.services.get<UIDocumentService>(Services.UIDocument);
     }, [context]);
 
+    const localBlueprint = useMemo(() => {
+        if (!context) {
+            return null;
+        }
+        return context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+    }, [context]);
+
     const inputDialog = useMemo(() => {
         if (!context) {
             return null;
@@ -271,12 +302,18 @@ export function UILayersPanel({ surfaceId }: UILayersPanelProps) {
             return;
         }
         return documentService.onDocumentChanged(() => {
-            setDocVersion(v => v + 1);
+            startTransition(() => {
+                setDocVersion(v => v + 1);
+            });
         });
     }, [documentService]);
 
     useEffect(() => {
-        return stateService.on("selectionChanged", setSelection);
+        return stateService.on("selectionChanged", selection => {
+            startTransition(() => {
+                setSelection(selection);
+            });
+        });
     }, [stateService]);
 
     useEffect(() => {
@@ -315,7 +352,8 @@ export function UILayersPanel({ surfaceId }: UILayersPanelProps) {
                     nextIds = [...selectedIds, id];
                 }
                 if (nextIds.length === 0) {
-                    nextIds = [id];
+                    stateService.setSelection({ type: null, data: null });
+                    return;
                 }
             } else {
                 nextIds = [id];
@@ -375,99 +413,283 @@ export function UILayersPanel({ surfaceId }: UILayersPanelProps) {
         [documentService, inputDialog]
     );
 
+    const collectBranchIdsWithChildren = useCallback(
+        (rootId: string) => {
+            const ids: string[] = [];
+            const walk = (eid: string) => {
+                const el = document.elements[eid];
+                if (!el) {
+                    return;
+                }
+                if (el.childrenIds.length > 0) {
+                    ids.push(eid);
+                    el.childrenIds.forEach(walk);
+                }
+            };
+            walk(rootId);
+            return ids;
+        },
+        [document.elements]
+    );
+
     const openRowContextMenu = useCallback(
         (element: UIElement, event: MouseEvent<HTMLElement>) => {
             event.preventDefault();
             event.stopPropagation();
-            if (!documentService) {
+            if (!documentService || !localBlueprint || !effectiveRootId) {
                 return;
             }
-            const isRoot = element.type === ROOT_WIDGET_TYPE;
-            const insertParentId = resolveNearestInsertParentInSurface(document, surfaceId, element.id);
-            const insertSubmenu =
-                insertParentId != null
-                    ? listInsertPaletteModules().map(mod => {
-                          const Icon = mod.icon;
-                          return {
-                              id: `outline-insert-${mod.type}`,
-                              label: mod.displayName,
-                              icon: <Icon className="w-3.5 h-3.5" />,
-                              onClick: () => {
-                                  hideMenu();
-                                  if (!documentService) {
-                                      return;
-                                  }
-                                  const doc = documentService.getDocument();
-                                  const parentId = resolveNearestInsertParentInSurface(doc, surfaceId, element.id);
-                                  if (!parentId) {
-                                      return;
-                                  }
-                                  const patch = defaultLayoutPatchForOutlineInsert(doc, parentId);
-                                  const created = documentService.createElement(parentId, mod.type, patch);
-                                  stateService.setUIElementSelection({
-                                      editor: "ui",
-                                      surfaceId,
-                                      elementIds: [created.id],
-                                      primaryId: created.id,
-                                  });
-                                  stateService.setTool({ kind: "select" });
-                              },
-                          };
-                      })
-                    : [];
-
-            const items: ContextMenuDef = [];
-            if (insertSubmenu.length > 0) {
-                items.push({
-                    id: "insert-child",
-                    label: "Insert child",
-                    submenu: insertSubmenu,
-                    submenuIconsEnabled: true,
-                });
-                items.push({ separator: true, id: "sep-outline-insert" });
+            const curSel = stateService.getSelection();
+            if (shouldApplyCanvasContextRetarget(surfaceId, element.id, curSel)) {
+                const nextSel = resolveCanvasContextSelection(surfaceId, element.id, curSel);
+                if (nextSel) {
+                    stateService.setUIElementSelection(nextSel);
+                }
             }
-            items.push(
-                {
-                    id: "rename",
-                    label: "Rename",
-                    disabled: isRoot,
-                    onClick: () => {
-                        hideMenu();
-                        onStartRename(element);
+            const menuSel = resolveCanvasContextSelection(surfaceId, element.id, stateService.getSelection());
+            const doc = documentService.getDocument();
+            const insertParentId = resolveNearestInsertParentInSurface(doc, surfaceId, element.id);
+            const canGroup =
+                Boolean(menuSel) &&
+                canAddRestToLeaderContainer(menuSel!, doc) &&
+                getMoversToGroupIntoLeaderContainer(doc, menuSel!).length > 0;
+
+            const insertChildInOutline = (type: string) => {
+                if (!insertParentId) {
+                    return;
+                }
+                const patch = defaultLayoutPatchForOutlineInsert(documentService.getDocument(), insertParentId);
+                const created = documentService.createElement(insertParentId, type, patch);
+                stateService.setUIElementSelection({
+                    editor: "ui",
+                    surfaceId,
+                    elementIds: [created.id],
+                    primaryId: created.id,
+                });
+                stateService.setTool({ kind: "select" });
+            };
+
+            const items = buildOutlineContextMenu({
+                document: doc,
+                surfaceId,
+                rowElement: element,
+                menuSelection: menuSel,
+                hasClipboard: hasUiEditorClipboard(),
+                widgetModules: listInsertPaletteModules(),
+                documentService,
+                insertParentIdForRow: insertParentId,
+                canAddToGroup: canGroup,
+                actions: {
+                    hideMenu,
+                    insertType: () => {},
+                    insertChildInOutline,
+                    paste: () => {
+                        const sel = stateService.getSelection();
+                        const data = sel.type === "element" ? sel.data : null;
+                        const primary =
+                            data?.editor === "ui" && data.surfaceId === surfaceId
+                                ? (data.primaryId ?? data.elementIds[data.elementIds.length - 1] ?? null)
+                                : null;
+                        uiEditorPaste(documentService, localBlueprint, stateService, surfaceId, {
+                            hitElementId: element.id,
+                            primaryElementId: primary,
+                        });
+                    },
+                    pasteIntoParent: parentId => {
+                        uiEditorPasteIntoParent(documentService, localBlueprint, stateService, surfaceId, parentId, null);
+                    },
+                    copy: () => uiEditorCopySelection(documentService, localBlueprint, surfaceId, menuSel),
+                    cut: () => uiEditorCutSelection(documentService, localBlueprint, stateService, surfaceId, menuSel),
+                    duplicate: () =>
+                        uiEditorDuplicateSelection(documentService, localBlueprint, stateService, surfaceId, menuSel),
+                    delete: () => uiEditorDeleteSelection(documentService, stateService, surfaceId, menuSel),
+                    selectAll: () => uiEditorSelectAllInSurface(documentService, stateService, surfaceId),
+                    renamePrimary: () => {
+                        if (!menuSel || !inputDialog) {
+                            return;
+                        }
+                        const pid = menuSel.primaryId ?? menuSel.elementIds[menuSel.elementIds.length - 1];
+                        const el = doc.elements[pid];
+                        if (!el || el.type === ROOT_WIDGET_TYPE) {
+                            return;
+                        }
+                        void inputDialog.showRenameDialog(el.name ?? el.type ?? "Layer", "layer").then(name => {
+                            if (name) {
+                                documentService.renameElement(pid, name);
+                            }
+                        });
+                    },
+                    setSelectedVisible: visible => {
+                        if (!menuSel) {
+                            return;
+                        }
+                        for (const id of menuSel.elementIds) {
+                            const el = doc.elements[id];
+                            if (el && el.type !== ROOT_WIDGET_TYPE) {
+                                documentService.updateElementLayout(id, { visible });
+                            }
+                        }
+                    },
+                    addSelectionToLeaderGroup: () => {
+                        uiEditorGroupIntoLeaderContainer(documentService, stateService, surfaceId, menuSel);
+                    },
+                    expandAllBranches: () => {
+                        for (const id of collectBranchIdsWithChildren(effectiveRootId)) {
+                            stateService.setOutlineBranchCollapsed(id, false);
+                        }
+                    },
+                    collapseAllBranches: () => {
+                        for (const id of collectBranchIdsWithChildren(effectiveRootId)) {
+                            stateService.setOutlineBranchCollapsed(id, true);
+                        }
                     },
                 },
-                {
-                    id: "toggle-visible",
-                    label: element.layout.visible === false ? "Show" : "Hide",
-                    disabled: isRoot,
-                    onClick: () => {
-                        hideMenu();
-                        const hidden = element.layout.visible === false;
-                        documentService.updateElementLayout(element.id, { visible: hidden ? true : false });
-                    },
-                },
-                { separator: true, id: "sep-1" },
-                {
-                    id: "delete",
-                    label: "Delete",
-                    disabled: isRoot,
-                    onClick: () => {
-                        hideMenu();
-                        documentService.deleteElements([element.id]);
-                        stateService.setSelection({ type: null, data: null });
-                    },
-                },
-            );
+            });
             setMenuItems(items);
             showMenu(event);
         },
-        [document, documentService, hideMenu, onStartRename, showMenu, stateService, surfaceId]
+        [
+            collectBranchIdsWithChildren,
+            document,
+            documentService,
+            effectiveRootId,
+            hideMenu,
+            inputDialog,
+            localBlueprint,
+            showMenu,
+            stateService,
+            surfaceId,
+        ]
     );
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
-            activationConstraint: { delay: 120, tolerance: 6 },
+            activationConstraint: { delay: 85, tolerance: 8 },
         })
+    );
+
+    const openBlankContextMenu = useCallback(
+        (event: MouseEvent<HTMLDivElement>) => {
+            if (!documentService || !localBlueprint || !effectiveRootId) {
+                return;
+            }
+            event.preventDefault();
+            const t = event.target as HTMLElement | null;
+            if (t?.closest?.("[data-outline-row]")) {
+                return;
+            }
+            const curSel = stateService.getSelection();
+            const menuSel = resolveCanvasContextSelection(surfaceId, null, curSel);
+            const doc = documentService.getDocument();
+            const canGroup =
+                Boolean(menuSel) &&
+                canAddRestToLeaderContainer(menuSel!, doc) &&
+                getMoversToGroupIntoLeaderContainer(doc, menuSel!).length > 0;
+
+            const insertOutline = (type: string) => {
+                const fresh = documentService.getDocument();
+                const parentId = effectiveRootId;
+                const patch = defaultLayoutPatchForOutlineInsert(fresh, parentId);
+                const created = documentService.createElement(parentId, type, patch);
+                stateService.setUIElementSelection({
+                    editor: "ui",
+                    surfaceId,
+                    elementIds: [created.id],
+                    primaryId: created.id,
+                });
+                stateService.setTool({ kind: "select" });
+            };
+
+            const items = buildOutlineContextMenu({
+                document: doc,
+                surfaceId,
+                rowElement: null,
+                menuSelection: menuSel,
+                hasClipboard: hasUiEditorClipboard(),
+                widgetModules: listInsertPaletteModules(),
+                documentService,
+                insertParentIdForRow: null,
+                canAddToGroup: canGroup,
+                actions: {
+                    hideMenu,
+                    insertType: () => {},
+                    insertChildInOutline: insertOutline,
+                    paste: () => {
+                        const sel = stateService.getSelection();
+                        const data = sel.type === "element" ? sel.data : null;
+                        const primary =
+                            data?.editor === "ui" && data.surfaceId === surfaceId
+                                ? (data.primaryId ?? data.elementIds[data.elementIds.length - 1] ?? null)
+                                : null;
+                        uiEditorPaste(documentService, localBlueprint, stateService, surfaceId, {
+                            hitElementId: null,
+                            primaryElementId: primary,
+                        });
+                    },
+                    pasteIntoParent: parentId => {
+                        uiEditorPasteIntoParent(documentService, localBlueprint, stateService, surfaceId, parentId, null);
+                    },
+                    copy: () => uiEditorCopySelection(documentService, localBlueprint, surfaceId, menuSel),
+                    cut: () => uiEditorCutSelection(documentService, localBlueprint, stateService, surfaceId, menuSel),
+                    duplicate: () =>
+                        uiEditorDuplicateSelection(documentService, localBlueprint, stateService, surfaceId, menuSel),
+                    delete: () => uiEditorDeleteSelection(documentService, stateService, surfaceId, menuSel),
+                    selectAll: () => uiEditorSelectAllInSurface(documentService, stateService, surfaceId),
+                    renamePrimary: () => {
+                        if (!menuSel || menuSel.elementIds.length !== 1 || !inputDialog) {
+                            return;
+                        }
+                        const pid = menuSel.primaryId ?? menuSel.elementIds[0];
+                        const el = doc.elements[pid];
+                        if (!el || el.type === ROOT_WIDGET_TYPE) {
+                            return;
+                        }
+                        void inputDialog.showRenameDialog(el.name ?? el.type ?? "Layer", "layer").then(name => {
+                            if (name) {
+                                documentService.renameElement(pid, name);
+                            }
+                        });
+                    },
+                    setSelectedVisible: visible => {
+                        if (!menuSel) {
+                            return;
+                        }
+                        for (const id of menuSel.elementIds) {
+                            const el = doc.elements[id];
+                            if (el && el.type !== ROOT_WIDGET_TYPE) {
+                                documentService.updateElementLayout(id, { visible });
+                            }
+                        }
+                    },
+                    addSelectionToLeaderGroup: () => {
+                        uiEditorGroupIntoLeaderContainer(documentService, stateService, surfaceId, menuSel);
+                    },
+                    expandAllBranches: () => {
+                        for (const id of collectBranchIdsWithChildren(effectiveRootId)) {
+                            stateService.setOutlineBranchCollapsed(id, false);
+                        }
+                    },
+                    collapseAllBranches: () => {
+                        for (const id of collectBranchIdsWithChildren(effectiveRootId)) {
+                            stateService.setOutlineBranchCollapsed(id, true);
+                        }
+                    },
+                },
+            });
+            setMenuItems(items);
+            showMenu(event);
+        },
+        [
+            collectBranchIdsWithChildren,
+            documentService,
+            effectiveRootId,
+            hideMenu,
+            inputDialog,
+            localBlueprint,
+            showMenu,
+            stateService,
+            surfaceId,
+        ]
     );
 
     const handleDragEnd = useCallback(
@@ -538,7 +760,7 @@ export function UILayersPanel({ surfaceId }: UILayersPanelProps) {
     }
 
     return (
-        <div className="space-y-2 px-2 py-2">
+        <div className="space-y-2 px-2 py-2" onContextMenu={openBlankContextMenu}>
             <div className="text-xs uppercase tracking-wide text-gray-400">Layers</div>
             {isLinkedTree ? (
                 <div className="text-[10px] leading-snug text-amber-400/90 px-0.5">

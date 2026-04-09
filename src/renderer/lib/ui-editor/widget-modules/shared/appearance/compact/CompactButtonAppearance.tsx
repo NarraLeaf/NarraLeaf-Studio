@@ -4,6 +4,7 @@ import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/u
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
+import { getSupportedEffectKindsForWidgetType } from "@shared/types/ui-editor/effects";
 import { buttonPropsToImageFillBaseline, getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
 import type {
     AppearanceFieldTransition,
@@ -28,6 +29,7 @@ import { CompactModuleStateHeader } from "./CompactModuleStateHeader";
 import { CompactBackgroundAppearance } from "./CompactBackgroundAppearance";
 import { BorderStrokeCompactRows } from "./BorderStrokeCompactRows";
 import { AppearanceFieldMotionButton, ModuleMotionMenuButton } from "./AppearanceMotionControls";
+import { CompactEffectsAppearance } from "./CompactEffectsAppearance";
 
 type Props = {
     variant: AppearanceVariant;
@@ -60,16 +62,18 @@ export function CompactButtonAppearance({
     const borderMode = buttonModuleModes.border;
     const spacingMode = buttonModuleModes.spacing;
     const transformMode = buttonModuleModes.transform;
+    const effectsMode = buttonModuleModes.effects;
     const backgroundMotionVisible = buttonMotionVisibility.background;
     const borderMotionVisible = buttonMotionVisibility.border;
     const spacingMotionVisible = buttonMotionVisibility.spacing;
     const transformMotionVisible = buttonMotionVisibility.transform;
+    const effectsMotionVisible = buttonMotionVisibility.effects;
 
     const flat = getButtonProps(inspectorData.element);
     const imageFillBaseline = buttonPropsToImageFillBaseline(flat);
 
     useEffect(() => {
-        (["background", "border", "spacing", "transform"] as const).forEach(mid => {
+        (["background", "border", "spacing", "transform", "effects"] as const).forEach(mid => {
             const m = buttonModuleModes[mid];
             if (m !== "default" && !moduleFullyHasExclusiveState(variant, BUTTON_MODULE_KEYS[mid], m)) {
                 setButtonModuleMode(mid, "default");
@@ -475,6 +479,20 @@ export function CompactButtonAppearance({
                     </div>
                 </div>
             </CompactModuleCard>
+
+            <CompactEffectsAppearance
+                variant={variant}
+                commitVariant={commitVariant}
+                setFieldTransition={setFieldTransition}
+                draftResetKey={draftResetKey}
+                moduleKeys={BUTTON_MODULE_KEYS.effects}
+                editMode={effectsMode}
+                onModeChange={m => setButtonModuleMode("effects", m)}
+                motionVisible={effectsMotionVisible}
+                onMotionVisibleChange={visible => setButtonMotionVisible("effects", visible)}
+                moduleMotionFieldsConfigured={motionFieldsConfigured.effects}
+                supportedKinds={getSupportedEffectKindsForWidgetType(inspectorData.element.type)}
+            />
         </div>
     );
 }

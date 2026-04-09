@@ -4,6 +4,7 @@ import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/u
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { UIElement } from "@shared/types/ui-editor/document";
+import { getSupportedEffectKindsForWidgetType } from "@shared/types/ui-editor/effects";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type {
     AppearanceFieldTransition,
@@ -30,6 +31,7 @@ import { CompactModuleStateHeader } from "./CompactModuleStateHeader";
 import { CompactBackgroundAppearance } from "./CompactBackgroundAppearance";
 import { BorderStrokeCompactRows } from "./BorderStrokeCompactRows";
 import { AppearanceFieldMotionButton, ModuleMotionMenuButton } from "./AppearanceMotionControls";
+import { CompactEffectsAppearance } from "./CompactEffectsAppearance";
 
 type Props = {
     variant: AppearanceVariant;
@@ -81,13 +83,15 @@ export function CompactContainerAppearance({
     const strokeMode = containerModuleModes.stroke;
     const cornersMode = containerModuleModes.corners;
     const transformMode = containerModuleModes.transform;
+    const effectsMode = containerModuleModes.effects;
     const backgroundMotionVisible = containerMotionVisibility.background;
     const strokeMotionVisible = containerMotionVisibility.stroke;
     const cornersMotionVisible = containerMotionVisibility.corners;
     const transformMotionVisible = containerMotionVisibility.transform;
+    const effectsMotionVisible = containerMotionVisibility.effects;
 
     useEffect(() => {
-        (["background", "stroke", "corners", "transform"] as const).forEach(mid => {
+        (["background", "stroke", "corners", "transform", "effects"] as const).forEach(mid => {
             const m = containerModuleModes[mid];
             if (m !== "default" && !moduleFullyHasExclusiveState(variant, CONTAINER_MODULE_KEYS[mid], m)) {
                 setContainerModuleMode(mid, "default");
@@ -526,6 +530,20 @@ export function CompactContainerAppearance({
                     </div>
                 </div>
             </CompactModuleCard>
+
+            <CompactEffectsAppearance
+                variant={variant}
+                commitVariant={commitVariant}
+                setFieldTransition={setFieldTransition}
+                draftResetKey={draftResetKey}
+                moduleKeys={CONTAINER_MODULE_KEYS.effects}
+                editMode={effectsMode}
+                onModeChange={m => setContainerModuleMode("effects", m)}
+                motionVisible={effectsMotionVisible}
+                onMotionVisibleChange={visible => setContainerMotionVisible("effects", visible)}
+                moduleMotionFieldsConfigured={motionFieldsConfigured.effects}
+                supportedKinds={getSupportedEffectKindsForWidgetType(inspectorData.element.type)}
+            />
         </div>
     );
 }

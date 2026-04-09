@@ -1,14 +1,34 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { EditorComponentProps } from "../../types";
-import { UIEditorInteractionLayer, UILayersPanel } from "@/lib/ui-editor/interaction";
+import { UIEditorInteractionLayer, UILayersPanel, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { SELECTABLE_TARGET } from "@/lib/ui-editor/interaction/constants";
+import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
 import { MousePointer2, Move, ChevronUp, ChevronDown, Play } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { clientToSurface, Rect2D } from "@/lib/ui-editor/geometry";
 import { ContextMenu, ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
+import { createInputDialog } from "@/lib/components/dialogs";
+import { buildCanvasContextMenu } from "@/lib/ui-editor/context-menu/buildCanvasContextMenu";
+import {
+    resolveCanvasContextSelection,
+    shouldApplyCanvasContextRetarget,
+} from "@/lib/ui-editor/context-menu/resolveCanvasContextSelection";
+import { hasUiEditorClipboard } from "@/lib/ui-editor/commands/uiEditorClipboard";
+import {
+    uiEditorCopySelection,
+    uiEditorCutSelection,
+    uiEditorDeleteSelection,
+    uiEditorDuplicateSelection,
+    uiEditorGroupIntoLeaderContainer,
+    uiEditorPaste,
+    uiEditorSelectAllInSurface,
+} from "@/lib/ui-editor/commands/uiEditorCommands";
+import { canAddRestToLeaderContainer, getMoversToGroupIntoLeaderContainer } from "@/lib/ui-editor/commands/uiEditorSelection";
+import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
+import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { UISurface } from "@shared/types/ui-editor/document";
-import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 import { useWorkspace } from "@/apps/workspace/context";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
@@ -57,6 +77,11 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const surfaceId = payload?.surfaceId;
     const { runtimeBridge, stateService, documentService, uiService, widgetModules } = useUISurfaceEditorServices();
     const { context, workspace } = useWorkspace();
+    const localBlueprint = useMemo(
+        () => context?.services.get<LocalBlueprintService>(Services.LocalBlueprint) ?? null,
+        [context],
+    );
+    const inputDialog = useMemo(() => (uiService ? createInputDialog(uiService) : null), [uiService]);
     const graphService = useMemo(() => context?.services.get<UIGraphService>(Services.UIGraph) ?? null, [context]);
     const [graphVersion, setGraphVersion] = useState(0);
     useEffect(() => {
@@ -71,6 +96,8 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const tool = useEditorToolState(stateService);
     const viewport = useViewportTransform(stateService);
     const { surface, documentVersion } = useSurfaceDocument(surfaceId, stateService, documentService);
+    const deferredDocumentVersion = useDeferredValue(documentVersion);
+    const deferredGraphVersion = useDeferredValue(graphVersion);
 
     const surfaceDiagnostics = useMemo(() => {
         if (!documentService || !surface) {
@@ -78,7 +105,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         }
         const bp = graphService?.getDocument().blueprintDocument;
         return collectSurfaceDiagnostics(documentService.getDocument(), surface.id, { blueprintDocument: bp });
-    }, [documentService, surface, graphService, documentVersion, graphVersion]);
+    }, [documentService, surface, graphService, deferredDocumentVersion, deferredGraphVersion]);
 
     const surfaceLevelDiagnosticMessages = useMemo(
         () => surfaceDiagnostics.filter(d => !d.elementId).map(d => d.message),
@@ -98,6 +125,42 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const lastContextPoint = useRef<{ x: number; y: number } | null>(null);
     const lastContextHitElementId = useRef<string | null>(null);
+
+    const requestRenamePrimary = useCallback(() => {
+        if (!stateService || !documentService || !surface || !inputDialog) {
+            return;
+        }
+        const sel = stateService.getSelection();
+        if (!isUIElementSelection(sel)) {
+            return;
+        }
+        const data = sel.data as UIElementSelection;
+        if (data.surfaceId !== surface.id || data.elementIds.length !== 1) {
+            return;
+        }
+        const pid = data.primaryId ?? data.elementIds[0];
+        const el = documentService.getDocument().elements[pid];
+        if (!el || el.type === "nl.root") {
+            return;
+        }
+        void inputDialog.showRenameDialog(el.name ?? el.type ?? "Layer", "layer").then(name => {
+            if (name) {
+                documentService.renameElement(pid, name);
+            }
+        });
+    }, [documentService, inputDialog, stateService, surface]);
+
+    useUIEditorKeybindings({
+        tabId,
+        surfaceId: surface?.id,
+        enabled: Boolean(surface && documentService && stateService && localBlueprint),
+        contextMenuOpen: menuState.visible,
+        onCloseContextMenu: hideMenu,
+        documentService,
+        localBlueprint,
+        stateService,
+        requestRenamePrimary,
+    });
 
     const canvasRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -180,7 +243,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                     ? (selData.primaryId ?? selData.elementIds[selData.elementIds.length - 1] ?? null)
                     : null;
             const target = resolveInsertTargetParent(doc, surface.id, {
-                hitElementId: lastContextHitElementId.current,
+                hitElementId: null,
                 primaryElementId,
             });
             if (!target) {
@@ -246,12 +309,8 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                     selData?.surfaceId === surface.id
                         ? (selData.primaryId ?? selData.elementIds[selData.elementIds.length - 1] ?? null)
                         : null;
-                const hitEl = window.document
-                    .elementFromPoint(clientPosition.x, clientPosition.y)
-                    ?.closest(SELECTABLE_TARGET) as HTMLElement | null;
-                const hitElementId = hitEl?.dataset.uiElementId ?? null;
                 const target = resolveInsertTargetParent(doc, surface.id, {
-                    hitElementId,
+                    hitElementId: null,
                     primaryElementId,
                 });
                 if (!target) {
@@ -317,7 +376,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
 
     const handleCanvasContextMenu = useCallback(
         (event: React.MouseEvent<HTMLDivElement>) => {
-            if (!surface || widgetModules.length === 0) {
+            if (!surface || !documentService || !stateService || !localBlueprint || widgetModules.length === 0) {
                 return;
             }
             event.preventDefault();
@@ -325,21 +384,117 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
             lastContextPoint.current = { x: event.clientX, y: event.clientY };
             const hit = (event.target as HTMLElement | null)?.closest(SELECTABLE_TARGET) as HTMLElement | null;
             lastContextHitElementId.current = hit?.dataset.uiElementId ?? null;
-            const items: ContextMenuDef = widgetModules.map((mod: UIWidgetModule) => ({
-                id: `insert-${mod.type}`,
-                label: `Insert ${mod.displayName}`,
-                onClick: () => {
-                    const point = lastContextPoint.current;
-                    if (!point) {
-                        return;
-                    }
-                    createElementAtClientPoint(mod.type, point);
+
+            const curSel = stateService.getSelection();
+            if (shouldApplyCanvasContextRetarget(surface.id, lastContextHitElementId.current, curSel)) {
+                const nextSel = resolveCanvasContextSelection(surface.id, lastContextHitElementId.current, curSel);
+                if (nextSel) {
+                    stateService.setUIElementSelection(nextSel);
+                }
+            }
+
+            const menuSel = resolveCanvasContextSelection(
+                surface.id,
+                lastContextHitElementId.current,
+                stateService.getSelection(),
+            );
+            const doc = documentService.getDocument();
+            const canGroup =
+                Boolean(menuSel) &&
+                canAddRestToLeaderContainer(menuSel!, doc) &&
+                getMoversToGroupIntoLeaderContainer(doc, menuSel!).length > 0;
+
+            const items = buildCanvasContextMenu({
+                document: doc,
+                surfaceId: surface.id,
+                menuSelection: menuSel,
+                hasClipboard: hasUiEditorClipboard(),
+                widgetModules,
+                documentService,
+                canAddToGroup: canGroup,
+                actions: {
+                    hideMenu,
+                    insertType: type => {
+                        const point = lastContextPoint.current;
+                        if (point) {
+                            createElementAtClientPoint(type, point);
+                        }
+                    },
+                    paste: () => {
+                        if (!documentService || !stateService || !localBlueprint) {
+                            return;
+                        }
+                        const sel = stateService.getSelection();
+                        const data = sel.type === "element" ? sel.data : null;
+                        const primary =
+                            data?.editor === "ui" && data.surfaceId === surface.id
+                                ? (data.primaryId ?? data.elementIds[data.elementIds.length - 1] ?? null)
+                                : null;
+                        uiEditorPaste(documentService, localBlueprint, stateService, surface.id, {
+                            hitElementId: lastContextHitElementId.current,
+                            primaryElementId: primary,
+                        });
+                    },
+                    copy: () => {
+                        uiEditorCopySelection(documentService, localBlueprint, surface.id, menuSel);
+                    },
+                    cut: () => {
+                        uiEditorCutSelection(documentService, localBlueprint, stateService, surface.id, menuSel);
+                    },
+                    duplicate: () => {
+                        uiEditorDuplicateSelection(documentService, localBlueprint, stateService, surface.id, menuSel);
+                    },
+                    delete: () => {
+                        uiEditorDeleteSelection(documentService, stateService, surface.id, menuSel);
+                    },
+                    selectAll: () => {
+                        uiEditorSelectAllInSurface(documentService, stateService, surface.id);
+                    },
+                    renamePrimary: () => {
+                        if (!menuSel || menuSel.elementIds.length !== 1 || !inputDialog) {
+                            return;
+                        }
+                        const pid = menuSel.primaryId ?? menuSel.elementIds[0];
+                        const el = doc.elements[pid];
+                        if (!el || el.type === "nl.root") {
+                            return;
+                        }
+                        void inputDialog.showRenameDialog(el.name ?? el.type ?? "Layer", "layer").then(name => {
+                            if (name) {
+                                documentService.renameElement(pid, name);
+                            }
+                        });
+                    },
+                    setSelectedVisible: visible => {
+                        if (!menuSel) {
+                            return;
+                        }
+                        for (const id of menuSel.elementIds) {
+                            const el = doc.elements[id];
+                            if (el && el.type !== "nl.root") {
+                                documentService.updateElementLayout(id, { visible });
+                            }
+                        }
+                    },
+                    addSelectionToLeaderGroup: () => {
+                        uiEditorGroupIntoLeaderContainer(documentService, stateService, surface.id, menuSel);
+                    },
                 },
-            }));
+            });
             setMenuItems(items);
             showMenu(event);
         },
-        [surface, widgetModules, showMenu, createElementAtClientPoint]
+        [
+            surface,
+            documentService,
+            stateService,
+            localBlueprint,
+            widgetModules,
+            showMenu,
+            hideMenu,
+            createElementAtClientPoint,
+            inputDialog,
+        ]
     );
 
     const updateCropDimming = useCallback(
@@ -382,6 +537,9 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const handleSurfaceDoubleClick = useCallback(
         (event: React.MouseEvent<HTMLDivElement>) => {
             if (!stateService || !documentService || !surfaceId) {
+                return;
+            }
+            if (consumeSuppressNextCanvasWidgetDoubleClick()) {
                 return;
             }
             if (tool.kind !== "select") {

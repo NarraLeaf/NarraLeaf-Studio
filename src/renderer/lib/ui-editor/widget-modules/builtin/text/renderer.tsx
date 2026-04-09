@@ -18,6 +18,7 @@ import {
     lineWrapCss,
     textVerticalAlignToJustifyContent,
 } from "@/lib/ui-editor/widget-modules/shared/text/textLayoutCss";
+import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
 import { getTextProps } from "./helpers";
 
 export function TextRenderer({ element, surface }: WidgetRendererProps) {
@@ -79,6 +80,12 @@ export function TextRenderer({ element, surface }: WidgetRendererProps) {
     const color = colorValueToCss({ hex: p.color, alpha: 1 });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
 
+    const effectTextStyle = composeTextEffectStyle(p.effects);
+    const useEffectShell =
+        Boolean(effectTextStyle.filter) ||
+        Boolean(effectTextStyle.textShadow) ||
+        Boolean(effectTextStyle.mixBlendMode);
+
     const textBodyStyle: CSSProperties = {
         width: "100%",
         margin: 0,
@@ -92,7 +99,21 @@ export function TextRenderer({ element, surface }: WidgetRendererProps) {
         ...lineWrapCss(p.textWrapMode),
         overflow: "hidden",
         ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
+        ...(useEffectShell ? {} : effectTextStyle),
     };
+
+    const effectShellStyle: CSSProperties = useEffectShell
+        ? {
+              ...effectTextStyle,
+              flex: 1,
+              minHeight: 0,
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "stretch",
+              overflow: "visible",
+          }
+        : {};
 
     const outerStyle: CSSProperties = {
         width: "100%",
@@ -157,33 +178,53 @@ export function TextRenderer({ element, surface }: WidgetRendererProps) {
     );
 
     if (isEditing) {
+        const textareaStyle: CSSProperties = {
+            ...textBodyStyle,
+            flex: 1,
+            minHeight: 0,
+            resize: "none",
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            ...(p.textWrapMode === "nowrap" ? { overflowX: "auto", overflowY: "hidden" } : {}),
+            ...(!editorFontFamily ? { fontFamily: "inherit" } : {}),
+        };
         return (
             <div style={outerStyle}>
-                <textarea
-                    ref={textareaRef}
-                    defaultValue={p.text}
-                    style={{
-                        ...textBodyStyle,
-                        flex: 1,
-                        minHeight: 0,
-                        resize: "none",
-                        background: "transparent",
-                        border: "none",
-                        outline: "none",
-                        ...(p.textWrapMode === "nowrap" ? { overflowX: "auto", overflowY: "hidden" } : {}),
-                        ...(!editorFontFamily ? { fontFamily: "inherit" } : {}),
-                    }}
-                    onInput={handleTextareaInput}
-                    onBlur={handleTextareaBlur}
-                    onKeyDown={handleTextareaKeyDown}
-                />
+                {useEffectShell ? (
+                    <div style={effectShellStyle}>
+                        <textarea
+                            ref={textareaRef}
+                            defaultValue={p.text}
+                            style={textareaStyle}
+                            onInput={handleTextareaInput}
+                            onBlur={handleTextareaBlur}
+                            onKeyDown={handleTextareaKeyDown}
+                        />
+                    </div>
+                ) : (
+                    <textarea
+                        ref={textareaRef}
+                        defaultValue={p.text}
+                        style={textareaStyle}
+                        onInput={handleTextareaInput}
+                        onBlur={handleTextareaBlur}
+                        onKeyDown={handleTextareaKeyDown}
+                    />
+                )}
             </div>
         );
     }
 
     return (
         <div style={outerStyle}>
-            <p style={{ ...textBodyStyle, flexShrink: 0 }}>{p.text}</p>
+            {useEffectShell ? (
+                <div style={effectShellStyle}>
+                    <p style={{ ...textBodyStyle, flexShrink: 0 }}>{p.text}</p>
+                </div>
+            ) : (
+                <p style={{ ...textBodyStyle, flexShrink: 0 }}>{p.text}</p>
+            )}
         </div>
     );
 }

@@ -1,6 +1,7 @@
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { DEFAULT_RECTANGLE_CROP_PLACEMENT, mapLegacyFitToMode } from "@shared/types/ui-editor/rectangleLike";
+import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
 
 export function getRectangleLikeProps(element: { props?: Record<string, unknown> }): RectangleLikeProps {
     const p = element.props ?? {};
@@ -34,6 +35,7 @@ export function getRectangleLikeProps(element: { props?: Record<string, unknown>
         transformScale: Number(p.transformScale ?? 1),
         transformRotation: Number(p.transformRotation ?? 0),
         transformOpacity: Number(p.transformOpacity ?? 1),
+        effects: normalizeElementEffectValues(p.effects),
     };
 }
 

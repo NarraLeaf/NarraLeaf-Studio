@@ -6,22 +6,18 @@ import {
     resolveImageRectangleLike,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import {
-    useWidgetRuntimeSnapshot,
-    useWidgetRuntimeStateStore,
+    useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
-import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 
 export function ImageRenderer(props: WidgetRendererProps) {
     const { element, useAppearanceInspectorPreview } = props;
-    useWidgetRuntimeSnapshot();
-    const widgetRuntimeStore = useWidgetRuntimeStateStore();
     const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
     const appearance = (element.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
+    const runtimeState = useWidgetRuntimeElementState(element.id);
     const resolveCtx = {
-        variantOverrideId:
-            widgetRuntimeStore?.getVariantOverride(element.id) ?? inspectorVariantId ?? null,
-        signals: widgetRuntimeStore?.getSignalsForElement(element.id, false) ?? DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+        variantOverrideId: runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        signals: runtimeState.signals,
     };
     const rectangleLike = resolveImageRectangleLike(element, appearance ?? undefined, resolveCtx);
     const appearanceTransitions = resolveImageAppearanceTransitions(appearance ?? undefined, resolveCtx);

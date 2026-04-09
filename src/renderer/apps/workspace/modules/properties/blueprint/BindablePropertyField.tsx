@@ -128,6 +128,14 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                         )}
                     </span>
                 ) : null}
+                {bp.surfaceStateKey ? (
+                    <span className="block w-full text-[10px] text-gray-500">
+                        Surface state key{" "}
+                        <span className="font-mono text-[10px] text-cyan-200/80">{bp.surfaceStateKey}</span>
+                        <span className="text-gray-600"> — use the same key in </span>
+                        <span className="font-mono text-[9px] text-gray-500">blueprint.state.set</span>
+                    </span>
+                ) : null}
                 {bp.status === "broken" && bp.brokenReason ? (
                     <span className="text-[10px] text-gray-500">({bp.brokenReason})</span>
                 ) : null}

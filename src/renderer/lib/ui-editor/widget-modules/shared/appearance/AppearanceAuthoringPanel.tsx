@@ -33,6 +33,7 @@ const DEFAULT_CONTAINER_MODULE_MODES: Record<ContainerAppearanceModuleId, Module
     stroke: "default",
     corners: "default",
     transform: "default",
+    effects: "default",
 };
 
 const DEFAULT_BUTTON_MODULE_MODES: Record<ButtonAppearanceModuleId, ModuleEditMode> = {
@@ -40,6 +41,7 @@ const DEFAULT_BUTTON_MODULE_MODES: Record<ButtonAppearanceModuleId, ModuleEditMo
     border: "default",
     spacing: "default",
     transform: "default",
+    effects: "default",
 };
 
 const DEFAULT_CONTAINER_MOTION_VISIBILITY: Record<ContainerAppearanceModuleId, boolean> = {
@@ -47,6 +49,7 @@ const DEFAULT_CONTAINER_MOTION_VISIBILITY: Record<ContainerAppearanceModuleId, b
     stroke: false,
     corners: false,
     transform: false,
+    effects: false,
 };
 
 const DEFAULT_BUTTON_MOTION_VISIBILITY: Record<ButtonAppearanceModuleId, boolean> = {
@@ -54,6 +57,7 @@ const DEFAULT_BUTTON_MOTION_VISIBILITY: Record<ButtonAppearanceModuleId, boolean
     border: false,
     spacing: false,
     transform: false,
+    effects: false,
 };
 
 function deriveContainerMotionVisibility(model: AppearanceModel): Record<ContainerAppearanceModuleId, boolean> {
@@ -62,6 +66,7 @@ function deriveContainerMotionVisibility(model: AppearanceModel): Record<Contain
         stroke: moduleHasAnyAppearanceTransitionInModel(model, CONTAINER_KEYS.stroke),
         corners: moduleHasAnyAppearanceTransitionInModel(model, CONTAINER_KEYS.corners),
         transform: moduleHasAnyAppearanceTransitionInModel(model, CONTAINER_KEYS.transform),
+        effects: moduleHasAnyAppearanceTransitionInModel(model, CONTAINER_KEYS.effects),
     };
 }
 
@@ -71,6 +76,7 @@ function deriveButtonMotionVisibility(model: AppearanceModel): Record<ButtonAppe
         border: moduleHasAnyAppearanceTransitionInModel(model, BUTTON_KEYS.border),
         spacing: moduleHasAnyAppearanceTransitionInModel(model, BUTTON_KEYS.spacing),
         transform: moduleHasAnyAppearanceTransitionInModel(model, BUTTON_KEYS.transform),
+        effects: moduleHasAnyAppearanceTransitionInModel(model, BUTTON_KEYS.effects),
     };
 }
 
@@ -207,9 +213,9 @@ export function AppearanceAuthoringPanel({
         // Include variant id so draft-backed inputs (NumericDraftEnhancedInput, etc.) reset when switching variants.
         const variantSeg = selectedVariantId ? `|v:${selectedVariantId}` : "";
         if (kind === "button") {
-            return `${draftResetKey}${variantSeg}|b:${buttonModuleModes.background}|${buttonModuleModes.border}|${buttonModuleModes.spacing}|${buttonModuleModes.transform}`;
+            return `${draftResetKey}${variantSeg}|b:${buttonModuleModes.background}|${buttonModuleModes.border}|${buttonModuleModes.spacing}|${buttonModuleModes.transform}|${buttonModuleModes.effects}`;
         }
-        return `${draftResetKey}${variantSeg}|c:${containerModuleModes.background}|${containerModuleModes.stroke}|${containerModuleModes.corners}|${containerModuleModes.transform}`;
+        return `${draftResetKey}${variantSeg}|c:${containerModuleModes.background}|${containerModuleModes.stroke}|${containerModuleModes.corners}|${containerModuleModes.transform}|${containerModuleModes.effects}`;
     }, [draftResetKey, kind, selectedVariantId, containerModuleModes, buttonModuleModes]);
 
     const setFieldTransition = useCallback(
