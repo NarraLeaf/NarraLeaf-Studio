@@ -1,4 +1,5 @@
 import { useWindowControls } from "@/lib/app/hooks/useWindowControls";
+import { ErrorBoundary } from "@/lib/app/errorHandling/ErrorBoundary";
 import { Minus, Square, X } from "lucide-react";
 import { ReactNode } from "react";
 
@@ -31,9 +32,9 @@ export function TitleBar({ title, iconSrc, className = "", actionBar, controlBar
                     </div>
                 )}
                 {actionBar && (
-                    <div className="flex items-center">
-                        {actionBar}
-                    </div>
+                    <ErrorBoundary fallback={() => null}>
+                        <div className="flex items-center">{actionBar}</div>
+                    </ErrorBoundary>
                 )}
             </div>
 
@@ -48,7 +49,11 @@ export function TitleBar({ title, iconSrc, className = "", actionBar, controlBar
 
             {/* Right side - Control Bar and Window Controls */}
             <div className="no-drag flex items-center">
-                {controlBar}
+                {controlBar ? (
+                    <ErrorBoundary fallback={() => null}>
+                        <>{controlBar}</>
+                    </ErrorBoundary>
+                ) : null}
                 <div className="flex items-center">
                     {ability.minimizable && (
                         <button

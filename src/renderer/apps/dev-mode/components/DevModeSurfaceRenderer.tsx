@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -20,6 +20,17 @@ type DevModeSurfaceRendererProps = {
 export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
     const { document, surface, rendererRegistry, scale, hostAdapter, blueprintBindingContext, widgetRuntimePatches } =
         props;
+    const [, setBindingRenderTick] = useState(0);
+    useEffect(() => {
+        const store = blueprintBindingContext?.surfaceState;
+        if (!store) {
+            return undefined;
+        }
+        return store.subscribe(() => {
+            setBindingRenderTick(n => n + 1);
+        });
+    }, [blueprintBindingContext?.surfaceState]);
+
     const rootElementId = resolveSurfaceRootElementId(document, surface.id);
     if (!rootElementId) {
         return null;

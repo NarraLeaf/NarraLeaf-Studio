@@ -67,6 +67,8 @@ export function createContainerInspector(ctx: InspectorContext) {
                         id: "section.appearanceAuthoring",
                         type: "section",
                         title: "Appearance",
+                        collapsible: true,
+                        defaultCollapsed: true,
                         helpText: "Compact modules with per-module state overrides (header menu: add or remove).",
                         fields: [
                             defineField<D, any>({

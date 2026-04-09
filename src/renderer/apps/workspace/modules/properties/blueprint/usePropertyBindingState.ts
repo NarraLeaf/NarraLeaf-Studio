@@ -6,6 +6,7 @@ import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type { PropertyFieldBindingMeta } from "./bindingMeta";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
+import { buildDefaultSurfaceStateKeyForWidgetProp } from "@/lib/workspace/services/ui-editor/blueprint/defaultDeclarationKeys";
 
 export type PropertyBindingUiStatus = "literal" | "bound" | "broken";
 
@@ -13,6 +14,8 @@ export type PropertyBindingState = {
     status: PropertyBindingUiStatus;
     /** When bound or broken, declaration display name if it still exists. */
     declarationLabel: string | null;
+    /** Resolved surfaceState key for the bound declaration, when applicable. */
+    surfaceStateKey: string | null;
     brokenReason: string | undefined;
     canBind: boolean;
     uiLocked: boolean;
@@ -37,26 +40,30 @@ export function usePropertyBindingState(
 
     const snapshot = useMemo(() => {
         if (!isInitialized || !context || !surfaceId) {
-            return {
-                blueprintId: undefined as string | undefined,
-                binding: undefined as ReturnType<LocalBlueprintService["findWidgetPropBinding"]>,
-                declName: null as string | null,
-            };
+        return {
+            blueprintId: undefined as string | undefined,
+            binding: undefined as ReturnType<LocalBlueprintService["findWidgetPropBinding"]>,
+            declName: null as string | null,
+            surfaceStateKey: null as string | null,
+        };
         }
         const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
         const blueprintId = localBp.getWidgetMainBlueprintId(surfaceId, elementId);
         if (!blueprintId) {
-            return { blueprintId: undefined, binding: undefined, declName: null };
+            return { blueprintId: undefined, binding: undefined, declName: null, surfaceStateKey: null };
         }
         const b = localBp.findWidgetPropBinding(blueprintId, surfaceId, elementId, bindingMeta.propPath);
         const doc = localBp.getBlueprintDocument();
         const bp = doc.blueprints[blueprintId];
         const declId = b?.source.kind === "declaration" ? b.source.declarationId : undefined;
         const decl = declId ? bp?.members?.declarations?.[declId] : undefined;
+        const surfaceStateKey =
+            decl?.valueSource?.kind === "surfaceState" ? (decl.valueSource.key ?? null) : null;
         return {
             blueprintId,
             binding: b,
             declName: decl?.name ?? null,
+            surfaceStateKey,
         };
     }, [bindingMeta.propPath, context, elementId, isInitialized, revision, surfaceId]);
 
@@ -110,10 +117,14 @@ export function usePropertyBindingState(
                 return;
             }
             const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+            const stateKey = buildDefaultSurfaceStateKeyForWidgetProp({
+                elementId,
+                propPath: bindingMeta.propPath,
+            });
             const decl = localBp.createDeclaration(snapshot.blueprintId, {
                 name: trimmed,
                 kind: "constant",
-                valueSource: { kind: "surfaceState", key: bindingMeta.propPath },
+                valueSource: { kind: "surfaceState", key: stateKey },
             });
             const fallback = bindingMeta.readLiteral(data);
             localBp.setWidgetPropBinding({
@@ -155,6 +166,7 @@ export function usePropertyBindingState(
     return {
         status,
         declarationLabel: snapshot.declName,
+        surfaceStateKey: snapshot.surfaceStateKey,
         brokenReason: snapshot.binding?.brokenReason,
         canBind: Boolean(surfaceId && snapshot.blueprintId),
         uiLocked,

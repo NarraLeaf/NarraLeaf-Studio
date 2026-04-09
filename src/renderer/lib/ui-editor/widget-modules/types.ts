@@ -2,6 +2,7 @@ import type { ReactElement, ReactNode, InputHTMLAttributes } from "react";
 import type { UIElement, UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { UIHostAdapter } from "../runtime/types";
 import type { PropertyEditorSchema } from "@/apps/workspace/modules/properties/framework/types";
+import type { ContextMenuItemDef } from "@/lib/components/elements/ContextMenu";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { LucideIcon } from "lucide-react";
 
@@ -106,7 +107,24 @@ export type DockerBarContext = {
     documentService: UIDocumentService;
 };
 
+/** Optional element entries for canvas / outline context menus. */
+export type WidgetContextMenuContext = {
+    element: UIElement;
+    documentService: UIDocumentService;
+    surfaceId: string;
+};
+
 // ─── Widget Module ──────────────────────────────────────────────────────────
+
+/**
+ * Declarative blueprint event surface for a widget (dispatched at runtime when wired).
+ * `id` is the key under `UIElement.behavior.events` (e.g. `click`).
+ */
+export type WidgetBlueprintEventDef = {
+    id: string;
+    displayName: string;
+    description?: string;
+};
 
 /**
  * Unified module interface for defining a UI widget type.
@@ -126,6 +144,12 @@ export interface UIWidgetModule {
      * When true, creating this widget triggers a `widgetMain` instance blueprint (Blueprint M2).
      */
     readonly supportsBlueprintLogic?: boolean;
+
+    /**
+     * Widget-level events that can be wired to `blueprintEvent` in the UI document.
+     * Used by the properties panel; runtime dispatch must match these ids.
+     */
+    readonly blueprintEvents?: readonly WidgetBlueprintEventDef[];
 
     /** Human-readable display name */
     readonly displayName: string;
@@ -162,4 +186,9 @@ export interface UIWidgetModule {
      * The final multi-select docker bar shows only the items whose `id` exists for every selected module.
      */
     createMultiSelectDockerBarItems?(context: DockerBarContext): DockerBarItem[];
+
+    /**
+     * Extra context menu items when this element is the sole selection (canvas or outline).
+     */
+    createContextMenuItems?(context: WidgetContextMenuContext): ContextMenuItemDef[];
 }

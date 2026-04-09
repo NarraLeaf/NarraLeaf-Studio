@@ -1,10 +1,8 @@
 import type { UIDocument, UIElement, UIElementId, UILayout } from "@shared/types/ui-editor/document";
-import { isUIFlowLayoutParentElement } from "@shared/types/ui-editor/document";
+import { isUIFlowLayoutParentElement, uiElementTypeAcceptsChildren } from "@shared/types/ui-editor/document";
 import { getElementSurfaceTopLeft, surfaceRectToParentLocalLayout } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
-
-const INSERT_PARENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.list"]);
 
 export type InsertTargetResolutionSource = "hit" | "primary" | "effective_root";
 
@@ -14,7 +12,7 @@ export type InsertTargetResolution = {
 };
 
 export function isValidUIInsertParent(element: UIElement | undefined): boolean {
-    return element != null && INSERT_PARENT_TYPES.has(element.type);
+    return element != null && uiElementTypeAcceptsChildren(element.type);
 }
 
 /**
@@ -45,8 +43,9 @@ export function resolveNearestInsertParentInSurface(
 }
 
 /**
- * Shared target-parent policy: deepest valid parent from hit, else primary selection if it is a parent,
- * else effective surface root (linked-aware).
+ * Shared target-parent policy: deepest valid insert parent from hit (when provided), else walk up from
+ * primary selection, else effective surface root (linked-aware). New-widget creation passes `hitElementId: null`
+ * so the parent is never inferred from the pointer stack (avoids dropping into an unintended group).
  */
 export function resolveInsertTargetParent(
     document: UIDocument,
@@ -84,9 +83,11 @@ export function resolveInsertTargetParent(
 
     const primary = input.primaryElementId;
     if (primary && allowed.has(primary)) {
-        const pel = document.elements[primary];
-        if (isValidUIInsertParent(pel)) {
-            return { parentId: primary, source: "primary" };
+        // Walk up from primary (same as hit) so a leaf/list item resolves to its container/root,
+        // not only when primary itself is already nl.root | nl.container | nl.list.
+        const fromPrimary = tryHit(primary);
+        if (fromPrimary) {
+            return { parentId: fromPrimary, source: "primary" };
         }
     }
 

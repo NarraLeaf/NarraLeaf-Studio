@@ -8,9 +8,11 @@ import {
   Baseline,
   Type,
 } from "lucide-react";
+import { getSupportedEffectKindsForWidgetType } from "@shared/types/ui-editor/effects";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type {
   ColorValue,
+  CustomFieldProps,
   IconButtonSelection,
   InlineRowItemContext,
 } from "@/apps/workspace/modules/properties/framework/types";
@@ -18,8 +20,27 @@ import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftE
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
+import { StaticEffectsSection } from "@/lib/ui-editor/widget-modules/shared/effects/StaticEffectsSection";
 import { getTextProps } from "./helpers";
 import type { TextAlign, TextVerticalAlign, TextWidgetProps, TextWrapMode } from "./types";
+
+function TextEffectsField(props: CustomFieldProps<UIInspectorData>) {
+  const el = props.data.element;
+  const flat = getTextProps(el);
+  return (
+    <StaticEffectsSection
+      effects={flat.effects}
+      onChange={next =>
+        props.data.documentService.updateElementProps(el.id, {
+          ...el.props,
+          effects: next,
+        })
+      }
+      supportedKinds={getSupportedEffectKindsForWidgetType("nl.text")}
+      draftResetKey={el.id}
+    />
+  );
+}
 
 export function createTextInspector(ctx: InspectorContext) {
   type D = UIInspectorData;
@@ -244,6 +265,20 @@ export function createTextInspector(ctx: InspectorContext) {
                     },
                   },
                 ],
+              }),
+            ],
+          }),
+          defineField<D, any>({
+            id: "section.effects",
+            type: "section",
+            title: "Effects",
+            collapsible: true,
+            defaultCollapsed: true,
+            fields: [
+              defineField<D, any>({
+                id: "text.effects.panel",
+                type: "custom",
+                component: TextEffectsField,
               }),
             ],
           }),

@@ -1,4 +1,5 @@
 import type { BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
+import { isValidBlueprintExecConnection } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 
 /**
  * Normalize optional BlueprintGraphIr fields for in-place editing.
@@ -47,6 +48,31 @@ export function ensureDefaultGraphEntry(ir: BlueprintGraphIr, startNodeId: strin
             start: { nodeId: startNodeId, port: "in" },
         },
     };
+}
+
+/**
+ * Whether a React Flow connection is allowed for the current IR (execution edges only; data edges are future work).
+ */
+export function isValidBlueprintIrExecConnection(
+    ir: BlueprintGraphIr,
+    p: {
+        source: string | null | undefined;
+        target: string | null | undefined;
+        sourceHandle: string | null | undefined;
+        targetHandle: string | null | undefined;
+    },
+): boolean {
+    const srcNode = ir.nodes?.[p.source ?? ""];
+    const tgtNode = ir.nodes?.[p.target ?? ""];
+    if (!srcNode || !tgtNode || !p.sourceHandle || !p.targetHandle) {
+        return false;
+    }
+    return isValidBlueprintExecConnection({
+        sourceType: srcNode.type,
+        sourcePort: p.sourceHandle,
+        targetType: tgtNode.type,
+        targetPort: p.targetHandle,
+    });
 }
 
 export function createGraphNodeForPalette(type: string, id: string): BlueprintGraphNode {

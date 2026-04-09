@@ -1,4 +1,5 @@
 import type { ImageFill, ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
+import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
 
 /** Chrome props shared by `nl.image` and the visual layer of `nl.container`. */
 export type RectangleLikeProps = {
@@ -37,6 +38,9 @@ export type RectangleLikeProps = {
     transformRotation: number;
     /** Multiplier on chrome root opacity (0–1); combines with layer opacity upstream. */
     transformOpacity: number;
+
+    /** Resolved visual effects (blur, shadows, blend, etc.). */
+    effects: ElementEffectValues;
 };
 
 export type StrokeSide = "all" | "top" | "right" | "bottom" | "left";

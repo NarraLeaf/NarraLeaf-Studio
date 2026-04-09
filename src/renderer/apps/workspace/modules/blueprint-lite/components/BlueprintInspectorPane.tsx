@@ -31,6 +31,10 @@ export function BlueprintInspectorPane({
         const params = node.params ?? {};
         return (
             <div className="space-y-3 text-xs text-gray-200">
+                <p className="rounded border border-white/10 bg-[#0d0f11] px-2 py-1.5 text-[10px] leading-snug text-gray-500">
+                    This editor wires <span className="text-gray-400">execution flow</span> between nodes. Parameters
+                    below are the source of truth; visual data edges are not required yet for most nodes.
+                </p>
                 <div>
                     <p className="text-[10px] uppercase text-gray-500">Node</p>
                     <p className="font-mono text-[11px] text-cyan-200/90">{node.type}</p>
@@ -131,10 +135,16 @@ export function BlueprintInspectorPane({
                 </label>
                 <label className="block space-y-1">
                     <span className="text-gray-500">Surface state key (M3-min)</span>
+                    <p className="text-[10px] leading-snug text-gray-600">
+                        Must match <span className="font-mono text-gray-500">params.key</span> in{" "}
+                        <span className="font-mono text-gray-500">blueprint.state.set</span>. New bindings from the
+                        properties panel default to{" "}
+                        <span className="font-mono text-[10px] text-gray-500">w:&lt;elementId&gt;:&lt;propPath&gt;</span>.
+                    </p>
                     <input
                         className="w-full rounded border border-white/10 bg-[#0d0f11] px-2 py-1 font-mono text-[11px]"
                         value={decl.valueSource?.kind === "surfaceState" ? decl.valueSource.key : ""}
-                        placeholder="e.g. title"
+                        placeholder="e.g. w:el_abc:text"
                         onChange={e => {
                             const key = e.target.value.trim();
                             if (!key) {
@@ -170,7 +180,8 @@ export function BlueprintInspectorPane({
         <div className="text-xs text-gray-500">
             <p>Select a node on the canvas, or a declaration in the member tree.</p>
             <p className="mt-2 text-[11px] leading-relaxed">
-                Execution and debug events run in Dev Mode; this workspace stays structural editing only.
+                Execution and debug events run in Dev Mode; this workspace stays structural editing only. Build{" "}
+                <span className="text-gray-400">exec</span> chains on the canvas; use Dev Mode to verify behavior.
             </p>
         </div>
     );

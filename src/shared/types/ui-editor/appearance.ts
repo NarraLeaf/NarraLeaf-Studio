@@ -84,7 +84,14 @@ export type ContainerAppearancePropertyKey =
     | "transformOffsetY"
     | "transformScale"
     | "transformRotation"
-    | "transformOpacity";
+    | "transformOpacity"
+    | "effectBlur"
+    | "effectBackgroundBlur"
+    | "effectShadow"
+    | "effectInnerShadow"
+    | "effectBlend"
+    | "effectGlow"
+    | "effectFilter";
 
 /** Whitelisted visual keys for `nl.button`. */
 export type ButtonAppearancePropertyKey =
@@ -110,7 +117,14 @@ export type ButtonAppearancePropertyKey =
     | "transformOffsetY"
     | "transformScale"
     | "transformRotation"
-    | "transformOpacity";
+    | "transformOpacity"
+    | "effectBlur"
+    | "effectBackgroundBlur"
+    | "effectShadow"
+    | "effectInnerShadow"
+    | "effectBlend"
+    | "effectGlow"
+    | "effectFilter";
 
 export type AppearancePropertyKey = ContainerAppearancePropertyKey | ButtonAppearancePropertyKey;
 
