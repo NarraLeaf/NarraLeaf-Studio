@@ -9,26 +9,28 @@ import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
-    ensureBlueprintGraphIr,
-    ensureDefaultGraphEntry,
     createGraphNodeForPalette,
+    ensureBlueprintGraphIr,
+    graphIrHasEventHead,
+    graphIrHasFunctionEntry,
+    writeNodeEditorLayout,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
+import { buildBlueprintPaletteContext } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintDocumentRevision } from "../hooks/useBlueprintDocumentRevision";
 import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
-import { useBlueprintEditorState } from "../state/useBlueprintEditorState";
+import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
 import { BlueprintEditorLayout } from "../components/BlueprintEditorLayout";
 import { BlueprintMemberTree } from "../components/BlueprintMemberTree";
 import { BlueprintInspectorPane } from "../components/BlueprintInspectorPane";
 import { BlueprintDiagnosticsPanel } from "../components/BlueprintDiagnosticsPanel";
 import { BlueprintFlowCanvas, cloneBlueprintIr, removeBlueprintNodeFromIr } from "../flow/BlueprintFlowCanvas";
-import { BlueprintNodePalette } from "../components/BlueprintNodePalette";
 import { BlueprintGraphToolbar } from "../components/BlueprintGraphToolbar";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
 import { TypeScriptBlueprintEditorPane } from "../ts/TypeScriptBlueprintEditorPane";
 import { BlueprintFrontendBadge } from "../components/BlueprintFrontendBadge";
 import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevisionBar";
 
-function getActiveIr(bp: Blueprint, view: ReturnType<typeof useBlueprintEditorState>["graphView"]): BlueprintGraphIr | null {
+function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
     if (!view || bp.program.kind !== "graph") {
         return null;
     }
@@ -38,6 +40,18 @@ function getActiveIr(bp: Blueprint, view: ReturnType<typeof useBlueprintEditorSt
     return ensureBlueprintGraphIr(bp.program.graphs.functions[view.graphId]?.graph);
 }
 
+function getGraphToolbarLabel(bp: Blueprint, view: BlueprintEditorGraphView | null): string {
+    if (!view || bp.program.kind !== "graph") {
+        return "";
+    }
+    if (view.kind === "event") {
+        const name = bp.program.graphs.events[view.graphId]?.name ?? view.graphId;
+        return `Event · ${name}`;
+    }
+    const name = bp.program.graphs.functions[view.graphId]?.name ?? view.graphId;
+    return `Function · ${name}`;
+}
+
 export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
     const revision = useBlueprintDocumentRevision();
@@ -45,7 +59,7 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
     if (!isInitialized || !context || !payload?.blueprintId) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-gray-400">
-                Blueprint context is not available or the tab payload is invalid.
+                Blueprint is unavailable or the tab payload is invalid.
             </div>
         );
     }
@@ -124,17 +138,18 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
         [editor.graphView, localBp, payload],
     );
 
-    const onPickPaletteType = useCallback(
-        (type: string) => {
+    const onAddGraphNodeAtFlowPosition = useCallback(
+        (type: string, flowPosition: { x: number; y: number }) => {
             if (!editor.graphView) {
                 return;
             }
             const id = uuid.generate();
             const node = createGraphNodeForPalette(type, id);
+            writeNodeEditorLayout(node, flowPosition);
             const mut = (draft: BlueprintGraphIr) => {
-                const g = ensureBlueprintGraphIr(draft);
-                g.nodes = { ...g.nodes, [node.id]: node };
-                ensureDefaultGraphEntry(g, node.id);
+                // Mutate `draft` in place — `ensureBlueprintGraphIr(draft)` returns a new object, so assigning
+                // to that copy would not update the IR reference held by LocalBlueprintService.
+                draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
             };
             if (editor.graphView.kind === "event") {
                 localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
@@ -149,12 +164,6 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
         const id = uuid.generate();
         localBp.ensureEventGraph(payload.blueprintId, id, `Event ${id.slice(0, 8)}`);
         editor.selectEventGraph(id);
-    }, [editor, localBp, payload.blueprintId, uuid]);
-
-    const onAddFunction = useCallback(() => {
-        const id = uuid.generate();
-        localBp.ensureFunctionGraph(payload.blueprintId, id, `Function ${id.slice(0, 8)}`);
-        editor.selectFunctionGraph(id);
     }, [editor, localBp, payload.blueprintId, uuid]);
 
     const onDeleteSelectedNode = useCallback(() => {
@@ -178,6 +187,7 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
                 return;
             }
             if (t.kind === "binding") {
+                editor.applyDiagnosticTarget({ kind: "binding", bindingId: t.bindingId });
                 return;
             }
             editor.applyDiagnosticTarget({
@@ -191,90 +201,72 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
     );
 
     const graphKey = editor.graphView ? `${editor.graphView.kind}:${editor.graphView.graphId}` : "none";
+    const hasAnyGraph = eventIds.length > 0 || functionIds.length > 0;
+
+    const paletteContext = useMemo(() => {
+        const gk = editor.graphView?.kind ?? "event";
+        const activeIr = editor.graphView ? ir : null;
+        return buildBlueprintPaletteContext({
+            graphKind: gk,
+            owner: bp.owner,
+            widgetElementType: widgetElement?.type,
+            hasEventHead: gk === "event" && activeIr ? graphIrHasEventHead(activeIr) : false,
+            hasFunctionEntry: gk === "function" && activeIr ? graphIrHasFunctionEntry(activeIr) : false,
+        });
+    }, [bp.owner, editor.graphView, ir, widgetElement?.type]);
+
+    const contextTitle = useMemo(
+        () =>
+            [
+                payload.ownerKind,
+                payload.surfaceId,
+                payload.elementId,
+                bp.id,
+            ].filter(Boolean).join(" · "),
+        [bp.id, payload.elementId, payload.ownerKind, payload.surfaceId],
+    );
 
     if (bp.program.kind === "scriptModule") {
         const src = bp.program.source.code;
         return (
             <BlueprintEditorLayout
                 header={
-                    <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <h1 className="text-base font-semibold text-white">TypeScript Blueprint</h1>
-                            <BlueprintFrontendBadge kind="typescript" />
-                        </div>
-                        <p className="mt-1 text-xs text-gray-500 leading-relaxed">
-                            {payload.ownerKind} · surface <span className="text-cyan-400/80">{payload.surfaceId}</span>
-                            {payload.elementId ? (
-                                <>
-                                    {" "}
-                                    · element <span className="text-cyan-400/80">{payload.elementId}</span>
-                                </>
-                            ) : null}{" "}
-                            · <span className="font-mono text-[11px] text-gray-400">{bp.name}</span>{" "}
-                            <span className="font-mono text-[11px] text-gray-500">({bp.id})</span>
-                        </p>
+                    <div
+                        className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5"
+                        title={contextTitle}
+                    >
+                        <span className="text-sm font-semibold text-white">TypeScript</span>
+                        <BlueprintFrontendBadge kind="typescript" />
+                        <span className="truncate font-mono text-[11px] text-gray-400">{bp.name}</span>
                     </div>
                 }
                 memberTree={
-                    <div className="space-y-4">
-                        <BlueprintPrivateRevisionBar
-                            blueprint={bp}
-                            localBp={localBp}
-                            onReopenRevision={reopenRevision}
-                        />
-                        <p className="text-[11px] leading-relaxed text-gray-500">
-                            Use <span className="font-mono text-gray-400">events.on(&quot;…&quot;)</span> with the same
-                            event id as the UI behavior <span className="font-mono text-gray-400">blueprintEvent</span>{" "}
-                            binding. Run <span className="text-gray-400">Dev Mode</span> to compile and execute.
-                        </p>
-                    </div>
+                    <BlueprintPrivateRevisionBar
+                        blueprint={bp}
+                        localBp={localBp}
+                        onReopenRevision={reopenRevision}
+                    />
                 }
                 canvas={<TypeScriptBlueprintEditorPane code={src} onChange={onTsSourceChange} />}
-                palette={
-                    <p className="text-[11px] text-gray-500">
-                        TypeScript blueprints compile in the main process when Dev Mode starts (strict — errors block the
-                        preview).
-                    </p>
-                }
-                inspector={
-                    <p className="text-[11px] text-gray-500">
-                        Script modules register handlers at load; use DevTools in Dev Mode for execution traces.
-                    </p>
-                }
+                inspector={<div className="h-0" aria-hidden />}
                 diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
             />
         );
     }
 
     const header = (
-        <div>
-            <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-base font-semibold text-white">Visual Blueprint</h1>
-                <BlueprintFrontendBadge kind="visual" />
-            </div>
-            <p className="mt-1 text-[11px] text-gray-600 leading-relaxed">
-                Execution-first graphs: connect cyan execution pins. Bindings and declarations are edited from the
-                surface properties panel; validate here, then run in Dev Mode.
-            </p>
-            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
-                {payload.ownerKind} · surface <span className="text-cyan-400/80">{payload.surfaceId}</span>
-                {payload.elementId ? (
-                    <>
-                        {" "}
-                        · element <span className="text-cyan-400/80">{payload.elementId}</span>
-                    </>
-                ) : null}{" "}
-                · <span className="font-mono text-[11px] text-gray-400">{bp.name}</span>{" "}
-                <span className="font-mono text-[11px] text-gray-500">({bp.id})</span>
-            </p>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5" title={contextTitle}>
+            <span className="text-sm font-semibold text-white">Blueprint</span>
+            <BlueprintFrontendBadge kind="visual" />
+            <span className="truncate font-mono text-[11px] text-gray-400">{bp.name}</span>
         </div>
     );
 
     const canvas =
         editor.graphView && ir ? (
-            <div className="flex h-full min-h-[400px] flex-col">
+            <div className="flex h-full min-h-0 flex-col">
                 <BlueprintGraphToolbar
-                    graphLabel={`${editor.graphView.kind === "event" ? "Event" : "Function"} · ${editor.graphView.graphId}`}
+                    graphLabel={getGraphToolbarLabel(bp, editor.graphView)}
                     canDelete={Boolean(editor.selectedNodeId)}
                     onDeleteSelectedNode={onDeleteSelectedNode}
                 />
@@ -286,12 +278,24 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
                         selectedNodeId={editor.selectedNodeId}
                         onSelectNodeId={editor.setSelectedNodeId}
                         onCommitIr={commitIr}
+                        onAddNodeAtFlowPosition={onAddGraphNodeAtFlowPosition}
+                        paletteContext={paletteContext}
                     />
                 </div>
             </div>
+        ) : !hasAnyGraph ? (
+            <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 px-4 py-8">
+                <button
+                    type="button"
+                    className="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-500/20"
+                    onClick={onAddEvent}
+                >
+                    Add event graph
+                </button>
+            </div>
         ) : (
-            <div className="flex h-full min-h-[200px] items-center justify-center text-xs text-gray-500">
-                No graph to display. Add an event or function graph from the member tree.
+            <div className="flex h-full min-h-0 items-center justify-center text-xs text-gray-500">
+                Select a graph in the left panel.
             </div>
         );
 
@@ -310,17 +314,9 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
                     onSelectDeclaration={editor.selectDeclaration}
                     onSelectVariable={editor.selectVariable}
                     onAddEvent={onAddEvent}
-                    onAddFunction={onAddFunction}
                 />
             }
             canvas={canvas}
-            palette={
-                editor.graphView ? (
-                    <BlueprintNodePalette onPickType={onPickPaletteType} />
-                ) : (
-                    <p className="text-[11px] text-gray-500">Select a graph to add nodes.</p>
-                )
-            }
             inspector={
                 <BlueprintInspectorPane
                     blueprint={bp}
@@ -330,6 +326,7 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
                     selectedNodeId={editor.selectedNodeId}
                     ir={ir}
                     localBp={localBp}
+                    onSelectDeclaration={editor.selectDeclaration}
                 />
             }
             diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}

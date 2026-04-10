@@ -1,5 +1,6 @@
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
 import type { BuildOutlineContextMenuInput } from "./types";
 
 const ROOT = "nl.root";
@@ -138,6 +139,14 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
             },
         },
     );
+
+    appendArrangeSubmenu(items, {
+        document: input.document,
+        surfaceId: input.surfaceId,
+        menuSelection: menuSelection,
+        hideMenu: actions.hideMenu,
+        arrange: actions.arrange,
+    });
 
     items.push(
         { separator: true, id: "sep-row" },

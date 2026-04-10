@@ -1,4 +1,5 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import { BLUEPRINT_NODE_TYPE_EVENT_HEAD } from "@shared/types/blueprint/graph";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
 import { BlueprintGraphExecutionError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
@@ -163,6 +164,13 @@ export async function dispatchBlueprintUiEvent(options: {
     const eventGraph = bp.program.graphs.events?.[binding.eventId];
     const ir = eventGraph?.graph;
     if (!ir || !ir.nodes || Object.keys(ir.nodes).length === 0) {
+        debug.emit({
+            type: "execution.error",
+            executionId: newExecutionId(),
+            message: "Event graph is empty or missing — add an Event node and chain logic from it.",
+            blueprintId: binding.blueprintId,
+            eventId: binding.eventId,
+        });
         return;
     }
 
@@ -170,7 +178,30 @@ export async function dispatchBlueprintUiEvent(options: {
     let entry;
     try {
         entry = pickBehaviorGraphEntry(graph);
-    } catch {
+    } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        debug.emit({
+            type: "execution.error",
+            executionId: newExecutionId(),
+            message: `Invalid graph entry: ${message}`,
+            blueprintId: binding.blueprintId,
+            eventId: binding.eventId,
+            graphId: graph.id,
+        });
+        return;
+    }
+
+    const startNode = graph.nodes[entry.start.nodeId];
+    if (!startNode || startNode.type !== BLUEPRINT_NODE_TYPE_EVENT_HEAD) {
+        debug.emit({
+            type: "execution.error",
+            executionId: newExecutionId(),
+            message: `Event graph must start from an "${BLUEPRINT_NODE_TYPE_EVENT_HEAD}" node (fix entries.main in the blueprint editor).`,
+            blueprintId: binding.blueprintId,
+            eventId: binding.eventId,
+            graphId: graph.id,
+            nodeId: entry.start.nodeId,
+        });
         return;
     }
 
@@ -194,6 +225,15 @@ export async function dispatchBlueprintUiEvent(options: {
         debug.emit({ type: "execution.finished", executionId, blueprintId: binding.blueprintId });
     } catch (err) {
         if (err instanceof BlueprintGraphExecutionError) {
+            debug.emit({
+                type: "execution.error",
+                executionId,
+                message: err.message,
+                blueprintId: binding.blueprintId,
+                eventId: binding.eventId,
+                graphId: graph.id,
+                nodeId: err.nodeId,
+            });
             return;
         }
         const message = err instanceof Error ? err.message : String(err);

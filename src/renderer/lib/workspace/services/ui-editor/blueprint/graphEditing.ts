@@ -1,6 +1,13 @@
 import type { BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
 import { isValidBlueprintExecConnection } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 
+export {
+    ensureBlueprintEventGraphIrStructure,
+    ensureBlueprintFunctionGraphIrStructure,
+    graphIrHasEventHead,
+    graphIrHasFunctionEntry,
+} from "@shared/blueprint/normalizeBlueprintGraphIr";
+
 /**
  * Normalize optional BlueprintGraphIr fields for in-place editing.
  */
@@ -37,21 +44,8 @@ export function writeNodeEditorLayout(node: BlueprintGraphNode, pos: EditorNodeL
     node.meta = { ...node.meta, [LAYOUT_KEY]: { x: pos.x, y: pos.y } };
 }
 
-/** When a graph has no entry yet, wire `main` to the first placed node (execution starts at this node). */
-export function ensureDefaultGraphEntry(ir: BlueprintGraphIr, startNodeId: string): void {
-    const entries = ir.entries ?? {};
-    if (Object.keys(entries).length > 0) {
-        return;
-    }
-    ir.entries = {
-        main: {
-            start: { nodeId: startNodeId, port: "in" },
-        },
-    };
-}
-
 /**
- * Whether a React Flow connection is allowed for the current IR (execution edges only; data edges are future work).
+ * Whether a React Flow connection is allowed (exec↔exec and data↔data with optional type match).
  */
 export function isValidBlueprintIrExecConnection(
     ir: BlueprintGraphIr,
@@ -76,12 +70,19 @@ export function isValidBlueprintIrExecConnection(
 }
 
 export function createGraphNodeForPalette(type: string, id: string): BlueprintGraphNode {
-    return {
+    const base: BlueprintGraphNode = {
         id,
         type,
-        params: type === "blueprint.state.set" ? { key: "", value: null } : {},
+        params: {},
         meta: {
             editorLayout: { x: 140 + Math.random() * 60, y: 100 + Math.random() * 60 },
         },
     };
+    if (type === "blueprint.state.set") {
+        base.params = { key: "", value: null };
+    }
+    if (type === "blueprint.data.literal") {
+        base.params = { value: true };
+    }
+    return base;
 }
