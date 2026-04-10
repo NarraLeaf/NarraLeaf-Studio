@@ -18,7 +18,7 @@ import { LocalBlueprintService } from "./ui-editor/LocalBlueprintService";
 import { UIBlueprintLifecycleCoordinator } from "./ui-editor/UIBlueprintLifecycleCoordinator";
 import { DevModeService } from "./core/DevModeService";
 import { UIEditorFontFaceService } from "./ui-editor/UIEditorFontFaceService";
-
+import { BlueprintNodeCatalogService } from "./ui-editor/BlueprintNodeCatalogService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -40,6 +40,7 @@ export class ServiceRegistry {
         [Services.UIBlueprintLifecycle]: UIBlueprintLifecycleCoordinator.getInstance(),
         [Services.DevMode]: DevModeService.getInstance(),
         [Services.UIEditorFontFace]: UIEditorFontFaceService.getInstance(),
+        [Services.BlueprintNodeCatalog]: BlueprintNodeCatalogService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

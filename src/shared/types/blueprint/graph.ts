@@ -7,10 +7,46 @@
 export type BlueprintGraphKind = "event" | "function" | "macro";
 
 /** Well-known blueprint node type ids (stable contract). */
-export const BLUEPRINT_NODE_TYPE_EVENT_HEAD = "blueprint.event.head" as const;
+/** Entry for widget `init` UI event (surface mount). */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT = "blueprint.event.head.init" as const;
+/** Entry for widget `click` UI event (e.g. buttons). */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK = "blueprint.event.head.click" as const;
+
+const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK,
+]);
+
+/** True if this node type can start an event-graph execution chain for UI dispatch. */
+export function isBlueprintEventDispatchHeadType(nodeType: string): boolean {
+    return EVENT_DISPATCH_HEAD_TYPES.has(nodeType);
+}
 export const BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY = "blueprint.function.entry" as const;
 export const BLUEPRINT_NODE_TYPE_REROUTE = "blueprint.flow.reroute" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL = "blueprint.data.literal" as const;
+/** Read blueprint execution local variable (pure data source). */
+export const BLUEPRINT_NODE_TYPE_LOCAL_GET = "blueprint.local.get" as const;
+/** Write blueprint execution local variable. */
+export const BLUEPRINT_NODE_TYPE_LOCAL_SET = "blueprint.local.set" as const;
+/** Console log from wired data pin (Studio / Dev Mode). */
+export const BLUEPRINT_NODE_TYPE_LOG = "blueprint.log" as const;
+/** Pure numeric math (data-only). */
+export const BLUEPRINT_NODE_TYPE_MATH_ADD = "blueprint.math.add" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_SUBTRACT = "blueprint.math.subtract" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_MULTIPLY = "blueprint.math.multiply" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_DIVIDE = "blueprint.math.divide" as const;
+/** Unary: result = value + 1 (pure data). */
+export const BLUEPRINT_NODE_TYPE_MATH_INCREMENT = "blueprint.math.increment" as const;
+/** Unary: result = value - 1 (pure data). */
+export const BLUEPRINT_NODE_TYPE_MATH_DECREMENT = "blueprint.math.decrement" as const;
+
+/** Concatenate two strings (pure data). */
+export const BLUEPRINT_NODE_TYPE_STRING_CONCAT = "blueprint.string.concat" as const;
+/** String length (UTF-16 code units, pure data). */
+export const BLUEPRINT_NODE_TYPE_STRING_LENGTH = "blueprint.string.length" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_TRIM = "blueprint.string.trim" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_TO_UPPER = "blueprint.string.toUpperCase" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_TO_LOWER = "blueprint.string.toLowerCase" as const;
 
 /** IR meta key for graph kind (string value matches BlueprintGraphKind). */
 export const BLUEPRINT_GRAPH_IR_META_KIND = "graphKind" as const;
@@ -22,8 +58,11 @@ export type BlueprintGraphKindRules = {
     allowsEffectfulNodes: boolean;
     /** Whether a dedicated entry node type is required at runtime */
     requiresDedicatedEntryNode: boolean;
-    /** Node type id for the entry node, if required */
-    entryNodeType?: typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD | typeof BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY;
+    /** Node type id for the entry node, if required (event graphs may use several head types). */
+    entryNodeType?:
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK
+        | typeof BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY;
     /** Whether UI may bind widget events directly to this graph slot */
     bindableFromWidgetUi: boolean;
 };
@@ -32,8 +71,8 @@ const RULES: Record<BlueprintGraphKind, BlueprintGraphKindRules> = {
     event: {
         kind: "event",
         allowsEffectfulNodes: true,
-        requiresDedicatedEntryNode: true,
-        entryNodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD,
+        requiresDedicatedEntryNode: false,
+        entryNodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
         bindableFromWidgetUi: true,
     },
     function: {

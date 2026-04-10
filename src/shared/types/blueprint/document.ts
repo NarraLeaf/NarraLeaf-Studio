@@ -140,19 +140,9 @@ export type BlueprintGraphIndex = {
  * Graph IR placeholder aligned with future UIGraph-like execution; M1 structural freeze only.
  */
 export type BlueprintGraphIr = {
-    entries?: Record<string, BlueprintGraphEntry>;
     nodes?: Record<string, BlueprintGraphNode>;
     edges?: BlueprintGraphEdge[];
     variables?: Record<string, unknown>;
-    meta?: Record<string, unknown>;
-};
-
-export type BlueprintGraphEntry = {
-    start: {
-        nodeId: string;
-        port: string;
-    };
-    inputs?: Record<string, unknown>;
     meta?: Record<string, unknown>;
 };
 

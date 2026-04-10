@@ -11,9 +11,14 @@ export const ButtonWidgetModule: UIWidgetModule = {
     supportsBlueprintLogic: true,
     blueprintEvents: [
         {
+            id: "init",
+            displayName: "Initialize",
+            description: "Runs once when this button appears on the surface.",
+        },
+        {
             id: "click",
             displayName: "Click",
-            description: "Pointer or keyboard activation (Enter / Space)",
+            description: "Runs when the user activates this button.",
         },
     ],
     displayName: "Button",

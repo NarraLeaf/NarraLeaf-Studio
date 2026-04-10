@@ -291,7 +291,7 @@ export function createTextInspector(ctx: InspectorContext) {
           defineField<D, any>({
             id: "section.blueprint",
             type: "section",
-            title: "Blueprint",
+            title: "Attached blueprint",
             fields: [
               defineField<D, any>({
                 id: "interaction.blueprint.readonly",

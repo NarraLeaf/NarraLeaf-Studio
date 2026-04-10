@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 1 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 2 as const;
 
 export type BlueprintHostApiContractVersion = typeof BLUEPRINT_HOST_API_CONTRACT_VERSION;
 
@@ -29,7 +29,7 @@ export type BlueprintHostCapabilityContract = {
 export type BlueprintHostApiFamily = Record<string, BlueprintHostCapabilityContract>;
 
 /**
- * Six host API families required by M1 (see blueprint-system-milestones §5.5).
+ * Host API families (see blueprint-system-milestones §5.5).
  * Values are capability name -> contract metadata (not runtime functions).
  */
 export type BlueprintHostApiContract = {
@@ -37,7 +37,6 @@ export type BlueprintHostApiContract = {
     widget: BlueprintHostApiFamily;
     state: BlueprintHostApiFamily;
     persistence: BlueprintHostApiFamily;
-    media: BlueprintHostApiFamily;
     devtools: BlueprintHostApiFamily;
 };
 
@@ -122,24 +121,6 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { key: "", value: undefined },
-            output: undefined,
-        },
-    },
-    media: {
-        playAudio: {
-            capabilityId: "media.playAudio",
-            purity: "effectful",
-            callableFromBinding: false,
-            async: true,
-            input: { assetIdOrUrl: "" },
-            output: undefined,
-        },
-        playAnimation: {
-            capabilityId: "media.playAnimation",
-            purity: "effectful",
-            callableFromBinding: false,
-            async: true,
-            input: { elementId: "", animationId: "" },
             output: undefined,
         },
     },

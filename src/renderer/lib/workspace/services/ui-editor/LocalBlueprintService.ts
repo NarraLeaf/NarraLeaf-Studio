@@ -3,7 +3,13 @@ import type {
     BlueprintDeclaration,
     BlueprintDocument,
     BlueprintFrontendKind,
+    BlueprintVariable,
+    LiteralValue,
 } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
+    BLUEPRINT_NODE_TYPE_LOCAL_SET,
+} from "@shared/types/blueprint/graph";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { RendererError } from "@shared/utils/error";
@@ -406,6 +412,79 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return m ? Object.values(m) : [];
     }
 
+    public createBlueprintVariable(
+        blueprintId: string,
+        input?: { name?: string; defaultValue?: LiteralValue },
+    ): BlueprintVariable {
+        const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
+        const id = uuid.generate();
+        const v: BlueprintVariable = {
+            id,
+            name: input?.name?.trim() || `var_${id.slice(0, 8)}`,
+            defaultValue: input?.defaultValue,
+        };
+        this.applyBlueprintMutation(doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp) {
+                throw new RendererError(`Blueprint not found: ${blueprintId}`);
+            }
+            bp.members = bp.members ?? emptyMemberIndex();
+            bp.members.variables[v.id] = v;
+        });
+        return v;
+    }
+
+    public renameBlueprintVariable(blueprintId: string, variableId: string, name: string): void {
+        this.applyBlueprintMutation(doc => {
+            const v = doc.blueprints[blueprintId]?.members?.variables?.[variableId];
+            if (!v) {
+                return;
+            }
+            const next = name.trim();
+            v.name = next.length > 0 ? next : v.name;
+        });
+    }
+
+    public setBlueprintVariableDefault(
+        blueprintId: string,
+        variableId: string,
+        defaultValue: LiteralValue | undefined,
+    ): void {
+        this.applyBlueprintMutation(doc => {
+            const v = doc.blueprints[blueprintId]?.members?.variables?.[variableId];
+            if (!v) {
+                return;
+            }
+            v.defaultValue = defaultValue;
+        });
+    }
+
+    public deleteBlueprintVariable(blueprintId: string, variableId: string): void {
+        this.applyBlueprintMutation(doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp?.members?.variables?.[variableId]) {
+                return;
+            }
+            if (bp.program.kind === "graph") {
+                for (const slot of Object.values(bp.program.graphs.events ?? {})) {
+                    const ir = ensureBlueprintGraphIr(slot?.graph);
+                    for (const node of Object.values(ir.nodes ?? {})) {
+                        if (
+                            (node.type === BLUEPRINT_NODE_TYPE_LOCAL_SET ||
+                                node.type === BLUEPRINT_NODE_TYPE_LOCAL_GET) &&
+                            node.params?.variableId === variableId
+                        ) {
+                            const next = { ...(node.params ?? {}) };
+                            delete next.variableId;
+                            node.params = next;
+                        }
+                    }
+                }
+            }
+            delete bp.members.variables[variableId];
+        });
+    }
+
     /**
      * Ensure an inline event graph slot exists under Blueprint.program.graphs.events[eventId].
      * Upserts by eventId; preserves existing graph IR when present.
@@ -429,6 +508,21 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 meta: prev?.meta,
             };
             bp.program.graphs.events[eventId] = next;
+        });
+    }
+
+    public renameEventGraph(blueprintId: string, eventId: string, displayName: string): void {
+        this.applyBlueprintMutation(doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp || bp.program.kind !== "graph") {
+                return;
+            }
+            const slot = bp.program.graphs.events?.[eventId];
+            if (!slot) {
+                return;
+            }
+            const next = displayName.trim();
+            slot.name = next.length > 0 ? next : slot.name;
         });
     }
 

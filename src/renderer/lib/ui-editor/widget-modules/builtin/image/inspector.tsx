@@ -87,7 +87,7 @@ export function createImageInspector(ctx: InspectorContext) {
                     defineField<D, any>({
                         id: "section.blueprint",
                         type: "section",
-                        title: "Blueprint",
+                        title: "Attached blueprint",
                         collapsible: true,
                         defaultCollapsed: true,
                         fields: [

@@ -25,14 +25,10 @@ type DevModeContentProps = {
 
 const staticDevHostAdapter = (surface: UISurface): UIHostAdapter => ({
     host: surface.host,
-    effects: {
-        runEffect: () => {},
-    },
 });
 
 const noopHostAdapter: UIHostAdapter = {
     host: "app",
-    effects: { runEffect: () => {} },
 };
 
 function SessionErrorBanner(props: {

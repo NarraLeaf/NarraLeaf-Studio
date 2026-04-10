@@ -802,7 +802,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         ref: { blueprintId: string; eventId: string },
     ): void {
         const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
-        localBp.ensureEventGraph(ref.blueprintId, ref.eventId, eventName);
+        const bpDoc = localBp.getBlueprintDocument();
+        const bp = bpDoc.blueprints[ref.blueprintId];
+        const slot =
+            bp?.program.kind === "graph" ? bp.program.graphs.events?.[ref.eventId] : undefined;
+        const defaultLayerName = `Layer ${ref.eventId.slice(0, 8)}`;
+        localBp.ensureEventGraph(
+            ref.blueprintId,
+            ref.eventId,
+            slot ? undefined : defaultLayerName,
+        );
         this.mutateDocument(document => {
             const el = document.elements[elementId];
             if (!el) {
@@ -836,6 +845,41 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...target.behavior,
                 events: Object.keys(rest).length > 0 ? rest : undefined,
             };
+        });
+    }
+
+    public stripBlueprintLayerBindings(surfaceId: string, blueprintId: string, layerEventId: string): void {
+        this.mutateDocument(document => {
+            const rootId = resolveSurfaceRootElementId(document, surfaceId);
+            if (!rootId) {
+                return;
+            }
+            const ids = collectSubtreeElementIds(document, rootId);
+            for (const elId of ids) {
+                const el = document.elements[elId];
+                if (!el) {
+                    continue;
+                }
+                const events = el.behavior?.events;
+                if (!events) {
+                    continue;
+                }
+                let changed = false;
+                const nextEvents = { ...events };
+                for (const [eventName, binding] of Object.entries(nextEvents)) {
+                    if (
+                        binding.kind === "blueprintEvent" &&
+                        binding.blueprintId === blueprintId &&
+                        binding.eventId === layerEventId
+                    ) {
+                        nextEvents[eventName] = { kind: "noop" };
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    el.behavior = { ...el.behavior, events: nextEvents };
+                }
+            }
         });
     }
 

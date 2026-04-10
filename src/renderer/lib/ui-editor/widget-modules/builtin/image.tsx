@@ -8,6 +8,13 @@ import { createImageDockerBarItems } from "./image/dockerBar";
 export const ImageWidgetModule: UIWidgetModule = {
     type: "nl.image",
     supportsBlueprintLogic: true,
+    blueprintEvents: [
+        {
+            id: "init",
+            displayName: "Initialize",
+            description: "Runs once when this widget appears on the surface.",
+        },
+    ],
     displayName: "Image",
     icon: ImageIcon,
 

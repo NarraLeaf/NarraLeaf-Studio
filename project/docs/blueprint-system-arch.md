@@ -243,6 +243,8 @@ Dev Mode 为调试主阅读界面。
 | 属性绑定 | `src/renderer/apps/workspace/modules/properties/blueprint/*` |
 | Dev Mode | `DevModeManager`、`useDevModeBlueprintRuntime`、`BlueprintRuntimeDebugPanel` |
 
+**Studio 蓝图 Tab（简化布局）：** 可折叠左侧栏承载「图层」（`graphs.events` 槽）与合并后的成员区（执行用 `members.variables` 默认值 + 绑定用 `members.declarations`）；中间为全宽画布；节点参数在节点卡片上编辑（含 `variableRef` 下拉）。若多个控件事件要跑同一张图，在属性面板将各事件的 `blueprintEvent` 指向同一图层 `eventId` 即可。
+
 ---
 
 ## 13. 里程碑 M1 — M5（实施顺序不可倒置）

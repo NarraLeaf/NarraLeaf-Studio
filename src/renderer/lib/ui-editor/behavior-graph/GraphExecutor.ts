@@ -1,5 +1,6 @@
 import type { UIHostAdapter } from "../runtime/types";
 import type { UIGraph, UIGraphEntry, UIGraphNode } from "@shared/types/ui-editor/graph";
+import { registerCoreBlueprintNodes } from "../blueprint-nodes/registerCoreBlueprintNodes";
 import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
 import type { BehaviorGraphExecutionTrace, BehaviorNodeExecutionContext } from "./BehaviorNodeRegistry";
 import { BlueprintGraphExecutionError } from "./GraphExecutionError";
@@ -10,11 +11,13 @@ export type ExecuteGraphOptions = {
     hostAdapter: UIHostAdapter;
     maxSteps?: number;
     trace?: BehaviorGraphExecutionTrace;
+    blueprintLocals?: Record<string, unknown>;
 };
 
 const DEFAULT_MAX_STEPS = 1024;
 
 export async function executeGraph(options: ExecuteGraphOptions): Promise<void> {
+    registerCoreBlueprintNodes();
     const { entry, graph, hostAdapter } = options;
     let cursorNodeId = entry.start.nodeId;
     let steps = 0;
@@ -60,6 +63,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<void> 
             params: node.params ?? {},
             hostAdapter,
             trace,
+            blueprintLocals: options.blueprintLocals,
         };
 
         let result: Awaited<ReturnType<NonNullable<typeof definition.execute>>>;

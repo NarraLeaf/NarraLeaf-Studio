@@ -15,10 +15,10 @@ export type BlueprintEditorMemberFocus =
 export type BlueprintEditorState = {
     graphView: BlueprintEditorGraphView | null;
     memberFocus: BlueprintEditorMemberFocus;
-    selectedNodeId: string | null;
+    selectedNodeIds: string[];
     setGraphView: (view: BlueprintEditorGraphView | null) => void;
     setMemberFocus: (f: BlueprintEditorMemberFocus) => void;
-    setSelectedNodeId: (id: string | null) => void;
+    setSelectedNodeIds: (ids: string[]) => void;
     selectEventGraph: (eventId: string) => void;
     selectFunctionGraph: (functionId: string) => void;
     selectDeclaration: (declarationId: string) => void;
@@ -49,7 +49,7 @@ export function useBlueprintEditorState(
 ): BlueprintEditorState {
     const [graphView, setGraphView] = useState<BlueprintEditorGraphView | null>(null);
     const [memberFocus, setMemberFocus] = useState<BlueprintEditorMemberFocus>({ kind: "none" });
-    const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
 
     const explicitFocus = useMemo(() => payloadHasExplicitFocus(payload), [
         payload.focusDeclarationId,
@@ -61,25 +61,25 @@ export function useBlueprintEditorState(
     const applyPayloadFocus = useCallback(() => {
         if (payload.focusDeclarationId) {
             setMemberFocus({ kind: "declaration", declarationId: payload.focusDeclarationId });
-            setSelectedNodeId(null);
+            setSelectedNodeIds([]);
             return;
         }
         if (payload.focusFunctionId) {
             const view: BlueprintEditorGraphView = { kind: "function", graphId: payload.focusFunctionId };
             setGraphView(view);
             setMemberFocus({ kind: "graph", view });
-            setSelectedNodeId(payload.focusNodeId ?? null);
+            setSelectedNodeIds(payload.focusNodeId ? [payload.focusNodeId] : []);
             return;
         }
         if (payload.focusEventId) {
             const view: BlueprintEditorGraphView = { kind: "event", graphId: payload.focusEventId };
             setGraphView(view);
             setMemberFocus({ kind: "graph", view });
-            setSelectedNodeId(payload.focusNodeId ?? null);
+            setSelectedNodeIds(payload.focusNodeId ? [payload.focusNodeId] : []);
             return;
         }
         setMemberFocus({ kind: "none" });
-        setSelectedNodeId(payload.focusNodeId ?? null);
+        setSelectedNodeIds(payload.focusNodeId ? [payload.focusNodeId] : []);
     }, [
         payload.focusDeclarationId,
         payload.focusEventId,
@@ -128,29 +128,29 @@ export function useBlueprintEditorState(
         const view: BlueprintEditorGraphView = { kind: "event", graphId: eventId };
         setGraphView(view);
         setMemberFocus({ kind: "graph", view });
-        setSelectedNodeId(null);
+        setSelectedNodeIds([]);
     }, []);
 
     const selectFunctionGraph = useCallback((functionId: string) => {
         const view: BlueprintEditorGraphView = { kind: "function", graphId: functionId };
         setGraphView(view);
         setMemberFocus({ kind: "graph", view });
-        setSelectedNodeId(null);
+        setSelectedNodeIds([]);
     }, []);
 
     const selectDeclaration = useCallback((declarationId: string) => {
         setMemberFocus({ kind: "declaration", declarationId });
-        setSelectedNodeId(null);
+        setSelectedNodeIds([]);
     }, []);
 
     const selectVariable = useCallback((variableId: string) => {
         setMemberFocus({ kind: "variable", variableId });
-        setSelectedNodeId(null);
+        setSelectedNodeIds([]);
     }, []);
 
     const selectBinding = useCallback((bindingId: string) => {
         setMemberFocus({ kind: "binding", bindingId });
-        setSelectedNodeId(null);
+        setSelectedNodeIds([]);
     }, []);
 
     const applyDiagnosticTarget = useCallback(
@@ -168,7 +168,7 @@ export function useBlueprintEditorState(
             }
             if (target.kind === "binding" && target.bindingId) {
                 setMemberFocus({ kind: "binding", bindingId: target.bindingId });
-                setSelectedNodeId(null);
+                setSelectedNodeIds([]);
                 return;
             }
             if ((target.kind === "graph" || target.kind === "node") && target.graphKind && target.graphId) {
@@ -178,7 +178,7 @@ export function useBlueprintEditorState(
                     selectFunctionGraph(target.graphId);
                 }
                 if (target.kind === "node" && target.nodeId) {
-                    setSelectedNodeId(target.nodeId);
+                    setSelectedNodeIds([target.nodeId]);
                 }
                 return;
             }
@@ -189,10 +189,10 @@ export function useBlueprintEditorState(
     return {
         graphView,
         memberFocus,
-        selectedNodeId,
+        selectedNodeIds,
         setGraphView,
         setMemberFocus,
-        setSelectedNodeId,
+        setSelectedNodeIds,
         selectEventGraph,
         selectFunctionGraph,
         selectDeclaration,

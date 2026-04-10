@@ -38,10 +38,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
 
     const adapter: UIHostAdapter = {
         host: surface.host,
-        blueprintHostApiVersion: 1,
-        effects: {
-            runEffect: () => {},
-        },
+        blueprintHostApiVersion: 2,
         blueprintRuntime,
     };
 

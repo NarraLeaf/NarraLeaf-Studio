@@ -22,8 +22,9 @@ export function isValidBlueprintPinConnection(params: {
         return false;
     }
     if (outPin.semantic === "data" && outPin.valueType && inPin.valueType && outPin.valueType !== inPin.valueType) {
-        // `json` is a wildcard for literal / polymorphic data pins in M4.
-        if (outPin.valueType !== "json" && inPin.valueType !== "json") {
+        // `json` / `any` are wildcards for polymorphic or literal outputs (e.g. Literal → Branch condition).
+        const wild = new Set(["json", "any"]);
+        if (!wild.has(outPin.valueType) && !wild.has(inPin.valueType)) {
             return false;
         }
     }

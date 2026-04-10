@@ -28,9 +28,6 @@ export type UIHostAdapter = {
     host: UIHost;
     navigate?: (target: unknown) => Promise<void> | void;
     resolveSlot?: (slotId: string) => { mount: (node: ReactNode) => void } | null;
-    effects: {
-        runEffect: (effectId: string, payload: unknown) => Promise<void> | void;
-    };
     /**
      * M1 latch: which frozen BlueprintHostApiContract generation this adapter targets.
      * Does not imply all capabilities are implemented yet.

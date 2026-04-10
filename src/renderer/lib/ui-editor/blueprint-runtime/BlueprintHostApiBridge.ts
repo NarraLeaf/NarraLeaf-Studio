@@ -28,10 +28,6 @@ export type BlueprintHostApiRuntime = {
         get: (key: string) => Promise<unknown>;
         set: (key: string, value: unknown) => Promise<void>;
     };
-    media: {
-        playAudio: (assetIdOrUrl: string) => Promise<void>;
-        playAnimation: (elementId: string, animationId: string) => Promise<void>;
-    };
     devtools: {
         log: (level: string, message: string) => void;
     };
@@ -187,21 +183,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 scope.persistenceSet(key, value);
                 emit({ type: "state.write", scope: "persistence", key });
                 emitHostCall(emit, "persistence.set", "return");
-            },
-        },
-        media: {
-            playAudio: async (assetIdOrUrl: string) => {
-                const cap = "media.playAudio";
-                emitHostCall(emit, cap, "call");
-                // Real audio pipeline is player-specific; Dev Mode records the intent.
-                console.info(`[DevMode Host API] ${cap}`, assetIdOrUrl);
-                emitHostCall(emit, cap, "return");
-            },
-            playAnimation: async (elementId: string, animationId: string) => {
-                const cap = "media.playAnimation";
-                emitHostCall(emit, cap, "call");
-                console.info(`[DevMode Host API] ${cap}`, elementId, animationId);
-                emitHostCall(emit, cap, "return");
             },
         },
         devtools: {

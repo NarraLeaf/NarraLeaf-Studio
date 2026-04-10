@@ -9,6 +9,13 @@ import { createInitialContainerAppearance } from "@/lib/ui-editor/widget-modules
 export const ContainerWidgetModule: UIWidgetModule = {
     type: "nl.container",
     supportsBlueprintLogic: true,
+    blueprintEvents: [
+        {
+            id: "init",
+            displayName: "Initialize",
+            description: "Runs once when this widget appears on the surface.",
+        },
+    ],
     displayName: "Container",
     icon: Box,
 
