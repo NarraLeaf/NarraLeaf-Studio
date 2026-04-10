@@ -13,7 +13,6 @@ type Props = {
     onSelectDeclaration: (declarationId: string) => void;
     onSelectVariable: (variableId: string) => void;
     onAddEvent: () => void;
-    onAddFunction: () => void;
 };
 
 function countForGraph(
@@ -48,7 +47,6 @@ export function BlueprintMemberTree({
     onSelectDeclaration,
     onSelectVariable,
     onAddEvent,
-    onAddFunction,
 }: Props) {
     if (blueprint.program.kind !== "graph") {
         return <p className="text-xs text-gray-500">Not a graph blueprint.</p>;
@@ -66,10 +64,6 @@ export function BlueprintMemberTree({
     return (
         <div className="flex flex-col gap-3 text-xs text-gray-300">
             <section>
-                <p className="mb-1 text-[10px] leading-snug text-gray-600">
-                    Member tree lists <span className="text-gray-400">execution</span> event/function graphs. Runtime
-                    dispatch uses graphs you wire from the properties panel.
-                </p>
                 <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wide text-gray-500">
                     <span>Events</span>
                     <button
@@ -82,7 +76,7 @@ export function BlueprintMemberTree({
                 </div>
                 <ul className="space-y-0.5">
                     {Object.keys(events).length === 0 ? (
-                        <li className="text-gray-500">No event graphs</li>
+                        <li className="text-gray-500">—</li>
                     ) : (
                         Object.keys(events).map(id => {
                             const { errors, warnings } = countForGraph(diagnostics, "event", id);
@@ -114,17 +108,11 @@ export function BlueprintMemberTree({
             <section>
                 <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wide text-gray-500">
                     <span>Functions</span>
-                    <button
-                        type="button"
-                        className="text-cyan-400/90 hover:text-cyan-300"
-                        onClick={() => onAddFunction()}
-                    >
-                        + Add
-                    </button>
                 </div>
+                <p className="mb-1 text-[10px] text-gray-600">Pure function graphs only; creation UI arrives in a later milestone.</p>
                 <ul className="space-y-0.5">
                     {Object.keys(functions).length === 0 ? (
-                        <li className="text-gray-500">No function graphs</li>
+                        <li className="text-gray-500">—</li>
                     ) : (
                         Object.keys(functions).map(id => {
                             const { errors, warnings } = countForGraph(diagnostics, "function", id);
@@ -157,7 +145,7 @@ export function BlueprintMemberTree({
                 <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Declarations</p>
                 <ul className="max-h-36 space-y-0.5 overflow-auto">
                     {Object.keys(decls).length === 0 ? (
-                        <li className="text-gray-500">None</li>
+                        <li className="text-gray-500">—</li>
                     ) : (
                         Object.values(decls).map(d => (
                             <li key={d.id}>
@@ -182,7 +170,7 @@ export function BlueprintMemberTree({
                 <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Variables</p>
                 <ul className="max-h-28 space-y-0.5 overflow-auto">
                     {Object.keys(vars).length === 0 ? (
-                        <li className="text-gray-500">None</li>
+                        <li className="text-gray-500">—</li>
                     ) : (
                         Object.values(vars).map(v => (
                             <li key={v.id}>
@@ -203,14 +191,9 @@ export function BlueprintMemberTree({
                 </ul>
             </section>
 
-            <section className="border-t border-white/5 pt-2">
-                <p className="text-[10px] uppercase tracking-wide text-gray-500">Shared blueprints</p>
-                <p className="mt-1 text-[11px] text-gray-500">Managed in asset system (M5).</p>
-            </section>
-
             {selectedNodeId ? (
-                <p className="text-[10px] text-gray-500">
-                    Canvas node <span className="font-mono text-gray-400">{selectedNodeId}</span>
+                <p className="border-t border-white/5 pt-2 text-[10px] text-gray-500">
+                    Node <span className="font-mono text-gray-400">{selectedNodeId}</span>
                 </p>
             ) : null}
         </div>

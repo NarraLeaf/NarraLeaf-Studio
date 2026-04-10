@@ -191,4 +191,10 @@ export interface UIWidgetModule {
      * Extra context menu items when this element is the sole selection (canvas or outline).
      */
     createContextMenuItems?(context: WidgetContextMenuContext): ContextMenuItemDef[];
+
+    /**
+     * Optional hook to register additional blueprint nodes (via `defineBlueprintNode`) when the module loads.
+     * Keep side effects idempotent — the host may call this once per session.
+     */
+    registerBlueprintNodes?(): void;
 }

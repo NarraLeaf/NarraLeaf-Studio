@@ -20,7 +20,11 @@ import {
 } from "./blueprint/blueprintFactories";
 import { assertValidBlueprintDocument } from "./blueprint/documentValidation";
 import type { BlueprintEventGraph, BlueprintFunctionGraph, BlueprintGraphIr } from "@shared/types/blueprint/document";
-import { ensureBlueprintGraphIr } from "./blueprint/graphEditing";
+import {
+    ensureBlueprintEventGraphIrStructure,
+    ensureBlueprintFunctionGraphIrStructure,
+    ensureBlueprintGraphIr,
+} from "./blueprint/graphEditing";
 import { planSubtreeDuplicateBlueprintRemap, type SubtreeDuplicateRemapPlan } from "./blueprint/blueprintCopyRemap";
 import {
     buildReadonlyWidgetMainSummary,
@@ -415,8 +419,9 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             if (bp.program.kind !== "graph") {
                 throw new RendererError(`Blueprint ${blueprintId} is not a graph program`);
             }
+            const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
             const prev = bp.program.graphs.events[eventId];
-            const graphIr = prev?.graph ?? { nodes: {}, edges: [], entries: {} };
+            const graphIr = ensureBlueprintEventGraphIrStructure(prev?.graph ?? undefined, () => uuid.generate());
             const next: BlueprintEventGraph = {
                 id: eventId,
                 name: displayName ?? prev?.name,
@@ -454,8 +459,9 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             if (bp.program.kind !== "graph") {
                 throw new RendererError(`Blueprint ${blueprintId} is not a graph program`);
             }
+            const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
             const prev = bp.program.graphs.functions[functionId];
-            const graphIr = prev?.graph ?? { nodes: {}, edges: [], entries: {} };
+            const graphIr = ensureBlueprintFunctionGraphIrStructure(prev?.graph ?? undefined, () => uuid.generate());
             const next: BlueprintFunctionGraph = {
                 id: functionId,
                 name: displayName ?? prev?.name,

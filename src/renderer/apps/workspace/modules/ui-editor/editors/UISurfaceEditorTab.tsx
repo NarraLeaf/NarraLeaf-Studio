@@ -15,6 +15,7 @@ import {
     shouldApplyCanvasContextRetarget,
 } from "@/lib/ui-editor/context-menu/resolveCanvasContextSelection";
 import { hasUiEditorClipboard } from "@/lib/ui-editor/commands/uiEditorClipboard";
+import { uiEditorArrange } from "@/lib/ui-editor/commands/uiEditorArrange";
 import {
     uiEditorCopySelection,
     uiEditorCutSelection,
@@ -478,6 +479,12 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                     },
                     addSelectionToLeaderGroup: () => {
                         uiEditorGroupIntoLeaderContainer(documentService, stateService, surface.id, menuSel);
+                    },
+                    arrange: op => {
+                        if (!documentService) {
+                            return;
+                        }
+                        uiEditorArrange(documentService, surface.id, menuSel, op);
                     },
                 },
             });
