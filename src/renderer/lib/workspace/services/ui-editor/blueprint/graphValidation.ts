@@ -1,4 +1,8 @@
 import type { Blueprint, BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD,
+    BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
+} from "@shared/types/blueprint/graph";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBehaviorGraphEntry";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
@@ -148,6 +152,44 @@ export function validateBlueprintGraphIr(
         return out;
     }
 
+    if (ctx.graphKind === "event") {
+        const headNodes = Object.entries(nodes).filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD);
+        if (headNodes.length === 0) {
+            out.push({
+                severity: "error",
+                code: "event.missing_head",
+                message: "Event graph must contain exactly one Event head node.",
+                target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
+            });
+        } else if (headNodes.length > 1) {
+            out.push({
+                severity: "error",
+                code: "event.multiple_heads",
+                message: "Event graph has more than one Event head — keep a single entry.",
+                target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
+            });
+        }
+    }
+
+    if (ctx.graphKind === "function") {
+        const entries = Object.entries(nodes).filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY);
+        if (entries.length === 0) {
+            out.push({
+                severity: "error",
+                code: "function.missing_entry",
+                message: "Function graph must contain a Function entry node.",
+                target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
+            });
+        } else if (entries.length > 1) {
+            out.push({
+                severity: "error",
+                code: "function.multiple_entries",
+                message: "Function graph has more than one Function entry node.",
+                target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
+            });
+        }
+    }
+
     const keys = entryKeys(ir);
     if (keys.length === 0) {
         out.push({
@@ -167,6 +209,26 @@ export function validateBlueprintGraphIr(
                     message: `Entry points to missing node "${entry.start.nodeId}".`,
                     target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
                 });
+            } else if (ctx.graphKind === "event") {
+                const start = nodes[entry.start.nodeId];
+                if (start && start.type !== BLUEPRINT_NODE_TYPE_EVENT_HEAD) {
+                    out.push({
+                        severity: "error",
+                        code: "event.entry_not_head",
+                        message: "entries.main must point to the Event head node so runtime dispatch is unambiguous.",
+                        target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: entry.start.nodeId },
+                    });
+                }
+            } else if (ctx.graphKind === "function") {
+                const start = nodes[entry.start.nodeId];
+                if (start && start.type !== BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY) {
+                    out.push({
+                        severity: "error",
+                        code: "function.entry_not_entry_node",
+                        message: "entries.main must point to the Function entry node.",
+                        target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: entry.start.nodeId },
+                    });
+                }
             }
         } catch {
             out.push({

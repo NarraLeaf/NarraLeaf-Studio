@@ -16,10 +16,6 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
     return (
         <div className="rounded-lg border border-white/10 bg-[#111315] px-4 py-3 space-y-3">
             <p className="text-xs uppercase text-gray-500 tracking-wider">Blueprint events</p>
-            <p className="text-[11px] text-gray-500 leading-snug">
-                Wire each event to an event graph on this widget&apos;s main blueprint. Execution and debugging run in Dev
-                Mode.
-            </p>
             <ul className="space-y-3 list-none pl-0">
                 {rows.map(row => (
                     <li key={row.eventId} className="rounded border border-white/5 bg-[#0d0f11] px-3 py-2 space-y-2">

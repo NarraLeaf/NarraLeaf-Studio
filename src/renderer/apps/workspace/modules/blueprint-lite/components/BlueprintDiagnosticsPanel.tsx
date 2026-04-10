@@ -12,15 +12,8 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
 
     if (diagnostics.length === 0) {
         return (
-            <div className="border-t border-white/10 bg-[#0d0f11] px-3 py-2 text-[11px] text-gray-500 leading-relaxed">
-                <p>No graph or binding diagnostics for this blueprint.</p>
-                <p className="mt-1 text-[10px] text-gray-600">
-                    When issues are listed below, click a row to focus the graph, node, or declaration. Codes such as{" "}
-                    <span className="font-mono">blueprint.event_graphs_not_wired_to_ui</span>,{" "}
-                    <span className="font-mono">binding.broken</span>, and{" "}
-                    <span className="font-mono">graph.empty</span> distinguish “not wired”, “broken binding”, and “empty
-                    graph”. Runtime traces stay in Dev Mode (Blueprint DevTools).
-                </p>
+            <div className="shrink-0 border-t border-white/10 bg-[#0b0d12] px-3 py-1.5 text-[11px] text-gray-500">
+                No diagnostics.
             </div>
         );
     }
@@ -48,9 +41,9 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
     );
 
     return (
-        <div className="max-h-40 overflow-auto border-t border-white/10 bg-[#0d0f11] px-2 py-2">
+        <div className="max-h-32 shrink-0 overflow-y-auto border-t border-white/10 bg-[#0b0d12] px-2 py-1.5">
             <p className="mb-1 px-1 text-[10px] uppercase tracking-wide text-gray-500">
-                Diagnostics · {errors.length} errors · {warnings.length} warnings · {infos.length} info
+                Messages · {errors.length}E · {warnings.length}W · {infos.length}I
             </p>
             <div className="space-y-0.5">
                 {errors.map((d, i) => (
@@ -63,10 +56,6 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
                     <Row key={`n-${i}-${d.message}`} d={d} />
                 ))}
             </div>
-            <p className="mt-2 px-1 text-[10px] leading-snug text-gray-500">
-                Workspace: structure + UI↔graph wiring checks for widget blueprints — click a row to jump. Dev Mode: live
-                execution and Host API traces (Blueprint DevTools).
-            </p>
         </div>
     );
 }

@@ -92,17 +92,6 @@ export function ReadonlyBlueprintSection({ data, onChange }: CustomFieldProps<UI
             >
                 Open Blueprint editor
             </button>
-            <p className="text-[11px] text-gray-500 leading-snug border-t border-white/5 pt-2 mt-2">
-                Summary and wiring here are static. Binding rows show Literal / Bound / Broken. Use Dev Mode for live
-                execution, node enter/exit, Host API calls, and runtime errors (not mirrored in this panel).
-            </p>
-            <p className="text-[11px] text-gray-500 leading-snug">
-                Appearance-capable widgets (<span className="font-mono text-[10px]">nl.container</span>,{" "}
-                <span className="font-mono text-[10px]">nl.button</span>,{" "}
-                <span className="font-mono text-[10px]">nl.image</span>): Dev Mode can switch the active variant via
-                Host API / graph node <span className="font-mono text-[10px]">widget.setVariant</span> only. Property
-                bindings on those types are not applied at runtime.
-            </p>
         </div>
     );
 }

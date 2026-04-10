@@ -6,12 +6,15 @@ type Props = {
 
 export function BlueprintGraphToolbar({ graphLabel, onDeleteSelectedNode, canDelete }: Props) {
     return (
-        <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-[#111315] px-3 py-2">
-            <span className="text-xs font-medium text-gray-300 truncate">{graphLabel}</span>
+        <div
+            className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-[#0b0d12] px-2 py-1.5"
+            title="Right-click the canvas to add nodes. Cyan = execution flow; amber = data wires. Literal + Branch condition pins can be linked."
+        >
+            <span className="min-w-0 flex-1 truncate text-xs font-medium text-gray-300">{graphLabel}</span>
             <button
                 type="button"
                 disabled={!canDelete}
-                className="rounded border border-white/10 px-2 py-1 text-[11px] text-gray-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+                className="shrink-0 rounded border border-white/10 px-2 py-1 text-[11px] text-gray-300 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
                 onClick={() => onDeleteSelectedNode?.()}
             >
                 Delete node

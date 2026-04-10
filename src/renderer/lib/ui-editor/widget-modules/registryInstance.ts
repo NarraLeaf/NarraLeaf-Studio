@@ -18,8 +18,9 @@ export async function ensureWidgetModulesRegistered(): Promise<void> {
         return;
     }
     if (!seeding) {
-        seeding = import("./builtin").then(({ BuiltinWidgetModules }) => {
+        seeding = import("./builtin").then(({ BuiltinWidgetModules, registerBuiltinWidgetBlueprintNodes }) => {
             widgetModuleRegistry.registerMany(BuiltinWidgetModules);
+            registerBuiltinWidgetBlueprintNodes();
             seeded = true;
         });
     }

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { Edge, Node } from "@xyflow/react";
-import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { BlueprintGraphEdge, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { readNodeEditorLayout } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import { resolveBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
@@ -21,15 +21,29 @@ export function blueprintIrToFlowNodes(
     }));
 }
 
+function isDataEdge(ir: BlueprintGraphIr, e: BlueprintGraphEdge): boolean {
+    const fromNode = ir.nodes?.[e.from.nodeId];
+    if (!fromNode) {
+        return false;
+    }
+    const cat = resolveBlueprintNodeEditorCatalogEntry(fromNode.type);
+    const pin = cat.pins.find(p => p.id === e.from.port && p.kind === "output");
+    return pin?.semantic === "data";
+}
+
 export function blueprintIrToFlowEdges(ir: BlueprintGraphIr): Edge[] {
     const edges = ir.edges ?? [];
-    return edges.map((e, i) => ({
-        id: `e:${i}:${e.from.nodeId}:${e.from.port}->${e.to.nodeId}:${e.to.port}`,
-        source: e.from.nodeId,
-        target: e.to.nodeId,
-        sourceHandle: e.from.port,
-        targetHandle: e.to.port,
-    }));
+    return edges.map((e, i) => {
+        const data = isDataEdge(ir, e);
+        return {
+            id: `e:${i}:${e.from.nodeId}:${e.from.port}->${e.to.nodeId}:${e.to.port}`,
+            source: e.from.nodeId,
+            target: e.to.nodeId,
+            sourceHandle: e.from.port,
+            targetHandle: e.to.port,
+            style: data ? { stroke: "#f59e0b", strokeWidth: 1.5 } : { stroke: "#22d3ee", strokeWidth: 1.5 },
+        };
+    });
 }
 
 export function useBlueprintFlowProjection(ir: BlueprintGraphIr, selectedNodeId: string | null) {

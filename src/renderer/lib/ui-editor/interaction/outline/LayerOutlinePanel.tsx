@@ -35,6 +35,7 @@ import {
     shouldApplyCanvasContextRetarget,
 } from "@/lib/ui-editor/context-menu/resolveCanvasContextSelection";
 import { hasUiEditorClipboard } from "@/lib/ui-editor/commands/uiEditorClipboard";
+import { uiEditorArrange } from "@/lib/ui-editor/commands/uiEditorArrange";
 import {
     uiEditorCopySelection,
     uiEditorCutSelection,
@@ -482,6 +483,12 @@ export function UILayersPanel({ surfaceId }: UILayersPanelProps) {
                 actions: {
                     hideMenu,
                     insertType: () => {},
+                    arrange: op => {
+                        if (!documentService || !menuSel) {
+                            return;
+                        }
+                        uiEditorArrange(documentService, surfaceId, menuSel, op);
+                    },
                     insertChildInOutline,
                     paste: () => {
                         const sel = stateService.getSelection();
@@ -613,6 +620,12 @@ export function UILayersPanel({ surfaceId }: UILayersPanelProps) {
                 actions: {
                     hideMenu,
                     insertType: () => {},
+                    arrange: op => {
+                        if (!documentService || !menuSel) {
+                            return;
+                        }
+                        uiEditorArrange(documentService, surfaceId, menuSel, op);
+                    },
                     insertChildInOutline: insertOutline,
                     paste: () => {
                         const sel = stateService.getSelection();

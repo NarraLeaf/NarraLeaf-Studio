@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 
 export type BlueprintEditorGraphView =
@@ -9,6 +9,7 @@ export type BlueprintEditorMemberFocus =
     | { kind: "graph"; view: BlueprintEditorGraphView }
     | { kind: "declaration"; declarationId: string }
     | { kind: "variable"; variableId: string }
+    | { kind: "binding"; bindingId: string }
     | { kind: "none" };
 
 export type BlueprintEditorState = {
@@ -22,14 +23,25 @@ export type BlueprintEditorState = {
     selectFunctionGraph: (functionId: string) => void;
     selectDeclaration: (declarationId: string) => void;
     selectVariable: (variableId: string) => void;
+    selectBinding: (bindingId: string) => void;
     applyDiagnosticTarget: (target: {
         kind: "graph" | "node" | "binding" | "declaration";
         graphKind?: "event" | "function";
         graphId?: string;
         nodeId?: string;
         declarationId?: string;
+        bindingId?: string;
     }) => void;
 };
+
+function payloadHasExplicitFocus(payload: BlueprintEntryTabPayload): boolean {
+    return Boolean(
+        payload.focusDeclarationId ||
+            payload.focusEventId ||
+            payload.focusFunctionId ||
+            payload.focusNodeId != null,
+    );
+}
 
 export function useBlueprintEditorState(
     payload: BlueprintEntryTabPayload,
@@ -38,6 +50,13 @@ export function useBlueprintEditorState(
     const [graphView, setGraphView] = useState<BlueprintEditorGraphView | null>(null);
     const [memberFocus, setMemberFocus] = useState<BlueprintEditorMemberFocus>({ kind: "none" });
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+    const explicitFocus = useMemo(() => payloadHasExplicitFocus(payload), [
+        payload.focusDeclarationId,
+        payload.focusEventId,
+        payload.focusFunctionId,
+        payload.focusNodeId,
+    ]);
 
     const applyPayloadFocus = useCallback(() => {
         if (payload.focusDeclarationId) {
@@ -72,20 +91,38 @@ export function useBlueprintEditorState(
         applyPayloadFocus();
     }, [applyPayloadFocus]);
 
+    // When navigating to a declaration only, show a graph canvas context without stealing inspector focus.
     useEffect(() => {
+        if (!payload.focusDeclarationId) {
+            return;
+        }
         if (graphView !== null) {
             return;
         }
         if (lists.eventIds.length > 0) {
-            const view: BlueprintEditorGraphView = { kind: "event", graphId: lists.eventIds[0] };
+            setGraphView({ kind: "event", graphId: lists.eventIds[0]! });
+        } else if (lists.functionIds.length > 0) {
+            setGraphView({ kind: "function", graphId: lists.functionIds[0]! });
+        }
+    }, [payload.focusDeclarationId, graphView, lists.eventIds, lists.functionIds]);
+
+    useEffect(() => {
+        if (explicitFocus) {
+            return;
+        }
+        if (graphView !== null) {
+            return;
+        }
+        if (lists.eventIds.length > 0) {
+            const view: BlueprintEditorGraphView = { kind: "event", graphId: lists.eventIds[0]! };
             setGraphView(view);
             setMemberFocus({ kind: "graph", view });
         } else if (lists.functionIds.length > 0) {
-            const view: BlueprintEditorGraphView = { kind: "function", graphId: lists.functionIds[0] };
+            const view: BlueprintEditorGraphView = { kind: "function", graphId: lists.functionIds[0]! };
             setGraphView(view);
             setMemberFocus({ kind: "graph", view });
         }
-    }, [graphView, lists.eventIds, lists.functionIds]);
+    }, [explicitFocus, graphView, lists.eventIds, lists.functionIds]);
 
     const selectEventGraph = useCallback((eventId: string) => {
         const view: BlueprintEditorGraphView = { kind: "event", graphId: eventId };
@@ -111,6 +148,11 @@ export function useBlueprintEditorState(
         setSelectedNodeId(null);
     }, []);
 
+    const selectBinding = useCallback((bindingId: string) => {
+        setMemberFocus({ kind: "binding", bindingId });
+        setSelectedNodeId(null);
+    }, []);
+
     const applyDiagnosticTarget = useCallback(
         (target: {
             kind: "graph" | "node" | "binding" | "declaration";
@@ -118,9 +160,15 @@ export function useBlueprintEditorState(
             graphId?: string;
             nodeId?: string;
             declarationId?: string;
+            bindingId?: string;
         }) => {
             if (target.kind === "declaration" && target.declarationId) {
                 selectDeclaration(target.declarationId);
+                return;
+            }
+            if (target.kind === "binding" && target.bindingId) {
+                setMemberFocus({ kind: "binding", bindingId: target.bindingId });
+                setSelectedNodeId(null);
                 return;
             }
             if ((target.kind === "graph" || target.kind === "node") && target.graphKind && target.graphId) {
@@ -133,9 +181,6 @@ export function useBlueprintEditorState(
                     setSelectedNodeId(target.nodeId);
                 }
                 return;
-            }
-            if (target.kind === "binding") {
-                setMemberFocus({ kind: "none" });
             }
         },
         [selectDeclaration, selectEventGraph, selectFunctionGraph],
@@ -152,6 +197,7 @@ export function useBlueprintEditorState(
         selectFunctionGraph,
         selectDeclaration,
         selectVariable,
+        selectBinding,
         applyDiagnosticTarget,
     };
 }

@@ -3,6 +3,10 @@
  */
 import type { BlueprintDocument, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import {
+    ensureBlueprintEventGraphIrStructure,
+    ensureBlueprintFunctionGraphIrStructure,
+} from "./normalizeBlueprintGraphIr";
 
 /** Legacy v2 shape (ownerIndex only). */
 export type BlueprintDocumentV2 = Omit<BlueprintDocument, "schemaVersion" | "ownerRecords"> & {
@@ -25,6 +29,9 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
     if (sv === BLUEPRINT_DOCUMENT_SCHEMA_VERSION) {
         return raw as BlueprintDocument;
     }
+    if (sv === 3 && isRecord(raw.blueprints)) {
+        return migrateBlueprintDocumentV3ToV4(raw as BlueprintDocument);
+    }
     if (sv === 2 && isRecord(raw.ownerIndex) && isRecord(raw.blueprints)) {
         const ownerIndex = raw.ownerIndex as Record<string, string>;
         const ownerRecords: Record<string, BlueprintPrivateOwnerRecord> = {};
@@ -39,11 +46,57 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
         }
         const { ownerIndex: _drop, ...rest } = raw as BlueprintDocumentV2 & Record<string, unknown>;
         void _drop;
-        return {
-            ...(rest as Omit<BlueprintDocument, "schemaVersion" | "ownerRecords" | "ownerIndex">),
-            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+        let seq = 0;
+        const generateId = () => `nl_mig_${++seq}`;
+        const interim = {
+            ...rest,
             ownerRecords,
-        } as BlueprintDocument;
+        } as unknown as BlueprintDocument;
+        const upgraded = upgradeBlueprintGraphBodiesToV4(interim, generateId);
+        return {
+            ...upgraded,
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+        };
     }
     throw new Error(`Unsupported BlueprintDocument schemaVersion: ${String(sv)}`);
+}
+
+/** Ensures event/function graph IRs include dedicated entry nodes (v4+ editor contract). */
+export function upgradeBlueprintGraphBodiesToV4(doc: BlueprintDocument, generateId: () => string): BlueprintDocument {
+    const blueprints = { ...doc.blueprints };
+    for (const bp of Object.values(blueprints)) {
+        if (bp.program.kind !== "graph") {
+            continue;
+        }
+        const graphs = bp.program.graphs;
+        const events = { ...(graphs.events ?? {}) };
+        for (const [eid, eg] of Object.entries(events)) {
+            if (eg.graph) {
+                events[eid] = {
+                    ...eg,
+                    graph: ensureBlueprintEventGraphIrStructure(eg.graph, generateId),
+                };
+            }
+        }
+        const functions = { ...(graphs.functions ?? {}) };
+        for (const [fid, fg] of Object.entries(functions)) {
+            if (fg.graph) {
+                functions[fid] = {
+                    ...fg,
+                    graph: ensureBlueprintFunctionGraphIrStructure(fg.graph, generateId),
+                };
+            }
+        }
+        bp.program.graphs = { ...graphs, events, functions };
+    }
+    return { ...doc, blueprints };
+}
+
+function migrateBlueprintDocumentV3ToV4(doc: BlueprintDocument): BlueprintDocument {
+    let seq = 0;
+    const generateId = () => `nl_mig_${++seq}`;
+    return {
+        ...upgradeBlueprintGraphBodiesToV4(doc, generateId),
+        schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+    };
 }

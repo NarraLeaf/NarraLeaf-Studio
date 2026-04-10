@@ -1,5 +1,6 @@
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
 import type { BuildCanvasContextMenuInput } from "./types";
 
 const ROOT = "nl.root";
@@ -94,6 +95,14 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
             },
         },
     );
+
+    appendArrangeSubmenu(items, {
+        document: input.document,
+        surfaceId: input.surfaceId,
+        menuSelection,
+        hideMenu: actions.hideMenu,
+        arrange: actions.arrange,
+    });
 
     if (menuSelection.elementIds.length === 1) {
         const only = menuSelection.elementIds[0];

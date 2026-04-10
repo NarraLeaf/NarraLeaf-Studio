@@ -18,3 +18,10 @@ export const BuiltinWidgetModules: UIWidgetModule[] = [
     ButtonWidgetModule,
     ListWidgetModule,
 ];
+
+/** Runs optional `registerBlueprintNodes` on each built-in module (idempotent per module). */
+export function registerBuiltinWidgetBlueprintNodes(): void {
+    for (const m of BuiltinWidgetModules) {
+        m.registerBlueprintNodes?.();
+    }
+}
