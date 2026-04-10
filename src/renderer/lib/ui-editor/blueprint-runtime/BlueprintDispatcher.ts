@@ -1,13 +1,17 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
-import { BLUEPRINT_NODE_TYPE_EVENT_HEAD } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    isBlueprintEventDispatchHeadType,
+} from "@shared/types/blueprint/graph";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
 import { BlueprintGraphExecutionError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintHostApiRuntime } from "./BlueprintHostApiBridge";
 import { adaptBlueprintGraphIr } from "./adaptBlueprintGraphIr";
+import { acquireBlueprintWidgetLocals } from "./blueprintWidgetLocals";
 import type { DebugBridge } from "./DebugBridge";
-import { pickBehaviorGraphEntry } from "./pickBehaviorGraphEntry";
 
 const DEFAULT_MAX_STEPS = 512;
 
@@ -30,7 +34,6 @@ function createScriptExecutionContext(input: {
                 navigation: api.navigation,
                 widget: api.widget,
                 persistence: api.persistence,
-                media: api.media,
                 devtools: {
                     log: (msg: string) => {
                         api.devtools.log("info", String(msg));
@@ -86,6 +89,28 @@ function createScriptExecutionContext(input: {
 
 type BlueprintModuleSink = { events: Record<string, unknown>; bound: Record<string, unknown> };
 
+function collectEventHeadNodeIdsForUiEvent(ir: { nodes?: Record<string, { type: string }> }, eventName: string): string[] {
+    const nodes = ir.nodes ?? {};
+    const initIds = Object.entries(nodes)
+        .filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)
+        .map(([id]) => id);
+    const clickIds = Object.entries(nodes)
+        .filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK)
+        .map(([id]) => id);
+
+    if (eventName === "init") {
+        return [...initIds].sort();
+    }
+    if (eventName === "click") {
+        return [...clickIds].sort();
+    }
+
+    const any = Object.entries(nodes)
+        .filter(([, n]) => isBlueprintEventDispatchHeadType(n.type))
+        .map(([id]) => id);
+    return any.sort();
+}
+
 function getMountedBlueprintModule(blueprintId: string): BlueprintModuleSink | undefined {
     const g = globalThis as typeof globalThis & { __NL_BP_MODULES__?: Record<string, BlueprintModuleSink> };
     return g.__NL_BP_MODULES__?.[blueprintId];
@@ -109,6 +134,7 @@ export async function dispatchBlueprintUiEvent(options: {
     const {
         document,
         blueprintDocument,
+        surfaceId,
         elementId,
         eventName,
         hostAdapter,
@@ -167,7 +193,26 @@ export async function dispatchBlueprintUiEvent(options: {
         debug.emit({
             type: "execution.error",
             executionId: newExecutionId(),
-            message: "Event graph is empty or missing — add an Event node and chain logic from it.",
+            message:
+                "This blueprint layer is empty — add an event head from the canvas context menu (On widget initialize / On button click) and wire logic from it.",
+            blueprintId: binding.blueprintId,
+            eventId: binding.eventId,
+        });
+        return;
+    }
+
+    const headIds = collectEventHeadNodeIdsForUiEvent(ir, eventName);
+    if (headIds.length === 0) {
+        const hint =
+            eventName === "init"
+                ? 'Add an "On widget initialize" head (right-click the canvas → Add node).'
+                : eventName === "click"
+                  ? 'Add an "On button click" head (right-click the canvas → Add node).'
+                  : "Add an event head from the canvas context menu.";
+        debug.emit({
+            type: "execution.error",
+            executionId: newExecutionId(),
+            message: `No matching event head for “${eventName}” in this layer — ${hint}`,
             blueprintId: binding.blueprintId,
             eventId: binding.eventId,
         });
@@ -175,53 +220,33 @@ export async function dispatchBlueprintUiEvent(options: {
     }
 
     const graph = adaptBlueprintGraphIr(ir, `blueprintEvent:${binding.blueprintId}:${binding.eventId}`);
-    let entry;
-    try {
-        entry = pickBehaviorGraphEntry(graph);
-    } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        debug.emit({
-            type: "execution.error",
-            executionId: newExecutionId(),
-            message: `Invalid graph entry: ${message}`,
-            blueprintId: binding.blueprintId,
-            eventId: binding.eventId,
-            graphId: graph.id,
-        });
-        return;
-    }
-
-    const startNode = graph.nodes[entry.start.nodeId];
-    if (!startNode || startNode.type !== BLUEPRINT_NODE_TYPE_EVENT_HEAD) {
-        debug.emit({
-            type: "execution.error",
-            executionId: newExecutionId(),
-            message: `Event graph must start from an "${BLUEPRINT_NODE_TYPE_EVENT_HEAD}" node (fix entries.main in the blueprint editor).`,
-            blueprintId: binding.blueprintId,
-            eventId: binding.eventId,
-            graphId: graph.id,
-            nodeId: entry.start.nodeId,
-        });
-        return;
-    }
-
     const executionId = newExecutionId();
-
     debug.emit({ type: "execution.started", executionId, blueprintId: binding.blueprintId });
+
+    const blueprintLocals = acquireBlueprintWidgetLocals(surfaceId, elementId, binding.blueprintId, bp);
+
     try {
-        await executeGraph({
-            graph,
-            entry,
-            hostAdapter,
-            maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
-            trace: {
-                executionId,
-                graphId: graph.id,
-                blueprintId: binding.blueprintId,
-                eventId: binding.eventId,
-                emit: e => debug.emit(e),
-            },
-        });
+        for (const headId of headIds) {
+            const entry = { start: { nodeId: headId, port: "then" as const } };
+            const startNode = graph.nodes[headId];
+            if (!startNode || !isBlueprintEventDispatchHeadType(startNode.type)) {
+                continue;
+            }
+            await executeGraph({
+                graph,
+                entry,
+                hostAdapter,
+                blueprintLocals,
+                maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+                trace: {
+                    executionId,
+                    graphId: graph.id,
+                    blueprintId: binding.blueprintId,
+                    eventId: binding.eventId,
+                    emit: e => debug.emit(e),
+                },
+            });
+        }
         debug.emit({ type: "execution.finished", executionId, blueprintId: binding.blueprintId });
     } catch (err) {
         if (err instanceof BlueprintGraphExecutionError) {

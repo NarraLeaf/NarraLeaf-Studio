@@ -41,6 +41,11 @@ import type { ViewportTransform } from "../../ui-editor/geometry/types";
 import type { UITool } from "../../ui-editor/editor/types";
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
+import type {
+    BlueprintNodeDef,
+    BlueprintNodeEditorCatalogEntry,
+    BlueprintPaletteContext,
+} from "../../ui-editor/blueprint-nodes/types";
 
 interface WorkspaceContext {
     project: Porject;
@@ -69,6 +74,8 @@ enum Services {
     DevMode = "devMode",
     /** Ref-counted FontFace + blob URLs for UI editor widgets */
     UIEditorFontFace = "uiEditorFontFace",
+    /** Blueprint node definitions (built-ins + plugin extensions); editor + runtime registry */
+    BlueprintNodeCatalog = "blueprintNodeCatalog",
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
@@ -217,6 +224,11 @@ interface IUIDocumentService extends IService {
     ): void;
     /** Remove behavior binding and drop the referenced event graph slot from the blueprint document. */
     clearElementBlueprintEvent(elementId: string, eventName: string): void;
+    /**
+     * Set UI blueprintEvent hooks to noop when they target the given blueprint layer (event graph slot).
+     * Does not remove the graph from the blueprint document — call LocalBlueprintService.removeEventGraph after.
+     */
+    stripBlueprintLayerBindings(surfaceId: string, blueprintId: string, layerEventId: string): void;
 }
 
 interface IUIGraphService extends IService {
@@ -277,7 +289,19 @@ interface ILocalBlueprintService extends IService {
         propPath: string,
     ): BindingDefinition | undefined;
     listDeclarations(blueprintId: string): BlueprintDeclaration[];
+    createBlueprintVariable(
+        blueprintId: string,
+        input?: { name?: string; defaultValue?: import("@shared/types/blueprint/document").LiteralValue },
+    ): import("@shared/types/blueprint/document").BlueprintVariable;
+    renameBlueprintVariable(blueprintId: string, variableId: string, name: string): void;
+    setBlueprintVariableDefault(
+        blueprintId: string,
+        variableId: string,
+        defaultValue: import("@shared/types/blueprint/document").LiteralValue | undefined,
+    ): void;
+    deleteBlueprintVariable(blueprintId: string, variableId: string): void;
     ensureEventGraph(blueprintId: string, eventId: string, displayName?: string): void;
+    renameEventGraph(blueprintId: string, eventId: string, displayName: string): void;
     removeEventGraph(blueprintId: string, eventId: string): void;
     listEventGraphIds(blueprintId: string): string[];
     ensureFunctionGraph(blueprintId: string, functionId: string, displayName?: string): void;
@@ -344,6 +368,17 @@ interface IUIEditorFontFaceService extends IService {
     ): Promise<{ ok: true; cssFamily: string } | { ok: false; error: string }>;
     release(assetId: string): void;
     invalidate(assetId: string): void;
+}
+
+interface IBlueprintNodeCatalogService extends IService {
+    /** Idempotent: loads core built-in node definitions into the shared registry. */
+    ensureBuiltinsRegistered(): void;
+    register(def: BlueprintNodeDef): void;
+    registerMany(defs: BlueprintNodeDef[]): void;
+    get(type: string): BlueprintNodeDef | undefined;
+    getBlueprintNodeEditorCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry | undefined;
+    listPaletteEntries(ctx: BlueprintPaletteContext): BlueprintNodeEditorCatalogEntry[];
+    resolveCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry;
 }
 
 interface IUIEditorStateService extends IService {
@@ -445,7 +480,7 @@ interface IVersionControlService extends IService { }
 interface IPluginService extends IService { }
 
 export {
-    IAssetService, IAudioService, IBuildService, ICommandService, IDebugService,
+    IAssetService, IAudioService, IBlueprintNodeCatalogService, IBuildService, ICommandService, IDebugService,
     IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
     IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, ISettingsService, IStorageService, IStoryService,

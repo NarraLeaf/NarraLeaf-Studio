@@ -10,6 +10,7 @@ import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge"
 import type { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { renderUnknownWidgetTypeContent } from "@/lib/ui-editor/runtime/unknownWidgetTypeUi";
+import { BlueprintWidgetInitLifecycle } from "@/lib/ui-editor/runtime/surface/BlueprintWidgetInitLifecycle";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
@@ -149,6 +150,15 @@ function renderElementTree(
             layoutMode={layoutMode}
             styleOverrides={styleOverrides}
         >
+            {hostAdapter.blueprintRuntime ? (
+                <BlueprintWidgetInitLifecycle
+                    surfaceId={surface.id}
+                    elementId={resolved.id}
+                    behavior={resolved.behavior}
+                    initBinding={resolved.behavior?.events?.init}
+                    hostAdapter={hostAdapter}
+                />
+            ) : null}
             {content}
         </EditorNodeWrapper>
     );

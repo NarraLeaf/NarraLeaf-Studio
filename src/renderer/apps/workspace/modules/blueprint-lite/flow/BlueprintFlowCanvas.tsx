@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouse
 import {
     ReactFlow,
     Background,
-    Controls,
     MiniMap,
     ReactFlowProvider,
     useEdgesState,
@@ -16,13 +15,25 @@ import {
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { isValidBlueprintIrExecConnection } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import { blueprintFlowNodeTypes } from "./nodeTypes";
-import { applyFlowPositionsToIr, blueprintIrToFlowEdges, blueprintIrToFlowNodes } from "./useBlueprintFlowProjection";
+import {
+    applyBlueprintFlowNodeSelection,
+    applyFlowPositionsToIr,
+    blueprintFlowEdgesTopologySignature,
+    blueprintIrToFlowEdges,
+    blueprintIrToFlowNodes,
+    blueprintSelectedNodesDependencyKey,
+    blueprintSelectionIdsEqual,
+} from "./useBlueprintFlowProjection";
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
+import { BlueprintFlowZoomControls } from "./components/BlueprintFlowZoomControls";
 import { BlueprintAddNodeMenu } from "../components/BlueprintAddNodeMenu";
 import type { BlueprintPaletteContext } from "@/lib/ui-editor/blueprint-nodes/types";
+import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 
 export function cloneBlueprintIr(ir: BlueprintGraphIr): BlueprintGraphIr {
-    return structuredClone(ir);
+    const c = structuredClone(ir);
+    delete (c as { entries?: unknown }).entries;
+    return c;
 }
 
 export function removeBlueprintNodeFromIr(ir: BlueprintGraphIr, nodeId: string): void {
@@ -33,26 +44,36 @@ export function removeBlueprintNodeFromIr(ir: BlueprintGraphIr, nodeId: string):
 }
 
 type BlueprintFlowCanvasInnerProps = {
+    nodeCatalog: IBlueprintNodeCatalogService;
     graphKey: string;
     ir: BlueprintGraphIr;
     revision: number;
-    selectedNodeId: string | null;
-    onSelectNodeId: (id: string | null) => void;
+    /** Bumps React Flow sync when blueprint member variables change (node card dropdowns). */
+    blueprintMembersSig: string;
+    blueprintMemberVariables: Array<{ id: string; name: string }>;
+    selectedNodeIds: readonly string[];
+    onSelectNodeIds: (ids: string[]) => void;
     onCommitIr: (next: BlueprintGraphIr) => void;
     /** When set, right-click on the pane opens a compact search menu to add a node at that position. */
     onAddNodeAtFlowPosition?: (type: string, flowPosition: { x: number; y: number }) => void;
     paletteContext: BlueprintPaletteContext;
+    /** When null, Delete/Backspace do not remove nodes (e.g. while typing in the sidebar). */
+    deleteKeyCode?: string[] | null;
 };
 
 function BlueprintFlowCanvasInner({
+    nodeCatalog,
     graphKey,
     ir,
     revision,
-    selectedNodeId,
-    onSelectNodeId,
+    blueprintMembersSig,
+    blueprintMemberVariables,
+    selectedNodeIds,
+    onSelectNodeIds,
     onCommitIr,
     onAddNodeAtFlowPosition,
     paletteContext,
+    deleteKeyCode = ["Backspace", "Delete"],
 }: BlueprintFlowCanvasInnerProps) {
     const { getNodes, screenToFlowPosition } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
@@ -60,10 +81,45 @@ function BlueprintFlowCanvasInner({
     const irRef = useRef(ir);
     irRef.current = ir;
 
+    const patchNodeParam = useCallback(
+        (nodeId: string, key: string, value: unknown) => {
+            const snap = cloneBlueprintIr(irRef.current);
+            const n = snap.nodes?.[nodeId];
+            if (!n) {
+                return;
+            }
+            const next = { ...(n.params ?? {}) };
+            if (value === undefined || value === "") {
+                delete next[key];
+            } else {
+                next[key] = value;
+            }
+            n.params = next;
+            onCommitIr(snap);
+        },
+        [onCommitIr],
+    );
+
+    const patchNodeParamRef = useRef(patchNodeParam);
+    patchNodeParamRef.current = patchNodeParam;
+    /** Stable identity so IR sync effect does not re-run on every parent render (reduces jank). */
+    const stablePatchNodeParam = useCallback((nodeId: string, key: string, value: unknown) => {
+        patchNodeParamRef.current(nodeId, key, value);
+    }, []);
+
     /** Avoid onSelectionChange feedback while we push selection from props into React Flow (prevents update loops). */
     const suppressSelectionEventsRef = useRef(false);
-    const selectedNodeIdRef = useRef(selectedNodeId);
-    selectedNodeIdRef.current = selectedNodeId;
+    const selectedNodeIdsRef = useRef(selectedNodeIds);
+    selectedNodeIdsRef.current = selectedNodeIds;
+
+    /**
+     * Replacing the nodes array during a drag (e.g. IR revision from inline literal edit) drops React Flow's
+     * drag state and triggers dev warning #015. Keep live positions from RF while a drag is active.
+     */
+    const isNodeDragActiveRef = useRef(false);
+
+    const lastStructuralRef = useRef<{ graphKey: string; revision: number; membersSig: string } | null>(null);
+    const lastNodeCatalogRef = useRef(nodeCatalog);
 
     const [addMenu, setAddMenu] = useState<{
         clientX: number;
@@ -74,29 +130,88 @@ function BlueprintFlowCanvasInner({
     useEffect(() => {
         const snap = irRef.current;
         suppressSelectionEventsRef.current = true;
-        setNodes(blueprintIrToFlowNodes(snap, selectedNodeId));
-        setEdges(blueprintIrToFlowEdges(snap));
+
+        const prevStruct = lastStructuralRef.current;
+        const catalogChanged = lastNodeCatalogRef.current !== nodeCatalog;
+        lastNodeCatalogRef.current = nodeCatalog;
+        const structural =
+            catalogChanged ||
+            !prevStruct ||
+            prevStruct.graphKey !== graphKey ||
+            prevStruct.revision !== revision ||
+            prevStruct.membersSig !== blueprintMembersSig;
+
+        if (structural) {
+            lastStructuralRef.current = { graphKey, revision, membersSig: blueprintMembersSig };
+            setNodes(prevNodes => {
+                const base = blueprintIrToFlowNodes(
+                    snap,
+                    nodeCatalog,
+                    stablePatchNodeParam,
+                    blueprintMemberVariables,
+                );
+                const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
+                if (!isNodeDragActiveRef.current) {
+                    return withSel;
+                }
+                const prevById = new Map(prevNodes.map(n => [n.id, n]));
+                return withSel.map(n => {
+                    const live = prevById.get(n.id);
+                    return live ? { ...n, position: live.position } : n;
+                });
+            });
+            setEdges(prev => {
+                const next = blueprintIrToFlowEdges(snap, nodeCatalog);
+                if (blueprintFlowEdgesTopologySignature(prev) === blueprintFlowEdgesTopologySignature(next)) {
+                    return prev;
+                }
+                return next;
+            });
+        } else {
+            setNodes(nds => {
+                if (nds.length === 0) {
+                    return nds;
+                }
+                return applyBlueprintFlowNodeSelection(nds, selectedNodeIdsRef.current);
+            });
+        }
+
         const t = window.setTimeout(() => {
             suppressSelectionEventsRef.current = false;
         }, 0);
         return () => window.clearTimeout(t);
-    }, [graphKey, revision, selectedNodeId, setEdges, setNodes]);
+    }, [
+        blueprintMemberVariables,
+        blueprintMembersSig,
+        graphKey,
+        nodeCatalog,
+        revision,
+        blueprintSelectedNodesDependencyKey(selectedNodeIds),
+        stablePatchNodeParam,
+        setEdges,
+        setNodes,
+    ]);
 
     const onSelectionChange = useCallback(
         ({ nodes: sel }: { nodes: Node[] }) => {
             if (suppressSelectionEventsRef.current) {
                 return;
             }
-            const next = sel.length === 1 ? sel[0]!.id : null;
-            if (next === selectedNodeIdRef.current) {
+            const nextIds = sel.map(n => n.id);
+            if (blueprintSelectionIdsEqual(nextIds, selectedNodeIdsRef.current)) {
                 return;
             }
-            onSelectNodeId(next);
+            onSelectNodeIds(nextIds);
         },
-        [onSelectNodeId],
+        [onSelectNodeIds],
     );
 
+    const onNodeDragStart = useCallback(() => {
+        isNodeDragActiveRef.current = true;
+    }, []);
+
     const onNodeDragStop = useCallback(() => {
+        isNodeDragActiveRef.current = false;
         const next = cloneBlueprintIr(irRef.current);
         applyFlowPositionsToIr(next, getNodes() as Node[]);
         onCommitIr(next);
@@ -167,6 +282,27 @@ function BlueprintFlowCanvasInner({
         [onCommitIr],
     );
 
+    const onEdgeDoubleClick = useCallback(
+        (_e: ReactMouseEvent, edge: Edge) => {
+            const snap = irRef.current;
+            const src = edge.source;
+            const tgt = edge.target;
+            const sh = edge.sourceHandle ?? "";
+            const th = edge.targetHandle ?? "";
+            const before = snap.edges ?? [];
+            const filtered = before.filter(
+                e => !(e.from.nodeId === src && e.from.port === sh && e.to.nodeId === tgt && e.to.port === th),
+            );
+            if (filtered.length === before.length) {
+                return;
+            }
+            const next = cloneBlueprintIr(snap);
+            next.edges = filtered;
+            onCommitIr(next);
+        },
+        [onCommitIr],
+    );
+
     const onNodesDelete = useCallback(
         (deleted: Node[]) => {
             if (deleted.length === 0) {
@@ -177,10 +313,10 @@ function BlueprintFlowCanvasInner({
             for (const n of deleted) {
                 removeBlueprintNodeFromIr(next, n.id);
             }
-            onSelectNodeId(null);
+            onSelectNodeIds([]);
             onCommitIr(next);
         },
-        [onCommitIr, onSelectNodeId],
+        [onCommitIr, onSelectNodeIds],
     );
 
     const onPaneContextMenu = useCallback(
@@ -211,26 +347,33 @@ function BlueprintFlowCanvasInner({
                 onEdgesChange={onEdgesChange}
                 isValidConnection={isValidConnection}
                 onConnect={onConnect}
+                onNodeDragStart={onNodeDragStart}
                 onNodeDragStop={onNodeDragStop}
                 onEdgesDelete={onEdgesDelete}
+                onEdgeDoubleClick={onEdgeDoubleClick}
                 onNodesDelete={onNodesDelete}
                 onPaneContextMenu={onPaneContextMenu}
                 onSelectionChange={onSelectionChange}
                 fitView
                 className="bg-[#0f1115]"
                 proOptions={{ hideAttribution: true }}
-                deleteKeyCode={["Backspace", "Delete"]}
+                deleteKeyCode={deleteKeyCode ?? null}
+                edgesReconnectable={false}
+                edgesFocusable
+                elevateEdgesOnSelect
+                defaultEdgeOptions={{ selectable: true, focusable: true, interactionWidth: 24 }}
             >
                 <Background color="#334155" gap={20} size={1} />
-                <Controls className="!bg-[#1a1d21] !border-white/10 !shadow-lg" />
+                <BlueprintFlowZoomControls />
                 <MiniMap
-                    className="!bg-[#111315] !border-white/10"
+                    className="!bg-[#0b0d12] !border-white/10"
                     maskColor="rgba(15, 23, 42, 0.65)"
                     nodeColor={() => "#0891b2"}
                 />
             </ReactFlow>
             {onAddNodeAtFlowPosition && addMenu ? (
                 <BlueprintAddNodeMenu
+                    nodeCatalog={nodeCatalog}
                     open
                     paletteContext={paletteContext}
                     anchor={{ x: addMenu.clientX, y: addMenu.clientY }}

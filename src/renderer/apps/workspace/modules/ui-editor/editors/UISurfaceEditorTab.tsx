@@ -169,9 +169,6 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const hostAdapter = useMemo(() => {
         return {
             host: surface?.host ?? "app",
-            effects: {
-                runEffect: () => undefined,
-            },
         };
     }, [surface?.host]);
 

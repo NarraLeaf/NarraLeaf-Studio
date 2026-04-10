@@ -13,15 +13,16 @@ export {
  */
 export function ensureBlueprintGraphIr(ir: BlueprintGraphIr | undefined): BlueprintGraphIr {
     if (!ir) {
-        return { entries: {}, nodes: {}, edges: [] };
+        return { nodes: {}, edges: [] };
     }
-    return {
-        entries: ir.entries ?? {},
-        nodes: ir.nodes ?? {},
-        edges: ir.edges ?? [],
-        variables: ir.variables,
-        meta: ir.meta,
-    };
+    delete (ir as { entries?: unknown }).entries;
+    if (!ir.nodes) {
+        ir.nodes = {};
+    }
+    if (!ir.edges) {
+        ir.edges = [];
+    }
+    return ir;
 }
 
 export type EditorNodeLayout = { x: number; y: number };
@@ -78,11 +79,8 @@ export function createGraphNodeForPalette(type: string, id: string): BlueprintGr
             editorLayout: { x: 140 + Math.random() * 60, y: 100 + Math.random() * 60 },
         },
     };
-    if (type === "blueprint.state.set") {
-        base.params = { key: "", value: null };
-    }
     if (type === "blueprint.data.literal") {
-        base.params = { value: true };
+        base.params = { value: "" };
     }
     return base;
 }

@@ -22,6 +22,8 @@ export type BehaviorNodeExecutionContext = {
     params: Record<string, unknown>;
     hostAdapter: UIHostAdapter;
     trace?: BehaviorGraphExecutionTrace;
+    /** Per-event execution locals; initialized from blueprint member variables (M4 simplified editor). */
+    blueprintLocals?: Record<string, unknown>;
 };
 
 export type BehaviorNodeDefinition = {

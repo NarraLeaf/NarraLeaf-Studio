@@ -8,6 +8,13 @@ import { defaultTextWidgetProps } from "./text/types";
 export const TextWidgetModule: UIWidgetModule = {
     type: "nl.text",
     supportsBlueprintLogic: true,
+    blueprintEvents: [
+        {
+            id: "init",
+            displayName: "Initialize",
+            description: "Runs once when this widget appears on the surface.",
+        },
+    ],
     displayName: "Text",
     icon: Type,
 

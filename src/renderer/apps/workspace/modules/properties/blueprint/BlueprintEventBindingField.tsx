@@ -3,7 +3,7 @@ import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { useBlueprintEventBindingState } from "./useBlueprintEventBindingState";
 
 /**
- * Properties-panel block: wire widget runtime events to blueprint event graphs (uidoc `blueprintEvent`).
+ * Properties-panel block: wire widget runtime events to blueprint layers (uidoc `blueprintEvent`).
  */
 export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorData>) {
     const { data } = props;
@@ -13,22 +13,25 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
         return null;
     }
 
+    const showSlotIds = rows.length > 1;
+
     return (
-        <div className="rounded-lg border border-white/10 bg-[#111315] px-4 py-3 space-y-3">
-            <p className="text-xs uppercase text-gray-500 tracking-wider">Blueprint events</p>
+        <div className="mt-2 space-y-3 border-t border-white/5 pt-3">
             <ul className="space-y-3 list-none pl-0">
                 {rows.map(row => (
                     <li key={row.eventId} className="rounded border border-white/5 bg-[#0d0f11] px-3 py-2 space-y-2">
                         <div>
                             <p className="text-sm font-medium text-gray-200">{row.displayName}</p>
-                            <p className="font-mono text-[10px] text-gray-500">{row.eventId}</p>
+                            {showSlotIds ? (
+                                <p className="font-mono text-[10px] text-gray-500">{row.eventId}</p>
+                            ) : null}
                             {row.description ? <p className="mt-1 text-[11px] text-gray-500">{row.description}</p> : null}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                             {row.wiredGraphEventId ? (
                                 <>
                                     <span className="rounded border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-100">
-                                        Graph{" "}
+                                        Layer{" "}
                                         <span className="font-mono text-[10px] text-cyan-200/90">
                                             {row.wiredGraphEventId.slice(0, 8)}…
                                         </span>
@@ -38,14 +41,14 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
                                         className="rounded border border-white/10 px-2 py-1 text-[11px] text-gray-200 hover:bg-white/5"
                                         onClick={() => row.openEventGraph()}
                                     >
-                                        Open graph
+                                        Open layer
                                     </button>
                                     <button
                                         type="button"
                                         className="rounded border border-white/10 px-2 py-1 text-[11px] text-amber-200/90 hover:bg-white/5"
                                         onClick={() => row.clearWiring()}
                                     >
-                                        Unwire
+                                        Detach
                                     </button>
                                 </>
                             ) : (
@@ -57,7 +60,7 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
                                         onClick={() => row.wireToNewGraph()}
                                         title={!row.canWire ? "Widget main blueprint is not ready yet." : undefined}
                                     >
-                                        New event graph
+                                        New layer
                                     </button>
                                     {row.existingEventGraphIds.length > 0 ? (
                                         <select
@@ -73,7 +76,7 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
                                             }}
                                         >
                                             <option value="" disabled>
-                                                Use existing…
+                                                Attach existing…
                                             </option>
                                             {row.existingEventGraphIds.map(id => (
                                                 <option key={id} value={id}>

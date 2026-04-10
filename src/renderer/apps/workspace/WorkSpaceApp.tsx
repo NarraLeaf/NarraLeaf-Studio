@@ -3,6 +3,7 @@ import { ErrorScreen } from "./components/ErrorScreen";
 import { WorkspaceLayout } from "./components/layout";
 import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
+import { useWorkspaceEditorSession } from "./hooks/useWorkspaceEditorSession";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 
@@ -13,6 +14,7 @@ import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 function WorkspaceContent() {
     // Load all built-in modules (panels, editors, actions)
     useModuleLoader();
+    useWorkspaceEditorSession();
 
     return <WorkspaceLayout title="NarraLeaf Studio" iconSrc="/favicon.ico" />;
 }
