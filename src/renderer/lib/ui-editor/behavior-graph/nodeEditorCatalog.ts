@@ -1,14 +1,12 @@
 /**
  * Back-compat facade for blueprint node editor metadata.
- * Canonical definitions live in `blueprint-nodes/`.
+ * Definitions are owned by BlueprintNodeCatalogService (workspace); this module delegates to it.
  * Comments in English per project convention.
  */
 
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
-import { blueprintNodeRegistry } from "../blueprint-nodes/BlueprintNodeRegistry";
-// register built-in blueprint nodes
-import "./builtinNodes";
+import { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import {
     isValidBlueprintExecConnection as isValidBlueprintPinConnectionInner,
 } from "../blueprint-nodes/connectionPolicy";
@@ -20,13 +18,16 @@ import type {
 
 export type { BlueprintPinSemantic, BlueprintNodeEditorCatalogEntry };
 
+function catalog(): BlueprintNodeCatalogService {
+    return BlueprintNodeCatalogService.getInstance();
+}
+
 export function getBlueprintNodeEditorCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry | undefined {
-    const def = blueprintNodeRegistry.get(type);
-    return def ? blueprintNodeRegistry.toCatalogEntry(def) : undefined;
+    return catalog().getBlueprintNodeEditorCatalogEntry(type);
 }
 
 export function listBlueprintNodePaletteEntries(ctx: BlueprintPaletteContext): BlueprintNodeEditorCatalogEntry[] {
-    return blueprintNodeRegistry.listPaletteEntries(ctx);
+    return catalog().listPaletteEntries(ctx);
 }
 
 /** Build palette context from editor tab payload (defaults when unknown). */
@@ -34,6 +35,7 @@ export function buildBlueprintPaletteContext(input: {
     graphKind: "event" | "function";
     owner: BlueprintOwnerRef;
     widgetElementType?: string;
+    widgetEventLayerSlots?: string[];
     hasEventHead?: boolean;
     hasFunctionEntry?: boolean;
 }): BlueprintPaletteContext {
@@ -42,13 +44,14 @@ export function buildBlueprintPaletteContext(input: {
         graphKind: gk,
         owner: input.owner,
         widgetElementType: input.widgetElementType,
+        widgetEventLayerSlots: input.widgetEventLayerSlots,
         hasEventHead: input.hasEventHead,
         hasFunctionEntry: input.hasFunctionEntry,
     };
 }
 
 export function resolveBlueprintNodeEditorCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry {
-    return blueprintNodeRegistry.resolveCatalogEntry(type);
+    return catalog().resolveCatalogEntry(type);
 }
 
 /** Validates exec→exec or data→data with optional type match */
@@ -58,6 +61,7 @@ export function isValidBlueprintExecConnection(params: {
     targetType: string;
     targetPort: string;
 }): boolean {
+    catalog().ensureBuiltinsRegistered();
     return isValidBlueprintPinConnectionInner(params);
 }
 

@@ -3,12 +3,38 @@
  * Comments in English per project convention.
  */
 
+import { BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK, BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT } from "@shared/types/blueprint/graph";
 import { behaviorNodeRegistry } from "../behavior-graph/BehaviorNodeRegistry";
-import type {
-    BlueprintNodeDef,
-    BlueprintNodeEditorCatalogEntry,
-    BlueprintPaletteContext,
+import {
+    BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES,
+    type BlueprintNodeDef,
+    type BlueprintNodeEditorCatalogEntry,
+    type BlueprintPaletteContext,
 } from "./types";
+
+function resolveAllowedWidgetEventHeadTypesForSlots(
+    slots: string[],
+    widgetElementType: string | undefined,
+): Set<string> {
+    const allow = new Set<string>();
+    const isButton = widgetElementType === "nl.button";
+    if (slots.length === 0) {
+        allow.add(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
+        if (isButton) {
+            allow.add(BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK);
+        }
+        return allow;
+    }
+    for (const s of slots) {
+        if (s === "init") {
+            allow.add(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
+        }
+        if (s === "click" && isButton) {
+            allow.add(BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK);
+        }
+    }
+    return allow;
+}
 
 class BlueprintNodeDefinitionsRegistry {
     private readonly byType = new Map<string, BlueprintNodeDef>();
@@ -54,6 +80,7 @@ class BlueprintNodeDefinitionsRegistry {
                 semantic: p.semantic,
                 valueType: p.valueType,
                 label: p.label,
+                allowInlineLiteral: p.allowInlineLiteral,
             })),
             inspectorParams: def.inspectorParams,
             graphKinds: def.graphKinds,
@@ -105,11 +132,17 @@ class BlueprintNodeDefinitionsRegistry {
             if (ctx.graphKind === "event" && def.role === "functionEntry") {
                 continue;
             }
-            if (ctx.graphKind === "event" && def.role === "eventHead" && ctx.hasEventHead) {
-                continue;
-            }
             if (ctx.graphKind === "function" && def.role === "functionEntry" && ctx.hasFunctionEntry) {
                 continue;
+            }
+            if (def.role === "eventHead" && ctx.widgetEventLayerSlots !== undefined) {
+                const allowed = resolveAllowedWidgetEventHeadTypesForSlots(
+                    ctx.widgetEventLayerSlots,
+                    ctx.widgetElementType,
+                );
+                if (!allowed.has(def.type)) {
+                    continue;
+                }
             }
             out.push(this.toCatalogEntry(def));
         }
@@ -146,6 +179,7 @@ class BlueprintNodeDefinitionsRegistry {
 
     private validatePorts(def: BlueprintNodeDef): void {
         const ids = new Set<string>();
+        const scalarTypes = new Set<string>(BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES);
         for (const p of def.pins) {
             if (!p.id) {
                 throw new Error(`[BlueprintNodeRegistry] Node ${def.type} has pin without id`);
@@ -154,6 +188,19 @@ class BlueprintNodeDefinitionsRegistry {
                 throw new Error(`[BlueprintNodeRegistry] Node ${def.type} duplicate pin id: ${p.id}`);
             }
             ids.add(p.id);
+            if (p.allowInlineLiteral) {
+                if (p.kind !== "input" || p.semantic !== "data") {
+                    throw new Error(
+                        `[BlueprintNodeRegistry] allowInlineLiteral only on data inputs: ${def.type}.${p.id}`,
+                    );
+                }
+                const vt = p.valueType;
+                if (!vt || !scalarTypes.has(vt)) {
+                    throw new Error(
+                        `[BlueprintNodeRegistry] allowInlineLiteral requires valueType string|integer|float: ${def.type}.${p.id}`,
+                    );
+                }
+            }
         }
     }
 

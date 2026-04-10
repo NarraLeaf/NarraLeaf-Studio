@@ -1,8 +1,13 @@
 import type { Blueprint, BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
+    BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    isBlueprintEventDispatchHeadType,
 } from "@shared/types/blueprint/graph";
+import { listUiSlotsWiredToBlueprintLayer } from "@/lib/ui-editor/blueprint-runtime/widgetBlueprintLayerSlots";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBehaviorGraphEntry";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
@@ -93,7 +98,7 @@ export function validateBlueprintWidgetMainEventWiring(
             severity: "warning",
             code: "blueprint.event_graphs_not_wired_to_ui",
             message:
-                "This blueprint has stored event graph slot(s), but no widget UI event is wired to them. Use Properties → Blueprint events to attach supported events so Dev Mode can dispatch.",
+                "This blueprint has stored layer(s), but no widget interaction is wired to them yet. Use Properties → Interaction → Blueprint to attach logic so Dev Mode can run it.",
             target: { kind: "graph", graphKind: "event", graphId: eventGraphIds[0]! },
         });
     }
@@ -129,13 +134,17 @@ export function validateBlueprintWidgetMainEventWiring(
     return out;
 }
 
-function entryKeys(ir: BlueprintGraphIr): string[] {
-    return Object.keys(ir.entries ?? {});
-}
-
 export function validateBlueprintGraphIr(
     ir: BlueprintGraphIr,
-    ctx: { blueprintId: string; graphKind: "event" | "function"; graphId: string },
+    ctx: {
+        blueprintId: string;
+        graphKind: "event" | "function";
+        graphId: string;
+        validVariableIds?: ReadonlySet<string>;
+        /** Widget UI slots referencing this event layer (when known). */
+        layerUiSlots?: string[];
+        widgetElementType?: string;
+    },
 ): BlueprintGraphEditorDiagnostic[] {
     const out: BlueprintGraphEditorDiagnostic[] = [];
     const nodes = ir.nodes ?? {};
@@ -153,21 +162,38 @@ export function validateBlueprintGraphIr(
     }
 
     if (ctx.graphKind === "event") {
-        const headNodes = Object.entries(nodes).filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD);
+        const headNodes = Object.entries(nodes).filter(([, n]) => isBlueprintEventDispatchHeadType(n.type));
         if (headNodes.length === 0) {
             out.push({
                 severity: "error",
-                code: "event.missing_head",
-                message: "Event graph must contain exactly one Event head node.",
+                code: "event.missing_event_nodes",
+                message:
+                    "Add an event head (On widget initialize and/or On button click — right-click the canvas → Add node) so this layer can run.",
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
-        } else if (headNodes.length > 1) {
-            out.push({
-                severity: "error",
-                code: "event.multiple_heads",
-                message: "Event graph has more than one Event head — keep a single entry.",
-                target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
-            });
+        } else {
+            const slots = ctx.layerUiSlots;
+            if (slots && slots.length > 0) {
+                const hasInitCapable = Object.values(nodes).some(n => n.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
+                const hasClickCapable = Object.values(nodes).some(n => n.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK);
+                if (slots.includes("init") && !hasInitCapable) {
+                    out.push({
+                        severity: "error",
+                        code: "event.missing_init_head",
+                        message:
+                            "This layer is wired to “Initialize”. Add an “On widget initialize” event head.",
+                        target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
+                    });
+                }
+                if (slots.includes("click") && !hasClickCapable) {
+                    out.push({
+                        severity: "error",
+                        code: "event.missing_click_head",
+                        message: 'This layer is wired to “Click”. Add an “On button click” event head.',
+                        target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
+                    });
+                }
+            }
         }
     }
 
@@ -190,53 +216,43 @@ export function validateBlueprintGraphIr(
         }
     }
 
-    const keys = entryKeys(ir);
-    if (keys.length === 0) {
-        out.push({
-            severity: "error",
-            code: "graph.no_entry",
-            message: "Event graph has no entry — add an entry or run may not start.",
-            target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
-        });
-    } else {
-        try {
-            const graph = adaptBlueprintGraphIr(ir, `validate:${ctx.blueprintId}:${ctx.graphId}`);
-            const entry = pickBehaviorGraphEntry(graph);
-            if (!nodeIds.has(entry.start.nodeId)) {
+    if (ctx.graphKind === "function") {
+        const fnEntryCount = Object.values(nodes).filter(n => n.type === BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY).length;
+        if (fnEntryCount === 1) {
+            try {
+                const graph = adaptBlueprintGraphIr(ir, `validate:${ctx.blueprintId}:${ctx.graphId}`);
+                const entry = pickBehaviorGraphEntry(graph);
+                if (!nodeIds.has(entry.start.nodeId)) {
+                    out.push({
+                        severity: "error",
+                        code: "graph.entry_missing_node",
+                        message: `Entry points to missing node "${entry.start.nodeId}".`,
+                        target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
+                    });
+                } else {
+                    const start = nodes[entry.start.nodeId];
+                    if (start && start.type !== BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY) {
+                        out.push({
+                            severity: "error",
+                            code: "function.entry_not_entry_node",
+                            message: "Function execution entry must be the Function entry node.",
+                            target: {
+                                kind: "node",
+                                graphKind: ctx.graphKind,
+                                graphId: ctx.graphId,
+                                nodeId: entry.start.nodeId,
+                            },
+                        });
+                    }
+                }
+            } catch {
                 out.push({
                     severity: "error",
-                    code: "graph.entry_missing_node",
-                    message: `Entry points to missing node "${entry.start.nodeId}".`,
+                    code: "graph.entry_invalid",
+                    message: "Function graph entry resolution failed.",
                     target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
                 });
-            } else if (ctx.graphKind === "event") {
-                const start = nodes[entry.start.nodeId];
-                if (start && start.type !== BLUEPRINT_NODE_TYPE_EVENT_HEAD) {
-                    out.push({
-                        severity: "error",
-                        code: "event.entry_not_head",
-                        message: "entries.main must point to the Event head node so runtime dispatch is unambiguous.",
-                        target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: entry.start.nodeId },
-                    });
-                }
-            } else if (ctx.graphKind === "function") {
-                const start = nodes[entry.start.nodeId];
-                if (start && start.type !== BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY) {
-                    out.push({
-                        severity: "error",
-                        code: "function.entry_not_entry_node",
-                        message: "entries.main must point to the Function entry node.",
-                        target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: entry.start.nodeId },
-                    });
-                }
             }
-        } catch {
-            out.push({
-                severity: "error",
-                code: "graph.entry_invalid",
-                message: "Graph entry configuration is invalid.",
-                target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
-            });
         }
     }
 
@@ -284,13 +300,16 @@ export function validateBlueprintGraphIr(
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
             });
         }
-        if (n.type === "blueprint.state.set") {
-            const key = String(n.params?.key ?? "").trim();
-            if (!key) {
+        if (
+            (n.type === BLUEPRINT_NODE_TYPE_LOCAL_SET || n.type === BLUEPRINT_NODE_TYPE_LOCAL_GET) &&
+            ctx.validVariableIds
+        ) {
+            const vid = String(n.params?.variableId ?? "").trim();
+            if (!vid || !ctx.validVariableIds.has(vid)) {
                 out.push({
                     severity: "warning",
-                    code: "node.params.key_required",
-                    message: `Node "${nid}" (Set surface state) should set parameter "key".`,
+                    code: "node.variable_id_invalid",
+                    message: `Node "${nid}" should select a valid execution local variable.`,
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
                 });
             }
@@ -358,12 +377,33 @@ export function validateBlueprintDocumentGraphs(
                 : [];
         return [...base, ...wiring];
     }
+    const validVariableIds = new Set(Object.keys(bp.members?.variables ?? {}));
     const out: BlueprintGraphEditorDiagnostic[] = [];
     for (const [eventId, eg] of Object.entries(bp.program.graphs.events ?? {})) {
-        out.push(...validateBlueprintGraphIr(ensureIr(eg.graph), { blueprintId, graphKind: "event", graphId: eventId }));
+        const layerUiSlots =
+            options?.widgetElement && options.widgetSurfaceId
+                ? listUiSlotsWiredToBlueprintLayer(options.widgetElement, blueprintId, eventId)
+                : undefined;
+        out.push(
+            ...validateBlueprintGraphIr(ensureIr(eg.graph), {
+                blueprintId,
+                graphKind: "event",
+                graphId: eventId,
+                validVariableIds,
+                layerUiSlots,
+                widgetElementType: options?.widgetElement?.type,
+            }),
+        );
     }
     for (const [fnId, fg] of Object.entries(bp.program.graphs.functions ?? {})) {
-        out.push(...validateBlueprintGraphIr(ensureIr(fg.graph), { blueprintId, graphKind: "function", graphId: fnId }));
+        out.push(
+            ...validateBlueprintGraphIr(ensureIr(fg.graph), {
+                blueprintId,
+                graphKind: "function",
+                graphId: fnId,
+                validVariableIds,
+            }),
+        );
     }
     out.push(...validateBlueprintBindingsForBlueprint(doc, blueprintId));
     if (options?.widgetElement && options.widgetSurfaceId) {
@@ -379,7 +419,6 @@ export function validateBlueprintDocumentGraphs(
 
 function ensureIr(ir: BlueprintGraphIr | undefined): BlueprintGraphIr {
     return {
-        entries: ir?.entries ?? {},
         nodes: ir?.nodes ?? {},
         edges: ir?.edges ?? [],
         variables: ir?.variables,

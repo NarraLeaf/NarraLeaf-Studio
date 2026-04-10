@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { listBlueprintNodePaletteEntries } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
+import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintPaletteContext } from "@/lib/ui-editor/blueprint-nodes/types";
 import { Search } from "lucide-react";
 
@@ -8,6 +8,7 @@ const MENU_W = 256;
 const MENU_MAX_H = 224;
 
 type Props = {
+    nodeCatalog: IBlueprintNodeCatalogService;
     open: boolean;
     paletteContext: BlueprintPaletteContext;
     anchor: { x: number; y: number };
@@ -16,7 +17,15 @@ type Props = {
     onPickType: (type: string, flowPosition: { x: number; y: number }) => void;
 };
 
-export function BlueprintAddNodeMenu({ open, paletteContext, anchor, flowPosition, onClose, onPickType }: Props) {
+export function BlueprintAddNodeMenu({
+    nodeCatalog,
+    open,
+    paletteContext,
+    anchor,
+    flowPosition,
+    onClose,
+    onPickType,
+}: Props) {
     const [query, setQuery] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -40,7 +49,10 @@ export function BlueprintAddNodeMenu({ open, paletteContext, anchor, flowPositio
         return () => window.removeEventListener("keydown", onKey);
     }, [open, onClose]);
 
-    const entries = useMemo(() => listBlueprintNodePaletteEntries(paletteContext), [paletteContext]);
+    const entries = useMemo(
+        () => nodeCatalog.listPaletteEntries(paletteContext),
+        [nodeCatalog, paletteContext],
+    );
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();

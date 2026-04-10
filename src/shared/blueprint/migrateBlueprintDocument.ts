@@ -61,7 +61,7 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
     throw new Error(`Unsupported BlueprintDocument schemaVersion: ${String(sv)}`);
 }
 
-/** Ensures event/function graph IRs include dedicated entry nodes (v4+ editor contract). */
+/** Ensures graph IR shape: function graphs get a Function entry; event layers normalize meta (Event nodes are user-placed). */
 export function upgradeBlueprintGraphBodiesToV4(doc: BlueprintDocument, generateId: () => string): BlueprintDocument {
     const blueprints = { ...doc.blueprints };
     for (const bp of Object.values(blueprints)) {

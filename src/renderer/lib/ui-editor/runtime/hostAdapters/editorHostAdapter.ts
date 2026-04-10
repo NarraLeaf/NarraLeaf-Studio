@@ -7,10 +7,5 @@ export function createEditorHostAdapter(): UIHostAdapter {
             console.debug("[EditorHostAdapter] navigate", target);
         },
         resolveSlot: () => null,
-        effects: {
-            runEffect: async (effectId, payload) => {
-                console.debug("[EditorHostAdapter] runEffect", effectId, payload);
-            },
-        },
     };
 }

@@ -5,7 +5,7 @@ import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { useReadonlyBlueprintSummary } from "./useReadonlyBlueprintSummary";
 
 /**
- * Shared properties-panel block: instance Blueprint summary + entry to the unified Blueprint editor.
+ * Shared properties-panel block: widget main blueprint summary + wiring + entry to the Blueprint editor.
  */
 export function ReadonlyBlueprintSection({ data, onChange }: CustomFieldProps<UIInspectorData>) {
     const surfaceId = data.surfaceId;
@@ -26,7 +26,6 @@ export function ReadonlyBlueprintSection({ data, onChange }: CustomFieldProps<UI
         });
     };
 
-    const hasWiring = summary.uiBlueprintEventCount > 0 || summary.eventGraphCount > 0;
     const canOpenEntry = summary.hasWidgetMain && Boolean(summary.blueprintId);
     const graphsButNoUiHooks =
         summary.hasWidgetMain && summary.eventGraphCount > 0 && summary.uiBlueprintEventCount === 0;
@@ -40,47 +39,25 @@ export function ReadonlyBlueprintSection({ data, onChange }: CustomFieldProps<UI
                     needed.
                 </p>
             ) : (
-                <ul className="text-sm text-gray-300 space-y-1 list-none pl-0">
-                    <li>
-                        <span className="text-gray-500">Widget main</span> ·{" "}
-                        <span className="text-gray-200 font-mono text-[11px]">{summary.blueprintId}</span>
-                    </li>
-                    <li>
-                        <span className="text-gray-500">Declarations</span> · {summary.declarationCount}
-                    </li>
-                    <li>
-                        <span className="text-gray-500">Property bindings</span> · {summary.bindingCount}
-                        {summary.brokenBindingCount > 0 ? (
-                            <span className="text-amber-400"> ({summary.brokenBindingCount} broken)</span>
-                        ) : null}
-                    </li>
-                    <li>
-                        <span className="text-gray-500">Event graphs (stored)</span> · {summary.eventGraphCount}
-                    </li>
-                    <li>
-                        <span className="text-gray-500">UI event hooks</span> · {summary.uiBlueprintEventCount}
-                        {!hasWiring ? <span className="text-gray-500"> (none wired)</span> : null}
-                    </li>
-                    {summary.eventWiringIssueCount > 0 ? (
-                        <li>
-                            <span className="text-gray-500">Event wiring issues</span> ·{" "}
-                            <span className="text-amber-400">{summary.eventWiringIssueCount}</span>
-                        </li>
-                    ) : null}
-                </ul>
+                <div className="space-y-1 text-sm text-gray-300">
+                    <p className="font-mono text-[11px] text-gray-200">{summary.blueprintId}</p>
+                    <p className="text-[11px] text-gray-500">
+                        {summary.eventGraphCount} layer{summary.eventGraphCount === 1 ? "" : "s"} ·{" "}
+                        {summary.uiBlueprintEventCount} interaction hook
+                        {summary.uiBlueprintEventCount === 1 ? "" : "s"}
+                    </p>
+                </div>
             )}
             {graphsButNoUiHooks ? (
                 <p className="text-[11px] text-amber-200/90 leading-snug rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
-                    Event graph slots exist in the blueprint document, but no widget event is wired from the UI yet.
-                    Use <span className="font-medium">Blueprint events</span> below to attach{" "}
-                    <span className="font-mono text-[10px]">click</span> (or other supported events) so Dev Mode can
-                    dispatch into a graph.
+                    Layers exist but this control is not wired yet. Use <span className="font-medium">Blueprint</span> below
+                    to attach a layer.
                 </p>
             ) : null}
             {summary.eventWiringIssueCount > 0 ? (
                 <p className="text-[11px] text-amber-200/90 leading-snug rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
-                    UI event hooks do not match this blueprint&apos;s event graph slots (wrong blueprint id, missing slot,
-                    or program type). Open <span className="font-medium">Blueprint editor</span> diagnostics for details.
+                    UI event hooks do not match this blueprint&apos;s layers. Open the Blueprint editor diagnostics for
+                    details.
                 </p>
             ) : null}
             <BlueprintEventBindingField data={data} onChange={onChange} />
