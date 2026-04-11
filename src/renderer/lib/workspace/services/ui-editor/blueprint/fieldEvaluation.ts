@@ -1,22 +1,22 @@
-import type { BlueprintDeclaration, LiteralValue } from "@shared/types/blueprint/document";
+import type { BlueprintField, LiteralValue } from "@shared/types/blueprint/document";
 
-/** Minimal read surface for declaration evaluation (implemented by SurfaceStateStore in Dev Mode). */
+/** Minimal read surface for field evaluation (implemented by SurfaceStateStore in Dev Mode). */
 export type BlueprintSurfaceStateReader = {
     get(key: string): unknown;
 };
 
 /**
- * Resolve a declaration to a runtime literal using M3-min rules (surface state only).
- * Returns undefined when the declaration cannot be evaluated (missing source, unknown variant).
+ * Resolve a field to a runtime literal using M3-min rules (surface state only).
+ * Returns undefined when the field cannot be evaluated (missing source, unknown variant).
  */
-export function evaluateDeclarationValue(
-    decl: BlueprintDeclaration | undefined,
+export function evaluateFieldValue(
+    field: BlueprintField | undefined,
     surfaceState: BlueprintSurfaceStateReader,
 ): LiteralValue | undefined {
-    if (!decl?.valueSource) {
+    if (!field?.valueSource) {
         return undefined;
     }
-    const vs = decl.valueSource;
+    const vs = field.valueSource;
     if (vs.kind !== "surfaceState") {
         return undefined;
     }

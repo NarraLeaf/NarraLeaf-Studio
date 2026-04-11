@@ -15,8 +15,8 @@ export type BlueprintEditorOpenTarget = {
     focusEventId?: string;
     /** Focus a function graph by id */
     focusFunctionId?: string;
-    /** Focus a declaration in the member tree / inspector */
-    focusDeclarationId?: string;
+    /** Focus a field in the member tree / inspector */
+    focusFieldId?: string;
     /** Focus a node on the current graph canvas */
     focusNodeId?: string;
 };

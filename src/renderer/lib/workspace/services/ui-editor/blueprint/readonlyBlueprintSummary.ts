@@ -8,7 +8,7 @@ import { validateBlueprintWidgetMainEventWiring } from "./graphValidation";
 export type ReadonlyBlueprintWidgetSummary = {
     hasWidgetMain: boolean;
     blueprintId?: string;
-    declarationCount: number;
+    fieldCount: number;
     bindingCount: number;
     brokenBindingCount: number;
     eventGraphCount: number;
@@ -20,7 +20,7 @@ export type ReadonlyBlueprintWidgetSummary = {
 export function emptyReadonlyBlueprintWidgetSummary(): ReadonlyBlueprintWidgetSummary {
     return {
         hasWidgetMain: false,
-        declarationCount: 0,
+        fieldCount: 0,
         bindingCount: 0,
         brokenBindingCount: 0,
         eventGraphCount: 0,
@@ -33,7 +33,7 @@ export function emptyReadonlyBlueprintWidgetSummary(): ReadonlyBlueprintWidgetSu
 export type ReadonlyBlueprintSurfaceSummary = {
     hasSurfaceMain: boolean;
     blueprintId?: string;
-    declarationCount: number;
+    fieldCount: number;
     bindingCount: number;
     brokenBindingCount: number;
     eventGraphCount: number;
@@ -42,7 +42,7 @@ export type ReadonlyBlueprintSurfaceSummary = {
 export function emptyReadonlyBlueprintSurfaceSummary(): ReadonlyBlueprintSurfaceSummary {
     return {
         hasSurfaceMain: false,
-        declarationCount: 0,
+        fieldCount: 0,
         bindingCount: 0,
         brokenBindingCount: 0,
         eventGraphCount: 0,
@@ -60,8 +60,8 @@ export function buildReadonlySurfaceMainSummary(
         return emptyReadonlyBlueprintSurfaceSummary();
     }
 
-    const declarations = bp.members?.declarations ?? {};
-    const declarationCount = Object.keys(declarations).length;
+    const fieldMap = bp.members?.fields ?? {};
+    const fieldCount = Object.keys(fieldMap).length;
 
     const bindings = bp.bindings ?? {};
     const bindingList = Object.values(bindings);
@@ -76,7 +76,7 @@ export function buildReadonlySurfaceMainSummary(
     return {
         hasSurfaceMain: true,
         blueprintId,
-        declarationCount,
+        fieldCount,
         bindingCount,
         brokenBindingCount,
         eventGraphCount,
@@ -110,8 +110,8 @@ export function buildReadonlyWidgetMainSummary(
         };
     }
 
-    const declarations = bp.members?.declarations ?? {};
-    const declarationCount = Object.keys(declarations).length;
+    const fieldMap = bp.members?.fields ?? {};
+    const fieldCount = Object.keys(fieldMap).length;
 
     const bindings = bp.bindings ?? {};
     const bindingList = Object.values(bindings);
@@ -132,7 +132,7 @@ export function buildReadonlyWidgetMainSummary(
     return {
         hasWidgetMain: true,
         blueprintId,
-        declarationCount,
+        fieldCount,
         bindingCount,
         brokenBindingCount,
         eventGraphCount,

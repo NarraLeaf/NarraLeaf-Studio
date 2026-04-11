@@ -10,7 +10,7 @@ import {
     BLUEPRINT_NODE_TYPE_STRING_TO_UPPER,
     BLUEPRINT_NODE_TYPE_STRING_TRIM,
 } from "@shared/types/blueprint/graph";
-import type { BlueprintNodeDef } from "../types";
+import { BLUEPRINT_NODE_PARAMS_DYNAMIC_INPUT_PIN_IDS_KEY, type BlueprintNodeDef } from "../types";
 
 const STRING_PIN_A = {
     id: "a",
@@ -60,6 +60,13 @@ export const stringBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: ["event", "function", "macro"],
         isPure: true,
         pins: [STRING_PIN_A, STRING_PIN_B, STRING_PIN_RESULT],
+        dynamicInputPins: {
+            storageKey: BLUEPRINT_NODE_PARAMS_DYNAMIC_INPUT_PIN_IDS_KEY,
+            fixedDataInputIds: ["a", "b"],
+            generatedIdPrefix: "in",
+            valueType: "string",
+            allowInlineLiteral: true,
+        },
         execute: () => ({}),
     },
     {

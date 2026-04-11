@@ -10,7 +10,7 @@ export type BlueprintEntryTabPayload = {
     elementId?: UIElementId;
     focusEventId?: string;
     focusFunctionId?: string;
-    focusDeclarationId?: string;
+    focusFieldId?: string;
     focusNodeId?: string;
 };
 

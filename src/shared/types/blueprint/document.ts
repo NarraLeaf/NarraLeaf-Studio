@@ -69,7 +69,8 @@ export type Blueprint = {
 
 export type BlueprintMemberIndex = {
     variables: Record<string, BlueprintVariable>;
-    declarations: Record<string, BlueprintDeclaration>;
+    /** Authoring-time fields (binding sources); defined in the member UI, not by graph nodes. */
+    fields: Record<string, BlueprintField>;
     functions: Record<string, BlueprintFunctionSignature>;
 };
 
@@ -83,28 +84,27 @@ export type BlueprintVariable = {
 };
 
 /**
- * M3-min: single evaluable value source for declaration-backed bindings (surface runtime state only).
+ * M3-min: single evaluable value source for field-backed bindings (surface runtime state only).
  * Further variants (global state, literals, composed refs) extend this union in later milestones.
  */
-export type BlueprintDeclarationValueSource = {
+export type BlueprintFieldValueSource = {
     kind: "surfaceState";
     /** Key inside the current surface runtime state container */
     key: string;
 };
 
 /**
- * Declaration members are the only binding sources (symbol-first); no arbitrary expression AST in M1.
+ * Field members are the only widgetProp binding sources (symbol-first); no arbitrary expression AST in M1.
  */
-export type BlueprintDeclaration = {
+export type BlueprintField = {
     id: string;
     name: string;
-    /** How the declaration is produced (pure graph, const, etc.); M2+ narrows */
     kind?: "computed" | "constant" | "reference";
     /**
      * M3-min: when set, binding evaluator reads this source (Dev Mode / runtime).
-     * Legacy declarations without `valueSource` are not evaluable until upgraded.
+     * Fields without `valueSource` are not evaluable until upgraded.
      */
-    valueSource?: BlueprintDeclarationValueSource;
+    valueSource?: BlueprintFieldValueSource;
     meta?: Record<string, unknown>;
 };
 
@@ -211,7 +211,7 @@ export type TypeScriptBlueprintSource = {
 
 export type LiteralValue = string | number | boolean | null;
 
-/** Persisted binding health; `broken` when source declaration is missing or invalid. */
+/** Persisted binding health; `broken` when source field is missing or invalid. */
 export type BindingDefinitionStatus = "active" | "broken";
 
 export type BindingDefinition = {
@@ -221,7 +221,7 @@ export type BindingDefinition = {
     mode: "replace";
     fallback?: LiteralValue;
     status?: BindingDefinitionStatus;
-    /** Set when status is broken (e.g. declaration deleted). */
+    /** Set when status is broken (e.g. field deleted). */
     brokenReason?: string;
 };
 
@@ -233,9 +233,9 @@ export type BindingTargetRef = {
 };
 
 export type BindingSourceRef = {
-    kind: "declaration";
+    kind: "field";
     blueprintId: string;
-    declarationId: string;
+    fieldId: string;
 };
 
 // ---------------------------------------------------------------------------

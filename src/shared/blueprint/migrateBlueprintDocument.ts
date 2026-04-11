@@ -1,7 +1,13 @@
 /**
  * BlueprintDocument disk migration (shared between Workspace UIGraphService and main-process Dev Mode reads).
  */
-import type { BlueprintDocument, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
+import type {
+    BindingSourceRef,
+    BlueprintDocument,
+    BlueprintField,
+    BlueprintMemberIndex,
+    BlueprintPrivateOwnerRecord,
+} from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
     ensureBlueprintEventGraphIrStructure,
@@ -14,12 +20,61 @@ export type BlueprintDocumentV2 = Omit<BlueprintDocument, "schemaVersion" | "own
     ownerIndex: Record<string, string>;
 };
 
+/** v4 binding source before fields rename. */
+type LegacyDeclarationBindingSource = {
+    kind: "declaration";
+    blueprintId: string;
+    declarationId: string;
+};
+
 function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 /**
- * If document is v2, upgrade to v3 (ownerRecords). Idempotent for v3+.
+ * Merge legacy `members.declarations` into `members.fields`, rewrite binding sources, normalize member shape.
+ * Idempotent for documents already on v5.
+ */
+export function migrateLegacyDeclarationsToFields(doc: BlueprintDocument): BlueprintDocument {
+    const blueprints = { ...doc.blueprints };
+    for (const bp of Object.values(blueprints)) {
+        if (!bp.members) {
+            continue;
+        }
+        const mem = bp.members as BlueprintMemberIndex & { declarations?: Record<string, BlueprintField> };
+        const legacyDecls = mem.declarations;
+        const existingFields = mem.fields ?? {};
+        if (legacyDecls && Object.keys(legacyDecls).length > 0) {
+            bp.members = {
+                variables: mem.variables ?? {},
+                fields: { ...existingFields, ...legacyDecls },
+                functions: mem.functions ?? {},
+            };
+        } else if (!mem.fields) {
+            bp.members = {
+                variables: mem.variables ?? {},
+                fields: existingFields,
+                functions: mem.functions ?? {},
+            };
+        }
+        delete (bp.members as Record<string, unknown>).declarations;
+
+        for (const bind of Object.values(bp.bindings ?? {})) {
+            const src = bind.source as BindingSourceRef | LegacyDeclarationBindingSource;
+            if (src.kind === "declaration") {
+                bind.source = {
+                    kind: "field",
+                    blueprintId: src.blueprintId,
+                    fieldId: src.declarationId,
+                };
+            }
+        }
+    }
+    return { ...doc, blueprints };
+}
+
+/**
+ * If document is v2/v3/v4, upgrade to latest. Idempotent for current schema.
  */
 export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocument {
     if (!isRecord(raw)) {
@@ -27,10 +82,18 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
     }
     const sv = raw.schemaVersion;
     if (sv === BLUEPRINT_DOCUMENT_SCHEMA_VERSION) {
-        return raw as BlueprintDocument;
+        return migrateLegacyDeclarationsToFields(raw as BlueprintDocument);
+    }
+    if (sv === 4 && isRecord(raw.blueprints)) {
+        const migrated = migrateLegacyDeclarationsToFields(raw as BlueprintDocument);
+        return { ...migrated, schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
     }
     if (sv === 3 && isRecord(raw.blueprints)) {
-        return migrateBlueprintDocumentV3ToV4(raw as BlueprintDocument);
+        let seq = 0;
+        const generateId = () => `nl_mig_${++seq}`;
+        const withBodies = upgradeBlueprintGraphBodiesToV4(raw as BlueprintDocument, generateId);
+        const migrated = migrateLegacyDeclarationsToFields(withBodies);
+        return { ...migrated, schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
     }
     if (sv === 2 && isRecord(raw.ownerIndex) && isRecord(raw.blueprints)) {
         const ownerIndex = raw.ownerIndex as Record<string, string>;
@@ -53,8 +116,9 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
             ownerRecords,
         } as unknown as BlueprintDocument;
         const upgraded = upgradeBlueprintGraphBodiesToV4(interim, generateId);
+        const migrated = migrateLegacyDeclarationsToFields(upgraded);
         return {
-            ...upgraded,
+            ...migrated,
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         };
     }
@@ -90,13 +154,4 @@ export function upgradeBlueprintGraphBodiesToV4(doc: BlueprintDocument, generate
         bp.program.graphs = { ...graphs, events, functions };
     }
     return { ...doc, blueprints };
-}
-
-function migrateBlueprintDocumentV3ToV4(doc: BlueprintDocument): BlueprintDocument {
-    let seq = 0;
-    const generateId = () => `nl_mig_${++seq}`;
-    return {
-        ...upgradeBlueprintGraphBodiesToV4(doc, generateId),
-        schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-    };
 }
