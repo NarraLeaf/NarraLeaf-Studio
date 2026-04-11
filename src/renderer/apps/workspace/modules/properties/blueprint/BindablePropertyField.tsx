@@ -36,7 +36,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
     const bp = usePropertyBindingState(data, field.binding);
     const [pickerOpen, setPickerOpen] = useState(false);
     const [query, setQuery] = useState("");
-    const [newDeclName, setNewDeclName] = useState("");
+    const [newFieldName, setNewFieldName] = useState("");
     const wrapRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -56,19 +56,19 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
     useEffect(() => {
         if (pickerOpen) {
             setQuery("");
-            setNewDeclName(field.binding.propPath);
+            setNewFieldName(field.binding.propPath);
         }
     }, [field.binding.propPath, pickerOpen]);
 
     const filteredCandidates = useMemo(() => {
         const q = query.trim().toLowerCase();
         if (!q) {
-            return bp.declarationCandidates;
+            return bp.fieldCandidates;
         }
-        return bp.declarationCandidates.filter(
+        return bp.fieldCandidates.filter(
             c => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q),
         );
-    }, [bp.declarationCandidates, query]);
+    }, [bp.fieldCandidates, query]);
 
     const openPicker = useCallback(() => {
         setPickerOpen(true);
@@ -78,7 +78,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
         (id: string) => {
             onSaving(true);
             try {
-                bp.bindToExistingDeclaration(id);
+                bp.bindToExistingField(id);
             } finally {
                 onSaving(false);
             }
@@ -88,7 +88,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
     );
 
     const submitNew = useCallback(() => {
-        const name = newDeclName.trim();
+        const name = newFieldName.trim();
         if (!name) {
             return;
         }
@@ -99,7 +99,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
             onSaving(false);
         }
         setPickerOpen(false);
-    }, [bp, newDeclName, onSaving]);
+    }, [bp, newFieldName, onSaving]);
 
     const child = isValidElement(children)
         ? cloneElement(children as ReactElement<{ field: typeof field; data: TData; onSaving: typeof onSaving }>, {
@@ -119,12 +119,12 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                 </span>
                 {bp.status === "bound" || bp.status === "broken" ? (
                     <span className="text-[11px] text-gray-400">
-                        {bp.declarationLabel ? (
+                        {bp.fieldLabel ? (
                             <>
-                                Declaration <span className="text-gray-200">{bp.declarationLabel}</span>
+                                Field <span className="text-gray-200">{bp.fieldLabel}</span>
                             </>
                         ) : (
-                            <span className="text-amber-300/90">Declaration missing</span>
+                            <span className="text-amber-300/90">Field missing</span>
                         )}
                     </span>
                 ) : null}
@@ -151,10 +151,10 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                             title={
                                 !bp.canBind
                                     ? "Widget main blueprint is not available for this element yet."
-                                    : "Search an existing declaration or create a new one"
+                                    : "Search an existing field or create a new one"
                             }
                         >
-                            Bind to declaration…
+                            Bind to field…
                         </button>
                         {pickerOpen ? (
                             <div className="absolute left-0 top-full z-50 mt-1 w-[min(100%,20rem)] rounded-lg border border-white/15 bg-[#0b0d12] p-3 shadow-xl">
@@ -173,7 +173,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                     <EnhancedInput
                                         value={query}
                                         onChange={setQuery}
-                                        placeholder="Search declarations…"
+                                        placeholder="Search fields…"
                                         leftIcon={<Search className="h-3.5 w-3.5 text-gray-500" />}
                                         className="w-full"
                                         inputClassName="text-[11px]"
@@ -181,7 +181,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                 </div>
                                 <div className="mb-2 max-h-32 overflow-auto rounded border border-white/10">
                                     {filteredCandidates.length === 0 ? (
-                                        <p className="px-2 py-2 text-[10px] text-gray-500">No matching declarations.</p>
+                                        <p className="px-2 py-2 text-[10px] text-gray-500">No matching fields.</p>
                                     ) : (
                                         filteredCandidates.map(c => (
                                             <button
@@ -197,11 +197,11 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                     )}
                                 </div>
                                 <div className="border-t border-white/10 pt-2">
-                                    <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">New declaration</p>
+                                    <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">New field</p>
                                     <div className="flex gap-1.5">
                                         <EnhancedInput
-                                            value={newDeclName}
-                                            onChange={setNewDeclName}
+                                            value={newFieldName}
+                                            onChange={setNewFieldName}
                                             placeholder="Name"
                                             className="min-w-0 flex-1"
                                             inputClassName="text-[11px]"
@@ -230,9 +230,9 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                         <button
                             type="button"
                             className="rounded border border-white/10 px-2 py-1 text-[11px] text-gray-200 hover:bg-white/5"
-                            onClick={() => bp.goToDeclaration()}
+                            onClick={() => bp.goToField()}
                         >
-                            Open declaration
+                            Open field
                         </button>
                         <button
                             type="button"

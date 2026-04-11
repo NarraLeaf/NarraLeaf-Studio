@@ -19,6 +19,12 @@ export type BlueprintPinInlineLiteralValueType = (typeof BLUEPRINT_PIN_INLINE_LI
 /** Persisted on node.params: pin ids whose inline literal editor is expanded on the node card. */
 export const BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY = "__inlineLiteralPins" as const;
 
+/**
+ * Persisted on node.params: ordered list of extra data input pin ids (beyond fixedDataInputIds).
+ * Used when BlueprintNodeDef.dynamicInputPins is set.
+ */
+export const BLUEPRINT_NODE_PARAMS_DYNAMIC_INPUT_PIN_IDS_KEY = "__dynamicInputPinIds" as const;
+
 export type BlueprintNodePinDef = {
     id: string;
     kind: "input" | "output";
@@ -31,6 +37,20 @@ export type BlueprintNodePinDef = {
      * when it is unwired. Only valid with kind=input, semantic=data, and valueType string|integer|float.
      */
     allowInlineLiteral?: boolean;
+};
+
+/**
+ * Optional variadic data inputs: fixed pins from `pins` stay forever; extra ids are stored in params[storageKey].
+ */
+export type BlueprintNodeDynamicInputPinsConfig = {
+    /** Param key on node.params for string[] of additional input pin ids. */
+    storageKey: string;
+    /** Data input pin ids from def.pins that cannot be removed. */
+    fixedDataInputIds: readonly string[];
+    /** Generated ids use `${prefix}_${n}` with n increasing until unused. */
+    generatedIdPrefix: string;
+    valueType: string;
+    allowInlineLiteral: boolean;
 };
 
 export type BlueprintInspectorParamKind = "string" | "number" | "json" | "literal" | "variableRef";
@@ -74,6 +94,8 @@ export type BlueprintNodeDef = {
     /** Latent/async execution (delay, host awaits) — disallowed in function graphs */
     isLatent?: boolean;
     pins: BlueprintNodePinDef[];
+    /** When set, users may add/remove extra data input pins (persisted in params). */
+    dynamicInputPins?: BlueprintNodeDynamicInputPinsConfig;
     inspectorParams?: BlueprintInspectorParamDef[];
     scope?: BlueprintNodeScope;
     role?: BlueprintNodeRole;
@@ -81,11 +103,21 @@ export type BlueprintNodeDef = {
 };
 
 /** Context for palette filtering in the editor */
+/** Declared widget UI event slots from WidgetModule.blueprintEvents (optional per-slot head override). */
+export type BlueprintWidgetEventCapabilityRef = {
+    id: string;
+    headNodeTypes?: readonly string[];
+};
+
 export type BlueprintPaletteContext = {
     graphKind: BlueprintGraphKind;
     owner: BlueprintOwnerRef;
     /** Element type (e.g. nl.button) when owner is widgetMain */
     widgetElementType?: string;
+    /**
+     * Widget module event catalog; drives which event-head node types appear in the palette when slots are empty.
+     */
+    widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
     /**
      * When set (widgetMain event graph), restricts palette event heads to slots wired to this layer.
      * Empty array means the layer exists but is not wired yet — offer all heads valid for this widget type.
@@ -111,11 +143,15 @@ export type BlueprintNodeEditorCatalogEntry = {
         valueType?: string;
         label?: string;
         allowInlineLiteral?: boolean;
+        /** True for user-added dynamic inputs; show remove control on the node card. */
+        removable?: boolean;
     }>;
     inspectorParams?: BlueprintInspectorParamDef[];
     graphKinds: BlueprintGraphKind[];
     role?: BlueprintNodeRole;
     scope?: BlueprintNodeScope;
+    /** When true, node card may offer add-input control (see dynamicInputPins on def). */
+    supportsDynamicInputPins?: boolean;
 };
 
 export type { BehaviorNodeExecutionContext };

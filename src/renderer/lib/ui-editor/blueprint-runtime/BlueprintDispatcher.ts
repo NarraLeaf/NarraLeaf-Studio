@@ -1,9 +1,5 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
-import {
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
-    isBlueprintEventDispatchHeadType,
-} from "@shared/types/blueprint/graph";
+import { collectBlueprintEventHeadNodeIdsForDispatch, isBlueprintEventDispatchHeadType } from "@shared/types/blueprint/graph";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
 import { BlueprintGraphExecutionError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
@@ -88,28 +84,6 @@ function createScriptExecutionContext(input: {
 }
 
 type BlueprintModuleSink = { events: Record<string, unknown>; bound: Record<string, unknown> };
-
-function collectEventHeadNodeIdsForUiEvent(ir: { nodes?: Record<string, { type: string }> }, eventName: string): string[] {
-    const nodes = ir.nodes ?? {};
-    const initIds = Object.entries(nodes)
-        .filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)
-        .map(([id]) => id);
-    const clickIds = Object.entries(nodes)
-        .filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK)
-        .map(([id]) => id);
-
-    if (eventName === "init") {
-        return [...initIds].sort();
-    }
-    if (eventName === "click") {
-        return [...clickIds].sort();
-    }
-
-    const any = Object.entries(nodes)
-        .filter(([, n]) => isBlueprintEventDispatchHeadType(n.type))
-        .map(([id]) => id);
-    return any.sort();
-}
 
 function getMountedBlueprintModule(blueprintId: string): BlueprintModuleSink | undefined {
     const g = globalThis as typeof globalThis & { __NL_BP_MODULES__?: Record<string, BlueprintModuleSink> };
@@ -201,7 +175,8 @@ export async function dispatchBlueprintUiEvent(options: {
         return;
     }
 
-    const headIds = collectEventHeadNodeIdsForUiEvent(ir, eventName);
+    const widgetElementType = el?.type;
+    const headIds = collectBlueprintEventHeadNodeIdsForDispatch(ir.nodes, eventName, widgetElementType);
     if (headIds.length === 0) {
         const hint =
             eventName === "init"

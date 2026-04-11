@@ -6,25 +6,25 @@ import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type { PropertyFieldBindingMeta } from "./bindingMeta";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
-import { buildDefaultSurfaceStateKeyForWidgetProp } from "@/lib/workspace/services/ui-editor/blueprint/defaultDeclarationKeys";
+import { buildDefaultSurfaceStateKeyForWidgetProp } from "@/lib/workspace/services/ui-editor/blueprint/defaultFieldKeys";
 
 export type PropertyBindingUiStatus = "literal" | "bound" | "broken";
 
 export type PropertyBindingState = {
     status: PropertyBindingUiStatus;
-    /** When bound or broken, declaration display name if it still exists. */
-    declarationLabel: string | null;
-    /** Resolved surfaceState key for the bound declaration, when applicable. */
+    /** When bound or broken, field display name if it still exists. */
+    fieldLabel: string | null;
+    /** Resolved surfaceState key for the bound field, when applicable. */
     surfaceStateKey: string | null;
     brokenReason: string | undefined;
     canBind: boolean;
     uiLocked: boolean;
-    /** Declarations on the widget main blueprint, sorted by name (for bind picker). */
-    declarationCandidates: { id: string; name: string }[];
-    bindToExistingDeclaration: (declarationId: string) => void;
+    /** Fields on the widget main blueprint, sorted by name (for bind picker). */
+    fieldCandidates: { id: string; name: string }[];
+    bindToExistingField: (fieldId: string) => void;
     createAndBindWithName: (name: string) => void;
     unbind: () => void;
-    goToDeclaration: () => void;
+    goToField: () => void;
 };
 
 export function usePropertyBindingState(
@@ -40,29 +40,29 @@ export function usePropertyBindingState(
 
     const snapshot = useMemo(() => {
         if (!isInitialized || !context || !surfaceId) {
-        return {
-            blueprintId: undefined as string | undefined,
-            binding: undefined as ReturnType<LocalBlueprintService["findWidgetPropBinding"]>,
-            declName: null as string | null,
-            surfaceStateKey: null as string | null,
-        };
+            return {
+                blueprintId: undefined as string | undefined,
+                binding: undefined as ReturnType<LocalBlueprintService["findWidgetPropBinding"]>,
+                fieldName: null as string | null,
+                surfaceStateKey: null as string | null,
+            };
         }
         const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
         const blueprintId = localBp.getWidgetMainBlueprintId(surfaceId, elementId);
         if (!blueprintId) {
-            return { blueprintId: undefined, binding: undefined, declName: null, surfaceStateKey: null };
+            return { blueprintId: undefined, binding: undefined, fieldName: null, surfaceStateKey: null };
         }
         const b = localBp.findWidgetPropBinding(blueprintId, surfaceId, elementId, bindingMeta.propPath);
         const doc = localBp.getBlueprintDocument();
         const bp = doc.blueprints[blueprintId];
-        const declId = b?.source.kind === "declaration" ? b.source.declarationId : undefined;
-        const decl = declId ? bp?.members?.declarations?.[declId] : undefined;
+        const fieldId = b?.source.kind === "field" ? b.source.fieldId : undefined;
+        const field = fieldId ? bp?.members?.fields?.[fieldId] : undefined;
         const surfaceStateKey =
-            decl?.valueSource?.kind === "surfaceState" ? (decl.valueSource.key ?? null) : null;
+            field?.valueSource?.kind === "surfaceState" ? (field.valueSource.key ?? null) : null;
         return {
             blueprintId,
             binding: b,
-            declName: decl?.name ?? null,
+            fieldName: field?.name ?? null,
             surfaceStateKey,
         };
     }, [bindingMeta.propPath, context, elementId, isInitialized, revision, surfaceId]);
@@ -74,26 +74,26 @@ export function usePropertyBindingState(
         if (snapshot.binding.status === "broken") {
             return "broken";
         }
-        if (!snapshot.declName && snapshot.binding.source.kind === "declaration") {
+        if (!snapshot.fieldName && snapshot.binding.source.kind === "field") {
             return "broken";
         }
         return "bound";
-    }, [snapshot.binding, snapshot.declName]);
+    }, [snapshot.binding, snapshot.fieldName]);
 
-    const declarationCandidates = useMemo(() => {
+    const fieldCandidates = useMemo(() => {
         if (!isInitialized || !context || !snapshot.blueprintId) {
             return [];
         }
         const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
-        const list = localBp.listDeclarations(snapshot.blueprintId);
+        const list = localBp.listFields(snapshot.blueprintId);
         return [...list]
-            .map(d => ({ id: d.id, name: d.name }))
+            .map(f => ({ id: f.id, name: f.name }))
             .sort((a, b) => a.name.localeCompare(b.name));
     }, [context, isInitialized, revision, snapshot.blueprintId]);
 
-    const bindToExistingDeclaration = useCallback(
-        (declarationId: string) => {
-            if (!isInitialized || !context || !surfaceId || !snapshot.blueprintId || !declarationId) {
+    const bindToExistingField = useCallback(
+        (fieldId: string) => {
+            if (!isInitialized || !context || !surfaceId || !snapshot.blueprintId || !fieldId) {
                 return;
             }
             const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
@@ -103,7 +103,7 @@ export function usePropertyBindingState(
                 surfaceId,
                 elementId,
                 propPath: bindingMeta.propPath,
-                declarationId,
+                fieldId,
                 fallback: fallback as string | number | boolean | null,
             });
         },
@@ -121,7 +121,7 @@ export function usePropertyBindingState(
                 elementId,
                 propPath: bindingMeta.propPath,
             });
-            const decl = localBp.createDeclaration(snapshot.blueprintId, {
+            const field = localBp.createField(snapshot.blueprintId, {
                 name: trimmed,
                 kind: "constant",
                 valueSource: { kind: "surfaceState", key: stateKey },
@@ -132,7 +132,7 @@ export function usePropertyBindingState(
                 surfaceId,
                 elementId,
                 propPath: bindingMeta.propPath,
-                declarationId: decl.id,
+                fieldId: field.id,
                 fallback: fallback as string | number | boolean | null,
             });
         },
@@ -147,8 +147,8 @@ export function usePropertyBindingState(
         localBp.clearWidgetPropBinding(snapshot.blueprintId, surfaceId, elementId, bindingMeta.propPath);
     }, [bindingMeta.propPath, context, elementId, isInitialized, snapshot.blueprintId, surfaceId]);
 
-    const goToDeclaration = useCallback(() => {
-        if (!surfaceId || !snapshot.blueprintId || snapshot.binding?.source.kind !== "declaration") {
+    const goToField = useCallback(() => {
+        if (!surfaceId || !snapshot.blueprintId || snapshot.binding?.source.kind !== "field") {
             return;
         }
         openTarget({
@@ -156,7 +156,7 @@ export function usePropertyBindingState(
             ownerKind: "widgetMain",
             surfaceId,
             elementId,
-            focusDeclarationId: snapshot.binding.source.declarationId,
+            focusFieldId: snapshot.binding.source.fieldId,
             title: `Blueprint · ${data.element.name ?? data.element.type}`,
         });
     }, [data.element.name, data.element.type, openTarget, snapshot.binding, snapshot.blueprintId, surfaceId, elementId]);
@@ -165,15 +165,15 @@ export function usePropertyBindingState(
 
     return {
         status,
-        declarationLabel: snapshot.declName,
+        fieldLabel: snapshot.fieldName,
         surfaceStateKey: snapshot.surfaceStateKey,
         brokenReason: snapshot.binding?.brokenReason,
         canBind: Boolean(surfaceId && snapshot.blueprintId),
         uiLocked,
-        declarationCandidates,
-        bindToExistingDeclaration,
+        fieldCandidates,
+        bindToExistingField,
         createAndBindWithName,
         unbind,
-        goToDeclaration,
+        goToField,
     };
 }

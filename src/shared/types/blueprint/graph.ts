@@ -17,12 +17,56 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK,
 ]);
 
+/** UI behavior slot id → graph event-head node type(s). Extend when new slots get dedicated heads. */
+const UI_EVENT_SLOT_TO_HEAD_TYPES: Record<string, readonly string[]> = {
+    init: [BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT],
+    click: [BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK],
+};
+
+/**
+ * Resolve which event-head node type(s) may run for a widget `behavior.events` slot id.
+ * Unknown slots fall back to all registered dispatch heads (forward-compatible).
+ */
+export function resolveBlueprintEventHeadTypesForUiSlot(slotId: string, widgetElementType?: string): readonly string[] {
+    if (slotId === "click" && widgetElementType && widgetElementType !== "nl.button") {
+        return [];
+    }
+    const mapped = UI_EVENT_SLOT_TO_HEAD_TYPES[slotId];
+    if (mapped) {
+        return mapped;
+    }
+    return [...EVENT_DISPATCH_HEAD_TYPES];
+}
+
+/** All node type ids that may start an event graph chain (for validation / normalization). */
+export function listBlueprintEventDispatchHeadTypes(): readonly string[] {
+    return [...EVENT_DISPATCH_HEAD_TYPES];
+}
+
 /** True if this node type can start an event-graph execution chain for UI dispatch. */
 export function isBlueprintEventDispatchHeadType(nodeType: string): boolean {
     return EVENT_DISPATCH_HEAD_TYPES.has(nodeType);
 }
+
+/**
+ * Pick graph node ids that are valid entry heads for a UI dispatch `eventName` (slot id).
+ */
+export function collectBlueprintEventHeadNodeIdsForDispatch(
+    nodes: Record<string, { type: string }> | undefined,
+    eventName: string,
+    widgetElementType?: string,
+): string[] {
+    const n = nodes ?? {};
+    const allowed = new Set(resolveBlueprintEventHeadTypesForUiSlot(eventName, widgetElementType));
+    if (allowed.size === 0) {
+        return [];
+    }
+    return Object.entries(n)
+        .filter(([, node]) => allowed.has(node.type))
+        .map(([id]) => id)
+        .sort();
+}
 export const BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY = "blueprint.function.entry" as const;
-export const BLUEPRINT_NODE_TYPE_REROUTE = "blueprint.flow.reroute" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL = "blueprint.data.literal" as const;
 /** Read blueprint execution local variable (pure data source). */
 export const BLUEPRINT_NODE_TYPE_LOCAL_GET = "blueprint.local.get" as const;
@@ -35,10 +79,17 @@ export const BLUEPRINT_NODE_TYPE_MATH_ADD = "blueprint.math.add" as const;
 export const BLUEPRINT_NODE_TYPE_MATH_SUBTRACT = "blueprint.math.subtract" as const;
 export const BLUEPRINT_NODE_TYPE_MATH_MULTIPLY = "blueprint.math.multiply" as const;
 export const BLUEPRINT_NODE_TYPE_MATH_DIVIDE = "blueprint.math.divide" as const;
-/** Unary: result = value + 1 (pure data). */
+/** Unary add-one: result = value + 1 (pure data). */
 export const BLUEPRINT_NODE_TYPE_MATH_INCREMENT = "blueprint.math.increment" as const;
-/** Unary: result = value - 1 (pure data). */
+/** Unary subtract-one: result = value - 1 (pure data). */
 export const BLUEPRINT_NODE_TYPE_MATH_DECREMENT = "blueprint.math.decrement" as const;
+/** Pure float comparison: result is boolean (pure data). */
+export const BLUEPRINT_NODE_TYPE_MATH_EQUAL = "blueprint.math.equal" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_NOT_EQUAL = "blueprint.math.notEqual" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_LESS = "blueprint.math.less" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_LESS_OR_EQUAL = "blueprint.math.lessOrEqual" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_GREATER = "blueprint.math.greater" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_GREATER_OR_EQUAL = "blueprint.math.greaterOrEqual" as const;
 
 /** Concatenate two strings (pure data). */
 export const BLUEPRINT_NODE_TYPE_STRING_CONCAT = "blueprint.string.concat" as const;

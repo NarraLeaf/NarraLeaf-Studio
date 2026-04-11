@@ -35,7 +35,7 @@ export function SurfaceBlueprintEntrySection({ data }: CustomFieldProps<SceneEdi
                         <span className="text-gray-200 font-mono text-[11px]">{summary.blueprintId}</span>
                     </li>
                     <li>
-                        <span className="text-gray-500">Declarations</span> · {summary.declarationCount}
+                        <span className="text-gray-500">Fields</span> · {summary.fieldCount}
                     </li>
                     <li>
                         <span className="text-gray-500">Property bindings</span> · {summary.bindingCount}

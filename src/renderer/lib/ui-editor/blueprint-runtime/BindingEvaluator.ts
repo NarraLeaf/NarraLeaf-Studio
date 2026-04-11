@@ -1,7 +1,7 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
-import { evaluateDeclarationValue } from "@/lib/workspace/services/ui-editor/blueprint/declarationEvaluation";
+import { evaluateFieldValue } from "@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation";
 import type { SurfaceStateStore } from "./SurfaceStateStore";
 import type { BindingDebugCoalescer } from "./BindingDebugCoalescer";
 import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
@@ -32,7 +32,7 @@ function applyWidgetPropPath(element: UIElement, propPath: string, value: unknow
 }
 
 /**
- * Clone element and apply active widgetProp bindings for this surface using surface state + declarations.
+ * Clone element and apply active widgetProp bindings for this surface using surface state + fields.
  */
 export function mergeElementWithBlueprintBindings(
     element: UIElement,
@@ -67,12 +67,12 @@ export function mergeElementWithBlueprintBindings(
             if (bind.status === "broken") {
                 continue;
             }
-            if (bind.source.kind !== "declaration") {
+            if (bind.source.kind !== "field") {
                 continue;
             }
             const srcBp = blueprintDocument.blueprints[bind.source.blueprintId];
-            const decl = srcBp?.members?.declarations?.[bind.source.declarationId];
-            const vs = decl?.valueSource;
+            const field = srcBp?.members?.fields?.[bind.source.fieldId];
+            const vs = field?.valueSource;
             if (vs?.kind === "surfaceState") {
                 const raw = surfaceState.get(vs.key);
                 if (!coalescer || coalescer.shouldEmitStateRead(vs.key, raw)) {
@@ -80,8 +80,8 @@ export function mergeElementWithBlueprintBindings(
                 }
             }
 
-            const evaluated = evaluateDeclarationValue(decl, surfaceState);
-            const hasSource = Boolean(decl?.valueSource);
+            const evaluated = evaluateFieldValue(field, surfaceState);
+            const hasSource = Boolean(field?.valueSource);
             const resolved = hasSource && evaluated !== undefined ? evaluated : bind.fallback;
             if (resolved === undefined) {
                 continue;

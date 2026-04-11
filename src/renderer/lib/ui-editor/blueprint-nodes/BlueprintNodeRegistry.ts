@@ -3,7 +3,7 @@
  * Comments in English per project convention.
  */
 
-import { BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK, BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT } from "@shared/types/blueprint/graph";
+import { resolveBlueprintEventHeadTypesForUiSlot } from "@shared/types/blueprint/graph";
 import { behaviorNodeRegistry } from "../behavior-graph/BehaviorNodeRegistry";
 import {
     BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES,
@@ -11,27 +11,44 @@ import {
     type BlueprintNodeEditorCatalogEntry,
     type BlueprintPaletteContext,
 } from "./types";
+import { resolveEffectiveBlueprintCatalogEntry } from "./effectivePins";
 
-function resolveAllowedWidgetEventHeadTypesForSlots(
-    slots: string[],
+function headTypesForWidgetSlot(
+    slotId: string,
     widgetElementType: string | undefined,
-): Set<string> {
+    widgetBlueprintEvents: BlueprintPaletteContext["widgetBlueprintEvents"],
+): readonly string[] {
+    const ev = widgetBlueprintEvents?.find(e => e.id === slotId);
+    return ev?.headNodeTypes ?? resolveBlueprintEventHeadTypesForUiSlot(slotId, widgetElementType);
+}
+
+function resolveAllowedWidgetEventHeadTypesForPalette(ctx: BlueprintPaletteContext): Set<string> {
     const allow = new Set<string>();
-    const isButton = widgetElementType === "nl.button";
+    const slots = ctx.widgetEventLayerSlots ?? [];
+    const widgetElementType = ctx.widgetElementType;
+    const catalog = ctx.widgetBlueprintEvents;
+
+    const addSlot = (slotId: string) => {
+        for (const t of headTypesForWidgetSlot(slotId, widgetElementType, catalog)) {
+            allow.add(t);
+        }
+    };
+
     if (slots.length === 0) {
-        allow.add(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
-        if (isButton) {
-            allow.add(BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK);
+        if (catalog && catalog.length > 0) {
+            for (const ev of catalog) {
+                addSlot(ev.id);
+            }
+        } else {
+            addSlot("init");
+            if (widgetElementType === "nl.button") {
+                addSlot("click");
+            }
         }
         return allow;
     }
     for (const s of slots) {
-        if (s === "init") {
-            allow.add(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
-        }
-        if (s === "click" && isButton) {
-            allow.add(BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK);
-        }
+        addSlot(s);
     }
     return allow;
 }
@@ -44,6 +61,7 @@ class BlueprintNodeDefinitionsRegistry {
             throw new Error(`[BlueprintNodeRegistry] Duplicate node type: ${def.type}`);
         }
         this.validatePorts(def);
+        this.validateDynamicInputPins(def);
         this.validateGraphKinds(def);
         this.byType.set(def.type, def);
         behaviorNodeRegistry.register({
@@ -109,6 +127,17 @@ class BlueprintNodeDefinitionsRegistry {
     }
 
     /**
+     * Catalog entry with pins merged from node instance params (dynamic input pins).
+     */
+    public resolveCatalogEntryForNode(type: string, params?: Record<string, unknown>): BlueprintNodeEditorCatalogEntry {
+        const def = this.byType.get(type);
+        if (def) {
+            return resolveEffectiveBlueprintCatalogEntry(def, params);
+        }
+        return this.resolveCatalogEntry(type);
+    }
+
+    /**
      * Palette entries visible for the given graph + owner context.
      */
     public listPaletteEntries(ctx: BlueprintPaletteContext): BlueprintNodeEditorCatalogEntry[] {
@@ -135,11 +164,8 @@ class BlueprintNodeDefinitionsRegistry {
             if (ctx.graphKind === "function" && def.role === "functionEntry" && ctx.hasFunctionEntry) {
                 continue;
             }
-            if (def.role === "eventHead" && ctx.widgetEventLayerSlots !== undefined) {
-                const allowed = resolveAllowedWidgetEventHeadTypesForSlots(
-                    ctx.widgetEventLayerSlots,
-                    ctx.widgetElementType,
-                );
+            if (def.role === "eventHead" && ctx.owner.kind === "widgetMain") {
+                const allowed = resolveAllowedWidgetEventHeadTypesForPalette(ctx);
                 if (!allowed.has(def.type)) {
                     continue;
                 }
@@ -207,6 +233,37 @@ class BlueprintNodeDefinitionsRegistry {
     private validateGraphKinds(def: BlueprintNodeDef): void {
         if (!def.graphKinds.length) {
             throw new Error(`[BlueprintNodeRegistry] Node ${def.type} must allow at least one graphKind`);
+        }
+    }
+
+    private validateDynamicInputPins(def: BlueprintNodeDef): void {
+        const d = def.dynamicInputPins;
+        if (!d) {
+            return;
+        }
+        if (!d.storageKey.trim()) {
+            throw new Error(`[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.storageKey is empty`);
+        }
+        if (!d.generatedIdPrefix.trim()) {
+            throw new Error(`[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.generatedIdPrefix is empty`);
+        }
+        const dataInputIds = new Set(
+            def.pins.filter(p => p.kind === "input" && p.semantic === "data").map(p => p.id),
+        );
+        for (const fid of d.fixedDataInputIds) {
+            if (!dataInputIds.has(fid)) {
+                throw new Error(
+                    `[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.fixedDataInputIds contains unknown pin: ${fid}`,
+                );
+            }
+        }
+        if (d.allowInlineLiteral) {
+            const scalarTypes = new Set<string>(BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES);
+            if (!d.valueType || !scalarTypes.has(d.valueType)) {
+                throw new Error(
+                    `[BlueprintNodeRegistry] Node ${def.type} dynamic pins allowInlineLiteral requires valueType string|integer|float`,
+                );
+            }
         }
     }
 }

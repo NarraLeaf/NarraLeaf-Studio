@@ -3,7 +3,7 @@ import type { UIBehaviorBinding } from "@shared/types/ui-editor/document";
 
 /**
  * Deep-clone a widgetMain blueprint for paste/duplicate: new id, new owner element, remap binding targets
- * inside the pasted subtree and declaration sources that pointed at the old blueprint id.
+ * inside the pasted subtree and field sources that pointed at the old blueprint id.
  */
 export function cloneWidgetMainBlueprintForPaste(input: {
     source: Blueprint;
@@ -29,7 +29,7 @@ export function cloneWidgetMainBlueprintForPaste(input: {
                     elementId: mapped ?? bind.target.elementId,
                 };
             }
-            if (bind.source.kind === "declaration" && bind.source.blueprintId === input.oldBlueprintId) {
+            if (bind.source.kind === "field" && bind.source.blueprintId === input.oldBlueprintId) {
                 bind.source = { ...bind.source, blueprintId: input.newBlueprintIdForSourceRemap };
             }
         }

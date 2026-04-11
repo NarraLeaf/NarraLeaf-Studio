@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Link2 } from "lucide-react";
+import { Link2, Minus, Plus } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import {
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
@@ -7,11 +7,23 @@ import {
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BlueprintLiteralValueControl } from "../../components/BlueprintLiteralValueControl";
 
+/**
+ * React Flow handles node selection / drag on pointer down. Stopping propagation on click alone is too late;
+ * use this on embedded controls so the node stays selected and the pane does not steal the interaction.
+ */
+function stopFlowNodePointerBubble(e: { stopPropagation: () => void }) {
+    e.stopPropagation();
+}
+
 export type BlueprintFlowNodeData = {
     catalog: BlueprintNodeEditorCatalogEntry;
     nodeId: string;
     params: Record<string, unknown>;
     onPatchNodeParam?: (nodeId: string, key: string, value: unknown) => void;
+    /** Append a variadic data input pin (IR + params). */
+    onAddDynamicInputPin?: (nodeId: string) => void;
+    /** Remove a user-added input pin and clean edges / literals. */
+    onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void;
     /** Execution-local variables for variableRef inspector controls */
     memberVariables?: Array<{ id: string; name: string }>;
     /** Input ports that have an incoming edge (any semantic). */
@@ -35,7 +47,7 @@ const INPUT_NUMBER_NO_SPINNER =
 /** Pin body: fixed min width, cap max — avoid equal flex-1 columns hollowing the middle on inline inputs. */
 const BLUEPRINT_CARD_PIN_BODY_CLASS = "min-w-[200px] max-w-[280px]";
 
-type CatalogPin = BlueprintNodeEditorCatalogEntry["pins"][number];
+type CatalogPin = BlueprintNodeEditorCatalogEntry["pins"][number] & { removable?: boolean };
 
 function readOpenInlineLiteralPinIds(params: Record<string, unknown>): Set<string> {
     const raw = params[BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY];
@@ -81,6 +93,8 @@ function PinInlineLiteralInput({
                 className={baseClass}
                 type="text"
                 value={raw !== undefined && raw !== null ? String(raw) : ""}
+                onMouseDown={stopFlowNodePointerBubble}
+                onPointerDown={stopFlowNodePointerBubble}
                 onChange={e => {
                     const t = e.target.value;
                     onPatchNodeParam(nodeId, pin.id, t.length > 0 ? t : undefined);
@@ -96,6 +110,8 @@ function PinInlineLiteralInput({
                 type="number"
                 step={1}
                 value={typeof raw === "number" && Number.isFinite(raw) ? raw : raw === undefined ? "" : String(raw)}
+                onMouseDown={stopFlowNodePointerBubble}
+                onPointerDown={stopFlowNodePointerBubble}
                 onChange={e => {
                     const t = e.target.value.trim();
                     if (!t) {
@@ -116,6 +132,8 @@ function PinInlineLiteralInput({
                 type="number"
                 step="any"
                 value={typeof raw === "number" && Number.isFinite(raw) ? raw : raw === undefined ? "" : String(raw)}
+                onMouseDown={stopFlowNodePointerBubble}
+                onPointerDown={stopFlowNodePointerBubble}
                 onChange={e => {
                     const t = e.target.value.trim();
                     if (!t) {
@@ -140,6 +158,8 @@ function InputPinRow({
     params,
     onPatchNodeParam,
     isWired,
+    removable,
+    onRemovePin,
 }: {
     pin: CatalogPin;
     semantic: "exec" | "data";
@@ -148,6 +168,8 @@ function InputPinRow({
     params: Record<string, unknown>;
     onPatchNodeParam?: (nodeId: string, key: string, value: unknown) => void;
     isWired: boolean;
+    removable?: boolean;
+    onRemovePin?: (nodeId: string, pinId: string) => void;
 }) {
     const handleClass = semantic === "exec" ? EXEC_HANDLE_CLASS : DATA_HANDLE_CLASS;
     const canInlineLiteral =
@@ -181,6 +203,21 @@ function InputPinRow({
         return (
             <div className="relative flex min-h-[20px] w-full min-w-0 items-center gap-0.5 pl-1 pr-0.5">
                 <div className="flex min-w-0 flex-1 items-center gap-1 pl-3.5">
+                    {removable && onRemovePin ? (
+                        <button
+                            type="button"
+                            title="Remove input pin"
+                            className="nodrag shrink-0 rounded p-0.5 text-gray-500 hover:bg-white/5 hover:text-gray-300"
+                            onMouseDown={stopFlowNodePointerBubble}
+                            onPointerDown={stopFlowNodePointerBubble}
+                            onClick={e => {
+                                e.stopPropagation();
+                                onRemovePin(nodeId, pin.id);
+                            }}
+                        >
+                            <Minus className="h-3 w-3" aria-hidden />
+                        </button>
+                    ) : null}
                     <span
                         className="shrink-0 text-[9px] leading-tight text-gray-400"
                         title={pinLabelOnly(pin)}
@@ -197,7 +234,9 @@ function InputPinRow({
                     <button
                         type="button"
                         title="Show input pin"
-                        className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-white/5 hover:text-gray-300"
+                        className="nodrag shrink-0 rounded p-0.5 text-gray-400 hover:bg-white/5 hover:text-gray-300"
+                        onMouseDown={stopFlowNodePointerBubble}
+                        onPointerDown={stopFlowNodePointerBubble}
                         onClick={e => {
                             e.stopPropagation();
                             toggleInlineLiteral();
@@ -223,6 +262,21 @@ function InputPinRow({
             />
             <div className="flex min-w-0 flex-1 items-center pl-3.5">
                 <div className="flex min-w-0 max-w-full items-center gap-0.5">
+                    {removable && onRemovePin ? (
+                        <button
+                            type="button"
+                            title="Remove input pin"
+                            className="nodrag shrink-0 rounded p-0.5 text-gray-500 hover:bg-white/5 hover:text-gray-300"
+                            onMouseDown={stopFlowNodePointerBubble}
+                            onPointerDown={stopFlowNodePointerBubble}
+                            onClick={e => {
+                                e.stopPropagation();
+                                onRemovePin(nodeId, pin.id);
+                            }}
+                        >
+                            <Minus className="h-3 w-3" aria-hidden />
+                        </button>
+                    ) : null}
                     <span
                         className="min-w-0 shrink truncate text-[9px] leading-tight text-gray-400"
                         title={pinCaption(pin, semantic)}
@@ -233,7 +287,9 @@ function InputPinRow({
                         <button
                             type="button"
                             title="Edit value on card"
-                            className="shrink-0 rounded p-0.5 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/5 hover:text-gray-300 focus-visible:opacity-100"
+                            className="nodrag shrink-0 rounded p-0.5 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/5 hover:text-gray-300 focus-visible:opacity-100"
+                            onMouseDown={stopFlowNodePointerBubble}
+                            onPointerDown={stopFlowNodePointerBubble}
                             onClick={e => {
                                 e.stopPropagation();
                                 toggleInlineLiteral();
@@ -251,7 +307,7 @@ function InputPinRow({
 function OutputPinRow({ pin, semantic }: { pin: CatalogPin; semantic: "exec" | "data" }) {
     const handleClass = semantic === "exec" ? EXEC_HANDLE_CLASS : DATA_HANDLE_CLASS;
     return (
-        <div className="relative flex min-h-[20px] items-center justify-end pl-0.5 pr-1">
+        <div className="relative flex min-h-[20px] w-full min-w-0 items-center justify-end pl-0.5 pr-1">
             <span
                 className="min-w-0 flex-1 truncate pr-3.5 text-right text-[9px] leading-tight text-gray-400"
                 title={pinCaption(pin, semantic)}
@@ -354,8 +410,16 @@ function InspectorParamOnCard({
 }
 
 export function BlueprintFlowNode({ data, selected }: NodeProps) {
-    const { catalog, nodeId, params, onPatchNodeParam, memberVariables, wiredInputPortIds } =
-        data as BlueprintFlowNodeData;
+    const {
+        catalog,
+        nodeId,
+        params,
+        onPatchNodeParam,
+        onAddDynamicInputPin,
+        onRemoveDynamicInputPin,
+        memberVariables,
+        wiredInputPortIds,
+    } = data as BlueprintFlowNodeData;
     const wired = wiredInputPortIds ?? new Set<string>();
     const execIns = catalog.pins.filter(p => p.kind === "input" && p.semantic === "exec");
     const execOuts = catalog.pins.filter(p => p.kind === "output" && p.semantic === "exec");
@@ -363,6 +427,8 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     const dataOuts = catalog.pins.filter(p => p.kind === "output" && p.semantic === "data");
 
     const isEventHead = catalog.role === "eventHead";
+    const showAddInputRow =
+        Boolean(catalog.supportsDynamicInputPins) && Boolean(onAddDynamicInputPin);
     const inspectorParams = catalog.inspectorParams ?? [];
     const showCardInspector = Boolean(onPatchNodeParam) && inspectorParams.length > 0;
 
@@ -374,6 +440,10 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         ...execOuts.map(pin => ({ pin, semantic: "exec" as const })),
         ...dataOuts.map(pin => ({ pin, semantic: "data" as const })),
     ];
+
+    /** When only one side has pins, that column must span full card width so handles align to the true edge. */
+    const onlyRightPins = leftPins.length === 0 && rightPins.length > 0;
+    const onlyLeftPins = leftPins.length > 0 && rightPins.length === 0;
 
     return (
         <div
@@ -400,7 +470,9 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
             {leftPins.length > 0 || rightPins.length > 0 ? (
                 <div className="flex items-start gap-1 px-1 py-1.5">
                     {leftPins.length > 0 ? (
-                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <div
+                            className={`flex min-w-0 flex-col gap-0.5 ${onlyLeftPins ? "w-full flex-1" : "flex-1"}`}
+                        >
                             {leftPins.map(({ pin, semantic }) => (
                                 <InputPinRow
                                     key={`in-${pin.id}`}
@@ -411,14 +483,33 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                                     params={params}
                                     onPatchNodeParam={onPatchNodeParam}
                                     isWired={wired.has(pin.id)}
+                                    removable={Boolean(pin.removable)}
+                                    onRemovePin={onRemoveDynamicInputPin}
                                 />
                             ))}
+                            {showAddInputRow ? (
+                                <button
+                                    type="button"
+                                    title="Add input pin"
+                                    className="nodrag mt-0.5 flex w-full items-center justify-center rounded border border-dashed border-white/10 py-0.5 text-gray-500 hover:border-white/20 hover:bg-white/[0.03] hover:text-gray-400"
+                                    onMouseDown={stopFlowNodePointerBubble}
+                                    onPointerDown={stopFlowNodePointerBubble}
+                                    onClick={e => {
+                                        e.stopPropagation();
+                                        onAddDynamicInputPin?.(nodeId);
+                                    }}
+                                >
+                                    <Plus className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+                                </button>
+                            ) : null}
                         </div>
                     ) : (
                         <div className="w-0 shrink-0" aria-hidden />
                     )}
                     {rightPins.length > 0 ? (
-                        <div className="flex min-w-0 shrink-0 flex-col gap-0.5">
+                        <div
+                            className={`flex min-w-0 flex-col gap-0.5 ${onlyRightPins ? "w-full min-w-0 flex-1" : "shrink-0"}`}
+                        >
                             {rightPins.map(({ pin, semantic }) => (
                                 <OutputPinRow key={`out-${pin.id}`} pin={pin} semantic={semantic} />
                             ))}

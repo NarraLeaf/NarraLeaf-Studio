@@ -14,6 +14,7 @@ import type {
     BlueprintNodeEditorCatalogEntry,
     BlueprintPaletteContext,
     BlueprintPinSemantic,
+    BlueprintWidgetEventCapabilityRef,
 } from "../blueprint-nodes/types";
 
 export type { BlueprintPinSemantic, BlueprintNodeEditorCatalogEntry };
@@ -35,6 +36,7 @@ export function buildBlueprintPaletteContext(input: {
     graphKind: "event" | "function";
     owner: BlueprintOwnerRef;
     widgetElementType?: string;
+    widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
     widgetEventLayerSlots?: string[];
     hasEventHead?: boolean;
     hasFunctionEntry?: boolean;
@@ -44,6 +46,7 @@ export function buildBlueprintPaletteContext(input: {
         graphKind: gk,
         owner: input.owner,
         widgetElementType: input.widgetElementType,
+        widgetBlueprintEvents: input.widgetBlueprintEvents,
         widgetEventLayerSlots: input.widgetEventLayerSlots,
         hasEventHead: input.hasEventHead,
         hasFunctionEntry: input.hasFunctionEntry,
@@ -54,12 +57,21 @@ export function resolveBlueprintNodeEditorCatalogEntry(type: string): BlueprintN
     return catalog().resolveCatalogEntry(type);
 }
 
+export function resolveBlueprintNodeEditorCatalogEntryForNode(
+    type: string,
+    params?: Record<string, unknown>,
+): BlueprintNodeEditorCatalogEntry {
+    return catalog().resolveCatalogEntryForNode(type, params);
+}
+
 /** Validates exec→exec or data→data with optional type match */
 export function isValidBlueprintExecConnection(params: {
     sourceType: string;
     sourcePort: string;
     targetType: string;
     targetPort: string;
+    sourceParams?: Record<string, unknown>;
+    targetParams?: Record<string, unknown>;
 }): boolean {
     catalog().ensureBuiltinsRegistered();
     return isValidBlueprintPinConnectionInner(params);

@@ -1,6 +1,6 @@
 # NarraLeaf Studio — Blueprint System（架构与里程碑合并稿）
 
-本文档合并自原 `blueprint-system.md`、`blueprint-system-milestones.md`，以及 `project/docs/implementation-plans/` 内与蓝图相关的实施记录与主规格摘要。界面编辑器侧里程碑与选项见 **`project/docs/visual-editor-arch.md`**；快速代码结构见 **`project/docs/visual-editor.md`**。
+本文档合并自原 `blueprint-system.md`、`blueprint-system-milestones.md`，以及 `project/docs/implementation-plans/` 内与蓝图相关的实施记录与主规格摘要。界面编辑器侧里程碑与选项见 **`project/docs/visual-editor-arch.md`**；快速代码结构见 **`project/docs/visual-editor.md`**；**内置节点与事件头清单**见 **`project/docs/blueprint-nodes.md`**。
 
 **最高原则：** 编辑方式可以有两种（Visual / TypeScript），**上层运行时契约只能有一种**。
 
@@ -10,7 +10,7 @@
 
 - **范围：** 蓝图系统第一阶段聚焦 **UI**，不把剧情/任务/全项目逻辑一并卷入。
 - **两种前端（创建时选定，互不转换）：** `Visual Blueprint`（图 / Graph IR）与 `TypeScript Blueprint`（受限真实 TS → 编译模块）。二者共享：**Runtime Contract、Host API、调试协议、作用域与状态模型**；底层执行载体可不同（图 vs 脚本模块）。
-- **语义拆分：** **事件执行图**允许副作用；**绑定/声明系统**必须纯计算（可读状态、纯函数、组合声明；不可写状态、导航、音频等）。
+- **语义拆分：** **事件执行图**允许副作用；**绑定/字段求值**必须纯计算（可读状态、纯函数；不可写状态、导航、音频等）。
 - **实例主蓝图：** `globalMain` / `surfaceMain` / `widgetMain`，与实例生命周期绑定、不可共享。**共享蓝图**进资产系统。
 - **编辑器形态：** 属性面板负责入口、概览、绑定、快速创建；完整编辑在独立 Tab。技术栈推荐：**React Flow**（画布壳）+ **自研 Graph IR** + **Monaco**（TS 蓝图）+ **自研 Runtime / 节点注册 / TS 编译与游戏内装载链**。
 - **Dev Mode：** 真实运行与调试的主场；编辑器内完整运行时模拟不是默认目标。
@@ -45,11 +45,11 @@
 
 | 概念 | 说明 |
 |------|------|
-| 实例主蓝图 | 每逻辑实例自动拥有；容纳事件入口、局部变量、实例耦合逻辑、声明成员 |
-| 共享蓝图资产 | 可复用函数/流程/声明；进资产管理器 |
+| 实例主蓝图 | 每逻辑实例自动拥有；容纳事件入口、局部变量、实例耦合逻辑、**字段**（绑定源） |
+| 共享蓝图资产 | 可复用函数/流程；进资产管理器 |
 | 事件图 | 执行型：响应事件、调共享蓝图、写状态、导航、媒体、持久化 |
-| 声明成员 | 绑定基础：变量/常量/纯计算/派生值等，**非动作图** |
-| 绑定 | 字面量 **或** 引用声明（symbol-first：展示按名，底层 `(blueprintId, declarationId)`） |
+| 字段（Field） | 在成员面板定义，作为 **widgetProp 绑定** 的数据源；**不由图节点初始化**；可与 surface/global 状态键等关联 |
+| 绑定 | 字面量 **或** 引用字段（symbol-first：展示按名，底层 `(blueprintId, fieldId)`） |
 
 ---
 
@@ -88,7 +88,7 @@ type Blueprint = {
 
 type BlueprintMemberIndex = {
   variables: Record<string, BlueprintVariable>;
-  declarations: Record<string, BlueprintDeclaration>;
+  fields: Record<string, BlueprintField>;
   functions: Record<string, BlueprintFunctionSignature>;
 };
 
@@ -120,9 +120,9 @@ type BindingTargetRef = {
 };
 
 type BindingSourceRef = {
-  kind: "declaration";
+  kind: "field";
   blueprintId: string;
-  declarationId: string;
+  fieldId: string;
 };
 
 type TypeScriptBlueprintSource = {
@@ -183,11 +183,11 @@ events.on("submitButton.click", async (ctx) => {
 
 ---
 
-## 7. 绑定与声明
+## 7. 绑定与字段
 
 - 属性：`Literal` / `Bound` / `Broken`（可选 `Overridden`）；失效时 **broken** 明示，不静默 fallback。
 - 绑定定义在文档 `bindings`；`UIElement.props` 存字面量。
-- 删除声明 → 绑定 broken；支持用户重绑或改回字面量。
+- 删除字段 → 绑定 broken；支持用户重绑或改回字面量。
 
 ---
 
@@ -243,7 +243,7 @@ Dev Mode 为调试主阅读界面。
 | 属性绑定 | `src/renderer/apps/workspace/modules/properties/blueprint/*` |
 | Dev Mode | `DevModeManager`、`useDevModeBlueprintRuntime`、`BlueprintRuntimeDebugPanel` |
 
-**Studio 蓝图 Tab（简化布局）：** 可折叠左侧栏承载「图层」（`graphs.events` 槽）与合并后的成员区（执行用 `members.variables` 默认值 + 绑定用 `members.declarations`）；中间为全宽画布；节点参数在节点卡片上编辑（含 `variableRef` 下拉）。若多个控件事件要跑同一张图，在属性面板将各事件的 `blueprintEvent` 指向同一图层 `eventId` 即可。
+**Studio 蓝图 Tab（简化布局）：** 可折叠左侧栏承载「图层」（`graphs.events` 槽，**仅组织与编译顺序，不约定蓝图入口**）与成员区（执行用 `members.variables` 默认值 + 绑定用 `members.fields`）；中间为全宽画布；节点参数在节点卡片上编辑（含 `variableRef` 下拉）。若多个控件事件要跑同一张图，在属性面板将各事件的 `blueprintEvent` 指向同一图层 `eventId` 即可。事件入口由 **事件头节点** 与 Widget 模块声明的 `behavior.events` 槽位共同决定；详见 `project/docs/blueprint-nodes.md`。
 
 ---
 

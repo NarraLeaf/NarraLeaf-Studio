@@ -1,24 +1,23 @@
 import type { Blueprint, BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     isBlueprintEventDispatchHeadType,
+    resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
 import { listUiSlotsWiredToBlueprintLayer } from "@/lib/ui-editor/blueprint-runtime/widgetBlueprintLayerSlots";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBehaviorGraphEntry";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
 import { behaviorNodeRegistry } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
-import { resolveBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
+import { resolveBlueprintNodeEditorCatalogEntryForNode } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 
 export type BlueprintGraphDiagnosticTarget =
     | { kind: "graph"; graphKind: "event" | "function"; graphId: string }
     | { kind: "node"; graphKind: "event" | "function"; graphId: string; nodeId: string }
     | { kind: "binding"; bindingId: string }
-    | { kind: "declaration"; declarationId: string };
+    | { kind: "field"; fieldId: string };
 
 export type BlueprintGraphEditorDiagnostic = {
     severity: "error" | "warning" | "info";
@@ -174,24 +173,26 @@ export function validateBlueprintGraphIr(
         } else {
             const slots = ctx.layerUiSlots;
             if (slots && slots.length > 0) {
-                const hasInitCapable = Object.values(nodes).some(n => n.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
-                const hasClickCapable = Object.values(nodes).some(n => n.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK);
-                if (slots.includes("init") && !hasInitCapable) {
-                    out.push({
-                        severity: "error",
-                        code: "event.missing_init_head",
-                        message:
-                            "This layer is wired to “Initialize”. Add an “On widget initialize” event head.",
-                        target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
-                    });
-                }
-                if (slots.includes("click") && !hasClickCapable) {
-                    out.push({
-                        severity: "error",
-                        code: "event.missing_click_head",
-                        message: 'This layer is wired to “Click”. Add an “On button click” event head.',
-                        target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
-                    });
+                for (const slot of slots) {
+                    const requiredTypes = resolveBlueprintEventHeadTypesForUiSlot(slot, ctx.widgetElementType);
+                    if (requiredTypes.length === 0) {
+                        continue;
+                    }
+                    const has = requiredTypes.some(t => Object.values(nodes).some(n => n.type === t));
+                    if (!has) {
+                        const hint =
+                            slot === "init"
+                                ? "Add an “On widget initialize” event head."
+                                : slot === "click"
+                                  ? "Add an “On button click” event head."
+                                  : `Add an event head that matches the “${slot}” slot.`;
+                        out.push({
+                            severity: "error",
+                            code: "event.missing_slot_head",
+                            message: `This layer is wired to “${slot}”. ${hint}`,
+                            target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
+                        });
+                    }
                 }
             }
         }
@@ -276,8 +277,8 @@ export function validateBlueprintGraphIr(
         const fromNode = nodes[edge.from.nodeId];
         const toNode = nodes[edge.to.nodeId];
         if (fromNode && toNode) {
-            const ok = resolveBlueprintNodeEditorCatalogEntry(fromNode.type);
-            const itk = resolveBlueprintNodeEditorCatalogEntry(toNode.type);
+            const ok = resolveBlueprintNodeEditorCatalogEntryForNode(fromNode.type, fromNode.params);
+            const itk = resolveBlueprintNodeEditorCatalogEntryForNode(toNode.type, toNode.params);
             const hasOut = ok.pins.some(p => p.id === edge.from.port && p.kind === "output");
             const hasIn = itk.pins.some(p => p.id === edge.to.port && p.kind === "input");
             if (!hasOut || !hasIn) {
@@ -324,13 +325,13 @@ export function validateBlueprintBindingsForBlueprint(doc: BlueprintDocument, bl
     if (!bp?.bindings) {
         return [];
     }
-    const decls = bp.members?.declarations ?? {};
+    const fields = bp.members?.fields ?? {};
     const out: BlueprintGraphEditorDiagnostic[] = [];
     for (const b of Object.values(bp.bindings)) {
         if (b.status === "broken") {
             const detail = b.brokenReason?.trim()
                 ? ` (${b.brokenReason})`
-                : " — fix or recreate the declaration, or clear the binding.";
+                : " — fix or recreate the field, or clear the binding.";
             out.push({
                 severity: "error",
                 code: "binding.broken",
@@ -339,18 +340,18 @@ export function validateBlueprintBindingsForBlueprint(doc: BlueprintDocument, bl
             });
             continue;
         }
-        if (b.source.kind !== "declaration") {
+        if (b.source.kind !== "field") {
             continue;
         }
         if (b.source.blueprintId !== blueprintId) {
             continue;
         }
-        if (!decls[b.source.declarationId]) {
+        if (!fields[b.source.fieldId]) {
             out.push({
                 severity: "error",
-                code: "binding.missing_declaration",
-                message: `Binding targets missing declaration "${b.source.declarationId}".`,
-                target: { kind: "declaration", declarationId: b.source.declarationId },
+                code: "binding.missing_field",
+                message: `Binding targets missing field "${b.source.fieldId}".`,
+                target: { kind: "field", fieldId: b.source.fieldId },
             });
         }
     }

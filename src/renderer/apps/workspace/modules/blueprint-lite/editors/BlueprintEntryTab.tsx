@@ -29,6 +29,7 @@ import { TypeScriptBlueprintEditorPane } from "../ts/TypeScriptBlueprintEditorPa
 import { BlueprintFrontendBadge } from "../components/BlueprintFrontendBadge";
 import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevisionBar";
 import { listUiSlotsWiredToBlueprintLayer } from "@/lib/ui-editor/blueprint-runtime/widgetBlueprintLayerSlots";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 
 function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
     if (!view || bp.program.kind !== "graph") {
@@ -139,9 +140,9 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
     );
 
     const onAddGraphNodeAtFlowPosition = useCallback(
-        (type: string, flowPosition: { x: number; y: number }) => {
+        (type: string, flowPosition: { x: number; y: number }): string | undefined => {
             if (!editor.graphView) {
-                return;
+                return undefined;
             }
             const id = uuid.generate();
             const node = createGraphNodeForPalette(type, id);
@@ -156,6 +157,7 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
             } else {
                 localBp.updateFunctionGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
             }
+            return id;
         },
         [editor.graphView, localBp, payload.blueprintId, uuid],
     );
@@ -202,8 +204,8 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
             if (!t) {
                 return;
             }
-            if (t.kind === "declaration") {
-                editor.applyDiagnosticTarget({ kind: "declaration", declarationId: t.declarationId });
+            if (t.kind === "field") {
+                editor.applyDiagnosticTarget({ kind: "field", fieldId: t.fieldId });
                 return;
             }
             if (t.kind === "binding") {
@@ -230,6 +232,11 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
         return listUiSlotsWiredToBlueprintLayer(widgetElement, payload.blueprintId, editor.graphView.graphId);
     }, [editor.graphView, payload.blueprintId, payload.ownerKind, widgetElement]);
 
+    const widgetBlueprintEvents = useMemo(() => {
+        const t = widgetElement?.type;
+        return t ? widgetModuleRegistry.get(t)?.blueprintEvents : undefined;
+    }, [widgetElement?.type]);
+
     const paletteContext = useMemo(() => {
         const gk = editor.graphView?.kind ?? "event";
         const activeIr = editor.graphView ? ir : null;
@@ -237,11 +244,12 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
             graphKind: gk,
             owner: bp.owner,
             widgetElementType: widgetElement?.type,
+            widgetBlueprintEvents,
             widgetEventLayerSlots,
             hasEventHead: false,
             hasFunctionEntry: gk === "function" && activeIr ? graphIrHasFunctionEntry(activeIr) : false,
         });
-    }, [bp.owner, editor.graphView, ir, widgetElement?.type, widgetEventLayerSlots]);
+    }, [bp.owner, editor.graphView, ir, widgetBlueprintEvents, widgetElement?.type, widgetEventLayerSlots]);
 
     const contextTitle = useMemo(
         () =>

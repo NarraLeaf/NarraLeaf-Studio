@@ -7,7 +7,7 @@ export type BlueprintEditorGraphView =
 
 export type BlueprintEditorMemberFocus =
     | { kind: "graph"; view: BlueprintEditorGraphView }
-    | { kind: "declaration"; declarationId: string }
+    | { kind: "field"; fieldId: string }
     | { kind: "variable"; variableId: string }
     | { kind: "binding"; bindingId: string }
     | { kind: "none" };
@@ -21,22 +21,22 @@ export type BlueprintEditorState = {
     setSelectedNodeIds: (ids: string[]) => void;
     selectEventGraph: (eventId: string) => void;
     selectFunctionGraph: (functionId: string) => void;
-    selectDeclaration: (declarationId: string) => void;
+    selectField: (fieldId: string) => void;
     selectVariable: (variableId: string) => void;
     selectBinding: (bindingId: string) => void;
     applyDiagnosticTarget: (target: {
-        kind: "graph" | "node" | "binding" | "declaration";
+        kind: "graph" | "node" | "binding" | "field";
         graphKind?: "event" | "function";
         graphId?: string;
         nodeId?: string;
-        declarationId?: string;
+        fieldId?: string;
         bindingId?: string;
     }) => void;
 };
 
 function payloadHasExplicitFocus(payload: BlueprintEntryTabPayload): boolean {
     return Boolean(
-        payload.focusDeclarationId ||
+        payload.focusFieldId ||
             payload.focusEventId ||
             payload.focusFunctionId ||
             payload.focusNodeId != null,
@@ -51,16 +51,14 @@ export function useBlueprintEditorState(
     const [memberFocus, setMemberFocus] = useState<BlueprintEditorMemberFocus>({ kind: "none" });
     const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
 
-    const explicitFocus = useMemo(() => payloadHasExplicitFocus(payload), [
-        payload.focusDeclarationId,
-        payload.focusEventId,
-        payload.focusFunctionId,
-        payload.focusNodeId,
-    ]);
+    const explicitFocus = useMemo(
+        () => payloadHasExplicitFocus(payload),
+        [payload.focusFieldId, payload.focusEventId, payload.focusFunctionId, payload.focusNodeId],
+    );
 
     const applyPayloadFocus = useCallback(() => {
-        if (payload.focusDeclarationId) {
-            setMemberFocus({ kind: "declaration", declarationId: payload.focusDeclarationId });
+        if (payload.focusFieldId) {
+            setMemberFocus({ kind: "field", fieldId: payload.focusFieldId });
             setSelectedNodeIds([]);
             return;
         }
@@ -80,20 +78,15 @@ export function useBlueprintEditorState(
         }
         setMemberFocus({ kind: "none" });
         setSelectedNodeIds(payload.focusNodeId ? [payload.focusNodeId] : []);
-    }, [
-        payload.focusDeclarationId,
-        payload.focusEventId,
-        payload.focusFunctionId,
-        payload.focusNodeId,
-    ]);
+    }, [payload.focusFieldId, payload.focusEventId, payload.focusFunctionId, payload.focusNodeId]);
 
     useEffect(() => {
         applyPayloadFocus();
     }, [applyPayloadFocus]);
 
-    // When navigating to a declaration only, show a graph canvas context without stealing inspector focus.
+    // When navigating to a field only, show a graph canvas context without stealing inspector focus.
     useEffect(() => {
-        if (!payload.focusDeclarationId) {
+        if (!payload.focusFieldId) {
             return;
         }
         if (graphView !== null) {
@@ -104,7 +97,7 @@ export function useBlueprintEditorState(
         } else if (lists.functionIds.length > 0) {
             setGraphView({ kind: "function", graphId: lists.functionIds[0]! });
         }
-    }, [payload.focusDeclarationId, graphView, lists.eventIds, lists.functionIds]);
+    }, [payload.focusFieldId, graphView, lists.eventIds, lists.functionIds]);
 
     useEffect(() => {
         if (explicitFocus) {
@@ -138,8 +131,8 @@ export function useBlueprintEditorState(
         setSelectedNodeIds([]);
     }, []);
 
-    const selectDeclaration = useCallback((declarationId: string) => {
-        setMemberFocus({ kind: "declaration", declarationId });
+    const selectField = useCallback((fieldId: string) => {
+        setMemberFocus({ kind: "field", fieldId });
         setSelectedNodeIds([]);
     }, []);
 
@@ -155,15 +148,15 @@ export function useBlueprintEditorState(
 
     const applyDiagnosticTarget = useCallback(
         (target: {
-            kind: "graph" | "node" | "binding" | "declaration";
+            kind: "graph" | "node" | "binding" | "field";
             graphKind?: "event" | "function";
             graphId?: string;
             nodeId?: string;
-            declarationId?: string;
+            fieldId?: string;
             bindingId?: string;
         }) => {
-            if (target.kind === "declaration" && target.declarationId) {
-                selectDeclaration(target.declarationId);
+            if (target.kind === "field" && target.fieldId) {
+                selectField(target.fieldId);
                 return;
             }
             if (target.kind === "binding" && target.bindingId) {
@@ -183,7 +176,7 @@ export function useBlueprintEditorState(
                 return;
             }
         },
-        [selectDeclaration, selectEventGraph, selectFunctionGraph],
+        [selectField, selectEventGraph, selectFunctionGraph],
     );
 
     return {
@@ -195,7 +188,7 @@ export function useBlueprintEditorState(
         setSelectedNodeIds,
         selectEventGraph,
         selectFunctionGraph,
-        selectDeclaration,
+        selectField,
         selectVariable,
         selectBinding,
         applyDiagnosticTarget,

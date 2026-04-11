@@ -169,18 +169,20 @@ export function BlueprintMemberTree({
 
     const events = blueprint.program.graphs.events ?? {};
     const vars = blueprint.members?.variables ?? {};
-    const decls = blueprint.members?.declarations ?? {};
+    const fields = blueprint.members?.fields ?? {};
 
     const sortedVars = useMemo(
         () => Object.values(vars).sort((a, b) => a.name.localeCompare(b.name)),
         [vars, blueprintDocumentRevision],
     );
-    const sortedDecls = useMemo(
-        () => Object.values(decls).sort((a, b) => a.name.localeCompare(b.name)),
-        [decls, blueprintDocumentRevision],
+    const sortedFields = useMemo(
+        () => Object.values(fields).sort((a, b) => a.name.localeCompare(b.name)),
+        [fields, blueprintDocumentRevision],
     );
 
     const layerActive = (id: string) => graphView?.kind === "event" && graphView.graphId === id;
+
+    const canDefineBindingFields = blueprint.owner.kind !== "widgetMain";
 
     const layerMenuItems: ContextMenuDef = useMemo(() => {
         if (!menuLayerId) {
@@ -252,8 +254,9 @@ export function BlueprintMemberTree({
                     </button>
                 </div>
                 <p className="mb-1 text-[10px] leading-snug text-gray-600">
-                    Each layer is a graph. Add an event head on the canvas (On widget initialize / On button click —
-                    right-click) to start a chain. Wire layers from Properties → Interaction → Blueprint.
+                    Layers organize graphs for compilation order only — they are not blueprint entry points. Add an event
+                    head on the canvas (right-click) to start a chain. Wire layers from Properties → Interaction →
+                    Blueprint.
                 </p>
                 <ul className="space-y-0.5">
                     {Object.keys(events).length === 0 ? (
@@ -301,26 +304,37 @@ export function BlueprintMemberTree({
                         >
                             + Var
                         </button>
-                        <button
-                            type="button"
-                            className="text-cyan-400/90 hover:text-cyan-300"
-                            onClick={() =>
-                                localBp.createDeclaration(blueprintId, {
-                                    name: "Declaration",
-                                    kind: "constant",
-                                })
-                            }
-                        >
-                            + Decl
-                        </button>
+                        {canDefineBindingFields ? (
+                            <button
+                                type="button"
+                                className="text-cyan-400/90 hover:text-cyan-300"
+                                onClick={() =>
+                                    localBp.createField(blueprintId, {
+                                        name: "Field",
+                                        kind: "constant",
+                                    })
+                                }
+                            >
+                                + Field
+                            </button>
+                        ) : null}
                     </div>
                 </div>
                 <p className="mb-1.5 shrink-0 text-[10px] text-gray-600">
                     <span className="text-gray-500">Var</span>: execution locals (defaults below).{" "}
-                    <span className="text-gray-500">Decl</span>: binding sources (surface state key).
+                    {canDefineBindingFields ? (
+                        <>
+                            <span className="text-gray-500">Field</span>: binding sources (surface state key).
+                        </>
+                    ) : (
+                        <>
+                            <span className="text-gray-500">Field</span>: define on global or surface main blueprints;
+                            bind widget props to those fields from the properties panel.
+                        </>
+                    )}
                 </p>
                 <div className="min-h-0 flex-1 space-y-2 overflow-y-auto border-t border-white/5 pt-2">
-                    {sortedVars.length === 0 && sortedDecls.length === 0 ? (
+                    {sortedVars.length === 0 && sortedFields.length === 0 ? (
                         <p className="text-gray-500">No members yet.</p>
                     ) : null}
                     {sortedVars.map(v => (
@@ -332,13 +346,13 @@ export function BlueprintMemberTree({
                             uiService={uiService}
                         />
                     ))}
-                    {sortedDecls.map(d => (
+                    {sortedFields.map(d => (
                         <div
                             key={d.id}
                             className="rounded border border-white/10 bg-[#0d0f12] px-2 py-1.5 space-y-1.5"
                         >
                             <div className="flex items-center justify-between gap-1">
-                                <span className="text-[9px] uppercase text-cyan-200/80">Decl</span>
+                                <span className="text-[9px] uppercase text-cyan-200/80">Field</span>
                                 <button
                                     type="button"
                                     className="text-[10px] text-red-400/90 hover:text-red-300"
@@ -348,11 +362,11 @@ export function BlueprintMemberTree({
                                         }
                                         void (async () => {
                                             const ok = await uiService.showConfirm(
-                                                `Delete declaration "${d.name}"?`,
+                                                `Delete field "${d.name}"?`,
                                                 "This cannot be undone.",
                                             );
                                             if (ok) {
-                                                localBp.deleteDeclaration(blueprintId, d.id);
+                                                localBp.deleteField(blueprintId, d.id);
                                             }
                                         })();
                                     }}
@@ -363,7 +377,7 @@ export function BlueprintMemberTree({
                             <input
                                 className={FIELD_INPUT}
                                 value={d.name}
-                                onChange={e => localBp.renameDeclaration(blueprintId, d.id, e.target.value)}
+                                onChange={e => localBp.renameField(blueprintId, d.id, e.target.value)}
                                 onKeyDown={e => {
                                     e.stopPropagation();
                                     if (e.key === "Enter") {
@@ -381,10 +395,10 @@ export function BlueprintMemberTree({
                                     onChange={e => {
                                         const key = e.target.value.trim();
                                         if (!key) {
-                                            localBp.setDeclarationValueSource(blueprintId, d.id, undefined);
+                                            localBp.setFieldValueSource(blueprintId, d.id, undefined);
                                             return;
                                         }
-                                        localBp.setDeclarationValueSource(blueprintId, d.id, {
+                                        localBp.setFieldValueSource(blueprintId, d.id, {
                                             kind: "surfaceState",
                                             key,
                                         });

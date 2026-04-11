@@ -55,4 +55,9 @@ export class BlueprintNodeCatalogService
         this.ensureBuiltinsRegistered();
         return blueprintNodeRegistry.resolveCatalogEntry(type);
     }
+
+    public resolveCatalogEntryForNode(type: string, params?: Record<string, unknown>): BlueprintNodeEditorCatalogEntry {
+        this.ensureBuiltinsRegistered();
+        return blueprintNodeRegistry.resolveCatalogEntryForNode(type, params);
+    }
 }

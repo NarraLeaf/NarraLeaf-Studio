@@ -9,8 +9,14 @@ import {
     BLUEPRINT_NODE_TYPE_MATH_ADD,
     BLUEPRINT_NODE_TYPE_MATH_DECREMENT,
     BLUEPRINT_NODE_TYPE_MATH_DIVIDE,
+    BLUEPRINT_NODE_TYPE_MATH_EQUAL,
+    BLUEPRINT_NODE_TYPE_MATH_GREATER,
+    BLUEPRINT_NODE_TYPE_MATH_GREATER_OR_EQUAL,
     BLUEPRINT_NODE_TYPE_MATH_INCREMENT,
+    BLUEPRINT_NODE_TYPE_MATH_LESS,
+    BLUEPRINT_NODE_TYPE_MATH_LESS_OR_EQUAL,
     BLUEPRINT_NODE_TYPE_MATH_MULTIPLY,
+    BLUEPRINT_NODE_TYPE_MATH_NOT_EQUAL,
     BLUEPRINT_NODE_TYPE_MATH_SUBTRACT,
     BLUEPRINT_NODE_TYPE_STRING_CONCAT,
     BLUEPRINT_NODE_TYPE_STRING_LENGTH,
@@ -18,6 +24,8 @@ import {
     BLUEPRINT_NODE_TYPE_STRING_TO_UPPER,
     BLUEPRINT_NODE_TYPE_STRING_TRIM,
 } from "@shared/types/blueprint/graph";
+import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
+import { resolveEffectiveBlueprintNodePins } from "../effectivePins";
 
 const MAX_RESOLVE_DEPTH = 32;
 
@@ -31,6 +39,15 @@ const MATH_RESULT_OPS: Record<string, "add" | "subtract" | "multiply" | "divide"
 const MATH_UNARY_OPS: Record<string, "increment" | "decrement"> = {
     [BLUEPRINT_NODE_TYPE_MATH_INCREMENT]: "increment",
     [BLUEPRINT_NODE_TYPE_MATH_DECREMENT]: "decrement",
+};
+
+const MATH_COMPARE_OPS: Record<string, "eq" | "ne" | "lt" | "lte" | "gt" | "gte"> = {
+    [BLUEPRINT_NODE_TYPE_MATH_EQUAL]: "eq",
+    [BLUEPRINT_NODE_TYPE_MATH_NOT_EQUAL]: "ne",
+    [BLUEPRINT_NODE_TYPE_MATH_LESS]: "lt",
+    [BLUEPRINT_NODE_TYPE_MATH_LESS_OR_EQUAL]: "lte",
+    [BLUEPRINT_NODE_TYPE_MATH_GREATER]: "gt",
+    [BLUEPRINT_NODE_TYPE_MATH_GREATER_OR_EQUAL]: "gte",
 };
 
 type StringPureOp = "concat" | "length" | "trim" | "toUpper" | "toLower";
@@ -59,6 +76,31 @@ function toFiniteNumber(v: unknown): number {
     return NaN;
 }
 
+function resolveMathAddVariadic(
+    graph: DataPinGraph,
+    nodeId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+): unknown {
+    const def = blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_MATH_ADD);
+    if (!def) {
+        return NaN;
+    }
+    const pins = resolveEffectiveBlueprintNodePins(def, params);
+    const dataIn = pins.filter(p => p.kind === "input" && p.semantic === "data");
+    let acc: number | null = null;
+    for (const pin of dataIn) {
+        const v = resolveDataPinValue(graph, nodeId, pin.id, params, blueprintLocals, depth + 1);
+        const n = toFiniteNumber(v);
+        if (Number.isNaN(n)) {
+            return NaN;
+        }
+        acc = acc === null ? n : acc + n;
+    }
+    return acc === null ? NaN : acc;
+}
+
 function resolveMathNodeResult(
     graph: DataPinGraph,
     nodeId: string,
@@ -67,6 +109,9 @@ function resolveMathNodeResult(
     blueprintLocals: Record<string, unknown> | undefined,
     depth: number,
 ): unknown {
+    if (op === "add" && graph.nodes?.[nodeId]?.type === BLUEPRINT_NODE_TYPE_MATH_ADD) {
+        return resolveMathAddVariadic(graph, nodeId, params, blueprintLocals, depth);
+    }
     const a = resolveDataPinValue(graph, nodeId, "a", params, blueprintLocals, depth + 1);
     const b = resolveDataPinValue(graph, nodeId, "b", params, blueprintLocals, depth + 1);
     const na = toFiniteNumber(a);
@@ -104,6 +149,47 @@ function resolveMathUnaryResult(
     return op === "increment" ? n + 1 : n - 1;
 }
 
+function resolveMathCompareResult(
+    graph: DataPinGraph,
+    nodeId: string,
+    op: "eq" | "ne" | "lt" | "lte" | "gt" | "gte",
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+): unknown {
+    const a = resolveDataPinValue(graph, nodeId, "a", params, blueprintLocals, depth + 1);
+    const b = resolveDataPinValue(graph, nodeId, "b", params, blueprintLocals, depth + 1);
+    const na = toFiniteNumber(a);
+    const nb = toFiniteNumber(b);
+    const aNaN = Number.isNaN(na);
+    const bNaN = Number.isNaN(nb);
+    if (aNaN || bNaN) {
+        if (op === "eq") {
+            return false;
+        }
+        if (op === "ne") {
+            return true;
+        }
+        return false;
+    }
+    switch (op) {
+        case "eq":
+            return na === nb;
+        case "ne":
+            return na !== nb;
+        case "lt":
+            return na < nb;
+        case "lte":
+            return na <= nb;
+        case "gt":
+            return na > nb;
+        case "gte":
+            return na >= nb;
+        default:
+            return false;
+    }
+}
+
 function toBlueprintString(v: unknown): string {
     if (v === undefined || v === null) {
         return "";
@@ -121,13 +207,19 @@ function resolveStringPureResult(
 ): unknown {
     switch (op) {
         case "concat": {
-            const a = toBlueprintString(
-                resolveDataPinValue(graph, nodeId, "a", params, blueprintLocals, depth + 1),
-            );
-            const b = toBlueprintString(
-                resolveDataPinValue(graph, nodeId, "b", params, blueprintLocals, depth + 1),
-            );
-            return a + b;
+            const def = blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_STRING_CONCAT);
+            if (!def) {
+                return "";
+            }
+            const pins = resolveEffectiveBlueprintNodePins(def, params);
+            const dataIn = pins.filter(p => p.kind === "input" && p.semantic === "data");
+            let s = "";
+            for (const pin of dataIn) {
+                s += toBlueprintString(
+                    resolveDataPinValue(graph, nodeId, pin.id, params, blueprintLocals, depth + 1),
+                );
+            }
+            return s;
         }
         case "length":
             return toBlueprintString(
@@ -193,6 +285,17 @@ export function resolveDataPinValue(
                 depth,
             );
         }
+        const mathCompare = MATH_COMPARE_OPS[selfNode.type];
+        if (mathCompare) {
+            return resolveMathCompareResult(
+                graph,
+                consumerNodeId,
+                mathCompare,
+                selfNode.params ?? {},
+                blueprintLocals,
+                depth,
+            );
+        }
         const stringOp = STRING_RESULT_OPS[selfNode.type];
         if (stringOp) {
             return resolveStringPureResult(
@@ -231,15 +334,6 @@ export function resolveDataPinValue(
         return blueprintLocals[vid];
     }
     return resolveDataPinValue(graph, edge.from.nodeId, edge.from.port, src.params ?? {}, blueprintLocals, depth + 1);
-}
-
-export function resolveConsolePrintValue(
-    graph: DataPinGraph,
-    node: { id: string },
-    params: Record<string, unknown>,
-    blueprintLocals?: Record<string, unknown>,
-): unknown {
-    return resolveDataPinValue(graph, node.id, "value", params, blueprintLocals);
 }
 
 export function resolveIfCondition(

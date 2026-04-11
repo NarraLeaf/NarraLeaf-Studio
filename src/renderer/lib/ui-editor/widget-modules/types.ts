@@ -124,6 +124,11 @@ export type WidgetBlueprintEventDef = {
     id: string;
     displayName: string;
     description?: string;
+    /**
+     * Optional override: graph node type ids that may start the event graph for this slot.
+     * When omitted, resolved from `resolveBlueprintEventHeadTypesForUiSlot(id, elementType)`.
+     */
+    headNodeTypes?: readonly string[];
 };
 
 /**

@@ -5,7 +5,7 @@ import { GLOBAL_MAIN_OWNER_KEY, ownerRefToIndexKey } from "./ownerKeys";
 export function emptyMemberIndex(): BlueprintMemberIndex {
     return {
         variables: {},
-        declarations: {},
+        fields: {},
         functions: {},
     };
 }

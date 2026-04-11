@@ -91,25 +91,25 @@ export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
 
     for (const bp of Object.values(doc.blueprints)) {
         for (const bind of Object.values(bp.bindings ?? {})) {
-            if (bind.source.kind !== "declaration") {
+            if (bind.source.kind !== "field") {
                 continue;
             }
             const srcBp = doc.blueprints[bind.source.blueprintId];
-            const decl = srcBp?.members?.declarations?.[bind.source.declarationId];
+            const field = srcBp?.members?.fields?.[bind.source.fieldId];
             if (bind.status === "broken") {
                 continue;
             }
-            if (!decl) {
+            if (!field) {
                 throw new BlueprintDocumentValidationError(
-                    `Binding "${bind.id}" references missing declaration "${bind.source.declarationId}" on blueprint "${bind.source.blueprintId}"`,
+                    `Binding "${bind.id}" references missing field "${bind.source.fieldId}" on blueprint "${bind.source.blueprintId}"`,
                 );
             }
         }
     }
 
     for (const bp of Object.values(doc.blueprints)) {
-        for (const decl of Object.values(bp.members?.declarations ?? {})) {
-            const vs = decl.valueSource;
+        for (const field of Object.values(bp.members?.fields ?? {})) {
+            const vs = field.valueSource;
             if (!vs) {
                 continue;
             }
@@ -117,7 +117,7 @@ export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
                 const stateKey = String(vs.key ?? "").trim();
                 if (!stateKey) {
                     throw new BlueprintDocumentValidationError(
-                        `Declaration "${decl.id}" on blueprint "${bp.id}" has surfaceState valueSource with empty key`,
+                        `Field "${field.id}" on blueprint "${bp.id}" has surfaceState valueSource with empty key`,
                     );
                 }
             }
