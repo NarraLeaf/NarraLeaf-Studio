@@ -24,7 +24,7 @@ export function useOpenBlueprintTarget() {
                 elementId: target.elementId,
                 focusEventId: target.focusEventId,
                 focusFunctionId: target.focusFunctionId,
-                focusDeclarationId: target.focusDeclarationId,
+                focusFieldId: target.focusFieldId,
                 focusNodeId: target.focusNodeId,
             };
             openEditorTab({

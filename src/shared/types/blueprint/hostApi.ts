@@ -8,7 +8,7 @@ export type BlueprintHostApiContractVersion = typeof BLUEPRINT_HOST_API_CONTRACT
  * Visual and TypeScript blueprints share this capability tree; implementations live in runtime (M3+).
  *
  * - purity: whether the operation is side-effect free from the blueprint semantics perspective
- * - callableFromBinding: if false, must not be invoked from declaration/binding evaluation
+ * - callableFromBinding: if false, must not be invoked from field/binding evaluation
  * - async: if true, callers should treat the operation as Promise-capable
  */
 

@@ -4,7 +4,7 @@
  */
 
 /**
- * Build the default `surfaceState` key used when creating a declaration from a widget property binding.
+ * Build the default `surfaceState` key used when creating a field from a widget property binding.
  * Format: `w:<elementId>:<propPath>` (propPath may contain dots, e.g. `layout.visible`).
  */
 export function buildDefaultSurfaceStateKeyForWidgetProp(params: { elementId: string; propPath: string }): string {

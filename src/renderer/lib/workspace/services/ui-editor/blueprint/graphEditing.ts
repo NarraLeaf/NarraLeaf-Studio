@@ -67,6 +67,8 @@ export function isValidBlueprintIrExecConnection(
         sourcePort: p.sourceHandle,
         targetType: tgtNode.type,
         targetPort: p.targetHandle,
+        sourceParams: srcNode.params,
+        targetParams: tgtNode.params,
     });
 }
 

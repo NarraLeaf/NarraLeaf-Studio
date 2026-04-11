@@ -1,5 +1,5 @@
 /**
- * Control flow: sequence, branch, delay.
+ * Control flow: branch, delay.
  * Comments in English per project convention.
  */
 
@@ -7,19 +7,6 @@ import type { BlueprintNodeDef } from "../types";
 import { resolveIfCondition } from "./graphParamResolvers";
 
 export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
-    {
-        type: "sequence",
-        displayName: "Sequence",
-        category: "Flow",
-        keywords: ["sequence", "flow"],
-        graphKinds: ["event", "macro"],
-        isPure: false,
-        pins: [
-            { id: "in", kind: "input", semantic: "exec", label: "In" },
-            { id: "next", kind: "output", semantic: "exec", label: "Next" },
-        ],
-        execute: () => ({ nextPort: "next" }),
-    },
     {
         type: "if",
         displayName: "If",

@@ -10,9 +10,11 @@ export function isValidBlueprintPinConnection(params: {
     sourcePort: string;
     targetType: string;
     targetPort: string;
+    sourceParams?: Record<string, unknown>;
+    targetParams?: Record<string, unknown>;
 }): boolean {
-    const src = blueprintNodeRegistry.resolveCatalogEntry(params.sourceType);
-    const tgt = blueprintNodeRegistry.resolveCatalogEntry(params.targetType);
+    const src = blueprintNodeRegistry.resolveCatalogEntryForNode(params.sourceType, params.sourceParams);
+    const tgt = blueprintNodeRegistry.resolveCatalogEntryForNode(params.targetType, params.targetParams);
     const outPin = src.pins.find(p => p.id === params.sourcePort && p.kind === "output");
     const inPin = tgt.pins.find(p => p.id === params.targetPort && p.kind === "input");
     if (!outPin || !inPin) {
@@ -37,6 +39,8 @@ export function isValidBlueprintExecConnection(params: {
     sourcePort: string;
     targetType: string;
     targetPort: string;
+    sourceParams?: Record<string, unknown>;
+    targetParams?: Record<string, unknown>;
 }): boolean {
     return isValidBlueprintPinConnection(params);
 }

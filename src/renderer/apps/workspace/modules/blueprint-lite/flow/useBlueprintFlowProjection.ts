@@ -28,6 +28,8 @@ export function blueprintIrToFlowNodes(
     nodeCatalog: IBlueprintNodeCatalogService,
     onPatchNodeParam?: (nodeId: string, key: string, value: unknown) => void,
     memberVariables?: Array<{ id: string; name: string }>,
+    onAddDynamicInputPin?: (nodeId: string) => void,
+    onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void,
 ): Node<BlueprintFlowNodeData>[] {
     const nodes = ir.nodes ?? {};
     const wiredIn = wiredInputPortIdsByNodeId(ir);
@@ -36,10 +38,12 @@ export function blueprintIrToFlowNodes(
         type: "blueprint",
         position: readNodeEditorLayout(n),
         data: {
-            catalog: nodeCatalog.resolveCatalogEntry(n.type),
+            catalog: nodeCatalog.resolveCatalogEntryForNode(n.type, n.params ?? {}),
             nodeId: n.id,
             params: n.params ?? {},
             onPatchNodeParam,
+            onAddDynamicInputPin,
+            onRemoveDynamicInputPin,
             memberVariables,
             wiredInputPortIds: wiredIn.get(n.id) ?? new Set(),
         },
@@ -84,7 +88,7 @@ function isDataEdge(
     if (!fromNode) {
         return false;
     }
-    const cat = nodeCatalog.resolveCatalogEntry(fromNode.type);
+    const cat = nodeCatalog.resolveCatalogEntryForNode(fromNode.type, fromNode.params ?? {});
     const pin = cat.pins.find(p => p.id === e.from.port && p.kind === "output");
     return pin?.semantic === "data";
 }
@@ -126,7 +130,14 @@ export function useBlueprintFlowProjection(
     return useMemo(
         () => ({
             nodes: applyBlueprintFlowNodeSelection(
-                blueprintIrToFlowNodes(ir, nodeCatalog, onPatchNodeParam, memberVariables),
+                blueprintIrToFlowNodes(
+                    ir,
+                    nodeCatalog,
+                    onPatchNodeParam,
+                    memberVariables,
+                    undefined,
+                    undefined,
+                ),
                 selectedNodeIds,
             ),
             edges: blueprintIrToFlowEdges(ir, nodeCatalog),

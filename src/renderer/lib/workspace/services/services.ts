@@ -20,9 +20,9 @@ import type {
 } from "@shared/types/ui-editor/document";
 import type {
     BindingDefinition,
-    BlueprintDeclaration,
-    BlueprintDeclarationValueSource,
     BlueprintDocument,
+    BlueprintField,
+    BlueprintFieldValueSource,
     BlueprintFrontendKind,
     BlueprintGraphIr,
 } from "@shared/types/blueprint/document";
@@ -262,23 +262,23 @@ interface ILocalBlueprintService extends IService {
     getWidgetMainBlueprintId(surfaceId: string, elementId: string): string | undefined;
     getSurfaceMainBlueprintId(surfaceId: string): string | undefined;
     getReadonlySurfaceMainSummary(surfaceId: string): ReadonlyBlueprintSurfaceSummary;
-    createDeclaration(
+    createField(
         blueprintId: string,
-        input: { name: string; kind?: BlueprintDeclaration["kind"]; valueSource?: BlueprintDeclarationValueSource },
-    ): BlueprintDeclaration;
-    setDeclarationValueSource(
+        input: { name: string; kind?: BlueprintField["kind"]; valueSource?: BlueprintFieldValueSource },
+    ): BlueprintField;
+    setFieldValueSource(
         blueprintId: string,
-        declarationId: string,
-        valueSource: BlueprintDeclarationValueSource | undefined,
+        fieldId: string,
+        valueSource: BlueprintFieldValueSource | undefined,
     ): void;
-    renameDeclaration(blueprintId: string, declarationId: string, name: string): void;
-    deleteDeclaration(blueprintId: string, declarationId: string): void;
+    renameField(blueprintId: string, fieldId: string, name: string): void;
+    deleteField(blueprintId: string, fieldId: string): void;
     setWidgetPropBinding(params: {
         blueprintId: string;
         surfaceId: string;
         elementId: string;
         propPath: string;
-        declarationId: string;
+        fieldId: string;
         fallback?: BindingDefinition["fallback"];
     }): string;
     clearWidgetPropBinding(blueprintId: string, surfaceId: string, elementId: string, propPath: string): void;
@@ -288,7 +288,7 @@ interface ILocalBlueprintService extends IService {
         elementId: string,
         propPath: string,
     ): BindingDefinition | undefined;
-    listDeclarations(blueprintId: string): BlueprintDeclaration[];
+    listFields(blueprintId: string): BlueprintField[];
     createBlueprintVariable(
         blueprintId: string,
         input?: { name?: string; defaultValue?: import("@shared/types/blueprint/document").LiteralValue },
@@ -379,6 +379,8 @@ interface IBlueprintNodeCatalogService extends IService {
     getBlueprintNodeEditorCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry | undefined;
     listPaletteEntries(ctx: BlueprintPaletteContext): BlueprintNodeEditorCatalogEntry[];
     resolveCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry;
+    /** Pins merged with instance params (dynamic input pins). */
+    resolveCatalogEntryForNode(type: string, params?: Record<string, unknown>): BlueprintNodeEditorCatalogEntry;
 }
 
 interface IUIEditorStateService extends IService {

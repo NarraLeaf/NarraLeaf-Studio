@@ -1,5 +1,6 @@
 /**
  * Pure math nodes: operands from wired data pins A/B or on-card float literals (params a/b) when unwired.
+ * Unary add-one / subtract-one use pin `value` (one float in, float `result` out). Comparison nodes output boolean on `result`.
  * Values flow through resolveDataPinValue.
  */
 
@@ -7,11 +8,17 @@ import {
     BLUEPRINT_NODE_TYPE_MATH_ADD,
     BLUEPRINT_NODE_TYPE_MATH_DECREMENT,
     BLUEPRINT_NODE_TYPE_MATH_DIVIDE,
+    BLUEPRINT_NODE_TYPE_MATH_EQUAL,
+    BLUEPRINT_NODE_TYPE_MATH_GREATER,
+    BLUEPRINT_NODE_TYPE_MATH_GREATER_OR_EQUAL,
     BLUEPRINT_NODE_TYPE_MATH_INCREMENT,
+    BLUEPRINT_NODE_TYPE_MATH_LESS,
+    BLUEPRINT_NODE_TYPE_MATH_LESS_OR_EQUAL,
     BLUEPRINT_NODE_TYPE_MATH_MULTIPLY,
+    BLUEPRINT_NODE_TYPE_MATH_NOT_EQUAL,
     BLUEPRINT_NODE_TYPE_MATH_SUBTRACT,
 } from "@shared/types/blueprint/graph";
-import type { BlueprintNodeDef } from "../types";
+import { BLUEPRINT_NODE_PARAMS_DYNAMIC_INPUT_PIN_IDS_KEY, type BlueprintNodeDef } from "../types";
 
 const MATH_PIN_A = {
     id: "a",
@@ -29,82 +36,134 @@ const MATH_PIN_B = {
     label: "B",
     allowInlineLiteral: true,
 };
-const MATH_PIN_RESULT = {
+const MATH_PIN_RESULT_FLOAT = {
     id: "result",
     kind: "output" as const,
     semantic: "data" as const,
     valueType: "float" as const,
     label: "Result",
 };
-
-const MATH_UNARY_VALUE_IN = {
+const MATH_PIN_RESULT_BOOL = {
+    id: "result",
+    kind: "output" as const,
+    semantic: "data" as const,
+    valueType: "boolean" as const,
+    label: "Result",
+};
+const MATH_UNARY_NUMBER_IN = {
     id: "value",
     kind: "input" as const,
     semantic: "data" as const,
     valueType: "float" as const,
-    label: "Value",
+    label: "Number",
     allowInlineLiteral: true,
 };
 
-export const mathBlueprintNodes: BlueprintNodeDef[] = [
+const GRAPH_KINDS = ["event", "function", "macro"] as const;
+
+const ARITH_NODES: Array<Pick<BlueprintNodeDef, "type" | "displayName" | "keywords">> = [
     {
         type: BLUEPRINT_NODE_TYPE_MATH_ADD,
-        displayName: "Add",
-        category: "Math",
+        displayName: "+",
         keywords: ["add", "plus", "sum", "+"],
-        graphKinds: ["event", "function", "macro"],
-        isPure: true,
-        pins: [MATH_PIN_A, MATH_PIN_B, MATH_PIN_RESULT],
-        execute: () => ({}),
     },
     {
         type: BLUEPRINT_NODE_TYPE_MATH_SUBTRACT,
-        displayName: "Subtract",
-        category: "Math",
+        displayName: "−",
         keywords: ["subtract", "minus", "difference", "-"],
-        graphKinds: ["event", "function", "macro"],
-        isPure: true,
-        pins: [MATH_PIN_A, MATH_PIN_B, MATH_PIN_RESULT],
-        execute: () => ({}),
     },
     {
         type: BLUEPRINT_NODE_TYPE_MATH_MULTIPLY,
-        displayName: "Multiply",
-        category: "Math",
+        displayName: "×",
         keywords: ["multiply", "product", "times", "*"],
-        graphKinds: ["event", "function", "macro"],
-        isPure: true,
-        pins: [MATH_PIN_A, MATH_PIN_B, MATH_PIN_RESULT],
-        execute: () => ({}),
     },
     {
         type: BLUEPRINT_NODE_TYPE_MATH_DIVIDE,
-        displayName: "Divide",
-        category: "Math",
+        displayName: "÷",
         keywords: ["divide", "division", "/"],
-        graphKinds: ["event", "function", "macro"],
-        isPure: true,
-        pins: [MATH_PIN_A, MATH_PIN_B, MATH_PIN_RESULT],
-        execute: () => ({}),
     },
+];
+
+const UNARY_NODES: Array<Pick<BlueprintNodeDef, "type" | "displayName" | "keywords">> = [
     {
         type: BLUEPRINT_NODE_TYPE_MATH_INCREMENT,
-        displayName: "Increment (++)",
-        category: "Math",
-        keywords: ["increment", "++", "plus one", "add one"],
-        graphKinds: ["event", "function", "macro"],
-        isPure: true,
-        pins: [MATH_UNARY_VALUE_IN, MATH_PIN_RESULT],
-        execute: () => ({}),
+        displayName: "+1",
+        keywords: ["+1", "add one", "plus one", "increment"],
     },
     {
         type: BLUEPRINT_NODE_TYPE_MATH_DECREMENT,
-        displayName: "Decrement (--)",
-        category: "Math",
-        keywords: ["decrement", "--", "minus one", "subtract one"],
-        graphKinds: ["event", "function", "macro"],
-        isPure: true,
-        pins: [MATH_UNARY_VALUE_IN, MATH_PIN_RESULT],
-        execute: () => ({}),
+        displayName: "−1",
+        keywords: ["-1", "subtract one", "minus one", "decrement"],
     },
+];
+
+const COMPARE_NODES: Array<Pick<BlueprintNodeDef, "type" | "displayName" | "keywords">> = [
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_EQUAL,
+        displayName: "=",
+        keywords: ["equal", "eq", "=="],
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_NOT_EQUAL,
+        displayName: "≠",
+        keywords: ["not equal", "neq", "!=", "<>"],
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_LESS,
+        displayName: "<",
+        keywords: ["less", "lt", "<"],
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_LESS_OR_EQUAL,
+        displayName: "≤",
+        keywords: ["less or equal", "lte", "<="],
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_GREATER,
+        displayName: ">",
+        keywords: ["greater", "gt", ">"],
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_GREATER_OR_EQUAL,
+        displayName: "≥",
+        keywords: ["greater or equal", "gte", ">="],
+    },
+];
+
+export const mathBlueprintNodes: BlueprintNodeDef[] = [
+    ...ARITH_NODES.map(def => ({
+        ...def,
+        category: "Math",
+        graphKinds: [...GRAPH_KINDS],
+        isPure: true,
+        pins: [MATH_PIN_A, MATH_PIN_B, MATH_PIN_RESULT_FLOAT],
+        ...(def.type === BLUEPRINT_NODE_TYPE_MATH_ADD
+            ? {
+                  dynamicInputPins: {
+                      storageKey: BLUEPRINT_NODE_PARAMS_DYNAMIC_INPUT_PIN_IDS_KEY,
+                      fixedDataInputIds: ["a", "b"],
+                      generatedIdPrefix: "in",
+                      valueType: "float",
+                      allowInlineLiteral: true,
+                  },
+              }
+            : {}),
+        execute: () => ({}),
+    })),
+    ...UNARY_NODES.map(def => ({
+        ...def,
+        category: "Math",
+        graphKinds: [...GRAPH_KINDS],
+        isPure: true,
+        pins: [MATH_UNARY_NUMBER_IN, MATH_PIN_RESULT_FLOAT],
+        execute: () => ({}),
+    })),
+    ...COMPARE_NODES.map(def => ({
+        ...def,
+        category: "Math",
+        graphKinds: [...GRAPH_KINDS],
+        isPure: true,
+        pins: [MATH_PIN_A, MATH_PIN_B, MATH_PIN_RESULT_BOOL],
+        execute: () => ({}),
+    })),
 ];

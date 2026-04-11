@@ -1,7 +1,8 @@
 import type {
     BindingDefinition,
-    BlueprintDeclaration,
     BlueprintDocument,
+    BlueprintField,
+    BlueprintFieldValueSource,
     BlueprintFrontendKind,
     BlueprintVariable,
     LiteralValue,
@@ -37,7 +38,6 @@ import {
     type ReadonlyBlueprintWidgetSummary,
 } from "./blueprint/readonlyBlueprintSummary";
 import { surfaceMainOwnerKey, widgetMainOwnerKey } from "./blueprint/ownerKeys";
-import type { BlueprintDeclarationValueSource } from "@shared/types/blueprint/document";
 import {
     buildReadonlySurfaceMainSummary,
     type ReadonlyBlueprintSurfaceSummary,
@@ -208,27 +208,27 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return buildReadonlySurfaceMainSummary(this.getBlueprintDocument(), surfaceId);
     }
 
-    public setDeclarationValueSource(
+    public setFieldValueSource(
         blueprintId: string,
-        declarationId: string,
-        valueSource: BlueprintDeclarationValueSource | undefined,
+        fieldId: string,
+        valueSource: BlueprintFieldValueSource | undefined,
     ): void {
         this.applyBlueprintMutation(doc => {
             const bp = doc.blueprints[blueprintId];
-            const decl = bp?.members?.declarations?.[declarationId];
-            if (!decl) {
+            const field = bp?.members?.fields?.[fieldId];
+            if (!field) {
                 return;
             }
-            decl.valueSource = valueSource;
+            field.valueSource = valueSource;
         });
     }
 
-    public createDeclaration(
+    public createField(
         blueprintId: string,
-        input: { name: string; kind?: BlueprintDeclaration["kind"]; valueSource?: BlueprintDeclarationValueSource },
-    ): BlueprintDeclaration {
+        input: { name: string; kind?: BlueprintField["kind"]; valueSource?: BlueprintFieldValueSource },
+    ): BlueprintField {
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
-        const decl: BlueprintDeclaration = {
+        const field: BlueprintField = {
             id: uuid.generate(),
             name: input.name,
             kind: input.kind ?? "constant",
@@ -239,38 +239,43 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             if (!bp) {
                 throw new RendererError(`Blueprint not found: ${blueprintId}`);
             }
+            if (bp.owner.kind === "widgetMain") {
+                throw new RendererError(
+                    "Widget main blueprints cannot define binding fields; define fields on global or surface main blueprints instead.",
+                );
+            }
             bp.members = bp.members ?? emptyMemberIndex();
-            bp.members.declarations[decl.id] = decl;
+            bp.members.fields[field.id] = field;
         });
-        return decl;
+        return field;
     }
 
-    public renameDeclaration(blueprintId: string, declarationId: string, name: string): void {
+    public renameField(blueprintId: string, fieldId: string, name: string): void {
         this.applyBlueprintMutation(doc => {
             const bp = doc.blueprints[blueprintId];
-            const d = bp?.members?.declarations?.[declarationId];
-            if (!d) {
+            const f = bp?.members?.fields?.[fieldId];
+            if (!f) {
                 return;
             }
-            d.name = name;
+            f.name = name;
         });
     }
 
-    public deleteDeclaration(blueprintId: string, declarationId: string): void {
+    public deleteField(blueprintId: string, fieldId: string): void {
         this.applyBlueprintMutation(doc => {
             const bp = doc.blueprints[blueprintId];
-            if (!bp?.members?.declarations?.[declarationId]) {
+            if (!bp?.members?.fields?.[fieldId]) {
                 return;
             }
-            delete bp.members.declarations[declarationId];
+            delete bp.members.fields[fieldId];
             for (const bind of Object.values(bp.bindings ?? {})) {
                 if (
-                    bind.source.kind === "declaration" &&
+                    bind.source.kind === "field" &&
                     bind.source.blueprintId === blueprintId &&
-                    bind.source.declarationId === declarationId
+                    bind.source.fieldId === fieldId
                 ) {
                     bind.status = "broken";
-                    bind.brokenReason = "declaration_removed";
+                    bind.brokenReason = "field_removed";
                 }
             }
         });
@@ -281,7 +286,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         surfaceId: string;
         elementId: string;
         propPath: string;
-        declarationId: string;
+        fieldId: string;
         fallback?: BindingDefinition["fallback"];
     }): string {
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
@@ -304,9 +309,9 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 bp.bindings[eid] = {
                     ...bp.bindings[eid],
                     source: {
-                        kind: "declaration",
+                        kind: "field",
                         blueprintId: params.blueprintId,
-                        declarationId: params.declarationId,
+                        fieldId: params.fieldId,
                     },
                     fallback: params.fallback,
                     status: "active",
@@ -325,9 +330,9 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                     propPath: params.propPath,
                 },
                 source: {
-                    kind: "declaration",
+                    kind: "field",
                     blueprintId: params.blueprintId,
-                    declarationId: params.declarationId,
+                    fieldId: params.fieldId,
                 },
                 mode: "replace",
                 fallback: params.fallback,
@@ -406,9 +411,9 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         }
     }
 
-    /** List declarations for a widget main blueprint (for minimal inspector). */
-    public listDeclarations(blueprintId: string): BlueprintDeclaration[] {
-        const m = this.getBlueprintDocument().blueprints[blueprintId]?.members?.declarations;
+    /** List fields for a widget main blueprint (for minimal inspector). */
+    public listFields(blueprintId: string): BlueprintField[] {
+        const m = this.getBlueprintDocument().blueprints[blueprintId]?.members?.fields;
         return m ? Object.values(m) : [];
     }
 
