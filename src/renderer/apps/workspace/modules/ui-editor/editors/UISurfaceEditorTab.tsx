@@ -1,78 +1,34 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { EditorComponentProps } from "../../types";
-import { UIEditorInteractionLayer, UILayersPanel, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
-import { SELECTABLE_TARGET } from "@/lib/ui-editor/interaction/constants";
-import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
+import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
-import { MousePointer2, Move, ChevronUp, ChevronDown, Play } from "lucide-react";
+import { MousePointer2, Move, Play } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
-import { clientToSurface, Rect2D } from "@/lib/ui-editor/geometry";
-import { ContextMenu, ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
+import { ContextMenu, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
-import { buildCanvasContextMenu } from "@/lib/ui-editor/context-menu/buildCanvasContextMenu";
-import {
-    resolveCanvasContextSelection,
-    shouldApplyCanvasContextRetarget,
-} from "@/lib/ui-editor/context-menu/resolveCanvasContextSelection";
-import { hasUiEditorClipboard } from "@/lib/ui-editor/commands/uiEditorClipboard";
-import { uiEditorArrange } from "@/lib/ui-editor/commands/uiEditorArrange";
-import {
-    uiEditorCopySelection,
-    uiEditorCutSelection,
-    uiEditorDeleteSelection,
-    uiEditorDuplicateSelection,
-    uiEditorGroupIntoLeaderContainer,
-    uiEditorPaste,
-    uiEditorSelectAllInSurface,
-} from "@/lib/ui-editor/commands/uiEditorCommands";
-import { canAddRestToLeaderContainer, getMoversToGroupIntoLeaderContainer } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
-import type { UISurface } from "@shared/types/ui-editor/document";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 import { useWorkspace } from "@/apps/workspace/context";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
-import { InteractionOverrideChange, Services } from "@/lib/workspace/services/services";
+import { Services } from "@/lib/workspace/services/services";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { flushUIDocAndGraphIfDirty } from "@/apps/workspace/modules/actions/flushDevModeAssets";
-import type { UIDocument } from "@shared/types/ui-editor/document";
-import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
-import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
-import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
+import { SurfaceLayoutDiagnosticMarkers } from "@/apps/workspace/modules/ui-editor/editors/SurfaceLayoutDiagnosticMarkers";
+import { SurfaceOutlinePanel } from "@/apps/workspace/modules/ui-editor/editors/SurfaceOutlinePanel";
 import {
-    buildLayoutPatchForNewElementFromSurfaceRect,
-    buildLayoutPatchForPointInSurface,
-    resolveInsertTargetParent,
-} from "@/lib/ui-editor/tree/resolveInsertTargetParent";
-import { useAssetDropTarget } from "@/apps/workspace/dnd/useAssetDropTarget";
-import type { AssetDropContext } from "@/apps/workspace/dnd/types";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import type { Asset } from "@/lib/workspace/services/assets/types";
-import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
-import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
-import type { ImageFill } from "@shared/types/ui-editor/imageFill";
-
-type ViewportTransform = {
-    scale: number;
-    offsetX: number;
-    offsetY: number;
-};
-
-const DEFAULT_VIEWPORT: ViewportTransform = { scale: 1, offsetX: 0, offsetY: 0 };
-
-const DEFAULT_IMAGE_PLACEHOLDER_SIZE = 200;
-
-/** Match {@link UIEditorInteractionLayer} / wheel zoom: `clientToSurface` uses viewport bounds, not the inner transformed canvas node. */
-function getViewportContainerRect(viewportEl: HTMLElement | null): Rect2D | null {
-    if (!viewportEl) {
-        return null;
-    }
-    const rect = viewportEl.getBoundingClientRect();
-    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-}
+    useDocumentDirtyIndicator,
+    useEditorToolState,
+    useSurfaceDocument,
+    useViewportTransform,
+} from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
+import { useSurfaceCanvasContextMenu } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceCanvasContextMenu";
+import { useSurfaceImageDrop } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceImageDrop";
+import { useSurfaceDoubleClick } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceDoubleClick";
+import { useSurfaceInteractionCropDimming } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceInteractionCropDimming";
 
 export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ surfaceId: string }>) {
     const surfaceId = payload?.surfaceId;
@@ -123,9 +79,31 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     useDocumentDirtyIndicator(documentService, uiService, tabId);
 
     const { menuState, showMenu, hideMenu } = useContextMenu();
-    const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
-    const lastContextPoint = useRef<{ x: number; y: number } | null>(null);
-    const lastContextHitElementId = useRef<string | null>(null);
+
+    const canvasRef = useRef<HTMLDivElement | null>(null);
+    const viewportRef = useRef<HTMLDivElement | null>(null);
+
+    const { createElementAtClientPoint, surfaceImageDropTargetProps, surfaceImageDropOverlayClass } =
+        useSurfaceImageDrop({
+            viewportRef,
+            viewport,
+            documentService,
+            surface,
+            stateService,
+            workspaceContext: context,
+        });
+
+    const { menuItems, handleCanvasContextMenu } = useSurfaceCanvasContextMenu({
+        surface,
+        documentService,
+        stateService,
+        localBlueprint,
+        widgetModules,
+        inputDialog,
+        createElementAtClientPoint,
+        showMenu,
+        hideMenu,
+    });
 
     const requestRenamePrimary = useCallback(() => {
         if (!stateService || !documentService || !surface || !inputDialog) {
@@ -162,9 +140,6 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         stateService,
         requestRenamePrimary,
     });
-
-    const canvasRef = useRef<HTMLDivElement | null>(null);
-    const viewportRef = useRef<HTMLDivElement | null>(null);
 
     const hostAdapter = useMemo(() => {
         return {
@@ -223,408 +198,19 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                 : "border-white/10 text-gray-400 hover:border-primary hover:text-white hover:bg-white/10"
         } disabled:opacity-50 disabled:cursor-not-allowed`;
 
-    const createElementAtClientPoint = useCallback(
-        (type: string, point: { x: number; y: number }) => {
-            if (!documentService || !surface || !stateService) {
-                return;
-            }
-            const containerRect = getViewportContainerRect(viewportRef.current);
-            if (!containerRect) {
-                return;
-            }
-            const surfacePoint = clientToSurface({ x: point.x, y: point.y }, viewport, containerRect);
-            const doc = documentService.getDocument();
-            const selection = stateService.getSelection();
-            const selData = selection.type === "element" ? selection.data : null;
-            const primaryElementId =
-                selData?.surfaceId === surface.id
-                    ? (selData.primaryId ?? selData.elementIds[selData.elementIds.length - 1] ?? null)
-                    : null;
-            const target = resolveInsertTargetParent(doc, surface.id, {
-                hitElementId: null,
-                primaryElementId,
-            });
-            if (!target) {
-                return;
-            }
-            const layoutPatch = buildLayoutPatchForPointInSurface(doc, target.parentId, surfacePoint);
-            const element = documentService.createElement(target.parentId, type, layoutPatch);
-            stateService.setUIElementSelection({
-                editor: "ui",
-                surfaceId: surface.id,
-                elementIds: [element.id],
-                primaryId: element.id,
-            });
-            stateService.setTool({ kind: "select" });
-        },
-        [documentService, surface, stateService, viewport]
-    );
+    useSurfaceInteractionCropDimming({
+        surfaceId,
+        stateService,
+        canvasRef,
+        documentVersion,
+    });
 
-    const handleImageAssetsDropped = useCallback(
-        (dropCtx: AssetDropContext) => {
-            const { clientPosition, resolved } = dropCtx;
-            if (!clientPosition || !documentService || !surface || !stateService || !context) {
-                return;
-            }
-            void (async () => {
-                const containerRect = getViewportContainerRect(viewportRef.current);
-                if (!containerRect) {
-                    return;
-                }
-                const surfacePoint = clientToSurface(
-                    { x: clientPosition.x, y: clientPosition.y },
-                    viewport,
-                    containerRect
-                );
-                const assetsService = context.services.get<AssetsService>(Services.Assets);
-                const dimList = await Promise.all(
-                    resolved.map(async asset => {
-                        if (asset.type !== AssetType.Image) {
-                            return {
-                                width: DEFAULT_IMAGE_PLACEHOLDER_SIZE,
-                                height: DEFAULT_IMAGE_PLACEHOLDER_SIZE,
-                            };
-                        }
-                        const r = await assetsService.fetch(asset as Asset<AssetType.Image>);
-                        if (!r.success || !r.data?.metadata) {
-                            return {
-                                width: DEFAULT_IMAGE_PLACEHOLDER_SIZE,
-                                height: DEFAULT_IMAGE_PLACEHOLDER_SIZE,
-                            };
-                        }
-                        const { width, height } = r.data.metadata;
-                        return {
-                            width: Number.isFinite(width) && width > 0 ? width : DEFAULT_IMAGE_PLACEHOLDER_SIZE,
-                            height: Number.isFinite(height) && height > 0 ? height : DEFAULT_IMAGE_PLACEHOLDER_SIZE,
-                        };
-                    })
-                );
-
-                const doc = documentService.getDocument();
-                const selection = stateService.getSelection();
-                const selData = selection.type === "element" ? selection.data : null;
-                const primaryElementId =
-                    selData?.surfaceId === surface.id
-                        ? (selData.primaryId ?? selData.elementIds[selData.elementIds.length - 1] ?? null)
-                        : null;
-                const target = resolveInsertTargetParent(doc, surface.id, {
-                    hitElementId: null,
-                    primaryElementId,
-                });
-                if (!target) {
-                    return;
-                }
-
-                const createdIds: string[] = [];
-                for (let i = 0; i < resolved.length; i++) {
-                    const asset = resolved[i];
-                    const { width: imgW, height: imgH } = dimList[i];
-                    const freshDoc = documentService.getDocument();
-                    // Anchor drop at pointer: widget center aligns with surfacePoint (not top-left).
-                    const layoutPatch = buildLayoutPatchForNewElementFromSurfaceRect(freshDoc, target.parentId, {
-                        x: surfacePoint.x - imgW / 2,
-                        y: surfacePoint.y - imgH / 2,
-                        width: imgW,
-                        height: imgH,
-                    });
-                    const element = documentService.createElement(target.parentId, "nl.image", layoutPatch);
-                    const nextProps: Record<string, unknown> = {
-                        ...(element.props ?? {}),
-                        fillType: "image",
-                        imageFill: {
-                            mode: "stretch",
-                            assetId: asset.id,
-                        },
-                        borderWidth: 0,
-                        strokeVisible: false,
-                        appearance: createInitialImageAppearanceFromProps({
-                            ...(element.props ?? {}),
-                            fillType: "image",
-                            imageFill: {
-                                mode: "stretch",
-                                assetId: asset.id,
-                            },
-                            borderWidth: 0,
-                            strokeVisible: false,
-                        }),
-                    };
-                    documentService.updateElementProps(element.id, nextProps);
-                    createdIds.push(element.id);
-                }
-
-                if (createdIds.length > 0) {
-                    stateService.setUIElementSelection({
-                        editor: "ui",
-                        surfaceId: surface.id,
-                        elementIds: createdIds,
-                        primaryId: createdIds[0],
-                    });
-                    stateService.setTool({ kind: "select" });
-                }
-            })();
-        },
-        [context, documentService, surface, stateService, viewport]
-    );
-
-    const { dropTargetProps: surfaceImageDropTargetProps, overlayClassName: surfaceImageDropOverlayClass } =
-        useAssetDropTarget({
-            canDrop: ({ resolved }) => resolved.length > 0 && resolved.every(a => a.type === AssetType.Image),
-            onDrop: handleImageAssetsDropped,
-        });
-
-    const handleCanvasContextMenu = useCallback(
-        (event: React.MouseEvent<HTMLDivElement>) => {
-            if (!surface || !documentService || !stateService || !localBlueprint || widgetModules.length === 0) {
-                return;
-            }
-            event.preventDefault();
-            event.stopPropagation();
-            lastContextPoint.current = { x: event.clientX, y: event.clientY };
-            const hit = (event.target as HTMLElement | null)?.closest(SELECTABLE_TARGET) as HTMLElement | null;
-            lastContextHitElementId.current = hit?.dataset.uiElementId ?? null;
-
-            const curSel = stateService.getSelection();
-            if (shouldApplyCanvasContextRetarget(surface.id, lastContextHitElementId.current, curSel)) {
-                const nextSel = resolveCanvasContextSelection(surface.id, lastContextHitElementId.current, curSel);
-                if (nextSel) {
-                    stateService.setUIElementSelection(nextSel);
-                }
-            }
-
-            const menuSel = resolveCanvasContextSelection(
-                surface.id,
-                lastContextHitElementId.current,
-                stateService.getSelection(),
-            );
-            const doc = documentService.getDocument();
-            const canGroup =
-                Boolean(menuSel) &&
-                canAddRestToLeaderContainer(menuSel!, doc) &&
-                getMoversToGroupIntoLeaderContainer(doc, menuSel!).length > 0;
-
-            const items = buildCanvasContextMenu({
-                document: doc,
-                surfaceId: surface.id,
-                menuSelection: menuSel,
-                hasClipboard: hasUiEditorClipboard(),
-                widgetModules,
-                documentService,
-                canAddToGroup: canGroup,
-                actions: {
-                    hideMenu,
-                    insertType: type => {
-                        const point = lastContextPoint.current;
-                        if (point) {
-                            createElementAtClientPoint(type, point);
-                        }
-                    },
-                    paste: () => {
-                        if (!documentService || !stateService || !localBlueprint) {
-                            return;
-                        }
-                        const sel = stateService.getSelection();
-                        const data = sel.type === "element" ? sel.data : null;
-                        const primary =
-                            data?.editor === "ui" && data.surfaceId === surface.id
-                                ? (data.primaryId ?? data.elementIds[data.elementIds.length - 1] ?? null)
-                                : null;
-                        uiEditorPaste(documentService, localBlueprint, stateService, surface.id, {
-                            hitElementId: lastContextHitElementId.current,
-                            primaryElementId: primary,
-                        });
-                    },
-                    copy: () => {
-                        uiEditorCopySelection(documentService, localBlueprint, surface.id, menuSel);
-                    },
-                    cut: () => {
-                        uiEditorCutSelection(documentService, localBlueprint, stateService, surface.id, menuSel);
-                    },
-                    duplicate: () => {
-                        uiEditorDuplicateSelection(documentService, localBlueprint, stateService, surface.id, menuSel);
-                    },
-                    delete: () => {
-                        uiEditorDeleteSelection(documentService, stateService, surface.id, menuSel);
-                    },
-                    selectAll: () => {
-                        uiEditorSelectAllInSurface(documentService, stateService, surface.id);
-                    },
-                    renamePrimary: () => {
-                        if (!menuSel || menuSel.elementIds.length !== 1 || !inputDialog) {
-                            return;
-                        }
-                        const pid = menuSel.primaryId ?? menuSel.elementIds[0];
-                        const el = doc.elements[pid];
-                        if (!el || el.type === "nl.root") {
-                            return;
-                        }
-                        void inputDialog.showRenameDialog(el.name ?? el.type ?? "Layer", "layer").then(name => {
-                            if (name) {
-                                documentService.renameElement(pid, name);
-                            }
-                        });
-                    },
-                    setSelectedVisible: visible => {
-                        if (!menuSel) {
-                            return;
-                        }
-                        for (const id of menuSel.elementIds) {
-                            const el = doc.elements[id];
-                            if (el && el.type !== "nl.root") {
-                                documentService.updateElementLayout(id, { visible });
-                            }
-                        }
-                    },
-                    addSelectionToLeaderGroup: () => {
-                        uiEditorGroupIntoLeaderContainer(documentService, stateService, surface.id, menuSel);
-                    },
-                    arrange: op => {
-                        if (!documentService) {
-                            return;
-                        }
-                        uiEditorArrange(documentService, surface.id, menuSel, op);
-                    },
-                },
-            });
-            setMenuItems(items);
-            showMenu(event);
-        },
-        [
-            surface,
-            documentService,
-            stateService,
-            localBlueprint,
-            widgetModules,
-            showMenu,
-            hideMenu,
-            createElementAtClientPoint,
-            inputDialog,
-        ]
-    );
-
-    const updateCropDimming = useCallback(
-        (payload: InteractionOverrideChange) => {
-            const canvas = canvasRef.current;
-            if (!canvas) {
-                return;
-            }
-            const override = payload.next;
-            const nodes = canvas.querySelectorAll<HTMLElement>(".ui-editor-node:not(.ui-editor-node-root)");
-            nodes.forEach(node => {
-                if (override?.kind === "imageCrop" && override.surfaceId === surfaceId) {
-                    const isActive = node.dataset.uiElementId === override.elementId;
-                    if (isActive) {
-                        delete node.dataset.uiCropDim;
-                    } else {
-                        node.dataset.uiCropDim = "true";
-                    }
-                } else {
-                    delete node.dataset.uiCropDim;
-                }
-            });
-        },
-        [surfaceId]
-    );
-
-    useEffect(() => {
-        if (!stateService) {
-            return;
-        }
-        const current = stateService.getInteractionOverride();
-        updateCropDimming({ previous: null, next: current });
-        const unsubscribe = stateService.on("interactionOverrideChanged", updateCropDimming);
-        return () => {
-            unsubscribe();
-            updateCropDimming({ previous: null, next: null });
-        };
-    }, [stateService, updateCropDimming, documentVersion]);
-
-    const handleSurfaceDoubleClick = useCallback(
-        (event: React.MouseEvent<HTMLDivElement>) => {
-            if (!stateService || !documentService || !surfaceId) {
-                return;
-            }
-            if (consumeSuppressNextCanvasWidgetDoubleClick()) {
-                return;
-            }
-            if (tool.kind !== "select") {
-                return;
-            }
-            const target = event.target as HTMLElement | null;
-            if (!target) {
-                return;
-            }
-            if (
-                target.closest(
-                    ".moveable, .moveable-control, .moveable-line, .moveable-rotation, .moveable-rotation-handle, .moveable-area"
-                )
-            ) {
-                return;
-            }
-            const elementNode = target.closest(SELECTABLE_TARGET) as HTMLElement | null;
-            if (!elementNode) {
-                return;
-            }
-            const elementId = elementNode.dataset.uiElementId;
-            if (!elementId) {
-                return;
-            }
-            const selection = stateService.getSelection();
-            const selectionData = selection.type === "element" ? selection.data : null;
-            if (
-                !selectionData ||
-                selectionData.surfaceId !== surfaceId ||
-                selectionData.elementIds.length !== 1 ||
-                selectionData.elementIds[0] !== elementId
-            ) {
-                return;
-            }
-            const element = documentService.getDocument().elements[elementId];
-            if (!element) {
-                return;
-            }
-            if (element.type === "nl.text" || element.type === "nl.button") {
-                event.preventDefault();
-                stateService.setInteractionOverride({
-                    kind: "textEdit",
-                    surfaceId,
-                    elementId,
-                });
-                return;
-            }
-            const isContainer = element.type === "nl.container";
-            const isImageWidget = element.type === "nl.image";
-            if (!isContainer && !isImageWidget) {
-                return;
-            }
-            const props = isImageWidget ? getImageWidgetRectangleProps(element) : getRectangleLikeProps(element);
-            if (props.fillType !== "image") {
-                return;
-            }
-            const fill = normalizeImageFill(props);
-            const hasImageSource = Boolean(fill?.assetId) || Boolean(props.backgroundImage?.trim());
-            if (!hasImageSource) {
-                return;
-            }
-            if (fill?.mode !== "crop") {
-                const nextFill: ImageFill = {
-                    ...(fill ?? { mode: "cover", assetId: null }),
-                    mode: "crop",
-                };
-                documentService.updateElementProps(elementId, {
-                    ...(element.props ?? {}),
-                    fillType: "image",
-                    imageFill: nextFill,
-                });
-            }
-            stateService.setInteractionOverride({
-                kind: "imageCrop",
-                surfaceId,
-                elementId,
-                source: "surfaceDoubleClick",
-            });
-        },
-        [documentService, stateService, surfaceId, tool.kind]
-    );
+    const handleSurfaceDoubleClick = useSurfaceDoubleClick({
+        surfaceId: surfaceId ?? "",
+        tool,
+        stateService,
+        documentService,
+    });
 
     if (!surface) {
         return (
@@ -643,7 +229,13 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         <div className="h-full flex overflow-hidden border border-white/10">
             <WidgetRuntimeStateProvider key={surface.id}>
                 <div className="relative flex-1 bg-[#050f10]" onContextMenu={handleCanvasContextMenu}>
-                    <SurfaceOutlinePanel surfaceId={surface.id} />
+                    <SurfaceOutlinePanel
+                        surfaceId={surface.id}
+                        stateService={stateService}
+                        documentService={documentService}
+                        localBlueprint={localBlueprint}
+                        inputDialog={inputDialog}
+                    />
 
                     {/* Top toolbar */}
                     <div className="absolute top-3 right-3 z-20 flex items-center gap-2 rounded-md border border-white/20 bg-[#05060a]/80 px-2 py-1">
@@ -729,155 +321,4 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
             </WidgetRuntimeStateProvider>
         </div>
     );
-}
-
-function SurfaceLayoutDiagnosticMarkers(props: { document: UIDocument; hints: { elementId: string; label: string }[] }) {
-    const { document, hints } = props;
-    if (hints.length === 0) {
-        return null;
-    }
-    return (
-        <div className="pointer-events-none absolute inset-0 z-[5]">
-            {hints.map(hint => {
-                const el = document.elements[hint.elementId];
-                if (!el) {
-                    return null;
-                }
-                const { width, height } = el.layout;
-                const origin = getElementSurfaceTopLeft(document, hint.elementId);
-                const boxW = Math.abs(width);
-                const boxH = Math.abs(height);
-                return (
-                    <div
-                        key={hint.elementId}
-                        className="absolute rounded-sm border border-amber-500/45 bg-amber-500/[0.07]"
-                        style={{
-                            left: origin.x,
-                            top: origin.y,
-                            width: Math.max(boxW, 2),
-                            height: Math.max(boxH, 2),
-                        }}
-                    >
-                        <span className="absolute left-0 top-full z-10 mt-0.5 max-w-[240px] truncate rounded bg-black/75 px-1 py-0.5 text-[9px] leading-tight text-amber-100/95 shadow-sm">
-                            {hint.label}
-                        </span>
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
-function SurfaceOutlinePanel({ surfaceId }: { surfaceId: string }) {
-    const [isCollapsed, setCollapsed] = useState(false);
-
-    if (!surfaceId) {
-        return null;
-    }
-
-    const panelClasses = `absolute inset-y-0 left-0 z-10 w-64 border-r border-white/5 bg-[#080a0e] transition-transform duration-200 ease-out ${
-        isCollapsed ? "-translate-x-full opacity-0 pointer-events-none" : "translate-x-0 opacity-100 pointer-events-auto"
-    }`;
-
-    return (
-        <>
-            <div className={panelClasses}>
-                <div className="px-3 py-2 border-b border-white/10 text-xs uppercase text-gray-500 flex items-center justify-between">
-                    <span>UI Outline</span>
-                    <button
-                        type="button"
-                        className="text-gray-400 hover:text-white transition-colors"
-                        onClick={() => setCollapsed(value => !value)}
-                        title={isCollapsed ? "Expand outline panel" : "Collapse outline panel"}
-                    >
-                        {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-                    </button>
-                </div>
-                {!isCollapsed && (
-                    <div className="h-full">
-                        <UILayersPanel surfaceId={surfaceId} />
-                    </div>
-                )}
-            </div>
-            {isCollapsed && (
-                <button
-                    type="button"
-                    className="absolute left-3 top-3 z-20 h-10 w-10 flex items-center justify-center rounded-full border border-white/20 bg-[#05060a]/80 text-gray-300 hover:text-white focus:outline-none"
-                    onClick={() => setCollapsed(false)}
-                    title="Expand outline panel"
-                >
-                    <ChevronDown className="w-4 h-4" />
-                </button>
-            )}
-        </>
-    );
-}
-
-type UISurfaceEditorServicesBundle = ReturnType<typeof useUISurfaceEditorServices>;
-type EditorStateService = UISurfaceEditorServicesBundle["stateService"];
-type EditorDocumentService = UISurfaceEditorServicesBundle["documentService"];
-type EditorUIService = UISurfaceEditorServicesBundle["uiService"];
-
-function useEditorToolState(stateService: EditorStateService) {
-    const [tool, setToolState] = useState<UITool>(() => stateService?.getTool() ?? { kind: "select" });
-
-    useEffect(() => {
-        if (!stateService) return;
-        setToolState(stateService.getTool());
-        const unsubscribe = stateService.on("toolChanged", setToolState);
-        return () => unsubscribe();
-    }, [stateService]);
-
-    return tool;
-}
-
-function useViewportTransform(stateService: EditorStateService) {
-    const [viewport, setViewport] = useState<ViewportTransform>(DEFAULT_VIEWPORT);
-
-    useEffect(() => {
-        if (!stateService) return;
-        setViewport(stateService.getViewportTransform());
-        const unsub = stateService.on("viewportChanged", setViewport);
-        return unsub;
-    }, [stateService]);
-
-    return viewport;
-}
-
-function useSurfaceDocument(
-    surfaceId: string | undefined,
-    stateService: EditorStateService,
-    documentService: EditorDocumentService
-) {
-    const [documentVersion, setDocumentVersion] = useState(0);
-
-    useEffect(() => {
-        if (!documentService) return;
-        const unsubscribe = documentService.onDocumentChanged(() => {
-            setDocumentVersion(version => version + 1);
-        });
-        return () => unsubscribe();
-    }, [documentService]);
-
-    const document = stateService?.getDocument();
-    const surface = surfaceId && document ? document.surfaces.find((s: UISurface) => s.id === surfaceId) : undefined;
-
-    return { surface, documentVersion };
-}
-
-function useDocumentDirtyIndicator(
-    documentService: EditorDocumentService,
-    uiService: EditorUIService,
-    tabId?: string
-) {
-    useEffect(() => {
-        if (!documentService || !uiService || !tabId) {
-            return undefined;
-        }
-        uiService.editor.setModified(tabId, documentService.isDirty());
-        const unsubscribe = documentService.onDirtyChanged((dirty: boolean) => {
-            uiService.editor.setModified(tabId, dirty);
-        });
-        return () => unsubscribe();
-    }, [documentService, uiService, tabId]);
 }

@@ -80,11 +80,11 @@ export function CompactEffectsAppearance({
                 supportedKinds={supportedKinds}
                 draftResetKey={draftResetKey}
                 renderTrailingOnRow={kind =>
-                    motionVisible ? (
+                    motionVisible && kind !== "textShadow" ? (
                         <AppearanceFieldMotionButton
                             variant={variant}
                             setFieldTransition={setFieldTransition}
-                            groupKey={EFFECT_APPEARANCE_KEY_BY_KIND[kind]}
+                            groupKey={EFFECT_APPEARANCE_KEY_BY_KIND[kind] as AppearancePropertyKey}
                             draftResetKey={draftResetKey}
                         />
                     ) : null

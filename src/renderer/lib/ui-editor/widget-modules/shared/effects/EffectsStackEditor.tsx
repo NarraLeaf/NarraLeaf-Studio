@@ -295,6 +295,15 @@ function EffectDetailBody({
                     draftResetKey={`${draftResetKey}-sh`}
                 />
             ) : null;
+        case "textShadow":
+            return values.effectTextShadow ? (
+                <ShadowStoredFields
+                    value={values.effectTextShadow}
+                    onChange={next => patch({ effectTextShadow: next })}
+                    slot="outer"
+                    draftResetKey={`${draftResetKey}-tsh`}
+                />
+            ) : null;
         case "innerShadow":
             return values.effectInnerShadow ? (
                 <ShadowStoredFields

@@ -10,16 +10,21 @@ import { StaticEffectsSection } from "@/lib/ui-editor/widget-modules/shared/effe
 
 function ListEffectsField(props: CustomFieldProps<UIInspectorData>) {
     const el = props.data.element;
-    const flat = getListProps(el);
+    const live =
+        props.data.documentService.getDocument().elements[el.id] ?? el;
+    const flat = getListProps(live);
     return (
         <StaticEffectsSection
             effects={flat.effects}
-            onChange={next =>
+            onChange={next => {
+                const docEl =
+                    props.data.documentService.getDocument().elements[el.id] ??
+                    live;
                 props.data.documentService.updateElementProps(el.id, {
-                    ...el.props,
+                    ...docEl.props,
                     effects: next,
-                })
-            }
+                });
+            }}
             supportedKinds={getSupportedEffectKindsForWidgetType("nl.list")}
             draftResetKey={el.id}
         />

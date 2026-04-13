@@ -61,6 +61,10 @@ export function EditorNodeWrapper({
             display: "flex",
             flexDirection: "column",
             flexShrink: isFlow ? 0 : undefined,
+            // Each widget must own its stacking context so internal z-index values
+            // (e.g. container free-layout chrome z:0 / children z:1) do not leak
+            // into the parent context and break sibling paint & hit-test order.
+            isolation: isRoot ? undefined : "isolate",
             ...styleOverrides,
         };
         if (rotation) {
