@@ -26,16 +26,20 @@ import type { TextAlign, TextVerticalAlign, TextWidgetProps, TextWrapMode } from
 
 function TextEffectsField(props: CustomFieldProps<UIInspectorData>) {
   const el = props.data.element;
-  const flat = getTextProps(el);
+  const live =
+    props.data.documentService.getDocument().elements[el.id] ?? el;
+  const flat = getTextProps(live);
   return (
     <StaticEffectsSection
       effects={flat.effects}
-      onChange={next =>
+      onChange={next => {
+        const docEl =
+          props.data.documentService.getDocument().elements[el.id] ?? live;
         props.data.documentService.updateElementProps(el.id, {
-          ...el.props,
+          ...docEl.props,
           effects: next,
-        })
-      }
+        });
+      }}
       supportedKinds={getSupportedEffectKindsForWidgetType("nl.text")}
       draftResetKey={el.id}
     />

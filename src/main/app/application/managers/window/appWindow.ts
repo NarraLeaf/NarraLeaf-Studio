@@ -1,3 +1,4 @@
+import fs from "fs";
 import { AppEventToken } from "@shared/types/app";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType } from "@shared/types/ipcEvents";
@@ -97,6 +98,15 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
     // Window State Operations
     public setIcon(icon: string): void {
+        if (process.platform === "darwin") {
+            return;
+        }
+
+        if (!fs.existsSync(icon)) {
+            this.app.logger.warn(`[Window] Icon file not found: ${icon}`);
+            return;
+        }
+
         this.getBrowserWindow().setIcon(icon);
     }
 

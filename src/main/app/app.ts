@@ -22,6 +22,15 @@ export class App extends BaseApp {
         return this.devModeManager;
     }
 
+    private applyWindowIcon(window: AppWindow): void {
+        const iconPath = this.getWindowIconPath();
+        if (!iconPath) {
+            return;
+        }
+
+        window.setIcon(iconPath);
+    }
+
     async launchLauncher(options: Partial<Electron.BrowserWindowConstructorOptions>): Promise<AppWindow<WindowAppType.Launcher>> {
         const config: WindowConfig<WindowAppType.Launcher> = {
             windowType: WindowAppType.Launcher,
@@ -42,7 +51,7 @@ export class App extends BaseApp {
         };
         const window = new AppWindow<WindowAppType.Launcher>(this, config, {});
         window.setTitle("Launcher - NarraLeaf Studio");
-        window.setIcon(this.resolveResource("app-icon.ico"));
+        this.applyWindowIcon(window);
         window.showWhenReady();
 
         try {
@@ -80,7 +89,7 @@ export class App extends BaseApp {
         };
         const window = new AppWindow<WindowAppType.Settings>(this, config, props);
         window.setTitle("Settings - NarraLeaf Studio");
-        window.setIcon(this.resolveResource("app-icon.ico"));
+        this.applyWindowIcon(window);
         window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.Settings));
@@ -112,7 +121,7 @@ export class App extends BaseApp {
         };
         const window = new AppWindow<WindowAppType.Workspace>(this, config, props);
         window.setTitle("Workspace - NarraLeaf Studio");
-        window.setIcon(this.resolveResource("app-icon.ico"));
+        this.applyWindowIcon(window);
 
         await window.loadFile(this.getAppEntry(WindowAppType.Workspace));
 
@@ -142,7 +151,7 @@ export class App extends BaseApp {
         };
         const window = new AppWindow(this, config, props);
         window.setTitle("Project Wizard - NarraLeaf Studio");
-        window.setIcon(this.resolveResource("app-icon.ico"));
+        this.applyWindowIcon(window);
         window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.ProjectWizard));
@@ -174,7 +183,7 @@ export class App extends BaseApp {
         };
         const window = new AppWindow<WindowAppType.DevMode>(this, config, props);
         window.setTitle("Dev Mode - NarraLeaf Studio");
-        window.setIcon(this.resolveResource("app-icon.ico"));
+        this.applyWindowIcon(window);
 
         try {
             await window.loadFile(this.getAppEntry(WindowAppType.DevMode));
