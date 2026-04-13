@@ -80,13 +80,9 @@ export function composeTextEffectStyle(effects: ElementEffectValues): TextEffect
     if (blendRaw) {
         out.mixBlendMode = blendRaw as CSSProperties["mixBlendMode"];
     }
-    const shadowParts = [
-        effectShadowStoredToCss(effects.effectShadow, "outer"),
-        effectShadowStoredToCss(effects.effectInnerShadow, "inner"),
-        effectShadowStoredToCss(effects.effectGlow, "glow"),
-    ].filter(Boolean);
-    if (shadowParts.length > 0) {
-        out.textShadow = shadowParts.join(", ");
+    const ts = effectShadowStoredToCss(effects.effectTextShadow, "outer");
+    if (ts) {
+        out.textShadow = ts;
     }
     return out;
 }

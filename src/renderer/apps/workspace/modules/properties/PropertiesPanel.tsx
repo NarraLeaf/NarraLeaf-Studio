@@ -570,7 +570,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 data={{ element: elements[0], elements, documentService, surfaceId: deferredUiSelection.surfaceId }}
             />
         );
-    }, [deferredUiSelection, documentService, deferredDocumentVersion]);
+    }, [deferredUiSelection, documentService, deferredDocumentVersion, documentVersion]);
 
     const selectUiCanvasElement = useCallback(
         (surfaceId: string, elementId: string) => {

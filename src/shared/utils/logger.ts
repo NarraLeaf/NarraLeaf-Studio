@@ -38,6 +38,10 @@ export class Logger {
             return JSON.stringify(content);
         }
 
+        if (content instanceof Error) {
+            return content.stack ?? `${content.name}: ${content.message}`;
+        }
+
         if (typeof content === "object" && content !== null) {
             return JSON.stringify(content, null, 2);
         }

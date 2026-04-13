@@ -1,1 +1,1 @@
-export { UILayersPanel } from "./outline/LayerOutlinePanel";
+export { UILayersPanel, type UILayersPanelProps } from "./outline/LayerOutlinePanel";

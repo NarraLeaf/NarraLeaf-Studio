@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
@@ -21,9 +22,10 @@ import {
 import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
 import { getTextProps } from "./helpers";
 
-export function TextRenderer({ element, surface }: WidgetRendererProps) {
+export function TextRenderer({ element, surface, document }: WidgetRendererProps) {
     const stateService = UIEditorStateService.getInstance();
     const documentService = UIDocumentService.getInstance();
+    useUIDocumentRevision(documentService);
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
     const draftRef = useRef("");
     const skipBlurCommitRef = useRef(false);
@@ -76,15 +78,14 @@ export function TextRenderer({ element, surface }: WidgetRendererProps) {
         draftRef.current = docEl ? getTextProps(docEl).text : "";
     }, [isEditing, documentService, element.id]);
 
-    const p = getTextProps(element);
+    const liveElement = document.elements[element.id] ?? element;
+    const p = getTextProps(liveElement);
     const color = colorValueToCss({ hex: p.color, alpha: 1 });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
 
     const effectTextStyle = composeTextEffectStyle(p.effects);
-    const useEffectShell =
-        Boolean(effectTextStyle.filter) ||
-        Boolean(effectTextStyle.textShadow) ||
-        Boolean(effectTextStyle.mixBlendMode);
+    // Filter / blend on a wrapper affect the subtree; text-shadow must live on the node that owns the glyphs.
+    const useEffectShell = Boolean(effectTextStyle.filter) || Boolean(effectTextStyle.mixBlendMode);
 
     const textBodyStyle: CSSProperties = {
         width: "100%",
@@ -97,14 +98,17 @@ export function TextRenderer({ element, surface }: WidgetRendererProps) {
         textAlign: p.textAlign,
         lineHeight: p.lineHeight,
         ...lineWrapCss(p.textWrapMode),
-        overflow: "hidden",
+        ...(effectTextStyle.textShadow ? { overflow: "visible" } : { overflow: "hidden" }),
         ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
-        ...(useEffectShell ? {} : effectTextStyle),
+        ...(effectTextStyle.textShadow ? { textShadow: effectTextStyle.textShadow } : {}),
+        ...(!useEffectShell && effectTextStyle.filter ? { filter: effectTextStyle.filter } : {}),
+        ...(!useEffectShell && effectTextStyle.mixBlendMode ? { mixBlendMode: effectTextStyle.mixBlendMode } : {}),
     };
 
     const effectShellStyle: CSSProperties = useEffectShell
         ? {
-              ...effectTextStyle,
+              ...(effectTextStyle.filter ? { filter: effectTextStyle.filter } : {}),
+              ...(effectTextStyle.mixBlendMode ? { mixBlendMode: effectTextStyle.mixBlendMode } : {}),
               flex: 1,
               minHeight: 0,
               minWidth: 0,
@@ -130,8 +134,9 @@ export function TextRenderer({ element, surface }: WidgetRendererProps) {
 
     const commitAndClose = useCallback(
         (nextText: string) => {
+            const docEl = documentService.getDocument().elements[element.id];
             documentService.updateElementProps(element.id, {
-                ...element.props,
+                ...(docEl?.props ?? element.props),
                 text: nextText,
             });
             stateService.setInteractionOverride(null);

@@ -15,10 +15,12 @@ export function readElementEffectValuesFromGetter(
         effectBlend: get("effectBlend"),
         effectGlow: get("effectGlow"),
         effectFilter: get("effectFilter"),
+        effectTextShadow: null,
     });
 }
 
-const EFFECT_VALUE_KEYS = [
+/** Appearance rows never author `effectTextShadow` (text-only static field). */
+const APPEARANCE_PATCHABLE_EFFECT_KEYS = [
     "effectBlur",
     "effectBackgroundBlur",
     "effectShadow",
@@ -26,7 +28,7 @@ const EFFECT_VALUE_KEYS = [
     "effectBlend",
     "effectGlow",
     "effectFilter",
-] as const satisfies readonly (keyof ElementEffectValues)[];
+] as const satisfies readonly AppearancePropertyKey[];
 
 function fieldEqual(a: unknown, b: unknown): boolean {
     return JSON.stringify(a) === JSON.stringify(b);
@@ -38,9 +40,9 @@ export function diffPatchElementEffectValues(
     next: ElementEffectValues,
     patch: (key: AppearancePropertyKey, value: AppearanceRowValue) => void
 ): void {
-    for (const k of EFFECT_VALUE_KEYS) {
+    for (const k of APPEARANCE_PATCHABLE_EFFECT_KEYS) {
         if (!fieldEqual(prev[k], next[k])) {
-            patch(k as AppearancePropertyKey, next[k] as AppearanceRowValue);
+            patch(k, next[k] as AppearanceRowValue);
         }
     }
 }

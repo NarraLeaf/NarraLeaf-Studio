@@ -729,7 +729,8 @@ export function ColorPickerTrigger({
             className="w-80 rounded-2xl border border-white/10 bg-[#1e1f22] p-4 shadow-2xl"
             style={{
                 position: "fixed",
-                zIndex: 60,
+                // Above inspector anchored panels (e.g. Effects z-[80]), below modal menus (z-[100]+).
+                zIndex: 90,
                 left: adjustedPanelPosition.left,
                 top: adjustedPanelPosition.top,
                 maxHeight: `calc(100vh - ${PANEL_EDGE_PADDING * 2}px)`,

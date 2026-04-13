@@ -32,23 +32,7 @@ import { getContainerProps } from "./helpers";
 type D = UIInspectorData;
 
 function ContainerEmptyChildrenHintField(props: CustomFieldProps<UIInspectorData>) {
-    const n = props.data.element.childrenIds.length;
-    if (n > 0) {
-        return null;
-    }
-    const k = getContainerProps(props.data.element).layoutKind;
-    const text =
-        k === "free"
-            ? "No children yet. Insert via canvas (tool or right-click) or outline → Insert child. Children use absolute X/Y relative to this container."
-            : k === "stack"
-              ? "No children yet. New widgets append in flex order. Reorder in the outline; canvas drag is disabled for stack children."
-              : "No children yet. Content scrolls on the chosen axis; child order follows the outline. Use Insert child or the canvas insert tools.";
-
-    return (
-        <p className="text-[11px] leading-snug text-gray-500 border border-white/5 rounded-md px-2 py-1.5 bg-white/[0.02]">
-            {text}
-        </p>
-    );
+    return null;
 }
 
 export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknown[] {

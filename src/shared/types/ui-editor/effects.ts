@@ -15,6 +15,8 @@ export type VisualEffectKind =
     | "blur"
     | "backgroundBlur"
     | "shadow"
+    /** Text glyphs only (CSS `text-shadow`); not used on rectangle chrome. */
+    | "textShadow"
     | "innerShadow"
     | "blend"
     | "glow"
@@ -39,6 +41,8 @@ export type ElementEffectValues = {
     effectBlur: number;
     effectBackgroundBlur: number;
     effectShadow: EffectShadowStored | null;
+    /** Text widgets: CSS text-shadow (separate from box-shadow `effectShadow`). */
+    effectTextShadow: EffectShadowStored | null;
     effectInnerShadow: EffectShadowStored | null;
     effectBlend: string;
     effectGlow: EffectShadowStored | null;
@@ -49,6 +53,7 @@ export const DEFAULT_ELEMENT_EFFECT_VALUES: ElementEffectValues = {
     effectBlur: 0,
     effectBackgroundBlur: 0,
     effectShadow: null,
+    effectTextShadow: null,
     effectInnerShadow: null,
     effectBlend: "",
     effectGlow: null,
@@ -159,6 +164,7 @@ export function normalizeElementEffectValues(raw: unknown): ElementEffectValues 
         effectBlur: clampNonNegative(Number.isFinite(blur) ? blur : 0),
         effectBackgroundBlur: clampNonNegative(Number.isFinite(bb) ? bb : 0),
         effectShadow: normalizeEffectShadowField(o.effectShadow),
+        effectTextShadow: normalizeEffectShadowField(o.effectTextShadow),
         effectInnerShadow: normalizeEffectShadowField(o.effectInnerShadow),
         effectBlend: trimStr(o.effectBlend),
         effectGlow: normalizeEffectShadowField(o.effectGlow),
@@ -196,6 +202,7 @@ export const EFFECT_APPEARANCE_KEY_BY_KIND: Record<VisualEffectKind, keyof Eleme
     blur: "effectBlur",
     backgroundBlur: "effectBackgroundBlur",
     shadow: "effectShadow",
+    textShadow: "effectTextShadow",
     innerShadow: "effectInnerShadow",
     blend: "effectBlend",
     glow: "effectGlow",
@@ -204,7 +211,7 @@ export const EFFECT_APPEARANCE_KEY_BY_KIND: Record<VisualEffectKind, keyof Eleme
 
 /** Which effect kinds each widget type supports (static path: no backgroundBlur on text). */
 export const WIDGET_EFFECT_KINDS_BY_TYPE: Record<string, readonly VisualEffectKind[]> = {
-    "nl.text": ["blur", "shadow", "innerShadow", "blend", "glow", "filter"],
+    "nl.text": ["blur", "textShadow", "blend", "filter"],
     "nl.list": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
     "nl.container": [
         "blur",

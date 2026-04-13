@@ -13,6 +13,7 @@ export const EFFECT_STACK_KIND_ORDER: readonly VisualEffectKind[] = [
     "blur",
     "backgroundBlur",
     "shadow",
+    "textShadow",
     "innerShadow",
     "blend",
     "glow",
@@ -23,6 +24,7 @@ export const EFFECT_KIND_LABEL: Record<VisualEffectKind, string> = {
     blur: "Blur",
     backgroundBlur: "Bg blur",
     shadow: "Shadow",
+    textShadow: "Text shadow",
     innerShadow: "Inner shadow",
     blend: "Blend",
     glow: "Glow",
@@ -36,6 +38,9 @@ function shadowSlotForKind(kind: VisualEffectKind): ShadowSlotKind {
     if (kind === "glow") {
         return "glow";
     }
+    if (kind === "textShadow") {
+        return "outer";
+    }
     return "outer";
 }
 
@@ -44,6 +49,12 @@ const ENABLE_PATCH: Record<VisualEffectKind, Partial<ElementEffectValues>> = {
     backgroundBlur: { effectBackgroundBlur: 12 },
     shadow: {
         effectShadow: {
+            storage: "layer",
+            layer: { offsetX: 0, offsetY: 4, blur: 12, spread: 0, color: "rgba(0,0,0,0.28)" },
+        },
+    },
+    textShadow: {
+        effectTextShadow: {
             storage: "layer",
             layer: { offsetX: 0, offsetY: 4, blur: 12, spread: 0, color: "rgba(0,0,0,0.28)" },
         },
@@ -68,6 +79,7 @@ const CLEAR_PATCH: Record<VisualEffectKind, Partial<ElementEffectValues>> = {
     blur: { effectBlur: 0 },
     backgroundBlur: { effectBackgroundBlur: 0 },
     shadow: { effectShadow: null },
+    textShadow: { effectTextShadow: null },
     innerShadow: { effectInnerShadow: null },
     blend: { effectBlend: "" },
     glow: { effectGlow: null },
@@ -102,6 +114,8 @@ export function isEffectKindEnabled(kind: VisualEffectKind, v: ElementEffectValu
             return v.effectBackgroundBlur > 0;
         case "shadow":
             return shadowStoredEnabled(v.effectShadow);
+        case "textShadow":
+            return shadowStoredEnabled(v.effectTextShadow);
         case "innerShadow":
             return shadowStoredEnabled(v.effectInnerShadow);
         case "blend":
@@ -166,6 +180,8 @@ export function summarizeEffectKind(kind: VisualEffectKind, v: ElementEffectValu
             return `${v.effectBackgroundBlur}px`;
         case "shadow":
             return shadowSummaryStored(v.effectShadow, "shadow");
+        case "textShadow":
+            return shadowSummaryStored(v.effectTextShadow, "textShadow");
         case "innerShadow":
             return shadowSummaryStored(v.effectInnerShadow, "innerShadow");
         case "glow":
