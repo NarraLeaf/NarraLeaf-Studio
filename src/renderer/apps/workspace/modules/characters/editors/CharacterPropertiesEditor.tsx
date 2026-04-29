@@ -9,7 +9,6 @@ import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "@/apps/workspace/context";
 import { ImageCropper } from "@/apps/workspace/modules/assets/components/ImageCropper";
 import { X, Plus } from "lucide-react";
-import { Buffer } from "buffer";
 import { Select } from "@/lib/components/elements";
 
 const secondaryGhostButtonClass = "px-3 py-1.5 rounded-md border border-primary/30 bg-primary/5 text-sm text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
@@ -294,7 +293,7 @@ export function CharacterPropertiesEditor({ character }: CharacterPropertiesEdit
             }
             const blob = await cropImage(cropperImageUrl, selection);
             const arrayBuffer = await blob.arrayBuffer();
-            const writeResult = await serviceAssets.writeFile(Buffer.from(arrayBuffer));
+            const writeResult = await serviceAssets.writeFile(new Uint8Array(arrayBuffer));
             if (!writeResult.ok) {
                 setThumbnailError(writeResult.error?.message || "Failed to save thumbnail");
                 return;

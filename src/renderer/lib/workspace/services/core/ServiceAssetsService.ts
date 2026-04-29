@@ -43,9 +43,14 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         return this.getFileSystem().readJSON<T>(targetPath);
     }
 
-    public async writeFile(data: string | Buffer): Promise<FsRequestResult<string>> {
+    public async writeFile(data: string | Buffer | Uint8Array): Promise<FsRequestResult<string>> {
         this.ensureReady();
-        const bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
+        const bytes: Uint8Array =
+            typeof data === "string"
+                ? new TextEncoder().encode(data)
+                : data instanceof Uint8Array
+                  ? data
+                  : new Uint8Array(data);
         const fileId = this.getUuidService().generate();
         const targetPath = this.resolveAssetFile(fileId);
 

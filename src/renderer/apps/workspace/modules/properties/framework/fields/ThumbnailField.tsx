@@ -8,7 +8,6 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
-import { Buffer } from "buffer";
 
 const secondaryGhostButtonClass =
     "px-3 py-1.5 rounded-md border border-primary/30 bg-primary/5 text-sm text-primary hover:bg-primary/15 hover:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
@@ -312,7 +311,7 @@ function ThumbnailFieldInner<TData>({ field, data, onSaving }: ThumbnailFieldPro
                 }
                 const blob = await cropImage(cropperImageUrl, selection);
                 const arrayBuffer = await blob.arrayBuffer();
-                const writeResult = await serviceAssets.writeFile(Buffer.from(arrayBuffer));
+                const writeResult = await serviceAssets.writeFile(new Uint8Array(arrayBuffer));
                 if (!writeResult.ok) {
                     setError(writeResult.error?.message || "Failed to save thumbnail");
                     return;
