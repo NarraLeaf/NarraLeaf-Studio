@@ -450,7 +450,7 @@ interface IAssetService extends IService {
 interface IServiceAssetsService extends IService {
     writeStore<T extends Record<string, any>>(namespace: string, data: T): Promise<FsRequestResult<{ path: string }>>;
     readStore<T extends Record<string, any>>(namespace: string): Promise<FsRequestResult<T>>;
-    writeFile(data: string | Buffer): Promise<FsRequestResult<string>>;
+    writeFile(data: string | Buffer | Uint8Array): Promise<FsRequestResult<string>>;
     readFile(fileId: string, encoding?: BufferEncoding): Promise<FsRequestResult<string>>;
     readRaw(fileId: string): Promise<FsRequestResult<Uint8Array>>;
     deleteFile(fileId: string): Promise<FsRequestResult<void>>;
