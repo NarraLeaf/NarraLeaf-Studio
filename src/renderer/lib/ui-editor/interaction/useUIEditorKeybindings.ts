@@ -21,10 +21,10 @@ import {
     uiEditorPaste,
     uiEditorSelectAllInSurface,
 } from "@/lib/ui-editor/commands/uiEditorCommands";
+import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 
 function isTypingInField(): boolean {
-    const t = document.activeElement as HTMLElement | null;
-    return Boolean(t?.closest?.("input, textarea, [contenteditable='true']"));
+    return isEditableKeyboardTarget(document.activeElement);
 }
 
 function getUiSelection(stateService: UIEditorStateService, surfaceId: string): UIElementSelection | null {

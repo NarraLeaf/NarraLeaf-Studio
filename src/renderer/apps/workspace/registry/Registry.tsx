@@ -42,6 +42,8 @@ interface RegistryContextValue {
     editorLayout: EditorLayout;
     openEditorTab: <TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string) => void;
     closeEditorTab: (tabId: string, groupId?: string) => void;
+    /** Close multiple tabs in one update */
+    closeEditorTabs: (tabIds: string[], groupId?: string) => void;
     setActiveEditorTab: (tabId: string, groupId: string) => void;
     updateEditorTabPayload: <TPayload = any>(tabId: string, payload: TPayload, groupId?: string) => void;
     
@@ -141,7 +143,57 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
                 uiService.focus.clearFocus();
             }
         }
+
+        if (currentFocus.area === FocusArea.EditorTabs) {
+            const layout = store.getEditorLayout();
+            const group = findGroup(layout, groupId);
+            if (
+                group &&
+                currentFocus.targetId === group.id &&
+                group.tabs.length === 0
+            ) {
+                uiService.focus.clearFocus();
+            }
+        }
     }, [uiService, findGroup]);
+
+    const closeEditorTabs = useCallback(
+        (tabIds: string[], groupId?: string) => {
+            const currentFocus = uiService.focus.getFocus();
+            const store = uiService.getStore();
+            const layoutBefore = store.getEditorLayout();
+            const groupBefore = findGroup(layoutBefore, groupId);
+            const resolvedGroupId = groupBefore?.id ?? (layoutBefore as EditorGroup).id;
+
+            const idSet = new Set(tabIds);
+            store.closeEditorTabsInGroup(tabIds, groupId);
+
+            const layout = store.getEditorLayout();
+            const groupAfter = findGroup(layout, groupId);
+
+            if (
+                currentFocus.area === FocusArea.Editor &&
+                currentFocus.targetId &&
+                idSet.has(currentFocus.targetId)
+            ) {
+                if (groupAfter?.focus) {
+                    uiService.focus.setFocus(FocusArea.Editor, groupAfter.focus);
+                } else {
+                    uiService.focus.clearFocus();
+                }
+            }
+
+            if (
+                currentFocus.area === FocusArea.EditorTabs &&
+                currentFocus.targetId === resolvedGroupId
+            ) {
+                if (!groupAfter || groupAfter.tabs.length === 0) {
+                    uiService.focus.clearFocus();
+                }
+            }
+        },
+        [uiService, findGroup]
+    );
 
     const setActiveEditorTab = useCallback((tabId: string, groupId: string) => {
         uiService.getStore().setActiveEditorTabInGroup(tabId, groupId);
@@ -179,6 +231,7 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
                 editorLayout,
                 openEditorTab,
                 closeEditorTab,
+                closeEditorTabs,
                 setActiveEditorTab,
                 updateEditorTabPayload,
                 visiblePanels,

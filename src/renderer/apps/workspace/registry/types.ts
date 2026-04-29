@@ -84,6 +84,8 @@ export interface ActionDefinition {
     when?: (context: FocusContext) => boolean;
     badge?: string | number; // Badge text/count
     group?: string; // Group ID this action belongs to
+    /** When true, shortcut may run while DOM focus is in a text field (default false). */
+    allowInEditable?: boolean;
 }
 
 /**

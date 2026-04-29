@@ -21,6 +21,11 @@ export interface UseKeybindingOptions {
     when?: KeybindingCondition;
     /** Whether the keybinding is enabled. Defaults to true. */
     enabled?: boolean;
+    /**
+     * When true, keybinding may fire while DOM focus is in a text field.
+     * Defaults to false (workspace shortcuts defer to typing).
+     */
+    allowInEditable?: boolean;
     /** Dependencies array - keybinding will be re-registered when these change */
     deps?: React.DependencyList;
 }
@@ -69,6 +74,7 @@ export function useKeybinding(options: UseKeybindingOptions): void {
         description,
         when,
         enabled = true,
+        allowInEditable,
         deps = [],
     } = options;
 
@@ -105,6 +111,7 @@ export function useKeybinding(options: UseKeybindingOptions): void {
             description,
             handler: stableHandler,
             when: stableWhen,
+            allowInEditable,
         };
 
         const dispose = uiService.keybindings.register(keybinding);
@@ -113,7 +120,7 @@ export function useKeybinding(options: UseKeybindingOptions): void {
             dispose();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [context, id, key, description, enabled, stableHandler, stableWhen, ...deps]);
+    }, [context, id, key, description, enabled, allowInEditable, stableHandler, stableWhen, ...deps]);
 }
 
 /**

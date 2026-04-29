@@ -32,6 +32,7 @@ export {
     whenFocused,
     whenTargetFocused,
     whenEditorFocused,
+    whenEditorTabsFocused,
     whenNoDialog,
     whenNotIn,
     always,
