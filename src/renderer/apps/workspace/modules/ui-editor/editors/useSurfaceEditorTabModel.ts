@@ -42,6 +42,20 @@ export function useViewportTransform(stateService: EditorStateService) {
     return viewport;
 }
 
+export function useSmartSnapEnabled(stateService: EditorStateService | null | undefined) {
+    const [enabled, setEnabled] = useState(() => stateService?.getSmartSnapEnabled() ?? true);
+
+    useEffect(() => {
+        if (!stateService) {
+            return;
+        }
+        setEnabled(stateService.getSmartSnapEnabled());
+        return stateService.on("smartSnapEnabledChanged", setEnabled);
+    }, [stateService]);
+
+    return enabled;
+}
+
 export function useSurfaceDocument(
     surfaceId: string | undefined,
     stateService: EditorStateService,

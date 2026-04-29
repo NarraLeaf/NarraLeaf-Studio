@@ -17,6 +17,13 @@ import {
     buildLayoutPatchForNewElementFromSurfaceRect,
     resolveInsertTargetParent,
 } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
+import {
+    collectSnapGuideLines,
+    splitSnapLinesToAxes,
+    snapSurfacePoint,
+    surfaceThresholdFromViewportPx,
+    DEFAULT_SNAP_THRESHOLD_PX,
+} from "@/lib/ui-editor/snapping";
 
 export type InsertToolDragState = {
     active: boolean;
@@ -50,6 +57,9 @@ type UseSurfaceInteractionEventsParams = {
     panStateRef: MutableRefObject<PanState>;
     documentService: UIDocumentService;
     stateService: UIEditorStateService;
+    /** When both return allow snapping, insert drag corners snap to guides. */
+    insertSnapEnabled?: () => boolean;
+    insertSnapSuspended?: () => boolean;
 };
 
 export type InsertPreview = {
@@ -73,6 +83,8 @@ export function useSurfaceInteractionEvents({
     panStateRef,
     documentService,
     stateService,
+    insertSnapEnabled,
+    insertSnapSuspended,
 }: UseSurfaceInteractionEventsParams) {
     /** Pointer events often keep `detail` at 0; use timing + target to emulate double-activation for container drill. */
     const containerDrillLastPointerRef = useRef<{ elementId: string; t: number } | null>(null);
@@ -95,6 +107,8 @@ export function useSurfaceInteractionEvents({
             if (!insertStateRef.current?.active) {
                 return;
             }
+
+            stateService.setSnapGuides(null);
 
             const state = insertStateRef.current;
             insertStateRef.current = null;
@@ -146,11 +160,38 @@ export function useSurfaceInteractionEvents({
             if (insertStateRef.current?.active) {
                 event.preventDefault();
                 const surfacePoint = clientToSurfaceCoords(event.clientX, event.clientY);
+                let curX = surfacePoint.x;
+                let curY = surfacePoint.y;
+                // Prefer live modifier state on the pointer event; keyup can be missed after Alt+Tab / menus.
+                const suspendSnap = (insertSnapSuspended?.() ?? false) || event.altKey;
+                if (insertSnapEnabled?.() && !suspendSnap) {
+                    const doc = documentService.getDocument();
+                    const lines = collectSnapGuideLines(doc, surfaceId, new Set(), surface.designSize);
+                    const { vertical, horizontal } = splitSnapLinesToAxes(lines);
+                    const th = surfaceThresholdFromViewportPx(viewport.scale, DEFAULT_SNAP_THRESHOLD_PX);
+                    const snapped = snapSurfacePoint({
+                        x: curX,
+                        y: curY,
+                        verticalLines: vertical,
+                        horizontalLines: horizontal,
+                        thresholdSurface: th,
+                        surfaceId,
+                    });
+                    curX = snapped.x;
+                    curY = snapped.y;
+                    stateService.setSnapGuides(
+                        snapped.activeGuides.vertical.length > 0 || snapped.activeGuides.horizontal.length > 0
+                            ? snapped.activeGuides
+                            : null,
+                    );
+                } else {
+                    stateService.setSnapGuides(null);
+                }
                 updateInsertPreview({
                     startX: insertStateRef.current.startSurfaceX,
                     startY: insertStateRef.current.startSurfaceY,
-                    currentX: surfacePoint.x,
-                    currentY: surfacePoint.y,
+                    currentX: curX,
+                    currentY: curY,
                 });
                 return;
             }
@@ -319,6 +360,8 @@ export function useSurfaceInteractionEvents({
         insertStateRef,
         panStateRef,
         setInsertPreview,
+        insertSnapEnabled,
+        insertSnapSuspended,
     ]);
 
     useEffect(() => {

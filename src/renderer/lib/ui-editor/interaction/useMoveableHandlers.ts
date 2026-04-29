@@ -31,6 +31,17 @@ import {
 import { applyLockedAspectToResizePreview } from "@/lib/ui-editor/layout/aspectRatioLock";
 import type { UILayout } from "@shared/types/ui-editor/document";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import {
+    collectSnapGuideLines,
+    splitSnapLinesToAxes,
+    snapTranslateAxisAlignedRect,
+    surfaceThresholdFromViewportPx,
+    DEFAULT_SNAP_THRESHOLD_PX,
+    unionAxisAlignedRects,
+} from "@/lib/ui-editor/snapping";
+import { getSurfaceAxisAlignedBoundsForLayout } from "@/lib/ui-editor/snapping/surfaceRect";
+import { snapResizeLayoutInSurface } from "@/lib/ui-editor/snapping/resizeSnap";
+import type { ActiveSnapGuides, SnapGuideLine } from "@/lib/ui-editor/snapping/types";
 
 type ResizeCacheEntry = {
     width?: number;
@@ -80,6 +91,18 @@ function getResizeFlipBaseline(
     return axis === "x" ? startData?.aspectInitialSx : startData?.aspectInitialSy;
 }
 
+/** Optional smart snap for UI Surface (guides + snapping during drag/resize). */
+export type SmartSnapContext = {
+    surfaceId: string;
+    designSize: { width: number; height: number };
+    isEnabled: () => boolean;
+    /** When true (e.g. Alt held), snapping is skipped for this gesture. */
+    isSuspended: () => boolean;
+    setGuides: (guides: ActiveSnapGuides | null) => void;
+    /** Elements excluded from snap targets (typically the current selection). */
+    getExcludedElementIds: () => ReadonlySet<string>;
+};
+
 type MoveableHandlersConfig = {
     documentService: UIDocumentService;
     selectionIds: string[];
@@ -89,6 +112,7 @@ type MoveableHandlersConfig = {
     scheduleMoveableRectUpdate: () => void;
     beginTransform: () => void;
     endTransform: () => void;
+    smartSnap?: SmartSnapContext;
 };
 
 export type MoveableHandlers = {
@@ -121,12 +145,14 @@ export function useMoveableHandlers({
     scheduleMoveableRectUpdate,
     beginTransform,
     endTransform,
+    smartSnap,
 }: MoveableHandlersConfig): MoveableHandlers {
     const layoutCache = useRef<Map<string, UILayout>>(new Map());
     const dragDeltaCache = useRef<Map<string, [number, number]>>(new Map());
     const resizeCache = useRef<Map<string, ResizeCacheEntry>>(new Map());
     const resizeStartCache = useRef<Map<string, ResizeStartEntry>>(new Map());
     const rotateCache = useRef<Map<string, number>>(new Map());
+    const snapLinesCacheRef = useRef<SnapGuideLine[]>([]);
     const performanceHintCache = useRef<
         Map<HTMLElement, { willChange: string; backfaceVisibility: string; transformOrigin: string }>
     >(new Map());
@@ -156,6 +182,44 @@ export function useMoveableHandlers({
         });
         performanceHintCache.current.clear();
     }, []);
+
+    const clearSmartSnapGuides = useCallback(() => {
+        smartSnap?.setGuides(null);
+    }, [smartSnap]);
+
+    const rebuildSmartSnapCandidateLines = useCallback(() => {
+        if (!smartSnap?.isEnabled() || smartSnap.isSuspended()) {
+            snapLinesCacheRef.current = [];
+            return;
+        }
+        const doc = documentService.getDocument();
+        snapLinesCacheRef.current = collectSnapGuideLines(
+            doc,
+            smartSnap.surfaceId,
+            smartSnap.getExcludedElementIds(),
+            smartSnap.designSize,
+        );
+    }, [documentService, smartSnap]);
+
+    /**
+     * If the gesture began while snap was suspended (e.g. Alt held), the cache was cleared and never rebuilt.
+     * Re-fill when snap is active again so snapping works after releasing Alt mid-drag/resize.
+     */
+    const ensureSmartSnapCandidateLines = useCallback(() => {
+        if (!smartSnap?.isEnabled() || smartSnap.isSuspended()) {
+            return;
+        }
+        if (snapLinesCacheRef.current.length > 0) {
+            return;
+        }
+        const doc = documentService.getDocument();
+        snapLinesCacheRef.current = collectSnapGuideLines(
+            doc,
+            smartSnap.surfaceId,
+            smartSnap.getExcludedElementIds(),
+            smartSnap.designSize,
+        );
+    }, [documentService, smartSnap]);
 
     const cacheLayoutForElement = useCallback(
         (elementId: string) => {
@@ -219,9 +283,10 @@ export function useMoveableHandlers({
             });
         }
         clearPerformanceHints();
+        clearSmartSnapGuides();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [clearPerformanceHints, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
+    }, [clearPerformanceHints, clearSmartSnapGuides, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
 
     const finalizeResize = useCallback(() => {
         const patches: Record<string, Partial<UILayout>> = {};
@@ -309,9 +374,10 @@ export function useMoveableHandlers({
             });
         }
         clearPerformanceHints();
+        clearSmartSnapGuides();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [clearPerformanceHints, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
+    }, [clearPerformanceHints, clearSmartSnapGuides, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
 
     const finalizeRotate = useCallback(() => {
         const patches: Record<string, Partial<UILayout>> = {};
@@ -345,9 +411,10 @@ export function useMoveableHandlers({
             });
         }
         clearPerformanceHints();
+        clearSmartSnapGuides();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [clearPerformanceHints, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
+    }, [clearPerformanceHints, clearSmartSnapGuides, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
 
     const cancelResize = useCallback(() => {
         selectedTargets.forEach(target => {
@@ -364,9 +431,10 @@ export function useMoveableHandlers({
             applyFinalTransform(target, layout?.rotation);
         });
         clearPerformanceHints();
+        clearSmartSnapGuides();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [clearPerformanceHints, endTransform, scheduleMoveableRectUpdate, selectedTargets]);
+    }, [clearPerformanceHints, clearSmartSnapGuides, endTransform, scheduleMoveableRectUpdate, selectedTargets]);
 
     const cancelRotate = useCallback(() => {
         selectedTargets.forEach(target => {
@@ -381,25 +449,71 @@ export function useMoveableHandlers({
             applyFinalTransform(target, layout?.rotation);
         });
         clearPerformanceHints();
+        clearSmartSnapGuides();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [clearPerformanceHints, endTransform, scheduleMoveableRectUpdate, selectedTargets]);
+    }, [clearPerformanceHints, clearSmartSnapGuides, endTransform, scheduleMoveableRectUpdate, selectedTargets]);
 
     const handleDragStart = useCallback(() => {
         if (isGroupSelection) {
             return;
         }
         ensureSelectionLayoutsCached();
+        rebuildSmartSnapCandidateLines();
         applyPerformanceHints();
         beginTransform();
-    }, [applyPerformanceHints, beginTransform, ensureSelectionLayoutsCached, isGroupSelection]);
+    }, [applyPerformanceHints, beginTransform, ensureSelectionLayoutsCached, isGroupSelection, rebuildSmartSnapCandidateLines]);
 
     const handleDrag = useCallback(
         (e: OnDrag) => {
             if (isGroupSelection) {
                 return;
             }
-            const [translateX, translateY] = e.beforeTranslate;
+            let [translateX, translateY] = e.beforeTranslate;
+            if (smartSnap?.isEnabled() && !smartSnap.isSuspended()) {
+                ensureSmartSnapCandidateLines();
+                const doc = documentService.getDocument();
+                const rects = selectedTargets
+                    .map(target => {
+                        const elementId = target.dataset.uiElementId;
+                        if (!elementId) {
+                            return null;
+                        }
+                        const layout0 = layoutCache.current.get(elementId);
+                        if (!layout0) {
+                            return null;
+                        }
+                        return getSurfaceAxisAlignedBoundsForLayout(doc, elementId, {
+                            ...layout0,
+                            x: layout0.x + translateX,
+                            y: layout0.y + translateY,
+                        });
+                    })
+                    .filter((r): r is NonNullable<typeof r> => r != null);
+                const union = unionAxisAlignedRects(rects);
+                if (union) {
+                    const { vertical, horizontal } = splitSnapLinesToAxes(snapLinesCacheRef.current);
+                    const th = surfaceThresholdFromViewportPx(viewportScale, DEFAULT_SNAP_THRESHOLD_PX);
+                    const snapped = snapTranslateAxisAlignedRect({
+                        rect: union,
+                        verticalLines: vertical,
+                        horizontalLines: horizontal,
+                        thresholdSurface: th,
+                        surfaceId: smartSnap.surfaceId,
+                    });
+                    translateX += snapped.dx;
+                    translateY += snapped.dy;
+                    smartSnap.setGuides(
+                        snapped.activeGuides.vertical.length > 0 || snapped.activeGuides.horizontal.length > 0
+                            ? snapped.activeGuides
+                            : null,
+                    );
+                } else {
+                    smartSnap.setGuides(null);
+                }
+            } else {
+                smartSnap?.setGuides(null);
+            }
             selectedTargets.forEach(target => {
                 const elementId = target.dataset.uiElementId;
                 if (!elementId) {
@@ -411,7 +525,7 @@ export function useMoveableHandlers({
                 dragDeltaCache.current.set(elementId, [translateX, translateY]);
             });
         },
-        [isGroupSelection, selectedTargets],
+        [documentService, ensureSmartSnapCandidateLines, isGroupSelection, selectedTargets, smartSnap, viewportScale],
     );
 
     const handleDragEnd = useCallback(
@@ -430,10 +544,11 @@ export function useMoveableHandlers({
                 return;
             }
             ensureSelectionLayoutsCached();
+            rebuildSmartSnapCandidateLines();
             applyPerformanceHints();
             beginTransform();
         },
-        [applyPerformanceHints, beginTransform, ensureSelectionLayoutsCached, isGroupSelection],
+        [applyPerformanceHints, beginTransform, ensureSelectionLayoutsCached, isGroupSelection, rebuildSmartSnapCandidateLines],
     );
 
     const handleDragGroup = useCallback(
@@ -441,23 +556,72 @@ export function useMoveableHandlers({
             if (!isGroupSelection) {
                 return;
             }
-            e.events.forEach(event => {
+            const doc = documentService.getDocument();
+            const perEvent = e.events.map(event => {
                 const target = event.target;
                 if (!isHTMLElement(target)) {
-                    return;
+                    return null;
                 }
                 const elementId = target.dataset.uiElementId;
                 if (!elementId) {
-                    return;
+                    return null;
                 }
-                const [translateX, translateY] = event.beforeTranslate;
-                const layout = layoutCache.current.get(elementId);
+                let [tx, ty] = event.beforeTranslate;
+                return { target, elementId, tx, ty };
+            }).filter((row): row is NonNullable<typeof row> => row != null);
+
+            let dx = 0;
+            let dy = 0;
+            if (smartSnap?.isEnabled() && !smartSnap.isSuspended() && perEvent.length > 0) {
+                ensureSmartSnapCandidateLines();
+                const rects = perEvent
+                    .map(row => {
+                        const layout0 = layoutCache.current.get(row.elementId);
+                        if (!layout0) {
+                            return null;
+                        }
+                        return getSurfaceAxisAlignedBoundsForLayout(doc, row.elementId, {
+                            ...layout0,
+                            x: layout0.x + row.tx,
+                            y: layout0.y + row.ty,
+                        });
+                    })
+                    .filter((r): r is NonNullable<typeof r> => r != null);
+                const union = unionAxisAlignedRects(rects);
+                if (union) {
+                    const { vertical, horizontal } = splitSnapLinesToAxes(snapLinesCacheRef.current);
+                    const th = surfaceThresholdFromViewportPx(viewportScale, DEFAULT_SNAP_THRESHOLD_PX);
+                    const snapped = snapTranslateAxisAlignedRect({
+                        rect: union,
+                        verticalLines: vertical,
+                        horizontalLines: horizontal,
+                        thresholdSurface: th,
+                        surfaceId: smartSnap.surfaceId,
+                    });
+                    dx = snapped.dx;
+                    dy = snapped.dy;
+                    smartSnap.setGuides(
+                        snapped.activeGuides.vertical.length > 0 || snapped.activeGuides.horizontal.length > 0
+                            ? snapped.activeGuides
+                            : null,
+                    );
+                } else {
+                    smartSnap.setGuides(null);
+                }
+            } else {
+                smartSnap?.setGuides(null);
+            }
+
+            perEvent.forEach(row => {
+                const layout = layoutCache.current.get(row.elementId);
                 const rotation = layout?.rotation;
-                target.style.transform = buildTransform(translateX, translateY, rotation);
-                dragDeltaCache.current.set(elementId, [translateX, translateY]);
+                const tx = row.tx + dx;
+                const ty = row.ty + dy;
+                row.target.style.transform = buildTransform(tx, ty, rotation);
+                dragDeltaCache.current.set(row.elementId, [tx, ty]);
             });
         },
-        [isGroupSelection],
+        [documentService, ensureSmartSnapCandidateLines, isGroupSelection, smartSnap, viewportScale],
     );
 
     const handleDragGroupEnd = useCallback(
@@ -476,6 +640,7 @@ export function useMoveableHandlers({
                 return;
             }
             ensureSelectionLayoutsCached();
+            rebuildSmartSnapCandidateLines();
             selectionIds.forEach(elementId => {
                 const layout = cacheLayoutForElement(elementId);
                 if (!layout) {
@@ -497,7 +662,7 @@ export function useMoveableHandlers({
             applyPerformanceHints();
             beginTransform();
         },
-        [applyPerformanceHints, beginTransform, cacheLayoutForElement, ensureSelectionLayoutsCached, isGroupSelection, selectionIds],
+        [applyPerformanceHints, beginTransform, cacheLayoutForElement, ensureSelectionLayoutsCached, isGroupSelection, rebuildSmartSnapCandidateLines, selectionIds],
     );
 
     const handleResize = useCallback(
@@ -550,7 +715,48 @@ export function useMoveableHandlers({
                     },
                 );
             }
-            const { width, height, signedWidth, signedHeight, translateX, translateY } = preview;
+            let { width, height, signedWidth, signedHeight, translateX, translateY } = preview;
+            if (smartSnap?.isEnabled() && !smartSnap.isSuspended()) {
+                ensureSmartSnapCandidateLines();
+                const { vertical, horizontal } = splitSnapLinesToAxes(snapLinesCacheRef.current);
+                const dir = startData.direction;
+                const resizeDirection: readonly [number, number] = [dir[0] ?? 0, dir[1] ?? 0];
+                const snapped = snapResizeLayoutInSurface(
+                    documentService.getDocument(),
+                    elementId,
+                    {
+                        x: initialLayout.x + translateX,
+                        y: initialLayout.y + translateY,
+                        width: signedWidth,
+                        height: signedHeight,
+                        rotation: initialLayout.rotation,
+                    },
+                    resizeDirection,
+                    vertical,
+                    horizontal,
+                    viewportScale,
+                    smartSnap.surfaceId,
+                );
+                const nx = snapped.layout.x;
+                const ny = snapped.layout.y;
+                const nAbsW = Math.abs(snapped.layout.width);
+                const nAbsH = Math.abs(snapped.layout.height);
+                const sgnW = Math.sign(signedWidth) || 1;
+                const sgnH = Math.sign(signedHeight) || 1;
+                signedWidth = nAbsW * sgnW;
+                signedHeight = nAbsH * sgnH;
+                width = nAbsW;
+                height = nAbsH;
+                translateX = nx - initialLayout.x;
+                translateY = ny - initialLayout.y;
+                smartSnap.setGuides(
+                    snapped.activeGuides.vertical.length > 0 || snapped.activeGuides.horizontal.length > 0
+                        ? snapped.activeGuides
+                        : null,
+                );
+            } else {
+                smartSnap?.setGuides(null);
+            }
             if (element?.type === "nl.image" && isHTMLElement(e.target)) {
                 const flipBaselineX = getResizeFlipBaseline(initialLayout, startData, "x");
                 const flipBaselineY = getResizeFlipBaseline(initialLayout, startData, "y");
@@ -574,7 +780,7 @@ export function useMoveableHandlers({
             e.target.style.transform = buildTransform(translateX, translateY, rotation);
             dragDeltaCache.current.set(elementId, [translateX, translateY]);
         },
-        [documentService, isGroupSelection, viewportScale],
+        [documentService, ensureSmartSnapCandidateLines, isGroupSelection, smartSnap, viewportScale],
     );
 
     const handleResizeEnd = useCallback(
@@ -609,6 +815,7 @@ export function useMoveableHandlers({
             if (!isGroupSelection) {
                 return;
             }
+            smartSnap?.setGuides(null);
             e.events.forEach(event => {
                 const target = event.target;
                 if (!isHTMLElement(target)) {
@@ -633,7 +840,7 @@ export function useMoveableHandlers({
                 dragDeltaCache.current.set(elementId, [translateX, translateY]);
             });
         },
-        [isGroupSelection],
+        [isGroupSelection, smartSnap],
     );
 
     const handleResizeGroupEnd = useCallback(
@@ -667,6 +874,7 @@ export function useMoveableHandlers({
         if (isGroupSelection) {
             return;
         }
+        clearSmartSnapGuides();
         const rotation = Number.isFinite(e.beforeRotation)
             ? e.beforeRotation
             : Number.isFinite(e.beforeRotate)
@@ -685,7 +893,7 @@ export function useMoveableHandlers({
         const translateY = e.drag?.beforeTranslate?.[1] ?? 0;
         e.target.style.transform = buildTransform(translateX, translateY, fallbackRotation);
         },
-        [isGroupSelection],
+        [clearSmartSnapGuides, isGroupSelection],
     );
 
     const handleRotateEnd = useCallback(
@@ -719,6 +927,7 @@ export function useMoveableHandlers({
             if (!isGroupSelection) {
                 return;
             }
+            clearSmartSnapGuides();
             e.events.forEach(event => {
                 const target = event.target;
                 if (!isHTMLElement(target)) {
@@ -740,7 +949,7 @@ export function useMoveableHandlers({
                 dragDeltaCache.current.set(elementId, [translateX, translateY]);
             });
         },
-        [isGroupSelection],
+        [clearSmartSnapGuides, isGroupSelection],
     );
 
     const handleRotateGroupEnd = useCallback(
