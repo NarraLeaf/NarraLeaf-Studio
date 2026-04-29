@@ -2,7 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
-import { MousePointer2, Move, Play } from "lucide-react";
+import { MousePointer2, Move, Play, Magnet } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { ContextMenu, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -24,6 +24,7 @@ import {
     useEditorToolState,
     useSurfaceDocument,
     useViewportTransform,
+    useSmartSnapEnabled,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
 import { useSurfaceCanvasContextMenu } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceCanvasContextMenu";
 import { useSurfaceImageDrop } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceImageDrop";
@@ -52,6 +53,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
 
     const tool = useEditorToolState(stateService);
     const viewport = useViewportTransform(stateService);
+    const smartSnapEnabled = useSmartSnapEnabled(stateService);
     const { surface, documentVersion } = useSurfaceDocument(surfaceId, stateService, documentService);
     const deferredDocumentVersion = useDeferredValue(documentVersion);
     const deferredGraphVersion = useDeferredValue(graphVersion);
@@ -168,6 +170,12 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
 
     const handleSelectTool = useCallback(() => applyTool({ kind: "select" }), [applyTool]);
     const handlePanTool = useCallback(() => applyTool({ kind: "pan" }), [applyTool]);
+    const handleToggleSmartSnap = useCallback(() => {
+        if (!stateService) {
+            return;
+        }
+        stateService.setSmartSnapEnabled(!stateService.getSmartSnapEnabled());
+    }, [stateService]);
     const devModeService = useMemo(() => {
         if (!context) {
             return null;
@@ -254,6 +262,15 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                             title="Pan the canvas"
                         >
                             <Move className="w-4 h-4" />
+                        </button>
+                        <button
+                            type="button"
+                            className={toolButtonClass(smartSnapEnabled)}
+                            onClick={handleToggleSmartSnap}
+                            title="Smart snap to guides and neighbors (hold Alt to temporarily disable)"
+                            disabled={!stateService}
+                        >
+                            <Magnet className="w-4 h-4" />
                         </button>
                         <div className="mx-1 h-6 w-px bg-white/10" />
                         <button

@@ -39,6 +39,7 @@ import type { ElementRendererDefinition } from "../../ui-editor/runtime/ElementR
 import type { RenderSurfaceOptions } from "../../ui-editor/runtime/types";
 import type { ViewportTransform } from "../../ui-editor/geometry/types";
 import type { UITool } from "../../ui-editor/editor/types";
+import type { ActiveSnapGuides } from "../../ui-editor/snapping/types";
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type {
@@ -360,6 +361,10 @@ interface UIEditorStateEvents {
     appearanceInspectorVariantChanged: { elementId: string };
     /** Outline panel expand/collapse memory (persisted); payload unused. */
     outlineExpansionChanged: null;
+    /** Smart snap / smart guides toggle (persisted in project settings). */
+    smartSnapEnabledChanged: boolean;
+    /** Ephemeral snap guide lines in surface space (viewport overlay). */
+    snapGuidesChanged: ActiveSnapGuides | null;
 }
 
 interface IUIEditorFontFaceService extends IService {
@@ -403,6 +408,12 @@ interface IUIEditorStateService extends IService {
     /** Outline: branch is collapsed when true (editor-only, project settings). */
     isOutlineBranchCollapsed(elementId: string): boolean;
     setOutlineBranchCollapsed(elementId: string, collapsed: boolean): void;
+    /** When true, dragging/resizing/inserting snaps to surface and sibling guides (project settings). */
+    getSmartSnapEnabled(): boolean;
+    setSmartSnapEnabled(enabled: boolean): void;
+    /** Active snap guides for the current interaction (null clears overlay). */
+    getSnapGuides(): ActiveSnapGuides | null;
+    setSnapGuides(guides: ActiveSnapGuides | null): void;
     on<K extends keyof UIEditorStateEvents>(event: K, handler: (data: UIEditorStateEvents[K]) => void): () => void;
 }
 
@@ -491,4 +502,6 @@ export {
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, UIEditorStateEvents,
     Services, WorkspaceContext
 };
+
+export type { ActiveSnapGuides };
 
