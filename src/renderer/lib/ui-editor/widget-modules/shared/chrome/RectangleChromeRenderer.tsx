@@ -222,7 +222,7 @@ export function RectangleChromeRenderer({
         style.border = "none";
         if (props.strokeAlign === "outside") {
             style.border = "none";
-            style.outlineStyle = props.borderStyle;
+            style.outlineStyle = props.borderStyle as CSSProperties["outlineStyle"];
             // Mirror rootAnimate outline so the first paint is visible before motion applies.
             style.outlineWidth = props.borderWidth;
             style.outlineColor = strokeColor;

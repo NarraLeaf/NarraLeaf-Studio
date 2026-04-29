@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import type { MoveableProps } from "react-moveable";
 import { isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { IUIEditorStateService } from "@/lib/workspace/services/services";
+import type { ActiveSnapGuides } from "@/lib/ui-editor/snapping/types";
 import { useMoveableHandlers } from "@/lib/ui-editor/interaction/useMoveableHandlers";
 import type { InteractionController } from "./types";
 
@@ -16,9 +18,26 @@ interface TransformControllerConfig {
     endTransform: () => void;
     /** When set, Moveable is non-interactive so inline editors (e.g. text) can receive pointer events. */
     inlineTextEditElementId: string | null;
+    surfaceId: string;
+    surfaceDesignSize: { width: number; height: number };
+    stateService: IUIEditorStateService;
+    /** e.g. Alt key held — skip snapping for this gesture. */
+    snapSuspended: () => boolean;
 }
 
 export function useTransformController(config: TransformControllerConfig): InteractionController {
+    const smartSnap = useMemo(
+        () => ({
+            surfaceId: config.surfaceId,
+            designSize: config.surfaceDesignSize,
+            isEnabled: () => config.stateService.getSmartSnapEnabled(),
+            isSuspended: () => config.snapSuspended(),
+            setGuides: (guides: ActiveSnapGuides | null) => config.stateService.setSnapGuides(guides),
+            getExcludedElementIds: () => new Set(config.selectionIds),
+        }),
+        [config.selectionIds, config.snapSuspended, config.stateService, config.surfaceDesignSize, config.surfaceId],
+    );
+
     const handlers = useMoveableHandlers({
         documentService: config.documentService,
         selectionIds: config.selectionIds,
@@ -28,6 +47,7 @@ export function useTransformController(config: TransformControllerConfig): Inter
         scheduleMoveableRectUpdate: config.scheduleMoveableRectUpdate,
         beginTransform: config.beginTransform,
         endTransform: config.endTransform,
+        smartSnap,
     });
 
     const selectionHasFlowLayoutChild = useMemo(() => {

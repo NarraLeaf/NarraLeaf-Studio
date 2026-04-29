@@ -9,8 +9,12 @@ import { UIService } from "../core/UIService";
 import { UIStore, SelectionState } from "../ui/UIStore";
 import type { ViewportTransform } from "../../../ui-editor/geometry/types";
 import type { UITool } from "../../../ui-editor/editor/types";
+import type { ActiveSnapGuides } from "../../../ui-editor/snapping/types";
 
 const VIEWPORT_SETTINGS_KEY = "uiEditor.viewport";
+
+/** Persisted: smart snap / guides for UI Surface editor. */
+const SMART_SNAP_ENABLED_KEY = "uiEditor.smartSnap.enabled";
 
 /** Editing-area cache: inspector appearance variant picker per widget element (project settings, not UIDocument). */
 const APPEARANCE_INSPECTOR_VARIANT_CACHE_KEY = "uiEditor.editingArea.appearanceInspectorVariantByElementId";
@@ -42,6 +46,9 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     /** Presence means the outline branch is collapsed. */
     private readonly outlineCollapsedBranchIds = new Set<string>();
     private outlineCollapsePersistTimer: ReturnType<typeof setTimeout> | null = null;
+
+    private smartSnapEnabled = true;
+    private snapGuides: ActiveSnapGuides | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const uiService = ctx.services.get<UIService>(Services.UI);
@@ -95,12 +102,18 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
                 }
             }
         }
+
+        const snapStored = this.settingsService.getSync<boolean>(SMART_SNAP_ENABLED_KEY);
+        if (typeof snapStored === "boolean") {
+            this.smartSnapEnabled = snapStored;
+        }
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
         this.flushAppearanceInspectorUiCachePersistence();
         this.flushOutlineCollapsePersistence();
         this.setInteractionOverride(null);
+        this.setSnapGuides(null);
         this.selectionUnsubscribe?.();
         this.events.clear();
     }
@@ -233,6 +246,42 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         this.scheduleOutlineCollapsePersistence();
     }
 
+    public getSmartSnapEnabled(): boolean {
+        return this.smartSnapEnabled;
+    }
+
+    public setSmartSnapEnabled(enabled: boolean): void {
+        if (this.smartSnapEnabled === enabled) {
+            return;
+        }
+        this.smartSnapEnabled = enabled;
+        this.events.emit("smartSnapEnabledChanged", enabled);
+        if (!enabled) {
+            this.setSnapGuides(null);
+        }
+        if (!this.settingsService) {
+            return;
+        }
+        void this.settingsService.set(SMART_SNAP_ENABLED_KEY, enabled).catch(err => {
+            console.warn("[UIEditorStateService] failed to persist smart snap enabled", err);
+        });
+    }
+
+    public getSnapGuides(): ActiveSnapGuides | null {
+        return this.snapGuides;
+    }
+
+    public setSnapGuides(guides: ActiveSnapGuides | null): void {
+        if (guides === null && this.snapGuides === null) {
+            return;
+        }
+        if (guides && this.snapGuides && this.areSnapGuidesEqual(guides, this.snapGuides)) {
+            return;
+        }
+        this.snapGuides = guides;
+        this.events.emit("snapGuidesChanged", guides);
+    }
+
     public on<K extends keyof UIEditorStateEvents>(event: K, handler: (data: UIEditorStateEvents[K]) => void): () => void {
         return this.events.on(event, handler);
     }
@@ -342,6 +391,16 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
             return;
         }
         this.persistOutlineCollapsedBranchesNow();
+    }
+
+    private areSnapGuidesEqual(a: ActiveSnapGuides, b: ActiveSnapGuides): boolean {
+        if (a.surfaceId !== b.surfaceId) {
+            return false;
+        }
+        if (a.vertical.length !== b.vertical.length || a.horizontal.length !== b.horizontal.length) {
+            return false;
+        }
+        return a.vertical.every((v, i) => v === b.vertical[i]) && a.horizontal.every((v, i) => v === b.horizontal[i]);
     }
 
     private ensureInteractionOverrideValid(selection: SelectionState): void {

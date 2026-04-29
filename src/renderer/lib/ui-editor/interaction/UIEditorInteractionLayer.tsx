@@ -9,6 +9,7 @@ import { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import { isUIElementSelection } from "@services/ui/UIStore";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UISurface } from "@shared/types/ui-editor/document";
+import type { ActiveSnapGuides } from "@/lib/ui-editor/snapping/types";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { PRIMARY_OUTLINE_STRONG, PRIMARY_OUTLINE_WEAK, SELECTABLE_TARGET } from "./constants";
 import type { InsertPreview, InsertToolDragState } from "./useSurfaceInteractionEvents";
@@ -16,6 +17,7 @@ import { useTransformController } from "./controllers/TransformController";
 import { useImageCropController } from "./controllers/ImageCropController";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
+import { SnapGuidesOverlay } from "@/lib/ui-editor/snapping/SnapGuidesOverlay";
 import {
     isUiContainerDrillLockHit,
     isEmptyOrAbsentUiSelection,
@@ -75,6 +77,9 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
     const insertPreviewRef = useRef<InsertPreview | null>(null);
     const insertState = useRef<InsertToolDragState | null>(null);
 
+    const [snapGuides, setSnapGuidesState] = useState<ActiveSnapGuides | null>(() => stateService.getSnapGuides());
+    const altKeyRef = useRef(false);
+
     const scheduleMoveableRectUpdate = useCallback(() => {
         // Keep the overlay controller aligned after DOM/layout updates.
         requestAnimationFrame(() => {
@@ -100,6 +105,39 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         const unsubscribe = stateService.on("viewportChanged", setViewport);
         return () => unsubscribe();
     }, [stateService]);
+
+    useEffect(() => {
+        setSnapGuidesState(stateService.getSnapGuides());
+        return stateService.on("snapGuidesChanged", setSnapGuidesState);
+    }, [stateService]);
+
+    useEffect(() => {
+        const isAltKey = (e: KeyboardEvent) => e.key === "Alt" || e.code === "AltLeft" || e.code === "AltRight";
+
+        const down = (e: KeyboardEvent) => {
+            if (isAltKey(e)) {
+                altKeyRef.current = true;
+            }
+        };
+        const up = (e: KeyboardEvent) => {
+            if (isAltKey(e)) {
+                altKeyRef.current = false;
+            }
+        };
+        const resetAlt = () => {
+            altKeyRef.current = false;
+        };
+        window.addEventListener("keydown", down);
+        window.addEventListener("keyup", up);
+        window.addEventListener("blur", resetAlt);
+        document.addEventListener("visibilitychange", resetAlt);
+        return () => {
+            window.removeEventListener("keydown", down);
+            window.removeEventListener("keyup", up);
+            window.removeEventListener("blur", resetAlt);
+            document.removeEventListener("visibilitychange", resetAlt);
+        };
+    }, []);
 
     // containerRef.current is often null on the first render (sibling viewport not committed yet).
     // Reading it only during render leaves Selecto's dragContainer stuck on the pointer-events-none
@@ -373,6 +411,10 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         return clientToSurface({ x: clientX, y: clientY }, viewport, containerRect);
     }, [surfaceElement, viewport]);
 
+    const insertSnapEnabled = useCallback(() => stateService.getSmartSnapEnabled(), [stateService]);
+    const insertSnapSuspended = useCallback(() => altKeyRef.current, []);
+    const transformSnapSuspended = useCallback(() => altKeyRef.current, []);
+
     useSurfaceInteractionEvents({
         surfaceElement,
         surfaceId,
@@ -387,6 +429,8 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         panStateRef: panState,
         documentService,
         stateService,
+        insertSnapEnabled,
+        insertSnapSuspended,
     });
 
     const transformController = useTransformController({
@@ -399,6 +443,10 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         beginTransform,
         endTransform,
         inlineTextEditElementId,
+        surfaceId,
+        surfaceDesignSize: surface.designSize,
+        stateService,
+        snapSuspended: transformSnapSuspended,
     });
     const imageCropController = useImageCropController({
         documentService,
@@ -426,6 +474,9 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         <>
             {tool.kind === "select" && surfaceElement && (
                 <div className="pointer-events-none absolute inset-0 z-[9]">
+                    {snapGuides && snapGuides.surfaceId === surfaceId ? (
+                        <SnapGuidesOverlay guides={snapGuides} viewport={viewport} />
+                    ) : null}
                     <Selecto
                         className={SELECTO_CLASS_NAME}
                         container={surfaceElement}
@@ -461,6 +512,11 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
             )}
 
             {/* Insert mode preview overlay */}
+            {tool.kind === "insert" && surfaceElement && snapGuides && snapGuides.surfaceId === surfaceId ? (
+                <div className="pointer-events-none absolute inset-0 z-[9]">
+                    <SnapGuidesOverlay guides={snapGuides} viewport={viewport} />
+                </div>
+            ) : null}
             {tool.kind === "insert" && insertPreview && (
                 <InsertPreviewOverlay preview={insertPreview} viewport={viewport} />
             )}
