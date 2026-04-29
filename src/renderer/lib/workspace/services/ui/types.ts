@@ -121,6 +121,8 @@ export enum FocusArea {
     RightPanel = "right-panel",
     BottomPanel = "bottom-panel",
     Editor = "editor",
+    /** Tab strip of an editor group; `targetId` is the `EditorGroup.id` */
+    EditorTabs = "editor-tabs",
     ActionBar = "action-bar",
     Dialog = "dialog",
     None = "none",
@@ -143,6 +145,11 @@ export interface Keybinding {
     description?: string;
     handler: (context: FocusContext) => void | Promise<void>;
     when?: (context: FocusContext) => boolean; // Condition for when the keybinding is active
+    /**
+     * When true, the binding may run while DOM focus is in a text-editable control.
+     * Default false: {@link KeybindingService} skips bindings while typing unless this is set.
+     */
+    allowInEditable?: boolean;
 }
 
 /**

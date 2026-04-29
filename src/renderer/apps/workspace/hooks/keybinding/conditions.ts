@@ -85,6 +85,13 @@ export function whenEditorFocused(tabId?: string): KeybindingCondition {
 }
 
 /**
+ * Active when focus is on an editor group's tab strip (`targetId` = group id).
+ */
+export function whenEditorTabsFocused(groupId?: string): KeybindingCondition {
+    return whenFocused(FocusArea.EditorTabs, groupId);
+}
+
+/**
  * Creates a condition that is always true (global keybinding)
  * @returns A condition function that always returns true
  * 
