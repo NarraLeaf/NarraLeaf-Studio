@@ -9,12 +9,16 @@ import { UIService } from "../core/UIService";
 import { UIStore, SelectionState } from "../ui/UIStore";
 import type { ViewportTransform } from "../../../ui-editor/geometry/types";
 import type { UITool } from "../../../ui-editor/editor/types";
-import type { ActiveSnapGuides } from "../../../ui-editor/snapping/types";
+import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../../ui-editor/snapping/types";
+import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "../../../ui-editor/snapping/types";
 
 const VIEWPORT_SETTINGS_KEY = "uiEditor.viewport";
 
 /** Persisted: smart snap / guides for UI Surface editor. */
 const SMART_SNAP_ENABLED_KEY = "uiEditor.smartSnap.enabled";
+
+/** Persisted: smart snap category toggles (element centers, edges, canvas). */
+const SMART_SNAP_DETAIL_KEY = "uiEditor.smartSnap.detail";
 
 /** Editing-area cache: inspector appearance variant picker per widget element (project settings, not UIDocument). */
 const APPEARANCE_INSPECTOR_VARIANT_CACHE_KEY = "uiEditor.editingArea.appearanceInspectorVariantByElementId";
@@ -48,6 +52,7 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     private outlineCollapsePersistTimer: ReturnType<typeof setTimeout> | null = null;
 
     private smartSnapEnabled = true;
+    private smartSnapDetail: SmartSnapDetailSettings = { ...DEFAULT_SMART_SNAP_DETAIL_SETTINGS };
     private snapGuides: ActiveSnapGuides | null = null;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
@@ -107,6 +112,9 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         if (typeof snapStored === "boolean") {
             this.smartSnapEnabled = snapStored;
         }
+
+        const detailStored = this.settingsService.getSync<unknown>(SMART_SNAP_DETAIL_KEY);
+        this.smartSnapDetail = normalizeSmartSnapDetailSettings(detailStored);
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
@@ -267,6 +275,25 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         });
     }
 
+    public getSmartSnapDetailSettings(): SmartSnapDetailSettings {
+        return this.smartSnapDetail;
+    }
+
+    public patchSmartSnapDetailSettings(patch: Partial<SmartSnapDetailSettings>): void {
+        const next: SmartSnapDetailSettings = { ...this.smartSnapDetail, ...patch };
+        if (areSmartSnapDetailSettingsEqual(next, this.smartSnapDetail)) {
+            return;
+        }
+        this.smartSnapDetail = next;
+        this.events.emit("smartSnapDetailSettingsChanged", this.smartSnapDetail);
+        if (!this.settingsService) {
+            return;
+        }
+        void this.settingsService.set(SMART_SNAP_DETAIL_KEY, this.smartSnapDetail).catch(err => {
+            console.warn("[UIEditorStateService] failed to persist smart snap detail settings", err);
+        });
+    }
+
     public getSnapGuides(): ActiveSnapGuides | null {
         return this.snapGuides;
     }
@@ -400,7 +427,14 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         if (a.vertical.length !== b.vertical.length || a.horizontal.length !== b.horizontal.length) {
             return false;
         }
-        return a.vertical.every((v, i) => v === b.vertical[i]) && a.horizontal.every((v, i) => v === b.horizontal[i]);
+        return (
+            a.vertical.every(
+                (v, i) => v.value === b.vertical[i].value && v.kind === b.vertical[i].kind,
+            ) &&
+            a.horizontal.every(
+                (v, i) => v.value === b.horizontal[i].value && v.kind === b.horizontal[i].kind,
+            )
+        );
     }
 
     private ensureInteractionOverrideValid(selection: SelectionState): void {
@@ -435,4 +469,25 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         }
         return a.kind === "textEdit" && b.kind === "textEdit";
     }
+}
+
+function normalizeSmartSnapDetailSettings(raw: unknown): SmartSnapDetailSettings {
+    const d = DEFAULT_SMART_SNAP_DETAIL_SETTINGS;
+    if (!raw || typeof raw !== "object") {
+        return { ...d };
+    }
+    const o = raw as Record<string, unknown>;
+    return {
+        snapElementLayout: typeof o.snapElementLayout === "boolean" ? o.snapElementLayout : d.snapElementLayout,
+        snapElementBorder: typeof o.snapElementBorder === "boolean" ? o.snapElementBorder : d.snapElementBorder,
+        snapCanvasLayout: typeof o.snapCanvasLayout === "boolean" ? o.snapCanvasLayout : d.snapCanvasLayout,
+    };
+}
+
+function areSmartSnapDetailSettingsEqual(a: SmartSnapDetailSettings, b: SmartSnapDetailSettings): boolean {
+    return (
+        a.snapElementLayout === b.snapElementLayout &&
+        a.snapElementBorder === b.snapElementBorder &&
+        a.snapCanvasLayout === b.snapCanvasLayout
+    );
 }

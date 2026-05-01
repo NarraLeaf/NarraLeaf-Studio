@@ -39,7 +39,7 @@ import type { ElementRendererDefinition } from "../../ui-editor/runtime/ElementR
 import type { RenderSurfaceOptions } from "../../ui-editor/runtime/types";
 import type { ViewportTransform } from "../../ui-editor/geometry/types";
 import type { UITool } from "../../ui-editor/editor/types";
-import type { ActiveSnapGuides } from "../../ui-editor/snapping/types";
+import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/snapping/types";
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type {
@@ -363,6 +363,8 @@ interface UIEditorStateEvents {
     outlineExpansionChanged: null;
     /** Smart snap / smart guides toggle (persisted in project settings). */
     smartSnapEnabledChanged: boolean;
+    /** Per-category snap targets when smart snap is enabled (persisted). */
+    smartSnapDetailSettingsChanged: SmartSnapDetailSettings;
     /** Ephemeral snap guide lines in surface space (viewport overlay). */
     snapGuidesChanged: ActiveSnapGuides | null;
 }
@@ -411,6 +413,9 @@ interface IUIEditorStateService extends IService {
     /** When true, dragging/resizing/inserting snaps to surface and sibling guides (project settings). */
     getSmartSnapEnabled(): boolean;
     setSmartSnapEnabled(enabled: boolean): void;
+    /** Which guide categories participate when smart snap is on (persisted). */
+    getSmartSnapDetailSettings(): SmartSnapDetailSettings;
+    patchSmartSnapDetailSettings(patch: Partial<SmartSnapDetailSettings>): void;
     /** Active snap guides for the current interaction (null clears overlay). */
     getSnapGuides(): ActiveSnapGuides | null;
     setSnapGuides(guides: ActiveSnapGuides | null): void;
@@ -503,5 +508,5 @@ export {
     Services, WorkspaceContext
 };
 
-export type { ActiveSnapGuides };
+export type { ActiveSnapGuides, SmartSnapDetailSettings };
 

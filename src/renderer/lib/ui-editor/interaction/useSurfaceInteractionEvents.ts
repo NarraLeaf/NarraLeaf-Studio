@@ -166,7 +166,13 @@ export function useSurfaceInteractionEvents({
                 const suspendSnap = (insertSnapSuspended?.() ?? false) || event.altKey;
                 if (insertSnapEnabled?.() && !suspendSnap) {
                     const doc = documentService.getDocument();
-                    const lines = collectSnapGuideLines(doc, surfaceId, new Set(), surface.designSize);
+                    const lines = collectSnapGuideLines(
+                        doc,
+                        surfaceId,
+                        new Set(),
+                        surface.designSize,
+                        stateService.getSmartSnapDetailSettings(),
+                    );
                     const { vertical, horizontal } = splitSnapLinesToAxes(lines);
                     const th = surfaceThresholdFromViewportPx(viewport.scale, DEFAULT_SNAP_THRESHOLD_PX);
                     const snapped = snapSurfacePoint({

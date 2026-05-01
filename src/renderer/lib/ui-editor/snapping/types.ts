@@ -15,11 +15,17 @@ export type SnapGuideKind =
     | "element-edge"
     | "element-center";
 
+/** One active guide segment shown in the overlay (surface design space). */
+export type ActiveSnapGuideSegment = {
+    value: number;
+    kind: SnapGuideKind;
+};
+
 /** Payload for rendering guides in the viewport overlay. */
 export type ActiveSnapGuides = {
     surfaceId: string;
-    vertical: number[];
-    horizontal: number[];
+    vertical: ActiveSnapGuideSegment[];
+    horizontal: ActiveSnapGuideSegment[];
 };
 
 export type AxisAlignedRect = {
@@ -27,4 +33,23 @@ export type AxisAlignedRect = {
     y: number;
     width: number;
     height: number;
+};
+
+/**
+ * Per-category smart snap targets (master toggle remains `getSmartSnapEnabled` on state service).
+ * Persisted under project settings.
+ */
+export type SmartSnapDetailSettings = {
+    /** Snap selection edges/centers to other elements' center lines. */
+    snapElementLayout: boolean;
+    /** Snap element edges to other elements' edges. */
+    snapElementBorder: boolean;
+    /** Snap to canvas (surface) edges and center lines. */
+    snapCanvasLayout: boolean;
+};
+
+export const DEFAULT_SMART_SNAP_DETAIL_SETTINGS: SmartSnapDetailSettings = {
+    snapElementLayout: true,
+    snapElementBorder: true,
+    snapCanvasLayout: true,
 };

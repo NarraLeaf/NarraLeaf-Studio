@@ -34,6 +34,7 @@ export function useTransformController(config: TransformControllerConfig): Inter
             isSuspended: () => config.snapSuspended(),
             setGuides: (guides: ActiveSnapGuides | null) => config.stateService.setSnapGuides(guides),
             getExcludedElementIds: () => new Set(config.selectionIds),
+            getDetailSettings: () => config.stateService.getSmartSnapDetailSettings(),
         }),
         [config.selectionIds, config.snapSuspended, config.stateService, config.surfaceDesignSize, config.surfaceId],
     );

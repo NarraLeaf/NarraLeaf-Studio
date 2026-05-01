@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import type { UISurface } from "@shared/types/ui-editor/document";
+import type { SmartSnapDetailSettings } from "@/lib/ui-editor/snapping/types";
+import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "@/lib/ui-editor/snapping/types";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 
 export type ViewportTransform = {
@@ -54,6 +56,23 @@ export function useSmartSnapEnabled(stateService: EditorStateService | null | un
     }, [stateService]);
 
     return enabled;
+}
+
+export function useSmartSnapDetailSettings(stateService: EditorStateService | null | undefined) {
+    const [detail, setDetail] = useState<SmartSnapDetailSettings>(
+        () => stateService?.getSmartSnapDetailSettings() ?? DEFAULT_SMART_SNAP_DETAIL_SETTINGS,
+    );
+
+    useEffect(() => {
+        if (!stateService) {
+            setDetail(DEFAULT_SMART_SNAP_DETAIL_SETTINGS);
+            return undefined;
+        }
+        setDetail(stateService.getSmartSnapDetailSettings());
+        return stateService.on("smartSnapDetailSettingsChanged", setDetail);
+    }, [stateService]);
+
+    return detail;
 }
 
 export function useSurfaceDocument(

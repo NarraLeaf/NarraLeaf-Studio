@@ -2,18 +2,38 @@ import type { UIDocument, UISurfaceDesignSize } from "@shared/types/ui-editor/do
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { getSurfaceAxisAlignedBoundsFromDocument } from "./surfaceRect";
-import type { SnapGuideLine } from "./types";
+import type { SmartSnapDetailSettings, SnapGuideLine } from "./types";
+import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "./types";
 
 const ROOT_WIDGET_TYPE = "nl.root";
 
 /**
  * Build snap guide lines for a surface: design bounds + non-excluded elements' edges and centers.
  */
+function filterSnapGuideLinesByDetailSettings(
+    lines: readonly SnapGuideLine[],
+    detail: SmartSnapDetailSettings,
+): SnapGuideLine[] {
+    return lines.filter(ln => {
+        if (ln.kind === "surface-edge" || ln.kind === "surface-center") {
+            return detail.snapCanvasLayout;
+        }
+        if (ln.kind === "element-edge") {
+            return detail.snapElementBorder;
+        }
+        if (ln.kind === "element-center") {
+            return detail.snapElementLayout;
+        }
+        return true;
+    });
+}
+
 export function collectSnapGuideLines(
     document: UIDocument,
     surfaceId: string,
     excludedElementIds: ReadonlySet<string>,
     designSize: UISurfaceDesignSize,
+    detailSettings: SmartSnapDetailSettings = DEFAULT_SMART_SNAP_DETAIL_SETTINGS,
 ): SnapGuideLine[] {
     const lines: SnapGuideLine[] = [];
     const { width: dw, height: dh } = designSize;
@@ -29,7 +49,7 @@ export function collectSnapGuideLines(
 
     const rootId = resolveSurfaceRootElementId(document, surfaceId);
     if (!rootId) {
-        return dedupeLines(lines);
+        return filterSnapGuideLinesByDetailSettings(dedupeLines(lines), detailSettings);
     }
 
     const subtree = collectSubtreeElementIds(document, rootId);
@@ -62,7 +82,7 @@ export function collectSnapGuideLines(
         );
     }
 
-    return dedupeLines(lines);
+    return filterSnapGuideLinesByDetailSettings(dedupeLines(lines), detailSettings);
 }
 
 function dedupeLines(lines: SnapGuideLine[]): SnapGuideLine[] {

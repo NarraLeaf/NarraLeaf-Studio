@@ -2,7 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
-import { MousePointer2, Move, Play, Magnet } from "lucide-react";
+import { MousePointer2, Move, Play, Magnet, ChevronDown } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { ContextMenu, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -25,11 +25,17 @@ import {
     useSurfaceDocument,
     useViewportTransform,
     useSmartSnapEnabled,
+    useSmartSnapDetailSettings,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
 import { useSurfaceCanvasContextMenu } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceCanvasContextMenu";
 import { useSurfaceImageDrop } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceImageDrop";
 import { useSurfaceDoubleClick } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceDoubleClick";
 import { useSurfaceInteractionCropDimming } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceInteractionCropDimming";
+import {
+    SurfaceEditorToolbarButtonGroup,
+    SurfaceEditorToolbarSegButton,
+} from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarButtonGroup";
+import { SurfaceSnapSettingsTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceSnapSettingsMenu";
 
 export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ surfaceId: string }>) {
     const surfaceId = payload?.surfaceId;
@@ -54,6 +60,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const tool = useEditorToolState(stateService);
     const viewport = useViewportTransform(stateService);
     const smartSnapEnabled = useSmartSnapEnabled(stateService);
+    const smartSnapDetail = useSmartSnapDetailSettings(stateService);
     const { surface, documentVersion } = useSurfaceDocument(surfaceId, stateService, documentService);
     const deferredDocumentVersion = useDeferredValue(documentVersion);
     const deferredGraphVersion = useDeferredValue(graphVersion);
@@ -263,15 +270,25 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         >
                             <Move className="w-4 h-4" />
                         </button>
-                        <button
-                            type="button"
-                            className={toolButtonClass(smartSnapEnabled)}
-                            onClick={handleToggleSmartSnap}
-                            title="Smart snap to guides and neighbors (hold Alt to temporarily disable)"
-                            disabled={!stateService}
-                        >
-                            <Magnet className="w-4 h-4" />
-                        </button>
+                        <SurfaceEditorToolbarButtonGroup aria-label="Smart snap">
+                            <SurfaceEditorToolbarSegButton
+                                type="button"
+                                active={smartSnapEnabled}
+                                onClick={handleToggleSmartSnap}
+                                title="Smart snap to guides and neighbors (hold Alt to temporarily disable)"
+                                disabled={!stateService}
+                                aria-pressed={smartSnapEnabled}
+                            >
+                                <Magnet className="h-4 w-4" />
+                            </SurfaceEditorToolbarSegButton>
+                            {stateService ? (
+                                <SurfaceSnapSettingsTrigger stateService={stateService} detail={smartSnapDetail} />
+                            ) : (
+                                <SurfaceEditorToolbarSegButton type="button" disabled title="Snap settings" aria-label="Snap settings">
+                                    <ChevronDown className="h-4 w-4" />
+                                </SurfaceEditorToolbarSegButton>
+                            )}
+                        </SurfaceEditorToolbarButtonGroup>
                         <div className="mx-1 h-6 w-px bg-white/10" />
                         <button
                             type="button"
