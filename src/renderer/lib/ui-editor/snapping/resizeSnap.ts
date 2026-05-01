@@ -1,5 +1,5 @@
 import type { UIDocument, UILayout } from "@shared/types/ui-editor/document";
-import { surfaceRectToParentLocalLayout } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
+import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { getSurfaceAxisAlignedBoundsForLayout } from "./surfaceRect";
 import type { ActiveSnapGuides, AxisAlignedRect, SnapGuideLine } from "./types";
 import { surfaceThresholdFromViewportPx } from "./snapMath";
@@ -78,14 +78,14 @@ export function snapResizeLayoutInSurface(
         const snap = bestSnap1D([{ position: surf.x }], verticalLines, threshold);
         if (snap.line != null) {
             surf = { ...surf, x: surf.x + snap.delta, width: surf.width - snap.delta };
-            activeGuides.vertical = [snap.line.value];
+            activeGuides.vertical = [{ value: snap.line.value, kind: snap.line.kind }];
         }
     } else if (dirX === 1) {
         const right = surf.x + surf.width;
         const snap = bestSnap1D([{ position: right }], verticalLines, threshold);
         if (snap.line != null) {
             surf = { ...surf, width: surf.width + snap.delta };
-            activeGuides.vertical = [snap.line.value];
+            activeGuides.vertical = [{ value: snap.line.value, kind: snap.line.kind }];
         }
     }
 
@@ -97,14 +97,14 @@ export function snapResizeLayoutInSurface(
         const snap = bestSnap1D([{ position: surf.y }], horizontalLines, threshold);
         if (snap.line != null) {
             surf = { ...surf, y: surf.y + snap.delta, height: surf.height - snap.delta };
-            activeGuides.horizontal = [snap.line.value];
+            activeGuides.horizontal = [{ value: snap.line.value, kind: snap.line.kind }];
         }
     } else if (dirY === 1) {
         const bottom = surf.y + surf.height;
         const snap = bestSnap1D([{ position: bottom }], horizontalLines, threshold);
         if (snap.line != null) {
             surf = { ...surf, height: surf.height + snap.delta };
-            activeGuides.horizontal = [snap.line.value];
+            activeGuides.horizontal = [{ value: snap.line.value, kind: snap.line.kind }];
         }
     }
 
@@ -112,9 +112,17 @@ export function snapResizeLayoutInSurface(
         surf = { ...surf, height: MIN_DIM };
     }
 
-    const local = surfaceRectToParentLocalLayout(document, parentId, surf);
+    // Inlined parent-local mapping without the Math.max(0, ...) clamp used by tree/insert helpers:
+    // resize must allow elements to live at negative parent-local positions (e.g. snapping past
+    // a parent's left edge), otherwise the result snaps back to 0 and the element jumps.
+    const parentSurfaceTL = getElementSurfaceTopLeft(document, parentId);
     return {
-        layout: { x: local.x, y: local.y, width: local.width, height: local.height },
+        layout: {
+            x: surf.x - parentSurfaceTL.x,
+            y: surf.y - parentSurfaceTL.y,
+            width: surf.width,
+            height: surf.height,
+        },
         activeGuides,
     };
 }
