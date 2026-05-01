@@ -41,7 +41,7 @@ import {
 } from "@/lib/ui-editor/snapping";
 import { getSurfaceAxisAlignedBoundsForLayout } from "@/lib/ui-editor/snapping/surfaceRect";
 import { snapResizeLayoutInSurface } from "@/lib/ui-editor/snapping/resizeSnap";
-import type { ActiveSnapGuides, SnapGuideLine } from "@/lib/ui-editor/snapping/types";
+import type { ActiveSnapGuides, SnapGuideLine, SmartSnapDetailSettings } from "@/lib/ui-editor/snapping/types";
 
 type ResizeCacheEntry = {
     width?: number;
@@ -101,6 +101,8 @@ export type SmartSnapContext = {
     setGuides: (guides: ActiveSnapGuides | null) => void;
     /** Elements excluded from snap targets (typically the current selection). */
     getExcludedElementIds: () => ReadonlySet<string>;
+    /** Per-category snap lines when smart snap is enabled. */
+    getDetailSettings: () => SmartSnapDetailSettings;
 };
 
 type MoveableHandlersConfig = {
@@ -198,6 +200,7 @@ export function useMoveableHandlers({
             smartSnap.surfaceId,
             smartSnap.getExcludedElementIds(),
             smartSnap.designSize,
+            smartSnap.getDetailSettings(),
         );
     }, [documentService, smartSnap]);
 
@@ -218,6 +221,7 @@ export function useMoveableHandlers({
             smartSnap.surfaceId,
             smartSnap.getExcludedElementIds(),
             smartSnap.designSize,
+            smartSnap.getDetailSettings(),
         );
     }, [documentService, smartSnap]);
 
@@ -721,14 +725,18 @@ export function useMoveableHandlers({
                 const { vertical, horizontal } = splitSnapLinesToAxes(snapLinesCacheRef.current);
                 const dir = startData.direction;
                 const resizeDirection: readonly [number, number] = [dir[0] ?? 0, dir[1] ?? 0];
+                // Snap layer interprets layout via min(0, width) for top-left, so it expects
+                // unnormalized layout semantics. Our (translateX/Y) already encodes the visual
+                // top-left, so feed positive width/height to keep both contributors consistent;
+                // otherwise sign duplication shifts the box by ~one full extent at gesture start.
                 const snapped = snapResizeLayoutInSurface(
                     documentService.getDocument(),
                     elementId,
                     {
                         x: initialLayout.x + translateX,
                         y: initialLayout.y + translateY,
-                        width: signedWidth,
-                        height: signedHeight,
+                        width: width,
+                        height: height,
                         rotation: initialLayout.rotation,
                     },
                     resizeDirection,

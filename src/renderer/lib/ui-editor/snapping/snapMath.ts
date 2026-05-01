@@ -117,8 +117,10 @@ export function snapTranslateAxisAlignedRect(params: {
         dy: ySnap.delta,
         activeGuides: {
             surfaceId,
-            vertical: xSnap.line != null ? [xSnap.line.value] : [],
-            horizontal: ySnap.line != null ? [ySnap.line.value] : [],
+            vertical:
+                xSnap.line != null ? [{ value: xSnap.line.value, kind: xSnap.line.kind }] : [],
+            horizontal:
+                ySnap.line != null ? [{ value: ySnap.line.value, kind: ySnap.line.kind }] : [],
         },
         guideLines,
     };
@@ -143,8 +145,10 @@ export function snapSurfacePoint(params: {
         y: y + ySnap.delta,
         activeGuides: {
             surfaceId,
-            vertical: xSnap.line != null ? [xSnap.line.value] : [],
-            horizontal: ySnap.line != null ? [ySnap.line.value] : [],
+            vertical:
+                xSnap.line != null ? [{ value: xSnap.line.value, kind: xSnap.line.kind }] : [],
+            horizontal:
+                ySnap.line != null ? [{ value: ySnap.line.value, kind: ySnap.line.kind }] : [],
         },
     };
 }
