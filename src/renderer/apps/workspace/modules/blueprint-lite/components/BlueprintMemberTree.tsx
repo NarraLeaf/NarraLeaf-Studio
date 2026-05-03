@@ -253,11 +253,6 @@ export function BlueprintMemberTree({
                         + New
                     </button>
                 </div>
-                <p className="mb-1 text-[10px] leading-snug text-gray-600">
-                    Layers organize graphs for compilation order only — they are not blueprint entry points. Add an event
-                    head on the canvas (right-click) to start a chain. Wire layers from Properties → Interaction →
-                    Blueprint.
-                </p>
                 <ul className="space-y-0.5">
                     {Object.keys(events).length === 0 ? (
                         <li className="text-gray-500">—</li>
@@ -320,19 +315,6 @@ export function BlueprintMemberTree({
                         ) : null}
                     </div>
                 </div>
-                <p className="mb-1.5 shrink-0 text-[10px] text-gray-600">
-                    <span className="text-gray-500">Var</span>: execution locals (defaults below).{" "}
-                    {canDefineBindingFields ? (
-                        <>
-                            <span className="text-gray-500">Field</span>: binding sources (surface state key).
-                        </>
-                    ) : (
-                        <>
-                            <span className="text-gray-500">Field</span>: define on global or surface main blueprints;
-                            bind widget props to those fields from the properties panel.
-                        </>
-                    )}
-                </p>
                 <div className="min-h-0 flex-1 space-y-2 overflow-y-auto border-t border-white/5 pt-2">
                     {sortedVars.length === 0 && sortedFields.length === 0 ? (
                         <p className="text-gray-500">No members yet.</p>

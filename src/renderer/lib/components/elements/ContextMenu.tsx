@@ -71,6 +71,17 @@ export function ContextMenu({
     const [focusedIndex, setFocusedIndex] = useState(0);
     const [openSubmenuIndex, setOpenSubmenuIndex] = useState<number | null>(null);
 
+    useLayoutEffect(() => {
+        if (!visible) {
+            setOpenSubmenuIndex(null);
+            return;
+        }
+
+        setFocusedIndex(0);
+        setOpenSubmenuIndex(null);
+        setAdjustedPosition(position);
+    }, [visible, position.x, position.y]);
+
     // Adjust position to keep menu on screen
     useLayoutEffect(() => {
         if (!menuRef.current || !visible) return;
@@ -105,9 +116,7 @@ export function ContextMenu({
             y = padding;
         }
 
-        if (x !== adjustedPosition.x || y !== adjustedPosition.y) {
-            setAdjustedPosition({ x, y });
-        }
+        setAdjustedPosition(prev => (x !== prev.x || y !== prev.y ? { x, y } : prev));
     }, [position, visible, items, anchorRect]);
 
     // Close on click outside
@@ -124,12 +133,12 @@ export function ContextMenu({
 
         // Delay to prevent immediate closure from the opening click
         const timer = setTimeout(() => {
-            document.addEventListener('mousedown', handleClickOutside);
+            document.addEventListener('mousedown', handleClickOutside, true);
         }, 0);
 
         return () => {
             clearTimeout(timer);
-            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('mousedown', handleClickOutside, true);
         };
     }, [visible, onClose]);
 

@@ -410,8 +410,8 @@ export function ColorPickerTrigger({
             }
             closePicker();
         };
-        document.addEventListener("mousedown", handleOutside);
-        return () => document.removeEventListener("mousedown", handleOutside);
+        document.addEventListener("mousedown", handleOutside, true);
+        return () => document.removeEventListener("mousedown", handleOutside, true);
     }, [isOpen, closePicker]);
 
     useEffect(() => {
