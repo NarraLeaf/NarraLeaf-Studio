@@ -1,0 +1,747 @@
+# Develop
+
+## Features
+
+- [ ] Product Shell and Launcher
+  - [x] Launcher application shell with tab navigation
+  - [ ] Plugins tab (placeholder copy only)
+  - [ ] Learning tab (placeholder copy only)
+  - [ ] Plugin marketplace installed/browsing/notifications (no backend)
+  - [ ] Project launcher
+    - [x] Recent projects (list, persist, remove, open in Workspace)
+    - [ ] Project search and pinning
+    - [ ] Project health summary
+    - [ ] Missing dependency and migration notices
+  - [ ] Project wizard
+    - [x] Desktop project wizard flows (templates, details, settings, review)
+    - [ ] Full template catalogue parity (genre packs, importer UX, previews)
+    - [ ] Built-in demos and template metadata completeness
+    - [ ] Import existing NarraLeaf project (polished UX)
+    - [ ] Localization of wizard UX
+  - [ ] Learning center
+    - [ ] Built-in tutorials
+    - [ ] Example project browser
+    - [ ] NarraLeaf ecosystem documentation links
+
+- [ ] Project Workspace
+  - [ ] Modular workspace layout
+    - [x] Sidebar and bottom panel module registration
+    - [x] Editor tab session model
+    - [x] Properties panel framework
+    - [x] Console panel registered (panel body is placeholder; no log streaming)
+    - [ ] Command palette
+    - [ ] Global project search
+    - [ ] Workspace layout presets
+    - [ ] Keyboard shortcut editor
+  - [ ] Project settings
+    - [x] Settings service foundation
+    - [ ] Runtime resolution and aspect ratio
+    - [ ] Default language and localization settings
+    - [ ] Build target settings
+    - [ ] Plugin permission settings
+  - [ ] Project diagnostics
+    - [ ] Broken reference overview
+    - [ ] Asset usage report
+    - [ ] Script and blueprint diagnostics summary
+    - [ ] Project migration assistant
+
+- [ ] Story Authoring
+  - [ ] NarraLang script editor
+    - [ ] `.nls` file explorer
+    - [ ] Syntax highlighting
+    - [ ] Diagnostics and lint integration
+    - [ ] Auto-completion for characters, assets, variables, and labels
+    - [ ] Rename and reference navigation
+    - [ ] Formatter and quick fixes
+  - [ ] Scene and chapter manager
+    - [ ] Story outline tree
+    - [ ] Scene metadata
+    - [ ] Chapter grouping
+    - [ ] Branch and route visualization
+    - [ ] Jump to script line from outline
+  - [ ] Visual story flow
+    - [ ] Dialogue node graph
+    - [ ] Choice and condition branches
+    - [ ] Variable gates
+    - [ ] Route completeness checks
+    - [ ] Dead-end detection
+  - [ ] No-code narrative authoring
+    - [ ] Dialogue table editor
+    - [ ] Choice editor
+    - [ ] Condition builder
+    - [ ] Variable and flag editor
+    - [ ] Script generation from visual edits
+  - [ ] Story runtime integration
+    - [ ] Compile NarraLang into runtime artifacts
+    - [ ] Map diagnostics back to script lines
+    - [ ] Start Dev Mode from scene or line
+    - [ ] Runtime checkpoint and replay hooks
+
+- [ ] Visual Novel Content Model
+  - [ ] Character manager
+    - [x] Character panel plus Character editor (usable authoring surface)
+    - [ ] Character profile fields
+    - [ ] Expression and outfit sets
+    - [ ] Voice profile
+    - [ ] Default dialogue style
+    - [ ] Character usage tracking
+  - [ ] Background and CG manager
+    - [ ] Scene background catalog
+    - [ ] CG gallery metadata
+    - [ ] Unlock condition metadata
+    - [ ] Cropping and safe-area preview
+  - [ ] Audio model
+    - [ ] BGM, ambience, voice, and SFX categories
+    - [ ] Audio channel routing
+    - [ ] Loop point metadata
+    - [ ] Fade and ducking presets
+    - [ ] Integration with `@narraleaf/sound`
+  - [ ] Game systems
+    - [ ] Save and load slots
+    - [ ] Preferences and accessibility settings
+    - [ ] Gallery and replay room
+    - [ ] Achievements
+    - [ ] Persistent variables
+    - [ ] Skip, auto-play, backlog, and history model
+  - [ ] Localization
+    - [ ] Translation table editor
+    - [ ] Per-language asset overrides
+    - [ ] Missing translation diagnostics
+    - [ ] Text expansion preview
+    - [ ] Export and import for translators
+
+- [ ] Asset Pipeline
+  - [ ] Assets manager
+    - [x] Magic Tags
+    - [x] Asset Groups
+    - [x] Asset Explorer views (browse, filter basics)
+    - [x] Remote asset import pipeline (eligible asset kinds; limitations apply)
+    - [ ] Remote Blueprint-backed assets parity (explicitly unsupported in current remote path)
+    - [ ] Batch import rules
+    - [ ] Asset rename with reference updates
+    - [ ] Asset dependency graph
+    - [ ] Missing asset repair workflow
+    - [ ] Asset metadata schema
+  - [ ] Compression and optimization
+    - [ ] General asset compression
+    - [ ] Image optimization presets
+    - [ ] Audio transcode presets
+    - [ ] Video transcode presets
+    - [ ] Build-time asset hashing
+  - [ ] Character asset packing
+    - [ ] CharPack import
+    - [ ] CharPack generation
+    - [ ] Expression and outfit pack preview
+    - [ ] Runtime CharPack compatibility check
+  - [ ] Asset intelligence
+    - [ ] Duplicate asset detection
+    - [ ] Unused asset detection
+    - [ ] Naming convention suggestions
+    - [ ] Tag suggestions from folder structure
+
+- [ ] UI Editor
+  - [ ] Surface manager
+    - [x] App and Stage surface model
+    - [x] Surface list panel
+    - [x] Surface editor tab foundation
+    - [x] Main Surface rules (fixed id `narraleaf-studio:main-surface`, guarded delete/rename/id)
+    - [ ] Surface templates and presets
+  - [ ] Surface editor
+    - [x] Canvas selection and transform foundation
+    - [x] Snapping guides
+    - [x] Layer outline foundation
+    - [x] Docker bar foundation
+    - [x] Palette-based insertion from Docker bar (`insertPalette`; not a unified search popover)
+    - [ ] Multi-surface preview
+    - [ ] Responsive breakpoint preview
+    - [ ] Accessibility preview
+  - [ ] Base widgets
+    - [x] Text (`nl.text`), Image (`nl.image`), Button (`nl.button`)
+    - [x] Container-driven layouts: **free**, **stack-like**, **scroll viewport** via `nl.container.layoutKind`
+    - [x] List / repeater semantics via `nl.list` (distinct from historic `nl.listRepeater` naming)
+    - [ ] Divider as a dedicated element type beyond container presets/tooling (if desired)
+    - [ ] Dedicated `nl.stack` / `nl.scroll` element types distinct from Container
+    - [ ] Shape widgets
+    - [ ] Video widget
+    - [ ] Rich text widget
+    - [ ] Input widgets
+  - [ ] Layout system
+    - [x] Free / stacked / scrolled layout authoring via Container (covers today’s authoring model)
+    - [ ] Flex layout authoring
+    - [ ] Grid layout authoring
+    - [ ] Constraint and anchor tools
+    - [ ] Safe-area guides
+  - [ ] Appearance and motion
+    - [x] Appearance inspector foundation
+    - [x] Effects stack foundation
+    - [ ] State variants
+    - [ ] Hover, pressed, disabled, and selected states
+    - [ ] Motion preset library
+    - [ ] Timeline-free micro-interaction editor
+  - [ ] Visual novel UI patterns
+    - [ ] Dialogue surface pattern
+    - [ ] Choice surface pattern
+    - [ ] Save and load surface pattern
+    - [ ] Settings surface pattern
+    - [ ] Pause and overlay pattern
+    - [ ] Toast and notification pattern
+    - [ ] Backlog and history pattern
+  - [ ] Reuse model
+    - [x] Surface Link concept
+    - [x] Clipboard copy/paste plus blueprint-aware id remap on paste (no standalone remap UI)
+    - [ ] Snippets
+    - [ ] Official pattern library
+    - [ ] User pattern library
+    - [ ] Runtime-replaceable UI packages
+
+- [ ] Blueprint and Logic
+  - [ ] Blueprint editor
+    - [x] Blueprint Lite workspace authoring surface (member tree, flow canvas scope, TS editor pane scaffolding)
+    - [x] Node registry (catalog + modular registration hooks)
+    - [ ] Full visual graph authoring at roadmap-scale (parity with blueprint-system-arch milestones)
+    - [ ] Robust node search/add UX for large graphs (beyond current menus)
+    - [ ] Full graph authoring affordances (organization, commenting, ergonomics parity)
+    - [ ] Clipboard graph edit flows with dedicated remap tooling (beyond UI-document paste remap)
+  - [ ] Blueprint frontends
+    - [ ] Guided product flows for picking Visual versus TypeScript authoring
+    - [x] TypeScript blueprint authoring surface in Workspace (Blueprint Lite pane)
+    - [x] Shared blueprint typings and single-runtime-contract posture (`shared/types/blueprint`, docs)
+    - [x] Separated Host API/adapters for editor-shell versus Dev Mode execution
+    - [ ] Frontend parity for diagnostics tooling (beyond current partial surfacing)
+  - [ ] Events and bindings
+    - [x] Widget behaviors wired into blueprint-backed events (`blueprintEvent` path)
+    - [x] Bindable inspector fields (literal / bound / broken tri-state UX)
+    - [x] Create blueprint fields from inspector binding helpers (`createField` path)
+    - [ ] Blueprint member authoring at full-studio parity (variables, functions, full graph authoring story)
+    - [ ] Exhaustive binding purity audits (beyond current diagnostic coverage)
+    - [ ] Guided broken-binding repair workflows
+    - [x] Jump/navigate toward blueprint fields from inspectors (wired through binding helpers)
+  - [ ] Shared logic assets
+    - [x] Shared blueprint asset loading participates in Dev Mode bundle assembly path
+    - [ ] Asset-manager UX completeness for blueprint assets as first-class authoring objects
+    - [ ] Macro graphs parity
+    - [ ] Exportable blueprint packages for marketplace-era sharing model
+  - [ ] Runtime and debugging
+    - [x] Dev Mode blueprint runtime (esbuild-compiled TS modules + binding evaluation + hosts)
+    - [ ] Debugger-grade stepping/breakpoints
+    - [ ] Watch variables tooling
+    - [ ] Dedicated runtime telemetry panes parity
+    - [ ] Deep error mapping into graph/IR for every failure mode
+
+- [ ] Dev Mode and Debugging
+  - [ ] Dev Mode window
+    - [x] Dev Mode renderer app integrates bundle payloads (`useDevModePayload` pathway)
+    - [x] Main-process DevModeManager (single active session terminates prior session when relaunching)
+    - [x] Dev Mode window recreate/focus path when reopened
+    - [x] Workspace toolbar status cues plus start/stop toggle (polling `devMode.getStatus`)
+    - [ ] Dedicated Workspace UI for reload/focus choreography beyond toolbar defaults
+    - [ ] Story-aware reload UX parity (beyond surface defaults)
+  - [ ] Launch entries
+    - [x] Start from Main Surface (Toolbar uses `narraleaf-studio:main-surface` today)
+    - [ ] Surface picker entry model (choose non-main surfaces ergonomically from Workspace)
+    - [ ] Story entry (`kind: "story"`) with dedicated UX beyond type-level fields
+    - [ ] Extension entry UX (`kind: "extension"` with plugin payloads)
+  - [ ] Live reload
+    - [x] File watcher orchestrated rebundle of UI documents and graphs (`uidoc.json`/`uigraphs.json` watchers)
+    - [x] Versioned payloads via bundle revision sequencing
+    - [x] Blueprint TypeScript compilation step wired into bundle prepare path (esbuild, Dev Mode)
+    - [ ] NarraLang compile integration (still `NullNLangCompiler`; no scripted bundle inputs)
+    - [ ] Reliable story/game-state checkpoint rollback on reload hooks
+    - [ ] Dedicated project-settings hot-reload ergonomics parity
+  - [ ] Debugger
+    - [ ] Script breakpoints (NarraLang storyline)
+    - [ ] Blueprint breakpoints
+    - [ ] Variable inspector
+    - [ ] Story state inspector depth
+    - [ ] Surface state inspector tooling beyond ambient runtime
+    - [ ] Timeline/replay authoring studio features
+  - [ ] Runtime diagnostics
+    - [x] Surfacing blueprint compile/runtime failures returned through Dev Mode session errors path
+    - [ ] IDE-wide aggregated diagnostics cockpit (beyond per-surface/UI hints)
+    - [ ] Missing runtime asset taxonomy parity with roadmap
+    - [ ] Automated jump-to-source for arbitrary runtime faults
+    - [ ] Unified plugin runtime error reporting (requires plugin runtime)
+
+- [ ] Build and Publish
+  - [ ] Build pipeline
+    - [ ] NarraLang compiler integration for shipping builds (`NullNLangCompiler` today)
+    - [ ] Standalone blueprint compile stage for packaged games (beyond Dev Mode path)
+    - [ ] UI document bundling
+    - [ ] Asset bundling
+    - [ ] Plugin build hooks
+    - [ ] Build cache
+  - [ ] NarraLeaf runtime integration
+    - [ ] `narraleaf-react` project generation
+    - [ ] Runtime UI adapter
+    - [ ] Replaceable app shell
+    - [ ] Runtime compatibility checks
+  - [ ] Platform targets
+    - [ ] Web export
+    - [ ] Windows desktop export
+    - [ ] macOS desktop export
+    - [ ] Linux desktop export
+    - [ ] Android and iOS research
+  - [ ] Release management
+    - [ ] Version and channel settings
+    - [ ] Build profiles
+    - [ ] Signing and notarization workflow
+    - [ ] Patch package generation
+    - [ ] CI-friendly command line export
+  - [ ] Publish workflow
+    - [ ] Local build artifacts browser
+    - [ ] Itch.io export helper
+    - [ ] Steam metadata checklist
+    - [ ] Custom publisher plugin hook
+
+- [ ] Plugin Ecosystem
+  - [ ] Plugin runtime
+    - [ ] Plugin manifest
+    - [ ] Plugin discovery from `.nlstudio/plugins`
+    - [ ] Plugin install, enable, disable, and uninstall
+    - [ ] Plugin lifecycle events
+    - [ ] Version compatibility checks
+  - [ ] Plugin security
+    - [ ] Permission model
+    - [ ] Sandboxed execution boundary
+    - [ ] Capability-scoped file access
+    - [ ] Trusted publisher metadata
+    - [ ] Plugin crash isolation
+  - [ ] Extension points
+    - [ ] Workspace panels
+    - [ ] Editor tabs
+    - [ ] Commands and menus
+    - [ ] Asset processors
+    - [ ] UI widgets
+    - [ ] Blueprint nodes
+    - [ ] Dev Mode entries
+    - [ ] Build and publish steps
+    - [ ] Project templates
+  - [ ] Plugin development
+    - [ ] Plugin SDK
+    - [ ] Type-safe Studio API
+    - [ ] Local plugin dev mode
+    - [ ] Plugin test harness
+    - [ ] Plugin packaging CLI
+  - [ ] Marketplace
+    - [ ] Plugin registry protocol
+    - [ ] Search and categories
+    - [ ] Ratings and compatibility metadata
+    - [ ] Update channel
+    - [ ] Offline plugin package install
+
+- [ ] Team and Production Workflow
+  - [ ] Version control
+    - [ ] Git status panel
+    - [ ] Visual diff for scripts
+    - [ ] Visual diff for UI documents
+    - [ ] Conflict helper for JSON documents
+    - [ ] Checkpoint commits
+  - [ ] Review workflow
+    - [ ] Playtest build snapshots
+    - [ ] Comment anchors for script lines and UI elements
+    - [ ] Issue export
+    - [ ] QA checklist generation
+  - [ ] Backup and recovery
+    - [ ] Automatic project backups
+    - [ ] Restore point browser
+    - [ ] Corrupt document recovery
+    - [ ] Asset relink wizard
+  - [ ] Project migration
+    - [ ] Schema migration runner
+    - [ ] Compatibility report
+    - [ ] One-click migration for old UI documents
+    - [ ] Plugin compatibility migration
+
+- [ ] Distinctive Studio Features
+  - [ ] Zero-code high-freedom creation
+    - [ ] Visual script, UI, logic, and build workflow without required coding
+    - [ ] Optional TypeScript escape hatches for advanced creators
+    - [ ] Safe no-code constraints that still generate standard NarraLeaf projects
+  - [ ] VN app generator
+    - [ ] Generate complete app shell from project settings
+    - [ ] Replaceable runtime UI
+    - [ ] Official UI pattern packs
+    - [ ] Creator-owned customization layer
+  - [ ] Smart authoring assistance
+    - [ ] Asset usage suggestions
+    - [ ] Missing expression and voice prompts
+    - [ ] Route coverage hints
+    - [ ] Localization completeness hints
+    - [ ] Build size and performance hints
+  - [ ] Open ecosystem alignment
+    - [ ] NarraLeaf exported-game compatibility workflows (beyond Studio inner loop)
+    - [x] Studio ships `narraleaf-react` as the NarraLeaf-aligned runtime dependency (current integration scope)
+    - [ ] NarraLang toolchain integration (`NLC`/lint parity inside Studio pipelines)
+    - [ ] NarraUI component sharing
+    - [ ] CharPack asset workflow
+    - [ ] Sound channel workflow
+    - [ ] Public extension APIs for community tooling
+
+---
+
+## Features
+
+- [ ] 产品外壳与启动器（Launcher）
+  - [x] Launcher 应用壳（多 Tab 切换）
+  - [ ] Plugins 标签页（占位文案）
+  - [ ] Learning 标签页（占位文案）
+  - [ ] 插件市场入口：已安装 / 浏览 / 通知（无后端）
+  - [ ] 项目启动区（Projects）
+    - [x] 最近项目（列表、持久化、移除、在工作区打开）
+    - [ ] 项目搜索与置顶
+    - [ ] 项目健康摘要
+    - [ ] 缺失依赖与迁移提示
+  - [ ] 项目向导
+    - [x] 桌面端多步向导流程（模板、详情、设置、回顾等）
+    - [ ] 完整模板矩阵（体裁包、导入体验、预览等）
+    - [ ] Demo 与模板元数据完备度
+    - [ ] 导入既有 NarraLeaf 项目的打磨 UX
+    - [ ] 向导界面本地化
+  - [ ] 学习中心
+    - [ ] 内置教程
+    - [ ] 示例项目浏览器
+    - [ ] NarraLeaf 生态文档外链
+
+- [ ] 项目工作区（Workspace）
+  - [ ] 模块化工作区布局
+    - [x] 侧边栏与底部面板模块注册
+    - [x] 编辑器标签会话模型
+    - [x] 属性面板框架
+    - [x] 控制台面板已注册（内容为占位文案；尚无日志订阅与流）
+    - [ ] 命令面板
+    - [ ] 全局项目搜索
+    - [ ] 工作区布局预设
+    - [ ] 快捷键编辑器
+  - [ ] 项目设置
+    - [x] 设置服务基础
+    - [ ] 运行时分辨率与宽高比等产品化闭环
+    - [ ] 默认语言与本地化设置
+    - [ ] 构建目标设置
+    - [ ] 插件权限设置
+  - [ ] 项目诊断
+    - [ ] 断链引用概览
+    - [ ] 资产使用报表
+    - [ ] 剧本与蓝图诊断汇总
+    - [ ] 项目迁移助手
+
+- [ ] 剧本创作（Story Authoring）
+  - [ ] NarraLang 剧本编辑器
+    - [ ] `.nls` 文件浏览
+    - [ ] 语法高亮
+    - [ ] 诊断与 Lint 集成
+    - [ ] 角色、资产、变量与标签自动补全
+    - [ ] 重命名与引用跳转
+    - [ ] 格式化与 Quick Fix
+  - [ ] 场景与章节管理
+    - [ ] 剧情大纲树
+    - [ ] 场景元数据
+    - [ ] 章节分组
+    - [ ] 分支与路线可视化
+    - [ ] 从大纲跳转到脚本行
+  - [ ] 可视化剧情流
+    - [ ] 对话节点图
+    - [ ] 选择与条件分支
+    - [ ] 变量门禁
+    - [ ] 路线完整性检查
+    - [ ] 死路检测
+  - [ ] 零代码剧情创作
+    - [ ] 对话表编辑器
+    - [ ] 选项编辑器
+    - [ ] 条件构建器
+    - [ ] 变量与开关编辑器
+    - [ ] 从可视化编辑生成脚本
+  - [ ] 剧情运行时集成
+    - [ ] 将 NarraLang 编译为运行时产物
+    - [ ] 将诊断映射回脚本行
+    - [ ] 从场景或行号启动 Dev Mode
+    - [ ] 运行时检查点与回放钩子
+
+- [ ] 视觉小说内容模型（Visual Novel Content Model）
+  - [ ] 角色管理器
+    - [x] 角色面板 + Character 编辑器 Tab（可用的创作载体；非占位壳）
+    - [ ] 角色档案字段
+    - [ ] 表情与服装套件
+    - [ ] 语音配置
+    - [ ] 默认对白样式
+    - [ ] 角色引用追踪
+  - [ ] 背景与 CG 管理器
+    - [ ] 场景背景目录
+    - [ ] CG 画廊元数据
+    - [ ] 解锁条件元数据
+    - [ ] 裁剪与安全区预览
+  - [ ] 音频模型
+    - [ ] BGM、环境音、配音与音效分类
+    - [ ] 音频通道路由
+    - [ ] 循环段元数据
+    - [ ] 淡入淡出与避让预设
+    - [ ] 与 `@narraleaf/sound` 集成
+  - [ ] 游戏系统
+    - [ ] 存读档槽位
+    - [ ] 偏好与无障碍设置
+    - [ ] 画廊与回想室
+    - [ ] 成就
+    - [ ] 持久化变量
+    - [ ] 快进、自动播放、日志与履历模型
+  - [ ] 本地化
+    - [ ] 翻译表编辑器
+    - [ ] 按语言的资产覆盖
+    - [ ] 缺失译文诊断
+    - [ ] 文本溢出预览
+    - [ ] 译者导入导出
+
+- [ ] 资产管线（Asset Pipeline）
+  - [ ] 资产管理器
+    - [x] Magic Tags
+    - [x] Asset Groups
+    - [x] Asset Explorer 视图（浏览、筛选等基础）
+    - [x] Remote 导入管线（适用的资产类别；仍存在限制）
+    - [ ] Remote 侧 Blueprint 类资产对等支持（当前 remote 路径显式不支持）
+    - [ ] 批量导入规则
+    - [ ] 重命名资产并更新引用
+    - [ ] 资产依赖图
+    - [ ] 缺失资产修复流程
+    - [ ] 资产元数据 schema
+  - [ ] 压缩与优化
+    - [ ] 通用资产压缩
+    - [ ] 图像优化预设
+    - [ ] 音频转码预设
+    - [ ] 视频转码预设
+    - [ ] 构建期资产哈希
+  - [ ] 角色图打包（CharPack）
+    - [ ] CharPack 导入
+    - [ ] CharPack 生成
+    - [ ] 表情与服装包预览
+    - [ ] 运行时 CharPack 兼容性检查
+  - [ ] 资产智能化
+    - [ ] 重复资产检测
+    - [ ] 未使用资产检测
+    - [ ] 命名规范建议
+    - [ ] 基于目录结构的标签建议
+
+- [ ] UI 编辑器
+  - [ ] Surface（表面）管理
+    - [x] App / Stage Surface 模型（含 UIDocument）
+    - [x] Surface 列表面板
+    - [x] Surface 编辑 Tab 壳层（画布、工具栏接入）
+    - [x] Main Surface 约束（固定 id：`narraleaf-studio:main-surface`；禁止删除；禁止改名/id 漂移，`UIDocumentService` 兜底）
+    - [ ] Surface 模板与团队级预设库
+  - [ ] Surface 编辑器
+    - [x] 画布选择与几何变换基础设施
+    - [x] 吸附与对齐辅助线（可调细节）
+    - [x] 图层 / Outline（右键插入等与 Docker 对齐）
+    - [x] Docker 栏交互
+    - [x] 基于调色板条的插入流程（`insertPalette`；**非**路线图里的「统一搜索 Popover」）
+    - [ ] 多 Surface 同屏预览
+    - [ ] 响应式断点工作台
+    - [ ] 无障碍预览工作台
+  - [ ] 基础控件
+    - [x] 文本：`nl.text`；图片：`nl.image`；按钮：`nl.button`
+    - [x] `nl.container` 承载布局：`free`、`stack`、`scroll viewport`（`layoutKind`，非独立 `nl.stack`/`nl.scroll` 类型）
+    - [x] `nl.list`（列表 / Repeater 语义；与历史命名 `nl.listRepeater` 不等价）
+    - [ ] 独立 Divider 元素（如需脱离 Container Docker 预设以外的一等公民）
+    - [ ] Shape / Video / RichText / Input 等控件
+  - [ ] 布局体系
+    - [x] 通过 Container 完成 free/stack/scroll 的创作模型（与当前实现对齐）
+    - [ ] 面向产品的 Flex / Grid 语义创作面板
+    - [ ] 约束 / 锚点工具
+    - [ ] Safe-area 辅助线与设备遮罩工作台
+  - [ ] 外观与动效
+    - [x] 外观检视器基础
+    - [x] Effects Stack（效果栈）编辑器
+    - [ ] State variant 等产品化语义
+    - [ ] Hover/Pressed/Disabled/Selected 全流程预览工作台
+    - [ ] Motion 预设库与市场共享
+    - [ ] Timeline-free micro-interactions 工作台
+  - [ ] VN 常用范式
+    - [ ] Dialogue / Choice / SaveLoad / Settings / Pause / Toast / History 等「官方范式套件」（工程内可参考 `project/examples`，非模板引擎）
+  - [ ] 复用模型
+    - [x] Surface Link（Stage Surface 链接 App Surface，共享 UIDocument）
+    - [x] 剪贴板复制粘贴（粘贴路径含 blueprint 相关 **id remap**；尚无独立 remap 配置面板）
+    - [ ] 片段（Snippets）
+    - [ ] 官方范式库
+    - [ ] 用户范式库
+    - [ ] 运行时可替换的 UI 包
+
+- [ ] 蓝图与逻辑（Blueprint）
+  - [ ] 蓝图编辑器
+    - [x] Blueprint Lite 工作区：成员树、限定范围 Flow Canvas、TS Pane 脚手架
+    - [x] 节点注册目录 + 模块化 register hook
+    - [ ] 路线图级的完整可视化图创作（对齐 blueprint-system-arch 远期里程碑）
+    - [ ] 大图谱可用的节点检索 / 添加 UX（超越当前简易菜单）
+    - [ ] 组织结构、注释、导航等完整 ergonomics
+    - [ ] 图编辑器维度的剪贴板与专门 remap UX（独立于 UI-document 画布粘贴 remap）
+  - [ ] 蓝图前端
+    - [ ] 「Visual vs TS」的产品化选型向导流程
+    - [x] 工作区内 TypeScript 蓝图编辑（Blueprint Lite Pane）
+    - [x] 共享类型与单一运行时契约姿态（shared/types/blueprint 与文档）
+    - [x] Editor-shell 与 Dev Mode 的 Host Adapter 分离
+    - [ ] Diagnostics 工具链与各前端的完整对等
+  - [ ] 事件与绑定
+    - [x] Widget blueprintEvent 链路（behavior，事件 id）
+    - [x] 字面量 / Bound / Broken 三态检视器 UX
+    - [x] 绑定向导内 createField 创建蓝图字段
+    - [ ] 成员级 authoring 与工作区对等（变量、函数、主图故事完整性）
+    - [ ] 「纯绑定」穷尽审计（超越当前 diagnostics 覆盖面）
+    - [ ] Guided 断绑修复流
+    - [x] 从属性检视器跳转到蓝图字段（binding helper：`goToField` 一类）
+  - [ ] 共享逻辑资产
+    - [x] Dev Mode bundle 组装路径载入共享蓝图资产
+    - [ ] 资产管理器将蓝图视作一等资产的完整 UX
+    - [ ] 宏图 parity
+    - [ ] 面向 Marketplace 的蓝图导出包格式
+  - [ ] 运行时与调试
+    - [x] Dev Mode 蓝图运行时：esbuild TS 蓝图、绑定求解、宿主 API
+    - [ ] Debugger 级单步 / 断点
+    - [ ] Watch variables 工具面板
+    - [ ] 运行时 Telemetry 面板 parity
+    - [ ] 深度错误映射到图 / IR（覆盖所有故障模式）
+
+- [ ] Dev Mode 与调试
+  - [ ] Dev Mode 窗口
+    - [x] Dev Mode Renderer：`useDevModePayload` Bundle 链路
+    - [x] 主进程 DevModeManager（再次 launch 会终止上一轮会话）
+    - [x] Dev Mode 窗口复用 / 重建 / focus
+    - [x] Workspace 工具栏图标状态 + Play/Stop 切换（轮询 devMode.getStatus）
+    - [ ] 独立于工具栏的 Reload / focus 工作台 UI（增强项）
+    - [ ] 「剧情语义」reload UX（不只 Surface）
+  - [ ] 启动入口
+    - [x] Main Surface（工具栏现阶段写死 narraleaf-studio:main-surface）
+    - [ ] Workspace 友好的非 Main Surface 选择器入口模型
+    - [ ] Story entry（kind story；类型之外的完整 UX）
+    - [ ] Extension entry（kind extension + payload；依赖插件宿主）
+    - （非 Surface entry 时在 Dev Renderer 仍会回落 Main Surface：`useDevModePayload`）
+  - [ ] 热更新
+    - [x] 监听 uidoc/uigraphs 等并由 DevModeManager 重算 revision 发送 bundle
+    - [x] 版本号 revision 单调链路
+    - [x] 蓝图 TS：esbuild compile 编入 Dev Mode 准备链路
+    - [ ] NarraLang：仍为 NullNLangCompiler（不向 bundle 塞剧本脚本）
+    - [ ] 剧情状态的可靠 checkpoint rollback
+    - [ ] Settings 等产品级 reload UX
+  - [ ] 调试器
+    - [ ] NarraLang 脚本断点
+    - [ ] 蓝图断点
+    - [ ] Variables inspector
+    - [ ] Story 深度状态检视
+    - [ ] Surface runtime 工作台（超越当前隐式宿主）
+    - [ ] Timeline / Replay 工作台
+  - [ ] Runtime 诊断映射回 IDE
+    - [x] Dev Mode 会话错误路径可带出蓝图编译等信息
+    - [ ] IDE 总览 Diagnostics Cockpit（超越单 Surface Hint）
+    - [ ] 「缺失运行时资产」路线图文案 parity
+    - [ ] 「任意报错 → Source」系统化跳转链路
+    - [ ] Plugin runtime 报错（需插件宿主先落地）
+
+- [ ] 构建与发布
+  - [ ] 构建流水线
+    - [ ] 发行打包路径接入 NarraLang 编译（当前 NullNLangCompiler）
+    - [ ] 独立于 Dev Mode 的「发行级」蓝图编译阶段
+    - [ ] UI 文档打包
+    - [ ] 资产打包
+    - [ ] 插件构建钩子
+    - [ ] 构建缓存
+  - [ ] NarraLeaf 运行时集成
+    - [ ] `narraleaf-react` 工程生成
+    - [ ] 运行时 UI 适配层
+    - [ ] 可替换应用壳（App Shell）
+    - [ ] 运行时兼容性检查
+  - [ ] 目标平台
+    - [ ] Web 导出
+    - [ ] Windows 桌面导出
+    - [ ] macOS 桌面导出
+    - [ ] Linux 桌面导出
+    - [ ] Android 与 iOS 调研
+  - [ ] 发行管理
+    - [ ] 版本号与分发渠道设置
+    - [ ] 构建配置文件（Profile）
+    - [ ] 签名与公证流程
+    - [ ] 补丁包生成
+    - [ ] 适合 CI 的命令行导出
+  - [ ] 发布流程
+    - [ ] 本地构建产物浏览器
+    - [ ] itch.io 导出助手
+    - [ ] Steam 元数据核对清单
+    - [ ] 自定义发行插件钩子
+
+- [ ] 插件生态
+  - [ ] 插件运行时
+    - [ ] 插件 manifest
+    - [ ] 从 `.nlstudio/plugins` 发现插件
+    - [ ] 安装、启用、禁用与卸载
+    - [ ] 插件生命周期事件
+    - [ ] 版本兼容性检查
+  - [ ] 插件安全
+    - [ ] 权限模型
+    - [ ] 沙箱隔离边界
+    - [ ] 按能力的文件访问
+    - [ ] 可信发行者元数据
+    - [ ] 插件崩溃隔离
+  - [ ] 扩展点
+    - [ ] Workspace 面板
+    - [ ] 编辑器标签
+    - [ ] 命令与菜单
+    - [ ] 资产处理器
+    - [ ] UI 控件
+    - [ ] 蓝图节点
+    - [ ] Dev Mode 入口
+    - [ ] 构建与发布步骤
+    - [ ] 项目模板
+  - [ ] 插件开发
+    - [ ] 插件 SDK
+    - [ ] 类型安全的 Studio API
+    - [ ] 本地插件开发模式
+    - [ ] 插件测试支架
+    - [ ] 插件打包 CLI
+  - [ ] 市场（Marketplace）
+    - [ ] 插件仓库协议
+    - [ ] 搜索与分类
+    - [ ] 评分与兼容元数据
+    - [ ] 更新通道
+    - [ ] 离线插件包安装
+
+- [ ] 团队协作与制作流程
+  - [ ] 版本控制
+    - [ ] Git 状态面板
+    - [ ] 剧本可视化 diff
+    - [ ] UI 文档可视化 diff
+    - [ ] JSON 文档冲突助手
+    - [ ] 检查点式提交
+  - [ ] 审阅流程
+    - [ ] 试玩构建快照
+    - [ ] 剧本行与 UI 元素的注释锚点
+    - [ ] Issue 导出
+    - [ ] QA 核对清单生成
+  - [ ] 备份与恢复
+    - [ ] 自动项目备份
+    - [ ] 还原点浏览器
+    - [ ] 损坏文档恢复
+    - [ ] 资产重链接向导
+  - [ ] 项目迁移
+    - [ ] Schema 迁移执行器
+    - [ ] 兼容性报告
+    - [ ] 旧版 UI 文档一键迁移
+    - [ ] 插件兼容性迁移
+
+- [ ] Studio 差异化特性
+  - [ ] 零代码高自由度创作
+    - [ ] 无需写代码即可完成剧本、UI、逻辑与构建流程的可视化
+    - [ ] 高级创作者可选用 TypeScript 逃生舱
+    - [ ] 在仍生成标准 NarraLeaf 项目的前提下约束零代码安全边界
+  - [ ] VN 应用生成器
+    - [ ] 根据项目设置生成完整应用壳
+    - [ ] 运行时可替换的 UI
+    - [ ] 官方 UI 范式包
+    - [ ] 创作者自有定制层
+  - [ ] 智能创作辅助
+    - [ ] 资产使用建议
+    - [ ] 缺失表情与语音提示
+    - [ ] 路线覆盖提示
+    - [ ] 本地化完整度提示
+    - [ ] 包体体积与性能提示
+  - [ ] 开放生态对齐
+    - [ ] 「导出游戏的引擎兼容性」工作流（超越 Studio 内环）
+    - [x] Studio 依赖 narraleaf-react package（对齐当前集成边界）
+    - [ ] NarraLang 工具链集成（NLC / NarraLint 等进入 Studio 管线对等）
+    - [ ] NarraUI 组件共享
+    - [ ] CharPack 资产流程
+    - [ ] Sound 通道流程
+    - [ ] 面向社区工具的公开扩展 API

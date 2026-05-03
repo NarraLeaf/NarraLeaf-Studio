@@ -425,12 +425,12 @@ function EffectsAnchoredPanel({
             }
         };
         const timer = setTimeout(() => {
-            document.addEventListener("mousedown", handlePointerDown);
+            document.addEventListener("mousedown", handlePointerDown, true);
         }, 0);
         document.addEventListener("keydown", handleKeyDown);
         return () => {
             clearTimeout(timer);
-            document.removeEventListener("mousedown", handlePointerDown);
+            document.removeEventListener("mousedown", handlePointerDown, true);
             document.removeEventListener("keydown", handleKeyDown);
         };
     }, [open, anchorEl, onClose]);

@@ -216,14 +216,14 @@ export function EnhancedInput({
         };
 
         const listenerTimer = setTimeout(() => {
-            document.addEventListener("mousedown", handleClickOutside);
+            document.addEventListener("mousedown", handleClickOutside, true);
         }, 0);
         document.addEventListener("keydown", handleKeyDown);
 
         return () => {
             clearTimeout(focusTimer);
             clearTimeout(listenerTimer);
-            document.removeEventListener("mousedown", handleClickOutside);
+            document.removeEventListener("mousedown", handleClickOutside, true);
             document.removeEventListener("keydown", handleKeyDown);
         };
     }, [closePopover, isPopoverOpen]);

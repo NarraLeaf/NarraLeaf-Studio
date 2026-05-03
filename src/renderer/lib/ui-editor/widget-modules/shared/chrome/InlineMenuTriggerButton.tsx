@@ -60,8 +60,8 @@ export function InlineMenuTriggerButton({
             }
             closeMenu();
         };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        document.addEventListener("mousedown", handleClickOutside, true);
+        return () => document.removeEventListener("mousedown", handleClickOutside, true);
     }, [visible, closeMenu]);
 
     useEffect(() => {
