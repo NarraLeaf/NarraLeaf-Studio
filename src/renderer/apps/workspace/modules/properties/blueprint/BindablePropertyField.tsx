@@ -49,8 +49,8 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                 setPickerOpen(false);
             }
         };
-        document.addEventListener("mousedown", onDoc);
-        return () => document.removeEventListener("mousedown", onDoc);
+        document.addEventListener("mousedown", onDoc, true);
+        return () => document.removeEventListener("mousedown", onDoc, true);
     }, [pickerOpen]);
 
     useEffect(() => {

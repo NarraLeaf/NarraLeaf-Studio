@@ -102,11 +102,11 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
             close();
         };
         const timer = window.setTimeout(() => {
-            document.addEventListener("mousedown", handlePointerDown);
+            document.addEventListener("mousedown", handlePointerDown, true);
         }, 0);
         return () => {
             window.clearTimeout(timer);
-            document.removeEventListener("mousedown", handlePointerDown);
+            document.removeEventListener("mousedown", handlePointerDown, true);
         };
     }, [open, close]);
 
