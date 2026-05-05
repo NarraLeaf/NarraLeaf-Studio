@@ -103,7 +103,7 @@ export type BlueprintNodeDef = {
 };
 
 /** Context for palette filtering in the editor */
-/** Declared widget UI event slots from WidgetModule.blueprintEvents (optional per-slot head override). */
+/** Declared widget UI event slots from WidgetModule.logicApi.events (optional per-slot head override). */
 export type BlueprintWidgetEventCapabilityRef = {
     id: string;
     headNodeTypes?: readonly string[];

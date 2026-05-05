@@ -1,5 +1,6 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
+import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { getActiveBlueprintId } from "./ownerRecords";
 import { surfaceMainOwnerKey, widgetMainOwnerKey } from "./ownerKeys";
 import { validateBlueprintWidgetMainEventWiring } from "./graphValidation";
@@ -12,9 +13,10 @@ export type ReadonlyBlueprintWidgetSummary = {
     bindingCount: number;
     brokenBindingCount: number;
     eventGraphCount: number;
-    uiBlueprintEventCount: number;
-    /** Errors/warnings from cross-checking UI event hooks vs blueprint event graph slots. */
-    eventWiringIssueCount: number;
+    supportedEventCount: number;
+    legacyHookCount: number;
+    /** Errors/warnings from cross-checking the widget schema against stored event members. */
+    eventSchemaIssueCount: number;
 };
 
 export function emptyReadonlyBlueprintWidgetSummary(): ReadonlyBlueprintWidgetSummary {
@@ -24,8 +26,9 @@ export function emptyReadonlyBlueprintWidgetSummary(): ReadonlyBlueprintWidgetSu
         bindingCount: 0,
         brokenBindingCount: 0,
         eventGraphCount: 0,
-        uiBlueprintEventCount: 0,
-        eventWiringIssueCount: 0,
+        supportedEventCount: 0,
+        legacyHookCount: 0,
+        eventSchemaIssueCount: 0,
     };
 }
 
@@ -83,7 +86,7 @@ export function buildReadonlySurfaceMainSummary(
     };
 }
 
-function countUiBlueprintEvents(element: UIElement): number {
+function countLegacyUiBlueprintEvents(element: UIElement): number {
     const events = element.behavior?.events;
     if (!events) {
         return 0;
@@ -102,11 +105,13 @@ export function buildReadonlyWidgetMainSummary(
     const key = widgetMainOwnerKey(surfaceId, element.id);
     const blueprintId = getActiveBlueprintId(doc, key);
     const bp = blueprintId ? doc.blueprints[blueprintId] : undefined;
+    const supportedEventCount = listWidgetLogicEventIds(element.type).length;
     if (!bp || !blueprintId) {
         return {
             ...emptyReadonlyBlueprintWidgetSummary(),
-            uiBlueprintEventCount: countUiBlueprintEvents(element),
-            eventWiringIssueCount: 0,
+            supportedEventCount,
+            legacyHookCount: countLegacyUiBlueprintEvents(element),
+            eventSchemaIssueCount: 0,
         };
     }
 
@@ -127,7 +132,7 @@ export function buildReadonlyWidgetMainSummary(
         element,
         surfaceId,
     });
-    const eventWiringIssueCount = eventWiringDiags.filter(d => d.severity !== "info").length;
+    const eventSchemaIssueCount = eventWiringDiags.filter(d => d.severity !== "info").length;
 
     return {
         hasWidgetMain: true,
@@ -136,7 +141,8 @@ export function buildReadonlyWidgetMainSummary(
         bindingCount,
         brokenBindingCount,
         eventGraphCount,
-        uiBlueprintEventCount: countUiBlueprintEvents(element),
-        eventWiringIssueCount,
+        supportedEventCount,
+        legacyHookCount: countLegacyUiBlueprintEvents(element),
+        eventSchemaIssueCount,
     };
 }

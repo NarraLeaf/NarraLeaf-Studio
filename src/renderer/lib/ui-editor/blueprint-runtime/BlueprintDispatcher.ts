@@ -1,6 +1,7 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { collectBlueprintEventHeadNodeIdsForDispatch, isBlueprintEventDispatchHeadType } from "@shared/types/blueprint/graph";
 import type { UIDocument } from "@shared/types/ui-editor/document";
+import { getWidgetLogicEvent, getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
 import { BlueprintGraphExecutionError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -8,6 +9,7 @@ import type { BlueprintHostApiRuntime } from "./BlueprintHostApiBridge";
 import { adaptBlueprintGraphIr } from "./adaptBlueprintGraphIr";
 import { acquireBlueprintWidgetLocals } from "./blueprintWidgetLocals";
 import type { DebugBridge } from "./DebugBridge";
+import { widgetMainOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 
 const DEFAULT_MAX_STEPS = 512;
 
@@ -117,24 +119,38 @@ export async function dispatchBlueprintUiEvent(options: {
         setSurfaceState,
     } = options;
     const el = document.elements[elementId];
-    const binding = el?.behavior?.events?.[eventName];
-    if (!binding || binding.kind !== "blueprintEvent") {
+    if (!el) {
         return;
     }
+    const widgetLogicApi = getWidgetLogicApi(el.type);
+    const widgetOwnerKey = widgetLogicApi?.supportsPrivateBlueprint ? widgetMainOwnerKey(surfaceId, elementId) : undefined;
+    const activeWidgetBlueprintId = widgetOwnerKey ? blueprintDocument.ownerRecords[widgetOwnerKey]?.activeBlueprintId : undefined;
+    const widgetPrivateEventSupported = Boolean(getWidgetLogicEvent(el.type, eventName));
+    const legacyBinding = el.behavior?.events?.[eventName];
 
-    const bp = blueprintDocument.blueprints[binding.blueprintId];
+    const blueprintId =
+        widgetPrivateEventSupported && activeWidgetBlueprintId
+            ? activeWidgetBlueprintId
+            : legacyBinding?.kind === "blueprintEvent"
+              ? legacyBinding.blueprintId
+              : undefined;
+    if (!blueprintId) {
+        return;
+    }
+    const bp = blueprintDocument.blueprints[blueprintId];
     if (!bp) {
         return;
     }
-
     if (bp.program.kind === "scriptModule") {
-        const mod = getMountedBlueprintModule(binding.blueprintId);
-        const fn = mod?.events?.[binding.eventId];
+        const mod = getMountedBlueprintModule(blueprintId);
+        const fn =
+            mod?.events?.[eventName] ??
+            (legacyBinding?.kind === "blueprintEvent" ? mod?.events?.[legacyBinding.eventId] : undefined);
         if (typeof fn !== "function") {
             return;
         }
         const executionId = newExecutionId();
-        debug.emit({ type: "execution.started", executionId, blueprintId: binding.blueprintId });
+        debug.emit({ type: "execution.started", executionId, blueprintId });
         const ctx = createScriptExecutionContext({
             hostApi: hostAdapter.blueprintRuntime?.hostApi,
             debug,
@@ -143,15 +159,15 @@ export async function dispatchBlueprintUiEvent(options: {
         });
         try {
             await Promise.resolve(fn(ctx));
-            debug.emit({ type: "execution.finished", executionId, blueprintId: binding.blueprintId });
+            debug.emit({ type: "execution.finished", executionId, blueprintId });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             debug.emit({
                 type: "execution.error",
                 executionId,
                 message,
-                blueprintId: binding.blueprintId,
-                eventId: binding.eventId,
+                blueprintId,
+                eventId: eventName,
             });
         }
         return;
@@ -161,23 +177,17 @@ export async function dispatchBlueprintUiEvent(options: {
         return;
     }
 
-    const eventGraph = bp.program.graphs.events?.[binding.eventId];
-    const ir = eventGraph?.graph;
-    if (!ir || !ir.nodes || Object.keys(ir.nodes).length === 0) {
-        debug.emit({
-            type: "execution.error",
-            executionId: newExecutionId(),
-            message:
-                "This blueprint layer is empty — add an event head from the canvas context menu (On widget initialize / On button click) and wire logic from it.",
-            blueprintId: binding.blueprintId,
-            eventId: binding.eventId,
-        });
-        return;
-    }
-
     const widgetElementType = el?.type;
-    const headIds = collectBlueprintEventHeadNodeIdsForDispatch(ir.nodes, eventName, widgetElementType);
-    if (headIds.length === 0) {
+    const candidateGraphs = Object.values(bp.program.graphs.events ?? {});
+    const matchingGraphs = candidateGraphs
+        .map(eventGraph => {
+            const ir = eventGraph.graph;
+            const headIds = collectBlueprintEventHeadNodeIdsForDispatch(ir?.nodes, eventName, widgetElementType);
+            return headIds.length > 0 ? { eventGraph, ir, headIds } : null;
+        })
+        .filter((entry): entry is { eventGraph: NonNullable<typeof candidateGraphs[number]>; ir: NonNullable<typeof candidateGraphs[number]["graph"]>; headIds: string[] } => Boolean(entry));
+
+    if (matchingGraphs.length === 0) {
         const hint =
             eventName === "init"
                 ? 'Add an "On widget initialize" head (right-click the canvas → Add node).'
@@ -187,51 +197,51 @@ export async function dispatchBlueprintUiEvent(options: {
         debug.emit({
             type: "execution.error",
             executionId: newExecutionId(),
-            message: `No matching event head for “${eventName}” in this layer — ${hint}`,
-            blueprintId: binding.blueprintId,
-            eventId: binding.eventId,
+            message: `No matching event head for “${eventName}” was found in this control blueprint — ${hint}`,
+            blueprintId,
+            eventId: eventName,
         });
         return;
     }
-
-    const graph = adaptBlueprintGraphIr(ir, `blueprintEvent:${binding.blueprintId}:${binding.eventId}`);
     const executionId = newExecutionId();
-    debug.emit({ type: "execution.started", executionId, blueprintId: binding.blueprintId });
+    debug.emit({ type: "execution.started", executionId, blueprintId });
 
-    const blueprintLocals = acquireBlueprintWidgetLocals(surfaceId, elementId, binding.blueprintId, bp);
+    const blueprintLocals = acquireBlueprintWidgetLocals(surfaceId, elementId, blueprintId, bp);
 
     try {
-        for (const headId of headIds) {
-            const entry = { start: { nodeId: headId, port: "then" as const } };
-            const startNode = graph.nodes[headId];
-            if (!startNode || !isBlueprintEventDispatchHeadType(startNode.type)) {
-                continue;
+        for (const { eventGraph, ir, headIds } of matchingGraphs) {
+            const graph = adaptBlueprintGraphIr(ir, `blueprintEvent:${blueprintId}:${eventGraph.id}`);
+            for (const headId of headIds) {
+                const entry = { start: { nodeId: headId, port: "then" as const } };
+                const startNode = graph.nodes[headId];
+                if (!startNode || !isBlueprintEventDispatchHeadType(startNode.type)) {
+                    continue;
+                }
+                await executeGraph({
+                    graph,
+                    entry,
+                    hostAdapter,
+                    blueprintLocals,
+                    maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+                    trace: {
+                        executionId,
+                        graphId: graph.id,
+                        blueprintId,
+                        eventId: eventName,
+                        emit: e => debug.emit(e),
+                    },
+                });
             }
-            await executeGraph({
-                graph,
-                entry,
-                hostAdapter,
-                blueprintLocals,
-                maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
-                trace: {
-                    executionId,
-                    graphId: graph.id,
-                    blueprintId: binding.blueprintId,
-                    eventId: binding.eventId,
-                    emit: e => debug.emit(e),
-                },
-            });
         }
-        debug.emit({ type: "execution.finished", executionId, blueprintId: binding.blueprintId });
+        debug.emit({ type: "execution.finished", executionId, blueprintId });
     } catch (err) {
         if (err instanceof BlueprintGraphExecutionError) {
             debug.emit({
                 type: "execution.error",
                 executionId,
                 message: err.message,
-                blueprintId: binding.blueprintId,
-                eventId: binding.eventId,
-                graphId: graph.id,
+                blueprintId,
+                eventId: eventName,
                 nodeId: err.nodeId,
             });
             return;
@@ -241,9 +251,8 @@ export async function dispatchBlueprintUiEvent(options: {
             type: "execution.error",
             executionId,
             message,
-            blueprintId: binding.blueprintId,
-            eventId: binding.eventId,
-            graphId: graph.id,
+            blueprintId,
+            eventId: eventName,
         });
     }
 }

@@ -64,10 +64,10 @@ export class UIBlueprintLifecycleCoordinator
                     continue;
                 }
                 const mod = widgetModuleRegistry.get(el.type);
-                if (!mod?.supportsBlueprintLogic) {
+                if (!mod?.logicApi?.supportsPrivateBlueprint) {
                     continue;
                 }
-                localBp.ensureWidgetMain(surface.id, elementId, el.name);
+                localBp.ensureWidgetMain(surface.id, elementId, el.name, el.type);
                 validWidgetKeys.add(widgetMainOwnerKey(surface.id, elementId));
             }
         }

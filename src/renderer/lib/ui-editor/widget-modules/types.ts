@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode, InputHTMLAttributes } from "react";
 import type { UIElement, UIDocument, UISurface } from "@shared/types/ui-editor/document";
+import type { WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { UIHostAdapter } from "../runtime/types";
 import type { PropertyEditorSchema } from "@/apps/workspace/modules/properties/framework/types";
 import type { ContextMenuItemDef } from "@/lib/components/elements/ContextMenu";
@@ -117,21 +118,6 @@ export type WidgetContextMenuContext = {
 // ─── Widget Module ──────────────────────────────────────────────────────────
 
 /**
- * Declarative blueprint event surface for a widget (dispatched at runtime when wired).
- * `id` is the key under `UIElement.behavior.events` (e.g. `click`).
- */
-export type WidgetBlueprintEventDef = {
-    id: string;
-    displayName: string;
-    description?: string;
-    /**
-     * Optional override: graph node type ids that may start the event graph for this slot.
-     * When omitted, resolved from `resolveBlueprintEventHeadTypesForUiSlot(id, elementType)`.
-     */
-    headNodeTypes?: readonly string[];
-};
-
-/**
  * Unified module interface for defining a UI widget type.
  *
  * A single module declaration controls:
@@ -145,16 +131,8 @@ export interface UIWidgetModule {
     /** Unique type identifier (e.g. "nl.container") */
     readonly type: string;
 
-    /**
-     * When true, creating this widget triggers a `widgetMain` instance blueprint (Blueprint M2).
-     */
-    readonly supportsBlueprintLogic?: boolean;
-
-    /**
-     * Widget-level events that can be wired to `blueprintEvent` in the UI document.
-     * Used by the properties panel; runtime dispatch must match these ids.
-     */
-    readonly blueprintEvents?: readonly WidgetBlueprintEventDef[];
+    /** Shared logic capability schema for editor, runtime, and blueprint tooling. */
+    readonly logicApi?: WidgetLogicApi;
 
     /** Human-readable display name */
     readonly displayName: string;

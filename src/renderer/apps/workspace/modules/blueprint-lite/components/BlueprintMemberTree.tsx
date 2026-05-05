@@ -22,6 +22,7 @@ type Props = {
     graphView: BlueprintEditorGraphView | null;
     diagnostics: BlueprintGraphEditorDiagnostic[];
     localBp: LocalBlueprintService;
+    widgetElementType?: string;
     onSelectLayer: (layerId: string) => void;
     onAddLayer: () => void;
     onDeleteLayer: (layerId: string) => void;

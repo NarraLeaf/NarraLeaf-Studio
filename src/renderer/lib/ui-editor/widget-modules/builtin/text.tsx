@@ -1,4 +1,5 @@
 import { Type } from "lucide-react";
+import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { TextRenderer } from "./text/renderer";
 import { createTextInspector } from "./text/inspector";
@@ -7,14 +8,7 @@ import { defaultTextWidgetProps } from "./text/types";
 
 export const TextWidgetModule: UIWidgetModule = {
     type: "nl.text",
-    supportsBlueprintLogic: true,
-    blueprintEvents: [
-        {
-            id: "init",
-            displayName: "Initialize",
-            description: "Runs once when this widget appears on the surface.",
-        },
-    ],
+    logicApi: getWidgetLogicApi("nl.text"),
     displayName: "Text",
     icon: Type,
 

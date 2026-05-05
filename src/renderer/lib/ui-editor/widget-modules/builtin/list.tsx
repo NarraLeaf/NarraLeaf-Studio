@@ -1,4 +1,5 @@
 import { List as ListIcon } from "lucide-react";
+import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ListRenderer } from "./list/renderer";
 import { createListInspector } from "./list/inspector";
@@ -7,7 +8,7 @@ import { defaultListWidgetProps } from "./list/types";
 
 export const ListWidgetModule: UIWidgetModule = {
     type: "nl.list",
-    supportsBlueprintLogic: false,
+    logicApi: getWidgetLogicApi("nl.list"),
     displayName: "List",
     icon: ListIcon,
 

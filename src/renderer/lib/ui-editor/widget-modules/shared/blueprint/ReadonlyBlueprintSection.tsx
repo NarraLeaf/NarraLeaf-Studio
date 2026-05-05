@@ -2,16 +2,18 @@ import type { CustomFieldProps } from "@/apps/workspace/modules/properties/frame
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { BlueprintEventBindingField } from "@/apps/workspace/modules/properties/blueprint/BlueprintEventBindingField";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
+import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { useReadonlyBlueprintSummary } from "./useReadonlyBlueprintSummary";
 
 /**
- * Shared properties-panel block: widget main blueprint summary + wiring + entry to the Blueprint editor.
+ * Shared properties-panel block: single widget blueprint summary + entry to the Blueprint editor.
  */
 export function ReadonlyBlueprintSection({ data, onChange }: CustomFieldProps<UIInspectorData>) {
     const surfaceId = data.surfaceId;
     const element = data.element;
     const summary = useReadonlyBlueprintSummary(null, surfaceId, element);
     const openBlueprint = useOpenBlueprintTarget();
+    const logicApi = getWidgetLogicApi(element.type);
 
     const openEntry = () => {
         if (!summary.blueprintId || !surfaceId) {
@@ -27,12 +29,10 @@ export function ReadonlyBlueprintSection({ data, onChange }: CustomFieldProps<UI
     };
 
     const canOpenEntry = summary.hasWidgetMain && Boolean(summary.blueprintId);
-    const graphsButNoUiHooks =
-        summary.hasWidgetMain && summary.eventGraphCount > 0 && summary.uiBlueprintEventCount === 0;
 
     return (
         <div className="rounded-lg border border-white/10 bg-[#111315] px-4 py-3 space-y-2">
-            <p className="text-xs uppercase text-gray-500 tracking-wider">Blueprint</p>
+            <p className="text-xs uppercase text-gray-500 tracking-wider">Control Blueprint</p>
             {!summary.hasWidgetMain ? (
                 <p className="text-sm text-gray-400 leading-snug">
                     No widget main blueprint is attached to this element. Widgets that support logic receive one when
@@ -40,25 +40,56 @@ export function ReadonlyBlueprintSection({ data, onChange }: CustomFieldProps<UI
                 </p>
             ) : (
                 <div className="space-y-1 text-sm text-gray-300">
-                    <p className="font-mono text-[11px] text-gray-200">{summary.blueprintId}</p>
+                    <p className="font-mono text-[11px] text-gray-200">{logicApi?.blueprintLabel ?? "Widget blueprint"}</p>
                     <p className="text-[11px] text-gray-500">
-                        {summary.eventGraphCount} layer{summary.eventGraphCount === 1 ? "" : "s"} ·{" "}
-                        {summary.uiBlueprintEventCount} interaction hook
-                        {summary.uiBlueprintEventCount === 1 ? "" : "s"}
+                        {summary.supportedEventCount} event{summary.supportedEventCount === 1 ? "" : "s"} ·{" "}
+                        {summary.eventGraphCount} layer{summary.eventGraphCount === 1 ? "" : "s"}
                     </p>
                 </div>
             )}
-            {graphsButNoUiHooks ? (
+            {summary.legacyHookCount > 0 ? (
                 <p className="text-[11px] text-amber-200/90 leading-snug rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
-                    Layers exist but this control is not wired yet. Use <span className="font-medium">Blueprint</span> below
-                    to attach a layer.
+                    This widget still stores {summary.legacyHookCount} legacy hook
+                    {summary.legacyHookCount === 1 ? "" : "s"} in `uidoc`. The private blueprint model is now owner-local,
+                    so these hooks are compatibility-only.
                 </p>
             ) : null}
-            {summary.eventWiringIssueCount > 0 ? (
+            {summary.eventSchemaIssueCount > 0 ? (
                 <p className="text-[11px] text-amber-200/90 leading-snug rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
-                    UI event hooks do not match this blueprint&apos;s layers. Open the Blueprint editor diagnostics for
-                    details.
+                    This widget&apos;s supported events do not match the stored private blueprint members. Open the Blueprint
+                    editor diagnostics for details.
                 </p>
+            ) : null}
+            {logicApi ? (
+                <div className="space-y-2 rounded border border-white/5 bg-[#0d0f11] px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Control API</p>
+                    <div className="space-y-1.5 text-[11px] text-gray-300">
+                        <p>
+                            <span className="text-gray-500">Events:</span>{" "}
+                            {logicApi.events.length > 0 ? logicApi.events.map(eventDef => eventDef.displayName).join(", ") : "None"}
+                        </p>
+                        <p>
+                            <span className="text-gray-500">Commands:</span>{" "}
+                            {logicApi.commands.length > 0
+                                ? logicApi.commands
+                                      .map(command => `${command.displayName}${command.availability === "planned" ? " (planned)" : ""}`)
+                                      .join(", ")
+                                : "None"}
+                        </p>
+                        <p>
+                            <span className="text-gray-500">Readable state:</span>{" "}
+                            {logicApi.readableState.length > 0
+                                ? logicApi.readableState.map(stateDef => stateDef.displayName).join(", ")
+                                : "None"}
+                        </p>
+                        <p>
+                            <span className="text-gray-500">Writable props:</span>{" "}
+                            {logicApi.writableProps.length > 0
+                                ? logicApi.writableProps.map(propDef => propDef.displayName).join(", ")
+                                : "None"}
+                        </p>
+                    </div>
+                </div>
             ) : null}
             <BlueprintEventBindingField data={data} onChange={onChange} />
             <button
@@ -67,7 +98,7 @@ export function ReadonlyBlueprintSection({ data, onChange }: CustomFieldProps<UI
                 disabled={!canOpenEntry}
                 onClick={() => openEntry()}
             >
-                Open Blueprint editor
+                Open control blueprint
             </button>
         </div>
     );

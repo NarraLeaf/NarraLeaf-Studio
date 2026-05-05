@@ -119,7 +119,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         });
     }
 
-    public ensureWidgetMain(surfaceId: string, elementId: string, displayName?: string): string {
+    public ensureWidgetMain(surfaceId: string, elementId: string, displayName?: string, widgetType?: string): string {
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
         const key = widgetMainOwnerKey(surfaceId, elementId);
         let outId = "";
@@ -516,6 +516,35 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         });
     }
 
+    public adoptLegacyEventGraphToSlot(
+        blueprintId: string,
+        slotId: string,
+        legacyEventId: string,
+        displayName?: string,
+    ): void {
+        this.applyBlueprintMutation(doc => {
+            const bp = doc.blueprints[blueprintId];
+            if (!bp || bp.program.kind !== "graph") {
+                return;
+            }
+            if (bp.program.graphs.events[slotId]) {
+                return;
+            }
+            const legacy = bp.program.graphs.events[legacyEventId];
+            if (!legacy) {
+                return;
+            }
+            bp.program.graphs.events[slotId] = {
+                ...legacy,
+                id: slotId,
+                name: legacy.name ?? displayName,
+            };
+            if (legacyEventId !== slotId) {
+                delete bp.program.graphs.events[legacyEventId];
+            }
+        });
+    }
+
     public renameEventGraph(blueprintId: string, eventId: string, displayName: string): void {
         this.applyBlueprintMutation(doc => {
             const bp = doc.blueprints[blueprintId];
@@ -653,4 +682,5 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             getWidgetMainBlueprintId: (elementId: string) => this.getWidgetMainBlueprintId(surfaceId, elementId),
         });
     }
+
 }

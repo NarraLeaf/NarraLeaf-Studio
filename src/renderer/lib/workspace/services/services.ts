@@ -258,7 +258,7 @@ interface ILocalBlueprintService extends IService {
     applyBlueprintMutation(mutator: (bp: BlueprintDocument, doc: UIGraphDocument) => void): void;
     ensureSurfaceMain(surfaceId: string, displayName?: string): string;
     removeSurfaceAndWidgetOwners(surfaceId: string): void;
-    ensureWidgetMain(surfaceId: string, elementId: string, displayName?: string): string;
+    ensureWidgetMain(surfaceId: string, elementId: string, displayName?: string, widgetType?: string): string;
     removeWidgetMain(surfaceId: string, elementId: string): void;
     getWidgetMainBlueprintId(surfaceId: string, elementId: string): string | undefined;
     getSurfaceMainBlueprintId(surfaceId: string): string | undefined;
@@ -302,6 +302,7 @@ interface ILocalBlueprintService extends IService {
     ): void;
     deleteBlueprintVariable(blueprintId: string, variableId: string): void;
     ensureEventGraph(blueprintId: string, eventId: string, displayName?: string): void;
+    adoptLegacyEventGraphToSlot(blueprintId: string, slotId: string, legacyEventId: string, displayName?: string): void;
     renameEventGraph(blueprintId: string, eventId: string, displayName: string): void;
     removeEventGraph(blueprintId: string, eventId: string): void;
     listEventGraphIds(blueprintId: string): string[];

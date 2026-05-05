@@ -28,7 +28,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
 
     return (
         <div className="space-y-2 text-[11px] text-gray-300">
-            <p className="text-[10px] uppercase tracking-wide text-gray-500">Private revisions</p>
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">Revisions</p>
             <ul className="space-y-1">
                 {ids.map(id => {
                     const b = doc.blueprints[id];
