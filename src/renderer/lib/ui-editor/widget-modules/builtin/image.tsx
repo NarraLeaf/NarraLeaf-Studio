@@ -1,4 +1,5 @@
 import { Image as ImageIcon } from "lucide-react";
+import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ImageRenderer } from "./image/renderer";
@@ -7,14 +8,7 @@ import { createImageDockerBarItems } from "./image/dockerBar";
 
 export const ImageWidgetModule: UIWidgetModule = {
     type: "nl.image",
-    supportsBlueprintLogic: true,
-    blueprintEvents: [
-        {
-            id: "init",
-            displayName: "Initialize",
-            description: "Runs once when this widget appears on the surface.",
-        },
-    ],
+    logicApi: getWidgetLogicApi("nl.image"),
     displayName: "Image",
     icon: ImageIcon,
 

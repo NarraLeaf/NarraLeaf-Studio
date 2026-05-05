@@ -230,7 +230,7 @@ export function createListInspector(ctx: InspectorContext) {
                     defineField<D, any>({
                         id: "section.blueprint",
                         type: "section",
-                        title: "Attached blueprint",
+                        title: "Control blueprint",
                         fields: [
                             defineField<D, any>({
                                 id: "interaction.blueprint.readonly",

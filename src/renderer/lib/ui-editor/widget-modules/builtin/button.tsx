@@ -1,4 +1,5 @@
 import { MousePointerClick } from "lucide-react";
+import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ButtonRenderer } from "./button/renderer";
 import { createButtonInspector } from "./button/inspector";
@@ -8,19 +9,7 @@ import { createInitialButtonAppearance } from "@/lib/ui-editor/widget-modules/sh
 
 export const ButtonWidgetModule: UIWidgetModule = {
     type: "nl.button",
-    supportsBlueprintLogic: true,
-    blueprintEvents: [
-        {
-            id: "init",
-            displayName: "Initialize",
-            description: "Runs once when this button appears on the surface.",
-        },
-        {
-            id: "click",
-            displayName: "Click",
-            description: "Runs when the user activates this button.",
-        },
-    ],
+    logicApi: getWidgetLogicApi("nl.button"),
     displayName: "Button",
     icon: MousePointerClick,
 

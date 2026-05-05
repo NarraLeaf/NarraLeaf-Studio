@@ -15,6 +15,7 @@ export type UIHostAdapterBlueprintRuntime = {
     setSurfaceState: (key: string, value: unknown) => void;
     getSurfaceState: (key: string) => unknown;
     emitDebug: (event: BlueprintDebugEvent) => void;
+    /** Dispatch a widget private event slot (for example `init` or `click`) on the owner-local blueprint. */
     dispatchElementBlueprintEvent: (elementId: string, eventName: string) => Promise<void>;
     /** M3-full: Dev Mode host API (graphs + TS ctx); absent in editor preview. */
     hostApi?: BlueprintHostApiRuntime;

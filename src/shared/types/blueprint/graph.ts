@@ -3,6 +3,8 @@
  * Comments in English per project convention.
  */
 
+import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
+
 /** Persisted on BlueprintGraphIr.meta to disambiguate slot semantics (events vs functions vs macros). */
 export type BlueprintGraphKind = "event" | "function" | "macro";
 
@@ -17,23 +19,17 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK,
 ]);
 
-/** UI behavior slot id → graph event-head node type(s). Extend when new slots get dedicated heads. */
-const UI_EVENT_SLOT_TO_HEAD_TYPES: Record<string, readonly string[]> = {
-    init: [BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT],
-    click: [BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK],
-};
-
 /**
- * Resolve which event-head node type(s) may run for a widget `behavior.events` slot id.
+ * Resolve which event-head node type(s) may run for a widget private event slot id.
  * Unknown slots fall back to all registered dispatch heads (forward-compatible).
  */
 export function resolveBlueprintEventHeadTypesForUiSlot(slotId: string, widgetElementType?: string): readonly string[] {
-    if (slotId === "click" && widgetElementType && widgetElementType !== "nl.button") {
+    const eventDef = getWidgetLogicEvent(widgetElementType, slotId);
+    if (!eventDef) {
         return [];
     }
-    const mapped = UI_EVENT_SLOT_TO_HEAD_TYPES[slotId];
-    if (mapped) {
-        return mapped;
+    if (eventDef.headNodeTypes && eventDef.headNodeTypes.length > 0) {
+        return eventDef.headNodeTypes;
     }
     return [...EVENT_DISPATCH_HEAD_TYPES];
 }
