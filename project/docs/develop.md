@@ -10,8 +10,6 @@
   - [ ] Project launcher
     - [x] Recent projects (list, persist, remove, open in Workspace)
     - [ ] Project search and pinning
-    - [ ] Project health summary
-    - [ ] Missing dependency and migration notices
   - [ ] Project wizard
     - [x] Desktop project wizard flows (templates, details, settings, review)
     - [ ] Full template catalogue parity (genre packs, importer UX, previews)

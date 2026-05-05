@@ -1,10 +1,10 @@
 import type { Blueprint, BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import {
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     isBlueprintEventDispatchHeadType,
-    resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
 import { listUiSlotsWiredToBlueprintLayer } from "@/lib/ui-editor/blueprint-runtime/widgetBlueprintLayerSlots";
 import type { UIElement } from "@shared/types/ui-editor/document";
@@ -52,9 +52,7 @@ function collectBlueprintEventHooks(element: UIElement): BlueprintEventHook[] {
     return out;
 }
 
-/**
- * Cross-checks widget UI `blueprintEvent` hooks against blueprint event graph slots (Workspace-only).
- */
+/** Cross-checks widget private blueprint compatibility and any legacy event hooks (Workspace-only). */
 export function validateBlueprintWidgetMainEventWiring(
     doc: BlueprintDocument,
     blueprintId: string,
@@ -73,60 +71,37 @@ export function validateBlueprintWidgetMainEventWiring(
     }
 
     const out: BlueprintGraphEditorDiagnostic[] = [];
-    const hooks = collectBlueprintEventHooks(element);
-    const uiHookCount = hooks.length;
+    const legacyHooks = collectBlueprintEventHooks(element);
+    const supportedEventIds = new Set(listWidgetLogicEventIds(element.type));
 
     if (bp.program.kind !== "graph") {
-        if (uiHookCount > 0) {
+        if (legacyHooks.length > 0) {
             out.push({
-                severity: "error",
-                code: "blueprint.ui_events_non_graph_program",
+                severity: "warning",
+                code: "blueprint.widget_legacy_hooks_present",
                 message:
-                    "Widget UI events are wired to this blueprint, but its program is not a visual graph — Dev Mode cannot run event graphs here.",
+                    "Legacy widget event hooks are still stored in uidoc. The active private revision is not a visual graph, so these hooks are compatibility-only.",
             });
         }
         return out;
     }
 
-    const eventGraphs = bp.program.graphs.events ?? {};
-    const eventGraphIds = Object.keys(eventGraphs);
-    const eventGraphCount = eventGraphIds.length;
-
-    if (eventGraphCount > 0 && uiHookCount === 0) {
-        out.push({
-            severity: "warning",
-            code: "blueprint.event_graphs_not_wired_to_ui",
-            message:
-                "This blueprint has stored layer(s), but no widget interaction is wired to them yet. Use Properties → Interaction → Blueprint to attach logic so Dev Mode can run it.",
-            target: { kind: "graph", graphKind: "event", graphId: eventGraphIds[0]! },
-        });
-    }
-
-    if (uiHookCount > 0 && eventGraphCount === 0) {
-        out.push({
-            severity: "error",
-            code: "blueprint.ui_events_without_graph_slots",
-            message:
-                "Widget UI events reference this blueprint, but it has no event graph slots — the UI document and blueprint may be out of sync.",
-        });
-    }
-
-    for (const h of hooks) {
-        if (h.binding.blueprintId !== blueprintId) {
+    for (const hook of legacyHooks) {
+        if (hook.binding.blueprintId !== blueprintId) {
             out.push({
-                severity: "error",
-                code: "blueprint.event_wiring_wrong_blueprint",
-                message: `UI event "${h.slotName}" targets blueprint "${h.binding.blueprintId}" but the open editor is "${blueprintId}".`,
+                severity: "warning",
+                code: "blueprint.widget_legacy_hook_wrong_blueprint",
+                message: `Legacy UI hook "${hook.slotName}" still points to blueprint "${hook.binding.blueprintId}" instead of the active private blueprint.`,
             });
             continue;
         }
-        if (!eventGraphs[h.binding.eventId]) {
+        if (!supportedEventIds.has(hook.slotName)) {
             out.push({
-                severity: "error",
-                code: "blueprint.event_wiring_missing_graph",
-                message: `UI event "${h.slotName}" references missing event graph slot "${h.binding.eventId}".`,
-                target: { kind: "graph", graphKind: "event", graphId: h.binding.eventId },
+                severity: "warning",
+                code: "blueprint.widget_legacy_hook_unsupported_slot",
+                message: `Legacy UI hook "${hook.slotName}" is not a supported widget event for ${element.type}.`,
             });
+            continue;
         }
     }
 
@@ -170,31 +145,6 @@ export function validateBlueprintGraphIr(
                     "Add an event head (On widget initialize and/or On button click — right-click the canvas → Add node) so this layer can run.",
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
-        } else {
-            const slots = ctx.layerUiSlots;
-            if (slots && slots.length > 0) {
-                for (const slot of slots) {
-                    const requiredTypes = resolveBlueprintEventHeadTypesForUiSlot(slot, ctx.widgetElementType);
-                    if (requiredTypes.length === 0) {
-                        continue;
-                    }
-                    const has = requiredTypes.some(t => Object.values(nodes).some(n => n.type === t));
-                    if (!has) {
-                        const hint =
-                            slot === "init"
-                                ? "Add an “On widget initialize” event head."
-                                : slot === "click"
-                                  ? "Add an “On button click” event head."
-                                  : `Add an event head that matches the “${slot}” slot.`;
-                        out.push({
-                            severity: "error",
-                            code: "event.missing_slot_head",
-                            message: `This layer is wired to “${slot}”. ${hint}`,
-                            target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
-                        });
-                    }
-                }
-            }
         }
     }
 

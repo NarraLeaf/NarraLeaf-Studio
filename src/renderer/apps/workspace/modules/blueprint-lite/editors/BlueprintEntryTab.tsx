@@ -28,7 +28,6 @@ import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui
 import { TypeScriptBlueprintEditorPane } from "../ts/TypeScriptBlueprintEditorPane";
 import { BlueprintFrontendBadge } from "../components/BlueprintFrontendBadge";
 import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevisionBar";
-import { listUiSlotsWiredToBlueprintLayer } from "@/lib/ui-editor/blueprint-runtime/widgetBlueprintLayerSlots";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 
 function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
@@ -47,7 +46,7 @@ function getGraphToolbarLabel(bp: Blueprint, view: BlueprintEditorGraphView | nu
     }
     if (view.kind === "event") {
         const name = bp.program.graphs.events[view.graphId]?.name ?? view.graphId;
-        return `Layer · ${name}`;
+        return `${bp.owner.kind === "widgetMain" ? "Event" : "Layer"} · ${name}`;
     }
     const name = bp.program.graphs.functions[view.graphId]?.name ?? view.graphId;
     return `Function · ${name}`;
@@ -79,6 +78,14 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
         );
     }
 
+    const widgetElement =
+        payload.ownerKind === "widgetMain" && payload.elementId
+            ? uidoc.getDocument().elements[payload.elementId]
+            : undefined;
+    const widgetLogicEvents = useMemo(() => {
+        const t = widgetElement?.type;
+        return t ? widgetModuleRegistry.get(t)?.logicApi?.events : undefined;
+    }, [widgetElement?.type]);
     const eventIds = useMemo(() => localBp.listEventGraphIds(payload.blueprintId), [localBp, payload.blueprintId, revision]);
     const functionIds = useMemo(
         () => localBp.listFunctionGraphIds(payload.blueprintId),
@@ -86,10 +93,6 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
     );
 
     const editor = useBlueprintEditorState(payload, { eventIds, functionIds });
-    const widgetElement =
-        payload.ownerKind === "widgetMain" && payload.elementId
-            ? uidoc.getDocument().elements[payload.elementId]
-            : undefined;
     const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision, {
         widgetElement,
         widgetSurfaceId: payload.surfaceId,
@@ -229,13 +232,8 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
         if (payload.ownerKind !== "widgetMain" || !widgetElement || editor.graphView?.kind !== "event") {
             return undefined;
         }
-        return listUiSlotsWiredToBlueprintLayer(widgetElement, payload.blueprintId, editor.graphView.graphId);
-    }, [editor.graphView, payload.blueprintId, payload.ownerKind, widgetElement]);
-
-    const widgetBlueprintEvents = useMemo(() => {
-        const t = widgetElement?.type;
-        return t ? widgetModuleRegistry.get(t)?.blueprintEvents : undefined;
-    }, [widgetElement?.type]);
+        return [];
+    }, [editor.graphView, payload.ownerKind, widgetElement]);
 
     const paletteContext = useMemo(() => {
         const gk = editor.graphView?.kind ?? "event";
@@ -244,12 +242,12 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
             graphKind: gk,
             owner: bp.owner,
             widgetElementType: widgetElement?.type,
-            widgetBlueprintEvents,
+            widgetBlueprintEvents: widgetLogicEvents,
             widgetEventLayerSlots,
             hasEventHead: false,
             hasFunctionEntry: gk === "function" && activeIr ? graphIrHasFunctionEntry(activeIr) : false,
         });
-    }, [bp.owner, editor.graphView, ir, widgetBlueprintEvents, widgetElement?.type, widgetEventLayerSlots]);
+    }, [bp.owner, editor.graphView, ir, widgetElement?.type, widgetEventLayerSlots, widgetLogicEvents]);
 
     const contextTitle = useMemo(
         () =>
@@ -363,6 +361,7 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
                     graphView={editor.graphView}
                     diagnostics={diagnostics}
                     localBp={localBp}
+                    widgetElementType={widgetElement?.type}
                     onSelectLayer={editor.selectEventGraph}
                     onAddLayer={onAddEvent}
                     onDeleteLayer={onDeleteLayer}

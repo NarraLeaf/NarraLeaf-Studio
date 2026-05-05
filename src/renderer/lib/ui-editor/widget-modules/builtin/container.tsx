@@ -1,4 +1,5 @@
 import { Box } from "lucide-react";
+import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { ContainerRenderer } from "./container/renderer";
 import { createContainerInspector } from "./container/inspector";
@@ -8,14 +9,7 @@ import { createInitialContainerAppearance } from "@/lib/ui-editor/widget-modules
 
 export const ContainerWidgetModule: UIWidgetModule = {
     type: "nl.container",
-    supportsBlueprintLogic: true,
-    blueprintEvents: [
-        {
-            id: "init",
-            displayName: "Initialize",
-            description: "Runs once when this widget appears on the surface.",
-        },
-    ],
+    logicApi: getWidgetLogicApi("nl.container"),
     displayName: "Container",
     icon: Box,
 

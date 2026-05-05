@@ -1,5 +1,6 @@
 import React, { type ReactElement } from "react";
 import { LayoutTemplate } from "lucide-react";
+import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 
 /**
@@ -7,6 +8,7 @@ import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget
  */
 export const RootWidgetModule: UIWidgetModule = {
     type: "nl.root",
+    logicApi: getWidgetLogicApi("nl.root"),
     displayName: "Root",
     icon: LayoutTemplate,
 
