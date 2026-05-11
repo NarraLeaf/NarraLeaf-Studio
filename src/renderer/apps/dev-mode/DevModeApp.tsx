@@ -5,6 +5,7 @@ import { useDevModePayload } from "./hooks/useDevModePayload";
 export function DevModeApp() {
     const {
         bundle,
+        projectPath,
         surface,
         surfaceId,
         rendererRegistry,
@@ -19,6 +20,7 @@ export function DevModeApp() {
             <div className="h-full w-full min-h-0 bg-[#0f1115] overflow-hidden">
                 <DevModeContent
                     bundle={bundle}
+                    projectPath={projectPath}
                     surface={surface}
                     surfaceId={surfaceId}
                     rendererRegistry={rendererRegistry}

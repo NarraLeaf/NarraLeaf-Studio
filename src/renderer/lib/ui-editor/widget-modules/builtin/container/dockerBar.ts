@@ -1,6 +1,12 @@
 import { LayoutList, Minus } from "lucide-react";
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
-import type { ContainerLayoutKind, ContainerScrollAxis, ContainerStackDirection } from "@shared/types/ui-editor/container";
+import {
+    clampContainerStackSpacingPx,
+    CONTAINER_STACK_SPACING_ABS_MAX_PX,
+    type ContainerLayoutKind,
+    type ContainerScrollAxis,
+    type ContainerStackDirection,
+} from "@shared/types/ui-editor/container";
 import { buildDividerPreset, buildVerticalStackPreset } from "./dockerPresets";
 import { getContainerProps } from "./helpers";
 
@@ -41,11 +47,11 @@ export function createContainerDockerBarItems(ctx: DockerBarContext): DockerBarI
                       label: "Gap",
                       tooltip: "Space between children",
                       value: props.stackGap,
-                      min: 0,
-                      max: 256,
+                      min: -CONTAINER_STACK_SPACING_ABS_MAX_PX,
+                      max: CONTAINER_STACK_SPACING_ABS_MAX_PX,
                       step: 1,
                       onChange: (value: number) => {
-                          patch({ stackGap: Math.max(0, value) });
+                          patch({ stackGap: clampContainerStackSpacingPx(value) });
                       },
                   },
                   {
@@ -85,41 +91,41 @@ export function createContainerDockerBarItems(ctx: DockerBarContext): DockerBarI
               ]
             : [];
 
-    const presets: DockerBarItem[] = [
-        {
-            kind: "separator",
-            id: "docker-container-sep-presets",
-        },
-        {
-            kind: "button",
-            id: "docker-container-preset-divider",
-            icon: Minus,
-            label: "Divider",
-            tooltip: "Divider preset: thin strip (adjust width on canvas)",
-            onClick: () => {
-                const { layout, props: presetProps } = buildDividerPreset();
-                documentService.updateElementLayout(element.id, { ...element.layout, ...layout });
-                documentService.updateElementProps(element.id, {
-                    ...element.props,
-                    ...presetProps,
-                });
-            },
-        },
-        {
-            kind: "button",
-            id: "docker-container-preset-stack-v",
-            icon: LayoutList,
-            label: "V stack",
-            tooltip: "Vertical stack layout (flow children)",
-            onClick: () => {
-                const { props: presetProps } = buildVerticalStackPreset();
-                documentService.updateElementProps(element.id, {
-                    ...element.props,
-                    ...presetProps,
-                });
-            },
-        },
-    ];
+    // const presets: DockerBarItem[] = [
+    //     {
+    //         kind: "separator",
+    //         id: "docker-container-sep-presets",
+    //     },
+    //     {
+    //         kind: "button",
+    //         id: "docker-container-preset-divider",
+    //         icon: Minus,
+    //         label: "Divider",
+    //         tooltip: "Divider preset: thin strip (adjust width on canvas)",
+    //         onClick: () => {
+    //             const { layout, props: presetProps } = buildDividerPreset();
+    //             documentService.updateElementLayout(element.id, { ...element.layout, ...layout });
+    //             documentService.updateElementProps(element.id, {
+    //                 ...element.props,
+    //                 ...presetProps,
+    //             });
+    //         },
+    //     },
+    //     {
+    //         kind: "button",
+    //         id: "docker-container-preset-stack-v",
+    //         icon: LayoutList,
+    //         label: "V stack",
+    //         tooltip: "Vertical stack layout (flow children)",
+    //         onClick: () => {
+    //             const { props: presetProps } = buildVerticalStackPreset();
+    //             documentService.updateElementProps(element.id, {
+    //                 ...element.props,
+    //                 ...presetProps,
+    //             });
+    //         },
+    //     },
+    // ];
 
-    return [...layoutMode, ...stackControls, ...scrollControls, ...presets];
+    return [...layoutMode, ...stackControls, ...scrollControls, /* ...presets */];
 }

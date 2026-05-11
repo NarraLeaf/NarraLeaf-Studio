@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { Check } from "lucide-react";
 import { FixedAspectRatioContainer } from "narraleaf-react";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UISurface, UIDocument } from "@shared/types/ui-editor/document";
@@ -14,6 +16,7 @@ import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/Widg
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
+    projectPath: string | null;
     surface: UISurface | null;
     surfaceId: string;
     rendererRegistry: ElementRendererRegistry;
@@ -60,6 +63,7 @@ function SessionErrorBanner(props: {
 export function DevModeContent(props: DevModeContentProps) {
     const {
         bundle,
+        projectPath,
         surface,
         surfaceId,
         rendererRegistry,
@@ -68,9 +72,14 @@ export function DevModeContent(props: DevModeContentProps) {
         sessionError,
         onDismissSessionError,
     } = props;
+    const uiDocument: UIDocument | null = bundle?.ui.uidoc ?? null;
     const bpCore = useDevModeBlueprintRuntime(bundle);
     const [navStack, setNavStack] = useState<string[]>([]);
     const [widgetPatches, setWidgetPatches] = useState<Record<string, DevModeWidgetRuntimePatch>>({});
+    const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
+    const [blueprintPanelOpen, setBlueprintPanelOpen] = useState(false);
+    const devtoolsFabRef = useRef<HTMLButtonElement>(null);
+    const devtoolsMenuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (surface?.id) {
@@ -79,15 +88,57 @@ export function DevModeContent(props: DevModeContentProps) {
         }
     }, [surface?.id, bundle?.revision, bundle?.bundleId]);
 
-    const document: UIDocument | null = bundle?.ui.uidoc ?? null;
+    useEffect(() => {
+        if (!bpCore) {
+            setDevtoolsMenuOpen(false);
+            setBlueprintPanelOpen(false);
+        }
+    }, [bpCore]);
+
+    useEffect(() => {
+        if (!devtoolsMenuOpen) {
+            return;
+        }
+        const onPointerDown = (e: PointerEvent) => {
+            const t = e.target as Node;
+            if (devtoolsFabRef.current?.contains(t)) {
+                return;
+            }
+            if (devtoolsMenuRef.current?.contains(t)) {
+                return;
+            }
+            setDevtoolsMenuOpen(false);
+        };
+        document.addEventListener("pointerdown", onPointerDown, true);
+        return () => document.removeEventListener("pointerdown", onPointerDown, true);
+    }, [devtoolsMenuOpen]);
+
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key !== "Escape") {
+                return;
+            }
+            if (devtoolsMenuOpen) {
+                setDevtoolsMenuOpen(false);
+                e.preventDefault();
+                return;
+            }
+            if (blueprintPanelOpen) {
+                setBlueprintPanelOpen(false);
+                e.preventDefault();
+            }
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [devtoolsMenuOpen, blueprintPanelOpen]);
 
     const activeSurface = useMemo((): UISurface | null => {
-        if (!bundle || !surface || !document) {
+        if (!bundle || !surface || !uiDocument) {
             return null;
         }
         const activeSurfaceId = navStack.length > 0 ? navStack[navStack.length - 1]! : surface.id;
-        return document.surfaces.find(s => s.id === activeSurfaceId) ?? surface;
-    }, [bundle, surface, document, navStack]);
+        return uiDocument.surfaces.find(s => s.id === activeSurfaceId) ?? surface;
+    }, [bundle, surface, uiDocument, navStack]);
 
     const widgetRuntimeStore = useMemo(
         () => new WidgetRuntimeStateStore(),
@@ -95,11 +146,11 @@ export function DevModeContent(props: DevModeContentProps) {
     );
 
     const hostApi = useMemo(() => {
-        if (!bpCore || !document || !activeSurface) {
+        if (!bpCore || !uiDocument || !activeSurface) {
             return null;
         }
         return createDevModeBlueprintHostApi({
-            document,
+            document: uiDocument,
             scope: bpCore.scopeBridge,
             activeSurfaceId: activeSurface.id,
             emit: e => bpCore.debug.emit(e),
@@ -117,7 +168,7 @@ export function DevModeContent(props: DevModeContentProps) {
             },
             widgetRuntimeStore,
         });
-    }, [bpCore, document, activeSurface, widgetRuntimeStore]);
+    }, [bpCore, uiDocument, activeSurface, widgetRuntimeStore]);
 
     const hostAdapter = useMemo((): UIHostAdapter => {
         if (!activeSurface) {
@@ -182,12 +233,12 @@ export function DevModeContent(props: DevModeContentProps) {
               }
             : null;
 
-    const uidoc = bundle.ui.uidoc;
+    const uidoc = uiDocument!;
 
     return (
         <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
             <SessionErrorBanner sessionError={sessionError} onDismissSessionError={onDismissSessionError} />
-            <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+            <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
                 <div className="min-h-0 min-w-0 flex-1">
                     <FixedAspectRatioContainer
                         aspectRatio={aspectRatio}
@@ -209,7 +260,84 @@ export function DevModeContent(props: DevModeContentProps) {
                         </WidgetRuntimeStateProvider>
                     </FixedAspectRatioContainer>
                 </div>
-                {bpCore ? <BlueprintRuntimeDebugPanel debug={bpCore.debug} /> : null}
+
+                <AnimatePresence>
+                    {bpCore && blueprintPanelOpen ? (
+                        <motion.div
+                            key="blueprint-devtools"
+                            role="complementary"
+                            aria-label="Blueprint DevTools"
+                            className="pointer-events-auto absolute inset-y-0 right-0 z-30 flex w-[min(100%,380px)] max-w-full flex-col overflow-hidden border-l border-white/10 bg-[#0d0f11] shadow-[-8px_0_24px_rgba(0,0,0,0.35)]"
+                            initial={{ x: "100%" }}
+                            animate={{ x: 0 }}
+                            exit={{ x: "100%" }}
+                            transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                        >
+                            <BlueprintRuntimeDebugPanel
+                                debug={bpCore.debug}
+                                blueprintDocument={bundle.ui.localBlueprints}
+                                activeSurfaceId={activeSurface.id}
+                                scopeBridge={bpCore.scopeBridge}
+                                widgetRuntimeStore={widgetRuntimeStore}
+                                projectPath={projectPath}
+                                className="h-full min-h-0 w-full border-l-0"
+                            />
+                        </motion.div>
+                    ) : null}
+                </AnimatePresence>
+
+                {bpCore ? (
+                    <div className="pointer-events-none absolute inset-0 z-40">
+                        <div className="pointer-events-auto absolute bottom-3 left-3">
+                            <div className="relative flex w-11 flex-col items-start">
+                                {devtoolsMenuOpen ? (
+                                    <div
+                                        ref={devtoolsMenuRef}
+                                        role="menu"
+                                        aria-label="Preview debug tools"
+                                        className="absolute bottom-full left-0 z-10 mb-2 w-[min(15rem,calc(100vw-1.5rem))] rounded-md border border-white/10 bg-[#0b0d12] py-1 shadow-lg"
+                                    >
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            aria-pressed={blueprintPanelOpen}
+                                            className={`flex w-full cursor-default items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                                                blueprintPanelOpen
+                                                    ? "bg-white/15 text-white"
+                                                    : "text-gray-400 hover:bg-white/10 hover:text-white"
+                                            }`}
+                                            onClick={() => {
+                                                setBlueprintPanelOpen(prev => !prev);
+                                                setDevtoolsMenuOpen(false);
+                                            }}
+                                        >
+                                            <span
+                                                className="flex h-3.5 w-3.5 shrink-0 items-center justify-center"
+                                                aria-hidden
+                                            >
+                                                {blueprintPanelOpen ? (
+                                                    <Check className="h-3.5 w-3.5 text-primary" />
+                                                ) : null}
+                                            </span>
+                                            <span className="min-w-0 flex-1 truncate">Blueprint DevTools</span>
+                                        </button>
+                                    </div>
+                                ) : null}
+                                <button
+                                    ref={devtoolsFabRef}
+                                    type="button"
+                                    className="pointer-events-auto flex h-11 w-11 shrink-0 cursor-default items-center justify-center rounded-full border border-white/15 bg-[#0b0d12] shadow-md outline-none ring-white/20 transition-colors duration-150 hover:border-white/22 hover:bg-[#151a24] hover:shadow-lg focus-visible:ring-2"
+                                    aria-label={devtoolsMenuOpen ? "Close preview debug tools menu" : "Open preview debug tools menu"}
+                                    aria-expanded={devtoolsMenuOpen}
+                                    aria-haspopup="menu"
+                                    onClick={() => setDevtoolsMenuOpen(prev => !prev)}
+                                >
+                                    <img src="/favicon.ico" alt="" className="h-7 w-7 rounded-full" draggable={false} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
             </div>
         </div>
     );

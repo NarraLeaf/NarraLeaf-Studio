@@ -61,6 +61,9 @@ export function EditorNodeWrapper({
             display: "flex",
             flexDirection: "column",
             flexShrink: isFlow ? 0 : undefined,
+            // Flow items live inside flex stack parents: keep authored size but never wider than the
+            // parent's inner box (large padding shrinks that box; fixed px width used to overflow).
+            ...(isFlow ? { minWidth: 0, maxWidth: "100%" } : {}),
             // Each widget must own its stacking context so internal z-index values
             // (e.g. container free-layout chrome z:0 / children z:1) do not leak
             // into the parent context and break sibling paint & hit-test order.

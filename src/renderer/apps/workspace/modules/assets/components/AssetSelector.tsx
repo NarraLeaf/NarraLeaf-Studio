@@ -402,10 +402,7 @@ export function AssetSelector({
                                 <span className="text-sm flex-1 truncate text-gray-100">{group.name}</span>
                             </button>
                             {isExpanded && (
-                                <div className="space-y-1">
-                                    {assetsByGroup.get(group.id)?.map((asset) => renderAssetRow(asset, level + 1))}
-                                    {renderGroup(group.id, level + 1)}
-                                </div>
+                                <div className="space-y-1">{renderGroup(group.id, level + 1)}</div>
                             )}
                         </div>
                     );
