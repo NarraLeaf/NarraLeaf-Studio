@@ -23,6 +23,7 @@ import {
 import {
     DevModeGetStatusHandler,
     DevModeLaunchHandler,
+    DevModeOpenBlueprintInWorkspaceHandler,
     DevModeReloadHandler,
     DevModeStopHandler,
     DevModeResolveImageAssetUrlHandler,
@@ -108,6 +109,7 @@ export class WindowManager {
         win.registerIPCHandler(new DevModeStopHandler());
         win.registerIPCHandler(new DevModeReloadHandler());
         win.registerIPCHandler(new DevModeGetStatusHandler());
+        win.registerIPCHandler(new DevModeOpenBlueprintInWorkspaceHandler());
         win.registerIPCHandler(new DevModeResolveImageAssetUrlHandler());
 
         // Register file system handlers

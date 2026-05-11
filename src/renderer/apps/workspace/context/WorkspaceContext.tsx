@@ -94,11 +94,12 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         const iface = getInterface();
 
         const handler = async ({ assetId }: { assetId: string }): Promise<RequestStatus<{ url: string }>> => {
-            const asset = assetsService.getAssets()[AssetType.Image][assetId];
+            const asset = assetsService.getAssets()[AssetType.Image]?.[assetId]
+                ?? assetsService.getAssets()[AssetType.Font]?.[assetId];
             if (!asset) {
                 return {
                     success: false,
-                    error: "Image asset not found",
+                    error: "Asset not found",
                 };
             }
 

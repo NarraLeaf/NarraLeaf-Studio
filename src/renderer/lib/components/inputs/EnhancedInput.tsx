@@ -25,6 +25,8 @@ export interface EnhancedInputProps
     selectAllOnFocus?: boolean;
     popoverWhenNarrow?: boolean;
     popoverThreshold?: number;
+    /** When the narrow-column popover portal is used, set stacking above parent overlays (e.g. nested inspector popovers). */
+    popoverZIndex?: number;
 }
 
 /**
@@ -43,6 +45,7 @@ export function EnhancedInput({
     selectAllOnFocus = false,
     popoverWhenNarrow = false,
     popoverThreshold = 112,
+    popoverZIndex,
     ...rest
 }: EnhancedInputProps) {
     const [hasFocus, setHasFocus] = useState(false);
@@ -230,10 +233,14 @@ export function EnhancedInput({
 
     const paddingLeftClass = leftIcon ? "pl-10" : "pl-3";
     const paddingRightClass = unit ? "pr-10" : "pr-3";
-    const numberNoSpinnerClass =
-        rest.type === "number"
-            ? "[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            : "";
+    // Match width/layout of `type="number"` when callers use `type="text"` + inputMode for empty-safe controlled values.
+    const useNumericChrome =
+        rest.type === "number" ||
+        rest.inputMode === "numeric" ||
+        rest.inputMode === "decimal";
+    const numberNoSpinnerClass = useNumericChrome
+        ? "[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        : "";
     const rootClassName = `
         relative flex min-w-0 max-w-full items-center bg-[#1e1f22] border border-white/10 rounded-md text-sm h-9 min-h-[34px] overflow-hidden
         focus-within:border-primary/70 transition focus-within:ring-1 focus-within:ring-primary/30
@@ -252,12 +259,18 @@ export function EnhancedInput({
                 ? createPortal(
                       <div
                           ref={panelRef}
-                          className="fixed z-[70] rounded-xl border border-white/10 bg-[#17181c] p-2 shadow-2xl"
+                          className={[
+                              "fixed rounded-xl border border-white/10 bg-[#17181c] p-2 shadow-2xl",
+                              popoverZIndex === undefined ? "z-[70]" : "",
+                          ]
+                              .filter(Boolean)
+                              .join(" ")}
                           style={{
                               left: popoverPosition.left,
                               top: popoverPosition.top,
                               width: popoverPosition.width,
                               maxWidth: "calc(100vw - 16px)",
+                              ...(popoverZIndex !== undefined ? { zIndex: popoverZIndex } : {}),
                           }}
                           onMouseDown={(event) => event.stopPropagation()}
                       >

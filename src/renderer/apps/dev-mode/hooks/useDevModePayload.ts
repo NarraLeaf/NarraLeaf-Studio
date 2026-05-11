@@ -9,6 +9,7 @@ import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 
 type DevModeState = {
     entry: DevModeEntry | null;
+    projectPath: string | null;
     bundle: DevModeBundle | null;
     sessionError: string | null;
 };
@@ -16,6 +17,7 @@ type DevModeState = {
 type UseDevModePayloadResult = {
     bundle: DevModeBundle | null;
     entry: DevModeEntry | null;
+    projectPath: string | null;
     surface: UISurface | null;
     surfaceId: string;
     rendererRegistry: ElementRendererRegistry;
@@ -26,7 +28,7 @@ type UseDevModePayloadResult = {
 };
 
 export function useDevModePayload(): UseDevModePayloadResult {
-    const [state, setState] = useState<DevModeState>({ entry: null, bundle: null, sessionError: null });
+    const [state, setState] = useState<DevModeState>({ entry: null, projectPath: null, bundle: null, sessionError: null });
     const rendererRegistry = useMemo(() => new ElementRendererRegistry(BuiltinElementRenderers), []);
     const [scale, setScale] = useState(1);
 
@@ -41,6 +43,7 @@ export function useDevModePayload(): UseDevModePayloadResult {
                 setState(prev => ({
                     ...prev,
                     entry: result.data.entry,
+                    projectPath: result.data.projectPath,
                 }));
             });
         return () => {
@@ -97,6 +100,7 @@ export function useDevModePayload(): UseDevModePayloadResult {
     return {
         bundle: state.bundle,
         entry: state.entry,
+        projectPath: state.projectPath,
         surface,
         surfaceId,
         rendererRegistry,

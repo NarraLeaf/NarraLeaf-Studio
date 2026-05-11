@@ -6,6 +6,7 @@ import { useModuleLoader } from "./hooks/useModuleLoader";
 import { useWorkspaceEditorSession } from "./hooks/useWorkspaceEditorSession";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
+import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/PreviewBlueprintNavigateBridge";
 
 /**
  * Main workspace application component
@@ -16,7 +17,12 @@ function WorkspaceContent() {
     useModuleLoader();
     useWorkspaceEditorSession();
 
-    return <WorkspaceLayout title="NarraLeaf Studio" iconSrc="/favicon.ico" />;
+    return (
+        <>
+            <PreviewBlueprintNavigateBridge />
+            <WorkspaceLayout title="NarraLeaf Studio" iconSrc="/favicon.ico" />
+        </>
+    );
 }
 
 function InitializedWorkspace({ children }: { children: React.ReactNode }) {
