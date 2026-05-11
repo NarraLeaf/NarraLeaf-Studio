@@ -142,6 +142,16 @@ export const defaultContainerWidgetProps: ContainerWidgetProps = {
     transformOpacity: 1,
 };
 
+/** Symmetric editor clamp for stack gap and uniform stack padding (px). */
+export const CONTAINER_STACK_SPACING_ABS_MAX_PX = 256;
+
+export function clampContainerStackSpacingPx(v: number): number {
+    if (!Number.isFinite(v)) {
+        return 0;
+    }
+    return Math.max(-CONTAINER_STACK_SPACING_ABS_MAX_PX, Math.min(CONTAINER_STACK_SPACING_ABS_MAX_PX, v));
+}
+
 export function parseContainerLayoutKind(props: Record<string, unknown> | undefined): ContainerLayoutKind {
     const raw = props?.layoutKind;
     if (raw === "stack" || raw === "scroll" || raw === "free") {

@@ -19,6 +19,11 @@ export class SurfaceStateStore {
         this.notify();
     }
 
+    /** Immutable copy of all surface state keys (Dev Mode debugger). */
+    public getSnapshot(): ReadonlyMap<string, unknown> {
+        return new Map(this.values);
+    }
+
     public subscribe(listener: SurfaceStateListener): () => void {
         this.listeners.add(listener);
         return () => {

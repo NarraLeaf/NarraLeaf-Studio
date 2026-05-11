@@ -5,6 +5,7 @@ import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import { DevModeBundle, DevModeEntry, DevModeStatus } from "./devMode";
+import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -53,6 +54,7 @@ export enum IPCEventType {
     workspaceSelectFolder = "workspace.selectFolder",
     workspaceClose = "workspace.close",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
+    workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
     
     // Project Settings
     projectSettingsGet = "projectSettings.get",
@@ -69,6 +71,7 @@ export enum IPCEventType {
     devModeControlReload = "devMode.control.reload",
     devModeControlError = "devMode.control.error",
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
+    devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -435,6 +438,12 @@ export type IPCWorkspaceEvents = {
         };
         response: RequestStatus<{ url: string }>;
     };
+    [IPCEventType.workspaceBlueprintNavigateFromPreview]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: PreviewStudioBlueprintOpenPayload;
+        response: never;
+    };
 };
 
 export type IPCProjectSettingsEvents = {
@@ -558,5 +567,13 @@ export type IPCDevModeEvents = {
         response: {
             url: string;
         };
+    };
+    [IPCEventType.devModeOpenBlueprintInWorkspace]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: PreviewStudioBlueprintOpenPayload & {
+            projectPath: string;
+        };
+        response: void;
     };
 };

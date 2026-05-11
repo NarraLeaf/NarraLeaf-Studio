@@ -19,14 +19,17 @@ import type {
 } from "@/apps/workspace/modules/properties/framework/types";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
-import type {
-    ContainerLayoutKind,
-    ContainerScrollAxis,
-    ContainerStackAlignItems,
-    ContainerStackDirection,
-    ContainerStackJustifyContent,
-    ContainerWidgetProps,
+import {
+    clampContainerStackSpacingPx,
+    CONTAINER_STACK_SPACING_ABS_MAX_PX,
+    type ContainerLayoutKind,
+    type ContainerScrollAxis,
+    type ContainerStackAlignItems,
+    type ContainerStackDirection,
+    type ContainerStackJustifyContent,
+    type ContainerWidgetProps,
 } from "@shared/types/ui-editor/container";
+import { ContainerStackPaddingEditor } from "./ContainerStackPaddingEditor";
 import { getContainerProps } from "./helpers";
 
 type D = UIInspectorData;
@@ -170,18 +173,18 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                                             committedDisplay={String(current.stackGap)}
                                             draftResetKey={element.id}
                                             onFiniteNumber={(v) => {
-                                                if (v < 0) return;
+                                                const next = clampContainerStackSpacingPx(v);
                                                 onSaving(true);
                                                 try {
-                                                    patch({ stackGap: Math.min(256, v) });
+                                                    patch({ stackGap: next });
                                                 } finally {
                                                     onSaving(false);
                                                 }
                                             }}
                                             inputMode="numeric"
                                             type="number"
-                                            min={0}
-                                            max={256}
+                                            min={-CONTAINER_STACK_SPACING_ABS_MAX_PX}
+                                            max={CONTAINER_STACK_SPACING_ABS_MAX_PX}
                                             unit="px"
                                             aria-label="Gap between children"
                                             title="Gap between children"
@@ -196,35 +199,12 @@ export function buildContainerLayoutLeadingFields(ctx: InspectorContext): unknow
                             render: ({ data, onSaving }: InlineRowItemContext<D>) => {
                                 const current = getContainerProps(data.element);
                                 return (
-                                    <div className="flex min-w-0 flex-col gap-1">
-                                        <span className="text-xs font-medium text-gray-400">Padding</span>
-                                        <NumericDraftEnhancedInput
-                                            committedDisplay={String(current.stackPaddingTop)}
-                                            draftResetKey={element.id}
-                                            onFiniteNumber={(v) => {
-                                                if (v < 0) return;
-                                                const clamped = Math.min(256, v);
-                                                onSaving(true);
-                                                try {
-                                                    patch({
-                                                        stackPaddingTop: clamped,
-                                                        stackPaddingRight: clamped,
-                                                        stackPaddingBottom: clamped,
-                                                        stackPaddingLeft: clamped,
-                                                    });
-                                                } finally {
-                                                    onSaving(false);
-                                                }
-                                            }}
-                                            inputMode="numeric"
-                                            type="number"
-                                            min={0}
-                                            max={256}
-                                            unit="px"
-                                            aria-label="Padding on all sides"
-                                            title="Padding (all sides)"
-                                        />
-                                    </div>
+                                    <ContainerStackPaddingEditor
+                                        current={current}
+                                        draftResetKey={element.id}
+                                        onSaving={onSaving}
+                                        onPatch={patch}
+                                    />
                                 );
                             },
                         },

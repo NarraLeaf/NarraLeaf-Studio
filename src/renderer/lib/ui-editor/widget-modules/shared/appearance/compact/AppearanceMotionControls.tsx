@@ -37,6 +37,8 @@ type AppearanceFieldMotionButtonProps = {
 const FIELD_POPOVER_WIDTH = 280;
 const FIELD_POPOVER_SPACING = 8;
 const FIELD_POPOVER_MARGIN = 8;
+/** Above motion field popover (`z-[80]`) so narrow-column `EnhancedInput` portals stack correctly. */
+const MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX = 90;
 
 /** Borderless icon-only trigger; active = field has a transition configured. */
 function motionIconTriggerClass(active: boolean): string {
@@ -267,6 +269,7 @@ export function AppearanceFieldMotionButton({
                                               Duration
                                           </label>
                                           <NumericDraftEnhancedInput
+                                              popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
                                               committedDisplay={String(transition.durationMs)}
                                               draftResetKey={`${draftResetKey}-${groupKey}-duration`}
                                               onFiniteNumber={value =>
@@ -289,6 +292,7 @@ export function AppearanceFieldMotionButton({
                                               Delay
                                           </label>
                                           <NumericDraftEnhancedInput
+                                              popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
                                               committedDisplay={String(transition.delayMs ?? 0)}
                                               draftResetKey={`${draftResetKey}-${groupKey}-delay`}
                                               onFiniteNumber={value =>
@@ -330,19 +334,13 @@ export function AppearanceFieldMotionButton({
                               </>
                           ) : (
                               <>
-                                  <p className="text-[10px] text-gray-500 leading-snug">
-                                      Spring uses physics-style parameters: higher{" "}
-                                      <span className="text-gray-400">stiffness</span> is snappier; higher{" "}
-                                      <span className="text-gray-400">damping</span> reduces bounce.{" "}
-                                      <span className="text-gray-400">Mass</span> adds inertia.{" "}
-                                      <span className="text-gray-400">Delay</span> waits before the spring starts.
-                                  </p>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
                                           <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
                                               Stiffness
                                           </label>
                                           <NumericDraftEnhancedInput
+                                              popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
                                               committedDisplay={String(transition.stiffness)}
                                               draftResetKey={`${draftResetKey}-${groupKey}-stiffness`}
                                               onFiniteNumber={value =>
@@ -364,6 +362,7 @@ export function AppearanceFieldMotionButton({
                                               Damping
                                           </label>
                                           <NumericDraftEnhancedInput
+                                              popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
                                               committedDisplay={String(transition.damping)}
                                               draftResetKey={`${draftResetKey}-${groupKey}-damping`}
                                               onFiniteNumber={value =>
@@ -387,6 +386,7 @@ export function AppearanceFieldMotionButton({
                                               Mass
                                           </label>
                                           <NumericDraftEnhancedInput
+                                              popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
                                               committedDisplay={String(transition.mass)}
                                               draftResetKey={`${draftResetKey}-${groupKey}-mass`}
                                               onFiniteNumber={value =>
@@ -409,6 +409,7 @@ export function AppearanceFieldMotionButton({
                                               Delay
                                           </label>
                                           <NumericDraftEnhancedInput
+                                              popoverZIndex={MOTION_FIELD_NUMERIC_POPOVER_Z_INDEX}
                                               committedDisplay={String(transition.delayMs ?? 0)}
                                               draftResetKey={`${draftResetKey}-${groupKey}-spring-delay`}
                                               onFiniteNumber={value =>

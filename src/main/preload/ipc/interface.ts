@@ -4,6 +4,7 @@ import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
 import type { DevModeEntry, DevModeStatus, DevModeBundle } from "@shared/types/devMode";
+import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
 
@@ -74,6 +75,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         },
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
+        onBlueprintNavigateFromPreview: (handler: (payload: PreviewStudioBlueprintOpenPayload) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceBlueprintNavigateFromPreview, handler),
     },
 
     app: {
@@ -104,6 +107,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.devModeControlError, handler),
         resolveImageAssetUrl: (assetId: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
+        openBlueprintInWorkspace: (payload: PreviewStudioBlueprintOpenPayload & { projectPath: string }) =>
+            ipcClient.invoke(IPCEventType.devModeOpenBlueprintInWorkspace, payload) as Promise<RequestStatus<void>>,
     },
 };
 

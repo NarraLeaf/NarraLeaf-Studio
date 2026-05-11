@@ -7,6 +7,7 @@ import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbilit
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import { DevModeBundle, DevModeEntry, DevModeStatus } from "./devMode";
+import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import { AppEventToken } from "./app";
 
 export interface RendererPreloadedInterface {
@@ -74,6 +75,7 @@ export interface RendererPreloadedInterface {
             clear(projectPath: string): Promise<RequestStatus<void>>;
         };
         onResolveImageAssetUrl(handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
+        onBlueprintNavigateFromPreview(handler: (payload: PreviewStudioBlueprintOpenPayload) => void): AppEventToken;
     };
 
     // App
@@ -96,6 +98,9 @@ export interface RendererPreloadedInterface {
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
         onControlError(handler: (payload: { message: string }) => void): AppEventToken;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
+        openBlueprintInWorkspace(
+            payload: PreviewStudioBlueprintOpenPayload & { projectPath: string },
+        ): Promise<RequestStatus<void>>;
     };
 }
 

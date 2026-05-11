@@ -15,19 +15,27 @@ import { charactersModule } from "./characters";
 import { settingsModule } from "./settings";
 import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
 import { uiEditorSurfacesModule } from "./ui-editor";
+import {
+    localizationPanelModule,
+    runningTasksPanelModule,
+    storyPanelModule,
+} from "./placeholders/workspacePlaceholderModules";
 
 /**
  * Built-in panel modules
  * All panels that should be registered on workspace startup
  */
 export const builtInPanels: PanelModule[] = [
+    storyPanelModule,
     uiEditorSurfacesModule,
     charactersModule,
     assetsModule,
+    localizationPanelModule,
     assetsBottomModule,
     settingsModule,
     propertiesModule,
     consoleModule,
+    runningTasksPanelModule,
 ];
 
 /**
@@ -63,4 +71,9 @@ export { welcomeModule } from "./welcome";
 export { settingsModule } from "./settings";
 export { globalActions, globalActionGroups } from "./actions";
 export { uiEditorSurfacesModule } from "./ui-editor";
+export {
+    localizationPanelModule,
+    runningTasksPanelModule,
+    storyPanelModule,
+} from "./placeholders/workspacePlaceholderModules";
 

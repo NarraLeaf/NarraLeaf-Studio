@@ -1,5 +1,6 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import {
+    clampContainerStackSpacingPx,
     containerLayoutUsesScrollViewport,
     defaultContainerWidgetProps,
     getContainerChildLayoutParticipation,
@@ -9,12 +10,25 @@ import {
     type ContainerWidgetProps,
 } from "@shared/types/ui-editor/container";
 
+function finiteOr(fallback: number, value: unknown): number {
+    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
 export function getContainerProps(element: UIElement): ContainerWidgetProps {
     const p = element.props as Partial<ContainerWidgetProps> | undefined;
-    return {
-        ...defaultContainerWidgetProps,
+    const base = defaultContainerWidgetProps;
+    const merged: ContainerWidgetProps = {
+        ...base,
         ...p,
         clipContent: normalizeContainerClipContent(p?.clipContent),
+    };
+    return {
+        ...merged,
+        stackGap: clampContainerStackSpacingPx(finiteOr(base.stackGap, merged.stackGap)),
+        stackPaddingTop: clampContainerStackSpacingPx(finiteOr(base.stackPaddingTop, merged.stackPaddingTop)),
+        stackPaddingRight: clampContainerStackSpacingPx(finiteOr(base.stackPaddingRight, merged.stackPaddingRight)),
+        stackPaddingBottom: clampContainerStackSpacingPx(finiteOr(base.stackPaddingBottom, merged.stackPaddingBottom)),
+        stackPaddingLeft: clampContainerStackSpacingPx(finiteOr(base.stackPaddingLeft, merged.stackPaddingLeft)),
     };
 }
 

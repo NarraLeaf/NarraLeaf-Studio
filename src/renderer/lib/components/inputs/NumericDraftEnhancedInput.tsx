@@ -15,6 +15,7 @@ export interface NumericDraftEnhancedInputProps extends Passthrough {
 /**
  * Controlled numeric field backed by document state: keeps a local draft string so
  * transient emptiness or partial input (e.g. "") does not snap back before blur.
+ * Maps `type="number"` → `type="text"` for empty-safe controlled values; default popover threshold stays usable for narrow inspector columns after that layout shift.
  */
 export function NumericDraftEnhancedInput({
     committedDisplay,
@@ -22,7 +23,8 @@ export function NumericDraftEnhancedInput({
     draftResetKey,
     onBlur,
     popoverWhenNarrow = true,
-    popoverThreshold = 112,
+    popoverThreshold = 200,
+    type,
     ...rest
 }: NumericDraftEnhancedInputProps) {
     const [draft, setDraft] = useState<string | null>(null);
@@ -55,6 +57,7 @@ export function NumericDraftEnhancedInput({
     return (
         <EnhancedInput
             {...rest}
+            type={type === "number" ? "text" : type}
             value={shown}
             onChange={handleChange}
             onBlur={handleBlur}
