@@ -9,9 +9,9 @@ import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocument
 import { SELECTABLE_TARGET } from "./constants";
 import {
     isUiContainerDrillLockHit,
-    isEmptyOrAbsentUiSelection,
     markSuppressNextCanvasWidgetDoubleClick,
     promoteHitToDirectChildOfSurfaceRoot,
+    shouldPromoteToSurfaceRootChild,
 } from "./containerDrillSelection";
 import {
     buildLayoutPatchForNewElementFromSurfaceRect,
@@ -302,10 +302,9 @@ export function useSurfaceInteractionEvents({
                         const doc = documentService.getDocument();
                         const hitId = elementId;
                         const drillLock = isUiContainerDrillLockHit(doc, surfaceId, selectionData, hitId);
-                        const pickId =
-                            !drillLock && isEmptyOrAbsentUiSelection(selectionData, surfaceId)
-                                ? promoteHitToDirectChildOfSurfaceRoot(doc, surfaceId, hitId)
-                                : hitId;
+                        const pickId = !drillLock && shouldPromoteToSurfaceRootChild(doc, selectionData, surfaceId, hitId)
+                            ? promoteHitToDirectChildOfSurfaceRoot(doc, surfaceId, hitId)
+                            : hitId;
                         if (!drillLock) {
                             containerDrillLastPointerRef.current = null;
                         } else {
@@ -338,6 +337,7 @@ export function useSurfaceInteractionEvents({
 
             if (isInsideSurface && !isElementNode) {
                 stateService.setSelection({ type: null, data: null });
+                containerDrillLastPointerRef.current = null;
             }
         };
 

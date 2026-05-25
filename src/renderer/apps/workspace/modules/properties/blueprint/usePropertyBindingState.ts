@@ -7,6 +7,9 @@ import type { PropertyFieldBindingMeta } from "./bindingMeta";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
 import { buildDefaultSurfaceStateKeyForWidgetProp } from "@/lib/workspace/services/ui-editor/blueprint/defaultFieldKeys";
+import type { BlueprintFieldValueSource } from "@shared/types/blueprint/document";
+
+export type FieldStateScope = "surface" | "global";
 
 export type PropertyBindingUiStatus = "literal" | "bound" | "broken";
 
@@ -14,7 +17,11 @@ export type PropertyBindingState = {
     status: PropertyBindingUiStatus;
     /** When bound or broken, field display name if it still exists. */
     fieldLabel: string | null;
-    /** Resolved surfaceState key for the bound field, when applicable. */
+    /** Resolved state key for the bound field, when applicable. */
+    stateKey: string | null;
+    /** Which scope the bound field's value source targets. */
+    stateScope: FieldStateScope | null;
+    /** @deprecated Use stateKey instead. */
     surfaceStateKey: string | null;
     brokenReason: string | undefined;
     canBind: boolean;
@@ -22,7 +29,7 @@ export type PropertyBindingState = {
     /** Fields on the widget main blueprint, sorted by name (for bind picker). */
     fieldCandidates: { id: string; name: string }[];
     bindToExistingField: (fieldId: string) => void;
-    createAndBindWithName: (name: string) => void;
+    createAndBindWithName: (name: string, scope?: FieldStateScope) => void;
     unbind: () => void;
     goToField: () => void;
 };
@@ -44,26 +51,36 @@ export function usePropertyBindingState(
                 blueprintId: undefined as string | undefined,
                 binding: undefined as ReturnType<LocalBlueprintService["findWidgetPropBinding"]>,
                 fieldName: null as string | null,
-                surfaceStateKey: null as string | null,
+                stateKey: null as string | null,
+                stateScope: null as FieldStateScope | null,
             };
         }
         const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
         const blueprintId = localBp.getWidgetMainBlueprintId(surfaceId, elementId);
         if (!blueprintId) {
-            return { blueprintId: undefined, binding: undefined, fieldName: null, surfaceStateKey: null };
+            return { blueprintId: undefined, binding: undefined, fieldName: null, stateKey: null, stateScope: null };
         }
         const b = localBp.findWidgetPropBinding(blueprintId, surfaceId, elementId, bindingMeta.propPath);
         const doc = localBp.getBlueprintDocument();
         const bp = doc.blueprints[blueprintId];
         const fieldId = b?.source.kind === "field" ? b.source.fieldId : undefined;
         const field = fieldId ? bp?.members?.fields?.[fieldId] : undefined;
-        const surfaceStateKey =
-            field?.valueSource?.kind === "surfaceState" ? (field.valueSource.key ?? null) : null;
+        const vs = field?.valueSource;
+        let stateKey: string | null = null;
+        let stateScope: FieldStateScope | null = null;
+        if (vs?.kind === "surfaceState") {
+            stateKey = vs.key ?? null;
+            stateScope = "surface";
+        } else if (vs?.kind === "globalState") {
+            stateKey = vs.key ?? null;
+            stateScope = "global";
+        }
         return {
             blueprintId,
             binding: b,
             fieldName: field?.name ?? null,
-            surfaceStateKey,
+            stateKey,
+            stateScope,
         };
     }, [bindingMeta.propPath, context, elementId, isInitialized, revision, surfaceId]);
 
@@ -111,7 +128,7 @@ export function usePropertyBindingState(
     );
 
     const createAndBindWithName = useCallback(
-        (name: string) => {
+        (name: string, scope: FieldStateScope = "surface") => {
             const trimmed = name.trim();
             if (!isInitialized || !context || !surfaceId || !snapshot.blueprintId || !trimmed) {
                 return;
@@ -121,10 +138,14 @@ export function usePropertyBindingState(
                 elementId,
                 propPath: bindingMeta.propPath,
             });
+            const valueSource: BlueprintFieldValueSource =
+                scope === "global"
+                    ? { kind: "globalState", key: stateKey }
+                    : { kind: "surfaceState", key: stateKey };
             const field = localBp.createField(snapshot.blueprintId, {
                 name: trimmed,
                 kind: "constant",
-                valueSource: { kind: "surfaceState", key: stateKey },
+                valueSource,
             });
             const fallback = bindingMeta.readLiteral(data);
             localBp.setWidgetPropBinding({
@@ -166,7 +187,9 @@ export function usePropertyBindingState(
     return {
         status,
         fieldLabel: snapshot.fieldName,
-        surfaceStateKey: snapshot.surfaceStateKey,
+        stateKey: snapshot.stateKey,
+        stateScope: snapshot.stateScope,
+        surfaceStateKey: snapshot.stateScope === "surface" ? snapshot.stateKey : null,
         brokenReason: snapshot.binding?.brokenReason,
         canBind: Boolean(surfaceId && snapshot.blueprintId),
         uiLocked,

@@ -29,6 +29,7 @@ import { TypeScriptBlueprintEditorPane } from "../ts/TypeScriptBlueprintEditorPa
 import { BlueprintFrontendBadge } from "../components/BlueprintFrontendBadge";
 import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevisionBar";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
 
 function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
     if (!view || bp.program.kind !== "graph") {
@@ -46,7 +47,7 @@ function getGraphToolbarLabel(bp: Blueprint, view: BlueprintEditorGraphView | nu
     }
     if (view.kind === "event") {
         const name = bp.program.graphs.events[view.graphId]?.name ?? view.graphId;
-        return `${bp.owner.kind === "widgetMain" ? "Event" : "Layer"} · ${name}`;
+        return `Event · ${name}`;
     }
     const name = bp.program.graphs.functions[view.graphId]?.name ?? view.graphId;
     return `Function · ${name}`;
@@ -59,7 +60,7 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
     if (!isInitialized || !context || !payload?.blueprintId) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-gray-400">
-                Blueprint is unavailable or the tab payload is invalid.
+                Blueprint tab is invalid.
             </div>
         );
     }
@@ -271,6 +272,32 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
         [blueprintMemberVariables],
     );
 
+    const dynamicSelectOptions = useMemo<Record<string, BlueprintInspectorParamSelectOption[]>>(() => {
+        const doc = uidoc.getDocument();
+        const surfaceOptions: BlueprintInspectorParamSelectOption[] = doc.surfaces
+            .filter(s => s.kind === "appSurface")
+            .map(s => ({ value: s.id, label: s.name || s.id }));
+        const opts: Record<string, BlueprintInspectorParamSelectOption[]> = { surfaces: surfaceOptions };
+        if (payload.ownerKind === "widgetMain" && payload.surfaceId) {
+            const surface = doc.surfaces.find(s => s.id === payload.surfaceId);
+            if (surface) {
+                const collectElements = (rootId: string): BlueprintInspectorParamSelectOption[] => {
+                    const result: BlueprintInspectorParamSelectOption[] = [];
+                    const visit = (id: string) => {
+                        const el = doc.elements[id];
+                        if (!el) return;
+                        result.push({ value: el.id, label: el.name || `${el.type} (${el.id.slice(0, 8)})` });
+                        for (const cid of el.childrenIds) visit(cid);
+                    };
+                    visit(rootId);
+                    return result;
+                };
+                opts.elements = collectElements(surface.rootElementId);
+            }
+        }
+        return opts;
+    }, [uidoc, revision, payload.ownerKind, payload.surfaceId]);
+
     const [memberPanelFocusContained, setMemberPanelFocusContained] = useState(false);
 
     if (bp.program.kind === "scriptModule") {
@@ -330,6 +357,7 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
                         onAddNodeAtFlowPosition={onAddGraphNodeAtFlowPosition}
                         paletteContext={paletteContext}
                         deleteKeyCode={memberPanelFocusContained ? null : undefined}
+                        dynamicSelectOptions={dynamicSelectOptions}
                     />
                 </div>
             </div>
@@ -340,12 +368,12 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
                     className="rounded-md border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-500/20"
                     onClick={onAddEvent}
                 >
-                    Add blueprint layer
+                    Add layer
                 </button>
             </div>
         ) : (
             <div className="flex h-full min-h-0 items-center justify-center text-xs text-gray-500">
-                Select a layer in the left panel.
+                Select a layer on the left.
             </div>
         );
 

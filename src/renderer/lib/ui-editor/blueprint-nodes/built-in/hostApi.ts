@@ -9,7 +9,7 @@ import type { BehaviorNodeDefinition } from "../../behavior-graph/BehaviorNodeRe
 export function requireHostApi(ctx: Parameters<BehaviorNodeDefinition["execute"]>[0]) {
     const api = ctx.hostAdapter.blueprintRuntime?.hostApi;
     if (!api) {
-        throw new BlueprintGraphExecutionError("Blueprint host API is not available (open Dev Mode)", ctx.node.id);
+        throw new BlueprintGraphExecutionError("Host API unavailable (use Dev Mode)", ctx.node.id);
     }
     return api;
 }

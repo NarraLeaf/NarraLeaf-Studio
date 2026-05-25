@@ -4,6 +4,10 @@
  */
 
 import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
+import {
+    resolveGlobalLifecycleEventHeadTypes,
+    resolveSurfaceLifecycleEventHeadTypes,
+} from "@shared/types/ui-editor/blueprintLifecycle";
 
 /** Persisted on BlueprintGraphIr.meta to disambiguate slot semantics (events vs functions vs macros). */
 export type BlueprintGraphKind = "event" | "function" | "macro";
@@ -13,10 +17,16 @@ export type BlueprintGraphKind = "event" | "function" | "macro";
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT = "blueprint.event.head.init" as const;
 /** Entry for widget `click` UI event (e.g. buttons). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK = "blueprint.event.head.click" as const;
+/** Entry for global `appBoot` lifecycle event (application start). */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
+/** Entry for surface `surfaceInit` lifecycle event (page entered). */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT = "blueprint.event.head.surfaceInit" as const;
 
 const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
 ]);
 
 /**
@@ -54,6 +64,56 @@ export function collectBlueprintEventHeadNodeIdsForDispatch(
 ): string[] {
     const n = nodes ?? {};
     const allowed = new Set(resolveBlueprintEventHeadTypesForUiSlot(eventName, widgetElementType));
+    if (allowed.size === 0) {
+        return [];
+    }
+    return Object.entries(n)
+        .filter(([, node]) => allowed.has(node.type))
+        .map(([id]) => id)
+        .sort();
+}
+
+/**
+ * Resolve which event-head node types are valid for a surface lifecycle event.
+ */
+export function resolveSurfaceEventHeadTypes(eventName: string): readonly string[] {
+    return resolveSurfaceLifecycleEventHeadTypes(eventName);
+}
+
+/**
+ * Resolve which event-head node types are valid for a global lifecycle event.
+ */
+export function resolveGlobalEventHeadTypes(eventName: string): readonly string[] {
+    return resolveGlobalLifecycleEventHeadTypes(eventName);
+}
+
+/**
+ * Pick graph node ids that are valid entry heads for a surface lifecycle event.
+ */
+export function collectSurfaceEventHeadNodeIdsForDispatch(
+    nodes: Record<string, { type: string }> | undefined,
+    eventName: string,
+): string[] {
+    const n = nodes ?? {};
+    const allowed = new Set(resolveSurfaceEventHeadTypes(eventName));
+    if (allowed.size === 0) {
+        return [];
+    }
+    return Object.entries(n)
+        .filter(([, node]) => allowed.has(node.type))
+        .map(([id]) => id)
+        .sort();
+}
+
+/**
+ * Pick graph node ids that are valid entry heads for a global lifecycle event.
+ */
+export function collectGlobalEventHeadNodeIdsForDispatch(
+    nodes: Record<string, { type: string }> | undefined,
+    eventName: string,
+): string[] {
+    const n = nodes ?? {};
+    const allowed = new Set(resolveGlobalEventHeadTypes(eventName));
     if (allowed.size === 0) {
         return [];
     }
@@ -109,6 +169,8 @@ export type BlueprintGraphKindRules = {
     entryNodeType?:
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT
         | typeof BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY;
     /** Whether UI may bind widget events directly to this graph slot */
     bindableFromWidgetUi: boolean;

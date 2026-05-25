@@ -113,11 +113,11 @@ export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
             if (!vs) {
                 continue;
             }
-            if (vs.kind === "surfaceState") {
+            if (vs.kind === "surfaceState" || vs.kind === "globalState") {
                 const stateKey = String(vs.key ?? "").trim();
                 if (!stateKey) {
                     throw new BlueprintDocumentValidationError(
-                        `Field "${field.id}" on blueprint "${bp.id}" has surfaceState valueSource with empty key`,
+                        `Field "${field.id}" on blueprint "${bp.id}" has ${vs.kind} valueSource with empty key`,
                     );
                 }
             }

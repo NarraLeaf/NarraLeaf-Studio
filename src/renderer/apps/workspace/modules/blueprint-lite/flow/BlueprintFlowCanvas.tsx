@@ -40,6 +40,7 @@ import { BlueprintAddNodeMenu } from "../components/BlueprintAddNodeMenu";
 import { generateNextDynamicInputPinId, readDynamicInputPinIds } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
 import {
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
+    type BlueprintInspectorParamSelectOption,
     type BlueprintPaletteContext,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
@@ -105,6 +106,11 @@ type BlueprintFlowCanvasInnerProps = {
     paletteContext: BlueprintPaletteContext;
     /** When null, Delete/Backspace do not remove nodes (e.g. while typing in the sidebar). */
     deleteKeyCode?: string[] | null;
+    /**
+     * Dynamic select options keyed by `dynamicOptionsSource` id (e.g. `"surfaces"`).
+     * Populated from workspace context and forwarded to node cards.
+     */
+    dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
 };
 
 function BlueprintFlowCanvasInner({
@@ -120,6 +126,7 @@ function BlueprintFlowCanvasInner({
     onAddNodeAtFlowPosition,
     paletteContext,
     deleteKeyCode = ["Backspace", "Delete"],
+    dynamicSelectOptions,
 }: BlueprintFlowCanvasInnerProps) {
     const { getNodes, screenToFlowPosition } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
@@ -350,6 +357,7 @@ function BlueprintFlowCanvasInner({
                     blueprintMemberVariables,
                     stableAddDynamicInputPin,
                     stableRemoveDynamicInputPin,
+                    dynamicSelectOptions,
                 );
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
                 let out = withSel;
@@ -417,6 +425,7 @@ function BlueprintFlowCanvasInner({
         stablePatchNodeParam,
         stableAddDynamicInputPin,
         stableRemoveDynamicInputPin,
+        dynamicSelectOptions,
         setEdges,
         setNodes,
     ]);

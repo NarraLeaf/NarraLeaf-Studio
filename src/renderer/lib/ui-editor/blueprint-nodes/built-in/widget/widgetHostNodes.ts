@@ -12,7 +12,7 @@ export const widgetHostBlueprintNodes: BlueprintNodeDef[] = [
         type: "blueprint.widget.setVisible",
         displayName: "Set visible",
         category: "Widget",
-        keywords: ["visible", "show", "hide"],
+        keywords: ["visible", "show", "hide", "element"],
         graphKinds: ["event", "macro"],
         isPure: false,
         isLatent: true,
@@ -21,16 +21,22 @@ export const widgetHostBlueprintNodes: BlueprintNodeDef[] = [
             { id: "next", kind: "output", semantic: "exec", label: "Next" },
         ],
         inspectorParams: [
-            { key: "elementId", label: "Element id", kind: "string" },
-            { key: "visible", label: "Visible (JSON)", kind: "json" },
+            { key: "elementId", label: "Target element", kind: "select", dynamicOptionsSource: "elements" },
+            {
+                key: "visible", label: "Visible", kind: "select",
+                options: [
+                    { value: "true", label: "Show" },
+                    { value: "false", label: "Hide" },
+                ],
+            },
         ],
         scope: { ownerKinds: ["widgetMain"] },
         async execute(ctx) {
             const api = requireHostApi(ctx);
             const elementId = String(ctx.params.elementId ?? "").trim();
-            const visible = Boolean(ctx.params.visible ?? true);
+            const visible = ctx.params.visible === "false" ? false : Boolean(ctx.params.visible ?? true);
             if (!elementId) {
-                throw new BlueprintGraphExecutionError("blueprint.widget.setVisible requires params.elementId", ctx.node.id);
+                throw new BlueprintGraphExecutionError("Pick an element", ctx.node.id);
             }
             await api.widget.setVisible(elementId, visible);
             return { nextPort: "next" };
@@ -40,7 +46,7 @@ export const widgetHostBlueprintNodes: BlueprintNodeDef[] = [
         type: "blueprint.widget.setEnabled",
         displayName: "Set enabled",
         category: "Widget",
-        keywords: ["enabled", "disabled", "interaction"],
+        keywords: ["enabled", "disabled", "interaction", "element"],
         graphKinds: ["event", "macro"],
         isPure: false,
         isLatent: true,
@@ -49,16 +55,22 @@ export const widgetHostBlueprintNodes: BlueprintNodeDef[] = [
             { id: "next", kind: "output", semantic: "exec", label: "Next" },
         ],
         inspectorParams: [
-            { key: "elementId", label: "Element id", kind: "string" },
-            { key: "enabled", label: "Enabled (JSON)", kind: "json" },
+            { key: "elementId", label: "Target element", kind: "select", dynamicOptionsSource: "elements" },
+            {
+                key: "enabled", label: "Enabled", kind: "select",
+                options: [
+                    { value: "true", label: "Enabled" },
+                    { value: "false", label: "Disabled" },
+                ],
+            },
         ],
         scope: { ownerKinds: ["widgetMain"] },
         async execute(ctx) {
             const api = requireHostApi(ctx);
             const elementId = String(ctx.params.elementId ?? "").trim();
-            const enabled = Boolean(ctx.params.enabled ?? true);
+            const enabled = ctx.params.enabled === "false" ? false : Boolean(ctx.params.enabled ?? true);
             if (!elementId) {
-                throw new BlueprintGraphExecutionError("blueprint.widget.setEnabled requires params.elementId", ctx.node.id);
+                throw new BlueprintGraphExecutionError("Pick an element", ctx.node.id);
             }
             await api.widget.setEnabled(elementId, enabled);
             return { nextPort: "next" };
@@ -66,9 +78,9 @@ export const widgetHostBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: "blueprint.widget.setVariant",
-        displayName: "Set widget variant",
+        displayName: "Set variant",
         category: "Widget",
-        keywords: ["variant", "appearance", "container", "button"],
+        keywords: ["variant", "appearance", "container", "button", "element"],
         graphKinds: ["event", "macro"],
         isPure: false,
         isLatent: true,
@@ -77,24 +89,18 @@ export const widgetHostBlueprintNodes: BlueprintNodeDef[] = [
             { id: "next", kind: "output", semantic: "exec", label: "Next" },
         ],
         inspectorParams: [
-            { key: "elementId", label: "Element id", kind: "string" },
-            { key: "variantId", label: "Variant id (JSON null clears)", kind: "json" },
+            { key: "elementId", label: "Target element", kind: "select", dynamicOptionsSource: "elements" },
+            { key: "variantId", label: "Variant", kind: "string" },
         ],
         scope: { ownerKinds: ["widgetMain"] },
         async execute(ctx) {
             const api = requireHostApi(ctx);
             const elementId = String(ctx.params.elementId ?? "").trim();
             if (!elementId) {
-                throw new BlueprintGraphExecutionError("blueprint.widget.setVariant requires params.elementId", ctx.node.id);
+                throw new BlueprintGraphExecutionError("Pick an element", ctx.node.id);
             }
             const raw = ctx.params.variantId;
-            if (raw === undefined) {
-                throw new BlueprintGraphExecutionError(
-                    "blueprint.widget.setVariant requires params.variantId (string, or JSON null to clear override)",
-                    ctx.node.id,
-                );
-            }
-            const variantId = raw === null ? null : String(raw).trim() || null;
+            const variantId = raw == null ? null : String(raw).trim() || null;
             await api.widget.setVariant(elementId, variantId);
             return { nextPort: "next" };
         },

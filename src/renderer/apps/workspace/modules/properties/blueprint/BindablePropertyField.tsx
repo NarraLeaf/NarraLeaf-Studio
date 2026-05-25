@@ -12,7 +12,7 @@ import { Search, X } from "lucide-react";
 import type { FieldDefinition } from "../framework/types";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import type { PropertyFieldBindingMeta } from "./bindingMeta";
-import { usePropertyBindingState } from "./usePropertyBindingState";
+import { usePropertyBindingState, type FieldStateScope } from "./usePropertyBindingState";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 
 type Props<TData> = {
@@ -37,6 +37,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
     const [pickerOpen, setPickerOpen] = useState(false);
     const [query, setQuery] = useState("");
     const [newFieldName, setNewFieldName] = useState("");
+    const [newFieldScope, setNewFieldScope] = useState<FieldStateScope>("surface");
     const wrapRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -57,6 +58,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
         if (pickerOpen) {
             setQuery("");
             setNewFieldName(field.binding.propPath);
+            setNewFieldScope("surface");
         }
     }, [field.binding.propPath, pickerOpen]);
 
@@ -94,12 +96,12 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
         }
         onSaving(true);
         try {
-            bp.createAndBindWithName(name);
+            bp.createAndBindWithName(name, newFieldScope);
         } finally {
             onSaving(false);
         }
         setPickerOpen(false);
-    }, [bp, newFieldName, onSaving]);
+    }, [bp, newFieldName, newFieldScope, onSaving]);
 
     const child = isValidElement(children)
         ? cloneElement(children as ReactElement<{ field: typeof field; data: TData; onSaving: typeof onSaving }>, {
@@ -128,12 +130,10 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                         )}
                     </span>
                 ) : null}
-                {bp.surfaceStateKey ? (
+                {bp.stateKey ? (
                     <span className="block w-full text-[10px] text-gray-500">
-                        Surface state key{" "}
-                        <span className="font-mono text-[10px] text-cyan-200/80">{bp.surfaceStateKey}</span>
-                        <span className="text-gray-600"> — write via blueprint host </span>
-                        <span className="font-mono text-[9px] text-gray-500">state.set(&quot;surface&quot;, …)</span>
+                        {bp.stateScope === "global" ? "App" : "Page"} key{" "}
+                        <span className="font-mono text-[10px] text-cyan-200/80">{bp.stateKey}</span>
                     </span>
                 ) : null}
                 {bp.status === "broken" && bp.brokenReason ? (
@@ -150,8 +150,8 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                             onClick={() => openPicker()}
                             title={
                                 !bp.canBind
-                                    ? "Widget main blueprint is not available for this element yet."
-                                    : "Search an existing field or create a new one"
+                                    ? "Blueprint not ready for this control."
+                                    : undefined
                             }
                         >
                             Bind to field…
@@ -198,6 +198,22 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                 </div>
                                 <div className="border-t border-white/10 pt-2">
                                     <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">New field</p>
+                                    <div className="mb-1.5 flex gap-1">
+                                        {(["surface", "global"] as const).map(scope => (
+                                            <button
+                                                key={scope}
+                                                type="button"
+                                                className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                                                    newFieldScope === scope
+                                                        ? "bg-cyan-500/20 text-cyan-100 border border-cyan-500/40"
+                                                        : "bg-white/5 text-gray-400 border border-white/10 hover:bg-white/10"
+                                                }`}
+                                                onClick={() => setNewFieldScope(scope)}
+                                            >
+                                                {scope === "surface" ? "Page" : "App"}
+                                            </button>
+                                        ))}
+                                    </div>
                                     <div className="flex gap-1.5">
                                         <EnhancedInput
                                             value={newFieldName}

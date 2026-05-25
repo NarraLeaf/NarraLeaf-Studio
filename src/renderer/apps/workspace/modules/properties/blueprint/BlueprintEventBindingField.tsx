@@ -15,7 +15,7 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
 
     return (
         <div className="mt-2 space-y-2 border-t border-white/5 pt-3">
-            <p className="text-[10px] uppercase tracking-wide text-gray-500">Supported Events</p>
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">Events</p>
             <div className="flex flex-wrap gap-1.5">
                 {rows.map(row => (
                     <span
@@ -28,10 +28,7 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
                 ))}
             </div>
             {rows.some(row => row.legacyGraphEventId && row.legacyGraphEventId !== row.eventId) ? (
-                <p className="text-[11px] leading-snug text-amber-200/90">
-                    Some old projects still carry legacy event-hook ids. They are kept only for compatibility and are no
-                    longer treated as separate blueprints.
-                </p>
+                <p className="text-[11px] text-amber-200/90">Legacy event ids detected.</p>
             ) : null}
         </div>
     );

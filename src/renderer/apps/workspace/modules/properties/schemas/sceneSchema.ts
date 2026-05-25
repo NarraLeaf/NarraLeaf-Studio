@@ -269,7 +269,7 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
         defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
             id: "scene.blueprintEntry",
             type: "custom",
-            label: "Blueprint",
+            label: "Page Logic",
             component: SurfaceBlueprintEntrySection,
         }),
     ],

@@ -4,6 +4,7 @@ import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-g
 import {
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
     type BlueprintInspectorParamDef,
+    type BlueprintInspectorParamSelectOption,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BlueprintLiteralValueControl } from "../../components/BlueprintLiteralValueControl";
 
@@ -28,6 +29,11 @@ export type BlueprintFlowNodeData = {
     memberVariables?: Array<{ id: string; name: string }>;
     /** Input ports that have an incoming edge (any semantic). */
     wiredInputPortIds?: ReadonlySet<string>;
+    /**
+     * Dynamic select options keyed by `dynamicOptionsSource` id.
+     * Populated by the flow projection from workspace context (e.g. available surfaces).
+     */
+    dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
 };
 
 const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-white/30 !bg-cyan-500";
@@ -331,12 +337,14 @@ function InspectorParamOnCard({
     params,
     onPatchNodeParam,
     memberVariables,
+    dynamicSelectOptions,
 }: {
     spec: BlueprintInspectorParamDef;
     nodeId: string;
     params: Record<string, unknown>;
     onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
     memberVariables?: Array<{ id: string; name: string }>;
+    dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
 }) {
     const raw = spec.key in params ? params[spec.key] : undefined;
     const variableSelectValue =
@@ -346,10 +354,33 @@ function InspectorParamOnCard({
                 : ""
             : undefined;
 
+    const selectOptions: BlueprintInspectorParamSelectOption[] | undefined =
+        spec.kind === "select"
+            ? spec.options ?? (spec.dynamicOptionsSource ? dynamicSelectOptions?.[spec.dynamicOptionsSource] : undefined)
+            : undefined;
+
     return (
         <div key={spec.key} className="mt-1.5 border-t border-white/5 pt-1.5">
             <div className="mb-0.5 text-[9px] uppercase tracking-wide text-gray-500">{spec.label}</div>
-            {spec.kind === "variableRef" ? (
+            {spec.kind === "select" && selectOptions ? (
+                <select
+                    className={CARD_SELECT}
+                    value={typeof raw === "string" ? raw : ""}
+                    onMouseDown={stopFlowNodePointerBubble}
+                    onPointerDown={stopFlowNodePointerBubble}
+                    onChange={e => {
+                        const v = e.target.value;
+                        onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
+                    }}
+                >
+                    <option value="">—</option>
+                    {selectOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                        </option>
+                    ))}
+                </select>
+            ) : spec.kind === "variableRef" ? (
                 <select
                     className={CARD_SELECT}
                     value={variableSelectValue}
@@ -419,6 +450,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         onRemoveDynamicInputPin,
         memberVariables,
         wiredInputPortIds,
+        dynamicSelectOptions,
     } = data as BlueprintFlowNodeData;
     const wired = wiredInputPortIds ?? new Set<string>();
     const execIns = catalog.pins.filter(p => p.kind === "input" && p.semantic === "exec");
@@ -463,6 +495,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                               params={params}
                               onPatchNodeParam={onPatchNodeParam}
                               memberVariables={memberVariables}
+                              dynamicSelectOptions={dynamicSelectOptions}
                           />
                       ))
                     : null}

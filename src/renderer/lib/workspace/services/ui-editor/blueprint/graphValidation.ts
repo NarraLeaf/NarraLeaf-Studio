@@ -79,8 +79,7 @@ export function validateBlueprintWidgetMainEventWiring(
             out.push({
                 severity: "warning",
                 code: "blueprint.widget_legacy_hooks_present",
-                message:
-                    "Legacy widget event hooks are still stored in uidoc. The active private revision is not a visual graph, so these hooks are compatibility-only.",
+                message: "Legacy event hooks in uidoc (non-graph revision).",
             });
         }
         return out;
@@ -91,7 +90,7 @@ export function validateBlueprintWidgetMainEventWiring(
             out.push({
                 severity: "warning",
                 code: "blueprint.widget_legacy_hook_wrong_blueprint",
-                message: `Legacy UI hook "${hook.slotName}" still points to blueprint "${hook.binding.blueprintId}" instead of the active private blueprint.`,
+                message: `Legacy hook "${hook.slotName}" points to another blueprint.`,
             });
             continue;
         }
@@ -99,7 +98,7 @@ export function validateBlueprintWidgetMainEventWiring(
             out.push({
                 severity: "warning",
                 code: "blueprint.widget_legacy_hook_unsupported_slot",
-                message: `Legacy UI hook "${hook.slotName}" is not a supported widget event for ${element.type}.`,
+                message: `Legacy hook "${hook.slotName}" is not supported for ${element.type}.`,
             });
             continue;
         }
@@ -142,7 +141,7 @@ export function validateBlueprintGraphIr(
                 severity: "error",
                 code: "event.missing_event_nodes",
                 message:
-                    "Add an event head (On widget initialize and/or On button click — right-click the canvas → Add node) so this layer can run.",
+                    "Add an event head (right-click canvas).",
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -154,14 +153,14 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "function.missing_entry",
-                message: "Function graph must contain a Function entry node.",
+                message: "Add a Function entry node.",
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         } else if (entries.length > 1) {
             out.push({
                 severity: "error",
                 code: "function.multiple_entries",
-                message: "Function graph has more than one Function entry node.",
+                message: "Only one Function entry allowed.",
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -186,7 +185,7 @@ export function validateBlueprintGraphIr(
                         out.push({
                             severity: "error",
                             code: "function.entry_not_entry_node",
-                            message: "Function execution entry must be the Function entry node.",
+                            message: "Function entry must be the entry node.",
                             target: {
                                 kind: "node",
                                 graphKind: ctx.graphKind,
@@ -200,7 +199,7 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "error",
                     code: "graph.entry_invalid",
-                    message: "Function graph entry resolution failed.",
+                    message: "Function entry not found.",
                     target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
                 });
             }
@@ -212,7 +211,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "edge.from_unknown",
-                message: `Edge references missing source node "${edge.from.nodeId}".`,
+                    message: `Missing source node "${edge.from.nodeId}".`,
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -220,7 +219,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "edge.to_unknown",
-                message: `Edge references missing target node "${edge.to.nodeId}".`,
+                    message: `Missing target node "${edge.to.nodeId}".`,
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -235,7 +234,7 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "warning",
                     code: "edge.port_mismatch",
-                    message: `Edge ${edge.from.nodeId}.${edge.from.port} → ${edge.to.nodeId}.${edge.to.port} may not match node pins.`,
+                    message: `Pin mismatch on ${edge.from.nodeId}.${edge.from.port} → ${edge.to.nodeId}.${edge.to.port}.`,
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
                 });
             }
@@ -247,7 +246,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "warning",
                 code: "node.no_runtime",
-                message: `Node "${nid}" type "${n.type}" has no runtime executor registered.`,
+                message: `Node "${nid}": no runtime for type "${n.type}".`,
                 target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
             });
         }
@@ -260,7 +259,7 @@ export function validateBlueprintGraphIr(
                 out.push({
                     severity: "warning",
                     code: "node.variable_id_invalid",
-                    message: `Node "${nid}" should select a valid execution local variable.`,
+                    message: `Node "${nid}": pick a variable.`,
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
                 });
             }
@@ -279,13 +278,11 @@ export function validateBlueprintBindingsForBlueprint(doc: BlueprintDocument, bl
     const out: BlueprintGraphEditorDiagnostic[] = [];
     for (const b of Object.values(bp.bindings)) {
         if (b.status === "broken") {
-            const detail = b.brokenReason?.trim()
-                ? ` (${b.brokenReason})`
-                : " — fix or recreate the field, or clear the binding.";
+            const detail = b.brokenReason?.trim() ? ` (${b.brokenReason})` : "";
             out.push({
                 severity: "error",
                 code: "binding.broken",
-                message: `Binding "${b.id}" is marked broken${detail}`,
+                message: `Broken binding "${b.id}"${detail}`,
                 target: { kind: "binding", bindingId: b.id },
             });
             continue;
@@ -300,7 +297,7 @@ export function validateBlueprintBindingsForBlueprint(doc: BlueprintDocument, bl
             out.push({
                 severity: "error",
                 code: "binding.missing_field",
-                message: `Binding targets missing field "${b.source.fieldId}".`,
+                message: `Missing field "${b.source.fieldId}".`,
                 target: { kind: "field", fieldId: b.source.fieldId },
             });
         }

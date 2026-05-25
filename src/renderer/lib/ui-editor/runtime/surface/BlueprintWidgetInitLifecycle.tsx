@@ -3,10 +3,12 @@ import type { UIBehaviorBinding } from "@shared/types/ui-editor/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { releaseBlueprintWidgetLocals } from "@/lib/ui-editor/blueprint-runtime/blueprintWidgetLocals";
+import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 
 type Props = {
     surfaceId: string;
     elementId: string;
+    elementType: string;
     behavior: UIElement["behavior"] | undefined;
     initBinding: UIBehaviorBinding | undefined;
     hostAdapter: UIHostAdapter;
@@ -30,13 +32,21 @@ function blueprintIdsFromWiringKey(key: string): string[] {
 /**
  * Dispatches the widget `init` blueprint UI event once when the element mounts (Dev Mode when blueprintRuntime is present).
  * Releases per-widget blueprint execution locals when the element unmounts or blueprint wiring changes.
+ *
+ * Supports both legacy behavior.events.init binding and the new WidgetLogicApi owner-local blueprint.
  */
-export function BlueprintWidgetInitLifecycle({ surfaceId, elementId, behavior, initBinding, hostAdapter }: Props) {
+export function BlueprintWidgetInitLifecycle({ surfaceId, elementId, elementType, behavior, initBinding, hostAdapter }: Props) {
     const rt = hostAdapter.blueprintRuntime;
+
+    const logicApi = getWidgetLogicApi(elementType);
+    const hasLogicApiInit = Boolean(logicApi?.supportsPrivateBlueprint && logicApi.events.some(e => e.id === "init"));
+
     const initSig =
         initBinding?.kind === "blueprintEvent"
             ? `${initBinding.blueprintId}:${initBinding.eventId}`
-            : "";
+            : hasLogicApiInit
+              ? `logicApi:${elementType}:init`
+              : "";
 
     const localsWiringKey = useMemo(() => {
         const ev = behavior?.events;

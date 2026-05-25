@@ -3,7 +3,10 @@ import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/
 import { BlueprintEventBindingField } from "@/apps/workspace/modules/properties/blueprint/BlueprintEventBindingField";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { getOwnerLabel } from "@shared/types/ui-editor/ownerLabels";
 import { useReadonlyBlueprintSummary } from "./useReadonlyBlueprintSummary";
+
+const widgetOwnerLabel = getOwnerLabel("widgetMain");
 
 /**
  * Shared properties-panel block: single widget blueprint summary + entry to the Blueprint editor.
@@ -24,7 +27,7 @@ export function ReadonlyBlueprintSection({ data, onChange }: CustomFieldProps<UI
             ownerKind: "widgetMain",
             surfaceId,
             elementId: element.id,
-            title: `Blueprint · ${element.name ?? element.type}`,
+            title: `${widgetOwnerLabel.titlePrefix} · ${element.name ?? element.type}`,
         });
     };
 
@@ -32,15 +35,12 @@ export function ReadonlyBlueprintSection({ data, onChange }: CustomFieldProps<UI
 
     return (
         <div className="rounded-lg border border-white/10 bg-[#111315] px-4 py-3 space-y-2">
-            <p className="text-xs uppercase text-gray-500 tracking-wider">Control Blueprint</p>
+            <p className="text-xs uppercase text-gray-500 tracking-wider">{widgetOwnerLabel.label}</p>
             {!summary.hasWidgetMain ? (
-                <p className="text-sm text-gray-400 leading-snug">
-                    No widget main blueprint is attached to this element. Widgets that support logic receive one when
-                    needed.
-                </p>
+                <p className="text-sm text-gray-400">No blueprint for this control.</p>
             ) : (
                 <div className="space-y-1 text-sm text-gray-300">
-                    <p className="font-mono text-[11px] text-gray-200">{logicApi?.blueprintLabel ?? "Widget blueprint"}</p>
+                    <p className="font-mono text-[11px] text-gray-200">{logicApi?.blueprintLabel ?? widgetOwnerLabel.label}</p>
                     <p className="text-[11px] text-gray-500">
                         {summary.supportedEventCount} event{summary.supportedEventCount === 1 ? "" : "s"} ·{" "}
                         {summary.eventGraphCount} layer{summary.eventGraphCount === 1 ? "" : "s"}
@@ -48,21 +48,18 @@ export function ReadonlyBlueprintSection({ data, onChange }: CustomFieldProps<UI
                 </div>
             )}
             {summary.legacyHookCount > 0 ? (
-                <p className="text-[11px] text-amber-200/90 leading-snug rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
-                    This widget still stores {summary.legacyHookCount} legacy hook
-                    {summary.legacyHookCount === 1 ? "" : "s"} in `uidoc`. The private blueprint model is now owner-local,
-                    so these hooks are compatibility-only.
+                <p className="text-[11px] text-amber-200/90 rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
+                    {summary.legacyHookCount} legacy hook{summary.legacyHookCount === 1 ? "" : "s"} in uidoc.
                 </p>
             ) : null}
             {summary.eventSchemaIssueCount > 0 ? (
-                <p className="text-[11px] text-amber-200/90 leading-snug rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
-                    This widget&apos;s supported events do not match the stored private blueprint members. Open the Blueprint
-                    editor diagnostics for details.
+                <p className="text-[11px] text-amber-200/90 rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1.5">
+                    Event schema mismatch. See diagnostics in the editor.
                 </p>
             ) : null}
             {logicApi ? (
                 <div className="space-y-2 rounded border border-white/5 bg-[#0d0f11] px-3 py-2">
-                    <p className="text-[10px] uppercase tracking-wide text-gray-500">Control API</p>
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500">API</p>
                     <div className="space-y-1.5 text-[11px] text-gray-300">
                         <p>
                             <span className="text-gray-500">Events:</span>{" "}
@@ -98,7 +95,7 @@ export function ReadonlyBlueprintSection({ data, onChange }: CustomFieldProps<UI
                 disabled={!canOpenEntry}
                 onClick={() => openEntry()}
             >
-                Open control blueprint
+                Open editor
             </button>
         </div>
     );

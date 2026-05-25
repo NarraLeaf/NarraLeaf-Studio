@@ -84,14 +84,12 @@ export type BlueprintVariable = {
 };
 
 /**
- * M3-min: single evaluable value source for field-backed bindings (surface runtime state only).
- * Further variants (global state, literals, composed refs) extend this union in later milestones.
+ * Evaluable value source for field-backed bindings.
+ * M3-min: surfaceState (current page); globalState added for cross-page data flow.
  */
-export type BlueprintFieldValueSource = {
-    kind: "surfaceState";
-    /** Key inside the current surface runtime state container */
-    key: string;
-};
+export type BlueprintFieldValueSource =
+    | { kind: "surfaceState"; key: string }
+    | { kind: "globalState"; key: string };
 
 /**
  * Field members are the only widgetProp binding sources (symbol-first); no arbitrary expression AST in M1.

@@ -2,6 +2,7 @@ import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import { evaluateFieldValue } from "@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation";
+import type { BlueprintStateReader } from "@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation";
 import type { SurfaceStateStore } from "./SurfaceStateStore";
 import type { BindingDebugCoalescer } from "./BindingDebugCoalescer";
 import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
@@ -32,7 +33,7 @@ function applyWidgetPropPath(element: UIElement, propPath: string, value: unknow
 }
 
 /**
- * Clone element and apply active widgetProp bindings for this surface using surface state + fields.
+ * Clone element and apply active widgetProp bindings for this surface using surface + global state and fields.
  */
 export function mergeElementWithBlueprintBindings(
     element: UIElement,
@@ -41,6 +42,7 @@ export function mergeElementWithBlueprintBindings(
     surfaceState: SurfaceStateStore,
     emitDebug: (event: BlueprintDebugEvent) => void,
     coalescer?: BindingDebugCoalescer,
+    globalState?: BlueprintStateReader,
 ): UIElement {
     const next: UIElement = {
         ...element,
@@ -78,9 +80,14 @@ export function mergeElementWithBlueprintBindings(
                 if (!coalescer || coalescer.shouldEmitStateRead(vs.key, raw)) {
                     emitDebug({ type: "state.read", scope: "surface", key: vs.key });
                 }
+            } else if (vs?.kind === "globalState" && globalState) {
+                const raw = globalState.get(vs.key);
+                if (!coalescer || coalescer.shouldEmitStateRead(vs.key, raw)) {
+                    emitDebug({ type: "state.read", scope: "global", key: vs.key });
+                }
             }
 
-            const evaluated = evaluateFieldValue(field, surfaceState);
+            const evaluated = evaluateFieldValue(field, surfaceState, globalState);
             const hasSource = Boolean(field?.valueSource);
             const resolved = hasSource && evaluated !== undefined ? evaluated : bind.fallback;
             if (resolved === undefined) {

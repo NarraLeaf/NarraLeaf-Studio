@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Check } from "lucide-react";
 import { FixedAspectRatioContainer } from "narraleaf-react";
@@ -13,6 +13,8 @@ import { createDevModeBlueprintHostApi, type DevModeWidgetRuntimePatch } from "@
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
+import { dispatchSurfaceBlueprintEvent, dispatchGlobalBlueprintEvent } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
+import { SurfaceLifecycleManager } from "@/lib/ui-editor/blueprint-runtime/SurfaceLifecycleManager";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
@@ -186,6 +188,77 @@ export function DevModeContent(props: DevModeContentProps) {
         });
     }, [bundle, activeSurface, bpCore, hostApi]);
 
+    const makeStateAccessors = useCallback(
+        (sid: string) => {
+            if (!bpCore) {
+                return null;
+            }
+            const store = bpCore.scopeBridge.getSurfaceStore(sid);
+            return {
+                get: (key: string) => store.get(key),
+                set: (key: string, value: unknown) => store.set(key, value),
+            };
+        },
+        [bpCore],
+    );
+
+    const lifecycleRef = useRef<SurfaceLifecycleManager>(new SurfaceLifecycleManager());
+    const appBootFiredRef = useRef<string | null>(null);
+
+    // Reset lifecycle tracking on new session
+    useEffect(() => {
+        lifecycleRef.current.reset();
+        appBootFiredRef.current = null;
+    }, [bundle?.bundleId, bundle?.revision]);
+
+    // Dispatch globalMain appBoot once when runtime becomes available
+    useEffect(() => {
+        if (!bpCore || !bundle || !hostAdapter.blueprintRuntime) {
+            return;
+        }
+        const sig = `${bundle.bundleId}:${bundle.revision}`;
+        if (appBootFiredRef.current === sig) {
+            return;
+        }
+        appBootFiredRef.current = sig;
+        const acc = makeStateAccessors(surface?.id ?? "");
+        if (!acc) {
+            return;
+        }
+        void dispatchGlobalBlueprintEvent({
+            blueprintDocument: bundle.ui.localBlueprints,
+            eventName: "appBoot",
+            hostAdapter,
+            debug: bpCore.debug,
+            getSurfaceState: acc.get,
+            setSurfaceState: acc.set,
+        });
+    }, [bpCore, bundle, hostAdapter, makeStateAccessors, surface?.id]);
+
+    // Dispatch surfaceMain surfaceInit when the active surface changes (first visit only)
+    useEffect(() => {
+        if (!bpCore || !bundle || !activeSurface || !hostAdapter.blueprintRuntime) {
+            return;
+        }
+        const shouldInit = lifecycleRef.current.onSurfaceEnter(activeSurface.id);
+        if (!shouldInit) {
+            return;
+        }
+        const acc = makeStateAccessors(activeSurface.id);
+        if (!acc) {
+            return;
+        }
+        void dispatchSurfaceBlueprintEvent({
+            blueprintDocument: bundle.ui.localBlueprints,
+            surfaceId: activeSurface.id,
+            eventName: "surfaceInit",
+            hostAdapter,
+            debug: bpCore.debug,
+            getSurfaceState: acc.get,
+            setSurfaceState: acc.set,
+        });
+    }, [bpCore, bundle, activeSurface, hostAdapter, makeStateAccessors]);
+
     if (!bundle) {
         return (
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
@@ -223,6 +296,10 @@ export function DevModeContent(props: DevModeContentProps) {
     const baseWidth = activeSurface.designSize.width;
     const baseHeight = activeSurface.designSize.height;
 
+    const globalStateReader = bpCore
+        ? { get: (key: string) => bpCore.scopeBridge.globalGet(key) }
+        : undefined;
+
     const bindingContext =
         bpCore != null
             ? {
@@ -230,6 +307,7 @@ export function DevModeContent(props: DevModeContentProps) {
                   surfaceState: bpCore.scopeBridge.getSurfaceStore(activeSurface.id),
                   debug: bpCore.debug,
                   coalescer: bpCore.bindingDebugCoalescer,
+                  globalState: globalStateReader,
               }
             : null;
 
