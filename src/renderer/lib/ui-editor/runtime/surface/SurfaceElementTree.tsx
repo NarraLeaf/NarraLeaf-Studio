@@ -5,6 +5,7 @@ import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRen
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
 import { mergeElementWithBlueprintBindings } from "@/lib/ui-editor/blueprint-runtime/BindingEvaluator";
+import type { BlueprintStateReader } from "@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation";
 import type { SurfaceStateStore } from "@/lib/ui-editor/blueprint-runtime/SurfaceStateStore";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
@@ -17,6 +18,7 @@ export type SurfaceBlueprintBindingContext = {
     surfaceState: SurfaceStateStore;
     debug: DebugBridge;
     coalescer: BindingDebugCoalescer;
+    globalState?: BlueprintStateReader;
 };
 
 export type SurfaceElementTreeProps = {
@@ -96,6 +98,7 @@ function renderElementTree(
                   blueprintBindingContext.surfaceState,
                   e => blueprintBindingContext.debug.emit(e),
                   blueprintBindingContext.coalescer,
+                  blueprintBindingContext.globalState,
               )
             : patched;
 
@@ -154,6 +157,7 @@ function renderElementTree(
                 <BlueprintWidgetInitLifecycle
                     surfaceId={surface.id}
                     elementId={resolved.id}
+                    elementType={resolved.type}
                     behavior={resolved.behavior}
                     initBinding={resolved.behavior?.events?.init}
                     hostAdapter={hostAdapter}

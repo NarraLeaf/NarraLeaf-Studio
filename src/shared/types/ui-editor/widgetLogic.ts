@@ -45,8 +45,7 @@ export type WidgetLogicApi = {
 
 const INIT_EVENT: WidgetLogicEventDef = {
     id: "init",
-    displayName: "Initialize",
-    description: "Runs once when this widget appears on the surface.",
+    displayName: "Init",
     dispatchKind: "lifecycle",
     headNodeTypes: ["blueprint.event.head.init"],
 };
@@ -54,7 +53,6 @@ const INIT_EVENT: WidgetLogicEventDef = {
 const CLICK_EVENT: WidgetLogicEventDef = {
     id: "click",
     displayName: "Click",
-    description: "Runs when the user activates this button.",
     dispatchKind: "interaction",
     headNodeTypes: ["blueprint.event.head.click"],
 };
@@ -63,21 +61,18 @@ const baseCommands: readonly WidgetLogicCommandDef[] = [
     {
         id: "setVisible",
         displayName: "Set visible",
-        description: "Toggle the widget visibility at runtime.",
         capabilityId: "widget.setVisible",
         availability: "available",
     },
     {
         id: "setEnabled",
         displayName: "Set enabled",
-        description: "Toggle whether the widget accepts runtime interaction.",
         capabilityId: "widget.setEnabled",
         availability: "available",
     },
     {
         id: "setVariant",
         displayName: "Set variant",
-        description: "Switch the runtime appearance variant when the widget supports variants.",
         capabilityId: "widget.setVariant",
         availability: "available",
     },
@@ -86,7 +81,7 @@ const baseCommands: readonly WidgetLogicCommandDef[] = [
 export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.root": {
         supportsPrivateBlueprint: false,
-        blueprintLabel: "Surface blueprint",
+        blueprintLabel: "Page Logic",
         events: [],
         commands: [],
         readableState: [],
@@ -94,7 +89,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     },
     "nl.container": {
         supportsPrivateBlueprint: true,
-        blueprintLabel: "Container blueprint",
+        blueprintLabel: "Container logic",
         events: [INIT_EVENT],
         commands: baseCommands,
         readableState: [
@@ -109,14 +104,13 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     },
     "nl.text": {
         supportsPrivateBlueprint: true,
-        blueprintLabel: "Text blueprint",
+        blueprintLabel: "Text logic",
         events: [INIT_EVENT],
         commands: [
             ...baseCommands,
             {
                 id: "setText",
                 displayName: "Set text",
-                description: "Update the rendered text content.",
                 availability: "planned",
             },
         ],
@@ -129,14 +123,13 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     },
     "nl.image": {
         supportsPrivateBlueprint: true,
-        blueprintLabel: "Image blueprint",
+        blueprintLabel: "Image logic",
         events: [INIT_EVENT],
         commands: [
             ...baseCommands,
             {
                 id: "setSource",
                 displayName: "Set image source",
-                description: "Swap the image asset used by this widget.",
                 availability: "planned",
             },
         ],
@@ -149,14 +142,13 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     },
     "nl.button": {
         supportsPrivateBlueprint: true,
-        blueprintLabel: "Button blueprint",
+        blueprintLabel: "Button logic",
         events: [INIT_EVENT, CLICK_EVENT],
         commands: [
             ...baseCommands,
             {
                 id: "setLabel",
                 displayName: "Set label",
-                description: "Update the button label at runtime.",
                 availability: "planned",
             },
         ],
@@ -174,13 +166,12 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     },
     "nl.list": {
         supportsPrivateBlueprint: false,
-        blueprintLabel: "List blueprint",
+        blueprintLabel: "List logic",
         events: [],
         commands: [
             {
                 id: "refreshItems",
                 displayName: "Refresh items",
-                description: "Rebuild the repeated item preview from the bound collection.",
                 availability: "planned",
             },
         ],

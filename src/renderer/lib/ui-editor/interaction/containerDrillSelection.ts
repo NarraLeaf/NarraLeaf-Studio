@@ -58,6 +58,33 @@ export function promoteHitToDirectChildOfSurfaceRoot(
 }
 
 /**
+ * True when a deep hit should be promoted to the direct child of the surface root.
+ *
+ * Promotion happens when:
+ * - Selection is empty/absent, OR
+ * - The hit element and the current selection live under different top-level frames
+ *   (i.e. the user switched to a completely different subtree)
+ */
+export function shouldPromoteToSurfaceRootChild(
+    document: UIDocument,
+    selection: UIElementSelection | null | undefined,
+    surfaceId: string,
+    hitElementId: string,
+): boolean {
+    if (isEmptyOrAbsentUiSelection(selection, surfaceId)) {
+        return true;
+    }
+    const hitFrame = promoteHitToDirectChildOfSurfaceRoot(document, surfaceId, hitElementId);
+    for (const selectedId of selection!.elementIds) {
+        const selectedFrame = promoteHitToDirectChildOfSurfaceRoot(document, surfaceId, selectedId);
+        if (selectedFrame === hitFrame) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
  * True when `hitElementId` is a strict descendant of the single selected `nl.container` that has children.
  * Used to require double-click / selecto double to drill into children instead of a single pointer pick.
  */
