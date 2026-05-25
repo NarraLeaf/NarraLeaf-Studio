@@ -204,7 +204,6 @@ export function BlueprintMemberTree({
                     void inputDialog
                         .show({
                             title: "Rename layer",
-                            description: "Display name for this graph layer (shown in the list).",
                             placeholder: "Layer name",
                             initialValue: cur,
                             required: true,
@@ -229,8 +228,8 @@ export function BlueprintMemberTree({
                     }
                     void (async () => {
                         const ok = await uiService.showConfirm(
-                            "Delete this blueprint layer?",
-                            "UI events wired to it will be cleared (noop). This cannot be undone.",
+                            "Delete this layer?",
+                            "Linked UI events will be cleared.",
                         );
                         if (ok) {
                             onDeleteLayer(id);

@@ -6,31 +6,41 @@
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
 import { requireHostApi } from "./hostApi";
+import { resolveDataPinValue } from "./graphParamResolvers";
 
 export const persistenceBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: "blueprint.persistence.set",
-        displayName: "Persistence set",
+        displayName: "Save data",
         category: "Persistence",
-        keywords: ["save", "storage"],
+        keywords: ["save", "storage", "persistence", "set", "write"],
         graphKinds: ["event", "macro"],
         isPure: false,
         isLatent: true,
         pins: [
             { id: "in", kind: "input", semantic: "exec", label: "In" },
             { id: "next", kind: "output", semantic: "exec", label: "Next" },
+            {
+                id: "value",
+                kind: "input",
+                semantic: "data",
+                valueType: "string",
+                label: "Value",
+                allowInlineLiteral: true,
+            },
         ],
         inspectorParams: [
             { key: "key", label: "Key", kind: "string" },
-            { key: "value", label: "Value (JSON)", kind: "json" },
         ],
         async execute(ctx) {
             const api = requireHostApi(ctx);
             const key = String(ctx.params.key ?? "").trim();
             if (!key) {
-                throw new BlueprintGraphExecutionError("blueprint.persistence.set requires params.key", ctx.node.id);
+                throw new BlueprintGraphExecutionError("Missing key", ctx.node.id);
             }
-            await api.persistence.set(key, ctx.params.value);
+            const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals);
+            const value = wired !== undefined ? wired : ctx.params.value;
+            await api.persistence.set(key, value);
             return { nextPort: "next" };
         },
     },

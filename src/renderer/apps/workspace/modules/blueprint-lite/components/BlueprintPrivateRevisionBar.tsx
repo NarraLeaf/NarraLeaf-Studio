@@ -15,9 +15,7 @@ type Props = {
 export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevision }: Props) {
     if (blueprint.owner.kind === "sharedAsset") {
         return (
-            <p className="text-[11px] text-gray-500">
-                Shared blueprint asset — single revision per asset.
-            </p>
+            <p className="text-[11px] text-gray-500">One revision per shared asset.</p>
         );
     }
 

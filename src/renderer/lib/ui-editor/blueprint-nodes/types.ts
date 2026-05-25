@@ -53,12 +53,29 @@ export type BlueprintNodeDynamicInputPinsConfig = {
     allowInlineLiteral: boolean;
 };
 
-export type BlueprintInspectorParamKind = "string" | "number" | "json" | "literal" | "variableRef";
+export type BlueprintInspectorParamKind = "string" | "number" | "json" | "literal" | "variableRef" | "select";
+
+export type BlueprintInspectorParamSelectOption = {
+    value: string;
+    label: string;
+};
 
 export type BlueprintInspectorParamDef = {
     key: string;
     label: string;
     kind: BlueprintInspectorParamKind;
+    /**
+     * For `kind: "select"`: static options rendered as a `<select>` dropdown.
+     * When omitted with `kind: "select"`, the node card will look for
+     * dynamically provided options via `dynamicOptionsSource`.
+     */
+    options?: BlueprintInspectorParamSelectOption[];
+    /**
+     * For `kind: "select"` without static `options`: the flow projection
+     * populates options from context data keyed by this source id.
+     * Known sources: `"surfaces"` (available App Surfaces).
+     */
+    dynamicOptionsSource?: string;
 };
 
 /** Owner kinds that can appear on Blueprint.owner */

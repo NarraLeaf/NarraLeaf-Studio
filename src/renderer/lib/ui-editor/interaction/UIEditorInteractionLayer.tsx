@@ -20,9 +20,9 @@ import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevisi
 import { SnapGuidesOverlay } from "@/lib/ui-editor/snapping/SnapGuidesOverlay";
 import {
     isUiContainerDrillLockHit,
-    isEmptyOrAbsentUiSelection,
     markSuppressNextCanvasWidgetDoubleClick,
     promoteHitToDirectChildOfSurfaceRoot,
+    shouldPromoteToSurfaceRootChild,
 } from "./containerDrillSelection";
 
 function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
@@ -348,7 +348,7 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
             if (!multiIntent && targetIds.length === 1) {
                 const hitId = targetIds[0];
                 const selData = isUIElementSelection(prev) && prev.data.surfaceId === surfaceId ? prev.data : null;
-                if (isEmptyOrAbsentUiSelection(selData, surfaceId)) {
+                if (shouldPromoteToSurfaceRootChild(doc, selData, surfaceId, hitId)) {
                     const promoted = promoteHitToDirectChildOfSurfaceRoot(doc, surfaceId, hitId);
                     elementIds = [promoted];
                     primaryId = promoted;
