@@ -173,7 +173,12 @@ function broadcastReload() {
             sourcemap: true,
             jsx: 'automatic',
             target: ['chrome114'],
-            loader: { '.css': 'css' },
+            loader: {
+                '.css': 'css',
+                '.ttf': 'file',
+                '.woff': 'file',
+                '.woff2': 'file',
+            },
             plugins: [postcssPlugin()],
         }, () => {
             // Only broadcast reloads after the app has started
