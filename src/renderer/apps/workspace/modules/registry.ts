@@ -15,10 +15,10 @@ import { charactersModule } from "./characters";
 import { settingsModule } from "./settings";
 import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
 import { uiEditorSurfacesModule } from "./ui-editor";
+import { storyPanelModule } from "./story";
 import {
     localizationPanelModule,
     runningTasksPanelModule,
-    storyPanelModule,
 } from "./placeholders/workspacePlaceholderModules";
 
 /**
@@ -71,9 +71,8 @@ export { welcomeModule } from "./welcome";
 export { settingsModule } from "./settings";
 export { globalActions, globalActionGroups } from "./actions";
 export { uiEditorSurfacesModule } from "./ui-editor";
+export { storyPanelModule } from "./story";
 export {
     localizationPanelModule,
     runningTasksPanelModule,
-    storyPanelModule,
 } from "./placeholders/workspacePlaceholderModules";
-

@@ -1,4 +1,4 @@
-import { Image, Music, PanelsTopLeft, User } from "lucide-react";
+import { FileText, Image, Music, PanelsTopLeft, User } from "lucide-react";
 import { createElement, type ReactNode } from "react";
 import type { EditorGroup, EditorLayout, EditorTabDefinition } from "@/apps/workspace/registry/types";
 import { welcomeModule } from "@/apps/workspace/modules/welcome";
@@ -11,6 +11,11 @@ import { UISurfaceEditorTab } from "@/apps/workspace/modules/ui-editor/editors/U
 import { CharacterEditor } from "@/apps/workspace/modules/characters/editors/CharacterEditor";
 import { ImagePreviewEditor } from "@/apps/workspace/modules/assets/editors/ImagePreviewEditor";
 import { AudioPreviewEditor } from "@/apps/workspace/modules/assets/editors/AudioPreviewEditor";
+import { StorySceneEditorTab } from "@/apps/workspace/modules/story/scene-editor/StorySceneEditorTab";
+import {
+    getStorySceneEditorTabId,
+    type StorySceneEditorTabPayload,
+} from "@/apps/workspace/modules/story/scene-editor/storySceneEditorTabId";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -28,6 +33,7 @@ const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const CHARACTER_TAB_PREFIX = "narraleaf-studio:character-editor-";
 const IMAGE_PREVIEW_PREFIX = "narraleaf-studio:assets:image-preview-";
 const AUDIO_PREVIEW_PREFIX = "narraleaf-studio:assets:audio-preview-";
+const STORY_SCENE_TAB_PREFIX = "story:scene:";
 
 export type SerializedTab =
     | { kind: "welcome" }
@@ -35,7 +41,8 @@ export type SerializedTab =
     | { kind: "blueprint"; title: string; payload: BlueprintEntryTabPayload }
     | { kind: "character"; characterId: string }
     | { kind: "assetImage"; assetId: string; title: string }
-    | { kind: "assetAudio"; assetId: string; title: string };
+    | { kind: "assetAudio"; assetId: string; title: string }
+    | { kind: "storyScene"; title: string; payload: StorySceneEditorTabPayload };
 
 export type WorkspaceEditorSessionV1 = {
     version: 1;
@@ -59,6 +66,14 @@ function isBlueprintEntryPayload(value: unknown): value is BlueprintEntryTabPayl
         return false;
     }
     return true;
+}
+
+function isStorySceneEditorPayload(value: unknown): value is StorySceneEditorTabPayload {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+    const o = value as Record<string, unknown>;
+    return typeof o.storyId === "string" && o.storyId.length > 0 && typeof o.sceneId === "string" && o.sceneId.length > 0;
 }
 
 /**
@@ -98,6 +113,9 @@ export function trySerializeTab(tab: EditorTabDefinition): SerializedTab | null 
             return null;
         }
         return { kind: "assetAudio", assetId, title: tab.title };
+    }
+    if (tab.id.startsWith(STORY_SCENE_TAB_PREFIX) && isStorySceneEditorPayload(tab.payload)) {
+        return { kind: "storyScene", title: tab.title, payload: tab.payload };
     }
     return null;
 }
@@ -166,6 +184,9 @@ function isSerializedTab(value: unknown): value is SerializedTab {
     ) {
         return true;
     }
+    if (kind === "storyScene" && typeof o.title === "string" && isStorySceneEditorPayload(o.payload)) {
+        return true;
+    }
     return false;
 }
 
@@ -217,6 +238,10 @@ function imageIcon(): ReactNode {
 
 function audioIcon(): ReactNode {
     return createElement(Music, { className: "w-4 h-4" });
+}
+
+function storyIcon(): ReactNode {
+    return createElement(FileText, { className: "w-4 h-4" });
 }
 
 function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): EditorTabDefinition | null {
@@ -305,6 +330,16 @@ function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): Editor
             component: AudioPreviewEditor,
             closable: true,
             payload: { asset },
+        };
+    }
+    if (entry.kind === "storyScene") {
+        return {
+            id: getStorySceneEditorTabId(entry.payload.storyId, entry.payload.sceneId),
+            title: entry.title,
+            icon: storyIcon(),
+            component: StorySceneEditorTab,
+            closable: true,
+            payload: entry.payload,
         };
     }
     return null;

@@ -43,6 +43,17 @@ import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type {
+    StoryBlock,
+    StoryBlockId,
+    StoryChapter,
+    StoryDocument,
+    StoryId,
+    StoryLibraryEntry,
+    StoryLibraryIndex,
+    StoryScene,
+    StorySceneId,
+} from "@shared/types/story";
+import type {
     BlueprintNodeDef,
     BlueprintNodeEditorCatalogEntry,
     BlueprintPaletteContext,
@@ -82,7 +93,7 @@ enum Services {
     // Logger = "logger",
     Settings = "settings",
     // Editor = "editor",
-    // Story = "story",
+    Story = "story",
     Character = "character",
     Assets = "assets",
     // Texture = "texture",
@@ -435,7 +446,51 @@ interface IDevModeService extends IService {
 // Editor Services
 interface IEditorService extends IService { }
 
-interface IStoryService extends IService { }
+interface IStoryService extends IService {
+    listStories(): StoryLibraryEntry[];
+    getStoryEntry(storyId: StoryId): StoryLibraryEntry | undefined;
+    getDefaultStoryId(): StoryId | undefined;
+    setDefaultStory(storyId: StoryId | undefined): void;
+    createStory(name: string): StoryLibraryEntry;
+    renameStory(storyId: StoryId, name: string): boolean;
+    deleteStory(storyId: StoryId): boolean;
+    loadLibrary(): Promise<StoryLibraryIndex>;
+    getLibraryIndex(): StoryLibraryIndex;
+    onLibraryChanged(handler: (index: StoryLibraryIndex) => void): () => void;
+    loadStory(storyId: StoryId): Promise<StoryDocument>;
+    getStoryDocument(storyId: StoryId): StoryDocument;
+    saveStory(storyId: StoryId): Promise<void>;
+    reloadStory(storyId: StoryId): Promise<StoryDocument>;
+    onDocumentChanged(handler: (event: { storyId: StoryId; document: StoryDocument }) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    createChapter(storyId: StoryId, name: string): StoryChapter;
+    renameChapter(storyId: StoryId, chapterId: string, name: string): boolean;
+    deleteChapter(storyId: StoryId, chapterId: string): boolean;
+    moveChapter(storyId: StoryId, chapterId: string, beforeChapterId: string | null): boolean;
+    createScene(storyId: StoryId, input: { chapterId?: string; name: string }): StoryScene;
+    renameScene(storyId: StoryId, sceneId: StorySceneId, name: string): boolean;
+    deleteScene(storyId: StoryId, sceneId: StorySceneId): boolean;
+    moveScene(storyId: StoryId, sceneId: StorySceneId, target: { chapterId: string; beforeSceneId?: string | null }): boolean;
+    setEntryScene(storyId: StoryId, sceneId: StorySceneId | undefined): void;
+    insertBlock(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        block: StoryBlock,
+        target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null },
+    ): StoryBlock;
+    updateBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, payload: StoryBlock["payload"]): void;
+    deleteBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void;
+    moveBlock(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        blockId: StoryBlockId,
+        target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null },
+    ): void;
+    canImportStoryPackage(): false;
+    canExportStoryPackage(): false;
+}
 
 interface ICharacterService extends IService {
     getCharacter(id: string): Character | undefined;

@@ -35,10 +35,12 @@
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
+    "@monaco-editor/react": "^4.7.0",
     "@xyflow/react": "^12.10.2",
     "electron-store": "^9.0.0",
     "lucide-react": "^0.546.0",
     "mime-types": "^3.0.1",
+    "monaco-editor": "^0.55.1",
     "motion": "^12.34.0",
     "msgpack-lite": "^0.1.26",
     "narraleaf-react": "0.9.0",

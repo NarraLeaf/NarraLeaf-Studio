@@ -2,6 +2,7 @@ import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/docume
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
+import type { StoryDocument } from "./story";
 
 export type DevModeEntry =
     | {
@@ -43,6 +44,7 @@ export type DevModeBundle = {
         /** Shared blueprint assets loaded from project asset metadata + content files. */
         sharedBlueprints: SharedBlueprintAsset[];
     };
+    story?: StoryDocument;
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;

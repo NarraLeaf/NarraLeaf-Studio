@@ -19,6 +19,7 @@ import { UIBlueprintLifecycleCoordinator } from "./ui-editor/UIBlueprintLifecycl
 import { DevModeService } from "./core/DevModeService";
 import { UIEditorFontFaceService } from "./ui-editor/UIEditorFontFaceService";
 import { BlueprintNodeCatalogService } from "./ui-editor/BlueprintNodeCatalogService";
+import { StoryService } from "./story/StoryService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
@@ -31,6 +32,7 @@ export class ServiceRegistry {
         [Services.Assets]: AssetsService.getInstance(),
         [Services.ServiceAssets]: ServiceAssetsService.getInstance(),
         [Services.PanelState]: PanelStateService.getInstance(),
+        [Services.Story]: StoryService.getInstance(),
         [Services.Character]: CharacterService.getInstance(),
         [Services.UIDocument]: UIDocumentService.getInstance(),
         [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),

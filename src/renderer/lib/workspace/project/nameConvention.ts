@@ -34,6 +34,9 @@ export const ProjectNameConvention = {
     EditorUI: ["editor", "ui/"],
     EditorUIDocument: ["editor", "ui", "uidoc.json"],
     EditorUIGraphs: ["editor", "ui", "uigraphs.json"],
+    EditorStory: ["editor", "story/"],
+    EditorStoryIndex: ["editor", "story", "index.json"],
+    EditorStoryDocument: (storyId: string) => ["editor", "story", "stories", storyId, "storydoc.json"],
 } as const;
 
 /**
