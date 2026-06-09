@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, createContext, useContext, ReactNode } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
 // Accordion context for managing state
@@ -26,6 +26,8 @@ interface AccordionNestedContextValue {
 }
 
 const AccordionNestedContext = createContext<AccordionNestedContextValue | null>(null);
+
+type AccordionContentHeight = number | "auto";
 
 // Accordion Props
 export interface AccordionProps {
@@ -216,7 +218,12 @@ export function AccordionItem({
     const isOpen = openItems.has(id);
     const isFocused = focusedItemId === id;
     const contentRef = useRef<HTMLDivElement>(null);
-    const [contentHeight, setContentHeight] = useState<number>(0);
+    const wasOpenRef = useRef(isOpen);
+    const [contentHeight, setContentHeight] = useState<AccordionContentHeight>(isOpen ? "auto" : 0);
+    const isHeightAuto = contentHeight === "auto";
+    const isHeightAutoRef = useRef(isHeightAuto);
+
+    isHeightAutoRef.current = isHeightAuto;
 
     // Nested toggle notification
     const parentNestedContext = useContext(AccordionNestedContext);
@@ -224,7 +231,7 @@ export function AccordionItem({
     const notifyNestedToggle = () => {
         // Use rAF to measure after DOM updates for more accurate height
         requestAnimationFrame(() => {
-            if (contentRef.current) {
+            if (contentRef.current && !isHeightAutoRef.current) {
                 setContentHeight(contentRef.current.scrollHeight);
             }
             // Propagate notification to higher levels after own measurement
@@ -232,12 +239,38 @@ export function AccordionItem({
         });
     };
 
-    // Measure content height for animation
-    useEffect(() => {
-        if (contentRef.current) {
-            setContentHeight(contentRef.current.scrollHeight);
+    // Measure content height for animation. Open items settle on auto height so nested accordions
+    // do not force their parents through a second height transition.
+    useLayoutEffect(() => {
+        const el = contentRef.current;
+        if (!el) return;
+
+        const wasOpen = wasOpenRef.current;
+        wasOpenRef.current = isOpen;
+
+        if (isOpen) {
+            if (!wasOpen) {
+                setContentHeight(0);
+                const frame = requestAnimationFrame(() => {
+                    setContentHeight(el.scrollHeight);
+                });
+                return () => cancelAnimationFrame(frame);
+            }
+            if (!isHeightAuto) {
+                setContentHeight(el.scrollHeight);
+            }
+            return;
         }
-    }, [children, isOpen]);
+
+        if (wasOpen) {
+            setContentHeight(el.scrollHeight);
+            const frame = requestAnimationFrame(() => {
+                setContentHeight(0);
+            });
+            return () => cancelAnimationFrame(frame);
+        }
+        setContentHeight(0);
+    }, [children, isHeightAuto, isOpen]);
 
     // Auto-update height when descendants resize (e.g., nested accordions toggled)
     useEffect(() => {
@@ -248,7 +281,9 @@ export function AccordionItem({
         if (typeof ResizeObserver === 'undefined') return;
 
         const observer = new ResizeObserver(() => {
-            setContentHeight(el.scrollHeight);
+            if (!isHeightAutoRef.current) {
+                setContentHeight(el.scrollHeight);
+            }
             // Notify ancestors because our height changed
             parentNestedContext?.notifyNestedToggle();
         });
@@ -326,9 +361,15 @@ export function AccordionItem({
 
                 {/* Content */}
                 <div
+                    onTransitionEnd={(event) => {
+                        if (event.target !== event.currentTarget || !isOpen) {
+                            return;
+                        }
+                        setContentHeight("auto");
+                    }}
                     style={{
-                        height: isOpen ? `${contentHeight}px` : '0px',
-                        overflow: 'hidden',
+                        height: contentHeight === "auto" ? "auto" : `${contentHeight}px`,
+                        overflow: isOpen && isHeightAuto ? 'visible' : 'hidden',
                         transition: 'height 200ms ease-out',
                     }}
                 >

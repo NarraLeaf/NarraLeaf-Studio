@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
-import type { StoryBlock, StoryBlockId, StoryDocument } from "@shared/types/story";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
+import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { createBlockForCommand, isInspectorFirstCommand, type ActionCommandId } from "./storyActionCommands";
 import {
@@ -14,6 +16,7 @@ import {
     filterOutSelectedDescendants,
     findPreviousSibling,
     getInsertionTargetAfter,
+    getMoveTargetBefore,
     getMoveTargetAfter,
     getTextSegment,
     isTextEditableBlock,
@@ -24,20 +27,41 @@ import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
 import type { EditorMode } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
 
-export function useStorySceneEditorController(payload: StorySceneEditorTabPayload | undefined) {
+const STORY_EDITOR_HISTORY_LIMIT = 100;
+const DRAG_SELECT_AUTO_SCROLL_EDGE_PX = 64;
+const DRAG_SELECT_AUTO_SCROLL_MAX_SPEED = 18;
+
+type StorySceneHistoryState = {
+    scene: StoryScene;
+    activeBlockId: StoryBlockId | null;
+    selectedBlockIds: StoryBlockId[];
+    collapsedBlockIds: StoryBlockId[];
+};
+
+function cloneScene(scene: StoryScene): StoryScene {
+    return JSON.parse(JSON.stringify(scene)) as StoryScene;
+}
+
+export function useStorySceneEditorController(tabId: string, payload: StorySceneEditorTabPayload | undefined) {
     const { context, isInitialized } = useWorkspace();
     const storyService = useMemo(() => (context && isInitialized ? context.services.get<StoryService>(Services.Story) : null), [context, isInitialized]);
+    const uiService = useMemo(() => (context && isInitialized ? context.services.get<UIService>(Services.UI) : null), [context, isInitialized]);
     const uuidService = useMemo(() => (context && isInitialized ? context.services.get<UuidService>(Services.Uuid) : null), [context, isInitialized]);
     const characterService = useMemo(() => (context && isInitialized ? context.services.get<CharacterService>(Services.Character) : null), [context, isInitialized]);
 
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
     const rootRef = useRef<HTMLDivElement | null>(null);
+    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const insertInputRef = useRef<HTMLTextAreaElement | null>(null);
     const textInputRef = useRef<HTMLTextAreaElement | null>(null);
     const dragSelectionStartRef = useRef<StoryBlockId | null>(null);
+    const dragSelectPointerRef = useRef<{ x: number; y: number } | null>(null);
+    const dragSelectAutoScrollRef = useRef<number | null>(null);
     const draggingBlockIdRef = useRef<StoryBlockId | null>(null);
     const plainPasteRequestedRef = useRef(false);
+    const undoStackRef = useRef<StorySceneHistoryState[]>([]);
+    const redoStackRef = useRef<StorySceneHistoryState[]>([]);
     const [document, setDocument] = useState<StoryDocument | null>(null);
     const [loading, setLoading] = useState(false);
     const [activeBlockId, setActiveBlockId] = useState<StoryBlockId | null>(payload?.activeBlockId ?? null);
@@ -115,22 +139,183 @@ export function useStorySceneEditorController(payload: StorySceneEditorTabPayloa
         }
     }, [editorFocusKey]);
 
-    useEffect(() => {
-        const handleMouseUp = () => {
-            setDragSelectActive(false);
-            dragSelectionStartRef.current = null;
-        };
-        window.addEventListener("mouseup", handleMouseUp);
-        return () => window.removeEventListener("mouseup", handleMouseUp);
+    const extendDragSelectionAtPoint = useCallback((x: number, y: number) => {
+        const startBlockId = dragSelectionStartRef.current;
+        if (!startBlockId) {
+            return;
+        }
+        const target = globalThis.document
+            .elementFromPoint(x, y)
+            ?.closest<HTMLElement>("[data-story-row-block-id]");
+        const blockId = target?.dataset.storyRowBlockId;
+        if (blockId && scene?.blocks[blockId]) {
+            setSelectedBlockIds(selectRange(visibleRows, startBlockId, blockId));
+            setActiveBlockId(blockId);
+        }
+    }, [scene, visibleRows]);
+
+    const stopDragSelection = useCallback(() => {
+        if (dragSelectAutoScrollRef.current !== null) {
+            window.cancelAnimationFrame(dragSelectAutoScrollRef.current);
+            dragSelectAutoScrollRef.current = null;
+        }
+        dragSelectPointerRef.current = null;
+        setDragSelectActive(false);
+        dragSelectionStartRef.current = null;
     }, []);
 
-    const focusRoot = useCallback(() => rootRef.current?.focus(), []);
+    const runDragSelectAutoScroll = useCallback(() => {
+        const container = scrollContainerRef.current;
+        const pointer = dragSelectPointerRef.current;
+        if (!container || !pointer || !dragSelectionStartRef.current) {
+            dragSelectAutoScrollRef.current = null;
+            return;
+        }
+
+        const rect = container.getBoundingClientRect();
+        let delta = 0;
+        if (pointer.y < rect.top + DRAG_SELECT_AUTO_SCROLL_EDGE_PX) {
+            const distance = rect.top + DRAG_SELECT_AUTO_SCROLL_EDGE_PX - pointer.y;
+            delta = -Math.min(DRAG_SELECT_AUTO_SCROLL_MAX_SPEED, Math.ceil(distance / 4));
+        } else if (pointer.y > rect.bottom - DRAG_SELECT_AUTO_SCROLL_EDGE_PX) {
+            const distance = pointer.y - (rect.bottom - DRAG_SELECT_AUTO_SCROLL_EDGE_PX);
+            delta = Math.min(DRAG_SELECT_AUTO_SCROLL_MAX_SPEED, Math.ceil(distance / 4));
+        }
+
+        if (delta !== 0) {
+            container.scrollTop += delta;
+            extendDragSelectionAtPoint(pointer.x, pointer.y);
+        }
+
+        dragSelectAutoScrollRef.current = window.requestAnimationFrame(runDragSelectAutoScroll);
+    }, [extendDragSelectionAtPoint]);
+
+    const startDragSelectAutoScroll = useCallback(() => {
+        if (dragSelectAutoScrollRef.current === null) {
+            dragSelectAutoScrollRef.current = window.requestAnimationFrame(runDragSelectAutoScroll);
+        }
+    }, [runDragSelectAutoScroll]);
+
+    useEffect(() => {
+        const handleMouseMove = (event: globalThis.MouseEvent) => {
+            if (!dragSelectionStartRef.current) {
+                return;
+            }
+            dragSelectPointerRef.current = { x: event.clientX, y: event.clientY };
+            extendDragSelectionAtPoint(event.clientX, event.clientY);
+            startDragSelectAutoScroll();
+        };
+        const handleMouseUp = () => {
+            stopDragSelection();
+        };
+        window.addEventListener("mousemove", handleMouseMove);
+        window.addEventListener("mouseup", handleMouseUp);
+        return () => {
+            window.removeEventListener("mousemove", handleMouseMove);
+            window.removeEventListener("mouseup", handleMouseUp);
+            if (dragSelectAutoScrollRef.current !== null) {
+                window.cancelAnimationFrame(dragSelectAutoScrollRef.current);
+                dragSelectAutoScrollRef.current = null;
+            }
+        };
+    }, [extendDragSelectionAtPoint, startDragSelectAutoScroll, stopDragSelection]);
+
+    const isStoryEditorFocusActive = useCallback(() => {
+        if (!uiService || uiService.dialogs.getActive()) {
+            return false;
+        }
+        const focus = uiService.focus.getFocus();
+        return focus.area === FocusArea.Editor && focus.targetId === tabId;
+    }, [tabId, uiService]);
+
+    const focusWorkspace = useCallback(() => {
+        if (uiService?.dialogs.getActive()) {
+            return;
+        }
+        uiService?.focus.setFocus(FocusArea.Editor, tabId);
+    }, [tabId, uiService]);
+
+    const focusRoot = useCallback(() => {
+        focusWorkspace();
+        if (uiService?.dialogs.getActive()) {
+            return;
+        }
+        rootRef.current?.focus();
+    }, [focusWorkspace, uiService]);
+
+    const captureHistoryState = useCallback((): StorySceneHistoryState | null => {
+        if (!scene) {
+            return null;
+        }
+        return {
+            scene: cloneScene(scene),
+            activeBlockId,
+            selectedBlockIds: [...selectedBlockIds],
+            collapsedBlockIds: [...collapsedBlockIds],
+        };
+    }, [activeBlockId, collapsedBlockIds, scene, selectedBlockIds]);
+
+    const recordHistory = useCallback(() => {
+        const state = captureHistoryState();
+        if (!state) {
+            return false;
+        }
+        undoStackRef.current.push(state);
+        if (undoStackRef.current.length > STORY_EDITOR_HISTORY_LIMIT) {
+            undoStackRef.current.shift();
+        }
+        redoStackRef.current = [];
+        return true;
+    }, [captureHistoryState]);
+
+    const restoreHistoryState = useCallback((state: StorySceneHistoryState, label: string) => {
+        if (!storyService || !storyId || !sceneId) {
+            return;
+        }
+        storyService.replaceScene(storyId, sceneId, state.scene);
+        setActiveBlockId(state.activeBlockId);
+        setSelectedBlockIds(new Set(state.selectedBlockIds));
+        setCollapsedBlockIds(new Set(state.collapsedBlockIds));
+        setEditorMode({ kind: "idle" });
+        setStatusText(label);
+    }, [sceneId, storyId, storyService]);
+
+    const undoEdit = useCallback(() => {
+        const previous = undoStackRef.current.pop();
+        if (!previous) {
+            setStatusText("Nothing to undo.");
+            return;
+        }
+        const current = captureHistoryState();
+        if (current) {
+            redoStackRef.current.push(current);
+        }
+        restoreHistoryState(previous, "Undid edit.");
+    }, [captureHistoryState, restoreHistoryState]);
+
+    const redoEdit = useCallback(() => {
+        const next = redoStackRef.current.pop();
+        if (!next) {
+            setStatusText("Nothing to redo.");
+            return;
+        }
+        const current = captureHistoryState();
+        if (current) {
+            undoStackRef.current.push(current);
+        }
+        restoreHistoryState(next, "Redid edit.");
+    }, [captureHistoryState, restoreHistoryState]);
 
     const updateBlockPayloadFor = useCallback((blockId: StoryBlockId, payload: StoryBlock["payload"]) => {
         if (storyService && storyId && sceneId) {
+            const currentPayload = scene?.blocks[blockId]?.payload;
+            if (currentPayload && JSON.stringify(currentPayload) === JSON.stringify(payload)) {
+                return;
+            }
+            recordHistory();
             storyService.updateBlock(storyId, sceneId, blockId, payload);
         }
-    }, [sceneId, storyId, storyService]);
+    }, [recordHistory, scene, sceneId, storyId, storyService]);
 
     const commitTextEdit = useCallback(() => {
         if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
@@ -140,10 +325,16 @@ export function useStorySceneEditorController(payload: StorySceneEditorTabPayloa
         const block = scene.blocks[editorMode.blockId];
         const payload = block ? updateTextPayload(block, editorMode.value) : null;
         if (payload) {
+            const changed = JSON.stringify(block.payload) !== JSON.stringify(payload);
+            if (!changed) {
+                setEditorMode({ kind: "idle" });
+                return;
+            }
+            recordHistory();
             storyService.updateBlock(storyId, sceneId, editorMode.blockId, payload);
         }
         setEditorMode({ kind: "idle" });
-    }, [editorMode, scene, sceneId, storyId, storyService]);
+    }, [editorMode, recordHistory, scene, sceneId, storyId, storyService]);
 
     const createBlock = useCallback((kind: ActionCommandId, initialText = "", characterId?: string): StoryBlock | null => {
         if (!uuidService) {
@@ -156,16 +347,40 @@ export function useStorySceneEditorController(payload: StorySceneEditorTabPayloa
         return block;
     }, [document, uuidService]);
 
-    const insertBlock = useCallback((block: StoryBlock, afterBlockId: StoryBlockId | null, openInspector = false) => {
+    const insertBlock = useCallback((block: StoryBlock, afterBlockId: StoryBlockId | null, openInspector = false, options?: { recordHistory?: boolean }) => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return;
+        }
+        if (options?.recordHistory !== false) {
+            recordHistory();
         }
         storyService.insertBlock(storyId, sceneId, block, getInsertionTargetAfter(scene, afterBlockId));
         setActiveBlockId(block.id);
         setSelectedBlockIds(new Set([block.id]));
         setStatusText(`Inserted ${describeBlock(block, characters)}.`);
         setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
-    }, [characters, scene, sceneId, storyId, storyService]);
+    }, [characters, recordHistory, scene, sceneId, storyId, storyService]);
+
+    const insertDialogueAfterCurrentTextEdit = useCallback(() => {
+        if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
+            return;
+        }
+        const currentBlock = scene.blocks[editorMode.blockId];
+        if (!currentBlock || currentBlock.kind !== "nodeAction" || currentBlock.payload.action !== "dialogue") {
+            return;
+        }
+        recordHistory();
+        const updatedPayload = updateTextPayload(currentBlock, editorMode.value);
+        if (updatedPayload) {
+            storyService.updateBlock(storyId, sceneId, currentBlock.id, updatedPayload);
+        }
+        const block = createBlock("dialogue", "", currentBlock.payload.characterId);
+        if (!block) {
+            return;
+        }
+        insertBlock(block, currentBlock.id, false, { recordHistory: false });
+        setEditorMode({ kind: "text", blockId: block.id, value: "" });
+    }, [createBlock, editorMode, insertBlock, recordHistory, scene, sceneId, storyId, storyService]);
 
     const startInsertAfter = useCallback((afterBlockId: StoryBlockId | null, focus = true) => {
         setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, value: "", chooser: "none" });
@@ -224,6 +439,17 @@ export function useStorySceneEditorController(payload: StorySceneEditorTabPayloa
         }
     }, [createBlock, editorMode, insertBlock]);
 
+    const createActionFromSidebar = useCallback((commandId: ActionCommandId) => {
+        const block = createBlock(commandId, "");
+        if (!block) {
+            return;
+        }
+        insertBlock(block, activeBlockId, isInspectorFirstCommand(commandId));
+        if (!isInspectorFirstCommand(commandId) && isTextEditableBlock(block)) {
+            setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "" });
+        }
+    }, [activeBlockId, createBlock, insertBlock]);
+
     const setDialogueCharacter = useCallback((block: StoryBlock, characterId: string | undefined) => {
         if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
             updateBlockPayloadFor(block.id, { ...block.payload, characterId });
@@ -252,9 +478,11 @@ export function useStorySceneEditorController(payload: StorySceneEditorTabPayloa
             return;
         }
         selectRow(blockId, event);
+        dragSelectPointerRef.current = { x: event.clientX, y: event.clientY };
         dragSelectionStartRef.current = blockId;
         setDragSelectActive(true);
-    }, [selectRow]);
+        startDragSelectAutoScroll();
+    }, [selectRow, startDragSelectAutoScroll]);
 
     const extendDragSelection = useCallback((blockId: StoryBlockId) => {
         if (dragSelectActive && dragSelectionStartRef.current) {
@@ -294,49 +522,120 @@ export function useStorySceneEditorController(payload: StorySceneEditorTabPayloa
         activeBlockId,
         visibleRows,
         plainPasteRequestedRef,
+        recordHistory,
         setActiveBlockId,
         setSelectedBlockIds,
         setEditorMode,
         setStatusText,
     });
 
-    const deleteSelection = useCallback(() => {
+    const handleCopy = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+        if (!isStoryEditorFocusActive()) {
+            return;
+        }
+        copySelectionToClipboard(event);
+    }, [copySelectionToClipboard, isStoryEditorFocusActive]);
+
+    const handlePasteInEditor = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+        if (!isStoryEditorFocusActive()) {
+            return;
+        }
+        handlePaste(event);
+    }, [handlePaste, isStoryEditorFocusActive]);
+
+    const deleteSelection = useCallback(async (options?: { confirmMultiple?: boolean }) => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return;
         }
         const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
-        const roots = filterOutSelectedDescendants(scene, ids);
-        roots.forEach(id => storyService.deleteBlock(storyId, sceneId, id));
-        if (roots.length > 0) {
-            setSelectedBlockIds(new Set());
-            setActiveBlockId(null);
-            setEditorMode({ kind: "idle" });
-            setStatusText(`Deleted ${roots.length} row${roots.length === 1 ? "" : "s"}.`);
+        if (ids.length === 0) {
+            return;
         }
-    }, [activeBlockId, scene, sceneId, selectedBlockIds, storyId, storyService]);
+        if (options?.confirmMultiple && ids.length > 1) {
+            if (!uiService) {
+                setStatusText("Could not confirm row deletion.");
+                return;
+            }
+            const confirmed = await uiService.showConfirm(
+                `Delete ${ids.length} selected rows?`,
+                "This removes the selected script rows and their children.",
+            );
+            if (!confirmed) {
+                return;
+            }
+        }
+        const roots = filterOutSelectedDescendants(scene, ids);
+        if (roots.length === 0) {
+            return;
+        }
+        recordHistory();
+        roots.forEach(id => storyService.deleteBlock(storyId, sceneId, id));
+        setSelectedBlockIds(new Set());
+        setActiveBlockId(null);
+        setEditorMode({ kind: "idle" });
+        setStatusText(`Deleted ${roots.length} row${roots.length === 1 ? "" : "s"}.`);
+    }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uiService]);
 
     const indentSelection = useCallback((direction: "in" | "out") => {
         if (!storyService || !storyId || !sceneId || !scene) {
             return;
         }
         const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
-        for (const id of filterOutSelectedDescendants(scene, ids)) {
+        const roots = filterOutSelectedDescendants(scene, ids);
+        if (roots.length === 0) {
+            return;
+        }
+        let recorded = false;
+        const recordOnce = () => {
+            if (!recorded) {
+                recordHistory();
+                recorded = true;
+            }
+        };
+        for (const id of roots) {
             const block = scene.blocks[id];
             if (!block) continue;
             if (direction === "in") {
                 const previous = findPreviousSibling(scene, id);
-                if (previous && canAcceptChildren(previous)) storyService.moveBlock(storyId, sceneId, id, { parentId: previous.id });
+                if (previous && canAcceptChildren(previous)) {
+                    recordOnce();
+                    storyService.moveBlock(storyId, sceneId, id, { parentId: previous.id });
+                }
             } else if (block.parentId) {
                 const parent = scene.blocks[block.parentId];
                 const grandParentId = parent?.parentId ?? null;
                 const parentSiblings = grandParentId ? scene.blocks[grandParentId]?.childrenIds : scene.rootBlockIds;
                 const beforeBlockId = parentSiblings?.[parentSiblings.indexOf(block.parentId) + 1] ?? null;
+                recordOnce();
                 storyService.moveBlock(storyId, sceneId, id, { parentId: grandParentId, beforeBlockId });
             }
         }
-    }, [activeBlockId, scene, sceneId, selectedBlockIds, storyId, storyService]);
+    }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService]);
+
+    const startInsertAfterActive = useCallback(() => {
+        startInsertAfter(activeBlockId, true);
+    }, [activeBlockId, startInsertAfter]);
+
+    const selectAllRows = useCallback(() => {
+        setSelectedBlockIds(new Set(visibleRows.map(row => row.block.id)));
+    }, [visibleRows]);
+
+    const moveActiveRowSelection = useCallback((direction: "up" | "down") => {
+        const currentIndex = activeBlockId ? rowIndexById.get(activeBlockId) ?? -1 : -1;
+        const nextIndex = direction === "down"
+            ? Math.min(visibleRows.length - 1, currentIndex + 1)
+            : Math.max(0, currentIndex - 1);
+        const next = visibleRows[nextIndex];
+        if (next) {
+            setActiveBlockId(next.block.id);
+            setSelectedBlockIds(new Set([next.block.id]));
+        }
+    }, [activeBlockId, rowIndexById, visibleRows]);
 
     const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+        if (!isStoryEditorFocusActive()) {
+            return;
+        }
         if (isTextInputActive()) {
             return;
         }
@@ -344,37 +643,7 @@ export function useStorySceneEditorController(payload: StorySceneEditorTabPayloa
             plainPasteRequestedRef.current = true;
             return;
         }
-        if (event.key === "Enter") {
-            event.preventDefault();
-            startInsertAfter(activeBlockId, true);
-            return;
-        }
-        if (event.key === "Delete" || event.key === "Backspace") {
-            event.preventDefault();
-            deleteSelection();
-            return;
-        }
-        if (event.key === "Tab") {
-            event.preventDefault();
-            indentSelection(event.shiftKey ? "out" : "in");
-            return;
-        }
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
-            event.preventDefault();
-            setSelectedBlockIds(new Set(visibleRows.map(row => row.block.id)));
-            return;
-        }
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            const currentIndex = activeBlockId ? rowIndexById.get(activeBlockId) ?? -1 : -1;
-            const nextIndex = event.key === "ArrowDown" ? Math.min(visibleRows.length - 1, currentIndex + 1) : Math.max(0, currentIndex - 1);
-            const next = visibleRows[nextIndex];
-            if (next) {
-                setActiveBlockId(next.block.id);
-                setSelectedBlockIds(new Set([next.block.id]));
-            }
-        }
-    }, [activeBlockId, deleteSelection, indentSelection, rowIndexById, startInsertAfter, visibleRows]);
+    }, [isStoryEditorFocusActive]);
 
     const moveDraggedBlockAfter = useCallback((draggedBlockId: StoryBlockId | null, targetBlockId: StoryBlockId) => {
         const movingBlockId = draggedBlockId ?? draggingBlockIdRef.current ?? draggingBlockId;
@@ -384,6 +653,7 @@ export function useStorySceneEditorController(payload: StorySceneEditorTabPayloa
             return;
         }
         try {
+            recordHistory();
             storyService.moveBlock(storyId, sceneId, movingBlockId, getMoveTargetAfter(scene, movingBlockId, targetBlockId));
             setActiveBlockId(movingBlockId);
             setSelectedBlockIds(new Set([movingBlockId]));
@@ -393,18 +663,44 @@ export function useStorySceneEditorController(payload: StorySceneEditorTabPayloa
         }
         draggingBlockIdRef.current = null;
         setDraggingBlockId(null);
-    }, [draggingBlockId, scene, sceneId, storyId, storyService]);
+    }, [draggingBlockId, recordHistory, scene, sceneId, storyId, storyService]);
+
+    const moveDraggedBlockToSortablePosition = useCallback((draggedBlockId: StoryBlockId, targetBlockId: StoryBlockId) => {
+        if (draggedBlockId === targetBlockId || !storyService || !storyId || !sceneId || !scene) {
+            return;
+        }
+        const fromIndex = rowIndexById.get(draggedBlockId);
+        const toIndex = rowIndexById.get(targetBlockId);
+        if (fromIndex === undefined || toIndex === undefined || fromIndex === toIndex) {
+            return;
+        }
+        const target = fromIndex < toIndex
+            ? getMoveTargetAfter(scene, draggedBlockId, targetBlockId)
+            : getMoveTargetBefore(scene, draggedBlockId, targetBlockId);
+        try {
+            recordHistory();
+            storyService.moveBlock(storyId, sceneId, draggedBlockId, target);
+            setActiveBlockId(draggedBlockId);
+            setSelectedBlockIds(new Set([draggedBlockId]));
+            setStatusText("Moved row.");
+        } catch (error) {
+            setStatusText(error instanceof Error ? error.message : "Could not move row.");
+        }
+    }, [recordHistory, rowIndexById, scene, sceneId, storyId, storyService]);
 
     return {
         context, isInitialized, document, scene, loading,
         activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode,
         characters, visibleRows, shouldRenderActiveInsertSlot,
-        rootRef, insertInputRef, textInputRef, uuidService,
-        focusRoot, handleKeyDown, copySelectionToClipboard, handlePaste,
+        rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
+        focusRoot, focusWorkspace, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         deleteSelection, startInsertAfter, selectRow, beginDragSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor,
         setDialogueCharacter, commitTextEdit, handleInsertValueChange,
-        commitNarrationFromInsert, chooseCommand, chooseCharacterForInsert,
-        moveDraggedBlockAfter, startDraggingBlock, endDraggingBlock,
+        undoEdit, redoEdit,
+        startInsertAfterActive, indentSelection, selectAllRows, moveActiveRowSelection,
+        insertDialogueAfterCurrentTextEdit, commitNarrationFromInsert, chooseCommand, chooseCharacterForInsert,
+        createActionFromSidebar,
+        moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,
     };
 }
