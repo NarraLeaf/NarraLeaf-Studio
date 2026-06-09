@@ -18,6 +18,7 @@ import {
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
 import { useWorkspace } from "../../../context";
 import { SearchBox } from "./SearchBox";
@@ -44,6 +45,19 @@ const ASSET_TYPE_LABELS = {
     [AssetType.Font]: "Fonts",
     [AssetType.Other]: "Other",
 };
+
+const ASSET_SELECTOR_STATE_ID = "narraleaf-studio:asset-selector";
+
+interface AssetSelectorState {
+    expandedGroupIdsByType?: Partial<Record<AssetType, string[]>>;
+}
+
+function sanitizeStringIds(ids: string[] | undefined): string[] {
+    if (!Array.isArray(ids)) {
+        return [];
+    }
+    return ids.filter(id => typeof id === "string" && id.length > 0);
+}
 
 /**
  * Caller-defined section (e.g. built-in presets) shown as a collapsible group in the asset list.
@@ -92,7 +106,7 @@ export function AssetSelector({
     onConfirm,
 }: AssetSelectorProps) {
     const { context, isInitialized } = useWorkspace();
-    const { assets, groups, loading, error, loadAssets } = useAssetData({ context, isInitialized });
+    const { assets, groups, loading, hasLoaded, error, loadAssets } = useAssetData({ context, isInitialized });
     const { filterConfigs, activeFilters, setActiveFilters, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({ assets, groups });
     const assetsService = useMemo(() => {
         if (!context) return null;
@@ -121,7 +135,38 @@ export function AssetSelector({
     const filteredTypeGroups = useMemo(() => filteredGroups[assetType] ?? [], [filteredGroups, assetType]);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
     const [expandedVirtualGroups, setExpandedVirtualGroups] = useState<Set<string>>(new Set());
+    const [stateReady, setStateReady] = useState(false);
     const selectorWasVisibleRef = useRef(false);
+
+    useLayoutEffect(() => {
+        if (!context) return;
+        setStateReady(false);
+        const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
+        const saved = panelStateService.getPanelState<AssetSelectorState>(ASSET_SELECTOR_STATE_ID);
+        setExpandedGroups(new Set(sanitizeStringIds(saved?.expandedGroupIdsByType?.[assetType])));
+        setStateReady(true);
+    }, [assetType, context]);
+
+    useEffect(() => {
+        if (!context || !stateReady) return;
+        const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
+        const current = panelStateService.getPanelState<AssetSelectorState>(ASSET_SELECTOR_STATE_ID);
+        panelStateService.setPanelState<AssetSelectorState>(ASSET_SELECTOR_STATE_ID, {
+            expandedGroupIdsByType: {
+                ...(current?.expandedGroupIdsByType ?? {}),
+                [assetType]: Array.from(expandedGroups),
+            },
+        });
+    }, [assetType, context, expandedGroups, stateReady]);
+
+    useEffect(() => {
+        if (!hasLoaded) return;
+        const knownGroupIds = new Set((groups[assetType] ?? []).map(group => group.id));
+        setExpandedGroups(prev => {
+            const next = new Set(Array.from(prev).filter(id => knownGroupIds.has(id)));
+            return next.size === prev.size ? prev : next;
+        });
+    }, [assetType, groups, hasLoaded]);
 
     useEffect(() => {
         if (!visible) {
@@ -605,7 +650,7 @@ export function AssetSelector({
                     />
                 </div>
 
-                {loading ? (
+                {loading && !hasLoaded ? (
                     <div className="flex items-center justify-center py-8 text-gray-400 gap-2">
                         <RefreshCw className="w-4 h-4 animate-spin" />
                         <span>Loading assets...</span>
@@ -702,4 +747,3 @@ export function AssetSelector({
         document.body,
     );
 }
-

@@ -61,7 +61,7 @@ export function ensureNormalizedLayout(elementId: string, layout: UILayout, docu
         y: normalized.y,
         width: normalized.width,
         height: normalized.height,
-    });
+    }, { skipHistory: true });
     return normalized;
 }
 

@@ -1,5 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
-import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "@/lib/components/elements/Input";
 import { Select, SelectOption } from "@/lib/components/elements/Select";
 import { Switch } from "@/lib/components/elements/Switch";
@@ -22,7 +21,7 @@ interface SettingsExplorerProps<T> {
     getValue: (setting: T, descriptor: SettingDescriptor) => SettingValue | undefined;
     onCommit: (setting: T, descriptor: SettingDescriptor, value: SettingValue) => Promise<void>;
     selectedCategory?: SettingCategory["key"];
-    onCategoryChange?: (categoryKey: SettingCategory["key"] | null) => void;
+    selectedCategoryScrollSignal?: number;
     searchQuery?: string;
     onSearchChange?: (value: string) => void;
     showSearch?: boolean;
@@ -59,7 +58,7 @@ export function SettingsExplorer<T>({
     getValue,
     onCommit,
     selectedCategory,
-    onCategoryChange,
+    selectedCategoryScrollSignal,
     searchQuery,
     onSearchChange,
     showSearch = true,
@@ -72,6 +71,8 @@ export function SettingsExplorer<T>({
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [pendingInputs, setPendingInputs] = useState<Record<string, string>>({});
     const [pendingBooleans, setPendingBooleans] = useState<Record<string, boolean>>({});
+    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+    const categoryRefs = useRef<Record<string, HTMLElement | null>>({});
 
     const isSearchControlled = typeof searchQuery === "string";
     const effectiveSearch = isSearchControlled ? searchQuery! : localSearch;
@@ -314,19 +315,27 @@ export function SettingsExplorer<T>({
 
     const categoryEntriesToRender = filteredCategories.length > 0 ? filteredCategories : [];
 
-    const handleAccordionOpenChange = (openItems: string[]) => {
-        if (!onCategoryChange) {
+    useEffect(() => {
+        if (!selectedCategory || loading) {
             return;
         }
-        if (openItems.length === 0) {
-            onCategoryChange(null);
+        const container = scrollContainerRef.current;
+        const section = categoryRefs.current[selectedCategory];
+        if (!container || !section) {
             return;
         }
-        const lastOpen = openItems[openItems.length - 1] as SettingCategory["key"];
-        onCategoryChange(lastOpen);
-    };
+        const containerRect = container.getBoundingClientRect();
+        const sectionRect = section.getBoundingClientRect();
+        const nextTop = container.scrollTop + sectionRect.top - containerRect.top - 12;
+        container.scrollTo({
+            top: Math.max(0, nextTop),
+            behavior: "smooth",
+        });
+    }, [loading, selectedCategory, selectedCategoryScrollSignal, effectiveSearch]);
 
-    const openItems = selectedCategory ? [selectedCategory] : undefined;
+    const setCategoryRef = useCallback((categoryKey: SettingCategory["key"], node: HTMLElement | null) => {
+        categoryRefs.current[categoryKey] = node;
+    }, []);
 
     return (
         <div
@@ -344,7 +353,7 @@ export function SettingsExplorer<T>({
                 </div>
             )}
 
-            <div className="flex-1 overflow-y-auto space-y-3">
+            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
                 {loading ? (
                     <div className="flex h-full items-center justify-center text-xs text-gray-500">
                         Loading settings...
@@ -354,32 +363,22 @@ export function SettingsExplorer<T>({
                         {effectiveSearch.trim() ? "No settings match your search." : emptyStateMessage}
                     </div>
                 ) : (
-                    <Accordion
-                        defaultOpen={openItems ?? [categoryEntriesToRender[0]?.category.key].filter(Boolean) as string[]}
-                        multiple
-                        className=""
-                        openItems={openItems}
-                        onOpenChange={handleAccordionOpenChange}
-                    >
+                    <div className="space-y-5 px-3 py-3">
                         {categoryEntriesToRender.map(entry => (
-                            <AccordionItem
+                            <section
                                 key={entry.category.key}
-                                id={entry.category.key}
-                                title={entry.category.label}
-                                contentClassName="px-3 py-1"
+                                ref={(node) => setCategoryRef(entry.category.key, node)}
+                                className="scroll-mt-3"
                             >
-                                <div className="space-y-1">
-                                    {entry.entries.length === 0 ? (
-                                        <div className="px-2 py-3 text-xs text-gray-500"></div>
-                                    ) : (
-                                        <div className="space-y-0">
-                                            {entry.entries.map(renderSetting)}
-                                        </div>
-                                    )}
+                                <div className="mb-2 border-b border-white/10 px-2 pb-2">
+                                    <h2 className="text-sm font-semibold text-gray-100">{entry.category.label}</h2>
                                 </div>
-                            </AccordionItem>
+                                <div className="space-y-0">
+                                    {entry.entries.map(renderSetting)}
+                                </div>
+                            </section>
                         ))}
-                    </Accordion>
+                    </div>
                 )}
             </div>
         </div>

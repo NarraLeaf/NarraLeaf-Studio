@@ -127,9 +127,6 @@ export function SurfaceList({
         <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 bg-[#0b0d12]">
             {surfaces.map(surface => {
                 const linkLine = stageLinkCaption(surface, allSurfaces);
-                            ? `Static issues · ${diag.errors} error(s)${diag.warnings ? `, ${diag.warnings} warning(s)` : ""}`
-                            : `Static issues · ${diag.warnings} warning(s)`
-                        : null;
                 const preview = renderSurfacePreview?.(surface);
                 return (
                 <div
@@ -151,11 +148,6 @@ export function SurfaceList({
                                 <div className="text-[11px] text-gray-500">{formatStageMountLabel(surface.mount)}</div>
                             )}
                             {linkLine ? <div className="text-[11px] text-gray-500 truncate">{linkLine}</div> : null}
-                            {diagLine ? (
-                                <div className="text-[11px] text-amber-400/90 truncate" title="Editor static checks only">
-                                    {diagLine}
-                                </div>
-                            ) : null}
                         </div>
                         <button
                             type="button"

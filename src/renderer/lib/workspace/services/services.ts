@@ -80,6 +80,7 @@ enum Services {
     UIDocument = "uiDocument",
     RuntimeBridge = "runtimeBridge",
     UIEditorState = "uiEditorState",
+    UIEditorHistory = "uiEditorHistory",
     UIGraph = "uiGraph",
     LocalBlueprint = "localBlueprint",
     UIBlueprintLifecycle = "uiBlueprintLifecycle",
@@ -191,7 +192,9 @@ interface IUIDocumentService extends IService {
     getRevision(): number;
     /** Blueprint M2: invoked after each in-memory uidoc mutation (before auto-save). */
     setAfterMutateHook(hook: (() => void) | null): void;
-    updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>): void;
+    restoreDocumentFromHistory(document: UIDocument, options?: { skipAfterMutateHook?: boolean }): void;
+    runSurfaceHistoryTransaction(surfaceId: string, action: () => void): void;
+    updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>, options?: { skipHistory?: boolean }): void;
     updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>): void;
     updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void;
     reorderChildren(parentId: string, orderedChildIds: string[]): void;
@@ -511,6 +514,28 @@ interface IStoryService extends IService {
     canExportStoryPackage(): false;
 }
 
+interface IUIEditorHistoryService extends IService {
+    getLimit(): number;
+    setLimit(limit: number): void;
+    captureSnapshot(surfaceId: string): {
+        document: UIDocument;
+        blueprint: unknown;
+    };
+    record(options: {
+        surfaceId: string;
+        before: ReturnType<IUIEditorHistoryService["captureSnapshot"]>;
+        after: ReturnType<IUIEditorHistoryService["captureSnapshot"]>;
+        mergeKey?: string;
+        mergeWindowMs?: number;
+    }): void;
+    canUndo(surfaceId: string): boolean;
+    canRedo(surfaceId: string): boolean;
+    undo(surfaceId: string): boolean;
+    redo(surfaceId: string): boolean;
+    clear(surfaceId?: string): void;
+    on(event: "historyChanged", handler: (data: { surfaceId: string }) => void): () => void;
+}
+
 interface ICharacterService extends IService {
     getCharacter(id: string): Character | undefined;
     listCharacter(): Character[];
@@ -578,7 +603,7 @@ export {
     IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, ISettingsService, IStorageService, IStoryService,
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
-    ICharacterService, IUIDocumentService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
+    ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, UIEditorStateEvents,
     Services, WorkspaceContext
 };

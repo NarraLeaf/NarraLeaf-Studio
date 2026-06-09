@@ -4,6 +4,7 @@ import type { StoryDocument, StoryId, StoryLibraryEntry, StoryScene } from "@sha
 import { createInputDialog } from "@/lib/components/dialogs";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
+import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -12,6 +13,31 @@ import { useRegistry } from "../../../registry";
 import type { PanelComponentProps } from "../../types";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
+
+interface StoryPanelState {
+    selectedStoryId?: string;
+    rootOpenItems?: string[];
+    chapterOpenItemsByStoryId?: Record<string, string[]>;
+}
+
+const DEFAULT_STORY_ROOT_OPEN_ITEMS = ["stories", "outline"];
+const STORY_ROOT_ITEM_IDS = new Set(DEFAULT_STORY_ROOT_OPEN_ITEMS);
+
+function filterStoryRootOpenItems(ids: string[] | undefined): string[] {
+    if (!Array.isArray(ids)) {
+        return DEFAULT_STORY_ROOT_OPEN_ITEMS;
+    }
+    return ids.filter(id => STORY_ROOT_ITEM_IDS.has(id));
+}
+
+function getRenderedStoryRootOpenItems(ids: string[], hasOutline: boolean): string[] {
+    return ids.filter(id => hasOutline || id !== "outline");
+}
+
+function filterStoryChapterOpenItems(ids: string[], document: StoryDocument): string[] {
+    const chapterIds = new Set(document.chapters.map(chapter => chapter.id));
+    return ids.filter(id => chapterIds.has(id));
+}
 
 export function StoryPanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
@@ -22,6 +48,10 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     const [document, setDocument] = useState<StoryDocument | null>(null);
     const [loadingDocument, setLoadingDocument] = useState(false);
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
+    const [rootOpenItems, setRootOpenItems] = useState<string[]>(DEFAULT_STORY_ROOT_OPEN_ITEMS);
+    const [chapterOpenItemsByStoryId, setChapterOpenItemsByStoryId] = useState<Record<string, string[]>>({});
+    const [stateReady, setStateReady] = useState(false);
+    const [disableAccordionAnimation, setDisableAccordionAnimation] = useState(true);
     const { menuState, showMenu, hideMenu } = useContextMenu();
 
     const storyService = useMemo(() => {
@@ -42,6 +72,33 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         return uiService ? createInputDialog(uiService) : null;
     }, [uiService]);
 
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        setStateReady(false);
+        setDisableAccordionAnimation(true);
+        setRootOpenItems(DEFAULT_STORY_ROOT_OPEN_ITEMS);
+        setChapterOpenItemsByStoryId({});
+
+        const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
+        const saved = panelStateService.getPanelState<StoryPanelState>(panelId);
+        if (typeof saved?.selectedStoryId === "string" && saved.selectedStoryId.length > 0) {
+            setSelectedStoryId(saved.selectedStoryId);
+        }
+        setRootOpenItems(filterStoryRootOpenItems(saved?.rootOpenItems));
+        if (saved?.chapterOpenItemsByStoryId && typeof saved.chapterOpenItemsByStoryId === "object") {
+            const next: Record<string, string[]> = {};
+            Object.entries(saved.chapterOpenItemsByStoryId).forEach(([storyId, chapterIds]) => {
+                if (typeof storyId === "string" && storyId && Array.isArray(chapterIds)) {
+                    next[storyId] = chapterIds.filter(id => typeof id === "string" && id.length > 0);
+                }
+            });
+            setChapterOpenItemsByStoryId(next);
+        }
+        setStateReady(true);
+    }, [context, panelId]);
+
     const refreshLibrary = useCallback(() => {
         if (!storyService) {
             return;
@@ -57,6 +114,8 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             return nextDefault ?? nextStories[0]?.id ?? null;
         });
     }, [storyService]);
+
+    const selectedEntry = stories.find(story => story.id === selectedStoryId);
 
     useEffect(() => {
         refreshLibrary();
@@ -121,6 +180,53 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             cancelled = true;
         };
     }, [storyService, selectedStoryId, uiService]);
+
+    useEffect(() => {
+        if (!document || !selectedStoryId) {
+            return;
+        }
+        setChapterOpenItemsByStoryId(prev => {
+            const hasSavedForStory = Object.prototype.hasOwnProperty.call(prev, selectedStoryId);
+            const current = hasSavedForStory ? prev[selectedStoryId] : document.chapters.map(chapter => chapter.id);
+            const filtered = filterStoryChapterOpenItems(current, document);
+            if (hasSavedForStory && filtered.length === current.length) {
+                return prev;
+            }
+            return {
+                ...prev,
+                [selectedStoryId]: filtered,
+            };
+        });
+    }, [document, selectedStoryId]);
+
+    useEffect(() => {
+        if (!context || !stateReady) {
+            return;
+        }
+        const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
+        panelStateService.setPanelState<StoryPanelState>(panelId, {
+            selectedStoryId: selectedStoryId ?? undefined,
+            rootOpenItems: filterStoryRootOpenItems(rootOpenItems),
+            chapterOpenItemsByStoryId,
+        });
+    }, [chapterOpenItemsByStoryId, context, panelId, rootOpenItems, selectedStoryId, stateReady]);
+
+    useEffect(() => {
+        if (selectedStoryId) {
+            setDisableAccordionAnimation(true);
+        }
+    }, [selectedStoryId]);
+
+    useEffect(() => {
+        if (!stateReady || loadingDocument) {
+            return;
+        }
+        if (selectedStoryId && document?.id !== selectedStoryId) {
+            return;
+        }
+        const frame = requestAnimationFrame(() => setDisableAccordionAnimation(false));
+        return () => cancelAnimationFrame(frame);
+    }, [document?.id, loadingDocument, panelId, selectedStoryId, stateReady]);
 
     const handleCreateStory = useCallback(async () => {
         if (!storyService || !inputDialog) {
@@ -321,12 +427,31 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         showMenu(event);
     }, [buildSceneContextMenu, showMenu]);
 
-    const selectedEntry = stories.find(story => story.id === selectedStoryId);
+    const chapterOpenItems = selectedStoryId ? chapterOpenItemsByStoryId[selectedStoryId] ?? [] : [];
+
+    const handleRootOpenChange = useCallback((nextOpenItems: string[]) => {
+        setRootOpenItems(filterStoryRootOpenItems(nextOpenItems));
+    }, []);
+
+    const handleChapterOpenChange = useCallback((nextOpenItems: string[]) => {
+        if (!selectedStoryId || !document) {
+            return;
+        }
+        setChapterOpenItemsByStoryId(prev => ({
+            ...prev,
+            [selectedStoryId]: filterStoryChapterOpenItems(nextOpenItems, document),
+        }));
+    }, [document, selectedStoryId]);
 
     return (
         <div className="flex h-full min-h-0 flex-col" data-panel-id={panelId}>
             <div className="min-h-0 flex-1 overflow-y-auto">
-                <Accordion defaultOpen={["stories", "outline"]} multiple>
+                <Accordion
+                    openItems={getRenderedStoryRootOpenItems(filterStoryRootOpenItems(rootOpenItems), Boolean(selectedEntry))}
+                    onOpenChange={handleRootOpenChange}
+                    multiple
+                    disableAnimation={disableAccordionAnimation}
+                >
                     <AccordionItem
                         id="stories"
                         title={`Stories (${stories.length})`}
@@ -420,8 +545,10 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                             ) : document ? (
                                 <Accordion
                                     key={document.id}
-                                    defaultOpen={document.chapters.map(chapter => chapter.id)}
+                                    openItems={chapterOpenItems}
+                                    onOpenChange={handleChapterOpenChange}
                                     multiple
+                                    disableAnimation={disableAccordionAnimation}
                                     className="border-t border-white/5"
                                 >
                                     {document.chapters.map(chapter => (
