@@ -9,6 +9,7 @@ import {
 } from "@/apps/workspace/hooks";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { UIEditorHistoryService } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
@@ -44,6 +45,7 @@ export type UseUIEditorKeybindingsParams = {
     onCloseContextMenu: () => void;
     documentService: UIDocumentService | null;
     localBlueprint: LocalBlueprintService | null;
+    historyService: UIEditorHistoryService | null;
     stateService: UIEditorStateService | null;
     requestRenamePrimary: () => void;
 };
@@ -57,6 +59,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         onCloseContextMenu,
         documentService,
         localBlueprint,
+        historyService,
         stateService,
         requestRenamePrimary,
     } = params;
@@ -133,8 +136,22 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             const s = getUiSelection(stateService, surfaceId);
             uiEditorDeleteSelection(documentService, stateService, surfaceId, s);
         };
+        const undo = () => {
+            if (!historyService || isTypingInField()) {
+                return;
+            }
+            historyService.undo(surfaceId);
+        };
+        const redo = () => {
+            if (!historyService || isTypingInField()) {
+                return;
+            }
+            historyService.redo(surfaceId);
+        };
 
         const modPairs = bindMod("ctrl", [
+            { suffix: "undo", key: "z", handler: undo },
+            { suffix: "redo", key: "shift+z", handler: redo },
             { suffix: "copy", key: "c", handler: copy },
             { suffix: "cut", key: "x", handler: cut },
             { suffix: "paste", key: "v", handler: paste },
@@ -143,6 +160,8 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             { suffix: "selall", key: "a", handler: selectAll },
         ]).concat(
             bindMod("meta", [
+                { suffix: "undo", key: "z", handler: undo },
+                { suffix: "redo", key: "shift+z", handler: redo },
                 { suffix: "copy", key: "c", handler: copy },
                 { suffix: "cut", key: "x", handler: cut },
                 { suffix: "paste", key: "v", handler: paste },
@@ -176,6 +195,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         surfaceId,
         documentService,
         localBlueprint,
+        historyService,
         stateService,
         requestRenamePrimary,
     ]);
@@ -207,7 +227,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
 
     useKeybindings({
         keybindings,
-        enabled: enabled && Boolean(surfaceId && documentService && localBlueprint && stateService),
+        enabled: enabled && Boolean(surfaceId && documentService && localBlueprint && historyService && stateService),
         when: and(whenEditorFocused(tabId), fromGetter(() => !isTypingInField())),
         idPrefix: `ui-surface-editor-${tabId}`,
     });

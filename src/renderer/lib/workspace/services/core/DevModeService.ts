@@ -11,6 +11,7 @@ type DevModeServiceEvents = {
 export class DevModeService extends Service<DevModeService> {
     private status: DevModeStatus = "idle";
     private timer: ReturnType<typeof setInterval> | null = null;
+    private refreshInFlight = false;
     private readonly events = new EventEmitter<DevModeServiceEvents>();
 
     protected async init(_ctx: WorkspaceContext): Promise<void> {
@@ -18,7 +19,6 @@ export class DevModeService extends Service<DevModeService> {
     }
 
     public override activate(_ctx: WorkspaceContext): void {
-        this.startPolling();
         void this.refreshStatus();
     }
 
@@ -36,9 +36,17 @@ export class DevModeService extends Service<DevModeService> {
     }
 
     public async refreshStatus(): Promise<DevModeStatus> {
-        const result = await getInterface().devMode.getStatus();
-        if (result.success) {
-            this.updateStatus(result.data.status);
+        if (this.refreshInFlight) {
+            return this.status;
+        }
+        this.refreshInFlight = true;
+        try {
+            const result = await getInterface().devMode.getStatus();
+            if (result.success) {
+                this.updateStatus(result.data.status);
+            }
+        } finally {
+            this.refreshInFlight = false;
         }
         return this.status;
     }
@@ -73,11 +81,24 @@ export class DevModeService extends Service<DevModeService> {
     }
 
     private updateStatus(nextStatus: DevModeStatus): void {
+        this.syncPolling(nextStatus);
         if (this.status === nextStatus) {
             return;
         }
         this.status = nextStatus;
         this.events.emit("statusChanged", nextStatus);
+    }
+
+    private syncPolling(status: DevModeStatus): void {
+        if (this.shouldPoll(status)) {
+            this.startPolling();
+        } else {
+            this.stopPolling();
+        }
+    }
+
+    private shouldPoll(status: DevModeStatus): boolean {
+        return status !== "idle" && status !== "error";
     }
 
     private startPolling(): void {
