@@ -17,6 +17,7 @@ export function SettingsApp() {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState<string>(categories[0]?.key ?? "");
+    const [categoryScrollSignal, setCategoryScrollSignal] = useState(0);
 
     useEffect(() => {
         let mounted = true;
@@ -73,7 +74,7 @@ export function SettingsApp() {
             const key = setting.key;
             const response = await getInterface().app.state.setGlobalState(
                 key as GlobalStateKeys,
-                value as GlobalStateValue<GlobalStateKeys>,
+                value as unknown as GlobalStateValue<GlobalStateKeys>,
             );
             if (!response.success) {
                 const errorText = response.error ?? "Failed to persist setting";
@@ -89,6 +90,7 @@ export function SettingsApp() {
 
     const handleCategoryClick = useCallback((categoryKey: string) => {
         setSelectedCategory(categoryKey);
+        setCategoryScrollSignal(value => value + 1);
     }, []);
 
     return (
@@ -101,41 +103,49 @@ export function SettingsApp() {
                             Editor Settings
                         </p>
                     </div>
-                    <SearchBox
-                        value={searchQuery}
-                        onChange={setSearchQuery}
-                        placeholder="Search settings..."
-                        className="w-full"
-                    />
-                    <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-                        {categories.map((category) => {
-                            const isActive = selectedCategory === category.key;
-                            return (
-                                <button
-                                    key={category.key}
-                                    onClick={() => handleCategoryClick(category.key)}
-                                    className={`w-full rounded-md px-3 py-2 text-left transition-colors ${isActive ? "bg-white/10 text-white" : "text-gray-300 hover:bg-white/10 hover:text-white"}`}
-                                >
-                                    <div className="text-sm font-medium">{category.label}</div>
-                                    <p className="text-xs text-gray-500">{category.description}</p>
-                                </button>
-                            );
-                        })}
-                    </div>
+                    {categories.length > 0 ? (
+                        <>
+                            <SearchBox
+                                value={searchQuery}
+                                onChange={setSearchQuery}
+                                placeholder="Search settings..."
+                                className="w-full"
+                            />
+                            <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+                                {categories.map((category) => {
+                                    const isActive = selectedCategory === category.key;
+                                    return (
+                                        <button
+                                            key={category.key}
+                                            onClick={() => handleCategoryClick(category.key)}
+                                            className={`w-full rounded-md px-3 py-2 text-left transition-colors ${isActive ? "bg-white/10 text-white" : "text-gray-300 hover:bg-white/10 hover:text-white"}`}
+                                        >
+                                            <div className="text-sm font-medium">{category.label}</div>
+                                            <p className="text-xs text-gray-500">{category.description}</p>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    ) : (
+                        <p className="text-xs text-gray-500">
+                            No implemented settings are currently exposed.
+                        </p>
+                    )}
                 </aside>
                 <section className="flex-1 p-4">
                     <SettingsExplorer
                         categories={categories}
                         getSettingsForCategory={(category) => getSettingsByCategory(category as AppSettingCategoryKey)}
-                    describeSetting={describeAppSetting}
-                    getValue={(setting, _descriptor) => getSettingValue(setting)}
+                        describeSetting={describeAppSetting}
+                        getValue={(setting, _descriptor) => getSettingValue(setting)}
                         onCommit={commitSetting}
                         searchQuery={searchQuery}
                         onSearchChange={setSearchQuery}
                         showSearch={false}
                         loading={loading}
                         selectedCategory={selectedCategory}
-                        onCategoryChange={(categoryKey) => categoryKey && setSelectedCategory(categoryKey)}
+                        selectedCategoryScrollSignal={categoryScrollSignal}
                     />
                 </section>
             </div>

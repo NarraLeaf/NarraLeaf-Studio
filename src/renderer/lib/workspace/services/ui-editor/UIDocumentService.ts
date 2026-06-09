@@ -25,6 +25,7 @@ import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IUIDocumentService, Services, WorkspaceContext } from "../services";
 import { LocalBlueprintService } from "./LocalBlueprintService";
+import { UIEditorHistoryService, cloneUIHistoryDocument } from "./UIEditorHistoryService";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
@@ -64,6 +65,18 @@ type CreateSurfaceInput = {
     stageMount?: UIStageSurfaceMount;
 };
 
+type UIDocumentMutationHistoryOptions =
+    | {
+          surfaceId: string;
+          mergeKey?: string;
+          mergeWindowMs?: number;
+      }
+    | false;
+
+type UIDocumentMutationOptions = {
+    history?: UIDocumentMutationHistoryOptions;
+};
+
 const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = "dialog";
 
 type LegacyUISurfaceKind = "appSurface" | "playerStageSurface" | "playerOverlaySurface";
@@ -99,6 +112,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
     private readonly autoSaveDelay = 800;
     private afterMutateHook: (() => void) | null = null;
+    private historySuppressionDepth = 0;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -198,6 +212,40 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.afterMutateHook = hook;
     }
 
+    public restoreDocumentFromHistory(
+        document: UIDocument,
+        options: { skipAfterMutateHook?: boolean } = {},
+    ): void {
+        this.document = cloneUIHistoryDocument(document);
+        this.revision += 1;
+        this.setDirty(true);
+        this.scheduleAutoSave();
+        this.events.emit("documentChanged", this.document);
+        if (!options.skipAfterMutateHook) {
+            this.afterMutateHook?.();
+        }
+    }
+
+    public runSurfaceHistoryTransaction(surfaceId: string, action: () => void): void {
+        const historyService = this.getHistoryService();
+        if (!historyService) {
+            action();
+            return;
+        }
+        const beforeHistory = historyService.captureSnapshot(surfaceId);
+        this.historySuppressionDepth += 1;
+        try {
+            action();
+        } finally {
+            this.historySuppressionDepth -= 1;
+        }
+        historyService.record({
+            surfaceId,
+            before: beforeHistory,
+            after: historyService.captureSnapshot(surfaceId),
+        });
+    }
+
     public isDirty(): boolean {
         return this.dirty;
     }
@@ -206,7 +254,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return this.revision;
     }
 
-    public updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>): void {
+    public updateElementLayout(
+        elementId: string,
+        layoutPatch: Partial<UILayout>,
+        options: { skipHistory?: boolean } = {},
+    ): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
         this.mutateDocument(document => {
             const element = document.elements[elementId];
             if (!element) {
@@ -216,6 +269,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...element.layout,
                 ...layoutPatch,
             });
+        }, {
+            history: !options.skipHistory && surfaceId
+                ? {
+                      surfaceId,
+                      mergeKey: `layout:${elementId}:${Object.keys(layoutPatch).sort().join(",")}`,
+                  }
+                : false,
         });
     }
 
@@ -224,6 +284,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (elementIds.length === 0) {
             return;
         }
+        const surfaceId = this.getCommonSurfaceIdForElements(elementIds);
         this.mutateDocument(document => {
             elementIds.forEach(elementId => {
                 const element = document.elements[elementId];
@@ -236,10 +297,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     ...patch,
                 });
             });
+        }, {
+            history: surfaceId ? { surfaceId } : false,
         });
     }
 
     public updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
         this.mutateDocument(document => {
             const element = document.elements[elementId];
             if (!element) {
@@ -249,16 +313,26 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...(element.props ?? {}),
                 ...propsPatch,
             };
+        }, {
+            history: surfaceId
+                ? {
+                      surfaceId,
+                      mergeKey: `props:${elementId}:${Object.keys(propsPatch).sort().join(",")}`,
+                  }
+                : false,
         });
     }
 
     public reorderChildren(parentId: string, orderedChildIds: string[]): void {
+        const surfaceId = this.getElementSurfaceId(parentId);
         this.mutateDocument(document => {
             const parent = document.elements[parentId];
             if (!parent) {
                 return;
             }
             parent.childrenIds = [...orderedChildIds];
+        }, {
+            history: surfaceId ? { surfaceId } : false,
         });
     }
 
@@ -275,6 +349,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         this.mutateDocument(doc => {
             applyPlannedMove(doc, planned.plan);
+        }, {
+            history: { surfaceId },
         });
         return { ok: true };
     }
@@ -284,12 +360,15 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (!trimmed) {
             return;
         }
+        const surfaceId = this.getElementSurfaceId(elementId);
         this.mutateDocument(document => {
             const el = document.elements[elementId];
             if (!el || el.type === "nl.root") {
                 return;
             }
             el.name = trimmed;
+        }, {
+            history: surfaceId ? { surfaceId } : false,
         });
     }
 
@@ -297,6 +376,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (elementIds.length === 0) {
             return;
         }
+        const surfaceId = this.getCommonSurfaceIdForElements(elementIds);
         this.mutateDocument(document => {
             const rootIds = new Set(document.surfaces.map(surface => surface.rootElementId));
             const toRemove = new Set<string>();
@@ -328,10 +408,18 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             for (const id of toRemove) {
                 delete document.elements[id];
             }
+        }, {
+            history: surfaceId ? { surfaceId } : false,
         });
     }
 
-    private mutateDocument(mutator: (document: UIDocument) => void): void {
+    private mutateDocument(mutator: (document: UIDocument) => void, options: UIDocumentMutationOptions = {}): void {
+        const historyService = this.getHistoryService();
+        const historyOptions = options.history;
+        const beforeHistory =
+            historyService && historyOptions && this.historySuppressionDepth === 0
+                ? historyService.captureSnapshot(historyOptions.surfaceId)
+                : null;
         const document = this.getDocument();
         mutator(document);
         this.revision += 1;
@@ -339,6 +427,15 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.scheduleAutoSave();
         this.events.emit("documentChanged", document);
         this.afterMutateHook?.();
+        if (historyService && historyOptions && beforeHistory && this.historySuppressionDepth === 0) {
+            historyService.record({
+                surfaceId: historyOptions.surfaceId,
+                before: beforeHistory,
+                after: historyService.captureSnapshot(historyOptions.surfaceId),
+                mergeKey: historyOptions.mergeKey,
+                mergeWindowMs: historyOptions.mergeWindowMs,
+            });
+        }
     }
 
     private scheduleAutoSave(): void {
@@ -359,6 +456,48 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         this.dirty = value;
         this.events.emit("dirtyChanged", value);
+    }
+
+    private getHistoryService(): UIEditorHistoryService | null {
+        try {
+            return this.getContext().services.get<UIEditorHistoryService>(Services.UIEditorHistory);
+        } catch {
+            return null;
+        }
+    }
+
+    private getElementSurfaceId(elementId: string): string | null {
+        const document = this.getDocument();
+        let currentId: string | null = elementId;
+        while (currentId) {
+            const element: UIElement | undefined = document.elements[currentId];
+            if (!element) {
+                return null;
+            }
+            if (element.parentId === null) {
+                return document.surfaces.find(surface => surface.rootElementId === currentId)?.id ?? null;
+            }
+            currentId = element.parentId;
+        }
+        return null;
+    }
+
+    private getCommonSurfaceIdForElements(elementIds: string[]): string | null {
+        let surfaceId: string | null = null;
+        for (const elementId of elementIds) {
+            const nextSurfaceId = this.getElementSurfaceId(elementId);
+            if (!nextSurfaceId) {
+                continue;
+            }
+            if (!surfaceId) {
+                surfaceId = nextSurfaceId;
+                continue;
+            }
+            if (surfaceId !== nextSurfaceId) {
+                return null;
+            }
+        }
+        return surfaceId;
     }
 
     private migrateIfNeeded(document: UIDocument): UIDocument {
@@ -600,6 +739,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     public createElement(parentId: string, type: string, layoutPatch: Partial<UILayout> = {}): UIElement {
+        const surfaceId = this.getElementSurfaceId(parentId);
         const definition = widgetModuleRegistry.get(type);
         if (!definition) {
             throw new RendererError(`Unknown element type: ${type}`);
@@ -646,6 +786,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (parentElement) {
                 parentElement.childrenIds = [...parentElement.childrenIds, elementId];
             }
+        }, {
+            history: surfaceId ? { surfaceId } : false,
         });
 
         return element;
@@ -680,6 +822,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const historyService = this.getHistoryService();
+        const beforeHistory = historyService?.captureSnapshot(surfaceId) ?? null;
 
         const elementIdMap: Record<string, string> = {};
         for (const oldId of Object.keys(payload.elements)) {
@@ -758,7 +902,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             children.splice(insertAt, 0, ...newRootIds);
             parentEl.childrenIds = children;
-        });
+        }, { history: false });
 
         localBp.applyBlueprintMutation(bpDoc => {
             for (const [oldBpId, sourceBp] of Object.entries(payload.widgetMainBlueprints)) {
@@ -793,6 +937,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
         });
 
+        if (historyService && beforeHistory) {
+            historyService.record({
+                surfaceId,
+                before: beforeHistory,
+                after: historyService.captureSnapshot(surfaceId),
+            });
+        }
+
         return { ok: true, newRootIds };
     }
 
@@ -801,6 +953,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         eventName: string,
         ref: { blueprintId: string; eventId: string },
     ): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        const historyService = surfaceId ? this.getHistoryService() : null;
+        const beforeHistory = surfaceId && historyService ? historyService.captureSnapshot(surfaceId) : null;
         const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
         const bpDoc = localBp.getBlueprintDocument();
         const bp = bpDoc.blueprints[ref.blueprintId];
@@ -825,10 +980,20 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 eventId: ref.eventId,
             };
             el.behavior.events[eventName] = binding;
-        });
+        }, { history: false });
+        if (surfaceId && historyService && beforeHistory) {
+            historyService.record({
+                surfaceId,
+                before: beforeHistory,
+                after: historyService.captureSnapshot(surfaceId),
+            });
+        }
     }
 
     public clearElementBlueprintEvent(elementId: string, eventName: string): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        const historyService = surfaceId ? this.getHistoryService() : null;
+        const beforeHistory = surfaceId && historyService ? historyService.captureSnapshot(surfaceId) : null;
         const el = this.getDocument().elements[elementId];
         const cur = el?.behavior?.events?.[eventName];
         if (cur?.kind === "blueprintEvent") {
@@ -845,7 +1010,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...target.behavior,
                 events: Object.keys(rest).length > 0 ? rest : undefined,
             };
-        });
+        }, { history: false });
+        if (surfaceId && historyService && beforeHistory) {
+            historyService.record({
+                surfaceId,
+                before: beforeHistory,
+                after: historyService.captureSnapshot(surfaceId),
+            });
+        }
     }
 
     public stripBlueprintLayerBindings(surfaceId: string, blueprintId: string, layerEventId: string): void {
@@ -880,7 +1052,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     el.behavior = { ...el.behavior, events: nextEvents };
                 }
             }
-        });
+        }, { history: false });
     }
 
     private getProjectDesignSize(): UISurfaceDesignSize {

@@ -8,6 +8,7 @@ interface AccordionContextValue {
     focusedItemId: string | null;
     setFocusedItem: (id: string | null) => void;
     isActive: boolean; // Whether the accordion is currently focused/active
+    disableAnimation: boolean;
 }
 
 const AccordionContext = createContext<AccordionContextValue | null>(null);
@@ -44,6 +45,8 @@ export interface AccordionProps {
     isActive?: boolean;
     /** Allow multiple items to be open */
     multiple?: boolean;
+    /** Disable item expand/collapse animation for state restoration. */
+    disableAnimation?: boolean;
     className?: string;
 }
 
@@ -59,6 +62,7 @@ export function Accordion({
     onItemFocus,
     isActive = true,
     multiple = true,
+    disableAnimation = false,
     className = "",
 }: AccordionProps) {
     const [internalOpenItems, setInternalOpenItems] = useState<Set<string>>(
@@ -161,6 +165,7 @@ export function Accordion({
                 focusedItemId,
                 setFocusedItem: handleSetFocusedItem,
                 isActive,
+                disableAnimation,
             }}
         >
             <div ref={containerRef} data-accordion-root="" className={`${className}`}>
@@ -215,6 +220,7 @@ export function AccordionItem({
     const context = useAccordionContext();
     const { openItems, toggleItem, focusedItemId, setFocusedItem } = context;
     const isActive = context.isActive ?? true;
+    const disableAnimation = context.disableAnimation;
     const isOpen = openItems.has(id);
     const isFocused = focusedItemId === id;
     const contentRef = useRef<HTMLDivElement>(null);
@@ -248,6 +254,11 @@ export function AccordionItem({
         const wasOpen = wasOpenRef.current;
         wasOpenRef.current = isOpen;
 
+        if (disableAnimation) {
+            setContentHeight(isOpen ? "auto" : 0);
+            return;
+        }
+
         if (isOpen) {
             if (!wasOpen) {
                 setContentHeight(0);
@@ -256,7 +267,7 @@ export function AccordionItem({
                 });
                 return () => cancelAnimationFrame(frame);
             }
-            if (!isHeightAuto) {
+            if (!isHeightAutoRef.current) {
                 setContentHeight(el.scrollHeight);
             }
             return;
@@ -270,7 +281,7 @@ export function AccordionItem({
             return () => cancelAnimationFrame(frame);
         }
         setContentHeight(0);
-    }, [children, isHeightAuto, isOpen]);
+    }, [children, disableAnimation, isOpen]);
 
     // Auto-update height when descendants resize (e.g., nested accordions toggled)
     useEffect(() => {
@@ -340,7 +351,7 @@ export function AccordionItem({
                     >
                         {/* Expand/collapse icon */}
                         <ChevronRight
-                            className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'transform rotate-90' : ''
+                            className={`w-4 h-4 flex-shrink-0 text-gray-400 ${disableAnimation ? '' : 'transition-transform duration-200'} ${isOpen ? 'transform rotate-90' : ''
                                 }`}
                         />
 
@@ -370,7 +381,7 @@ export function AccordionItem({
                     style={{
                         height: contentHeight === "auto" ? "auto" : `${contentHeight}px`,
                         overflow: isOpen && isHeightAuto ? 'visible' : 'hidden',
-                        transition: 'height 200ms ease-out',
+                        transition: disableAnimation ? 'none' : 'height 200ms ease-out',
                     }}
                 >
                     <div ref={contentRef} className={contentClassName}>
@@ -394,15 +405,18 @@ export interface NestedAccordionProps extends AccordionProps {
 export function NestedAccordion({
     parentLevel = 0,
     isActive: providedIsActive,
+    disableAnimation: providedDisableAnimation,
     ...props
 }: NestedAccordionProps) {
     const parentContext = useContext(AccordionContext);
     const isActive = parentContext?.isActive ?? providedIsActive ?? true;
+    const disableAnimation = providedDisableAnimation ?? parentContext?.disableAnimation ?? false;
 
     return (
         <Accordion
             {...props}
             isActive={isActive}
+            disableAnimation={disableAnimation}
         />
     );
 }

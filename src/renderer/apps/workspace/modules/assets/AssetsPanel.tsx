@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState, useRef, useEffect, ComponentType } from "react";
+import { useMemo, useCallback, useState, useRef, useEffect, useLayoutEffect, ComponentType } from "react";
 import { flushSync } from "react-dom";
 import { LayoutGrid, LayoutList, RefreshCw, AlertCircle, Copy, Scissors, Clipboard, Trash, Search, X, ChevronLeft } from "lucide-react";
 import { useWorkspace } from "../../context";
@@ -58,6 +58,53 @@ interface AssetsPanelPayload {
 interface AssetsPanelState {
     viewMode?: AssetViewMode;
     iconSize?: number;
+    assetTypeOpenItems?: string[];
+    expandedGroupIds?: string[];
+    iconGroupPathIds?: string[];
+}
+
+const DEFAULT_ASSET_TYPE_OPEN_ITEMS = [AssetType.Image];
+const ASSET_TYPE_IDS = new Set<string>(Object.values(AssetType));
+
+function filterKnownAssetTypeIds(ids: string[] | undefined): string[] {
+    if (!Array.isArray(ids)) {
+        return DEFAULT_ASSET_TYPE_OPEN_ITEMS;
+    }
+    return ids.filter(id => ASSET_TYPE_IDS.has(id));
+}
+
+function sanitizeStringIds(ids: string[] | undefined): string[] {
+    if (!Array.isArray(ids)) {
+        return [];
+    }
+    return ids.filter(id => typeof id === "string" && id.length > 0);
+}
+
+function resolveAssetGroupPathIds(pathIds: string[], groups: Record<AssetType, AssetGroup[]>): string[] {
+    const groupById = new Map<string, AssetGroup>();
+    Object.values(groups).flat().forEach(group => groupById.set(group.id, group));
+
+    const resolved: string[] = [];
+    let expectedParentId: string | undefined;
+    let expectedType: AssetType | undefined;
+
+    for (const id of pathIds) {
+        const group = groupById.get(id);
+        if (!group) {
+            break;
+        }
+        if ((group.parentGroupId ?? undefined) !== expectedParentId) {
+            break;
+        }
+        if (expectedType && group.type !== expectedType) {
+            break;
+        }
+        expectedType = group.type;
+        expectedParentId = group.id;
+        resolved.push(group.id);
+    }
+
+    return resolved;
 }
 
 export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPanelPayload>) {
@@ -87,7 +134,10 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const showHeader = payload?.showHeader ?? true;
     const [viewMode, setViewMode] = useState<AssetViewMode>(defaultViewMode);
     const [iconSize, setIconSize] = useState<number>(defaultIconSize);
+    const [assetTypeOpenItems, setAssetTypeOpenItems] = useState<string[]>(DEFAULT_ASSET_TYPE_OPEN_ITEMS);
+    const [iconGroupPathIds, setIconGroupPathIds] = useState<string[]>([]);
     const [stateReady, setStateReady] = useState(false);
+    const [disableAccordionAnimation, setDisableAccordionAnimation] = useState(true);
     const [hasPersistedViewMode, setHasPersistedViewMode] = useState(false);
     const [hasPersistedIconSize, setHasPersistedIconSize] = useState(false);
 
@@ -103,11 +153,15 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         }
     }, [defaultIconSize, hasPersistedIconSize]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!context) return;
         setStateReady(false);
+        setDisableAccordionAnimation(true);
         setHasPersistedViewMode(false);
         setHasPersistedIconSize(false);
+        setAssetTypeOpenItems(DEFAULT_ASSET_TYPE_OPEN_ITEMS);
+        setExpandedGroups(new Set());
+        setIconGroupPathIds([]);
 
         const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
         const saved = panelStateService.getPanelState<AssetsPanelState>(panelId);
@@ -119,16 +173,33 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             setIconSize(saved.iconSize);
             setHasPersistedIconSize(true);
         }
+        setAssetTypeOpenItems(filterKnownAssetTypeIds(saved?.assetTypeOpenItems));
+        if (Array.isArray(saved?.expandedGroupIds)) {
+            setExpandedGroups(new Set(sanitizeStringIds(saved.expandedGroupIds)));
+        }
+        setIconGroupPathIds(sanitizeStringIds(saved?.iconGroupPathIds));
         setStateReady(true);
     }, [context, panelId]);
 
     useEffect(() => {
         if (!context || !stateReady) return;
         const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
-        panelStateService.setPanelState<AssetsPanelState>(panelId, { viewMode, iconSize });
-    }, [context, panelId, viewMode, iconSize, stateReady]);
+        panelStateService.setPanelState<AssetsPanelState>(panelId, {
+            viewMode,
+            iconSize,
+            assetTypeOpenItems: filterKnownAssetTypeIds(assetTypeOpenItems),
+            expandedGroupIds: Array.from(expandedGroups),
+            iconGroupPathIds,
+        });
+    }, [assetTypeOpenItems, context, expandedGroups, iconGroupPathIds, iconSize, panelId, stateReady, viewMode]);
 
-    const { assets, groups, loading, error, loadAssets } = useAssetData({ context, isInitialized });
+    useEffect(() => {
+        if (!stateReady) return;
+        const frame = requestAnimationFrame(() => setDisableAccordionAnimation(false));
+        return () => cancelAnimationFrame(frame);
+    }, [stateReady, panelId]);
+
+    const { assets, groups, loading, hasLoaded, error, loadAssets } = useAssetData({ context, isInitialized });
 
     const { focusedItemId, setFocusedItemId, handleAssetClick, handleGroupFocus, setFocusToPanel } = useAssetFocus({ context, panelId, focusArea });
     
@@ -145,6 +216,19 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const { searchQuery, searchResults, isSearchResultsVisible, setSearchQuery, setSearchResultsVisible } = useAssetSearch({ assets, groups });
 
     const { filterConfigs, activeFilters, setActiveFilters, handleFilterOpen, filteredAssets, filteredGroups } = useAssetFilters({ assets, groups });
+
+    useEffect(() => {
+        if (!hasLoaded) return;
+        const knownGroupIds = new Set(Object.values(groups).flat().map(group => group.id));
+        setExpandedGroups(prev => {
+            const next = new Set(Array.from(prev).filter(id => knownGroupIds.has(id)));
+            return next.size === prev.size ? prev : next;
+        });
+        setIconGroupPathIds(prev => {
+            const next = resolveAssetGroupPathIds(prev, groups);
+            return next.length === prev.length ? prev : next;
+        });
+    }, [groups, hasLoaded]);
     
     const onActionComplete = useCallback(() => {
         loadAssets();
@@ -365,7 +449,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         }
     }, [showHeader]);
 
-    if (loading && Object.values(assets).every(arr => arr.length === 0)) {
+    if (loading && !hasLoaded && Object.values(assets).every(arr => arr.length === 0)) {
         return <div className="p-4 flex items-center gap-2 text-gray-400"><RefreshCw className="w-4 h-4 animate-spin" /> <span>Loading assets...</span></div>;
     }
 
@@ -512,6 +596,9 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             handleCreateGroup={handleCreateGroup}
                             actionLoading={actionLoading}
                             setDropTargetId={setDropTargetId}
+                            openItems={assetTypeOpenItems}
+                            onOpenChange={(next) => setAssetTypeOpenItems(filterKnownAssetTypeIds(next))}
+                            disableAnimation={disableAccordionAnimation}
                         />
                     ) : (
                         <AssetsIconView
@@ -524,6 +611,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                             handleCreateGroup={handleCreateGroup}
                             iconSize={iconSize}
                             onIconSizeChange={setIconSize}
+                            groupPathIds={iconGroupPathIds}
+                            onGroupPathChange={(next) => setIconGroupPathIds(resolveAssetGroupPathIds(next, groups))}
                         />
                     )}
                 </div>

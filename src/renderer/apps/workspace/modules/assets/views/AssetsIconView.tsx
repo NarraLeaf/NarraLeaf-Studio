@@ -19,6 +19,8 @@ interface AssetsIconViewProps {
     handleCreateGroup: (type: AssetType) => void;
     iconSize: number;
     onIconSizeChange: (nextSize: number) => void;
+    groupPathIds: string[];
+    onGroupPathChange: (nextPathIds: string[]) => void;
 }
 
 export function AssetsIconView({
@@ -31,8 +33,11 @@ export function AssetsIconView({
     handleCreateGroup,
     iconSize,
     onIconSizeChange,
+    groupPathIds,
+    onGroupPathChange,
 }: AssetsIconViewProps) {
     const {
+        groups,
         filteredAssets,
         filteredGroups,
         draggedItem,
@@ -41,7 +46,18 @@ export function AssetsIconView({
         setAssetsIconToolbarCenter,
     } = useAssetsPanelContext();
     const { context } = useWorkspace();
-    const [groupStack, setGroupStack] = useState<Array<{ group: AssetGroup; type: AssetType }>>([]);
+    const groupStack = useMemo(() => {
+        const groupById = new Map<string, AssetGroup>();
+        Object.values(groups).flat().forEach(group => groupById.set(group.id, group));
+        const stack: Array<{ group: AssetGroup; type: AssetType }> = [];
+        groupPathIds.forEach(groupId => {
+            const group = groupById.get(groupId);
+            if (group) {
+                stack.push({ group, type: group.type });
+            }
+        });
+        return stack;
+    }, [groups, groupPathIds]);
     const activeGroup = groupStack.length > 0 ? groupStack[groupStack.length - 1] : null;
     const parentPredicate = useCallback(
         (parentId?: string) => (activeGroup ? parentId === activeGroup.group.id : !parentId),
@@ -104,12 +120,12 @@ export function AssetsIconView({
     }, []);
 
     const handleEnterGroup = useCallback((group: AssetGroup, type: AssetType) => {
-        setGroupStack((prev) => [...prev, { group, type }]);
-    }, []);
+        onGroupPathChange([...groupPathIds, group.id]);
+    }, [groupPathIds, onGroupPathChange]);
 
     const handleBack = useCallback(() => {
-        setGroupStack((prev) => prev.slice(0, -1));
-    }, []);
+        onGroupPathChange(groupPathIds.slice(0, -1));
+    }, [groupPathIds, onGroupPathChange]);
 
     useLayoutEffect(() => {
         if (!compactToolbar) {

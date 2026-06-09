@@ -25,15 +25,45 @@ const createEmptyGroups = (): Record<AssetType, AssetGroup[]> => ({
     [AssetType.Other]: [],
 });
 
+interface AssetDataSnapshot {
+    assets: Record<AssetType, Asset[]>;
+    groups: Record<AssetType, AssetGroup[]>;
+}
+
+const assetDataCache = new Map<string, AssetDataSnapshot>();
+
+function getCacheKey(context: WorkspaceContext | null): string | null {
+    return context?.project.getConfig().projectPath ?? null;
+}
+
+function cloneAssets(assets: Record<AssetType, Asset[]>): Record<AssetType, Asset[]> {
+    const next = createEmptyAssets();
+    for (const type of Object.values(AssetType)) {
+        next[type] = [...(assets[type] ?? [])];
+    }
+    return next;
+}
+
+function cloneGroups(groups: Record<AssetType, AssetGroup[]>): Record<AssetType, AssetGroup[]> {
+    const next = createEmptyGroups();
+    for (const type of Object.values(AssetType)) {
+        next[type] = [...(groups[type] ?? [])];
+    }
+    return next;
+}
+
 export interface UseAssetDataParams {
     context: WorkspaceContext | null;
     isInitialized: boolean;
 }
 
 export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
-    const [assets, setAssets] = useState<Record<AssetType, Asset[]>>(createEmptyAssets);
-    const [groups, setGroups] = useState<Record<AssetType, AssetGroup[]>>(createEmptyGroups);
+    const cacheKey = getCacheKey(context);
+    const cachedSnapshot = cacheKey ? assetDataCache.get(cacheKey) : undefined;
+    const [assets, setAssets] = useState<Record<AssetType, Asset[]>>(() => cachedSnapshot ? cloneAssets(cachedSnapshot.assets) : createEmptyAssets());
+    const [groups, setGroups] = useState<Record<AssetType, AssetGroup[]>>(() => cachedSnapshot ? cloneGroups(cachedSnapshot.groups) : createEmptyGroups());
     const [loading, setLoading] = useState(false);
+    const [hasLoaded, setHasLoaded] = useState(Boolean(cachedSnapshot));
     const [error, setError] = useState<string | null>(null);
 
     const loadAssets = useCallback(async () => {
@@ -58,6 +88,14 @@ export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
 
             setAssets(newAssets);
             setGroups(newGroups);
+            setHasLoaded(true);
+            const nextCacheKey = getCacheKey(context);
+            if (nextCacheKey) {
+                assetDataCache.set(nextCacheKey, {
+                    assets: cloneAssets(newAssets),
+                    groups: cloneGroups(newGroups),
+                });
+            }
         } catch (err) {
             console.error("Failed to load assets:", err);
             setError(err instanceof Error ? err.message : String(err));
@@ -65,6 +103,27 @@ export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
             setLoading(false);
         }
     }, [context]);
+
+    useEffect(() => {
+        if (!cacheKey) {
+            setAssets(createEmptyAssets());
+            setGroups(createEmptyGroups());
+            setHasLoaded(false);
+            return;
+        }
+
+        const snapshot = assetDataCache.get(cacheKey);
+        if (!snapshot) {
+            setAssets(createEmptyAssets());
+            setGroups(createEmptyGroups());
+            setHasLoaded(false);
+            return;
+        }
+
+        setAssets(cloneAssets(snapshot.assets));
+        setGroups(cloneGroups(snapshot.groups));
+        setHasLoaded(true);
+    }, [cacheKey]);
 
     useEffect(() => {
         if (isInitialized) {
@@ -96,5 +155,5 @@ export function useAssetData({ context, isInitialized }: UseAssetDataParams) {
         };
     }, [context, isInitialized, loadAssets]);
 
-    return { assets, groups, loading, error, loadAssets };
+    return { assets, groups, loading, hasLoaded, error, loadAssets };
 }

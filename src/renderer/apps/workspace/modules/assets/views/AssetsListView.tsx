@@ -14,6 +14,9 @@ interface AssetsListViewProps {
     handleCreateGroup: (type: AssetType) => void;
     actionLoading: boolean;
     setDropTargetId: Dispatch<SetStateAction<string | null>>;
+    openItems: string[];
+    onOpenChange: (openItems: string[]) => void;
+    disableAnimation: boolean;
 }
 
 export function AssetsListView({
@@ -24,13 +27,16 @@ export function AssetsListView({
     handleCreateGroup,
     actionLoading,
     setDropTargetId,
+    openItems,
+    onOpenChange,
+    disableAnimation,
 }: AssetsListViewProps) {
     const { filteredAssets, filteredGroups, draggedItem } = useAssetsPanelContext();
 
     const hasAnyItems = useMemo(() => Object.values(filteredAssets).some(list => list.length > 0) || Object.values(filteredGroups).some(list => list.length > 0), [filteredAssets, filteredGroups]);
 
     return (
-        <Accordion defaultOpen={[AssetType.Image]} multiple>
+        <Accordion openItems={openItems} onOpenChange={onOpenChange} multiple disableAnimation={disableAnimation}>
             {Object.values(AssetType).map((type) => {
                 const TypeIcon = ASSET_TYPE_ICONS[type];
                 const typeAssets = filteredAssets[type];

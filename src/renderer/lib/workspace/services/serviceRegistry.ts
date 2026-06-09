@@ -13,6 +13,7 @@ import { PanelStateService } from "./core/PanelStateService";
 import { UIDocumentService } from "./ui-editor/UIDocumentService";
 import { UIRuntimeBridgeService } from "./ui-editor/UIRuntimeBridgeService";
 import { UIEditorStateService } from "./ui-editor/UIEditorStateService";
+import { UIEditorHistoryService } from "./ui-editor/UIEditorHistoryService";
 import { UIGraphService } from "./ui-editor/UIGraphService";
 import { LocalBlueprintService } from "./ui-editor/LocalBlueprintService";
 import { UIBlueprintLifecycleCoordinator } from "./ui-editor/UIBlueprintLifecycleCoordinator";
@@ -37,6 +38,7 @@ export class ServiceRegistry {
         [Services.UIDocument]: UIDocumentService.getInstance(),
         [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),
         [Services.UIEditorState]: UIEditorStateService.getInstance(),
+        [Services.UIEditorHistory]: UIEditorHistoryService.getInstance(),
         [Services.UIGraph]: UIGraphService.getInstance(),
         [Services.LocalBlueprint]: LocalBlueprintService.getInstance(),
         [Services.UIBlueprintLifecycle]: UIBlueprintLifecycleCoordinator.getInstance(),

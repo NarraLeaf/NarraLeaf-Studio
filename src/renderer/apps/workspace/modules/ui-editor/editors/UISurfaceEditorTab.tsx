@@ -13,7 +13,9 @@ import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/e
 import { useWorkspace } from "@/apps/workspace/context";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { Services } from "@/lib/workspace/services/services";
+import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
+import { UIEditorHistoryService } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { flushUIDocAndGraphIfDirty } from "@/apps/workspace/modules/actions/flushDevModeAssets";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
@@ -43,6 +45,10 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const { context, workspace } = useWorkspace();
     const localBlueprint = useMemo(
         () => context?.services.get<LocalBlueprintService>(Services.LocalBlueprint) ?? null,
+        [context],
+    );
+    const historyService = useMemo(
+        () => context?.services.get<UIEditorHistoryService>(Services.UIEditorHistory) ?? null,
         [context],
     );
     const inputDialog = useMemo(() => (uiService ? createInputDialog(uiService) : null), [uiService]);
@@ -91,6 +97,9 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
 
     const canvasRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
+    const focusSurfaceEditor = useCallback(() => {
+        uiService?.focus.setFocus(FocusArea.Editor, tabId);
+    }, [tabId, uiService]);
 
     const { createElementAtClientPoint, surfaceImageDropTargetProps, surfaceImageDropOverlayClass } =
         useSurfaceImageDrop({
@@ -146,6 +155,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         onCloseContextMenu: hideMenu,
         documentService,
         localBlueprint,
+        historyService,
         stateService,
         requestRenamePrimary,
     });
@@ -243,7 +253,12 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     return (
         <div className="h-full flex overflow-hidden border border-white/10">
             <WidgetRuntimeStateProvider key={surface.id}>
-                <div className="relative flex-1 bg-[#050f10]" onContextMenu={handleCanvasContextMenu}>
+                <div
+                    className="relative flex-1 bg-[#050f10]"
+                    onContextMenu={handleCanvasContextMenu}
+                    onMouseDownCapture={focusSurfaceEditor}
+                    onFocusCapture={focusSurfaceEditor}
+                >
                     <SurfaceOutlinePanel
                         surfaceId={surface.id}
                         stateService={stateService}

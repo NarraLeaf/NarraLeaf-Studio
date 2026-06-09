@@ -369,19 +369,26 @@ export function useMoveableHandlers({
         });
         if (Object.keys(patches).length > 0 || Object.keys(imageFlipPatches).length > 0) {
             startTransition(() => {
-                if (Object.keys(patches).length > 0) {
-                    documentService.updateElementLayouts(patches);
+                const applyUpdates = () => {
+                    if (Object.keys(patches).length > 0) {
+                        documentService.updateElementLayouts(patches);
+                    }
+                    Object.entries(imageFlipPatches).forEach(([elementId, propsPatch]) => {
+                        documentService.updateElementProps(elementId, propsPatch);
+                    });
+                };
+                if (smartSnap?.surfaceId) {
+                    documentService.runSurfaceHistoryTransaction(smartSnap.surfaceId, applyUpdates);
+                } else {
+                    applyUpdates();
                 }
-                Object.entries(imageFlipPatches).forEach(([elementId, propsPatch]) => {
-                    documentService.updateElementProps(elementId, propsPatch);
-                });
             });
         }
         clearPerformanceHints();
         clearSmartSnapGuides();
         scheduleMoveableRectUpdate();
         endTransform();
-    }, [clearPerformanceHints, clearSmartSnapGuides, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform]);
+    }, [clearPerformanceHints, clearSmartSnapGuides, documentService, selectedTargets, scheduleMoveableRectUpdate, endTransform, smartSnap]);
 
     const finalizeRotate = useCallback(() => {
         const patches: Record<string, Partial<UILayout>> = {};

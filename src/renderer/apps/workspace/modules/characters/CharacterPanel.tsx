@@ -11,6 +11,7 @@ import { CharacterGroup } from "@/lib/workspace/services/character/types";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
+import { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import { Services } from "@/lib/workspace/services/services";
 import { FolderPlus, MoreVertical, RefreshCw, Tag, User, UserPlus, Users } from "lucide-react";
 import { useCharacterFocus } from "./state/useCharacterFocus";
@@ -30,6 +31,10 @@ type CharacterItem = {
     source: Character;
 };
 
+interface CharacterPanelState {
+    groupOpenItems?: string[];
+}
+
 export function CharacterPanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const { focusedCharacterId, handleCharacterClick, setFocusToPanel } = useCharacterFocus({ context, panelId });
@@ -44,6 +49,10 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
     const [loading, setLoading] = useState(true);
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const [menuState, setMenuState] = useState({ visible: false, position: { x: 0, y: 0 } });
+    const [groupOpenItems, setGroupOpenItems] = useState<string[]>([]);
+    const [stateReady, setStateReady] = useState(false);
+    const [groupOpenItemsInitialized, setGroupOpenItemsInitialized] = useState(false);
+    const [disableAccordionAnimation, setDisableAccordionAnimation] = useState(true);
 
     const inputDialog = useMemo(() => {
         if (!context) return null;
@@ -217,6 +226,54 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         })),
         [groups, filteredCharacters]
     );
+
+    const defaultGroupOpenItems = useMemo(
+        () => groupedCharacters.filter(item => item.members.length > 0).map(item => item.group.id),
+        [groupedCharacters]
+    );
+
+    useEffect(() => {
+        if (!context) return;
+        setStateReady(false);
+        setDisableAccordionAnimation(true);
+        setGroupOpenItems([]);
+        setGroupOpenItemsInitialized(false);
+
+        const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
+        const saved = panelStateService.getPanelState<CharacterPanelState>(panelId);
+        if (Array.isArray(saved?.groupOpenItems)) {
+            setGroupOpenItems(saved.groupOpenItems.filter(id => typeof id === "string" && id.length > 0));
+            setGroupOpenItemsInitialized(true);
+        }
+        setStateReady(true);
+    }, [context, panelId]);
+
+    useEffect(() => {
+        if (!stateReady || loading || groupOpenItemsInitialized) return;
+        setGroupOpenItems(defaultGroupOpenItems);
+        setGroupOpenItemsInitialized(true);
+    }, [defaultGroupOpenItems, groupOpenItemsInitialized, loading, stateReady]);
+
+    useEffect(() => {
+        if (!stateReady || loading || !groupOpenItemsInitialized) return;
+        const knownGroupIds = new Set(groups.map(group => group.id));
+        setGroupOpenItems(prev => {
+            const next = prev.filter(id => knownGroupIds.has(id));
+            return next.length === prev.length ? prev : next;
+        });
+    }, [groups, groupOpenItemsInitialized, loading, stateReady]);
+
+    useEffect(() => {
+        if (!context || !stateReady || !groupOpenItemsInitialized) return;
+        const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
+        panelStateService.setPanelState<CharacterPanelState>(panelId, { groupOpenItems });
+    }, [context, groupOpenItems, groupOpenItemsInitialized, panelId, stateReady]);
+
+    useEffect(() => {
+        if (!stateReady || !groupOpenItemsInitialized || loading) return;
+        const frame = requestAnimationFrame(() => setDisableAccordionAnimation(false));
+        return () => cancelAnimationFrame(frame);
+    }, [groupOpenItemsInitialized, loading, panelId, stateReady]);
 
     const closeMenu = useCallback(() => {
         setMenuState(prev => ({ ...prev, visible: false }));
@@ -525,7 +582,12 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
                         )}
 
                         {groupedCharacters.length > 0 && (
-                            <Accordion defaultOpen={groupedCharacters.filter(item => item.members.length > 0).map(item => item.group.id)} multiple>
+                            <Accordion
+                                openItems={groupOpenItems}
+                                onOpenChange={setGroupOpenItems}
+                                multiple
+                                disableAnimation={disableAccordionAnimation}
+                            >
                                 {groupedCharacters.map(({ group, members }) => (
                                     <div key={group.id}>
                                         <AccordionItem

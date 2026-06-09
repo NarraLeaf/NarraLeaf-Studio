@@ -1,70 +1,249 @@
-# 添加与使用设置指南
+# NarraLeaf Studio 设置项添加指南
 
-本文档介绍如何在 NarraLeaf Studio 中添加新的设置项，以及如何在界面中展示和保存这些设置。核心思路是：通过统一的设置注册层定义结构、通过 `SettingsExplorer` 等通用 UI 渲染，并利用 `app.state`、`SettingsService` 等不同作用域完成持久化。
+本文档面向负责改动设置系统的 agent。目标是避免设置窗口出现“能保存但不会改变任何行为”的占位项。
 
-## 一、设置系统概览
+## 基本原则
 
-1. **设置模型**  
-   - `src/renderer/lib/settings/models.ts` 定义了 `SettingScope`（全局/项目/运行时）、`SettingDescriptor` 和 `SettingCategory` 等基础类型。新设置必须提供 `id`、`type`、`label`、`description`、`defaultValue`，枚举类型还需要 `options`。
-2. **设置定义与分类**  
-   - `src/renderer/lib/settings/appSettings.ts` 中以数组方式按模块（general/appearance/editor/workspace/sync/advanced）列出全局设置定义，每条 `AppSettingDefinition` 都有 `category` 表示所属的栏目，用于左侧导航。
-3. **注册中心**  
-   - `src/renderer/lib/settings/registry.ts` 提供 `getAppSettingCategories`、`getSettingsByCategory` 等接口。UI 接口通过这些方法获取分组顺序，提高可复用性并降低硬编码。
-4. **共享 UI**  
-   - `SettingsExplorer`（`src/renderer/apps/settings/components/SettingsExplorer.tsx`）封装了搜索、过滤、控制渲染、输入流控制与提交逻辑，支持 `Switch/Select/Input` 控件，并支持任意来源的设置数据。
-5. **界面入口**  
-   - `SettingsApp` 现在使用左侧分类导航 + `SettingsExplorer`，通过 `app.state`（全局）加载和保存值。
-   - `SettingsPanel`（工作区内侧边栏）同样复用 `SettingsExplorer`，但使用 `SettingsService` 提供的运行时 schema 和保存逻辑，保持界面一致性。
+1. 只有真实落地的设置才能出现在设置 UI 中。
+2. “真实落地”表示生产代码会读取该设置值，并把它应用到用户可观察的行为、渲染、服务逻辑或工作流中。
+3. 只写入持久化存储、只能在 UI 中切换、只在类型里声明，都不算真实落地。
+4. 新设置必须和它的消费代码在同一个改动中提交，除非任务明确要求先做底层能力且不暴露 UI。
 
-## 二、新增设置流程（以添加“自动保存频率”举例）
+## 当前设置入口
 
-1. **在 schema 中定义**  
-   - 打开 `src/renderer/lib/settings/appSettings.ts`，在相应模块的 `AppSettings` 数组追加如下对象：
-     ```ts
-     {
-         key: "workspace.autoSaveFrequency",
-         category: "workspace",
-         scope: SettingScope.Global,
-         type: RuntimeSettingType.Integer,
-         label: "自动保存频率",
-         description: "以分钟为单位指定自动保存的间隔。",
-         defaultValue: 5,
-     }
-     ```
-   - 确保 `key` 在 `shared/types/state/globalState.ts` 的结构（如 `workspace.autoSaveFrequency`）和默认值中也有对应项，否则保存/读取时无法进行类型检查。
-2. **更新 global state**  
-   - 在 `shared/types/state/globalState.ts` 的 `GlobalStateStructure` 中将对应字段加入（如新增 `workspace` 中的 `autoSaveFrequency: number`），并在 `GLOBAL_STATE_DEFAULTS` 中填入默认值。
-3. **控制器无需修改**  
-   - 因为 UI 通过 `registry` 动态拿到所有 `AppSettingDefinition`，只要 `key`/`category`/`type` 定义完成，新的设置会出现在 `SettingsApp` 中相应分类。`SettingsExplorer` 自动渲染控制并调用保存回调。
-4. **如果需要运行时设置**  
-   - 新设置属于运行时（如项目作用域），应在 `src/renderer/lib/workspace/services/settings/settings.ts` 的 `RuntimeSettings` 中增加对应 category/setting，并通过 `SettingsService` 的 schema 注册后，工作区 `SettingsPanel` 会自动显示。
+应用级设置：
 
-## 三、设置值的读取与写入
+- 定义文件：`src/renderer/lib/settings/appSettings.ts`
+- 注册读取：`src/renderer/lib/settings/registry.ts`
+- UI 入口：`src/renderer/apps/settings/SettingsApp.tsx`
+- 共享渲染：`src/renderer/apps/settings/components/SettingsExplorer.tsx`
+- 存储类型：`src/shared/types/state/globalState.ts`
+- 存储 API：`getInterface().app.state.getGlobalState` / `setGlobalState`
 
-1. **全局设置（应用级）**  
-   - 读取：`getInterface().app.state.getGlobalState("xxx")`；  
-   - 保存：`getInterface().app.state.setGlobalState("xxx", value)`。  
-   - `SettingsApp` 中统一封装在 `commitSetting`，确保保存后更新本地 `values` 缓存，页面再次渲染时能体现场景。
-2. **运行时设置（项目级）**  
-   - 通过 `SettingsService` 获取 `getSettings`、`getValue`，使用 `setValue` 写入，同时 `SettingsExplorer` 会收到 `pending` 状态反馈。
-3. **项目设置（如 `.nlstudio/editor`）**  
-   - 若需要更复杂的项目设置，可以复用 `ProjectSettingsService`，或者在 UI 中用新的 `Registry` 替换数据源。界面依旧可使用 `SettingsExplorer`，只需实现 `describeSetting`/`getValue`/`onCommit` 三个函数即可。
+工作区运行时设置：
 
-## 四、扩展建议与最佳实践
+- 定义文件：`src/renderer/lib/workspace/services/settings/settings.ts`
+- 服务：`src/renderer/lib/workspace/services/core/SettingsService.ts`
+- UI 入口：`src/renderer/apps/workspace/modules/settings/SettingsPanel.tsx`
+- 存储位置：workspace service assets store，namespace 为 `runtime_settings`
 
-- **保持分类清晰**：`SettingCategory` 的 `order` 决定导航顺序，优先级高的项顺序靠前。
-- **使用 `SettingDescriptor.options` 提供枚举选项，而非在 UI 中硬编码字符串**。
-- **保持 `GlobalStateStructure` 与 `AppSettings` 同步**：添加字段后务必在 `globalState.ts` 的结构与默认值里更新，并执行 `yarn lint` 确保类型通过。
-- **重用 `SettingsExplorer`**：无论是弹窗、侧边栏，还是未来的设置页面，只需提供三个函数即可快速接入新的设置集合。
-- **提示与验证**：如需输入验证可在 `SettingsExplorer` 内扩展 `parseSettingInput` 或在保存前手动校验后再调用 `onCommit`。
+项目编辑器设置：
 
-## 五、示例：从代码角度快速查找
+- 服务：`src/renderer/lib/workspace/services/ProjectSettingsService.ts`
+- 常见用途：编辑器布局、面板状态、UI editor viewport、打开的 tab session 等项目级偏好。
+- 这类设置通常不需要进入 `SettingsExplorer`，除非用户确实需要手动配置。
 
-- 查看所有设置定义：`src/renderer/lib/settings/appSettings.ts`  
-- 查看类别排序与查找 API：`src/renderer/lib/settings/registry.ts`  
-- 查看 UI 渲染与输入控制：`src/renderer/apps/settings/components/SettingsExplorer.tsx`  
-- 查看全局设置入口：`src/renderer/apps/settings/SettingsApp.tsx`  
-- 查看运行时设置 schema：`src/renderer/lib/workspace/services/settings/settings.ts`  
-- 查看 global state 类型/默认值：`src/shared/types/state/globalState.ts`
+## 添加设置前的判断
 
-通过以上路径即可完整掌握新设置添加/展示/持久化的全流程。
+先回答这几个问题：
+
+1. 这个设置改变什么真实行为？
+2. 哪段生产代码会读取它？
+3. 默认值应该在哪里生效？
+4. 作用域是什么：全局应用、当前 workspace runtime，还是项目级编辑器状态？
+5. 用户修改后是否需要立即生效，还是下次加载生效？
+6. 是否需要迁移旧值、清理旧 key，或兼容缺失值？
+
+如果第 1 和第 2 个问题没有明确答案，不要添加设置 UI。
+
+## 应用级设置添加流程
+
+应用级设置适合跨项目生效的用户偏好，例如应用外观、全局快捷行为、全局编辑器偏好。不要把项目内容、workspace 状态或调试开关塞进应用级设置。
+
+1. 在 `src/shared/types/state/globalState.ts` 增加类型字段和默认值。
+
+示例：
+
+```ts
+export interface GlobalStateStructure {
+    app: {
+        recentProjects: RecentlyOpenedProject[];
+    };
+    editor: {
+        confirmBeforeBulkDelete: boolean;
+    };
+}
+
+export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
+    "app.recentProjects": [],
+    "editor.confirmBeforeBulkDelete": true,
+};
+```
+
+2. 在真实消费代码中读取该设置。
+
+示例：
+
+```ts
+const result = await getInterface().app.state.getGlobalState("editor.confirmBeforeBulkDelete");
+const shouldConfirm = result.success ? result.data.value : true;
+```
+
+如果消费点在 main process，使用 `GlobalStateManager` 或已有 manager 注入方式读取，不要从 renderer 绕 IPC 反向取值。
+
+3. 在 `src/renderer/lib/settings/appSettings.ts` 注册 UI 定义。
+
+示例：
+
+```ts
+{
+    key: "editor.confirmBeforeBulkDelete",
+    category: "editor",
+    scope: SettingScope.Global,
+    type: RuntimeSettingType.Boolean,
+    label: "Confirm before bulk delete",
+    description: "Ask for confirmation before deleting multiple editor items.",
+    defaultValue: true,
+}
+```
+
+4. 确认 `AppSettingCategories` 已有合适分类。
+
+如果需要新分类，同时更新：
+
+- `src/renderer/lib/settings/appSettings.ts`
+- `src/renderer/lib/settings/models.ts` 中的 `AppSettingCategoryKey`
+
+5. 验证设置 UI 和消费行为。
+
+必须验证：
+
+- 设置出现在 `SettingsApp` 的正确分类中。
+- 修改设置后，实际功能立即或按设计时机使用新值。
+- 重启应用或重新打开窗口后，持久化值仍生效。
+
+## 工作区运行时设置添加流程
+
+运行时设置适合当前 workspace 内的服务行为，例如项目安全策略、预览行为、资源加载策略。它们通过 `SettingsService` 管理。
+
+1. 在 `src/renderer/lib/workspace/services/settings/settings.ts` 添加 schema。
+
+示例：
+
+```ts
+{
+    type: RuntimeSettingType.Boolean,
+    name: "security.allowRemoteResource",
+    label: "Allow remote resources",
+    description: "Allow workspace assets to load remote resources.",
+    defaultValue: false,
+}
+```
+
+2. 在真实服务中读取设置值。
+
+示例：
+
+```ts
+const settings = ctx.services.get<SettingsService>(Services.Settings);
+const allowRemote = settings.getValue<RuntimeSettingType.Boolean>("security.allowRemoteResource") ?? false;
+```
+
+3. 如果这个设置控制安全、网络、文件写入或脚本执行，默认值必须保守。
+
+4. 如果要新增分类，更新 `RSCategories` 和 `RuntimeSettings`。
+
+5. 确认 workspace 设置面板只显示有设置项的分类。
+
+## 项目级编辑器设置添加流程
+
+项目级编辑器设置适合“跟项目走”的编辑状态，例如 sidebar 宽度、editor tab session、UI editor viewport。
+
+优先使用 `ProjectSettingsService`：
+
+```ts
+const settingsService = context.services.get<ProjectSettingsService>(Services.ProjectSettings);
+await settingsService.set("uiEditor.viewport", viewport);
+const restored = await settingsService.get("uiEditor.viewport");
+```
+
+要求：
+
+- key 必须有清晰命名空间，例如 `uiEditor.viewport`、`workspace.editorSession`。
+- 读取失败或值缺失时必须有本地默认值。
+- 保存频率高的设置需要 debounce 或只在稳定时写入。
+- 不要默认暴露在设置窗口中；只有用户需要手动控制时才接入 `SettingsExplorer`。
+
+## 枚举、数字和校验
+
+枚举设置：
+
+- `options` 只能包含真实支持的值。
+- UI 文案不能承诺尚未实现的模式。
+- 消费代码必须处理未知旧值，并回退到默认值。
+
+数字设置：
+
+- 必须明确单位，例如 px、ms、minutes。
+- 必须设置合理边界。应用级设置可在提交前校验；运行时设置可使用 schema 的 `validation`。
+
+示例：
+
+```ts
+validation: value => {
+    if (value < 1 || value > 60) {
+        return "Value must be between 1 and 60.";
+    }
+    return true;
+}
+```
+
+布尔设置：
+
+- label 写成明确动作或状态。
+- description 写清启用后的效果。
+- 不要添加未来才会生效的开关。
+
+## 反占位检查
+
+提交前对新增 key 做全文搜索：
+
+```powershell
+rg -n "your.setting.key|settingName" src project -S
+```
+
+一个合格设置至少应该出现于：
+
+- schema 或 global state 类型定义
+- 默认值或注册定义
+- UI 注册定义，除非该设置不暴露 UI
+- 生产消费代码
+- 测试或验证路径，视风险决定
+
+如果搜索结果只出现在 `appSettings.ts`、`settings.ts`、`globalState.ts` 或文档里，这个设置就是占位项，必须移除或补上真实消费代码。
+
+## 验证命令
+
+至少运行：
+
+```powershell
+yarn tsc --project src/renderer/tsconfig.json
+```
+
+如果改了 shared 或 main 类型，也运行：
+
+```powershell
+yarn tsc --project src/shared/tsconfig.json
+yarn tsc --project src/main/tsconfig.json
+```
+
+如果设置影响业务逻辑，运行相关测试；没有现成测试时，补一个聚焦测试或记录手动验证路径。
+
+## 删除设置
+
+删除未落地或废弃设置时：
+
+1. 从 UI schema 中删除定义。
+2. 从 global state 类型和默认值中删除不再使用的 key。
+3. 从 runtime settings schema 中删除不再使用的 setting。
+4. 删除消费代码中已废弃的读取逻辑。
+5. 视持久化存储策略决定是否需要迁移旧数据。对于无害旧 key，可以让它留在用户本地存储中，但类型和 UI 不应继续暴露它。
+
+## Agent 交付清单
+
+完成设置相关任务时，在最终回复中说明：
+
+- 新增、修改或删除了哪些设置 key。
+- 每个保留设置对应的真实消费位置。
+- 是否更新了 `globalState.ts`、`appSettings.ts`、runtime settings 或 `ProjectSettingsService` 调用点。
+- 运行了哪些验证命令，以及是否有无关的既有失败。
