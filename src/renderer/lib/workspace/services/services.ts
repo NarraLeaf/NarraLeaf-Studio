@@ -446,6 +446,19 @@ interface IDevModeService extends IService {
 // Editor Services
 interface IEditorService extends IService { }
 
+type StoryPluginActionCreateInput = {
+    generateId: () => string;
+    initialText?: string;
+};
+
+type StoryPluginActionRegistration = {
+    id: string;
+    label: string;
+    detail?: string;
+    group?: string;
+    createBlock: (input: StoryPluginActionCreateInput) => StoryBlock;
+};
+
 interface IStoryService extends IService {
     listStories(): StoryLibraryEntry[];
     getStoryEntry(storyId: StoryId): StoryLibraryEntry | undefined;
@@ -457,6 +470,11 @@ interface IStoryService extends IService {
     loadLibrary(): Promise<StoryLibraryIndex>;
     getLibraryIndex(): StoryLibraryIndex;
     onLibraryChanged(handler: (index: StoryLibraryIndex) => void): () => void;
+    registerPluginAction(registration: StoryPluginActionRegistration): () => void;
+    unregisterPluginAction(actionId: string): boolean;
+    getPluginAction(actionId: string): StoryPluginActionRegistration | undefined;
+    listPluginActions(): StoryPluginActionRegistration[];
+    onPluginActionsChanged(handler: (actions: StoryPluginActionRegistration[]) => void): () => void;
     loadStory(storyId: StoryId): Promise<StoryDocument>;
     getStoryDocument(storyId: StoryId): StoryDocument;
     saveStory(storyId: StoryId): Promise<void>;
@@ -482,6 +500,7 @@ interface IStoryService extends IService {
     ): StoryBlock;
     updateBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, payload: StoryBlock["payload"]): void;
     deleteBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void;
+    replaceScene(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene): void;
     moveBlock(
         storyId: StoryId,
         sceneId: StorySceneId,
@@ -565,4 +584,5 @@ export {
 };
 
 export type { ActiveSnapGuides, SmartSnapDetailSettings };
+export type { StoryPluginActionCreateInput, StoryPluginActionRegistration };
 

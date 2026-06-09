@@ -4,9 +4,7 @@ import { PanelComponentProps } from "../types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
-import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
-import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
-import { summarizeDiagnostics } from "@/lib/ui-editor/diagnostics/types";
+import { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import {
     UIStageSurfaceMount,
     UISurface,
@@ -45,21 +43,18 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const [hasEnsuredAppSurface, setHasEnsuredAppSurface] = useState(false);
-    const [diagnosticTick, setDiagnosticTick] = useState(0);
 
     const documentService = useMemo<UIDocumentService | null>(() => {
         if (!context) return null;
         return context.services.get<UIDocumentService>(Services.UIDocument);
     }, [context]);
-    const graphService = useMemo(() => {
-        if (!context) {
-            return null;
-        }
-        return context.services.get<UIGraphService>(Services.UIGraph);
-    }, [context]);
     const uiService = useMemo<UIService | null>(() => {
         if (!context) return null;
         return context.services.get<UIService>(Services.UI);
+    }, [context]);
+    const runtimeBridge = useMemo<UIRuntimeBridgeService | null>(() => {
+        if (!context) return null;
+        return context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
     }, [context]);
     const inputDialog = useMemo(() => {
         if (!uiService) return null;
@@ -72,7 +67,6 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         const refresh = () => {
             const doc = documentService.getDocument();
             setSurfaces([...doc.surfaces]);
-            setDiagnosticTick(t => t + 1);
         };
 
         refresh();
@@ -82,15 +76,6 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             unsubscribe?.();
         };
     }, [documentService]);
-
-    useEffect(() => {
-        if (!graphService) {
-            return undefined;
-        }
-        return graphService.onGraphsChanged(() => {
-            setDiagnosticTick(t => t + 1);
-        });
-    }, [graphService]);
 
     useEffect(() => {
         if (kind !== "stageSurface" && stageMountFilter !== null) {
@@ -125,19 +110,6 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const hasStageSurfaces = stageSurfaces.length > 0;
     const hasAppSurfaces = appSurfaces.length > 0;
 
-    const diagnosticSummaryBySurfaceId = useMemo(() => {
-        if (!documentService) {
-            return {} as Record<string, ReturnType<typeof summarizeDiagnostics>>;
-        }
-        const doc = documentService.getDocument();
-        const bp = graphService?.getDocument().blueprintDocument;
-        const map: Record<string, ReturnType<typeof summarizeDiagnostics>> = {};
-        for (const s of surfaces) {
-            map[s.id] = summarizeDiagnostics(collectSurfaceDiagnostics(doc, s.id, { blueprintDocument: bp }));
-        }
-        return map;
-    }, [documentService, graphService, surfaces, diagnosticTick]);
-
     const handleOpenSurface = useCallback((surface: UISurface) => {
         const tabId = getSurfaceTabId(surface.id);
         openEditorTab({
@@ -166,6 +138,17 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         handleOpenSurface(surface);
         focusSceneProperties(surface);
     }, [focusSceneProperties, handleOpenSurface]);
+
+    const renderSurfacePreview = useCallback((surface: UISurface) => {
+        if (!runtimeBridge) {
+            return null;
+        }
+        return runtimeBridge.renderSurface({
+            surfaceId: surface.id,
+            hostAdapter: { host: surface.host },
+            className: "relative",
+        });
+    }, [runtimeBridge]);
 
     useEffect(() => {
         if (!documentService || hasEnsuredAppSurface) {
@@ -524,7 +507,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 stageMountFilter={stageMountFilter}
                 surfacesOfKindCount={surfacesOfKindCount}
                 allSurfaces={surfaces}
-                diagnosticSummaryBySurfaceId={diagnosticSummaryBySurfaceId}
+                renderSurfacePreview={renderSurfacePreview}
                 onSurfaceClick={handleSurfaceClick}
                 onOpenMenu={handleOpenMenu}
             />

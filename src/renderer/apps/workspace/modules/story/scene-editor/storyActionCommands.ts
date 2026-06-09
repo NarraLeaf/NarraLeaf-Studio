@@ -1,4 +1,4 @@
-import { Code, FileText, MessageSquare, Music, Route, Settings2, StickyNote, UserRound, Variable } from "lucide-react";
+import { Database, FileText, Image, MessageSquare, MonitorPlay, Music, Puzzle, Route, Settings2, StickyNote, UserRound, Variable } from "lucide-react";
 import type { StoryBlock } from "@shared/types/story";
 
 export type ActionCommandId =
@@ -24,57 +24,70 @@ export type ActionCommandId =
     | "code";
 
 export type ActionCommandCategoryId =
-    | "text"
-    | "flow"
-    | "stage"
-    | "audio"
-    | "state"
-    | "tools";
+    | "all"
+    | "character"
+    | "scene"
+    | "control"
+    | "image"
+    | "data"
+    | "media"
+    | "plugin"
+    | "utils";
 
 export type ActionCommandCategory = {
     id: ActionCommandCategoryId;
     label: string;
+    icon: typeof Settings2;
+    iconColor: string;
 };
+
+export type ActionCommandGroupCategoryId = Exclude<ActionCommandCategoryId, "all">;
 
 export type ActionCommand = {
     id: ActionCommandId;
-    category: ActionCommandCategoryId;
+    category: ActionCommandGroupCategoryId;
     label: string;
     detail: string;
     icon: typeof Settings2;
 };
 
 export const ACTION_COMMAND_CATEGORIES: ActionCommandCategory[] = [
-    { id: "text", label: "Text" },
-    { id: "flow", label: "Flow" },
-    { id: "stage", label: "Stage" },
-    { id: "audio", label: "Audio" },
-    { id: "state", label: "State" },
-    { id: "tools", label: "Tools" },
+    { id: "all", label: "All", icon: Settings2, iconColor: "#a8adb5" },
+    { id: "character", label: "Character", icon: UserRound, iconColor: "var(--narraleaf-accent, #40a8c4)" },
+    { id: "scene", label: "Scene", icon: MonitorPlay, iconColor: "#8fa9c7" },
+    { id: "control", label: "Control", icon: Settings2, iconColor: "#b2a6c9" },
+    { id: "image", label: "Image", icon: Image, iconColor: "#96b8a0" },
+    { id: "data", label: "Data", icon: Database, iconColor: "#b8aa86" },
+    { id: "media", label: "Media", icon: Music, iconColor: "#bd97a3" },
+    { id: "plugin", label: "Plugin", icon: Puzzle, iconColor: "#9aa3ad" },
+    { id: "utils", label: "Utils", icon: StickyNote, iconColor: "#a8adb5" },
 ];
 
 export const ACTION_COMMANDS: ActionCommand[] = [
-    { id: "narration", category: "text", label: "Narration", detail: "Create a text narration row", icon: FileText },
-    { id: "dialogue", category: "text", label: "Dialogue", detail: "Create a character dialogue row", icon: MessageSquare },
-    { id: "choice", category: "flow", label: "Choice", detail: "Create a choice container", icon: Route },
-    { id: "choiceOption", category: "flow", label: "Choice option", detail: "Create an option inside a choice", icon: Route },
-    { id: "condition", category: "flow", label: "Condition", detail: "Create a condition container", icon: Settings2 },
-    { id: "conditionBranch", category: "flow", label: "Condition branch", detail: "Create an if / else branch", icon: Settings2 },
-    { id: "background", category: "stage", label: "Background", detail: "Set background asset or color", icon: FileText },
-    { id: "characterEnter", category: "stage", label: "Character enter", detail: "Show a character on stage", icon: UserRound },
-    { id: "characterMove", category: "stage", label: "Character move", detail: "Move an existing character", icon: UserRound },
-    { id: "characterExit", category: "stage", label: "Character exit", detail: "Remove a character from stage", icon: UserRound },
-    { id: "characterExpression", category: "stage", label: "Character expression", detail: "Change expression or sprite", icon: UserRound },
-    { id: "bgm", category: "audio", label: "BGM", detail: "Set background music", icon: Music },
-    { id: "sound", category: "audio", label: "Sound", detail: "Play sound effect", icon: Music },
-    { id: "stopSound", category: "audio", label: "Stop sound", detail: "Stop sound effect", icon: Music },
-    { id: "setVariable", category: "state", label: "Set variable", detail: "Write a variable value", icon: Variable },
-    { id: "jump", category: "flow", label: "Jump scene", detail: "Transition to another scene", icon: Route },
-    { id: "waitDuration", category: "tools", label: "Wait duration", detail: "Pause for milliseconds", icon: Settings2 },
-    { id: "waitClick", category: "tools", label: "Wait click", detail: "Wait for player input", icon: Settings2 },
-    { id: "note", category: "tools", label: "Note", detail: "Studio-only note", icon: StickyNote },
-    { id: "code", category: "tools", label: "Code block", detail: "Advanced escape hatch", icon: Code },
+    { id: "dialogue", category: "character", label: "Dialogue", detail: "Create a character dialogue row", icon: MessageSquare },
+    { id: "narration", category: "character", label: "Narration", detail: "Create a narration row", icon: FileText },
+    { id: "characterEnter", category: "character", label: "Character enter", detail: "Show a character on stage", icon: UserRound },
+    { id: "characterMove", category: "character", label: "Character move", detail: "Move an existing character", icon: UserRound },
+    { id: "characterExpression", category: "character", label: "Character expression", detail: "Change expression or sprite", icon: UserRound },
+    { id: "characterExit", category: "character", label: "Character exit", detail: "Remove a character from stage", icon: UserRound },
+    { id: "background", category: "scene", label: "Background", detail: "Set scene background asset or color", icon: Image },
+    { id: "jump", category: "scene", label: "Jump scene", detail: "Transition to another scene", icon: Route },
+    { id: "choice", category: "control", label: "Menu choice", detail: "Create a choice menu container", icon: Route },
+    { id: "choiceOption", category: "control", label: "Menu option", detail: "Create an option inside a choice", icon: Route },
+    { id: "condition", category: "control", label: "Condition", detail: "Create a condition container", icon: Settings2 },
+    { id: "conditionBranch", category: "control", label: "Condition branch", detail: "Create an if / else branch", icon: Settings2 },
+    { id: "waitDuration", category: "control", label: "Wait duration", detail: "Pause for milliseconds", icon: Settings2 },
+    { id: "waitClick", category: "control", label: "Wait click", detail: "Wait for player input", icon: Settings2 },
+    { id: "setVariable", category: "data", label: "Set variable", detail: "Write scene, global, or persistent data", icon: Variable },
+    { id: "bgm", category: "media", label: "BGM", detail: "Set background music", icon: Music },
+    { id: "sound", category: "media", label: "Sound", detail: "Play sound effect", icon: Music },
+    { id: "stopSound", category: "media", label: "Stop sound", detail: "Stop sound effect", icon: Music },
+    { id: "note", category: "utils", label: "Note", detail: "Studio-only note", icon: StickyNote },
 ];
+
+export function getActionCommandCategory(categoryId: ActionCommandCategoryId): ActionCommandCategory {
+    return ACTION_COMMAND_CATEGORIES.find(category => category.id === categoryId) ?? ACTION_COMMAND_CATEGORIES[0];
+}
 
 export function createBlockForCommand(commandId: ActionCommandId, generateId: () => string, initialText = "", characterId?: string): StoryBlock {
     const blockId = generateId();

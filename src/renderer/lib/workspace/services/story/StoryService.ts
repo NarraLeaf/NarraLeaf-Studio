@@ -13,10 +13,12 @@ import {
 } from "@shared/types/story";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
-import { IStoryService, Services, WorkspaceContext } from "../services";
+import { IStoryService, Services, WorkspaceContext, type StoryPluginActionRegistration } from "../services";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
+import { AssetsService } from "../core/AssetsService";
+import { AssetLockReason } from "../assets/AssetLockManager";
 import { EventEmitter } from "../ui/EventEmitter";
 import {
     createChapter as createStoryChapterModel,
@@ -37,11 +39,22 @@ type StoryServiceEvents = {
     libraryChanged: StoryLibraryIndex;
     documentChanged: { storyId: StoryId; document: StoryDocument };
     dirtyChanged: boolean;
+    pluginActionsChanged: StoryPluginActionRegistration[];
 };
 
 type BlockTarget = {
     parentId: StoryBlockId | null;
     beforeBlockId?: StoryBlockId | null;
+};
+
+type StoryAssetLockEntry = {
+    assetId: string;
+    metadata: {
+        storyId: StoryId;
+        sceneId: StorySceneId;
+        blockId: StoryBlockId;
+        field: string;
+    };
 };
 
 export class StoryService extends Service<StoryService> implements IStoryService {
@@ -53,15 +66,19 @@ export class StoryService extends Service<StoryService> implements IStoryService
     private lastSavedRevision = 0;
     private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
     private readonly autoSaveDelay = 800;
+    private readonly storyAssetLocks = new Map<StoryId, Map<string, StoryAssetLockEntry>>();
+    private readonly pluginActions = new Map<string, StoryPluginActionRegistration>();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
         const projectService = ctx.services.get<ProjectService>(Services.Project);
         const uuidService = ctx.services.get<UuidService>(Services.Uuid);
-        await depend([filesystemService, projectService, uuidService]);
+        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+        await depend([filesystemService, projectService, uuidService, assetsService]);
 
         await this.ensureStoryDirs();
         await this.loadLibrary();
+        await this.syncLibraryAssetLocks();
     }
 
     public listStories(): StoryLibraryEntry[] {
@@ -154,6 +171,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         if (!entry) {
             return false;
         }
+        this.releaseStoryAssetLocks(storyId);
         this.documents.delete(storyId);
         this.mutateLibrary(index => {
             index.stories = index.stories.filter(story => story.id !== storyId);
@@ -171,6 +189,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     public async loadStory(storyId: StoryId): Promise<StoryDocument> {
         const cached = this.documents.get(storyId);
         if (cached) {
+            this.syncDocumentAssetLocks(storyId, cached);
             return cached;
         }
         const entry = this.getStoryEntry(storyId);
@@ -186,6 +205,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         try {
             const document = normalizeStoryDocument(result.data, new Date().toISOString());
             this.documents.set(storyId, document);
+            this.syncDocumentAssetLocks(storyId, document);
             this.events.emit("documentChanged", { storyId, document });
             return document;
         } catch (error) {
@@ -261,6 +281,42 @@ export class StoryService extends Service<StoryService> implements IStoryService
 
     public onLibraryChanged(handler: (index: StoryLibraryIndex) => void): () => void {
         return this.events.on("libraryChanged", handler);
+    }
+
+    public registerPluginAction(registration: StoryPluginActionRegistration): () => void {
+        const actionId = registration.id.trim();
+        if (!actionId) {
+            throw new RendererError("Plugin action id is required");
+        }
+        if (this.pluginActions.has(actionId)) {
+            throw new RendererError(`Plugin action already registered: ${actionId}`);
+        }
+        const normalized = { ...registration, id: actionId };
+        this.pluginActions.set(actionId, normalized);
+        this.emitPluginActionsChanged();
+        return () => {
+            this.unregisterPluginAction(actionId);
+        };
+    }
+
+    public unregisterPluginAction(actionId: string): boolean {
+        const removed = this.pluginActions.delete(actionId.trim());
+        if (removed) {
+            this.emitPluginActionsChanged();
+        }
+        return removed;
+    }
+
+    public getPluginAction(actionId: string): StoryPluginActionRegistration | undefined {
+        return this.pluginActions.get(actionId.trim());
+    }
+
+    public listPluginActions(): StoryPluginActionRegistration[] {
+        return [...this.pluginActions.values()];
+    }
+
+    public onPluginActionsChanged(handler: (actions: StoryPluginActionRegistration[]) => void): () => void {
+        return this.events.on("pluginActionsChanged", handler);
     }
 
     public onDocumentChanged(handler: (event: { storyId: StoryId; document: StoryDocument }) => void): () => void {
@@ -473,6 +529,13 @@ export class StoryService extends Service<StoryService> implements IStoryService
         });
     }
 
+    public replaceScene(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene): void {
+        this.mutateDocument(storyId, document => {
+            this.getSceneOrThrow(document, sceneId);
+            document.scenes[sceneId] = this.cloneScene({ ...scene, id: sceneId });
+        });
+    }
+
     public moveBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, target: BlockTarget): void {
         this.mutateDocument(storyId, document => {
             const scene = this.getSceneOrThrow(document, sceneId);
@@ -504,6 +567,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     private mutateDocument(storyId: StoryId, mutator: (document: StoryDocument) => void): void {
         const document = this.getStoryDocument(storyId);
         mutator(document);
+        this.syncDocumentAssetLocks(storyId, document);
         document.meta = {
             ...document.meta,
             updatedAt: new Date().toISOString(),
@@ -573,6 +637,10 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.events.emit("dirtyChanged", value);
     }
 
+    private emitPluginActionsChanged(): void {
+        this.events.emit("pluginActionsChanged", this.listPluginActions());
+    }
+
     private getSceneOrThrow(document: StoryDocument, sceneId: StorySceneId): StoryScene {
         const scene = document.scenes[sceneId];
         if (!scene) {
@@ -588,6 +656,10 @@ export class StoryService extends Service<StoryService> implements IStoryService
             }
         }
         return undefined;
+    }
+
+    private cloneScene(scene: StoryScene): StoryScene {
+        return JSON.parse(JSON.stringify(scene)) as StoryScene;
     }
 
     private cleanName(value: string, fallback: string): string {
@@ -609,6 +681,111 @@ export class StoryService extends Service<StoryService> implements IStoryService
 
     private getUuidService(): UuidService {
         return this.getContext().services.get<UuidService>(Services.Uuid);
+    }
+
+    private getAssetsService(): AssetsService {
+        return this.getContext().services.get<AssetsService>(Services.Assets);
+    }
+
+    private async syncLibraryAssetLocks(): Promise<void> {
+        const index = this.getLibraryIndex();
+        for (const entry of index.stories) {
+            const cached = this.documents.get(entry.id);
+            if (cached) {
+                this.syncDocumentAssetLocks(entry.id, cached);
+                continue;
+            }
+            const result = await this.getFileSystem().readJSON<StoryDocument>(this.getStoryDocumentPath(entry.id));
+            if (!result.ok) {
+                continue;
+            }
+            try {
+                const document = normalizeStoryDocument(result.data, new Date().toISOString());
+                this.syncDocumentAssetLocks(entry.id, document);
+            } catch (error) {
+                console.warn("[StoryService] failed to read story asset references", error);
+            }
+        }
+    }
+
+    private syncDocumentAssetLocks(storyId: StoryId, document: StoryDocument): void {
+        const assetsService = this.getAssetsService();
+        const previous = this.storyAssetLocks.get(storyId) ?? new Map<string, StoryAssetLockEntry>();
+        const next = this.collectDocumentAssetLocks(document);
+
+        for (const [key, entry] of previous.entries()) {
+            const nextEntry = next.get(key);
+            if (!nextEntry || nextEntry.assetId !== entry.assetId) {
+                assetsService.unlockAsset(entry.assetId, AssetLockReason.UsedByScene, entry.metadata);
+            }
+        }
+
+        for (const [key, entry] of next.entries()) {
+            const previousEntry = previous.get(key);
+            if (!previousEntry || previousEntry.assetId !== entry.assetId) {
+                assetsService.lockAsset(entry.assetId, AssetLockReason.UsedByScene, entry.metadata);
+            }
+        }
+
+        if (next.size === 0) {
+            this.storyAssetLocks.delete(storyId);
+        } else {
+            this.storyAssetLocks.set(storyId, next);
+        }
+    }
+
+    private releaseStoryAssetLocks(storyId: StoryId): void {
+        const previous = this.storyAssetLocks.get(storyId);
+        if (!previous) {
+            return;
+        }
+        const assetsService = this.getAssetsService();
+        for (const entry of previous.values()) {
+            assetsService.unlockAsset(entry.assetId, AssetLockReason.UsedByScene, entry.metadata);
+        }
+        this.storyAssetLocks.delete(storyId);
+    }
+
+    private collectDocumentAssetLocks(document: StoryDocument): Map<string, StoryAssetLockEntry> {
+        const locks = new Map<string, StoryAssetLockEntry>();
+        const addAssetLock = (sceneId: StorySceneId, blockId: StoryBlockId, field: string, assetId: string | undefined) => {
+            const normalizedAssetId = assetId?.trim();
+            if (!normalizedAssetId) {
+                return;
+            }
+            const key = `${sceneId}:${blockId}:${field}`;
+            locks.set(key, {
+                assetId: normalizedAssetId,
+                metadata: {
+                    storyId: document.id,
+                    sceneId,
+                    blockId,
+                    field,
+                },
+            });
+        };
+
+        for (const scene of Object.values(document.scenes)) {
+            for (const block of Object.values(scene.blocks)) {
+                if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
+                    addAssetLock(scene.id, block.id, "voiceAssetId", block.payload.voiceAssetId);
+                    continue;
+                }
+                if (block.kind !== "action") {
+                    continue;
+                }
+                const payload = block.payload;
+                if (payload.action === "setBackground") {
+                    addAssetLock(scene.id, block.id, "background.assetId", payload.assetId);
+                } else if (payload.action === "character") {
+                    addAssetLock(scene.id, block.id, "character.assetId", payload.assetId);
+                } else if (payload.action === "audio") {
+                    addAssetLock(scene.id, block.id, "audio.assetId", payload.assetId);
+                }
+            }
+        }
+
+        return locks;
     }
 
     private getIndexPath(): string {

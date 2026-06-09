@@ -29,6 +29,7 @@ export function useStorySceneClipboardHandlers(params: {
     activeBlockId: StoryBlockId | null;
     visibleRows: VisibleStoryRow[];
     plainPasteRequestedRef: { current: boolean };
+    recordHistory: () => boolean;
     setActiveBlockId: Dispatch<SetStateAction<StoryBlockId | null>>;
     setSelectedBlockIds: Dispatch<SetStateAction<Set<StoryBlockId>>>;
     setEditorMode: Dispatch<SetStateAction<EditorMode>>;
@@ -39,6 +40,7 @@ export function useStorySceneClipboardHandlers(params: {
         if (!storyService || !uuidService || !storyId || !sceneId || !scene) {
             return;
         }
+        params.recordHistory();
         const insertionTarget = getInsertionTargetAfter(scene, afterBlockId);
         const insertedRoots: StoryBlockId[] = [];
         for (const root of roots) {
@@ -60,6 +62,10 @@ export function useStorySceneClipboardHandlers(params: {
             return;
         }
         const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+        if (lines.length === 0) {
+            return;
+        }
+        params.recordHistory();
         const insertionTarget = getInsertionTargetAfter(scene, afterBlockId);
         const insertedIds: StoryBlockId[] = [];
         for (const line of lines) {

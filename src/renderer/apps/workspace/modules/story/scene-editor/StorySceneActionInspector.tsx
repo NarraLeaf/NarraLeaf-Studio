@@ -8,9 +8,21 @@ import type {
     StoryTextSegment,
     StoryVariableScope,
 } from "@shared/types/story";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Image as ImageIcon, Palette, Trash2 } from "lucide-react";
+import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useWorkspace } from "@/apps/workspace/context";
+import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { Select, type SelectOption } from "@/lib/components/elements";
-import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
+import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
+import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
+import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import type { Asset } from "@/lib/workspace/services/assets/types";
+import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { Services } from "@/lib/workspace/services/services";
+import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
 
 const FIELD_LABEL_CLASS = "block text-xs font-medium text-gray-400 mb-1";
@@ -57,13 +69,17 @@ export function ActionInspector(props: {
     generateTextId: () => string;
 }) {
     const block = props.block;
-    const { label, icon: Icon } = getBlockBadgeInfo(block);
+    const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
 
     return (
-        <div className="mt-2 max-w-3xl rounded-xl border border-white/10 bg-[#16191e] p-3 shadow-lg" onClick={event => event.stopPropagation()}>
+        <div
+            className="mt-2 max-w-3xl rounded-xl border border-white/10 bg-[#16191e] p-3 shadow-lg"
+            onClick={event => event.stopPropagation()}
+            onMouseDown={event => event.stopPropagation()}
+        >
             <div className="mb-3 flex items-center gap-2">
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-primary">
-                    <Icon className="h-4 w-4" />
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04]">
+                    <Icon className="h-4 w-4" style={{ color: iconColor }} />
                 </span>
                 <div className="min-w-0">
                     <div className="text-sm font-medium text-slate-100">{label}</div>
@@ -180,10 +196,10 @@ function ActionPayloadFields(props: { payload: StoryActionPayload; onChange: (pa
     const payload = props.payload;
     if (payload.action === "setBackground") {
         return (
-            <div className="grid gap-2 sm:grid-cols-2">
-                <TextField label="Asset id" value={payload.assetId ?? ""} onChange={assetId => props.onChange({ ...payload, assetId })} />
-                <TextField label="Color" value={payload.color ?? ""} onChange={color => props.onChange({ ...payload, color })} />
-            </div>
+            <BackgroundActionEditor
+                payload={payload}
+                onChange={props.onChange}
+            />
         );
     }
     if (payload.action === "character") {
@@ -241,6 +257,200 @@ function ActionPayloadFields(props: { payload: StoryActionPayload; onChange: (pa
         );
     }
     return null;
+}
+
+function BackgroundActionEditor(props: {
+    payload: Extract<StoryActionPayload, { action: "setBackground" }>;
+    onChange: (payload: Extract<StoryActionPayload, { action: "setBackground" }>) => void;
+}) {
+    const { context, isInitialized } = useWorkspace();
+    const assetsService = useMemo(
+        () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
+        [context, isInitialized],
+    );
+    const selectedAsset = props.payload.assetId
+        ? assetsService?.getAssets()[AssetType.Image]?.[props.payload.assetId] ?? null
+        : null;
+    const imageAssetId = props.payload.assetId ?? null;
+    const { url, loading, error } = useAssetObjectUrl(imageAssetId);
+    const [mode, setMode] = useState<"image" | "color">(() => props.payload.assetId ? "image" : "color");
+    const [selectorOpen, setSelectorOpen] = useState(false);
+    const imageButtonRef = useRef<HTMLButtonElement | null>(null);
+    const latestPayloadRef = useRef(props.payload);
+    const latestOnChangeRef = useRef(props.onChange);
+
+    useEffect(() => {
+        latestPayloadRef.current = props.payload;
+        latestOnChangeRef.current = props.onChange;
+    }, [props.payload, props.onChange]);
+
+    const selectImageMode = useCallback(() => {
+        setMode("image");
+    }, []);
+
+    const selectColorMode = useCallback(() => {
+        setMode("color");
+    }, []);
+
+    const handleSelectImage = useCallback(
+        (assets: Asset[]) => {
+            const selected = assets[0];
+            if (!selected) {
+                return;
+            }
+            latestOnChangeRef.current({
+                ...latestPayloadRef.current,
+                assetId: selected.id,
+                color: undefined,
+            });
+            setMode("image");
+            setSelectorOpen(false);
+        },
+        [],
+    );
+
+    const clearImage = useCallback(() => {
+        latestOnChangeRef.current({
+            ...latestPayloadRef.current,
+            assetId: undefined,
+        });
+    }, []);
+
+    const handleColorChange = useCallback(
+        (colorValue: ColorValue) => {
+            latestOnChangeRef.current({
+                ...latestPayloadRef.current,
+                assetId: undefined,
+                color: colorValueToCss({ hex: colorValue.hex, alpha: 1 }),
+            });
+        },
+        [],
+    );
+
+    const parsedColorValue = parseColorValue(props.payload.color, {
+        hex: "#000000",
+        alpha: 1,
+    });
+    const colorValue: ColorValue = { hex: parsedColorValue.hex, alpha: 1 };
+    const imageLabel = selectedAsset?.name ?? (props.payload.assetId ? "Missing image" : "No image");
+
+    return (
+        <div className="grid gap-3">
+            <div className="inline-flex w-fit overflow-hidden rounded-md border border-white/10 bg-[#101216]">
+                <button
+                    type="button"
+                    className={[
+                        "flex h-8 items-center gap-1.5 px-3 text-xs transition-colors",
+                        mode === "image" ? "bg-primary/20 text-primary" : "text-slate-400 hover:bg-white/[0.05] hover:text-slate-100",
+                    ].join(" ")}
+                    onClick={selectImageMode}
+                >
+                    <ImageIcon className="h-3.5 w-3.5" />
+                    Image
+                </button>
+                <button
+                    type="button"
+                    className={[
+                        "flex h-8 items-center gap-1.5 border-l border-white/10 px-3 text-xs transition-colors",
+                        mode === "color" ? "bg-primary/20 text-primary" : "text-slate-400 hover:bg-white/[0.05] hover:text-slate-100",
+                    ].join(" ")}
+                    onClick={selectColorMode}
+                >
+                    <Palette className="h-3.5 w-3.5" />
+                    Color
+                </button>
+            </div>
+
+            {mode === "image" ? (
+                <div className="grid gap-2 sm:grid-cols-[minmax(220px,320px)_minmax(0,1fr)]">
+                    <button
+                        ref={imageButtonRef}
+                        type="button"
+                        className="group relative aspect-[16/9] min-h-32 overflow-hidden rounded-lg border border-white/10 bg-[#0f1115] text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
+                        onClick={() => setSelectorOpen(true)}
+                    >
+                        {url ? (
+                            <img
+                                src={url}
+                                alt=""
+                                className="absolute inset-0 h-full w-full object-cover"
+                                draggable={false}
+                            />
+                        ) : (
+                            <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-xs text-slate-500">
+                                <ImageIcon className="h-5 w-5 text-slate-600" />
+                                <span>{imageLabel}</span>
+                            </div>
+                        )}
+                        {loading ? (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs text-slate-100">
+                                Loading...
+                            </div>
+                        ) : null}
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-[10px] uppercase tracking-[0.22em] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                            Change
+                        </div>
+                    </button>
+                    <div className="flex min-w-0 flex-col gap-2">
+                        <div>
+                            <div className={FIELD_LABEL_CLASS}>Image</div>
+                            <div className="flex h-9 min-h-[34px] min-w-0 items-center rounded-md border border-white/10 bg-[#1e1f22] px-3 text-sm text-gray-300">
+                                <span className={["truncate", selectedAsset ? "" : "italic text-gray-500"].join(" ")}>
+                                    {imageLabel}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                className="h-8 rounded-md border border-white/10 bg-white/[0.04] px-3 text-xs text-slate-200 hover:border-primary/40 hover:text-primary"
+                                onClick={() => setSelectorOpen(true)}
+                            >
+                                {selectedAsset ? "Change" : "Select"}
+                            </button>
+                            <button
+                                type="button"
+                                className="grid h-8 w-8 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-slate-400 hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                                onClick={clearImage}
+                                disabled={!props.payload.assetId}
+                                title="Clear image"
+                            >
+                                <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                        {props.payload.assetId && error ? (
+                            <div className="text-[11px] leading-snug text-amber-400/90">
+                                Image asset could not be resolved: {error}
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+            ) : (
+                <div className="max-w-md">
+                    <label className={FIELD_LABEL_CLASS}>Color</label>
+                    <div>
+                        <ColorPickerTrigger
+                            value={colorValue}
+                            displayMode="icon"
+                            allowOpacity={false}
+                            onChange={handleColorChange}
+                        />
+                    </div>
+                </div>
+            )}
+
+            <AssetSelector
+                visible={selectorOpen}
+                assetType={AssetType.Image}
+                onClose={() => setSelectorOpen(false)}
+                onConfirm={handleSelectImage}
+                selectedIds={props.payload.assetId ? [props.payload.assetId] : []}
+                anchorRef={imageButtonRef}
+                title="Select Background Image"
+                multiple={false}
+            />
+        </div>
+    );
 }
 
 function ControlPayloadFields(props: { payload: StoryControlPayload; onChange: (payload: StoryBlock["payload"]) => void }) {

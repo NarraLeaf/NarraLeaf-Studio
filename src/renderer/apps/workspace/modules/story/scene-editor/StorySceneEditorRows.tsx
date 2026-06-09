@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { DragEvent, RefObject, MouseEvent } from "react";
-import { ChevronDown, ChevronRight, GripVertical, Hash, Plus } from "lucide-react";
-import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
+import type { CSSProperties, RefObject, MouseEvent } from "react";
+import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Plus } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import type { StoryActionPayload, StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
+import { useWorkspace } from "@/apps/workspace/context";
+import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { Services } from "@/lib/workspace/services/services";
+import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import {
     ACTION_COMMAND_CATEGORIES,
     ACTION_COMMANDS,
+    getActionCommandCategory,
     type ActionCommand,
     type ActionCommandCategory,
     type ActionCommandCategoryId,
@@ -21,8 +28,6 @@ import {
     getEmptyTextPlaceholder,
     getTextSegment,
 } from "./storySceneBlockUtils";
-
-const STORY_BLOCK_DRAG_MIME = "application/x-narraleaf-story-block";
 
 export function StoryBlockRow(props: {
     row: VisibleStoryRow;
@@ -44,23 +49,33 @@ export function StoryBlockRow(props: {
     onEditValueChange: (value: string) => void;
     onCommitTextEdit: () => void;
     onCancelTextEdit: () => void;
+    onInsertDialogueAfterCurrent: () => void;
     onOpenInspector: () => void;
     onCloseInspector: () => void;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     generateTextId: () => string;
     onInsertAfter: () => void;
-    onDragStart: (blockId: string) => void;
-    onDragEnd: () => void;
-    onDropAfter: (draggedBlockId: string | null) => void;
 }) {
     const { row, scene, document, characters, selected, active, collapsed, editing, editValue, textInputRef, inspectorOpen } = props;
     const block = row.block;
     const canFold = block.childrenIds.length > 0 && canAcceptChildren(block);
     const textSegment = getTextSegment(block);
+    const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
+        id: row.block.id,
+    });
+    const sortableStyle: CSSProperties = {
+        transform: toSortableTransform(transform),
+        transition,
+        zIndex: isDragging ? 20 : undefined,
+        opacity: isDragging ? 0.72 : undefined,
+    };
 
     return (
         <div
+            ref={setNodeRef}
+            style={sortableStyle}
+            data-story-row-block-id={block.id}
             className={[
                 "group relative grid min-h-[40px] grid-cols-[44px_28px_1fr] items-start border-l-2 pr-3",
                 selected ? "border-primary bg-primary/20" : active ? "border-primary bg-white/[0.035]" : "border-transparent hover:bg-white/[0.025]",
@@ -71,15 +86,6 @@ export function StoryBlockRow(props: {
             onDoubleClick={event => {
                 event.stopPropagation();
                 textSegment ? props.onStartTextEdit() : props.onOpenInspector();
-            }}
-            onDragOver={event => {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-            }}
-            onDrop={event => {
-                event.preventDefault();
-                event.stopPropagation();
-                props.onDropAfter(readDraggedBlockId(event));
             }}
         >
             <div className="flex h-full items-start justify-end gap-1 pt-2 text-[12px] tabular-nums text-slate-500">
@@ -99,24 +105,21 @@ export function StoryBlockRow(props: {
                 )}
                 <span>{row.lineNumber}</span>
             </div>
-            <div className="flex justify-center pt-2">
-                <button
-                    type="button"
-                    className="cursor-grab rounded p-0.5 text-slate-500 opacity-0 transition-colors hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100"
-                    draggable
-                    onPointerDown={event => event.stopPropagation()}
+            <div className="flex self-stretch items-center justify-center">
+                <div
+                    ref={setActivatorNodeRef}
+                    {...attributes}
+                    {...listeners}
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Drag row"
+                    title="Drag row"
+                    className="flex h-7 w-7 touch-none select-none items-center justify-center rounded text-slate-500 opacity-0 transition-colors hover:cursor-grab hover:text-primary hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 group-hover:opacity-100"
                     onMouseDown={event => event.stopPropagation()}
                     onClick={event => event.stopPropagation()}
-                    onDragStart={event => {
-                        event.dataTransfer.effectAllowed = "move";
-                        event.dataTransfer.setData(STORY_BLOCK_DRAG_MIME, row.block.id);
-                        event.dataTransfer.setData("text/plain", row.block.id);
-                        props.onDragStart(row.block.id);
-                    }}
-                    onDragEnd={props.onDragEnd}
                 >
-                    <GripVertical className="h-4 w-4" />
-                </button>
+                    <GripVertical className="pointer-events-none h-4 w-4" />
+                </div>
             </div>
             <div className="min-w-0 py-1.5" style={{ paddingLeft: row.depth * 22 }}>
                 <div className="flex min-h-[28px] min-w-0 items-center gap-2">
@@ -128,6 +131,7 @@ export function StoryBlockRow(props: {
                             onEditValueChange={props.onEditValueChange}
                             onCommitTextEdit={props.onCommitTextEdit}
                             onCancelTextEdit={props.onCancelTextEdit}
+                            onInsertDialogueAfterCurrent={props.onInsertDialogueAfterCurrent}
                             onInsertAfter={props.onInsertAfter}
                             block={block}
                             characters={characters}
@@ -166,6 +170,7 @@ function TextEditBox(props: {
     onEditValueChange: (value: string) => void;
     onCommitTextEdit: () => void;
     onCancelTextEdit: () => void;
+    onInsertDialogueAfterCurrent: () => void;
     onInsertAfter: () => void;
     block: StoryBlock;
     characters: Character[];
@@ -196,6 +201,11 @@ function TextEditBox(props: {
                     if (event.key === "Escape") {
                         event.preventDefault();
                         props.onCancelTextEdit();
+                    }
+                    if (event.key === "Enter" && event.shiftKey && dialoguePayload) {
+                        event.preventDefault();
+                        props.onInsertDialogueAfterCurrent();
+                        return;
                     }
                     if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
@@ -286,8 +296,11 @@ export function InsertRow(props: {
                             characterMenu.moveCharacter(event.key === "ArrowDown" ? 1 : -1);
                             return;
                         }
-                        if (event.key === "Enter" && !event.shiftKey) {
+                        if (event.key === "Enter") {
                             event.preventDefault();
+                            if (event.shiftKey) {
+                                return;
+                            }
                             if (props.mode.chooser === "action") {
                                 const command = actionMenu.activeCommand;
                                 command ? props.onChooseCommand(command.id) : props.onCommitNarration(true);
@@ -387,10 +400,12 @@ function useActionCommandMenuState(options: ActionCommand[]) {
     const visibleCategories = useMemo<VisibleActionCommandCategory[]>(() => {
         return ACTION_COMMAND_CATEGORIES.map(category => ({
             ...category,
-            commands: options.filter(command => command.category === category.id),
-        })).filter(category => category.commands.length > 0);
+            commands: category.id === "all"
+                ? options
+                : options.filter(command => command.category === category.id),
+        }));
     }, [options]);
-    const [activeCategoryId, setActiveCategoryId] = useState<ActionCommandCategoryId>("text");
+    const [activeCategoryId, setActiveCategoryId] = useState<ActionCommandCategoryId>("all");
     const [activeCommandId, setActiveCommandId] = useState<ActionCommandId | null>(null);
 
     const activeCategory = visibleCategories.find(category => category.id === activeCategoryId) ?? visibleCategories[0] ?? null;
@@ -468,6 +483,18 @@ function ActionCommandMenu(props: {
 }) {
     const activeCategory = props.categories.find(category => category.id === props.activeCategoryId) ?? props.categories[0] ?? null;
     const listRef = useRef<HTMLDivElement | null>(null);
+    const categoryListRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!activeCategory) {
+            return;
+        }
+        window.requestAnimationFrame(() => {
+            const root = categoryListRef.current;
+            const activeTab = root?.querySelector(`[data-action-category-id="${activeCategory.id}"]`);
+            activeTab?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        });
+    }, [activeCategory?.id]);
 
     useEffect(() => {
         if (!props.activeCommandId) {
@@ -490,11 +517,11 @@ function ActionCommandMenu(props: {
         >
             {props.categories.length === 0 ? (
                 <button type="button" className="w-full px-3 py-2 text-left text-sm text-slate-400 hover:bg-white/[0.06]" onMouseDown={props.onCancel}>
-                    No action found. Keep as narration.
+                    No action found. 
                 </button>
             ) : (
                 <>
-                    <div className="flex border-b border-white/10 bg-[#0f1115]" role="tablist" aria-label="Action types">
+                    <div ref={categoryListRef} className="flex overflow-x-auto border-b border-white/10 bg-[#0f1115]" role="tablist" aria-label="Action types">
                         {props.categories.map(category => {
                             const active = category.id === activeCategory?.id;
                             return (
@@ -503,8 +530,9 @@ function ActionCommandMenu(props: {
                                     type="button"
                                     role="tab"
                                     aria-selected={active}
+                                    data-action-category-id={category.id}
                                     className={[
-                                        "relative h-9 flex-1 cursor-default px-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
+                                        "relative flex h-9 min-w-[74px] flex-none cursor-default items-center justify-center px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60",
                                         active ? "bg-[#151922] text-white" : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-100",
                                     ].join(" ")}
                                     onMouseDown={() => props.onSelectCategory(category.id)}
@@ -516,9 +544,14 @@ function ActionCommandMenu(props: {
                         })}
                     </div>
                     <div ref={listRef} className="max-h-64 overflow-auto p-1">
-                        {activeCategory?.commands.map(command => {
+                        {activeCategory && activeCategory.commands.length === 0 ? (
+                            <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-slate-400 hover:bg-white/[0.06]" onMouseDown={props.onCancel}>
+                                No {activeCategory.label.toLowerCase()} action found. 
+                            </button>
+                        ) : activeCategory?.commands.map(command => {
                             const Icon = command.icon;
                             const active = command.id === props.activeCommandId;
+                            const category = getActionCommandCategory(command.category);
                             return (
                                 <button
                                     key={command.id}
@@ -533,7 +566,7 @@ function ActionCommandMenu(props: {
                                     onMouseDown={() => props.onChoose(command.id)}
                                     onMouseEnter={() => props.onHighlightCommand(command.id)}
                                 >
-                                    <Icon className={["h-4 w-4 shrink-0", active ? "text-primary" : "text-primary/80"].join(" ")} />
+                                    <Icon className="h-4 w-4 shrink-0" style={{ color: category.iconColor }} />
                                     <span className="min-w-0 flex-1">
                                         <span className="block truncate text-sm text-slate-100">{command.label}</span>
                                         <span className="block truncate text-[11px] text-slate-500">{command.detail}</span>
@@ -612,7 +645,7 @@ function CharacterPicker(props: {
         >
             {props.characters.length === 0 ? (
                 <button type="button" className="w-full rounded px-2 py-2 text-left text-sm text-slate-400 hover:bg-white/[0.06]" onMouseDown={props.onClear}>
-                    No character found. Keep as narration.
+                    No character found. 
                 </button>
             ) : (
                 props.characters.map(character => {
@@ -715,16 +748,21 @@ function CharacterSelectTrigger(props: {
 }
 
 function BlockBadge({ block }: { block: StoryBlock }) {
-    const { label, icon: Icon } = getBlockBadgeInfo(block);
+    const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
     return (
-        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-white/10 bg-white/[0.04] text-primary" title={label} aria-label={label}>
-            <Icon className="h-3.5 w-3.5" />
+        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-white/10 bg-white/[0.04]" title={label} aria-label={label}>
+            <Icon className="h-3.5 w-3.5" style={{ color: iconColor }} />
         </span>
     );
 }
 
-function readDraggedBlockId(event: DragEvent<HTMLElement>): string | null {
-    return event.dataTransfer.getData(STORY_BLOCK_DRAG_MIME) || event.dataTransfer.getData("text/plain") || null;
+function toSortableTransform(transform: { x: number; y: number; scaleX?: number; scaleY?: number } | null): string | undefined {
+    if (!transform) {
+        return undefined;
+    }
+    const scaleX = transform.scaleX ?? 1;
+    const scaleY = transform.scaleY ?? 1;
+    return `translate3d(0, ${transform.y}px, 0) scaleX(${scaleX}) scaleY(${scaleY})`;
 }
 
 function BlockPreview(props: {
@@ -766,5 +804,49 @@ function BlockPreview(props: {
             </span>
         );
     }
+    if (block.kind === "action" && block.payload.action === "setBackground") {
+        return <BackgroundBlockPreview payload={block.payload} />;
+    }
     return <span className="min-w-0 flex-1 truncate text-sm text-slate-300">{describeBlock(block, props.characters, props.scene)}</span>;
+}
+
+function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPayload, { action: "setBackground" }> }) {
+    const { context, isInitialized } = useWorkspace();
+    const assetsService = useMemo(
+        () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
+        [context, isInitialized],
+    );
+    const asset = payload.assetId ? assetsService?.getAssets()[AssetType.Image]?.[payload.assetId] ?? null : null;
+    const { url } = useAssetObjectUrl(payload.assetId ?? null);
+    const label = asset?.name ?? (payload.assetId ? "Missing image" : payload.color || "unassigned");
+    const isColor = !payload.assetId && Boolean(payload.color);
+
+    return (
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-300">
+            {payload.assetId ? (
+                <span className="h-5 w-8 shrink-0 overflow-hidden rounded border border-white/10 bg-[#0f1115]">
+                    {url ? (
+                        <img
+                            src={url}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            draggable={false}
+                        />
+                    ) : (
+                        <span className="flex h-full w-full items-center justify-center">
+                            <Image className="h-3 w-3 text-slate-600" />
+                        </span>
+                    )}
+                </span>
+            ) : isColor ? (
+                <span
+                    className="h-4 w-7 shrink-0 rounded border border-white/10"
+                    style={{ backgroundColor: payload.color }}
+                />
+            ) : null}
+            <span className="min-w-0 truncate">
+                Set background <span className={payload.assetId || payload.color ? "text-slate-100" : "italic text-slate-500"}>{label}</span>
+            </span>
+        </span>
+    );
 }

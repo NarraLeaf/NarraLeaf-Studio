@@ -2,6 +2,7 @@ import { Clock, Code, FileText, GitBranch, Image, MessageSquare, Music, Route, S
 import type { StoryBlock, StoryBlockId, StoryScene, StoryTextSegment } from "@shared/types/story";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
+import { getActionCommandCategory, type ActionCommandCategoryId } from "./storyActionCommands";
 
 export function buildVisibleRows(scene: StoryScene, collapsedIds: Set<StoryBlockId>): VisibleStoryRow[] {
     const rows: VisibleStoryRow[] = [];
@@ -90,6 +91,25 @@ export function getMoveTargetAfter(scene: StoryScene, movingBlockId: StoryBlockI
     return { parentId: block.parentId, beforeBlockId: siblingsAfterMove[index + 1] ?? null };
 }
 
+export function getMoveTargetBefore(scene: StoryScene, movingBlockId: StoryBlockId, beforeBlockId: StoryBlockId | null): StoryBlockTarget {
+    if (!beforeBlockId) {
+        return { parentId: null };
+    }
+    const block = scene.blocks[beforeBlockId];
+    if (!block) {
+        return { parentId: null };
+    }
+    const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds : scene.rootBlockIds;
+    if (!siblings) {
+        return { parentId: block.parentId };
+    }
+    const siblingsAfterMove = siblings.filter(id => id !== movingBlockId);
+    return {
+        parentId: block.parentId,
+        beforeBlockId: siblingsAfterMove.includes(beforeBlockId) ? beforeBlockId : null,
+    };
+}
+
 export function canAcceptChildren(block: StoryBlock | undefined): boolean {
     if (!block) {
         return false;
@@ -101,24 +121,29 @@ export function isTextEditableBlock(block: StoryBlock): boolean {
     return Boolean(getTextSegment(block));
 }
 
-export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typeof FileText } {
+export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typeof FileText; iconColor: string } {
+    const withCategory = (label: string, icon: typeof FileText, categoryId: ActionCommandCategoryId) => ({
+        label,
+        icon,
+        iconColor: getActionCommandCategory(categoryId).iconColor,
+    });
     if (block.kind === "nodeAction") {
-        if (block.payload.action === "narration") return { label: "Narration", icon: FileText };
-        if (block.payload.action === "dialogue") return { label: "Dialogue", icon: MessageSquare };
-        if (block.payload.action === "choice") return { label: "Choice", icon: GitBranch };
-        return { label: "Choice option", icon: Route };
+        if (block.payload.action === "narration") return withCategory("Narration", FileText, "character");
+        if (block.payload.action === "dialogue") return withCategory("Dialogue", MessageSquare, "character");
+        if (block.payload.action === "choice") return withCategory("Choice", GitBranch, "control");
+        return withCategory("Choice option", Route, "control");
     }
     if (block.kind === "action") {
-        if (block.payload.action === "setBackground") return { label: "Background", icon: Image };
-        if (block.payload.action === "character") return { label: "Character", icon: UserRound };
-        if (block.payload.action === "audio") return { label: "Audio", icon: Music };
-        if (block.payload.action === "setVariable") return { label: "Variable", icon: Variable };
-        return { label: "Wait", icon: Clock };
+        if (block.payload.action === "setBackground") return withCategory("Background", Image, "scene");
+        if (block.payload.action === "character") return withCategory("Character", UserRound, "character");
+        if (block.payload.action === "audio") return withCategory("Audio", Music, "media");
+        if (block.payload.action === "setVariable") return withCategory("Variable", Variable, "data");
+        return withCategory("Wait", Clock, "control");
     }
-    if (block.kind === "control") return { label: "Control", icon: Settings2 };
-    if (block.kind === "jump") return { label: "Jump", icon: Route };
-    if (block.kind === "code") return { label: "Code", icon: Code };
-    return { label: "Note", icon: StickyNote };
+    if (block.kind === "control") return withCategory("Control", Settings2, "control");
+    if (block.kind === "jump") return withCategory("Jump", Route, "scene");
+    if (block.kind === "code") return withCategory("Code", Code, "utils");
+    return withCategory("Note", StickyNote, "utils");
 }
 
 export function describeBlock(block: StoryBlock, characters: Character[], scene?: StoryScene): string {
