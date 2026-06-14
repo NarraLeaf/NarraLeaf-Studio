@@ -760,16 +760,10 @@ export function createRectangleInspector(ctx: InspectorContext, options?: Rectan
         title: "Interaction",
         fields: [
           defineField<D, any>({
-            id: "section.blueprint",
-            type: "section",
-            title: "Attached blueprint",
-            fields: [
-              defineField<D, any>({
-                id: "interaction.blueprint.deferred",
-                type: "custom",
-                component: ReadonlyBlueprintSection,
-              }),
-            ],
+            id: "interaction.blueprint.deferred",
+            type: "custom",
+            label: "Control blueprint",
+            component: ReadonlyBlueprintSection,
           }),
         ],
       },

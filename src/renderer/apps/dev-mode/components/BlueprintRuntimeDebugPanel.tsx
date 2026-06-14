@@ -7,8 +7,19 @@ import { getInterface } from "@/lib/app/bridge";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
+import { listBlueprintsForDevTools } from "./blueprintDebugPanelModel";
 
 type DebugTabId = "blueprints" | "output" | "scope";
+export type BlueprintOutputLogLevel = "error" | "warning" | "log" | "verbose";
+
+const OUTPUT_LOG_LEVELS: BlueprintOutputLogLevel[] = ["error", "warning", "log", "verbose"];
+const DEFAULT_OUTPUT_LOG_LEVELS = new Set<BlueprintOutputLogLevel>(["error", "warning", "log"]);
+const OUTPUT_LOG_LEVEL_LABEL: Record<BlueprintOutputLogLevel, string> = {
+    error: "Error",
+    warning: "Warning",
+    log: "Log",
+    verbose: "Verbose",
+};
 
 type BlueprintRuntimeDebugPanelProps = {
     debug: DebugBridge;
@@ -32,10 +43,14 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
     } = props;
     const [tab, setTab] = useState<DebugTabId>("output");
     const [events, setEvents] = useState<BlueprintDebugEvent[]>(() => debug.snapshot());
-    const [errorsOnly, setErrorsOnly] = useState(false);
+    const [outputLogLevels, setOutputLogLevels] = useState<Set<BlueprintOutputLogLevel>>(
+        () => new Set(DEFAULT_OUTPUT_LOG_LEVELS),
+    );
+    const [logLevelMenuOpen, setLogLevelMenuOpen] = useState(false);
     const [expandedBp, setExpandedBp] = useState<Set<string>>(() => new Set());
     const [studioHint, setStudioHint] = useState<string | null>(null);
     const outputScrollRef = useRef<HTMLDivElement>(null);
+    const logLevelMenuRef = useRef<HTMLDivElement>(null);
 
     const [surfaceSnap, setSurfaceSnap] = useState(() =>
         scopeBridge.getSurfaceStore(activeSurfaceId).getSnapshot(),
@@ -88,18 +103,31 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         if (el) {
             el.scrollTop = el.scrollHeight;
         }
-    }, [events, tab, errorsOnly]);
+    }, [events, tab, outputLogLevels]);
+
+    useEffect(() => {
+        if (!logLevelMenuOpen) {
+            return;
+        }
+        const onPointerDown = (event: PointerEvent) => {
+            const target = event.target as Node | null;
+            if (target && logLevelMenuRef.current?.contains(target)) {
+                return;
+            }
+            setLogLevelMenuOpen(false);
+        };
+        window.addEventListener("pointerdown", onPointerDown);
+        return () => window.removeEventListener("pointerdown", onPointerDown);
+    }, [logLevelMenuOpen]);
 
     const blueprintsList = useMemo(() => {
-        const list = Object.values(blueprintDocument.blueprints);
-        list.sort((a, b) => a.name.localeCompare(b.name));
-        return list;
+        return listBlueprintsForDevTools(blueprintDocument.blueprints);
     }, [blueprintDocument.blueprints]);
 
     const outputLines = useMemo(() => {
-        const src = errorsOnly ? events.filter(e => e.type === "execution.error") : events;
+        const src = filterBlueprintDebugEventsByLogLevel(events, outputLogLevels);
         return src.slice(-200);
-    }, [events, errorsOnly]);
+    }, [events, outputLogLevels]);
 
     const toggleExpanded = useCallback((id: string) => {
         setExpandedBp(prev => {
@@ -113,17 +141,29 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
         });
     }, []);
 
+    const toggleOutputLogLevel = useCallback((level: BlueprintOutputLogLevel) => {
+        setOutputLogLevels(prev => {
+            const next = new Set(prev);
+            if (next.has(level)) {
+                next.delete(level);
+            } else {
+                next.add(level);
+            }
+            return next;
+        });
+    }, []);
+
     const openInStudio = useCallback(
         async (bp: Blueprint) => {
             setStudioHint(null);
             const payload = buildStudioOpenPayload(bp, projectPath);
             if (!payload) {
-                setStudioHint("不支持从预览打开此类型");
+                setStudioHint("This blueprint cannot be opened from preview.");
                 return;
             }
             const result = await getInterface().devMode.openBlueprintInWorkspace(payload);
             if (!result.success) {
-                setStudioHint(result.error ?? "无法打开");
+                setStudioHint(result.error ?? "Unable to open blueprint.");
                 return;
             }
             setStudioHint(null);
@@ -141,9 +181,9 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
             <div className="flex shrink-0 border-b border-white/10 bg-[#0b0d12]" role="tablist" aria-label="Debug panels">
                 {(
                     [
-                        ["blueprints", "蓝图"],
-                        ["output", "输出"],
-                        ["scope", "变量"],
+                        ["blueprints", "Blueprints"],
+                        ["output", "Output"],
+                        ["scope", "Scope"],
                     ] as const
                 ).map(([id, label]) => {
                     const active = tab === id;
@@ -175,7 +215,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                     <div className="min-h-0 flex-1 overflow-auto p-2">
                         {studioHint ? <p className="mb-2 text-[10px] text-amber-400/90">{studioHint}</p> : null}
                         {blueprintsList.length === 0 ? (
-                            <p className="text-[10px] text-gray-600">无蓝图</p>
+                            <p className="text-[10px] text-gray-600">No blueprints</p>
                         ) : (
                             <ul className="space-y-0.5">
                                 {blueprintsList.map(bp => {
@@ -208,7 +248,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                                     className="shrink-0 rounded border border-white/15 px-1.5 py-0.5 text-[10px] text-gray-300 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                                                     onClick={() => void openInStudio(bp)}
                                                 >
-                                                    工作区
+                                                    Workspace
                                                 </button>
                                             </div>
                                             {expanded ? (
@@ -230,15 +270,39 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                 {tab === "output" ? (
                     <div className="flex min-h-0 flex-1 flex-col">
                         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/5 px-2 py-1">
-                            <label className="flex cursor-default items-center gap-1.5 text-[10px] text-gray-500">
-                                <input
-                                    type="checkbox"
-                                    checked={errorsOnly}
-                                    onChange={e => setErrorsOnly(e.target.checked)}
-                                    className="rounded border-white/20 bg-[#0b0d12]"
-                                />
-                                仅错误
-                            </label>
+                            <div ref={logLevelMenuRef} className="relative">
+                                <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1 rounded border border-white/15 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-white/10"
+                                    aria-haspopup="menu"
+                                    aria-expanded={logLevelMenuOpen}
+                                    onClick={() => setLogLevelMenuOpen(prev => !prev)}
+                                >
+                                    Log Level
+                                    <ChevronDown className="h-3 w-3 text-gray-500" />
+                                </button>
+                                {logLevelMenuOpen ? (
+                                    <div
+                                        role="menu"
+                                        className="absolute left-0 top-full z-20 mt-1 w-32 rounded border border-white/10 bg-[#11141b] p-1 shadow-xl"
+                                    >
+                                        {OUTPUT_LOG_LEVELS.map(level => (
+                                            <label
+                                                key={level}
+                                                className="flex cursor-default items-center gap-2 rounded px-1.5 py-1 text-[10px] text-gray-300 hover:bg-white/10"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={outputLogLevels.has(level)}
+                                                    onChange={() => toggleOutputLogLevel(level)}
+                                                    className="h-3 w-3 rounded border-white/20 bg-[#0b0d12]"
+                                                />
+                                                {OUTPUT_LOG_LEVEL_LABEL[level]}
+                                            </label>
+                                        ))}
+                                    </div>
+                                ) : null}
+                            </div>
                             <button
                                 type="button"
                                 className="rounded border border-white/15 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-white/10"
@@ -249,17 +313,13 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                         </div>
                         <div ref={outputScrollRef} className="min-h-0 flex-1 overflow-auto overscroll-contain p-2">
                             {outputLines.length === 0 ? (
-                                <p className="text-[10px] text-gray-600">无输出</p>
+                                <p className="text-[10px] text-gray-600">No output</p>
                             ) : (
                                 <ul className="space-y-1">
                                     {outputLines.map((ev, i) => (
                                         <li key={`${i}-${ev.type}`} className="break-all text-[10px] text-gray-500">
                                             <span
-                                                className={
-                                                    ev.type === "execution.error"
-                                                        ? "text-amber-300/90"
-                                                        : "text-cyan-400/90"
-                                                }
+                                                className={outputLogLevelClassName(getBlueprintDebugEventLogLevel(ev))}
                                             >
                                                 {ev.type}
                                             </span>
@@ -281,13 +341,13 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                         <div>
                             <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Widget</p>
                             <ul className="space-y-0.5 text-[10px] text-gray-400">
-                                <li>hover · {widgetSnap.hoverTargetId ?? "—"}</li>
-                                <li>active · {widgetSnap.activePointerId ?? "—"}</li>
-                                <li>focus · {widgetSnap.focusedId ?? "—"}</li>
+                                <li>hover · {widgetSnap.hoverTargetId ?? "-"}</li>
+                                <li>active · {widgetSnap.activePointerId ?? "-"}</li>
+                                <li>focus · {widgetSnap.focusedId ?? "-"}</li>
                                 <li className="break-all">
                                     variants ·{" "}
                                     {widgetSnap.variantOverrides.size === 0
-                                        ? "—"
+                                        ? "-"
                                         : [...widgetSnap.variantOverrides.entries()]
                                               .map(([k, v]) => `${k.slice(0, 6)}…=${v}`)
                                               .join(", ")}
@@ -356,7 +416,7 @@ function KeyValueBlock(props: {
                 {surfaceId ? <span className="text-gray-600"> · {surfaceId.slice(0, 8)}…</span> : null}
             </p>
             {keys.length === 0 ? (
-                <p className="text-[10px] text-gray-600">空</p>
+                <p className="text-[10px] text-gray-600">None</p>
             ) : (
                 <ul className="space-y-0.5">
                     {keys.map(k => (
@@ -406,6 +466,56 @@ function formatExecutionError(ev: Extract<BlueprintDebugEvent, { type: "executio
     return parts.join(" · ");
 }
 
+export function getBlueprintDebugEventLogLevel(ev: BlueprintDebugEvent): BlueprintOutputLogLevel {
+    if (ev.type === "execution.error") {
+        return "error";
+    }
+    if (ev.type === "devtools.log") {
+        const level = ev.level.trim().toLowerCase();
+        if (level === "error") {
+            return "error";
+        }
+        if (level === "warn" || level === "warning") {
+            return "warning";
+        }
+        return "log";
+    }
+    return "verbose";
+}
+
+export function filterBlueprintDebugEventsByLogLevel(
+    events: readonly BlueprintDebugEvent[],
+    levels: ReadonlySet<BlueprintOutputLogLevel>,
+): BlueprintDebugEvent[] {
+    return events.filter(event => levels.has(getBlueprintDebugEventLogLevel(event)));
+}
+
+function outputLogLevelClassName(level: BlueprintOutputLogLevel): string {
+    switch (level) {
+        case "error":
+            return "text-rose-300/90";
+        case "warning":
+            return "text-amber-300/90";
+        case "log":
+            return "text-cyan-400/90";
+        case "verbose":
+            return "text-gray-500";
+        default:
+            return "text-gray-500";
+    }
+}
+
+function formatDevtoolsLogLevel(level: string): string {
+    const normalized = level.trim().toLowerCase();
+    if (normalized === "warn") {
+        return "warning";
+    }
+    if (normalized === "info") {
+        return "log";
+    }
+    return normalized || "log";
+}
+
 function formatEvent(ev: BlueprintDebugEvent): string {
     switch (ev.type) {
         case "execution.started":
@@ -424,6 +534,8 @@ function formatEvent(ev: BlueprintDebugEvent): string {
         case "function.call":
         case "function.return":
             return ev.functionId;
+        case "devtools.log":
+            return `${formatDevtoolsLogLevel(ev.level)} · ${ev.message}`;
         default:
             return JSON.stringify(ev);
     }

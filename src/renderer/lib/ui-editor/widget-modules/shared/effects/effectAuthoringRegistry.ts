@@ -187,11 +187,11 @@ export function summarizeEffectKind(kind: VisualEffectKind, v: ElementEffectValu
         case "glow":
             return shadowSummaryStored(v.effectGlow, "glow");
         case "blend":
-            return v.effectBlend || "—";
+            return v.effectBlend || "-";
         case "filter": {
             const f = v.effectFilter;
             if (!f) {
-                return "—";
+                return "-";
             }
             if (f.storage === "preset") {
                 return `${f.preset} ${f.amount}`;

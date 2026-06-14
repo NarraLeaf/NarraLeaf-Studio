@@ -255,7 +255,7 @@ export function BlueprintMemberTree({
                 </div>
                 <ul className="space-y-0.5">
                     {Object.keys(events).length === 0 ? (
-                        <li className="text-gray-500">—</li>
+                        <li className="text-gray-500">-</li>
                     ) : (
                         Object.keys(events).map(id => {
                             const { errors, warnings } = countForGraph(diagnostics, "event", id);

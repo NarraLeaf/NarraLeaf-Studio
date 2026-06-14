@@ -115,7 +115,7 @@ function DockerItemRenderer({ item }: { item: DockerBarItem }) {
                                 item.onChange(Number.isNaN(numVal) ? raw : numVal);
                             }}
                             size="sm"
-                            placeholder="—"
+                            placeholder="-"
                             fullWidth
                             portalMenu
                             menuPlacement="above"
@@ -262,7 +262,7 @@ function wrapMultiSelectItem(base: DockerBarItem, sources: DockerBarItem[]): Doc
             const uniformValue = values.every((value) => value === values[0]);
             const options = uniformValue
                 ? first.options
-                : [{ value: MULTI_SELECT_MIXED_VALUE, label: "—" }, ...first.options];
+                : [{ value: MULTI_SELECT_MIXED_VALUE, label: "-" }, ...first.options];
             return {
                 ...first,
                 value: uniformValue ? first.value : MULTI_SELECT_MIXED_VALUE,
@@ -285,7 +285,7 @@ function wrapMultiSelectItem(base: DockerBarItem, sources: DockerBarItem[]): Doc
             const first = numberSources[0];
             const values = numberSources.map((source) => source.value);
             const uniformValue = values.every((value) => value === values[0]);
-            const placeholder = uniformValue ? first.placeholder : "—";
+            const placeholder = uniformValue ? first.placeholder : "-";
             const inputProps = { ...(first.inputProps ?? {}) };
             if (!inputProps.title) {
                 inputProps.title = first.tooltip;

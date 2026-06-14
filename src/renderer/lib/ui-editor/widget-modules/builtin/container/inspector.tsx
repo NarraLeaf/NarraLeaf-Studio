@@ -85,18 +85,10 @@ export function createContainerInspector(ctx: InspectorContext) {
                 title: "Interaction",
                 fields: [
                     defineField<D, any>({
-                        id: "section.blueprint",
-                        type: "section",
-                        title: "Control blueprint",
-                        collapsible: true,
-                        defaultCollapsed: true,
-                        fields: [
-                            defineField<D, any>({
-                                id: "interaction.blueprint.readonly",
-                                type: "custom",
-                                component: ReadonlyBlueprintSection,
-                            }),
-                        ],
+                        id: "interaction.blueprint.readonly",
+                        type: "custom",
+                        label: "Control blueprint",
+                        component: ReadonlyBlueprintSection,
                     }),
                 ],
             },

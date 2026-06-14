@@ -373,7 +373,7 @@ function InspectorParamOnCard({
                         onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
                     }}
                 >
-                    <option value="">—</option>
+                    <option value="">-</option>
                     {selectOptions.map(opt => (
                         <option key={opt.value} value={opt.value}>
                             {opt.label}
@@ -389,7 +389,7 @@ function InspectorParamOnCard({
                         onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
                     }}
                 >
-                    <option value="">—</option>
+                    <option value="">-</option>
                     {(memberVariables ?? []).map(v => (
                         <option key={v.id} value={v.id}>
                             {v.name}

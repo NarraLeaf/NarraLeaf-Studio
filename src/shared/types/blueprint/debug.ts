@@ -13,6 +13,7 @@ export type BlueprintDebugEvent =
     | { type: "binding.evaluated"; bindingId: string }
     | { type: "function.call"; functionId: string }
     | { type: "function.return"; functionId: string }
+    | { type: "devtools.log"; level: string; message: string }
     | {
           type: "execution.error";
           executionId: string;

@@ -1,4 +1,4 @@
-import type { Blueprint, BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument, BlueprintGraphEdge, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import {
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
@@ -11,7 +11,10 @@ import type { UIElement } from "@shared/types/ui-editor/document";
 import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBehaviorGraphEntry";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
 import { behaviorNodeRegistry } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
-import { resolveBlueprintNodeEditorCatalogEntryForNode } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
+import {
+    isValidBlueprintExecConnection,
+    resolveBlueprintNodeEditorCatalogEntryForNode,
+} from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 
 export type BlueprintGraphDiagnosticTarget =
     | { kind: "graph"; graphKind: "event" | "function"; graphId: string }
@@ -37,6 +40,36 @@ type BlueprintEventHook = {
     slotName: string;
     binding: { kind: "blueprintEvent"; blueprintId: string; eventId: string };
 };
+
+function reportDuplicatePinConnection(
+    out: BlueprintGraphEditorDiagnostic[],
+    seenPins: Map<string, BlueprintGraphEdge>,
+    input: {
+        key: string;
+        nodeId: string;
+        port: string;
+        direction: "input" | "output";
+        graphKind: "event" | "function";
+        graphId: string;
+        edge: BlueprintGraphEdge;
+    },
+): void {
+    if (seenPins.has(input.key)) {
+        out.push({
+            severity: "error",
+            code: "edge.pin_multiple",
+            message: `Pin ${input.nodeId}.${input.port} has multiple ${input.direction} connections; each pin can only have one edge.`,
+            target: {
+                kind: "node",
+                graphKind: input.graphKind,
+                graphId: input.graphId,
+                nodeId: input.nodeId,
+            },
+        });
+        return;
+    }
+    seenPins.set(input.key, input.edge);
+}
 
 function collectBlueprintEventHooks(element: UIElement): BlueprintEventHook[] {
     const events = element.behavior?.events;
@@ -206,12 +239,21 @@ export function validateBlueprintGraphIr(
         }
     }
 
+    const seenPins = new Map<string, BlueprintGraphEdge>();
     for (const edge of edges) {
+        if (edge.from.nodeId === edge.to.nodeId) {
+            out.push({
+                severity: "error",
+                code: "edge.self_connection",
+                message: `Node "${edge.from.nodeId}" cannot connect to itself.`,
+                target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
+            });
+        }
         if (!nodeIds.has(edge.from.nodeId)) {
             out.push({
                 severity: "error",
                 code: "edge.from_unknown",
-                    message: `Missing source node "${edge.from.nodeId}".`,
+                message: `Missing source node "${edge.from.nodeId}".`,
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -219,7 +261,7 @@ export function validateBlueprintGraphIr(
             out.push({
                 severity: "error",
                 code: "edge.to_unknown",
-                    message: `Missing target node "${edge.to.nodeId}".`,
+                message: `Missing target node "${edge.to.nodeId}".`,
                 target: { kind: "graph", graphKind: ctx.graphKind, graphId: ctx.graphId },
             });
         }
@@ -237,7 +279,45 @@ export function validateBlueprintGraphIr(
                     message: `Pin mismatch on ${edge.from.nodeId}.${edge.from.port} → ${edge.to.nodeId}.${edge.to.port}.`,
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
                 });
+            } else if (
+                !isValidBlueprintExecConnection({
+                    sourceType: fromNode.type,
+                    sourcePort: edge.from.port,
+                    targetType: toNode.type,
+                    targetPort: edge.to.port,
+                    sourceParams: fromNode.params,
+                    targetParams: toNode.params,
+                })
+            ) {
+                out.push({
+                    severity: "error",
+                    code: "edge.connection_invalid",
+                    message: `Invalid connection ${edge.from.nodeId}.${edge.from.port} -> ${edge.to.nodeId}.${edge.to.port}.`,
+                    target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
+                });
             }
+        }
+        if (nodeIds.has(edge.from.nodeId)) {
+            reportDuplicatePinConnection(out, seenPins, {
+                key: `out\0${edge.from.nodeId}\0${edge.from.port}`,
+                nodeId: edge.from.nodeId,
+                port: edge.from.port,
+                direction: "output",
+                graphKind: ctx.graphKind,
+                graphId: ctx.graphId,
+                edge,
+            });
+        }
+        if (nodeIds.has(edge.to.nodeId)) {
+            reportDuplicatePinConnection(out, seenPins, {
+                key: `in\0${edge.to.nodeId}\0${edge.to.port}`,
+                nodeId: edge.to.nodeId,
+                port: edge.to.port,
+                direction: "input",
+                graphKind: ctx.graphKind,
+                graphId: ctx.graphId,
+                edge,
+            });
         }
     }
 
