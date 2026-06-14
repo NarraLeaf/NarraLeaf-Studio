@@ -1,5 +1,5 @@
 import { Service } from "../Service";
-import { IServiceAssetsService, Services, WorkspaceContext } from "../services";
+import { Services, WorkspaceContext } from "../services";
 import { ServiceAssetsService } from "./ServiceAssetsService";
 import { UIService } from "./UIService";
 
@@ -45,6 +45,14 @@ export class PanelStateService extends Service<PanelStateService> {
         this.markDirty();
     }
 
+    public override dispose(_ctx: WorkspaceContext): void {
+        if (this.saveTimer) {
+            clearTimeout(this.saveTimer);
+            this.saveTimer = null;
+        }
+        void this.flush();
+    }
+
     private markDirty(): void {
         this.dirty = true;
         if (this.saveTimer) {
@@ -76,7 +84,7 @@ export class PanelStateService extends Service<PanelStateService> {
         const result = await this.getServiceAssets().writeStore(PanelStateService.Namespace, this.store);
         if (!result.ok) {
             const uiService = this.getContext().services.get<UIService>(Services.UI);
-            uiService.showError("Failed to persist panel state: " + result.error);
+            uiService.showError(`Failed to persist panel state: ${result.error.message}`);
         }
     }
 

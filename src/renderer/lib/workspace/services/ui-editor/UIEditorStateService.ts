@@ -3,7 +3,7 @@ import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { EventEmitter } from "../ui/EventEmitter";
 import { Service } from "../Service";
 import { IUIEditorStateService, InteractionOverride, Services, UIEditorStateEvents, WorkspaceContext } from "../services";
-import { ProjectSettingsService } from "../ProjectSettingsService";
+import { GlobalSettingsService } from "../GlobalSettingsService";
 import { UIDocumentService } from "./UIDocumentService";
 import { UIService } from "../core/UIService";
 import { UIStore, SelectionState } from "../ui/UIStore";
@@ -20,13 +20,13 @@ const SMART_SNAP_ENABLED_KEY = "uiEditor.smartSnap.enabled";
 /** Persisted: smart snap category toggles (element centers, edges, canvas). */
 const SMART_SNAP_DETAIL_KEY = "uiEditor.smartSnap.detail";
 
-/** Editing-area cache: inspector appearance variant picker per widget element (project settings, not UIDocument). */
+/** Editing-area cache: inspector appearance variant picker per widget element (global settings, not UIDocument). */
 const APPEARANCE_INSPECTOR_VARIANT_CACHE_KEY = "uiEditor.editingArea.appearanceInspectorVariantByElementId";
 
 /** Editing-area cache: compact border "sides" row expanded (per element). */
 const APPEARANCE_BORDER_SIDES_EXPANDED_CACHE_KEY = "uiEditor.editingArea.appearanceBorderSidesExpandedByElementId";
 
-/** Outline panel: keys are element ids with collapsed branches (editor-only, project settings). */
+/** Outline panel: keys are element ids with collapsed branches (editor-only global settings). */
 const OUTLINE_COLLAPSED_BRANCHES_KEY = "uiEditor.outline.collapsedBranchesByElementId";
 
 const APPEARANCE_INSPECTOR_UI_CACHE_PERSIST_MS = 250;
@@ -36,7 +36,7 @@ const OUTLINE_COLLAPSE_CACHE_PERSIST_MS = 250;
 export class UIEditorStateService extends Service<UIEditorStateService> implements IUIEditorStateService {
     private uiStore: UIStore | null = null;
     private documentService: UIDocumentService | null = null;
-    private settingsService: ProjectSettingsService | null = null;
+    private settingsService: GlobalSettingsService | null = null;
     private readonly events = new EventEmitter<UIEditorStateEvents>();
     private selection: SelectionState = { type: null, data: null };
     private tool: UITool = { kind: "select" };
@@ -58,12 +58,12 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const uiService = ctx.services.get<UIService>(Services.UI);
         const uidocumentService = ctx.services.get<UIDocumentService>(Services.UIDocument);
-        const projectSettings = ctx.services.get<ProjectSettingsService>(Services.ProjectSettings);
-        await depend([uiService, uidocumentService, projectSettings]);
+        const globalSettings = ctx.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        await depend([uiService, uidocumentService, globalSettings]);
 
         this.uiStore = uiService.getStore();
         this.documentService = uidocumentService;
-        this.settingsService = projectSettings;
+        this.settingsService = globalSettings;
         this.selection = this.uiStore.getSelection();
         this.ensureInteractionOverrideValid(this.selection);
         this.selectionUnsubscribe = this.uiStore

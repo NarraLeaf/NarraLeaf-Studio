@@ -1,4 +1,4 @@
-import { RuntimeSettingType, TypeofSettingSchema } from "@/lib/workspace/services/settings/types";
+import { SettingValueType, TypeofSettingSchema } from "@/lib/settings/types";
 import { GlobalStateKeys } from "@shared/types/state/globalState";
 
 /**
@@ -6,14 +6,12 @@ import { GlobalStateKeys } from "@shared/types/state/globalState";
  */
 export enum SettingScope {
     Global = "global",
-    Project = "project",
-    Runtime = "runtime",
 }
 
 /**
  * Lightweight descriptor that the shared UI layer understands.
  */
-export interface SettingDescriptor<T extends RuntimeSettingType = RuntimeSettingType> {
+export interface SettingDescriptor<T extends SettingValueType = SettingValueType> {
     id: string;
     type: T;
     label: string;
@@ -25,7 +23,7 @@ export interface SettingDescriptor<T extends RuntimeSettingType = RuntimeSetting
 /**
  * Shape of each global application setting.
  */
-export interface AppSettingDefinition<T extends RuntimeSettingType = RuntimeSettingType> {
+export interface AppSettingDefinition<T extends SettingValueType = SettingValueType> {
     key: GlobalStateKeys;
     category: AppSettingCategoryKey;
     scope: SettingScope;

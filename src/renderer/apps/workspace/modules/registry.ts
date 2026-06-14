@@ -12,7 +12,6 @@ import { globalActions, globalActionGroups } from "./actions";
 import { imagePreviewModule } from "./assets/editors/imagePreviewModule";
 import { audioPreviewModule } from "./assets/editors/audioPreviewModule";
 import { charactersModule } from "./characters";
-import { settingsModule } from "./settings";
 import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
 import { uiEditorSurfacesModule } from "./ui-editor";
 import { storyPanelModule } from "./story";
@@ -32,7 +31,6 @@ export const builtInPanels: PanelModule[] = [
     assetsModule,
     localizationPanelModule,
     assetsBottomModule,
-    settingsModule,
     propertiesModule,
     consoleModule,
     runningTasksPanelModule,
@@ -68,7 +66,6 @@ export { charactersModule } from "./characters";
 export { propertiesModule } from "./properties";
 export { consoleModule } from "./console";
 export { welcomeModule } from "./welcome";
-export { settingsModule } from "./settings";
 export { globalActions, globalActionGroups } from "./actions";
 export { uiEditorSurfacesModule } from "./ui-editor";
 export { storyPanelModule } from "./story";

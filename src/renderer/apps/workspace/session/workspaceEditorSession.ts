@@ -25,7 +25,7 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 
-/** Project settings key; stored in .nlstudio/settings.json via ProjectSettingsService */
+/** Global settings key; stored in Electron userData/state/global.json. */
 export const WORKSPACE_EDITOR_SESSION_SETTINGS_KEY = "ui.editor.session";
 
 const WELCOME_TAB_ID = "narraleaf-studio:welcome";

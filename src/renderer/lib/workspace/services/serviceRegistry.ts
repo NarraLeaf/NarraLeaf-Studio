@@ -1,14 +1,13 @@
 import { FileSystemService } from "./core/FileSystem";
 import { ProjectService } from "./core/ProjectService";
 import { UIService } from "./core/UIService";
-import { ProjectSettingsService } from "./ProjectSettingsService";
+import { GlobalSettingsService } from "./GlobalSettingsService";
 import { Services } from "./services";
 import { Service } from "./Service";
 import { AssetsService } from "./core/AssetsService";
 import { ServiceAssetsService } from "./core/ServiceAssetsService";
 import { CharacterService } from "./core/CharacterService";
 import { UuidService } from "./core/UuidService";
-import { SettingsService } from "./core/SettingsService";
 import { PanelStateService } from "./core/PanelStateService";
 import { UIDocumentService } from "./ui-editor/UIDocumentService";
 import { UIRuntimeBridgeService } from "./ui-editor/UIRuntimeBridgeService";
@@ -28,8 +27,7 @@ export class ServiceRegistry {
         [Services.Uuid]: UuidService.getInstance(),
         [Services.FileSystem]: FileSystemService.getInstance(),
         [Services.UI]: UIService.getInstance(),
-        [Services.ProjectSettings]: ProjectSettingsService.getInstance(),
-        [Services.Settings]: SettingsService.getInstance(),
+        [Services.GlobalSettings]: GlobalSettingsService.getInstance(),
         [Services.Assets]: AssetsService.getInstance(),
         [Services.ServiceAssets]: ServiceAssetsService.getInstance(),
         [Services.PanelState]: PanelStateService.getInstance(),

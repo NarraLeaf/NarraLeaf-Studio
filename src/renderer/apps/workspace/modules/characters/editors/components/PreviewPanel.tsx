@@ -1,7 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useMemo, type ReactNode } from "react";
 import { CharacterForm } from "@/lib/workspace/services/character/types";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw, ZoomIn, ZoomOut } from "lucide-react";
 import { AssetView } from "./types";
+import {
+    ImagePixelPreview,
+    type ImagePixelPreviewControls,
+} from "@/apps/workspace/modules/assets/components/ImagePixelPreview";
 
 type PreviewPanelProps = {
     activeForm: CharacterForm | null;
@@ -20,37 +24,6 @@ function VariantPreview({
     loading: boolean;
     error: string | null;
 }) {
-    const [zoom, setZoom] = useState(1);
-    const [pan, setPan] = useState({ x: 0, y: 0 });
-    const [isPanning, setIsPanning] = useState(false);
-    const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-
-    useEffect(() => {
-        setZoom(1);
-        setPan({ x: 0, y: 0 });
-    }, [view?.url]);
-
-    const handleWheel = (e: React.WheelEvent) => {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        setZoom(prev => Math.max(0.1, Math.min(5, prev * delta)));
-    };
-
-    const handleMouseDown = (e: React.MouseEvent) => {
-        if (e.button === 0) {
-            setIsPanning(true);
-            setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-        }
-    };
-
-    const handleMouseMove = (e: React.MouseEvent) => {
-        if (isPanning) {
-            setPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
-        }
-    };
-
-    const handleMouseUp = () => setIsPanning(false);
-
     if (loading) {
         return (
             <div className="h-full flex items-center justify-center bg-[#0f1115]">
@@ -84,59 +57,58 @@ function VariantPreview({
         );
     }
 
-    return (
-        <div className="h-full flex flex-col bg-[#0f1115]">
+    const renderToolbar = (controls: ImagePixelPreviewControls): ReactNode => {
+        const size = controls.imageSize ?? view.metadata;
+
+        return (
             <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#1e1f22]">
                 <div className="flex items-center gap-4 text-xs text-gray-300">
                     {view.metadata ? (
                         <>
-                            <span>{view.metadata.width} × {view.metadata.height}</span>
+                            <span>{size ? `${size.width} x ${size.height}` : "No size"}</span>
                             <span className="text-gray-400">{view.metadata.format.toUpperCase()}</span>
                             <span className="text-gray-400">{(view.metadata.size / 1024).toFixed(1)} KB</span>
                         </>
                     ) : (
-                        <span className="text-gray-400">No metadata</span>
+                        <span className="text-gray-400">{size ? `${size.width} x ${size.height}` : "No metadata"}</span>
                     )}
                 </div>
                 <div className="flex items-center gap-2">
-                    <button className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" onClick={() => setZoom(prev => Math.max(0.1, prev / 1.2))}>
-                        -
+                    <button
+                        className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                        onClick={controls.zoomOut}
+                        title="Zoom Out"
+                    >
+                        <ZoomOut className="w-4 h-4" />
                     </button>
-                    <span className="text-sm text-gray-300 min-w-14 text-center">{(zoom * 100).toFixed(0)}%</span>
-                    <button className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors" onClick={() => setZoom(prev => Math.min(5, prev * 1.2))}>
-                        +
+                    <span className="text-sm text-gray-300 min-w-14 text-center">{controls.zoomLabel}</span>
+                    <button
+                        className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                        onClick={controls.zoomIn}
+                        title="Zoom In"
+                    >
+                        <ZoomIn className="w-4 h-4" />
                     </button>
                     <button
                         className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors ml-2"
-                        onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
+                        onClick={controls.resetView}
+                        title="Reset View"
                     >
                         <RefreshCw className="w-4 h-4" />
                     </button>
                 </div>
             </div>
-            <div
-                className="flex-1 overflow-hidden flex items-center justify-center cursor-move"
-                onWheel={handleWheel}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-            >
-                <img
-                    src={view.url}
-                    alt="Variant preview"
-                    style={{
-                        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                        maxWidth: "100%",
-                        maxHeight: "100%",
-                        objectFit: "contain",
-                        userSelect: "none",
-                        pointerEvents: "none",
-                    }}
-                    draggable={false}
-                />
-            </div>
-        </div>
+        );
+    };
+
+    return (
+        <ImagePixelPreview
+            src={view.url}
+            alt="Variant preview"
+            initialSize={view.metadata ? { width: view.metadata.width, height: view.metadata.height } : null}
+            resetKey={view.url}
+            renderToolbar={renderToolbar}
+        />
     );
 }
 
@@ -163,4 +135,3 @@ export function PreviewPanel({
         </div>
     );
 }
-
