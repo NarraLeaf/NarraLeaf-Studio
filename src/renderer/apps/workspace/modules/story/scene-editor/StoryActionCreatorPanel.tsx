@@ -4,7 +4,7 @@ import type { PanelComponentProps } from "../../types";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
-import { ProjectSettingsService } from "@/lib/workspace/services/ProjectSettingsService";
+import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import {
     ACTION_COMMAND_CATEGORIES,
     ACTION_COMMANDS,
@@ -31,7 +31,7 @@ type SidebarCategory = ActionCommandCategory | {
 export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryActionCreatorPanelPayload>) {
     const { context, isInitialized } = useWorkspace();
     const settingsService = useMemo(
-        () => context && isInitialized ? context.services.get<ProjectSettingsService>(Services.ProjectSettings) : null,
+        () => context && isInitialized ? context.services.get<GlobalSettingsService>(Services.GlobalSettings) : null,
         [context, isInitialized],
     );
     const [query, setQuery] = useState("");

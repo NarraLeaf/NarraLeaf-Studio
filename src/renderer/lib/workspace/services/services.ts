@@ -7,7 +7,6 @@ import { AssetData, AssetType } from "./assets/assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { Character } from "./character/Character";
 import { CharacterGroup } from "./character/types";
-import { RuntimeSettingSchema, RuntimeSettingType, TypeofSettingSchema } from "./settings/types";
 import type {
     UIDocument,
     UISurface,
@@ -74,7 +73,7 @@ enum Services {
     Uuid = "uuid",
     FileSystem = "fileSystem",
     UI = "ui",
-    ProjectSettings = "projectSettings",
+    GlobalSettings = "globalSettings",
     ServiceAssets = "serviceAssets",
     PanelState = "panelState",
     UIDocument = "uiDocument",
@@ -92,7 +91,6 @@ enum Services {
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
-    Settings = "settings",
     // Editor = "editor",
     Story = "story",
     Character = "character",
@@ -143,11 +141,11 @@ interface IFileSystemService extends IService {
     readJSON<T>(path: string): Promise<FsRequestResult<T>>;
 }
 
-interface IProjectSettingsService extends IService {
+interface IGlobalSettingsService extends IService {
     get<T = any>(key: string, defaultValue?: T): Promise<T | undefined>;
     set<T = any>(key: string, value: T): Promise<void>;
+    setBatch(settings: Record<string, any>): Promise<void>;
     getAll(): Record<string, any>;
-    clear(): Promise<void>;
     has(key: string): boolean;
     getSync<T = any>(key: string, defaultValue?: T): T | undefined;
 }
@@ -172,14 +170,6 @@ interface IUIService extends IService {
     showAlert(message: string, detail?: string): Promise<void>;
     showNotification(message: string, type?: "info" | "success" | "warning" | "error"): void;
     showError(error: Error | string): void;
-}
-
-interface ISettingsService extends IService {
-    getCategories(): string[];
-    getSettings(category: string): RuntimeSettingSchema<RuntimeSettingType>[];
-    get(name: string): RuntimeSettingSchema<RuntimeSettingType> | undefined;
-    getValue<T extends RuntimeSettingType>(name: string): TypeofSettingSchema<T> | undefined;
-    setValue<T extends RuntimeSettingType>(name: string, value: TypeofSettingSchema<T>): Promise<void>;
 }
 
 interface IUIDocumentService extends IService {
@@ -600,8 +590,8 @@ interface IPluginService extends IService { }
 export {
     IAssetService, IAudioService, IBlueprintNodeCatalogService, IBuildService, ICommandService, IDebugService,
     IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
-    IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService,
-    IService, IServiceAssetsService, IPanelStateService, ISettingsService, IStorageService, IStoryService,
+    IGlobalSettingsService, IPluginService, IPreviewService, IProjectService, IRuntimeService,
+    IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, UIEditorStateEvents,

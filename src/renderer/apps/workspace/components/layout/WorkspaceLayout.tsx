@@ -16,7 +16,7 @@ import { useRegistry } from "../../registry";
 import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
-import { ProjectSettingsService } from "@/lib/workspace/services/ProjectSettingsService";
+import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 
@@ -86,7 +86,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const activeBottomPanelIdRef = useRef<string | null>(null);
 
     // Settings service
-    const settingsService = context?.services.get<ProjectSettingsService>(Services.ProjectSettings);
+    const settingsService = context?.services.get<GlobalSettingsService>(Services.GlobalSettings);
 
     // Track whether settings have been loaded
     const [settingsLoaded, setSettingsLoaded] = useState(false);
