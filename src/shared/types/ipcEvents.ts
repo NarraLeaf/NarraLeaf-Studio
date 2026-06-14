@@ -21,6 +21,7 @@ export enum IPCEventType {
     appLaunchSettings = "app.settings.launchWindow",
     appGlobalStateGet = "app.globalState.get",
     appGlobalStateSet = "app.globalState.set",
+    appGlobalStateGetAll = "app.globalState.getAll",
     appAddRecentProject = "app.addRecentProject",
 
     fsStat = "fs.stat",
@@ -56,13 +57,6 @@ export enum IPCEventType {
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
     
-    // Project Settings
-    projectSettingsGet = "projectSettings.get",
-    projectSettingsSet = "projectSettings.set",
-    projectSettingsSetBatch = "projectSettings.setBatch",
-    projectSettingsGetAll = "projectSettings.getAll",
-    projectSettingsClear = "projectSettings.clear",
-
     devModeLaunch = "devMode.launch",
     devModeStop = "devMode.stop",
     devModeReload = "devMode.reload",
@@ -181,6 +175,14 @@ export type IPCEvents = {
         },
         response: void;
     };
+    [IPCEventType.appGlobalStateGetAll]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            settings: Record<string, any>;
+        };
+    };
     [IPCEventType.appAddRecentProject]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -190,7 +192,7 @@ export type IPCEvents = {
         },
         response: void;
     };
-} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCProjectSettingsEvents & IPCDevModeEvents;
+} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -443,57 +445,6 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Host,
         data: PreviewStudioBlueprintOpenPayload;
         response: never;
-    };
-};
-
-export type IPCProjectSettingsEvents = {
-    [IPCEventType.projectSettingsGet]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: {
-            projectPath: string;
-            key: string;
-        },
-        response: {
-            value: any;
-        };
-    };
-    [IPCEventType.projectSettingsSet]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: {
-            projectPath: string;
-            key: string;
-            value: any;
-        },
-        response: void;
-    };
-    [IPCEventType.projectSettingsSetBatch]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: {
-            projectPath: string;
-            settings: Record<string, any>;
-        },
-        response: void;
-    };
-    [IPCEventType.projectSettingsGetAll]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: {
-            projectPath: string;
-        },
-        response: {
-            settings: Record<string, any>;
-        };
-    };
-    [IPCEventType.projectSettingsClear]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: {
-            projectPath: string;
-        },
-        response: void;
     };
 };
 

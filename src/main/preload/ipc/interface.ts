@@ -61,18 +61,6 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         launch: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) =>
             ipcClient.invoke(IPCEventType.workspaceLaunch, { props, closeCurrentWindow }),
         close: () => ipcClient.invoke(IPCEventType.workspaceClose, {}),
-        projectSettings: {
-            get: <T = any>(projectPath: string, key: string) =>
-                ipcClient.invoke(IPCEventType.projectSettingsGet, { projectPath, key }) as Promise<RequestStatus<{ value: T }>>,
-            set: <T = any>(projectPath: string, key: string, value: T) =>
-                ipcClient.invoke(IPCEventType.projectSettingsSet, { projectPath, key, value }),
-            setBatch: (projectPath: string, settings: Record<string, any>) =>
-                ipcClient.invoke(IPCEventType.projectSettingsSetBatch, { projectPath, settings }),
-            getAll: (projectPath: string) =>
-                ipcClient.invoke(IPCEventType.projectSettingsGetAll, { projectPath }) as Promise<RequestStatus<{ settings: Record<string, any> }>>,
-            clear: (projectPath: string) =>
-                ipcClient.invoke(IPCEventType.projectSettingsClear, { projectPath }),
-        },
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
         onBlueprintNavigateFromPreview: (handler: (payload: PreviewStudioBlueprintOpenPayload) => void) =>
@@ -85,6 +73,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         state: {
             getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
             setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
+            getAllGlobalState: () =>
+                ipcClient.invoke(IPCEventType.appGlobalStateGetAll, {}) as Promise<RequestStatus<{ settings: Record<string, any> }>>,
         },
         addRecentProject: (name: string, path: string) =>
             ipcClient.invoke(IPCEventType.appAddRecentProject, { name, path }) as Promise<RequestStatus<void>>,

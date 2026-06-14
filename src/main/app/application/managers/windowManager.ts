@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 import { BaseApp } from "../baseApp";
 import { AppWindow } from "./window/appWindow";
-import { AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowGetControlHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler } from "./window/handlers/appAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowGetControlHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler } from "./window/handlers/appAction";
 import { AppSettingsWindowLaunchHandler } from "./window/handlers/settingAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
@@ -13,13 +13,6 @@ import {
 import { IPCHost } from "./window/ipcHost";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./window/handlers/projectWizardAction";
 import { WorkspaceLaunchHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler } from "./window/handlers/workspaceAction";
-import {
-    ProjectSettingsGetHandler,
-    ProjectSettingsSetHandler,
-    ProjectSettingsSetBatchHandler,
-    ProjectSettingsGetAllHandler,
-    ProjectSettingsClearHandler
-} from "./window/handlers/projectSettingsAction";
 import {
     DevModeGetStatusHandler,
     DevModeLaunchHandler,
@@ -83,6 +76,7 @@ export class WindowManager {
         win.registerIPCHandler(new AppTerminateHandler());
         win.registerIPCHandler(new AppGlobalStateGetHandler());
         win.registerIPCHandler(new AppGlobalStateSetHandler());
+        win.registerIPCHandler(new AppGlobalStateGetAllHandler());
         win.registerIPCHandler(new AppAddRecentProjectHandler());
 
         win.registerIPCHandler(new AppSettingsWindowLaunchHandler());
@@ -96,13 +90,6 @@ export class WindowManager {
         win.registerIPCHandler(new WorkspaceLaunchHandler());
         win.registerIPCHandler(new WorkspaceSelectFolderHandler());
         win.registerIPCHandler(new WorkspaceCloseHandler());
-
-        // Register project settings handlers
-        win.registerIPCHandler(new ProjectSettingsGetHandler());
-        win.registerIPCHandler(new ProjectSettingsSetHandler());
-        win.registerIPCHandler(new ProjectSettingsSetBatchHandler());
-        win.registerIPCHandler(new ProjectSettingsGetAllHandler());
-        win.registerIPCHandler(new ProjectSettingsClearHandler());
 
         // Register dev mode handlers
         win.registerIPCHandler(new DevModeLaunchHandler());

@@ -4,7 +4,7 @@ import { Select, SelectOption } from "@/lib/components/elements/Select";
 import { Switch } from "@/lib/components/elements/Switch";
 import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 import { Loader2 } from "lucide-react";
-import { RuntimeSettingType } from "@/lib/workspace/services/settings/types";
+import { SettingValueType } from "@/lib/settings/types";
 import { SettingCategory, SettingDescriptor } from "@/lib/settings/models";
 
 export type SettingValue = string | number | boolean;
@@ -30,21 +30,21 @@ interface SettingsExplorerProps<T> {
     panelFocusHandler?: () => void;
 }
 
-function parseSettingInput(type: RuntimeSettingType, rawValue: string): SettingValue | null {
+function parseSettingInput(type: SettingValueType, rawValue: string): SettingValue | null {
     switch (type) {
-        case RuntimeSettingType.String:
+        case SettingValueType.String:
             return rawValue;
-        case RuntimeSettingType.Number:
-        case RuntimeSettingType.Integer: {
+        case SettingValueType.Number:
+        case SettingValueType.Integer: {
             if (!rawValue.trim()) {
                 return null;
             }
             const parsed = Number(rawValue);
             return Number.isNaN(parsed) ? null : parsed;
         }
-        case RuntimeSettingType.Enum:
+        case SettingValueType.Enum:
             return rawValue;
-        case RuntimeSettingType.Boolean:
+        case SettingValueType.Boolean:
             return rawValue === "true";
         default:
             return null;
@@ -217,7 +217,7 @@ export function SettingsExplorer<T>({
         const error = errors[descriptor.id];
 
         switch (descriptor.type) {
-            case RuntimeSettingType.Boolean: {
+            case SettingValueType.Boolean: {
                 const booleanValue = pendingBoolean !== undefined ? pendingBoolean : Boolean(currentValue);
                 return (
                     <div className="flex items-center gap-2">
@@ -231,7 +231,7 @@ export function SettingsExplorer<T>({
                     </div>
                 );
             }
-            case RuntimeSettingType.Enum: {
+            case SettingValueType.Enum: {
                 const options = descriptor.options ?? [];
                 const selectOptions: SelectOption[] = options.map(option => ({
                     value: option,
@@ -249,15 +249,15 @@ export function SettingsExplorer<T>({
                     />
                 );
             }
-            case RuntimeSettingType.Number:
-            case RuntimeSettingType.Integer:
-            case RuntimeSettingType.String:
+            case SettingValueType.Number:
+            case SettingValueType.Integer:
+            case SettingValueType.String:
             default:
                 return (
                     <Input
                         size="sm"
                         fullWidth
-                        type={descriptor.type === RuntimeSettingType.String ? "text" : "number"}
+                        type={descriptor.type === SettingValueType.String ? "text" : "number"}
                         value={displayValue}
                         onChange={(event) => handleInputChange(descriptor.id, event.target.value)}
                         onBlur={() => handleInputCommit(entry)}
@@ -277,7 +277,7 @@ export function SettingsExplorer<T>({
         const { descriptor } = entry;
         const isSaving = saving.has(descriptor.id);
         const error = errors[descriptor.id];
-        if (descriptor.type === RuntimeSettingType.Boolean) {
+        if (descriptor.type === SettingValueType.Boolean) {
             // boolean control already renders loader
             return (
                 <div key={descriptor.id} className="px-2 py-2 transition duration-200 hover:bg-white/[0.02]">

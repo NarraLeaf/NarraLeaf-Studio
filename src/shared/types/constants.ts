@@ -13,7 +13,6 @@ export const PERSISTENT_STATE_DEFAULT_DB_NAME = "state";
 // UserData namespace constants
 export enum UserDataNamespace {
     State = "state",
-    UserSettings = "user_settings",
     Logs = "logs",
     Plugins = "plugins",
 }

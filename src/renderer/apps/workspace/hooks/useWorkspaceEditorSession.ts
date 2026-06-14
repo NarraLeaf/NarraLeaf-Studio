@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useWorkspace } from "../context";
-import { ProjectSettingsService } from "@/lib/workspace/services/ProjectSettingsService";
+import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import {
@@ -18,7 +18,7 @@ const restorePromisesByProjectPath = new Map<string, Promise<void>>();
 let restoreInProgressGlobal = false;
 
 /**
- * Persist and restore main editor tab strip via ProjectSettingsService (same storage as sidebar layout).
+ * Persist and restore main editor tab strip via global Studio settings.
  * Tabs without a registered serialization strategy are omitted on save; restore skips entries that fail to resolve.
  */
 export function useWorkspaceEditorSession() {
@@ -26,7 +26,7 @@ export function useWorkspaceEditorSession() {
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const uiService = context?.services.get<UIService>(Services.UI) ?? null;
-    const settingsService = context?.services.get<ProjectSettingsService>(Services.ProjectSettings) ?? null;
+    const settingsService = context?.services.get<GlobalSettingsService>(Services.GlobalSettings) ?? null;
 
     useEffect(() => {
         if (!context || !uiService || !settingsService) {

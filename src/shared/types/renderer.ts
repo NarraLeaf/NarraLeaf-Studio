@@ -67,13 +67,6 @@ export interface RendererPreloadedInterface {
         launch(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
         close(): Promise<RequestStatus<void>>;
         getDefaultProjectDirectory(): Promise<RequestStatus<{ dir: string }>>;
-        projectSettings: {
-            get<T = any>(projectPath: string, key: string): Promise<RequestStatus<{ value: T }>>;
-            set<T = any>(projectPath: string, key: string, value: T): Promise<RequestStatus<void>>;
-            setBatch(projectPath: string, settings: Record<string, any>): Promise<RequestStatus<void>>;
-            getAll(projectPath: string): Promise<RequestStatus<{ settings: Record<string, any> }>>;
-            clear(projectPath: string): Promise<RequestStatus<void>>;
-        };
         onResolveImageAssetUrl(handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onBlueprintNavigateFromPreview(handler: (payload: PreviewStudioBlueprintOpenPayload) => void): AppEventToken;
     };
@@ -85,6 +78,7 @@ export interface RendererPreloadedInterface {
         state: {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
             setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
+            getAllGlobalState(): Promise<RequestStatus<{ settings: Record<string, any> }>>;
         };
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
     };
