@@ -1,4 +1,4 @@
-import type { BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
+import type { BlueprintGraphEdge, BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
 import { isValidBlueprintExecConnection } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 
 export {
@@ -57,6 +57,9 @@ export function isValidBlueprintIrExecConnection(
         targetHandle: string | null | undefined;
     },
 ): boolean {
+    if (p.source === p.target) {
+        return false;
+    }
     const srcNode = ir.nodes?.[p.source ?? ""];
     const tgtNode = ir.nodes?.[p.target ?? ""];
     if (!srcNode || !tgtNode || !p.sourceHandle || !p.targetHandle) {
@@ -70,6 +73,45 @@ export function isValidBlueprintIrExecConnection(
         sourceParams: srcNode.params,
         targetParams: tgtNode.params,
     });
+}
+
+export function applyBlueprintIrConnection(
+    ir: Pick<BlueprintGraphIr, "edges">,
+    connection: {
+        source: string;
+        target: string;
+        sourceHandle: string;
+        targetHandle: string;
+    },
+): BlueprintGraphEdge[] {
+    const edges = ir.edges ?? [];
+    if (connection.source === connection.target) {
+        return edges;
+    }
+
+    const sameEdge = (e: BlueprintGraphEdge) =>
+        e.from.nodeId === connection.source &&
+        e.from.port === connection.sourceHandle &&
+        e.to.nodeId === connection.target &&
+        e.to.port === connection.targetHandle;
+
+    if (edges.some(sameEdge)) {
+        return edges;
+    }
+
+    const withoutReplacedPinEdges = edges.filter(
+        e =>
+            !(e.from.nodeId === connection.source && e.from.port === connection.sourceHandle) &&
+            !(e.to.nodeId === connection.target && e.to.port === connection.targetHandle),
+    );
+
+    return [
+        ...withoutReplacedPinEdges,
+        {
+            from: { nodeId: connection.source, port: connection.sourceHandle },
+            to: { nodeId: connection.target, port: connection.targetHandle },
+        },
+    ];
 }
 
 export function createGraphNodeForPalette(type: string, id: string): BlueprintGraphNode {

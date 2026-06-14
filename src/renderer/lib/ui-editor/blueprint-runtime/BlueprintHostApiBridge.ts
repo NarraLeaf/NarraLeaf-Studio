@@ -188,6 +188,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         devtools: {
             log: (level: string, message: string) => {
                 emitHostCall(emit, "devtools.log", "call");
+                emit({ type: "devtools.log", level, message });
                 const line = `[Blueprint devtools.${level}] ${message}`;
                 if (level === "error") {
                     console.error(line);
