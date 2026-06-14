@@ -5,8 +5,10 @@ import {
     useMemo,
     useRef,
     useState,
+    type MouseEvent as ReactMouseEvent,
     type MutableRefObject,
     type ReactNode,
+    type SyntheticEvent,
 } from "react";
 
 export type ImagePixelSize = {
@@ -209,7 +211,7 @@ export function ImagePixelPreview({
         };
     }, [controls, controlsRef]);
 
-    const handleWheel = (e: React.WheelEvent) => {
+    const handleWheel = useCallback((e: WheelEvent) => {
         e.preventDefault();
         const container = containerRef.current;
         if (!container) return;
@@ -220,9 +222,19 @@ export function ImagePixelPreview({
             x: e.clientX - rect.left,
             y: e.clientY - rect.top,
         }, delta);
-    };
+    }, [zoomAroundViewportPoint]);
 
-    const handleMouseDown = (e: React.MouseEvent) => {
+    useLayoutEffect(() => {
+        const container = containerRef.current;
+        if (!container) {
+            return;
+        }
+
+        container.addEventListener("wheel", handleWheel, { passive: false });
+        return () => container.removeEventListener("wheel", handleWheel);
+    }, [handleWheel]);
+
+    const handleMouseDown = (e: ReactMouseEvent) => {
         if (e.button === 0) {
             e.preventDefault();
             setIsPanning(true);
@@ -235,7 +247,7 @@ export function ImagePixelPreview({
         }
     };
 
-    const handleMouseMove = (e: React.MouseEvent) => {
+    const handleMouseMove = (e: ReactMouseEvent) => {
         const start = panStartRef.current;
         if (isPanning && start) {
             setView(prev => ({
@@ -251,7 +263,7 @@ export function ImagePixelPreview({
         panStartRef.current = null;
     };
 
-    const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const handleImageLoad = (e: SyntheticEvent<HTMLImageElement>) => {
         const nextSize = {
             width: e.currentTarget.naturalWidth,
             height: e.currentTarget.naturalHeight,
@@ -277,7 +289,6 @@ export function ImagePixelPreview({
             <div
                 ref={containerRef}
                 className={`relative flex-1 overflow-hidden ${isPanning ? "cursor-grabbing" : "cursor-move"}`}
-                onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}

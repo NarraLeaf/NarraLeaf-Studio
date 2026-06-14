@@ -196,7 +196,7 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
                         const document = data.documentService.getDocument();
                         const parts = [...collectLinkDiagnostics(document, data.surface), ...collectStageDiagnostics(data.surface)];
                         const text =
-                            parts.map(p => p.message).join(" · ") + (parts[0]?.hint ? ` — ${parts[0].hint}` : "");
+                            parts.map(p => p.message).join(" · ") + (parts[0]?.hint ? ` - ${parts[0].hint}` : "");
                         return createElement("span", { className: "text-amber-400/95 text-xs leading-snug" }, text);
                     },
                 },

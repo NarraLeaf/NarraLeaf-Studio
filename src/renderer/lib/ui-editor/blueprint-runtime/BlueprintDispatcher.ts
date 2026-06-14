@@ -68,6 +68,7 @@ function createScriptExecutionContext(input: {
             devtools: {
                 log: async (msg: string) => {
                     input.debug.emit({ type: "function.call", functionId: "devtools.log" });
+                    input.debug.emit({ type: "devtools.log", level: "info", message: String(msg) });
                     console.info(`[Blueprint] ${msg}`);
                     input.debug.emit({ type: "function.return", functionId: "devtools.log" });
                 },

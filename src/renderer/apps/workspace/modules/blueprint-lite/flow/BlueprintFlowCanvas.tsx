@@ -21,6 +21,7 @@ import {
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
+    applyBlueprintIrConnection,
     createGraphNodeForPalette,
     isValidBlueprintIrExecConnection,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
@@ -477,28 +478,21 @@ function BlueprintFlowCanvasInner({
             if (!isValidBlueprintIrExecConnection(snap, connection)) {
                 return;
             }
-            const next = cloneBlueprintIr(snap);
-            const edgesNext = next.edges ?? [];
-            const dup = edgesNext.some(
-                e =>
-                    e.from.nodeId === connection.source &&
-                    e.from.port === (connection.sourceHandle ?? "") &&
-                    e.to.nodeId === connection.target &&
-                    e.to.port === (connection.targetHandle ?? ""),
-            );
-            if (dup) {
-                return;
-            }
             if (!connection.sourceHandle || !connection.targetHandle) {
                 return;
             }
-            next.edges = [
-                ...edgesNext,
-                {
-                    from: { nodeId: connection.source!, port: connection.sourceHandle },
-                    to: { nodeId: connection.target!, port: connection.targetHandle },
-                },
-            ];
+            const source = connection.source;
+            const target = connection.target;
+            if (!source || !target) {
+                return;
+            }
+            const next = cloneBlueprintIr(snap);
+            next.edges = applyBlueprintIrConnection(next, {
+                source,
+                target,
+                sourceHandle: connection.sourceHandle,
+                targetHandle: connection.targetHandle,
+            });
             onCommitIr(next);
         },
         [onCommitIr],
