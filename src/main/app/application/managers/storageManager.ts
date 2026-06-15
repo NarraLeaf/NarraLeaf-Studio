@@ -3,15 +3,19 @@ import {
     PersistentStateConfig,
     StorageNamespaceInfo
 } from "@shared/types/persistentState";
+import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { PersistentState } from "../../../../shared/utils/persistentState";
 import { Manager } from "./manager";
 import { BaseApp } from "../baseApp";
+import type { AppWindow } from "./window/appWindow";
+import { FileSystemAccessMode, FileSystemGrant, FileSystemGrantMode, getDeclaredFileSystemGrants } from "./window/permissions";
 
 export interface FileStorageInfo {
     path: string;
     raw: boolean;
+    operation: FileSystemAccessMode;
     encoding?: BufferEncoding;
     status: "allocated" | "ready" | "error";
     error?: string;
@@ -19,7 +23,7 @@ export interface FileStorageInfo {
 
 export class StorageManager extends Manager {
     private storage = new Map<string, FileStorageInfo>();
-    private nextId = 0;
+    private runtimeFileSystemGrants = new Map<number, FileSystemGrant[]>();
     private namespaces = new Map<string, StorageNamespaceInfo>();
     
     constructor(app: BaseApp) {
@@ -33,10 +37,34 @@ export class StorageManager extends Manager {
     /**
      * Allocate a unique hash for file operations
      */
-    public allocateHash(path: string, raw: boolean, encoding?: BufferEncoding): string {
-        const hash = `${this.nextId++}${Date.now()}`;
-        this.storage.set(hash, { path, raw, encoding, status: "allocated" });
+    public allocateHash(path: string, raw: boolean, operation: FileSystemAccessMode, encoding?: BufferEncoding): string {
+        const hash = crypto.randomBytes(32).toString("base64url");
+        this.storage.set(hash, { path, raw, operation, encoding, status: "allocated" });
         return hash;
+    }
+
+    public grantFileSystemAccess(window: AppWindow, fsPath: string, mode: FileSystemGrantMode = "readwrite", recursive: boolean = true): void {
+        const grants = this.runtimeFileSystemGrants.get(this.getWindowStorageKey(window)) ?? [];
+        const modes: FileSystemAccessMode[] = mode === "readwrite" ? ["read", "write"] : [mode];
+        for (const grantMode of modes) {
+            grants.push({ path: path.resolve(fsPath), recursive, mode: grantMode });
+        }
+        this.runtimeFileSystemGrants.set(this.getWindowStorageKey(window), grants);
+    }
+
+    public async isPathAllowed(window: AppWindow, fsPath: string, mode: FileSystemAccessMode): Promise<boolean> {
+        const target = await this.resolvePathForAuthorization(fsPath);
+        for (const grant of this.getFileSystemGrants(window, mode)) {
+            const root = await this.resolvePathForAuthorization(grant.path);
+            if (grant.recursive ? this.isSameOrChild(target, root) : target === root) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public revokeWindowFileSystemAccess(window: AppWindow): void {
+        this.runtimeFileSystemGrants.delete(this.getWindowStorageKey(window));
     }
 
     /**
@@ -164,6 +192,40 @@ export class StorageManager extends Manager {
      */
     public cleanupAll(): void {
         this.storage.clear();
+        this.runtimeFileSystemGrants.clear();
         this.namespaces.clear();
+    }
+
+    private getFileSystemGrants(window: AppWindow, mode: FileSystemAccessMode): FileSystemGrant[] {
+        return [
+            ...getDeclaredFileSystemGrants(window, mode),
+            ...(this.runtimeFileSystemGrants.get(this.getWindowStorageKey(window)) ?? []).filter(grant => grant.mode === mode),
+        ];
+    }
+
+    private getWindowStorageKey(window: AppWindow): number {
+        return window.getWebContents().id;
+    }
+
+    private async resolvePathForAuthorization(fsPath: string): Promise<string> {
+        const resolvedPath = path.resolve(fsPath);
+        try {
+            return await fs.realpath(resolvedPath);
+        } catch {
+            const parent = path.dirname(resolvedPath);
+            if (parent === resolvedPath) {
+                return resolvedPath;
+            }
+            try {
+                return path.join(await fs.realpath(parent), path.basename(resolvedPath));
+            } catch {
+                return resolvedPath;
+            }
+        }
+    }
+
+    private isSameOrChild(target: string, root: string): boolean {
+        const relativePath = path.relative(root, target);
+        return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
     }
 }

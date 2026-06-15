@@ -7,12 +7,41 @@ import { FileStat, FileDetails } from "@shared/utils/fs";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { dialog } from "electron";
 import pathModule from "path";
+import { getRuntimeGrantPolicy } from "../permissions";
+
+function unauthorizedPathResult<T>(fsPath: string): FsRequestResult<T> {
+    return {
+        ok: false,
+        error: {
+            code: FsRejectErrorCode.PERMISSION_DENIED,
+            message: `File system access is not allowed for path: ${fsPath}`
+        }
+    };
+}
+
+async function ensurePathAllowed<T>(window: AppWindow, fsPath: string, mode: "read" | "write"): Promise<FsRequestResult<T> | null> {
+    if (await window.app.storageManager.isPathAllowed(window, fsPath, mode)) {
+        return null;
+    }
+    return unauthorizedPathResult<T>(fsPath);
+}
+
+async function ensurePathsAllowed<T>(window: AppWindow, mode: "read" | "write", ...paths: string[]): Promise<FsRequestResult<T> | null> {
+    for (const fsPath of paths) {
+        const denied = await ensurePathAllowed<T>(window, fsPath, mode);
+        if (denied) return denied;
+    }
+    return null;
+}
 
 export class FsStatHandler extends IPCHandler<IPCEventType.fsStat> {
     readonly name = IPCEventType.fsStat;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsStat]["data"]): Promise<RequestStatus<FsRequestResult<FileStat>>> {
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsStat]["data"]): Promise<RequestStatus<FsRequestResult<FileStat>>> {
+        const denied = await ensurePathAllowed<FileStat>(window, path, "read");
+        if (denied) return this.success(denied);
+
         const result = await Fs.stat(path);
         return this.success(result);
     }
@@ -22,7 +51,10 @@ export class FsListHandler extends IPCHandler<IPCEventType.fsList> {
     readonly name = IPCEventType.fsList;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsList]["data"]): Promise<RequestStatus<FsRequestResult<FileStat[]>>> {
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsList]["data"]): Promise<RequestStatus<FsRequestResult<FileStat[]>>> {
+        const denied = await ensurePathAllowed<FileStat[]>(window, path, "read");
+        if (denied) return this.success(denied);
+
         // Use Fs.dirEntries to get all entries (files and directories)
         // Then convert to FileStat[] format to maintain compatibility
         const dirEntriesResult = await Fs.dirEntries(path);
@@ -48,7 +80,10 @@ export class FsDetailsHandler extends IPCHandler<IPCEventType.fsDetails> {
     readonly name = IPCEventType.fsDetails;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsDetails]["data"]): Promise<RequestStatus<FsRequestResult<FileDetails>>> {
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsDetails]["data"]): Promise<RequestStatus<FsRequestResult<FileDetails>>> {
+        const denied = await ensurePathAllowed<FileDetails>(window, path, "read");
+        if (denied) return this.success(denied);
+
         const result = await Fs.details(path);
         return this.success(result);
     }
@@ -59,7 +94,10 @@ export class FsRequestReadHandler extends IPCHandler<IPCEventType.fsRequestRead>
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow, { path, raw, encoding }: IPCEvents[IPCEventType.fsRequestRead]["data"]): Promise<RequestStatus<FsRequestResult<string>>> {
-        const hash = window.app.storageManager.allocateHash(path, raw, encoding);
+        const denied = await ensurePathAllowed<string>(window, path, "read");
+        if (denied) return this.success(denied);
+
+        const hash = window.app.storageManager.allocateHash(path, raw, "read", encoding);
 
         window.app.logger.debug(`[fs.read] path="${path}", raw=${raw}, encoding=${encoding}`);
 
@@ -114,7 +152,10 @@ export class FsRequestWriteHandler extends IPCHandler<IPCEventType.fsRequestWrit
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow, { path, raw, encoding }: IPCEvents[IPCEventType.fsRequestWrite]["data"]): Promise<RequestStatus<FsRequestResult<string>>> {
-        const hash = window.app.storageManager.allocateHash(path, raw, encoding);
+        const denied = await ensurePathAllowed<string>(window, path, "write");
+        if (denied) return this.success(denied);
+
+        const hash = window.app.storageManager.allocateHash(path, raw, "write", encoding);
 
         window.app.logger.debug(`[fs.write] path="${path}", raw=${raw}, encoding=${encoding}`);
 
@@ -182,7 +223,10 @@ export class FsEnsureRegularFileHandler extends IPCHandler<IPCEventType.fsEnsure
     readonly name = IPCEventType.fsEnsureRegularFile;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path, data, encoding }: IPCEvents[IPCEventType.fsEnsureRegularFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+    public async handle(window: AppWindow, { path, data, encoding }: IPCEvents[IPCEventType.fsEnsureRegularFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const denied = await ensurePathAllowed<void>(window, path, "write");
+        if (denied) return this.success(denied);
+
         const result = await Fs.ensureRegularFile(path, data, encoding);
         return this.success(result);
     }
@@ -192,7 +236,10 @@ export class FsWriteFileNoFollowHandler extends IPCHandler<IPCEventType.fsWriteF
     readonly name = IPCEventType.fsWriteFileNoFollow;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path, data, encoding }: IPCEvents[IPCEventType.fsWriteFileNoFollow]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+    public async handle(window: AppWindow, { path, data, encoding }: IPCEvents[IPCEventType.fsWriteFileNoFollow]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const denied = await ensurePathAllowed<void>(window, path, "write");
+        if (denied) return this.success(denied);
+
         const result = await Fs.writeFileNoFollow(path, data, encoding);
         return this.success(result);
     }
@@ -202,7 +249,10 @@ export class FsRecoverCorruptedJsonFileHandler extends IPCHandler<IPCEventType.f
     readonly name = IPCEventType.fsRecoverCorruptedJsonFile;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path, replacement, encoding }: IPCEvents[IPCEventType.fsRecoverCorruptedJsonFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+    public async handle(window: AppWindow, { path, replacement, encoding }: IPCEvents[IPCEventType.fsRecoverCorruptedJsonFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const denied = await ensurePathAllowed<void>(window, path, "write");
+        if (denied) return this.success(denied);
+
         const result = await Fs.recoverCorruptedJsonFile(path, replacement, encoding);
         return this.success(result);
     }
@@ -212,7 +262,10 @@ export class FsCreateDirHandler extends IPCHandler<IPCEventType.fsCreateDir> {
     readonly name = IPCEventType.fsCreateDir;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsCreateDir]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsCreateDir]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const denied = await ensurePathAllowed<void>(window, path, "write");
+        if (denied) return this.success(denied);
+
         const result = await Fs.createDir(path);
         if (result.ok) {
             return this.success({ ok: true, data: undefined });
@@ -226,7 +279,10 @@ export class FsDeleteFileHandler extends IPCHandler<IPCEventType.fsDeleteFile> {
     readonly name = IPCEventType.fsDeleteFile;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsDeleteFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsDeleteFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const denied = await ensurePathAllowed<void>(window, path, "write");
+        if (denied) return this.success(denied);
+
         const result = await Fs.deleteFile(path);
         return this.success(result);
     }
@@ -236,7 +292,10 @@ export class FsDeleteDirHandler extends IPCHandler<IPCEventType.fsDeleteDir> {
     readonly name = IPCEventType.fsDeleteDir;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsDeleteDir]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsDeleteDir]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const denied = await ensurePathAllowed<void>(window, path, "write");
+        if (denied) return this.success(denied);
+
         const result = await Fs.deleteDir(path);
         return this.success(result);
     }
@@ -246,9 +305,12 @@ export class FsRenameHandler extends IPCHandler<IPCEventType.fsRename> {
     readonly name = IPCEventType.fsRename;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { oldPath, newName, isDir }: IPCEvents[IPCEventType.fsRename]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+    public async handle(window: AppWindow, { oldPath, newName, isDir }: IPCEvents[IPCEventType.fsRename]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
         const path = require('path');
         const newPath = path.join(path.dirname(oldPath), newName);
+        const denied = await ensurePathsAllowed<void>(window, "write", oldPath, newPath);
+        if (denied) return this.success(denied);
+
         const result = await Fs.rename(oldPath, newPath);
         return this.success(result);
     }
@@ -258,7 +320,12 @@ export class FsCopyFileHandler extends IPCHandler<IPCEventType.fsCopyFile> {
     readonly name = IPCEventType.fsCopyFile;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { src, dest }: IPCEvents[IPCEventType.fsCopyFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+    public async handle(window: AppWindow, { src, dest }: IPCEvents[IPCEventType.fsCopyFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const readDenied = await ensurePathAllowed<void>(window, src, "read");
+        if (readDenied) return this.success(readDenied);
+        const writeDenied = await ensurePathAllowed<void>(window, dest, "write");
+        if (writeDenied) return this.success(writeDenied);
+
         const result = await Fs.cpFile(src, dest);
         return this.success(result);
     }
@@ -268,7 +335,12 @@ export class FsCopyDirHandler extends IPCHandler<IPCEventType.fsCopyDir> {
     readonly name = IPCEventType.fsCopyDir;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { src, dest }: IPCEvents[IPCEventType.fsCopyDir]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+    public async handle(window: AppWindow, { src, dest }: IPCEvents[IPCEventType.fsCopyDir]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const readDenied = await ensurePathAllowed<void>(window, src, "read");
+        if (readDenied) return this.success(readDenied);
+        const writeDenied = await ensurePathAllowed<void>(window, dest, "write");
+        if (writeDenied) return this.success(writeDenied);
+
         const result = await Fs.copyDir(src, dest);
         return this.success(result);
     }
@@ -278,7 +350,12 @@ export class FsMoveFileHandler extends IPCHandler<IPCEventType.fsMoveFile> {
     readonly name = IPCEventType.fsMoveFile;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { src, dest }: IPCEvents[IPCEventType.fsMoveFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+    public async handle(window: AppWindow, { src, dest }: IPCEvents[IPCEventType.fsMoveFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const readDenied = await ensurePathAllowed<void>(window, src, "read");
+        if (readDenied) return this.success(readDenied);
+        const writeDenied = await ensurePathsAllowed<void>(window, "write", src, dest);
+        if (writeDenied) return this.success(writeDenied);
+
         const result = await Fs.moveFile(src, dest);
         return this.success(result);
     }
@@ -288,7 +365,12 @@ export class FsMoveDirHandler extends IPCHandler<IPCEventType.fsMoveDir> {
     readonly name = IPCEventType.fsMoveDir;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { src, dest }: IPCEvents[IPCEventType.fsMoveDir]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+    public async handle(window: AppWindow, { src, dest }: IPCEvents[IPCEventType.fsMoveDir]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const readDenied = await ensurePathAllowed<void>(window, src, "read");
+        if (readDenied) return this.success(readDenied);
+        const writeDenied = await ensurePathsAllowed<void>(window, "write", src, dest);
+        if (writeDenied) return this.success(writeDenied);
+
         const result = await Fs.moveDir(src, dest);
         return this.success(result);
     }
@@ -298,7 +380,10 @@ export class FsFileExistsHandler extends IPCHandler<IPCEventType.fsFileExists> {
     readonly name = IPCEventType.fsFileExists;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsFileExists]["data"]): Promise<RequestStatus<FsRequestResult<boolean>>> {
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsFileExists]["data"]): Promise<RequestStatus<FsRequestResult<boolean>>> {
+        const denied = await ensurePathAllowed<boolean>(window, path, "read");
+        if (denied) return this.success(denied);
+
         const result = await Fs.isFileExists(path);
         return this.success(result);
     }
@@ -308,7 +393,10 @@ export class FsDirExistsHandler extends IPCHandler<IPCEventType.fsDirExists> {
     readonly name = IPCEventType.fsDirExists;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsDirExists]["data"]): Promise<RequestStatus<FsRequestResult<boolean>>> {
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsDirExists]["data"]): Promise<RequestStatus<FsRequestResult<boolean>>> {
+        const denied = await ensurePathAllowed<boolean>(window, path, "read");
+        if (denied) return this.success(denied);
+
         const result = await Fs.isDirExists(path);
         if (result.ok) {
             return this.success({ ok: true, data: result.data });
@@ -322,7 +410,10 @@ export class FsIsFileHandler extends IPCHandler<IPCEventType.fsIsFile> {
     readonly name = IPCEventType.fsIsFile;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsIsFile]["data"]): Promise<RequestStatus<FsRequestResult<boolean>>> {
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsIsFile]["data"]): Promise<RequestStatus<FsRequestResult<boolean>>> {
+        const denied = await ensurePathAllowed<boolean>(window, path, "read");
+        if (denied) return this.success(denied);
+
         const result = await Fs.isFile(path);
         return this.success(result);
     }
@@ -332,7 +423,10 @@ export class FsIsDirHandler extends IPCHandler<IPCEventType.fsIsDir> {
     readonly name = IPCEventType.fsIsDir;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsIsDir]["data"]): Promise<RequestStatus<FsRequestResult<boolean>>> {
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsIsDir]["data"]): Promise<RequestStatus<FsRequestResult<boolean>>> {
+        const denied = await ensurePathAllowed<boolean>(window, path, "read");
+        if (denied) return this.success(denied);
+
         const result = await Fs.isDir(path);
         return this.success(result);
     }
@@ -343,6 +437,11 @@ export class FsSelectFileHandler extends IPCHandler<IPCEventType.fsSelectFile> {
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow, { filters, multiple }: IPCEvents[IPCEventType.fsSelectFile]["data"]): Promise<RequestStatus<FsRequestResult<string[]>>> {
+        const grantPolicy = getRuntimeGrantPolicy(window, "selectFile");
+        if (!grantPolicy) {
+            return this.success(unauthorizedPathResult<string[]>("file picker"));
+        }
+
         try {
             const dialogOptions: Electron.OpenDialogOptions = {
                 title: "Select File",
@@ -373,6 +472,10 @@ export class FsSelectFileHandler extends IPCHandler<IPCEventType.fsSelectFile> {
                 });
             }
 
+            for (const filePath of result.filePaths) {
+                window.app.storageManager.grantFileSystemAccess(window, filePath, grantPolicy.mode, grantPolicy.recursive);
+            }
+
             return this.success({
                 ok: true,
                 data: result.filePaths
@@ -394,6 +497,11 @@ export class FsSelectDirectoryHandler extends IPCHandler<IPCEventType.fsSelectDi
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow, { multiple }: IPCEvents[IPCEventType.fsSelectDirectory]["data"]): Promise<RequestStatus<FsRequestResult<string[]>>> {
+        const grantPolicy = getRuntimeGrantPolicy(window, "selectDirectory");
+        if (!grantPolicy) {
+            return this.success(unauthorizedPathResult<string[]>("directory picker"));
+        }
+
         try {
             const dialogOptions: Electron.OpenDialogOptions = {
                 title: "Select Directory",
@@ -408,6 +516,10 @@ export class FsSelectDirectoryHandler extends IPCHandler<IPCEventType.fsSelectDi
                     ok: true,
                     data: []
                 });
+            }
+
+            for (const dirPath of result.filePaths) {
+                window.app.storageManager.grantFileSystemAccess(window, dirPath, grantPolicy.mode, grantPolicy.recursive);
             }
 
             return this.success({
@@ -430,7 +542,10 @@ export class FsHashHandler extends IPCHandler<IPCEventType.fsHash> {
     readonly name = IPCEventType.fsHash;
     readonly type = IPCMessageType.request;
 
-    public async handle(_window: AppWindow, { path }: IPCEvents[IPCEventType.fsHash]["data"]): Promise<RequestStatus<FsRequestResult<string>>> {
+    public async handle(window: AppWindow, { path }: IPCEvents[IPCEventType.fsHash]["data"]): Promise<RequestStatus<FsRequestResult<string>>> {
+        const denied = await ensurePathAllowed<string>(window, path, "read");
+        if (denied) return this.success(denied);
+
         try {
             const fs = require('fs').promises;
             const crypto = require('crypto');
