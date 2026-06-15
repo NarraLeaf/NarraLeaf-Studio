@@ -35,6 +35,18 @@ export class BaseFileSystemService {
         return this.putRaw(path, data);
     }
 
+    public static async ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        return this.wrapIPCError(await getInterface().fs.ensureRegularFile(path, data, encoding));
+    }
+
+    public static async writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        return this.wrapIPCError(await getInterface().fs.writeFileNoFollow(path, data, encoding));
+    }
+
+    public static async recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        return this.wrapIPCError(await getInterface().fs.recoverCorruptedJsonFile(path, replacement, encoding));
+    }
+
     public static async createDir(path: string): Promise<FsRequestResult<void>> {
         return this.wrapIPCError(await getInterface().fs.createDir(path));
     }
@@ -256,6 +268,18 @@ export class FileSystemService extends Service<FileSystemService> implements IFi
 
     public async writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
         return BaseFileSystemService.writeRaw(path, data);
+    }
+
+    public async ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.ensureRegularFile(path, data, encoding);
+    }
+
+    public async writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.writeFileNoFollow(path, data, encoding);
+    }
+
+    public async recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
+        return BaseFileSystemService.recoverCorruptedJsonFile(path, replacement, encoding);
     }
 
     public async createDir(path: string): Promise<FsRequestResult<void>> {

@@ -178,6 +178,36 @@ export class FsRequestWriteHandler extends IPCHandler<IPCEventType.fsRequestWrit
     }
 }
 
+export class FsEnsureRegularFileHandler extends IPCHandler<IPCEventType.fsEnsureRegularFile> {
+    readonly name = IPCEventType.fsEnsureRegularFile;
+    readonly type = IPCMessageType.request;
+
+    public async handle(_window: AppWindow, { path, data, encoding }: IPCEvents[IPCEventType.fsEnsureRegularFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const result = await Fs.ensureRegularFile(path, data, encoding);
+        return this.success(result);
+    }
+}
+
+export class FsWriteFileNoFollowHandler extends IPCHandler<IPCEventType.fsWriteFileNoFollow> {
+    readonly name = IPCEventType.fsWriteFileNoFollow;
+    readonly type = IPCMessageType.request;
+
+    public async handle(_window: AppWindow, { path, data, encoding }: IPCEvents[IPCEventType.fsWriteFileNoFollow]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const result = await Fs.writeFileNoFollow(path, data, encoding);
+        return this.success(result);
+    }
+}
+
+export class FsRecoverCorruptedJsonFileHandler extends IPCHandler<IPCEventType.fsRecoverCorruptedJsonFile> {
+    readonly name = IPCEventType.fsRecoverCorruptedJsonFile;
+    readonly type = IPCMessageType.request;
+
+    public async handle(_window: AppWindow, { path, replacement, encoding }: IPCEvents[IPCEventType.fsRecoverCorruptedJsonFile]["data"]): Promise<RequestStatus<FsRequestResult<void>>> {
+        const result = await Fs.recoverCorruptedJsonFile(path, replacement, encoding);
+        return this.success(result);
+    }
+}
+
 export class FsCreateDirHandler extends IPCHandler<IPCEventType.fsCreateDir> {
     readonly name = IPCEventType.fsCreateDir;
     readonly type = IPCMessageType.request;
