@@ -59,7 +59,10 @@ export class WorkspaceSelectFolderHandler extends IPCHandler<IPCEventType.worksp
             return this.success({ path: null });
         }
 
-        return this.success({ path: result.filePaths[0] });
+        const selectedPath = result.filePaths[0];
+        window.app.storageManager.grantFileSystemAccess(window, selectedPath);
+
+        return this.success({ path: selectedPath });
     }
 }
 
