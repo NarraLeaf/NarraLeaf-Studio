@@ -1,6 +1,6 @@
-# UI / Blueprint 功能上下文
+# UI Editor / Blueprint 功能上下文
 
-本文合并 UI Editor、Visual Editor、Blueprint 与 Widget Logic 的当前状态。Workspace 内 canvas 是编辑预览；完整执行边界主要在 Dev Mode。
+本文描述 UI Editor、Surface、Widget Logic 与 Blueprint 的当前状态。Workspace 内 canvas 是编辑预览；完整执行边界主要在 Dev Mode。
 
 ## 当前实现
 

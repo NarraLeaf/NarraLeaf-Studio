@@ -148,3 +148,4 @@ yarn.lock
 .yarn
 .dev/
 package-lock.json
+.security/

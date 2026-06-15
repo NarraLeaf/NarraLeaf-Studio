@@ -1,9 +1,11 @@
 import type {
     BindingDefinition,
+    Blueprint,
     BlueprintDocument,
     BlueprintField,
     BlueprintFieldValueSource,
     BlueprintFrontendKind,
+    BlueprintPrivateOwnerRecord,
     BlueprintVariable,
     LiteralValue,
 } from "@shared/types/blueprint/document";
@@ -11,15 +13,17 @@ import {
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { RendererError } from "@shared/utils/error";
+import { EventEmitter } from "../ui/EventEmitter";
 import { Service } from "../Service";
 import { Services, ILocalBlueprintService, WorkspaceContext } from "../services";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
 import { UuidService } from "../core/UuidService";
 import { UIGraphService } from "./UIGraphService";
+import { UIDocumentService } from "./UIDocumentService";
 import {
     createMainBlueprint,
     createTypeScriptMainBlueprint,
@@ -37,7 +41,7 @@ import {
     buildReadonlyWidgetMainSummary,
     type ReadonlyBlueprintWidgetSummary,
 } from "./blueprint/readonlyBlueprintSummary";
-import { surfaceMainOwnerKey, widgetMainOwnerKey } from "./blueprint/ownerKeys";
+import { ownerRefToIndexKey, surfaceMainOwnerKey, widgetMainOwnerKey } from "./blueprint/ownerKeys";
 import {
     buildReadonlySurfaceMainSummary,
     type ReadonlyBlueprintSurfaceSummary,
@@ -49,10 +53,99 @@ import {
     setPrivateOwnerActive,
 } from "./blueprint/ownerRecords";
 
+const DEFAULT_BLUEPRINT_HISTORY_LIMIT = 100;
+const DEFAULT_BLUEPRINT_MERGE_WINDOW_MS = 800;
+
+export type BlueprintHistoryRecordOptions = {
+    mergeKey?: string;
+    mergeWindowMs?: number;
+};
+
+type BlueprintHistoryScope = {
+    blueprintId: string;
+    ownerKey?: string;
+};
+
+type UIBehaviorSnapshot = {
+    elements: Record<string, UIElement["behavior"] | undefined>;
+};
+
+export type BlueprintEditorHistorySnapshot = {
+    blueprintId: string;
+    ownerKey: string | null;
+    ownerRecord: BlueprintPrivateOwnerRecord | null;
+    blueprint: Blueprint | null;
+    uiBehavior: UIBehaviorSnapshot;
+};
+
+type BlueprintHistoryEntry = {
+    blueprintId: string;
+    ownerKey: string | null;
+    before: BlueprintEditorHistorySnapshot;
+    after: BlueprintEditorHistorySnapshot;
+    mergeKey?: string;
+    createdAt: number;
+    updatedAt: number;
+};
+
+type BlueprintHistoryStack = {
+    undo: BlueprintHistoryEntry[];
+    redo: BlueprintHistoryEntry[];
+};
+
+type LocalBlueprintHistoryEvents = {
+    blueprintHistoryChanged: { blueprintId: string; ownerKey: string | null };
+};
+
+function cloneBlueprintHistoryValue<T>(value: T): T {
+    return value == null ? value : JSON.parse(JSON.stringify(value)) as T;
+}
+
+function captureUIBehaviorSnapshot(document: UIDocument): UIBehaviorSnapshot {
+    const elements: UIBehaviorSnapshot["elements"] = {};
+    for (const [elementId, element] of Object.entries(document.elements)) {
+        elements[elementId] = cloneBlueprintHistoryValue(element.behavior);
+    }
+    return { elements };
+}
+
+function applyUIBehaviorSnapshot(current: UIDocument, target: UIBehaviorSnapshot): UIDocument {
+    const next = cloneBlueprintHistoryValue(current);
+    for (const [elementId, behavior] of Object.entries(target.elements)) {
+        const element = next.elements[elementId];
+        if (!element) {
+            continue;
+        }
+        if (behavior === undefined) {
+            delete element.behavior;
+        } else {
+            element.behavior = cloneBlueprintHistoryValue(behavior);
+        }
+    }
+    return next;
+}
+
+function areBlueprintHistorySnapshotsEqual(
+    a: BlueprintEditorHistorySnapshot,
+    b: BlueprintEditorHistorySnapshot,
+): boolean {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function areUIBehaviorSnapshotsEqual(a: UIBehaviorSnapshot, b: UIBehaviorSnapshot): boolean {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
 /**
  * Blueprint M2: mutations to local instance BlueprintDocument inside uigraphs.json.
  */
 export class LocalBlueprintService extends Service<LocalBlueprintService> implements ILocalBlueprintService {
+    private readonly histories = new Map<string, BlueprintHistoryStack>();
+    private readonly events = new EventEmitter<LocalBlueprintHistoryEvents>();
+    private historySuppressionDepth = 0;
+    private isRestoringHistory = false;
+    private historyLimit = DEFAULT_BLUEPRINT_HISTORY_LIMIT;
+
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const fs = ctx.services.get<FileSystemService>(Services.FileSystem);
         const project = ctx.services.get<ProjectService>(Services.Project);
@@ -71,6 +164,118 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             mutator(doc.blueprintDocument, doc);
             assertValidBlueprintDocument(doc.blueprintDocument);
         });
+    }
+
+    public getBlueprintHistoryLimit(): number {
+        return this.historyLimit;
+    }
+
+    public setBlueprintHistoryLimit(limit: number): void {
+        const next = Math.max(1, Math.floor(limit));
+        if (!Number.isFinite(next) || next === this.historyLimit) {
+            return;
+        }
+        this.historyLimit = next;
+        for (const [blueprintId, history] of this.histories) {
+            this.trimBlueprintHistory(history);
+            const ownerKey = this.resolveBlueprintOwnerKey({ blueprintId });
+            this.events.emit("blueprintHistoryChanged", { blueprintId, ownerKey });
+        }
+    }
+
+    public captureBlueprintHistorySnapshot(
+        blueprintId: string,
+        ownerKey?: string,
+    ): BlueprintEditorHistorySnapshot {
+        const bpDoc = this.getBlueprintDocument();
+        const blueprint = bpDoc.blueprints[blueprintId] ?? null;
+        const resolvedOwnerKey = ownerKey ?? this.resolveBlueprintOwnerKey({ blueprintId });
+        const ownerRecord = resolvedOwnerKey ? bpDoc.ownerRecords[resolvedOwnerKey] ?? null : null;
+        const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
+        return {
+            blueprintId,
+            ownerKey: resolvedOwnerKey,
+            ownerRecord: cloneBlueprintHistoryValue(ownerRecord),
+            blueprint: cloneBlueprintHistoryValue(blueprint),
+            uiBehavior: captureUIBehaviorSnapshot(uidoc.getDocument()),
+        };
+    }
+
+    public runBlueprintHistoryTransaction<T>(
+        blueprintId: string,
+        action: () => T,
+        options: BlueprintHistoryRecordOptions & { ownerKey?: string } = {},
+    ): T {
+        const before = this.captureBlueprintHistorySnapshot(blueprintId, options.ownerKey);
+        this.historySuppressionDepth += 1;
+        let result: T;
+        try {
+            result = action();
+        } finally {
+            this.historySuppressionDepth -= 1;
+        }
+        this.recordBlueprintHistory({
+            blueprintId,
+            ownerKey: options.ownerKey ?? before.ownerKey ?? undefined,
+            before,
+            after: this.captureBlueprintHistorySnapshot(blueprintId, options.ownerKey ?? before.ownerKey ?? undefined),
+            mergeKey: options.mergeKey,
+            mergeWindowMs: options.mergeWindowMs,
+        });
+        return result;
+    }
+
+    public canUndoBlueprint(blueprintId: string): boolean {
+        return (this.histories.get(blueprintId)?.undo.length ?? 0) > 0;
+    }
+
+    public canRedoBlueprint(blueprintId: string): boolean {
+        return (this.histories.get(blueprintId)?.redo.length ?? 0) > 0;
+    }
+
+    public undoBlueprint(blueprintId: string): boolean {
+        const history = this.histories.get(blueprintId);
+        const entry = history?.undo.pop();
+        if (!entry || !history) {
+            return false;
+        }
+        this.restoreBlueprintHistorySnapshot(entry.before);
+        history.redo.push(entry);
+        this.events.emit("blueprintHistoryChanged", { blueprintId, ownerKey: entry.ownerKey });
+        return true;
+    }
+
+    public redoBlueprint(blueprintId: string): boolean {
+        const history = this.histories.get(blueprintId);
+        const entry = history?.redo.pop();
+        if (!entry || !history) {
+            return false;
+        }
+        this.restoreBlueprintHistorySnapshot(entry.after);
+        history.undo.push(entry);
+        this.events.emit("blueprintHistoryChanged", { blueprintId, ownerKey: entry.ownerKey });
+        return true;
+    }
+
+    public clearBlueprintHistory(blueprintId?: string): void {
+        if (blueprintId) {
+            const ownerKey = this.resolveBlueprintOwnerKey({ blueprintId });
+            this.histories.delete(blueprintId);
+            this.events.emit("blueprintHistoryChanged", { blueprintId, ownerKey });
+            return;
+        }
+        const ids = [...this.histories.keys()];
+        this.histories.clear();
+        ids.forEach(id => {
+            const ownerKey = this.resolveBlueprintOwnerKey({ blueprintId: id });
+            this.events.emit("blueprintHistoryChanged", { blueprintId: id, ownerKey });
+        });
+    }
+
+    public onBlueprintHistoryChanged(
+        handler: (event: { blueprintId: string; ownerKey: string | null }) => void,
+    ): () => void {
+        return this.events.on("blueprintHistoryChanged", handler);
     }
 
     public ensureSurfaceMain(surfaceId: string, displayName?: string): string {
@@ -175,7 +380,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     public setActivePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId, ownerKey }, doc => {
             setPrivateOwnerActive(doc, ownerKey, blueprintId);
         });
     }
@@ -186,22 +391,20 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             throw new RendererError(`Invalid private owner key: ${ownerKey}`);
         }
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
-        let outId = "";
-        this.applyBlueprintMutation(doc => {
-            const id = uuid.generate();
-            const name =
-                frontend === "typescript"
-                    ? `Script ${id.slice(0, 6)}`
-                    : `Blueprint ${id.slice(0, 6)}`;
+        const id = uuid.generate();
+        const name =
+            frontend === "typescript"
+                ? `Script ${id.slice(0, 6)}`
+                : `Blueprint ${id.slice(0, 6)}`;
+        this.applyBlueprintEdit({ blueprintId: id, ownerKey }, doc => {
             const blueprint =
                 frontend === "typescript"
                     ? createTypeScriptMainBlueprint({ id, name, owner: ownerRef })
                     : createMainBlueprint({ id, name, owner: ownerRef });
             doc.blueprints[id] = blueprint;
             registerPrivateBlueprintAsActive(doc, ownerKey, id, frontend);
-            outId = id;
         });
-        return outId;
+        return id;
     }
 
     public getReadonlySurfaceMainSummary(surfaceId: string): ReadonlyBlueprintSurfaceSummary {
@@ -213,14 +416,14 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         fieldId: string,
         valueSource: BlueprintFieldValueSource | undefined,
     ): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             const field = bp?.members?.fields?.[fieldId];
             if (!field) {
                 return;
             }
             field.valueSource = valueSource;
-        });
+        }, { mergeKey: `field-source:${blueprintId}:${fieldId}` });
     }
 
     public createField(
@@ -234,7 +437,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             kind: input.kind ?? "constant",
             valueSource: input.valueSource,
         };
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp) {
                 throw new RendererError(`Blueprint not found: ${blueprintId}`);
@@ -251,18 +454,18 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     public renameField(blueprintId: string, fieldId: string, name: string): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             const f = bp?.members?.fields?.[fieldId];
             if (!f) {
                 return;
             }
             f.name = name;
-        });
+        }, { mergeKey: `field-name:${blueprintId}:${fieldId}` });
     }
 
     public deleteField(blueprintId: string, fieldId: string): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp?.members?.fields?.[fieldId]) {
                 return;
@@ -291,7 +494,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }): string {
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
         let resolvedBindingId = "";
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId: params.blueprintId }, doc => {
             const bp = doc.blueprints[params.blueprintId];
             if (!bp) {
                 throw new RendererError(`Blueprint not found: ${params.blueprintId}`);
@@ -344,7 +547,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     public clearWidgetPropBinding(blueprintId: string, surfaceId: string, elementId: string, propPath: string): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp?.bindings) {
                 return;
@@ -379,6 +582,136 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 b.target.elementId === elementId &&
                 b.target.propPath === propPath,
         );
+    }
+
+    private applyBlueprintEdit(
+        scope: BlueprintHistoryScope,
+        mutator: (bp: BlueprintDocument, doc: UIGraphDocument) => void,
+        options: BlueprintHistoryRecordOptions = {},
+    ): void {
+        if (this.isRestoringHistory || this.historySuppressionDepth > 0) {
+            this.applyBlueprintMutation(mutator);
+            return;
+        }
+        const before = this.captureBlueprintHistorySnapshot(scope.blueprintId, scope.ownerKey);
+        this.applyBlueprintMutation(mutator);
+        this.recordBlueprintHistory({
+            blueprintId: scope.blueprintId,
+            ownerKey: scope.ownerKey ?? before.ownerKey ?? undefined,
+            before,
+            after: this.captureBlueprintHistorySnapshot(scope.blueprintId, scope.ownerKey ?? before.ownerKey ?? undefined),
+            mergeKey: options.mergeKey,
+            mergeWindowMs: options.mergeWindowMs,
+        });
+    }
+
+    private recordBlueprintHistory(options: {
+        blueprintId: string;
+        ownerKey?: string;
+        before: BlueprintEditorHistorySnapshot;
+        after: BlueprintEditorHistorySnapshot;
+        mergeKey?: string;
+        mergeWindowMs?: number;
+    }): void {
+        if (this.isRestoringHistory || areBlueprintHistorySnapshotsEqual(options.before, options.after)) {
+            return;
+        }
+
+        const history = this.ensureBlueprintHistory(options.blueprintId);
+        const now = Date.now();
+        const mergeWindowMs = options.mergeWindowMs ?? DEFAULT_BLUEPRINT_MERGE_WINDOW_MS;
+        const previous = history.undo[history.undo.length - 1];
+        const ownerKey = options.ownerKey ?? options.before.ownerKey ?? options.after.ownerKey ?? null;
+        if (
+            options.mergeKey &&
+            previous?.mergeKey === options.mergeKey &&
+            previous.blueprintId === options.blueprintId &&
+            now - previous.updatedAt <= mergeWindowMs
+        ) {
+            previous.after = options.after;
+            previous.updatedAt = now;
+            history.redo = [];
+            this.events.emit("blueprintHistoryChanged", { blueprintId: options.blueprintId, ownerKey });
+            return;
+        }
+
+        history.undo.push({
+            blueprintId: options.blueprintId,
+            ownerKey,
+            before: options.before,
+            after: options.after,
+            mergeKey: options.mergeKey,
+            createdAt: now,
+            updatedAt: now,
+        });
+        this.trimBlueprintHistory(history);
+        history.redo = [];
+        this.events.emit("blueprintHistoryChanged", { blueprintId: options.blueprintId, ownerKey });
+    }
+
+    private restoreBlueprintHistorySnapshot(snapshot: BlueprintEditorHistorySnapshot): void {
+        const graph = this.getContext().services.get<UIGraphService>(Services.UIGraph);
+        const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
+
+        this.isRestoringHistory = true;
+        try {
+            graph.applyGraphMutation(document => {
+                const bpDoc = document.blueprintDocument;
+                if (snapshot.ownerKey) {
+                    if (snapshot.ownerRecord) {
+                        bpDoc.ownerRecords[snapshot.ownerKey] = cloneBlueprintHistoryValue(snapshot.ownerRecord)!;
+                    } else {
+                        delete bpDoc.ownerRecords[snapshot.ownerKey];
+                    }
+                }
+                if (snapshot.blueprint) {
+                    bpDoc.blueprints[snapshot.blueprint.id] = cloneBlueprintHistoryValue(snapshot.blueprint)!;
+                } else {
+                    delete bpDoc.blueprints[snapshot.blueprintId];
+                }
+                assertValidBlueprintDocument(bpDoc);
+            });
+            const currentUIDocument = uidoc.getDocument();
+            if (!areUIBehaviorSnapshotsEqual(captureUIBehaviorSnapshot(currentUIDocument), snapshot.uiBehavior)) {
+                uidoc.restoreDocumentFromHistory(
+                    applyUIBehaviorSnapshot(currentUIDocument, snapshot.uiBehavior),
+                    { skipAfterMutateHook: true },
+                );
+            }
+        } finally {
+            this.isRestoringHistory = false;
+        }
+    }
+
+    private ensureBlueprintHistory(blueprintId: string): BlueprintHistoryStack {
+        let history = this.histories.get(blueprintId);
+        if (!history) {
+            history = { undo: [], redo: [] };
+            this.histories.set(blueprintId, history);
+        }
+        return history;
+    }
+
+    private trimBlueprintHistory(history: BlueprintHistoryStack): void {
+        if (history.undo.length <= this.historyLimit) {
+            return;
+        }
+        history.undo.splice(0, history.undo.length - this.historyLimit);
+    }
+
+    private resolveBlueprintOwnerKey(scope: BlueprintHistoryScope): string | null {
+        if (scope.ownerKey) {
+            return scope.ownerKey;
+        }
+        const doc = this.getBlueprintDocument();
+        const blueprint = doc.blueprints[scope.blueprintId];
+        if (blueprint) {
+            return ownerRefToIndexKey(blueprint.owner);
+        }
+        const found = Object.entries(doc.ownerRecords).find(([, record]) =>
+            record.privateBlueprintIds.includes(scope.blueprintId),
+        );
+        return found?.[0] ?? null;
     }
 
     private stripBindingsForSurface(doc: BlueprintDocument, surfaceId: string): void {
@@ -428,7 +761,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             name: input?.name?.trim() || `var_${id.slice(0, 8)}`,
             defaultValue: input?.defaultValue,
         };
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp) {
                 throw new RendererError(`Blueprint not found: ${blueprintId}`);
@@ -440,14 +773,14 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     public renameBlueprintVariable(blueprintId: string, variableId: string, name: string): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const v = doc.blueprints[blueprintId]?.members?.variables?.[variableId];
             if (!v) {
                 return;
             }
             const next = name.trim();
             v.name = next.length > 0 ? next : v.name;
-        });
+        }, { mergeKey: `variable-name:${blueprintId}:${variableId}` });
     }
 
     public setBlueprintVariableDefault(
@@ -455,17 +788,17 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         variableId: string,
         defaultValue: LiteralValue | undefined,
     ): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const v = doc.blueprints[blueprintId]?.members?.variables?.[variableId];
             if (!v) {
                 return;
             }
             v.defaultValue = defaultValue;
-        });
+        }, { mergeKey: `variable-default:${blueprintId}:${variableId}` });
     }
 
     public deleteBlueprintVariable(blueprintId: string, variableId: string): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp?.members?.variables?.[variableId]) {
                 return;
@@ -495,7 +828,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
      * Upserts by eventId; preserves existing graph IR when present.
      */
     public ensureEventGraph(blueprintId: string, eventId: string, displayName?: string): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp) {
                 throw new RendererError(`Blueprint not found: ${blueprintId}`);
@@ -522,7 +855,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         legacyEventId: string,
         displayName?: string,
     ): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp || bp.program.kind !== "graph") {
                 return;
@@ -546,7 +879,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     public renameEventGraph(blueprintId: string, eventId: string, displayName: string): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp || bp.program.kind !== "graph") {
                 return;
@@ -557,11 +890,11 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             }
             const next = displayName.trim();
             slot.name = next.length > 0 ? next : slot.name;
-        });
+        }, { mergeKey: `event-name:${blueprintId}:${eventId}` });
     }
 
     public removeEventGraph(blueprintId: string, eventId: string): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp || bp.program.kind !== "graph") {
                 return;
@@ -579,7 +912,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     public ensureFunctionGraph(blueprintId: string, functionId: string, displayName?: string): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp) {
                 throw new RendererError(`Blueprint not found: ${blueprintId}`);
@@ -601,7 +934,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     public removeFunctionGraph(blueprintId: string, functionId: string): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp || bp.program.kind !== "graph") {
                 return;
@@ -618,8 +951,13 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return Object.keys(bp.program.graphs.functions ?? {});
     }
 
-    public updateEventGraphIr(blueprintId: string, eventId: string, updater: (ir: BlueprintGraphIr) => void): void {
-        this.applyBlueprintMutation(doc => {
+    public updateEventGraphIr(
+        blueprintId: string,
+        eventId: string,
+        updater: (ir: BlueprintGraphIr) => void,
+        options: BlueprintHistoryRecordOptions = {},
+    ): void {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp || bp.program.kind !== "graph") {
                 return;
@@ -631,15 +969,16 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             const ir = ensureBlueprintGraphIr(slot.graph);
             updater(ir);
             slot.graph = ir;
-        });
+        }, options);
     }
 
     public updateFunctionGraphIr(
         blueprintId: string,
         functionId: string,
         updater: (ir: BlueprintGraphIr) => void,
+        options: BlueprintHistoryRecordOptions = {},
     ): void {
-        this.applyBlueprintMutation(doc => {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp || bp.program.kind !== "graph") {
                 return;
@@ -651,17 +990,24 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             const ir = ensureBlueprintGraphIr(slot.graph);
             updater(ir);
             slot.graph = ir;
-        });
+        }, options);
     }
 
-    public updateScriptModuleSource(blueprintId: string, code: string): void {
-        this.applyBlueprintMutation(doc => {
+    public updateScriptModuleSource(
+        blueprintId: string,
+        code: string,
+        options: BlueprintHistoryRecordOptions = {},
+    ): void {
+        this.applyBlueprintEdit({ blueprintId }, doc => {
             const bp = doc.blueprints[blueprintId];
             if (!bp || bp.program.kind !== "scriptModule") {
                 return;
             }
             bp.program.source.code = code;
             bp.program.source.diagnostics = undefined;
+        }, {
+            mergeKey: options.mergeKey ?? `script-source:${blueprintId}`,
+            mergeWindowMs: options.mergeWindowMs ?? 1200,
         });
     }
 

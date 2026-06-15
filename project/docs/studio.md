@@ -6,7 +6,8 @@
 
 ## 功能文档
 
-- `project/docs/ui.md`：UI Editor、Surface、Widget、Blueprint、Workspace preview、Dev Mode UI runtime 边界。
+- `project/docs/workspace-ui.md`：Workspace shell、panel、editor tab、focus、dialog、notification、keybinding、session restore。
+- `project/docs/ui-editor.md`：UI Editor、Surface、Widget、Blueprint、Workspace preview、Dev Mode UI runtime 边界。
 - `project/docs/story.md`：StoryService、多 story 文档、Story panel、Scene editor、剧情编辑器已实现与未实现范围。
 - `project/docs/settings.md`：全局设置、Workspace runtime settings、项目 editor settings 的存储边界。
 - `project/docs/dev-mode.md`：Dev Mode window、主进程 DevModeManager、bundle/reload/blueprint runtime。

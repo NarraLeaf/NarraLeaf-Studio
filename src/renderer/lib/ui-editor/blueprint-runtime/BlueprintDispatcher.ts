@@ -198,19 +198,6 @@ export async function dispatchBlueprintUiEvent(options: {
         .filter((entry): entry is { eventGraph: NonNullable<typeof candidateGraphs[number]>; ir: NonNullable<typeof candidateGraphs[number]["graph"]>; headIds: string[] } => Boolean(entry));
 
     if (matchingGraphs.length === 0) {
-        const hint =
-            eventName === "init"
-                ? 'Add a "Widget init" head (right-click canvas).'
-                : eventName === "click"
-                  ? 'Add a "Button click" head (right-click canvas).'
-                  : "Add an event head (right-click canvas).";
-        debug.emit({
-            type: "execution.error",
-            executionId: newExecutionId(),
-            message: `No event head for "${eventName}". ${hint}`,
-            blueprintId,
-            eventId: eventName,
-        });
         return;
     }
     const executionId = newExecutionId();

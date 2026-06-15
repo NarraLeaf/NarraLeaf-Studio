@@ -24,6 +24,8 @@ import type {
     BlueprintFieldValueSource,
     BlueprintFrontendKind,
     BlueprintGraphIr,
+    BlueprintPrivateOwnerRecord,
+    Blueprint,
 } from "@shared/types/blueprint/document";
 import type {
     ReadonlyBlueprintSurfaceSummary,
@@ -260,6 +262,26 @@ interface IUIGraphService extends IService {
 interface ILocalBlueprintService extends IService {
     getBlueprintDocument(): BlueprintDocument;
     applyBlueprintMutation(mutator: (bp: BlueprintDocument, doc: UIGraphDocument) => void): void;
+    getBlueprintHistoryLimit(): number;
+    setBlueprintHistoryLimit(limit: number): void;
+    captureBlueprintHistorySnapshot(blueprintId: string, ownerKey?: string): {
+        blueprintId: string;
+        ownerKey: string | null;
+        ownerRecord: BlueprintPrivateOwnerRecord | null;
+        blueprint: Blueprint | null;
+        uiBehavior: unknown;
+    };
+    runBlueprintHistoryTransaction<T>(
+        blueprintId: string,
+        action: () => T,
+        options?: { ownerKey?: string; mergeKey?: string; mergeWindowMs?: number },
+    ): T;
+    canUndoBlueprint(blueprintId: string): boolean;
+    canRedoBlueprint(blueprintId: string): boolean;
+    undoBlueprint(blueprintId: string): boolean;
+    redoBlueprint(blueprintId: string): boolean;
+    clearBlueprintHistory(blueprintId?: string): void;
+    onBlueprintHistoryChanged(handler: (event: { blueprintId: string; ownerKey: string | null }) => void): () => void;
     ensureSurfaceMain(surfaceId: string, displayName?: string): string;
     removeSurfaceAndWidgetOwners(surfaceId: string): void;
     ensureWidgetMain(surfaceId: string, elementId: string, displayName?: string, widgetType?: string): string;
@@ -313,9 +335,23 @@ interface ILocalBlueprintService extends IService {
     ensureFunctionGraph(blueprintId: string, functionId: string, displayName?: string): void;
     removeFunctionGraph(blueprintId: string, functionId: string): void;
     listFunctionGraphIds(blueprintId: string): string[];
-    updateEventGraphIr(blueprintId: string, eventId: string, updater: (ir: BlueprintGraphIr) => void): void;
-    updateFunctionGraphIr(blueprintId: string, functionId: string, updater: (ir: BlueprintGraphIr) => void): void;
-    updateScriptModuleSource(blueprintId: string, code: string): void;
+    updateEventGraphIr(
+        blueprintId: string,
+        eventId: string,
+        updater: (ir: BlueprintGraphIr) => void,
+        options?: { mergeKey?: string; mergeWindowMs?: number },
+    ): void;
+    updateFunctionGraphIr(
+        blueprintId: string,
+        functionId: string,
+        updater: (ir: BlueprintGraphIr) => void,
+        options?: { mergeKey?: string; mergeWindowMs?: number },
+    ): void;
+    updateScriptModuleSource(
+        blueprintId: string,
+        code: string,
+        options?: { mergeKey?: string; mergeWindowMs?: number },
+    ): void;
     getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary;
     planSubtreeDuplicateBlueprintRemap(input: {
         surfaceId: string;

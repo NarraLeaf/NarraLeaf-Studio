@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
+import type { UIDocument } from "@shared/types/ui-editor/document";
 import { getInterface } from "@/lib/app/bridge";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
@@ -24,6 +25,7 @@ const OUTPUT_LOG_LEVEL_LABEL: Record<BlueprintOutputLogLevel, string> = {
 type BlueprintRuntimeDebugPanelProps = {
     debug: DebugBridge;
     blueprintDocument: BlueprintDocument;
+    uiDocument: UIDocument;
     activeSurfaceId: string;
     scopeBridge: ScopeStoreBridge;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -35,6 +37,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
     const {
         debug,
         blueprintDocument,
+        uiDocument,
         activeSurfaceId,
         scopeBridge,
         widgetRuntimeStore,
@@ -121,8 +124,11 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
     }, [logLevelMenuOpen]);
 
     const blueprintsList = useMemo(() => {
-        return listBlueprintsForDevTools(blueprintDocument.blueprints);
-    }, [blueprintDocument.blueprints]);
+        return listBlueprintsForDevTools(blueprintDocument.blueprints, {
+            document: uiDocument,
+            activeSurfaceId,
+        });
+    }, [activeSurfaceId, blueprintDocument.blueprints, uiDocument]);
 
     const outputLines = useMemo(() => {
         const src = filterBlueprintDebugEventsByLogLevel(events, outputLogLevels);
