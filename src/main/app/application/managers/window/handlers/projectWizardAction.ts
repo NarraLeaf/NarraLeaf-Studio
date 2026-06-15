@@ -56,7 +56,12 @@ export class ProjectWizardSelectDirectoryHandler extends IPCHandler<IPCEventType
             return this.success({ dest: null });
         }
 
-        return this.success({ dest: result.filePaths[0] || null });
+        const selectedPath = result.filePaths[0] || null;
+        if (selectedPath) {
+            window.app.storageManager.grantFileSystemAccess(window, selectedPath);
+        }
+
+        return this.success({ dest: selectedPath });
     }
 }
 
@@ -92,6 +97,8 @@ export class ProjectWizardGetDefaultDirectoryHandler extends IPCHandler<IPCEvent
                 defaultDir = path.join(app.getPath('home'), 'Projects');
                 break;
         }
+
+        window.app.storageManager.grantFileSystemAccess(window, defaultDir);
 
         return this.success({ dir: defaultDir });
     }
