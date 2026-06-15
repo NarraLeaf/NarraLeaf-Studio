@@ -1,4 +1,5 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import { truncateDebugEventMessage } from "./DebugBridge";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { ScopeStoreBridge } from "./ScopeStoreBridge";
@@ -187,9 +188,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         },
         devtools: {
             log: (level: string, message: string) => {
+                const safeMessage = truncateDebugEventMessage(String(message));
                 emitHostCall(emit, "devtools.log", "call");
-                emit({ type: "devtools.log", level, message });
-                const line = `[Blueprint devtools.${level}] ${message}`;
+                emit({ type: "devtools.log", level, message: safeMessage });
+                const line = `[Blueprint devtools.${level}] ${safeMessage}`;
                 if (level === "error") {
                     console.error(line);
                 } else if (level === "warn") {
