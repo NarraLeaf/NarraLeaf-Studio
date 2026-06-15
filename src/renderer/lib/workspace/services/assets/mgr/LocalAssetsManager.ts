@@ -4,19 +4,12 @@ import { AssetsService } from "../../core/AssetsService";
 import { Services, WorkspaceContext } from "../../services";
 import { AssetData, AssetExtensions, AssetType } from "../assetTypes";
 import { Asset, AssetSource } from "../types";
-import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
+import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/project/nameConvention";
 import { FsRequestResult } from "@shared/types/os";
 import { FileSystemService } from "../../core/FileSystem";
 import { UuidService } from "../../core/UuidService";
 import { RendererError } from "@shared/utils/error";
 import { basename, dirname, extname } from "@shared/utils/path";
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
-
-function isSafeAssetStorageId(id: string): boolean {
-    return UUID_PATTERN.test(id) || SHA256_PATTERN.test(id);
-}
 
 export class LocalAssetsManager {
     constructor(private assetsService: AssetsService, private context: WorkspaceContext) {
@@ -50,6 +43,10 @@ export class LocalAssetsManager {
     }
 
     public async fetch<T extends AssetType>(asset: Asset<T, AssetSource.Local>): Promise<RequestStatus<AssetData<T>>> {
+        if (!isValidAssetStorageId(asset.id)) {
+            return { success: false, error: `Invalid asset id: ${asset.id}` };
+        }
+
         const path = this.getLocalAssetPath(asset.id);
         switch (asset.type) {
             case AssetType.Image:
@@ -100,6 +97,10 @@ export class LocalAssetsManager {
     ): Promise<RequestStatus<void>> {
         const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
 
+        if (!isValidAssetStorageId(asset.id)) {
+            return { success: false, error: `Invalid asset id: ${asset.id}` };
+        }
+
         if (!metadata[asset.type][asset.id]) {
             return {
                 success: false,
@@ -138,7 +139,7 @@ export class LocalAssetsManager {
             return { success: false, error: `Asset not found: ${asset.id}` };
         }
 
-        if (!isSafeAssetStorageId(asset.id)) {
+        if (!isValidAssetStorageId(asset.id)) {
             return { success: false, error: `Invalid asset id: ${asset.id}` };
         }
 
