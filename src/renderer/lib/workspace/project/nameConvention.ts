@@ -30,7 +30,10 @@ export const ProjectNameConvention = {
     EditorRemoteAssetsCache: ["editor", "assets", "remote/"],
     EditorRemoteAssetShard: (id: string) => ["editor", "assets", "remote", ...splitId(id)],
     EditorThumbnailCache: ["editor", "cache", "thumbnail/"],
-    EditorThumbnailCacheShard: (id: string) => ["editor", "cache", "thumbnail", ...splitId(id), `${id}.png` as const],
+    EditorThumbnailCacheShard: (id: string) => {
+        const safeId = encodePathSegmentId(id);
+        return ["editor", "cache", "thumbnail", ...splitId(safeId), `${safeId}.png` as const];
+    },
     EditorUI: ["editor", "ui/"],
     EditorUIDocument: ["editor", "ui", "uidoc.json"],
     EditorUIGraphs: ["editor", "ui", "uigraphs.json"],
@@ -58,4 +61,19 @@ function splitId(id: string): [string, string, string] {
     const rest = cleanId.slice(4);
     // Ensure rest is not empty to avoid directory paths
     return [charsA, charsB, rest || id];
+}
+
+
+/**
+ * Encode untrusted ids before embedding them in editor-cache path segments.
+ * Asset ids can originate from project metadata, so keep every emitted
+ * character inside a conservative filename alphabet and avoid path
+ * separators, absolute paths, and traversal-only segments.
+ */
+function encodePathSegmentId(id: string): string {
+    const encoded = Array.from(id)
+        .map(char => char.codePointAt(0)?.toString(16).padStart(2, '0') ?? '')
+        .join('');
+
+    return `asset-${encoded || 'empty'}`;
 }
