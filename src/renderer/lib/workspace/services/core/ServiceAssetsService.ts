@@ -7,6 +7,8 @@ import { IServiceAssetsService, Services, WorkspaceContext } from "../services";
 import { UuidService } from "./UuidService";
 
 export class ServiceAssetsService extends Service<ServiceAssetsService> implements IServiceAssetsService {
+    private static readonly AssetFileIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
     private assetsDir = "";
     private servicesDir = "";
 
@@ -53,13 +55,16 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
                   : new Uint8Array(data);
         const fileId = this.getUuidService().generate();
         const targetPath = this.resolveAssetFile(fileId);
+        if (!targetPath.ok) {
+            return targetPath;
+        }
 
         const ensureDir = await this.ensureAssetsDir();
         if (!ensureDir.ok) {
             return ensureDir;
         }
 
-        const writeResult = await this.getFileSystem().writeRaw(targetPath, bytes);
+        const writeResult = await this.getFileSystem().writeRaw(targetPath.data, bytes);
         if (!writeResult.ok) {
             return writeResult;
         }
@@ -69,18 +74,29 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
 
     public async readFile(fileId: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<string>> {
         this.ensureReady();
-        return this.getFileSystem().read(this.resolveAssetFile(fileId), encoding);
+        const targetPath = this.resolveAssetFile(fileId);
+        if (!targetPath.ok) {
+            return targetPath;
+        }
+        return this.getFileSystem().read(targetPath.data, encoding);
     }
 
     public async readRaw(fileId: string): Promise<FsRequestResult<Uint8Array>> {
         this.ensureReady();
-        return this.getFileSystem().readRaw(this.resolveAssetFile(fileId));
+        const targetPath = this.resolveAssetFile(fileId);
+        if (!targetPath.ok) {
+            return targetPath;
+        }
+        return this.getFileSystem().readRaw(targetPath.data);
     }
 
     public async deleteFile(fileId: string): Promise<FsRequestResult<void>> {
         this.ensureReady();
         const targetPath = this.resolveAssetFile(fileId);
-        return this.getFileSystem().deleteFile(targetPath);
+        if (!targetPath.ok) {
+            return targetPath;
+        }
+        return this.getFileSystem().deleteFile(targetPath.data);
     }
 
     private getFileSystem(): FileSystemService {
@@ -101,8 +117,18 @@ export class ServiceAssetsService extends Service<ServiceAssetsService> implemen
         return this.getContext().project.resolve(ProjectNameConvention.EditorServices, `${name}.json`);
     }
 
-    private resolveAssetFile(fileName: string): string {
-        return this.getContext().project.resolve(ProjectNameConvention.EditorAssets, fileName);
+    private resolveAssetFile(fileName: string): FsRequestResult<string> {
+        if (!ServiceAssetsService.AssetFileIdPattern.test(fileName)) {
+            return {
+                ok: false,
+                error: {
+                    code: FsRejectErrorCode.INVALID_PATH,
+                    message: "Invalid service asset file id",
+                },
+            };
+        }
+
+        return { ok: true, data: this.getContext().project.resolve(ProjectNameConvention.EditorAssets, fileName) };
     }
 
     private async ensureAssetsDir(): Promise<FsRequestResult<void>> {
