@@ -14,6 +14,7 @@ import type { BlueprintHostApiRuntime } from "./BlueprintHostApiBridge";
 import { adaptBlueprintGraphIr } from "./adaptBlueprintGraphIr";
 import { acquireBlueprintWidgetLocals } from "./blueprintWidgetLocals";
 import type { DebugBridge } from "./DebugBridge";
+import { truncateDebugEventMessage } from "./DebugBridge";
 import {
     widgetMainOwnerKey,
     surfaceMainOwnerKey,
@@ -43,7 +44,7 @@ function createScriptExecutionContext(input: {
                 persistence: api.persistence,
                 devtools: {
                     log: (msg: string) => {
-                        api.devtools.log("info", String(msg));
+                        api.devtools.log("info", truncateDebugEventMessage(String(msg)));
                     },
                 },
             },
@@ -68,8 +69,9 @@ function createScriptExecutionContext(input: {
             devtools: {
                 log: async (msg: string) => {
                     input.debug.emit({ type: "function.call", functionId: "devtools.log" });
-                    input.debug.emit({ type: "devtools.log", level: "info", message: String(msg) });
-                    console.info(`[Blueprint] ${msg}`);
+                    const safeMessage = truncateDebugEventMessage(String(msg));
+                    input.debug.emit({ type: "devtools.log", level: "info", message: safeMessage });
+                    console.info(`[Blueprint] ${safeMessage}`);
                     input.debug.emit({ type: "function.return", functionId: "devtools.log" });
                 },
             },
