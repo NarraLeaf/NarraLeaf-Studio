@@ -1,5 +1,17 @@
 import { AssetType } from "../services/assets/assetTypes";
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const HEX_STORAGE_ID_PATTERN = /^[0-9a-f]{64}$/i;
+
+/**
+ * Asset content/cache files are addressed only by generated UUIDs or legacy
+ * SHA-256 hex digests. Rejecting every other character prevents metadata-
+ * controlled identifiers from becoming path traversal segments.
+ */
+export function isValidAssetStorageId(id: unknown): id is string {
+    return typeof id === "string" && (UUID_PATTERN.test(id) || HEX_STORAGE_ID_PATTERN.test(id));
+}
+
 export const ProjectNameConvention = {
     // Project Root Files
     // .nlproj is the primary format (msgpack-encoded); project.json is legacy
@@ -48,19 +60,14 @@ export const ProjectNameConvention = {
  * Hash format: 64 hex characters
  */
 function splitId(id: string): [string, string, string] {
+    if (!isValidAssetStorageId(id)) {
+        throw new Error(`Invalid asset storage id: ${id}`);
+    }
+
     // Remove dashes if it's a UUID (UUIDs contain dashes)
     const cleanId = id.replace(/-/g, '');
-    
-    if (cleanId.length < 4) {
-        // If id is too short, pad it or use fallback
-        const padded = cleanId.padEnd(4, '0');
-        return [padded.slice(0, 2), padded.slice(2, 4), id];
-    }
-    const charsA = cleanId.slice(0, 2);
-    const charsB = cleanId.slice(2, 4);
-    const rest = cleanId.slice(4);
-    // Ensure rest is not empty to avoid directory paths
-    return [charsA, charsB, rest || id];
+
+    return [cleanId.slice(0, 2), cleanId.slice(2, 4), cleanId.slice(4)];
 }
 
 
