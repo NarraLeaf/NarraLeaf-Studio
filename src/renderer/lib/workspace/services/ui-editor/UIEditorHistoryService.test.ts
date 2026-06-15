@@ -5,6 +5,7 @@ import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/docum
 import { Services } from "../services";
 import {
     applyUIDocumentSurfaceSnapshot,
+    captureUIDocumentSurfaceSnapshot,
     UIEditorHistoryService,
 } from "./UIEditorHistoryService";
 
@@ -137,6 +138,17 @@ function createHarness(initialDocument = documentWithPositions(0, 0), initialBlu
 }
 
 describe("UIEditorHistoryService", () => {
+    it("captures only the requested surface in UI document history snapshots", () => {
+        const document = documentWithPositions(12, 34);
+
+        const snapshot = captureUIDocumentSurfaceSnapshot(document, "surface-a");
+
+        expect(snapshot.surfaces.map(surface => surface.id)).toEqual(["surface-a"]);
+        expect(Object.keys(snapshot.elements).sort()).toEqual(["a", "root-a"]);
+        expect(snapshot.elements.b).toBeUndefined();
+        expect(snapshot.elements["root-b"]).toBeUndefined();
+    });
+
     it("applies a surface document snapshot without touching other surfaces", () => {
         const current = documentWithPositions(12, 34);
         const target = documentWithPositions(99, 0);

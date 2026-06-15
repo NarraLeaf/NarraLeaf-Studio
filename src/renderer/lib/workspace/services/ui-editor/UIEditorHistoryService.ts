@@ -1,5 +1,5 @@
 import type { Blueprint, BlueprintDocument, BlueprintPrivateOwnerRecord } from "@shared/types/blueprint/document";
-import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { collectSubtreeElementIds } from "./uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -18,8 +18,13 @@ export type UIEditorBlueprintSurfaceSnapshot = {
     blueprints: Record<string, Blueprint>;
 };
 
+export type UIEditorUIDocumentSurfaceSnapshot = Pick<UIDocument, "schemaVersion" | "id" | "name" | "meta"> & {
+    surfaces: UISurface[];
+    elements: Record<string, UIElement>;
+};
+
 export type UIEditorHistorySnapshot = {
-    document: UIDocument;
+    document: UIEditorUIDocumentSurfaceSnapshot;
     blueprint: UIEditorBlueprintSurfaceSnapshot;
 };
 
@@ -129,25 +134,63 @@ function areSnapshotsEqual(a: UIEditorHistorySnapshot, b: UIEditorHistorySnapsho
         JSON.stringify(a.blueprint) === JSON.stringify(b.blueprint);
 }
 
+export function captureUIDocumentSurfaceSnapshot(
+    document: UIDocument,
+    surfaceId: string,
+): UIEditorUIDocumentSurfaceSnapshot {
+    const surface = document.surfaces.find(next => next.id === surfaceId);
+    const elements: Record<string, UIElement> = {};
+    if (surface) {
+        const rootElementId = resolveSurfaceRootElementId(document, surfaceId);
+        if (rootElementId) {
+            for (const elementId of collectSubtreeElementIds(document, rootElementId)) {
+                const element = document.elements[elementId];
+                if (element) {
+                    elements[elementId] = cloneBlueprint(element);
+                }
+            }
+        }
+    }
+
+    return {
+        schemaVersion: document.schemaVersion,
+        id: document.id,
+        name: document.name,
+        surfaces: surface ? [cloneBlueprint(surface)] : [],
+        elements,
+        meta: document.meta ? cloneBlueprint(document.meta) : undefined,
+    };
+}
+
 export function applyUIDocumentSurfaceSnapshot(
     currentDocument: UIDocument,
-    targetDocument: UIDocument,
+    targetDocument: UIDocument | UIEditorUIDocumentSurfaceSnapshot,
     surfaceId: string,
 ): UIDocument {
     const next = cloneUIHistoryDocument(currentDocument);
     const currentRootId = resolveSurfaceRootElementId(next, surfaceId);
-    const targetRootId = resolveSurfaceRootElementId(targetDocument, surfaceId);
-    if (!currentRootId || !targetRootId) {
-        return cloneUIHistoryDocument(targetDocument);
+    if (currentRootId) {
+        const currentIds = collectSubtreeElementIds(next, currentRootId);
+        for (const elementId of currentIds) {
+            delete next.elements[elementId];
+        }
     }
 
-    const currentIds = collectSubtreeElementIds(next, currentRootId);
-    for (const elementId of currentIds) {
-        delete next.elements[elementId];
+    const targetSurface = targetDocument.surfaces.find(surface => surface.id === surfaceId);
+    const currentSurfaceIndex = next.surfaces.findIndex(surface => surface.id === surfaceId);
+    if (targetSurface && currentSurfaceIndex >= 0) {
+        next.surfaces[currentSurfaceIndex] = cloneBlueprint(targetSurface);
+    } else if (targetSurface) {
+        next.surfaces.push(cloneBlueprint(targetSurface));
+    } else if (currentSurfaceIndex >= 0) {
+        next.surfaces.splice(currentSurfaceIndex, 1);
     }
 
-    const targetIds = collectSubtreeElementIds(targetDocument, targetRootId);
-    for (const elementId of targetIds) {
+    const targetRootId = resolveSurfaceRootElementId(targetDocument as UIDocument, surfaceId);
+    const targetElementIds = targetRootId
+        ? collectSubtreeElementIds(targetDocument as UIDocument, targetRootId)
+        : Object.keys(targetDocument.elements);
+    for (const elementId of targetElementIds) {
         const element = targetDocument.elements[elementId];
         if (element) {
             next.elements[elementId] = cloneBlueprint(element);
@@ -188,7 +231,7 @@ export class UIEditorHistoryService
         const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
         const graph = this.getContext().services.get<UIGraphService>(Services.UIGraph);
         return {
-            document: cloneUIHistoryDocument(uidoc.getDocument()),
+            document: captureUIDocumentSurfaceSnapshot(uidoc.getDocument(), surfaceId),
             blueprint: captureBlueprintSurfaceSnapshot(graph.getDocument().blueprintDocument, surfaceId),
         };
     }
