@@ -5,6 +5,7 @@ import type { SharedBlueprintAsset } from "@shared/types/blueprint/document";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
+import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { Fs } from "@shared/utils/fs";
 import type { DevModeBundleLoadContext, DevModeBundleSource } from "./types";
 
@@ -70,6 +71,9 @@ async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprin
     const out: SharedBlueprintAsset[] = [];
     for (const assetId of Object.keys(record)) {
         const filePath = resolveAssetContentPath(projectPath, assetId);
+        if (!filePath) {
+            continue;
+        }
         const body = await Fs.read(filePath, "utf-8");
         if (!body.ok) {
             continue;
@@ -83,22 +87,13 @@ async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprin
     return out;
 }
 
-function resolveAssetContentPath(projectPath: string, assetId: string): string {
-    const [a, b, rest] = splitIdForAssetContent(assetId);
-    return path.join(projectPath, "assets", "content", a, b, rest);
-}
-
-/** Mirrors `ProjectNameConvention.splitId` for main-process file reads */
-function splitIdForAssetContent(id: string): [string, string, string] {
-    const cleanId = id.replace(/-/g, "");
-    if (cleanId.length < 4) {
-        const padded = cleanId.padEnd(4, "0");
-        return [padded.slice(0, 2), padded.slice(2, 4), id];
+function resolveAssetContentPath(projectPath: string, assetId: string): string | null {
+    try {
+        const [a, b, rest] = splitAssetStorageId(assetId);
+        return path.join(projectPath, "assets", "content", a, b, rest);
+    } catch {
+        return null;
     }
-    const charsA = cleanId.slice(0, 2);
-    const charsB = cleanId.slice(2, 4);
-    const rest = cleanId.slice(4);
-    return [charsA, charsB, rest || id];
 }
 
 /** Default bundle source: project files on disk. */
