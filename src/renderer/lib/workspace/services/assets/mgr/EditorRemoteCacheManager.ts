@@ -1,4 +1,4 @@
-import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
+import { isValidAssetStorageId, ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { FsRequestResult } from "@shared/types/os";
 import { dirname } from "@shared/utils/path";
@@ -24,6 +24,10 @@ export class EditorRemoteCacheManager {
      * Lifetime is intentionally ignored to keep editor UX fast and offline-friendly.
      */
     public async fetch(assetId: string, url: string): Promise<RequestStatus<Uint8Array>> {
+        if (!isValidAssetStorageId(assetId)) {
+            return { success: false, error: `Invalid remote asset id: ${assetId}` };
+        }
+
         const cached = await this.getFromCache(assetId);
         if (cached.success) {
             return cached;
@@ -49,6 +53,10 @@ export class EditorRemoteCacheManager {
         }
 
         this.memoryCache.delete(assetId);
+        if (!isValidAssetStorageId(assetId)) {
+            return;
+        }
+
         const cachePath = this.getCachePath(assetId);
         const fs = this.getFileSystem();
         const exists = await fs.isFileExists(cachePath);
@@ -147,4 +155,3 @@ export class EditorRemoteCacheManager {
         return this.context.services.get<FileSystemService>(Services.FileSystem);
     }
 }
-
