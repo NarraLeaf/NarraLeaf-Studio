@@ -11,6 +11,13 @@ import { UuidService } from "../../core/UuidService";
 import { RendererError } from "@shared/utils/error";
 import { basename, dirname, extname } from "@shared/utils/path";
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
+
+function isSafeAssetStorageId(id: string): boolean {
+    return UUID_PATTERN.test(id) || SHA256_PATTERN.test(id);
+}
+
 export class LocalAssetsManager {
     constructor(private assetsService: AssetsService, private context: WorkspaceContext) {
     }
@@ -129,6 +136,10 @@ export class LocalAssetsManager {
         const existing = metadata[asset.type][asset.id];
         if (!existing) {
             return { success: false, error: `Asset not found: ${asset.id}` };
+        }
+
+        if (!isSafeAssetStorageId(asset.id)) {
+            return { success: false, error: `Invalid asset id: ${asset.id}` };
         }
 
         // Generate new uuid and resolve unique name
