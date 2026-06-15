@@ -1,6 +1,7 @@
 import type { UIDocument, UIElement, UIElementId } from "@shared/types/ui-editor/document";
 
 const ROOT_WIDGET_TYPE = "nl.root";
+const MAX_PARENT_CHAIN_DEPTH = 10_000;
 
 /**
  * Top-left of the element's layout box in surface (root) space, matching EditorNodeWrapper
@@ -11,8 +12,10 @@ export function getElementSurfaceTopLeftEx(
     elementId: string,
 ): { x: number; y: number } {
     const chain: UIElementId[] = [];
+    const visited = new Set<UIElementId>();
     let cur: string | null | undefined = elementId;
-    while (cur) {
+    while (cur && !visited.has(cur) && chain.length < MAX_PARENT_CHAIN_DEPTH) {
+        visited.add(cur);
         chain.unshift(cur);
         const el = resolve(cur);
         cur = el?.parentId ?? null;
