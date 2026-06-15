@@ -4,13 +4,23 @@ import { AssetType } from '@/lib/workspace/services/assets/assetTypes';
 import { createDefaultFilters, getUniqueTags } from '../components/FilterSystem';
 
 const createEmptyAssets = (): Record<AssetType, Asset[]> => ({
-    [AssetType.Image]: [], [AssetType.Audio]: [], [AssetType.Video]: [],
-    [AssetType.JSON]: [], [AssetType.Font]: [], [AssetType.Other]: [],
+    [AssetType.Image]: [],
+    [AssetType.Audio]: [],
+    [AssetType.Video]: [],
+    [AssetType.JSON]: [],
+    [AssetType.Blueprint]: [],
+    [AssetType.Font]: [],
+    [AssetType.Other]: [],
 });
 
 const createEmptyGroups = (): Record<AssetType, AssetGroup[]> => ({
-    [AssetType.Image]: [], [AssetType.Audio]: [], [AssetType.Video]: [],
-    [AssetType.JSON]: [], [AssetType.Font]: [], [AssetType.Other]: [],
+    [AssetType.Image]: [],
+    [AssetType.Audio]: [],
+    [AssetType.Video]: [],
+    [AssetType.JSON]: [],
+    [AssetType.Blueprint]: [],
+    [AssetType.Font]: [],
+    [AssetType.Other]: [],
 });
 
 export interface UseAssetFiltersParams {
@@ -66,7 +76,7 @@ export function useAssetFilters({ assets, groups }: UseAssetFiltersParams) {
             const typeGroups = groups[assetType];
 
             filteredAssets[assetType] = typeAssets.filter(asset => {
-                if (tagFilters.length > 0 && !tagFilters.some(tag => asset.tags.includes(tag))) return false;
+                if (tagFilters.length > 0 && !tagFilters.every(tag => asset.tags.includes(tag))) return false;
 
                 const assetExtension = asset.ext || '';
                 if (extensionFilters.length > 0 && !extensionFilters.includes(assetExtension)) return false;

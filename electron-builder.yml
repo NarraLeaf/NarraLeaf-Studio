@@ -23,8 +23,10 @@ extraResources:
       - '**/*'
 mac:
   target: dmg
+  icon: resources/app-icon.icns
 win:
   target: nsis
   icon: resources/app-icon.ico
 linux:
   target: AppImage
+  icon: resources/app-icon.png

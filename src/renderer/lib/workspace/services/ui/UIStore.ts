@@ -2,6 +2,7 @@ import { ModuleAction } from "@/apps/workspace/modules";
 import { EventEmitter } from "./EventEmitter";
 import { KeybindingService } from "./KeybindingService";
 import { Keybinding } from "./types";
+import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import {
     Notification,
     ActionBarItem,
@@ -23,8 +24,12 @@ import {
 } from "@/apps/workspace/registry/types";
 
 export interface SelectionState {
-    type: "asset" | "node" | "scene" | null;
-    data: any | null;
+    type: "asset" | "character" | "element" | "scene" | null;
+    data: any | UIElementSelection | null;
+}
+
+export function isUIElementSelection(selection: SelectionState): selection is { type: "element"; data: UIElementSelection } {
+    return selection.type === "element" && Boolean(selection.data) && (selection.data as UIElementSelection).editor === "ui";
 }
 
 /**
@@ -577,6 +582,44 @@ export class UIStore {
         this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
     }
 
+    /**
+     * Close multiple tabs in one layout update. Emits one layout change and one close event per removed tab.
+     */
+    public closeEditorTabsInGroup(tabIds: readonly string[], groupId?: string): void {
+        const idSet = new Set(tabIds);
+        if (idSet.size === 0) {
+            return;
+        }
+
+        const targetGroup = this.findGroup(this.state.editorLayout, groupId);
+        const targetId = targetGroup?.id ?? (this.state.editorLayout as EditorGroup).id;
+        const groupSnapshot =
+            targetGroup ?? (this.state.editorLayout as EditorGroup);
+        const closedIds = groupSnapshot.tabs.filter((t) => idSet.has(t.id)).map((t) => t.id);
+        if (closedIds.length === 0) {
+            return;
+        }
+
+        this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
+            const tabs = group.tabs.filter((t) => !idSet.has(t.id));
+            let activeTabId = group.focus;
+
+            if (activeTabId && idSet.has(activeTabId)) {
+                activeTabId = tabs.length > 0 ? tabs[tabs.length - 1].id : null;
+            } else if (activeTabId && !tabs.some((t) => t.id === activeTabId)) {
+                activeTabId = tabs.length > 0 ? tabs[tabs.length - 1].id : null;
+            }
+
+            return { ...group, tabs, focus: activeTabId };
+        });
+
+        for (const tabId of closedIds) {
+            this.events.emit("editorTabClosedInGroup", { tabId, groupId: targetId });
+        }
+        this.events.emit("editorLayoutChanged", this.state.editorLayout);
+        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+    }
+
     public setActiveEditorTabInGroup(tabId: string, groupId: string): void {
         this.state.editorLayout = this.updateGroup(this.state.editorLayout, groupId, (group) => ({
             ...group,
@@ -649,6 +692,7 @@ export class UIStore {
             description: action.tooltip ?? action.label ?? action.id,
             handler: () => action.onClick(null as any),
             when: action.when,
+            allowInEditable: action.allowInEditable,
         };
         const dispose = this.keybindingService.register(kb);
         this.kbDisposers.set(kbKey, dispose);

@@ -30,6 +30,8 @@ import { Services } from "../services";
  */
 export class UIService extends Service<UIService> implements IUIService {
     private store: UIStore;
+    /** Unsubscribers for AssetsService listeners registered in init */
+    private assetEventsUnsubs: (() => void)[] = [];
     private _notifications: NotificationService;
     private _actionBar: ActionBarService;
     private _panels: PanelService;
@@ -53,13 +55,20 @@ export class UIService extends Service<UIService> implements IUIService {
         this.store.setKeybindingService(this._keybindings);
     }
 
-    protected init(ctx: WorkspaceContext): Promise<void> | void {
+    protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
+        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+        await depend([assetsService]);
+
         // Start keybinding service
         this._keybindings.start();
 
         try {
-            const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-            assetsService.getEvents().on("deleted", (asset: Asset) => {
+            for (const unsub of this.assetEventsUnsubs) {
+                unsub();
+            }
+            this.assetEventsUnsubs = [];
+
+            const unsubDeleted = assetsService.getEvents().on("deleted", (asset: Asset) => {
                 // Clear selection if the deleted asset is selected
                 const selection = this.store.getSelection();
                 if (selection.type === "asset" && (selection.data as Asset).id === asset.id) {
@@ -92,8 +101,23 @@ export class UIService extends Service<UIService> implements IUIService {
                     }
                 });
             });
+
+            const unsubUpdated = assetsService.getEvents().on("updated", (asset: Asset) => {
+                const selection = this.store.getSelection();
+                if (selection.type !== "asset" || !selection.data) {
+                    return;
+                }
+                const selected = selection.data as Asset;
+                if (selected.id !== asset.id) {
+                    return;
+                }
+                // Shallow clone so React consumers re-render after in-place metadata updates
+                this.store.setSelection({ type: "asset", data: { ...asset } });
+            });
+
+            this.assetEventsUnsubs.push(unsubDeleted, unsubUpdated);
         } catch (err) {
-            console.warn("UIService: failed to attach asset deletion listener", err);
+            console.warn("UIService: failed to attach asset event listeners", err);
         }
     }
 
@@ -226,6 +250,10 @@ export class UIService extends Service<UIService> implements IUIService {
      * Clean up
      */
     public override dispose(_ctx: WorkspaceContext): void {
+        for (const unsub of this.assetEventsUnsubs) {
+            unsub();
+        }
+        this.assetEventsUnsubs = [];
         this._keybindings.stop();
         this._keybindings.clear();
         this.store.clear();

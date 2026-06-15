@@ -65,6 +65,9 @@ const { postcssPlugin } = require('./postCss-plugin');
             loader: {
                 '.ts': 'ts',
                 '.tsx': 'tsx',
+                '.ttf': 'file',
+                '.woff': 'file',
+                '.woff2': 'file',
             },
             plugins: [postcssPlugin()],
         });

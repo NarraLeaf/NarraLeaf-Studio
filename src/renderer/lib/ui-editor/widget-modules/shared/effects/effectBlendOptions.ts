@@ -1,0 +1,15 @@
+export const BLEND_MODE_SELECT_OPTIONS = [
+    { value: "", label: "Normal" },
+    { value: "multiply", label: "Multiply" },
+    { value: "screen", label: "Screen" },
+    { value: "overlay", label: "Overlay" },
+    { value: "darken", label: "Darken" },
+    { value: "lighten", label: "Lighten" },
+    { value: "color-dodge", label: "Color dodge" },
+    { value: "color-burn", label: "Color burn" },
+    { value: "hard-light", label: "Hard light" },
+    { value: "soft-light", label: "Soft light" },
+    { value: "difference", label: "Difference" },
+    { value: "exclusion", label: "Exclusion" },
+    { value: "plus-lighter", label: "Plus lighter" },
+] as const;

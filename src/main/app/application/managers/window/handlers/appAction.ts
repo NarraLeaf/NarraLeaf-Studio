@@ -122,7 +122,7 @@ export class AppGlobalStateGetHandler extends IPCHandler<IPCEventType.appGlobalS
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateGet]["data"]) {
         window.app.logger.debug(`Getting global state key: ${data.key}, raw: ${JSON.stringify(window.app.globalState.raw())}`);
-        return this.success({ value: window.app.globalState.get(data.key, true) });
+        return this.success({ value: window.app.globalState.get(data.key) });
     }
 }
 
@@ -132,6 +132,30 @@ export class AppGlobalStateSetHandler extends IPCHandler<IPCEventType.appGlobalS
 
     public handle(window: AppWindow, data: IPCEvents[IPCEventType.appGlobalStateSet]["data"]) {
         window.app.globalState.set(data.key, data.value);
+        return this.success(void 0);
+    }
+}
+
+export class AppGlobalStateGetAllHandler extends IPCHandler<IPCEventType.appGlobalStateGetAll> {
+    readonly name = IPCEventType.appGlobalStateGetAll;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow) {
+        return this.success({ settings: window.app.globalState.raw() });
+    }
+}
+
+export class AppAddRecentProjectHandler extends IPCHandler<IPCEventType.appAddRecentProject> {
+    readonly name = IPCEventType.appAddRecentProject;
+    readonly type = IPCMessageType.request;
+
+    public handle(window: AppWindow, data: IPCEvents[IPCEventType.appAddRecentProject]["data"]) {
+        window.app.globalState.recentlyOpened.addProject({
+            name: data.name,
+            path: data.path,
+            icon: undefined,
+            openedAt: Date.now(),
+        });
         return this.success(void 0);
     }
 }

@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+    --narraleaf-accent: theme("colors.primary");
+    --narraleaf-accent-strong: var(--narraleaf-accent, #40a8c4);
+    --narraleaf-accent-weak: rgba(64, 168, 196, 0.65);
+    --narraleaf-accent-weak: color-mix(in srgb, var(--narraleaf-accent) 60%, transparent);
+    --narraleaf-accent-tint: rgba(64, 168, 196, 0.18);
+    --narraleaf-accent-tint: color-mix(in srgb, var(--narraleaf-accent) 18%, transparent);
+}
+
 *, *::before, *::after {
     user-select: none;
     box-sizing: border-box;
@@ -164,6 +173,33 @@ input[type="radio"]:focus {
     .titlebar-drag { -webkit-app-region: drag; }
     .no-drag { -webkit-app-region: no-drag; }
 
+    /**
+     * Global `*` sets -webkit-user-drag: none (prevents accidental image/window drags).
+     * Opt HTML5 drag sources back in for Chromium/Electron (required for draggable="true" to work).
+     */
+    .nl-asset-drag-source,
+    .nl-asset-drag-source * {
+        -webkit-user-drag: element;
+    }
+
+    /* Ephemeral node for dataTransfer.setDragImage (multi-select asset drag) */
+    .nl-dnd-multi-asset-ghost {
+        position: fixed;
+        left: -10000px;
+        top: 0;
+        z-index: 2147483647;
+        padding: 8px 14px;
+        border-radius: 8px;
+        background: rgba(30, 32, 38, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        font-size: 13px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.92);
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
     /* Template selection states */
     .template-selected {
         box-shadow: 0 4px 12px -2px rgba(64, 168, 196, 0.15), 0 0 0 1px #40a8c4 !important;
@@ -181,4 +217,60 @@ input[type="radio"]:focus {
         border-color: #40a8c4 !important;
         border-style: solid !important;
     }
+}
+
+.selecto-selection,
+.selecto-area,
+.narraleaf-selecto {
+    border: 1px solid var(--narraleaf-accent-strong) !important;
+    border-radius: 0 !important;
+    border-style: solid !important;
+    background: var(--narraleaf-accent-tint) !important;
+}
+
+.selecto-line {
+    background-color: var(--narraleaf-accent-strong) !important;
+}
+
+.moveable,
+.moveable * {
+    --moveable-color: var(--narraleaf-accent-strong);
+}
+
+.moveable.narraleaf-moveable {
+    will-change: transform;
+}
+
+.moveable.narraleaf-moveable--crop,
+.moveable.narraleaf-moveable--crop * {
+    --moveable-color: var(--narraleaf-accent-weak);
+}
+
+.moveable.narraleaf-moveable--crop .moveable-line {
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.8) 0,
+        rgba(255, 255, 255, 0.8) 6px,
+        rgba(255, 255, 255, 0.1) 6px,
+        rgba(255, 255, 255, 0.1) 10px
+    ) !important;
+}
+
+.moveable.narraleaf-moveable--crop .moveable-control {
+    width: 8px !important;
+    height: 8px !important;
+    border-radius: 2px !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+    border: 1px solid rgba(0, 0, 0, 0.4) !important;
+}
+
+.ui-image-crop-mask {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+}
+
+.ui-editor-node[data-ui-crop-dim="true"] {
+    filter: brightness(0.5);
 }

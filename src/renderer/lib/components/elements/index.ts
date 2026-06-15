@@ -44,3 +44,7 @@ export type { ModalProps } from "./Modal";
 // Select components
 export { Select, Combobox, SelectGroup } from "./Select";
 export type { SelectProps, SelectOption } from "./Select";
+
+// Switch components
+export { Switch } from "./Switch";
+export type { SwitchProps, SwitchSize, SwitchVariant } from "./Switch";

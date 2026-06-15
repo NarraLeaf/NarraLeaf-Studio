@@ -18,6 +18,7 @@ export {
     builtInActions,
     builtInActionGroups,
     assetsModule,
+    charactersModule,
     propertiesModule,
     consoleModule,
     welcomeModule,

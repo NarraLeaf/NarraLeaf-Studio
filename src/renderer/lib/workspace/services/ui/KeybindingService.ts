@@ -1,6 +1,7 @@
 import { Keybinding, FocusContext } from "./types";
 import { FocusManager } from "./FocusManager";
 import { UIStore } from "./UIStore";
+import { isEditableKeyboardTarget } from "./keyboardEditable";
 
 /**
  * Parse a keybinding string (e.g., "ctrl+s") into modifier keys and key
@@ -50,15 +51,23 @@ function parseKeybinding(binding: string): ParsedKeybinding {
 }
 
 /**
+ * Normalize browser key for comparison with parsed binding keys (lowercase tokens).
+ */
+function normalizeKeyboardEventKey(event: KeyboardEvent): string {
+    return event.key === " " ? "space" : event.key.toLowerCase();
+}
+
+/**
  * Check if keyboard event matches parsed keybinding
  */
 function matchesKeybinding(event: KeyboardEvent, parsed: ParsedKeybinding): boolean {
+    const evKey = normalizeKeyboardEventKey(event);
     return (
         event.ctrlKey === parsed.ctrl &&
         event.altKey === parsed.alt &&
         event.shiftKey === parsed.shift &&
         event.metaKey === parsed.meta &&
-        event.key.toLowerCase() === parsed.key
+        evKey === parsed.key
     );
 }
 
@@ -147,13 +156,21 @@ export class KeybindingService {
             return;
         }
 
+        if (event.isComposing) {
+            return;
+        }
+
         const currentFocus = this.focusManager.getFocus();
+        const inEditableField = isEditableKeyboardTarget(event.target);
 
         // Find matching keybindings
         for (const keybinding of this.keybindings.values()) {
             const parsed = parseKeybinding(keybinding.key);
 
             if (matchesKeybinding(event, parsed)) {
+                if (inEditableField && !keybinding.allowInEditable) {
+                    continue;
+                }
                 // Check if keybinding is active in current context
                 if (keybinding.when && !keybinding.when(currentFocus)) {
                     continue;

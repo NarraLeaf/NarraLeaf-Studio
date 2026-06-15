@@ -1,19 +1,48 @@
 import { FileSystemService } from "./core/FileSystem";
 import { ProjectService } from "./core/ProjectService";
 import { UIService } from "./core/UIService";
-import { ProjectSettingsService } from "./ProjectSettingsService";
+import { GlobalSettingsService } from "./GlobalSettingsService";
 import { Services } from "./services";
 import { Service } from "./Service";
 import { AssetsService } from "./core/AssetsService";
-
+import { ServiceAssetsService } from "./core/ServiceAssetsService";
+import { CharacterService } from "./core/CharacterService";
+import { UuidService } from "./core/UuidService";
+import { PanelStateService } from "./core/PanelStateService";
+import { UIDocumentService } from "./ui-editor/UIDocumentService";
+import { UIRuntimeBridgeService } from "./ui-editor/UIRuntimeBridgeService";
+import { UIEditorStateService } from "./ui-editor/UIEditorStateService";
+import { UIEditorHistoryService } from "./ui-editor/UIEditorHistoryService";
+import { UIGraphService } from "./ui-editor/UIGraphService";
+import { LocalBlueprintService } from "./ui-editor/LocalBlueprintService";
+import { UIBlueprintLifecycleCoordinator } from "./ui-editor/UIBlueprintLifecycleCoordinator";
+import { DevModeService } from "./core/DevModeService";
+import { UIEditorFontFaceService } from "./ui-editor/UIEditorFontFaceService";
+import { BlueprintNodeCatalogService } from "./ui-editor/BlueprintNodeCatalogService";
+import { StoryService } from "./story/StoryService";
 
 export class ServiceRegistry {
     private services: Record<Services, Service> = {
         [Services.Project]: ProjectService.getInstance(),
+        [Services.Uuid]: UuidService.getInstance(),
         [Services.FileSystem]: FileSystemService.getInstance(),
         [Services.UI]: UIService.getInstance(),
-        [Services.ProjectSettings]: ProjectSettingsService.getInstance(),
+        [Services.GlobalSettings]: GlobalSettingsService.getInstance(),
         [Services.Assets]: AssetsService.getInstance(),
+        [Services.ServiceAssets]: ServiceAssetsService.getInstance(),
+        [Services.PanelState]: PanelStateService.getInstance(),
+        [Services.Story]: StoryService.getInstance(),
+        [Services.Character]: CharacterService.getInstance(),
+        [Services.UIDocument]: UIDocumentService.getInstance(),
+        [Services.RuntimeBridge]: UIRuntimeBridgeService.getInstance(),
+        [Services.UIEditorState]: UIEditorStateService.getInstance(),
+        [Services.UIEditorHistory]: UIEditorHistoryService.getInstance(),
+        [Services.UIGraph]: UIGraphService.getInstance(),
+        [Services.LocalBlueprint]: LocalBlueprintService.getInstance(),
+        [Services.UIBlueprintLifecycle]: UIBlueprintLifecycleCoordinator.getInstance(),
+        [Services.DevMode]: DevModeService.getInstance(),
+        [Services.UIEditorFontFace]: UIEditorFontFaceService.getInstance(),
+        [Services.BlueprintNodeCatalog]: BlueprintNodeCatalogService.getInstance(),
     };
 
     public get<T extends Service>(service: Services): T {

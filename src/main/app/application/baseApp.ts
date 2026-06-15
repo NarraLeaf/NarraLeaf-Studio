@@ -2,6 +2,7 @@
 import { app } from "electron/main";
 
 // Utils
+import fs from "fs";
 import { Platform, PlatformInfo } from "@shared/types/os";
 import { Logger } from "@shared/utils/logger";
 import EventEmitter from "events";
@@ -130,6 +131,26 @@ export class BaseApp {
         return path.resolve(this.getResourcesDir(), p);
     }
 
+    public getWindowIconPath(): string | null {
+        if (process.platform === "darwin") {
+            return null;
+        }
+
+        if (process.platform === "win32") {
+            return this.resolveExistingResource("app-icon.ico", "app-icon.png");
+        }
+
+        return this.resolveExistingResource("app-icon.png", "app-icon.ico");
+    }
+
+    public getDockIconPath(): string | null {
+        if (process.platform !== "darwin") {
+            return null;
+        }
+
+        return this.resolveExistingResource("app-icon.png", "app-icon.icns");
+    }
+
     public getDistDir(): string {
         return path.resolve(this.getAppPath(), "dist");
     }
@@ -214,6 +235,7 @@ export class BaseApp {
         this.electronApp.whenReady().then(async () => {
             // Retrieve app info
             this.appInfo = await this.constructAppInfo();
+            this.configurePlatformAppIcon();
 
             this.initialized = true;
             this.logger.info("App initialization completed");
@@ -255,6 +277,27 @@ export class BaseApp {
         return {
             version: pkg.data.version,
         };
+    }
+
+    private configurePlatformAppIcon(): void {
+        const dockIconPath = this.getDockIconPath();
+        if (!dockIconPath) {
+            return;
+        }
+
+        this.electronApp.dock?.setIcon(dockIconPath);
+    }
+
+    private resolveExistingResource(...filenames: string[]): string | null {
+        for (const filename of filenames) {
+            const resourcePath = this.resolveResource(filename);
+            if (fs.existsSync(resourcePath)) {
+                return resourcePath;
+            }
+        }
+
+        this.logger.warn(`[App] No matching icon resource found for: ${filenames.join(", ")}`);
+        return null;
     }
 
     private emit<K extends StringKeyOf<AppEvents>>(event: K, ...args: AppEvents[K]): void {

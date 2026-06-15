@@ -4,7 +4,7 @@ import { RendererError } from "@shared/utils/error";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
 import { AssetType } from "../assetTypes";
-import { Asset, AssetGroup, AssetGroupMap } from "../types";
+import { Asset, AssetGroup, AssetGroupMap, AssetSource } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 
@@ -55,6 +55,8 @@ export class GroupAssetsManager {
                 error: `Failed to save group: ${writeResult.error.code} ${writeResult.error.message}`,
             };
         }
+
+        this.assetsService.getEvents().emit("groupsUpdated", { type, groupId: id });
         
         return {
             success: true,
@@ -96,8 +98,7 @@ export class GroupAssetsManager {
 
         // Delete all assets within this group instead of moving them to root
         for (const asset of assetsInGroup) {
-            // Ensure we await each deletion to keep metadata consistent
-            await this.assetsService.getLocalAssetsManager().deleteAsset(asset);
+            await this.assetsService.deleteAsset(asset as Asset<AssetType, AssetSource>);
         }
 
         // Delete child groups recursively
@@ -114,6 +115,8 @@ export class GroupAssetsManager {
         // Save changes
         await this.writeAssetsGroupsMetadata(type);
         this.assetsService.markDirty(type);
+
+        this.assetsService.getEvents().emit("groupsUpdated", { type, groupId });
 
         return {
             success: true,
@@ -141,6 +144,8 @@ export class GroupAssetsManager {
 
         await this.writeAssetsGroupsMetadata(type);
         this.dirtyGroupTypes.add(type);
+
+        this.assetsService.getEvents().emit("groupsUpdated", { type, groupId });
 
         return {
             success: true,
@@ -176,6 +181,8 @@ export class GroupAssetsManager {
 
         await this.writeAssetsGroupsMetadata(type);
         this.dirtyGroupTypes.add(type);
+
+        this.assetsService.getEvents().emit("groupsUpdated", { type, groupId });
 
         return {
             success: true,
@@ -218,6 +225,60 @@ export class GroupAssetsManager {
         };
     }
 
+    /**
+     * Duplicate a group recursively, including all child groups and assets.
+     * Returns the newly created group.
+     */
+    public async duplicateGroup<T extends AssetType>(
+        type: T,
+        groupId: string,
+        newParentGroupId?: string
+    ): Promise<RequestStatus<AssetGroup>> {
+        this.assertGroups();
+
+        const originalGroup = this.assetsGroups![type][groupId];
+        if (!originalGroup) {
+            return {
+                success: false,
+                error: `Group not found: ${groupId}`,
+            };
+        }
+
+        // Create new group with the same name (with " Copy" suffix)
+        const newGroupResult = await this.createGroup(type, `${originalGroup.name} Copy`, newParentGroupId);
+        if (!newGroupResult.success || !newGroupResult.data) {
+            return newGroupResult;
+        }
+        const newGroup = newGroupResult.data;
+
+        // Duplicate all assets in this group
+        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
+        const assetsInGroup = Object.values(metadata[type]).filter(
+            a => a.groupId === groupId
+        );
+
+        for (const asset of assetsInGroup) {
+            const dupResult = await this.assetsService.duplicateAsset(asset as Asset<AssetType, AssetSource>);
+            if (dupResult.success && dupResult.data) {
+                await this.moveAssetToGroup(dupResult.data, newGroup.id);
+            }
+        }
+
+        // Recursively duplicate child groups
+        const childGroups = Object.values(this.assetsGroups![type]).filter(
+            g => g.parentGroupId === groupId
+        );
+
+        for (const childGroup of childGroups) {
+            await this.duplicateGroup(type, childGroup.id, newGroup.id);
+        }
+
+        return {
+            success: true,
+            data: newGroup,
+        };
+    }
+
     private async writeAssetsGroupsMetadata(type: AssetType): Promise<FsRequestResult<void>> {
         this.assertGroups();
 
@@ -247,6 +308,7 @@ export class GroupAssetsManager {
             [AssetType.Audio]: {},
             [AssetType.Video]: {},
             [AssetType.JSON]: {},
+            [AssetType.Blueprint]: {},
             [AssetType.Font]: {},
             [AssetType.Other]: {},
         };
@@ -267,7 +329,13 @@ export class GroupAssetsManager {
     private async initAssetsGroups(): Promise<void> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const files = [
-            AssetType.Image, AssetType.Audio, AssetType.Video, AssetType.JSON, AssetType.Font, AssetType.Other,
+            AssetType.Image,
+            AssetType.Audio,
+            AssetType.Video,
+            AssetType.JSON,
+            AssetType.Blueprint,
+            AssetType.Font,
+            AssetType.Other,
         ].map(type => this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(type)));
 
         const tasks = files.map(async file => {

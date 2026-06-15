@@ -13,10 +13,12 @@ import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
 import { useRegistry } from "../../registry";
-import { PanelPosition } from "../../registry/types";
+import { PanelPosition, type PanelDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
-import { ProjectSettingsService } from "@/lib/workspace/services/ProjectSettingsService";
+import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
+import { UIService } from "@/lib/workspace/services/core/UIService";
+import { FocusArea } from "@/lib/workspace/services/ui/types";
 
 interface WorkspaceLayoutProps {
     title: string;
@@ -29,7 +31,7 @@ const DEFAULT_RIGHT_SIDEBAR_WIDTH = 320;
 const DEFAULT_BOTTOM_PANEL_HEIGHT = 256;
 
 // Min/Max constraints (in pixels)
-const MIN_SIDEBAR_WIDTH = 200;
+const MIN_SIDEBAR_WIDTH = 300;
 const MAX_SIDEBAR_WIDTH = 800;
 const MIN_BOTTOM_PANEL_HEIGHT = 150;
 const MAX_BOTTOM_PANEL_HEIGHT = 600;
@@ -79,9 +81,12 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const leftSidebarWidthRef = useRef(DEFAULT_LEFT_SIDEBAR_WIDTH);
     const rightSidebarWidthRef = useRef(DEFAULT_RIGHT_SIDEBAR_WIDTH);
     const bottomPanelHeightRef = useRef(DEFAULT_BOTTOM_PANEL_HEIGHT);
+    const activeLeftPanelIdRef = useRef<string | null>(null);
+    const activeRightPanelIdRef = useRef<string | null>(null);
+    const activeBottomPanelIdRef = useRef<string | null>(null);
 
     // Settings service
-    const settingsService = context?.services.get<ProjectSettingsService>(Services.ProjectSettings);
+    const settingsService = context?.services.get<GlobalSettingsService>(Services.GlobalSettings);
 
     // Track whether settings have been loaded
     const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -128,6 +133,18 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         bottomPanelHeight,
         activeBottomPanelId,
     ]);
+
+    useEffect(() => {
+        activeLeftPanelIdRef.current = activeLeftPanelId;
+    }, [activeLeftPanelId]);
+
+    useEffect(() => {
+        activeRightPanelIdRef.current = activeRightPanelId;
+    }, [activeRightPanelId]);
+
+    useEffect(() => {
+        activeBottomPanelIdRef.current = activeBottomPanelId;
+    }, [activeBottomPanelId]);
 
     // Load saved state on mount
     useEffect(() => {
@@ -330,6 +347,123 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         setBottomPanelVisible(!bottomPanelVisible);
     };
 
+    const activateLeftPanelForDrop = useCallback(
+        (panelId: string) => {
+            setActiveLeftPanelId(panelId);
+            setLeftSidebarVisible(true);
+            if (context) {
+                const uiService = context.services.get<UIService>(Services.UI);
+                uiService.focus.setFocus(FocusArea.LeftPanel, panelId);
+            }
+        },
+        [context]
+    );
+
+    const activateRightPanelForDrop = useCallback(
+        (panelId: string) => {
+            setActiveRightPanelId(panelId);
+            setRightSidebarVisible(true);
+            if (context) {
+                const uiService = context.services.get<UIService>(Services.UI);
+                uiService.focus.setFocus(FocusArea.RightPanel, panelId);
+            }
+        },
+        [context]
+    );
+
+    const activateBottomPanelForDrop = useCallback(
+        (panelId: string) => {
+            setActiveBottomPanelId(panelId);
+            setBottomPanelVisible(true);
+            if (context) {
+                const uiService = context.services.get<UIService>(Services.UI);
+                uiService.focus.setFocus(FocusArea.BottomPanel, panelId);
+            }
+        },
+        [context]
+    );
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const uiService = context.services.get<UIService>(Services.UI);
+        const store = uiService.getStore();
+
+        const panelsByPosition = (position: PanelPosition) => {
+            return store.getPanels().filter(panel => panel.position === position);
+        };
+
+        const previousPanelId = (panels: PanelDefinition[], panelId: string) => {
+            const currentIndex = panels.findIndex(panel => panel.id === panelId);
+            if (currentIndex > 0) {
+                return panels[currentIndex - 1].id;
+            }
+            return panels.find(panel => panel.id !== panelId)?.id ?? null;
+        };
+
+        const showPanel = (panel: PanelDefinition) => {
+            if (panel.position === PanelPosition.Left) {
+                setActiveLeftPanelId(panel.id);
+                setLeftSidebarVisible(true);
+            } else if (panel.position === PanelPosition.Right) {
+                setActiveRightPanelId(panel.id);
+                setRightSidebarVisible(true);
+            } else {
+                setActiveBottomPanelId(panel.id);
+                setBottomPanelVisible(true);
+            }
+        };
+
+        const hidePanel = (panel: PanelDefinition) => {
+            const panels = panelsByPosition(panel.position);
+            const fallbackId = previousPanelId(panels, panel.id);
+            if (panel.position === PanelPosition.Left && activeLeftPanelIdRef.current === panel.id) {
+                setActiveLeftPanelId(fallbackId);
+                setLeftSidebarVisible(Boolean(fallbackId));
+            } else if (panel.position === PanelPosition.Right && activeRightPanelIdRef.current === panel.id) {
+                setActiveRightPanelId(fallbackId);
+                setRightSidebarVisible(Boolean(fallbackId));
+            } else if (panel.position === PanelPosition.Bottom && activeBottomPanelIdRef.current === panel.id) {
+                setActiveBottomPanelId(fallbackId);
+                setBottomPanelVisible(Boolean(fallbackId));
+            }
+        };
+
+        const handlePanelVisibilityChanged = ({ panelId, visible }: { panelId: string; visible: boolean }) => {
+            const panel = store.getPanels().find(item => item.id === panelId);
+            if (!panel) {
+                return;
+            }
+            visible ? showPanel(panel) : hidePanel(panel);
+        };
+
+        const handlePanelUnregistered = (panelId: string) => {
+            if (activeLeftPanelIdRef.current === panelId) {
+                const fallbackId = panelsByPosition(PanelPosition.Left).at(-1)?.id ?? null;
+                setActiveLeftPanelId(fallbackId);
+                setLeftSidebarVisible(Boolean(fallbackId));
+            }
+            if (activeRightPanelIdRef.current === panelId) {
+                const fallbackId = panelsByPosition(PanelPosition.Right).at(-1)?.id ?? null;
+                setActiveRightPanelId(fallbackId);
+                setRightSidebarVisible(Boolean(fallbackId));
+            }
+            if (activeBottomPanelIdRef.current === panelId) {
+                const fallbackId = panelsByPosition(PanelPosition.Bottom).at(-1)?.id ?? null;
+                setActiveBottomPanelId(fallbackId);
+                setBottomPanelVisible(Boolean(fallbackId));
+            }
+        };
+
+        const unsubscribeVisibility = uiService.getEvents().on("panelVisibilityChanged", handlePanelVisibilityChanged);
+        const unsubscribeUnregistered = uiService.getEvents().on("panelUnregistered", handlePanelUnregistered);
+        return () => {
+            unsubscribeVisibility();
+            unsubscribeUnregistered();
+        };
+    }, [context]);
+
     return (
         <div className="h-screen w-screen flex flex-col bg-[#0f1115] text-gray-200">
             {/* Title Bar with Action Bar and Control Bar */}
@@ -435,6 +569,7 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                     activeId={activeBottomPanelId}
                     onToggleVisibility={() => setBottomPanelVisible(!bottomPanelVisible)}
                     onSelectPanel={setActiveBottomPanelId}
+                    onActivatePanelForDrop={activateBottomPanelForDrop}
                 />
             </div>
 

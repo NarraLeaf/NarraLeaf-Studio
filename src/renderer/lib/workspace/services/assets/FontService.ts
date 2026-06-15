@@ -6,10 +6,7 @@ import { AssetServiceBase } from "./AssetServiceBase";
 export class FontService extends AssetServiceBase {
 
     public async readLocalFont(asset: Asset<AssetType.Font>): Promise<RequestStatus<AssetData<AssetType.Font>>> {
-        // Get storage path for the asset
         const path = this.getAssetPath(asset.id);
-
-        // Read font file as buffer
         const fileResult = await this.getFileSystemService().readRaw(path);
         if (!fileResult.ok) {
             return {
@@ -18,13 +15,13 @@ export class FontService extends AssetServiceBase {
             };
         }
 
-        const buffer = fileResult.data;
-        const size = buffer.byteLength;
+        return this.readFontFromBuffer(asset, fileResult.data);
+    }
 
-        // Get format from stored real extension or fallback to name
+    public async readFontFromBuffer(asset: Asset<AssetType.Font>, buffer: Uint8Array): Promise<RequestStatus<AssetData<AssetType.Font>>> {
+        const size = buffer.byteLength;
         const format = this.detectFontFormat(asset);
 
-        // Try to extract font metadata (basic support)
         try {
             const metadata = await this.getFontMetadata(buffer, format);
 
@@ -39,8 +36,7 @@ export class FontService extends AssetServiceBase {
                     },
                 },
             };
-        } catch (error) {
-            // Return with minimal metadata if parsing fails
+        } catch (_error) {
             return {
                 success: true,
                 data: {

@@ -7,6 +7,7 @@ import { Asset, AssetSource } from "../types";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { FsRequestResult } from "@shared/types/os";
 import { FileSystemService } from "../../core/FileSystem";
+import { UuidService } from "../../core/UuidService";
 import { RendererError } from "@shared/utils/error";
 import { basename, dirname, extname } from "@shared/utils/path";
 
@@ -41,56 +42,54 @@ export class LocalAssetsManager {
         };
     }
 
-    public async fetch<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<AssetData<T>>> {
-        if (asset.source === AssetSource.Local) {
-            const path = this.getLocalAssetPath(asset.id);
-            switch (asset.type) {
-                case AssetType.Image:
-                    if (!this.assetsService.imageService) {
-                        throw new RendererError("Image service not initialized");
-                    }
-                    return await this.assetsService.imageService.readLocalImage(asset as Asset<AssetType.Image>) as RequestStatus<AssetData<T>>;
-                case AssetType.Audio:
-                    if (!this.assetsService.audioService) {
-                        throw new RendererError("Audio service not initialized");
-                    }
-                    return await this.assetsService.audioService.readLocalAudio(asset as Asset<AssetType.Audio>) as RequestStatus<AssetData<T>>;
-                case AssetType.Video:
-                    if (!this.assetsService.videoService) {
-                        throw new RendererError("Video service not initialized");
-                    }
-                    return await this.assetsService.videoService.readLocalVideo(asset as Asset<AssetType.Video>) as RequestStatus<AssetData<T>>;
-                case AssetType.JSON:
-                    if (!this.assetsService.jsonService) {
-                        throw new RendererError("JSON service not initialized");
-                    }
-                    return await this.assetsService.jsonService.readLocalJSON(path) as RequestStatus<AssetData<T>>;
-                case AssetType.Font:
-                    if (!this.assetsService.fontService) {
-                        throw new RendererError("Font service not initialized");
-                    }
-                    return await this.assetsService.fontService.readLocalFont(asset as Asset<AssetType.Font>) as RequestStatus<AssetData<T>>;
-                case AssetType.Other:
-                    if (!this.assetsService.otherService) {
-                        throw new RendererError("Other service not initialized");
-                    }
-                    return await this.assetsService.otherService.readLocalOther(asset as Asset<AssetType.Other>) as RequestStatus<AssetData<T>>;
-                default:
-                    return {
-                        success: false,
-                        error: `Failed to fetch asset: ${asset.id}. Type "${asset.type}" is not supported.`,
-                    };
-            }
+    public async fetch<T extends AssetType>(asset: Asset<T, AssetSource.Local>): Promise<RequestStatus<AssetData<T>>> {
+        const path = this.getLocalAssetPath(asset.id);
+        switch (asset.type) {
+            case AssetType.Image:
+                if (!this.assetsService.imageService) {
+                    throw new RendererError("Image service not initialized");
+                }
+                return await this.assetsService.imageService.readLocalImage(asset as Asset<AssetType.Image>) as RequestStatus<AssetData<T>>;
+            case AssetType.Audio:
+                if (!this.assetsService.audioService) {
+                    throw new RendererError("Audio service not initialized");
+                }
+                return await this.assetsService.audioService.readLocalAudio(asset as Asset<AssetType.Audio>) as RequestStatus<AssetData<T>>;
+            case AssetType.Video:
+                if (!this.assetsService.videoService) {
+                    throw new RendererError("Video service not initialized");
+                }
+                return await this.assetsService.videoService.readLocalVideo(asset as Asset<AssetType.Video>) as RequestStatus<AssetData<T>>;
+            case AssetType.JSON:
+                if (!this.assetsService.jsonService) {
+                    throw new RendererError("JSON service not initialized");
+                }
+                return await this.assetsService.jsonService.readLocalJSON(path) as RequestStatus<AssetData<T>>;
+            case AssetType.Blueprint:
+                if (!this.assetsService.blueprintService) {
+                    throw new RendererError("Blueprint service not initialized");
+                }
+                return await this.assetsService.blueprintService.readLocalBlueprint(path) as RequestStatus<AssetData<T>>;
+            case AssetType.Font:
+                if (!this.assetsService.fontService) {
+                    throw new RendererError("Font service not initialized");
+                }
+                return await this.assetsService.fontService.readLocalFont(asset as Asset<AssetType.Font>) as RequestStatus<AssetData<T>>;
+            case AssetType.Other:
+                if (!this.assetsService.otherService) {
+                    throw new RendererError("Other service not initialized");
+                }
+                return await this.assetsService.otherService.readLocalOther(asset as Asset<AssetType.Other>) as RequestStatus<AssetData<T>>;
+            default:
+                return {
+                    success: false,
+                    error: `Failed to fetch asset: ${asset.id}. Type "${asset.type}" is not supported.`,
+                };
         }
-
-        return {
-            success: false,
-            error: `Failed to fetch asset: ${asset.id}. Source "${asset.source}" is not supported.`,
-        };
     }
 
     public async deleteAsset<T extends AssetType>(
-        asset: Asset<T>
+        asset: Asset<T, AssetSource.Local>
     ): Promise<RequestStatus<void>> {
         const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
 
@@ -133,7 +132,7 @@ export class LocalAssetsManager {
         }
 
         // Generate new uuid and resolve unique name
-        const newId = crypto.randomUUID();
+        const newId = this.getUuidService().generate();
         const uniqueName = this.resolveUniqueAssetName(asset.type, asset.name);
 
         // Source/dest paths
@@ -179,6 +178,8 @@ export class LocalAssetsManager {
         (metadata[asset.type] as Record<string, Asset<T>>)[newId] = newAsset as Asset<T>;
         this.assetsService.markDirty(asset.type);
 
+        this.assetsService.getEvents().emit("updated", newAsset as Asset<T, AssetSource>);
+
         return { success: true, data: newAsset };
     }
 
@@ -215,7 +216,7 @@ export class LocalAssetsManager {
         const fileHash = hashResult.success && hashResult.data.ok ? hashResult.data.data : "";
 
         // generate unique id for storage / indexing
-        const id = crypto.randomUUID();
+        const id = this.getUuidService().generate();
 
         // resolve unique display name (e.g. "image.png", "image-1.png")
         const originalName = basename(path);
@@ -247,7 +248,7 @@ export class LocalAssetsManager {
         }
 
         const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
-        const record: Record<string, Asset<T, AssetSource.Local>> = metadata[type];
+        const record: Record<string, Asset<T>> = metadata[type];
         if (record[id]) {
             return {
                 success: true,
@@ -289,6 +290,9 @@ export class LocalAssetsManager {
 
         // update assets metadata
         record[id] = asset;
+
+        // Notify subscribers (e.g. AssetSelector, asset tree) so lists refresh without closing panels
+        this.assetsService.getEvents().emit("updated", asset);
 
         return {
             success: true,
@@ -350,5 +354,9 @@ export class LocalAssetsManager {
 
     private getContext(): WorkspaceContext {
         return this.assetsService.getContext();
+    }
+
+    private getUuidService(): UuidService {
+        return this.getContext().services.get<UuidService>(Services.Uuid);
     }
 }

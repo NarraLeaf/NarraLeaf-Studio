@@ -5,7 +5,6 @@ import { AssetServiceBase } from "./AssetServiceBase";
 export class JSONService extends AssetServiceBase {
 
     public async readLocalJSON(path: string): Promise<RequestStatus<AssetData<AssetType.JSON>>> {
-        // Read JSON file
         const fileResult = await this.getFileSystemService().read(path, "utf-8");
         if (!fileResult.ok) {
             return {
@@ -14,11 +13,18 @@ export class JSONService extends AssetServiceBase {
             };
         }
 
-        const content = fileResult.data;
+        return this.readJSONFromText(fileResult.data);
+    }
+
+    public async readJSONFromBuffer(buffer: Uint8Array): Promise<RequestStatus<AssetData<AssetType.JSON>>> {
+        const decoder = new TextDecoder("utf-8");
+        return this.readJSONFromText(decoder.decode(buffer));
+    }
+
+    private async readJSONFromText(content: string): Promise<RequestStatus<AssetData<AssetType.JSON>>> {
         const size = new Blob([content]).size;
 
         try {
-            // Parse JSON
             const data = JSON.parse(content);
 
             return {

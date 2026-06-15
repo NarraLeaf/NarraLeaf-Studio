@@ -1,0 +1,804 @@
+import type {
+    AppearanceFieldTransition,
+    AppearanceModel,
+    AppearanceValueRow,
+    ButtonAppearancePropertyKey,
+    ContainerAppearancePropertyKey,
+} from "@shared/types/ui-editor/appearance";
+import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
+import { DEFAULT_ELEMENT_EFFECT_VALUES, normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
+import type { UIElement } from "@shared/types/ui-editor/document";
+import type { ImageFill } from "@shared/types/ui-editor/imageFill";
+import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
+import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
+import { normalizeStrokeSideInput } from "@/lib/ui-editor/widget-modules/shared/chrome/strokeSideSpec";
+import {
+    buttonPropsToImageFillBaseline,
+    getButtonProps,
+} from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
+import { conditionMatches, type SystemInteractionSignals } from "./SystemInteractionState";
+import { isButtonAppearanceKey, isContainerAppearanceKey } from "./appearanceWhitelist";
+import type { ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
+import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/helpers";
+import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
+import {
+    isMotionCapableButtonAppearanceKey,
+    isMotionCapableContainerAppearanceKey,
+} from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
+
+/** Flat button props plus border chrome fields resolved from appearance (not stored on element.props). */
+export type ButtonResolvedVisualProps = Pick<
+    ButtonWidgetProps,
+    | "backgroundColor"
+    | "fillType"
+    | "fillOpacity"
+    | "fillVisible"
+    | "imageFill"
+    | "backgroundImage"
+    | "backgroundFit"
+    | "borderRadius"
+    | "borderWidth"
+    | "borderColor"
+    | "borderStyle"
+    | "paddingX"
+    | "paddingY"
+    | "clipContent"
+    | "transformOffsetX"
+    | "transformOffsetY"
+    | "transformScale"
+    | "transformRotation"
+    | "transformOpacity"
+> & {
+    strokeOpacity: number;
+    strokeSide: string;
+    strokeAlign: RectangleLikeProps["strokeAlign"];
+    borderJoin: RectangleLikeProps["borderJoin"];
+    effects: ElementEffectValues;
+};
+
+export type AppearanceResolveContext = {
+    /** Runtime override for active variant (e.g. blueprint setVariant in P4). */
+    variantOverrideId?: string | null;
+    signals: SystemInteractionSignals;
+};
+
+function pickLastMatchingRowValue(rows: AppearanceValueRow[], signals: SystemInteractionSignals): unknown {
+    let picked: unknown = undefined;
+    for (const row of rows) {
+        if (conditionMatches(row.conditions, signals)) {
+            picked = row.value;
+        }
+    }
+    return picked;
+}
+
+function resolveActiveVariant(appearance: AppearanceModel, variantOverrideId?: string | null) {
+    if (variantOverrideId) {
+        const byOverride = appearance.variants.find(v => v.id === variantOverrideId);
+        if (byOverride) {
+            return byOverride;
+        }
+    }
+    const byDefault = appearance.variants.find(v => v.id === appearance.defaultVariantId);
+    if (byDefault) {
+        return byDefault;
+    }
+    return appearance.variants[0] ?? null;
+}
+
+function collectActiveVariantTransitions<K extends string>(
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext,
+    isEligibleKey: (key: string) => key is K
+): Partial<Record<K, AppearanceFieldTransition>> {
+    if (!isUsableAppearance(appearance)) {
+        return {};
+    }
+    const variant = resolveActiveVariant(appearance, ctx.variantOverrideId);
+    if (!variant) {
+        return {};
+    }
+    const out: Partial<Record<K, AppearanceFieldTransition>> = {};
+    for (const group of variant.propertyGroups) {
+        if (!group.transition || !isEligibleKey(group.key)) {
+            continue;
+        }
+        out[group.key] = group.transition;
+    }
+    return out;
+}
+
+function coerceString(v: unknown): string | undefined {
+    if (v == null) {
+        return undefined;
+    }
+    return String(v);
+}
+
+function coerceNumber(v: unknown): number | undefined {
+    if (typeof v === "number" && Number.isFinite(v)) {
+        return v;
+    }
+    if (typeof v === "string" && v.trim() !== "") {
+        const n = Number(v);
+        if (Number.isFinite(n)) {
+            return n;
+        }
+    }
+    return undefined;
+}
+
+function patchRectangleLikeEffects(target: RectangleLikeProps, patch: Partial<ElementEffectValues>): void {
+    target.effects = { ...target.effects, ...patch };
+}
+
+function coerceBool(v: unknown): boolean | undefined {
+    if (typeof v === "boolean") {
+        return v;
+    }
+    return undefined;
+}
+
+function coerceImageFill(v: unknown): ImageFill | null | undefined {
+    if (v == null) {
+        return undefined;
+    }
+    if (typeof v === "object" && v !== null && "mode" in v) {
+        return v as ImageFill;
+    }
+    return undefined;
+}
+
+function applyContainerKey(target: RectangleLikeProps, key: ContainerAppearancePropertyKey, raw: unknown): void {
+    switch (key) {
+        case "backgroundColor": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.backgroundColor = s;
+            }
+            break;
+        }
+        case "borderRadius": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.borderRadius = n;
+            }
+            break;
+        }
+        case "borderRadiusTL": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.borderRadiusTL = n;
+            }
+            break;
+        }
+        case "borderRadiusTR": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.borderRadiusTR = n;
+            }
+            break;
+        }
+        case "borderRadiusBL": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.borderRadiusBL = n;
+            }
+            break;
+        }
+        case "borderRadiusBR": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.borderRadiusBR = n;
+            }
+            break;
+        }
+        case "borderRadiusLinked": {
+            const b = coerceBool(raw);
+            if (b !== undefined) {
+                target.borderRadiusLinked = b;
+            }
+            break;
+        }
+        case "borderColor": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.borderColor = s;
+            }
+            break;
+        }
+        case "borderWidth": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.borderWidth = n;
+            }
+            break;
+        }
+        case "borderStyle": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.borderStyle = s;
+            }
+            break;
+        }
+        case "backgroundImage": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.backgroundImage = s;
+            }
+            break;
+        }
+        case "backgroundFit": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.backgroundFit = s;
+            }
+            break;
+        }
+        case "imageFill": {
+            const f = coerceImageFill(raw);
+            if (f !== undefined) {
+                target.imageFill = f;
+            }
+            break;
+        }
+        case "fillType": {
+            const s = coerceString(raw);
+            if (s === "color" || s === "image") {
+                target.fillType = s;
+            }
+            break;
+        }
+        case "fillVisible": {
+            const b = coerceBool(raw);
+            if (b !== undefined) {
+                target.fillVisible = b;
+            }
+            break;
+        }
+        case "fillOpacity": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.fillOpacity = n;
+            }
+            break;
+        }
+        case "strokeVisible": {
+            const b = coerceBool(raw);
+            if (b !== undefined) {
+                target.strokeVisible = b;
+            }
+            break;
+        }
+        case "strokeOpacity": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.strokeOpacity = n;
+            }
+            break;
+        }
+        case "strokeAlign": {
+            const s = coerceString(raw);
+            if (s === "none" || s === "center" || s === "inside" || s === "outside") {
+                target.strokeAlign = s;
+            }
+            break;
+        }
+        case "strokeSide": {
+            const s = coerceString(raw);
+            if (s === undefined) {
+                break;
+            }
+            const normalized = normalizeStrokeSideInput(s.trim());
+            if (normalized !== undefined) {
+                target.strokeSide = normalized;
+            }
+            break;
+        }
+        case "borderJoin": {
+            const s = coerceString(raw);
+            if (s === "miter" || s === "round" || s === "bevel") {
+                target.borderJoin = s;
+            }
+            break;
+        }
+        case "cornerAdvanced": {
+            const b = coerceBool(raw);
+            if (b !== undefined) {
+                target.cornerAdvanced = b;
+            }
+            break;
+        }
+        case "transformOffsetX": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.transformOffsetX = n;
+            }
+            break;
+        }
+        case "transformOffsetY": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.transformOffsetY = n;
+            }
+            break;
+        }
+        case "transformScale": {
+            const n = coerceNumber(raw);
+            if (n !== undefined && n > 0) {
+                target.transformScale = n;
+            }
+            break;
+        }
+        case "transformRotation": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.transformRotation = n;
+            }
+            break;
+        }
+        case "transformOpacity": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.transformOpacity = Math.max(0, Math.min(1, n));
+            }
+            break;
+        }
+        case "effectBlur": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                patchRectangleLikeEffects(target, { effectBlur: Math.max(0, n) });
+            }
+            break;
+        }
+        case "effectBackgroundBlur": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                patchRectangleLikeEffects(target, { effectBackgroundBlur: Math.max(0, n) });
+            }
+            break;
+        }
+        case "effectShadow": {
+            patchRectangleLikeEffects(target, {
+                effectShadow: normalizeElementEffectValues({ effectShadow: raw }).effectShadow,
+            });
+            break;
+        }
+        case "effectInnerShadow": {
+            patchRectangleLikeEffects(target, {
+                effectInnerShadow: normalizeElementEffectValues({ effectInnerShadow: raw }).effectInnerShadow,
+            });
+            break;
+        }
+        case "effectBlend": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                patchRectangleLikeEffects(target, { effectBlend: s });
+            }
+            break;
+        }
+        case "effectGlow": {
+            patchRectangleLikeEffects(target, {
+                effectGlow: normalizeElementEffectValues({ effectGlow: raw }).effectGlow,
+            });
+            break;
+        }
+        case "effectFilter": {
+            patchRectangleLikeEffects(target, {
+                effectFilter: normalizeElementEffectValues({ effectFilter: raw }).effectFilter,
+            });
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+function applyButtonKey(target: ButtonResolvedVisualProps, key: ButtonAppearancePropertyKey, raw: unknown): void {
+    switch (key) {
+        case "backgroundColor": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.backgroundColor = s;
+            }
+            break;
+        }
+        case "backgroundImage": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.backgroundImage = s;
+            }
+            break;
+        }
+        case "backgroundFit": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.backgroundFit = s;
+            }
+            break;
+        }
+        case "imageFill": {
+            const f = coerceImageFill(raw);
+            if (f !== undefined) {
+                target.imageFill = f;
+            }
+            break;
+        }
+        case "fillType": {
+            const s = coerceString(raw);
+            if (s === "color" || s === "image") {
+                target.fillType = s;
+            }
+            break;
+        }
+        case "fillVisible": {
+            const b = coerceBool(raw);
+            if (b !== undefined) {
+                target.fillVisible = b;
+            }
+            break;
+        }
+        case "fillOpacity": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.fillOpacity = n;
+            }
+            break;
+        }
+        case "borderRadius": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.borderRadius = n;
+            }
+            break;
+        }
+        case "borderWidth": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.borderWidth = n;
+            }
+            break;
+        }
+        case "borderColor": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.borderColor = s;
+            }
+            break;
+        }
+        case "borderStyle": {
+            const s = coerceString(raw);
+            if (s === "solid" || s === "dashed" || s === "dotted" || s === "none") {
+                target.borderStyle = s;
+            }
+            break;
+        }
+        case "strokeOpacity": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.strokeOpacity = Math.max(0, Math.min(1, n));
+            }
+            break;
+        }
+        case "strokeAlign": {
+            const s = coerceString(raw);
+            if (s === "none" || s === "center" || s === "inside" || s === "outside") {
+                target.strokeAlign = s;
+            }
+            break;
+        }
+        case "strokeSide": {
+            const s = coerceString(raw);
+            if (s === undefined) {
+                break;
+            }
+            const normalized = normalizeStrokeSideInput(s.trim());
+            if (normalized !== undefined) {
+                target.strokeSide = normalized;
+            }
+            break;
+        }
+        case "borderJoin": {
+            const s = coerceString(raw);
+            if (s === "miter" || s === "round" || s === "bevel") {
+                target.borderJoin = s;
+            }
+            break;
+        }
+        case "paddingX": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.paddingX = n;
+            }
+            break;
+        }
+        case "paddingY": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.paddingY = n;
+            }
+            break;
+        }
+        case "clipContent": {
+            const b = coerceBool(raw);
+            if (b !== undefined) {
+                target.clipContent = b;
+            }
+            break;
+        }
+        case "transformOffsetX": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.transformOffsetX = n;
+            }
+            break;
+        }
+        case "transformOffsetY": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.transformOffsetY = n;
+            }
+            break;
+        }
+        case "transformScale": {
+            const n = coerceNumber(raw);
+            if (n !== undefined && n > 0) {
+                target.transformScale = n;
+            }
+            break;
+        }
+        case "transformRotation": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.transformRotation = n;
+            }
+            break;
+        }
+        case "transformOpacity": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.transformOpacity = Math.max(0, Math.min(1, n));
+            }
+            break;
+        }
+        case "effectBlur": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.effects = { ...target.effects, effectBlur: Math.max(0, n) };
+            }
+            break;
+        }
+        case "effectBackgroundBlur": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.effects = { ...target.effects, effectBackgroundBlur: Math.max(0, n) };
+            }
+            break;
+        }
+        case "effectShadow": {
+            target.effects = {
+                ...target.effects,
+                effectShadow: normalizeElementEffectValues({ effectShadow: raw }).effectShadow,
+            };
+            break;
+        }
+        case "effectInnerShadow": {
+            target.effects = {
+                ...target.effects,
+                effectInnerShadow: normalizeElementEffectValues({ effectInnerShadow: raw }).effectInnerShadow,
+            };
+            break;
+        }
+        case "effectBlend": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.effects = { ...target.effects, effectBlend: s };
+            }
+            break;
+        }
+        case "effectGlow": {
+            target.effects = {
+                ...target.effects,
+                effectGlow: normalizeElementEffectValues({ effectGlow: raw }).effectGlow,
+            };
+            break;
+        }
+        case "effectFilter": {
+            target.effects = {
+                ...target.effects,
+                effectFilter: normalizeElementEffectValues({ effectFilter: raw }).effectFilter,
+            };
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+function isUsableAppearance(appearance: AppearanceModel | null | undefined): appearance is AppearanceModel {
+    return Boolean(appearance && appearance.variants.length > 0);
+}
+
+/**
+ * Resolve rectangle-like chrome for `nl.container`: legacy baseline from element props, then appearance overlays.
+ * `clipContent` stays on flat `element.props` (merged via `getContainerProps`); it is not driven by appearance
+ * rows so variant/hover cannot silently change overflow clipping for containers.
+ */
+export function resolveContainerRectangleLike(
+    element: UIElement,
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext
+): RectangleLikeProps {
+    // Match `getContainerProps` so sparse on-disk props still get widget defaults before appearance overlay.
+    const mergedFlat = getContainerProps(element) as unknown as Record<string, unknown>;
+    const baseline = getRectangleLikeProps({ props: mergedFlat });
+    if (!isUsableAppearance(appearance)) {
+        return baseline;
+    }
+    const variant = resolveActiveVariant(appearance, ctx.variantOverrideId);
+    if (!variant) {
+        return baseline;
+    }
+    const next: RectangleLikeProps = { ...baseline };
+    for (const group of variant.propertyGroups) {
+        const key = group.key;
+        if (!isContainerAppearanceKey(key)) {
+            continue;
+        }
+        const raw = pickLastMatchingRowValue(group.rows, ctx.signals);
+        if (raw === undefined) {
+            continue;
+        }
+        applyContainerKey(next, key, raw);
+    }
+    return next;
+}
+
+export function resolveContainerAppearanceTransitions(
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext
+): Partial<Record<ContainerAppearancePropertyKey, AppearanceFieldTransition>> {
+    return collectActiveVariantTransitions(appearance, ctx, isMotionCapableContainerAppearanceKey);
+}
+
+/**
+ * Resolve rectangle-like chrome for `nl.image` (baseline from image helpers, then appearance overlays).
+ */
+export function resolveImageRectangleLike(
+    element: UIElement,
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext
+): RectangleLikeProps {
+    const baseline = getImageWidgetRectangleProps(element);
+    if (!isUsableAppearance(appearance)) {
+        return baseline;
+    }
+    const variant = resolveActiveVariant(appearance, ctx.variantOverrideId);
+    if (!variant) {
+        return baseline;
+    }
+    const next: RectangleLikeProps = { ...baseline };
+    for (const group of variant.propertyGroups) {
+        const key = group.key;
+        if (!isContainerAppearanceKey(key)) {
+            continue;
+        }
+        const raw = pickLastMatchingRowValue(group.rows, ctx.signals);
+        if (raw === undefined) {
+            continue;
+        }
+        applyContainerKey(next, key, raw);
+    }
+    return next;
+}
+
+/** Same transition map as container chrome (image reuses container appearance keys). */
+export function resolveImageAppearanceTransitions(
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext
+): Partial<Record<ContainerAppearancePropertyKey, AppearanceFieldTransition>> {
+    return resolveContainerAppearanceTransitions(appearance, ctx);
+}
+
+/**
+ * Resolve flat button visual props used by `ButtonRenderer` (excluding interactionDisabled).
+ */
+export function resolveButtonVisualProps(
+    element: UIElement,
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext
+): ButtonResolvedVisualProps {
+    const flat = getButtonProps(element);
+    const bl = buttonPropsToImageFillBaseline(flat);
+    const baseline: ButtonResolvedVisualProps = {
+        backgroundColor: flat.backgroundColor,
+        fillType: flat.fillType,
+        fillOpacity: flat.fillOpacity,
+        fillVisible: flat.fillVisible,
+        imageFill: flat.imageFill,
+        backgroundImage: flat.backgroundImage,
+        backgroundFit: flat.backgroundFit,
+        borderRadius: flat.borderRadius,
+        borderWidth: flat.borderWidth,
+        borderColor: flat.borderColor,
+        borderStyle: flat.borderStyle,
+        paddingX: flat.paddingX,
+        paddingY: flat.paddingY,
+        clipContent: flat.clipContent,
+        transformOffsetX: flat.transformOffsetX,
+        transformOffsetY: flat.transformOffsetY,
+        transformScale: flat.transformScale,
+        transformRotation: flat.transformRotation,
+        transformOpacity: flat.transformOpacity,
+        strokeOpacity: bl.strokeOpacity,
+        strokeSide: bl.strokeSide,
+        strokeAlign: bl.strokeAlign,
+        borderJoin: bl.borderJoin,
+        effects: normalizeElementEffectValues(
+            (flat as unknown as Record<string, unknown>).effects ?? DEFAULT_ELEMENT_EFFECT_VALUES
+        ),
+    };
+    if (!isUsableAppearance(appearance)) {
+        return baseline;
+    }
+    const variant = resolveActiveVariant(appearance, ctx.variantOverrideId);
+    if (!variant) {
+        return baseline;
+    }
+    const next: ButtonResolvedVisualProps = { ...baseline };
+    for (const group of variant.propertyGroups) {
+        const key = group.key;
+        if (!isButtonAppearanceKey(key)) {
+            continue;
+        }
+        const raw = pickLastMatchingRowValue(group.rows, ctx.signals);
+        if (raw === undefined) {
+            continue;
+        }
+        applyButtonKey(next, key, raw);
+    }
+    return next;
+}
+
+export function resolveButtonAppearanceTransitions(
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext
+): Partial<Record<ButtonAppearancePropertyKey, AppearanceFieldTransition>> {
+    return collectActiveVariantTransitions(appearance, ctx, isMotionCapableButtonAppearanceKey);
+}
+
+/** Map resolved button visuals to rectangle chrome for `RectangleChromeRenderer` and image-fill diagnostics. */
+export function buttonResolvedVisualToRectangleLike(v: ButtonResolvedVisualProps): RectangleLikeProps {
+    const r = v.borderRadius;
+    const hasBorder = v.borderStyle !== "none" && v.borderWidth > 0;
+    return {
+        backgroundColor: v.backgroundColor,
+        borderRadius: r,
+        borderRadiusTL: r,
+        borderRadiusTR: r,
+        borderRadiusBL: r,
+        borderRadiusBR: r,
+        borderRadiusLinked: true,
+        borderColor: v.borderColor,
+        borderWidth: v.borderWidth,
+        borderStyle: v.borderStyle === "none" ? "solid" : v.borderStyle,
+        backgroundImage: v.backgroundImage,
+        backgroundFit: v.backgroundFit,
+        imageFill: v.imageFill,
+        fillType: v.fillType,
+        fillVisible: v.fillVisible,
+        fillOpacity: v.fillOpacity,
+        strokeVisible: hasBorder,
+        strokeOpacity: v.strokeOpacity,
+        strokeAlign: v.strokeAlign,
+        strokeSide: v.strokeSide,
+        borderJoin: v.borderJoin,
+        cornerAdvanced: false,
+        transformOffsetX: v.transformOffsetX,
+        transformOffsetY: v.transformOffsetY,
+        transformScale: v.transformScale,
+        transformRotation: v.transformRotation,
+        transformOpacity: v.transformOpacity,
+        effects: { ...v.effects },
+    };
+}

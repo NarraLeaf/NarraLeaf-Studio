@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 5,
+  "id": "ex-doc-toast",
+  "name": "Example · Notification / Toast",
+  "surfaces": [
+    {
+      "id": "ex-surf-toast",
+      "name": "Toast · Stage notification",
+      "host": "player",
+      "kind": "stageSurface",
+      "designSize": { "width": 1280, "height": 720 },
+      "rootElementId": "ex-el-toast-root",
+      "mount": { "kind": "slot", "slotId": "notification" }
+    }
+  ],
+  "elements": {
+    "ex-el-toast-root": {
+      "id": "ex-el-toast-root",
+      "type": "nl.root",
+      "name": "Root",
+      "parentId": null,
+      "childrenIds": ["ex-el-toast-bar"],
+      "layout": { "x": 0, "y": 0, "width": 1280, "height": 720, "visible": true, "opacity": 1 }
+    },
+    "ex-el-toast-bar": {
+      "id": "ex-el-toast-bar",
+      "type": "nl.container",
+      "name": "Toast bar",
+      "parentId": "ex-el-toast-root",
+      "childrenIds": ["ex-el-toast-row"],
+      "layout": { "x": 360, "y": 48, "width": 560, "height": 52, "visible": true, "opacity": 1 },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "#1e293b",
+        "borderRadius": 10,
+        "borderWidth": 1,
+        "borderColor": "#334155",
+        "borderStyle": "solid",
+        "clipContent": true
+      }
+    },
+    "ex-el-toast-row": {
+      "id": "ex-el-toast-row",
+      "type": "nl.container",
+      "name": "Row",
+      "parentId": "ex-el-toast-bar",
+      "childrenIds": ["ex-el-toast-text", "ex-el-toast-spacer", "ex-el-toast-dismiss"],
+      "layout": { "x": 0, "y": 0, "width": 560, "height": 52, "visible": true, "opacity": 1 },
+      "props": {
+        "layoutKind": "stack",
+        "stackDirection": "horizontal",
+        "stackGap": 12,
+        "stackPaddingTop": 10,
+        "stackPaddingRight": 14,
+        "stackPaddingBottom": 10,
+        "stackPaddingLeft": 14,
+        "stackAlignItems": "center",
+        "stackJustifyContent": "start",
+        "backgroundColor": "transparent",
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
+      }
+    },
+    "ex-el-toast-text": {
+      "id": "ex-el-toast-text",
+      "type": "nl.text",
+      "name": "Message",
+      "parentId": "ex-el-toast-row",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 380, "height": 28, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "Notification message",
+        "fontSize": 14,
+        "color": "#f1f5f9",
+        "fontWeight": "normal",
+        "textAlign": "left",
+        "lineHeight": 1.4
+      }
+    },
+    "ex-el-toast-spacer": {
+      "id": "ex-el-toast-spacer",
+      "type": "nl.container",
+      "name": "Spacer",
+      "parentId": "ex-el-toast-row",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 24, "height": 8, "visible": true, "opacity": 1 },
+      "props": {
+        "layoutKind": "free",
+        "backgroundColor": "transparent",
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "borderStyle": "none",
+        "clipContent": false
+      }
+    },
+    "ex-el-toast-dismiss": {
+      "id": "ex-el-toast-dismiss",
+      "type": "nl.button",
+      "name": "Dismiss",
+      "parentId": "ex-el-toast-row",
+      "childrenIds": ["ex-el-toast-dismiss-lbl"],
+      "layout": { "x": 0, "y": 0, "width": 72, "height": 32, "visible": true, "opacity": 1 },
+      "props": {
+        "backgroundColor": "#334155",
+        "borderRadius": 6,
+        "borderWidth": 0,
+        "borderColor": "#000000",
+        "borderStyle": "none",
+        "paddingX": 12,
+        "paddingY": 6,
+        "clipContent": true
+      }
+    },
+    "ex-el-toast-dismiss-lbl": {
+      "id": "ex-el-toast-dismiss-lbl",
+      "type": "nl.text",
+      "name": "Dismiss label",
+      "parentId": "ex-el-toast-dismiss",
+      "childrenIds": [],
+      "layout": { "x": 0, "y": 0, "width": 72, "height": 20, "visible": true, "opacity": 1 },
+      "props": {
+        "text": "OK",
+        "fontSize": 13,
+        "color": "#e2e8f0",
+        "fontWeight": "600",
+        "textAlign": "center",
+        "lineHeight": 1.2
+      }
+    }
+  },
+  "meta": {
+    "createdAt": "2026-04-03T00:00:00.000Z",
+    "updatedAt": "2026-04-03T00:00:00.000Z"
+  }
+}

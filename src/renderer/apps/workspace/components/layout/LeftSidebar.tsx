@@ -6,6 +6,8 @@ import { PanelPosition } from "../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
+import { blurSidebarRailFocusIfLeavingRail } from "./blurSidebarRailFocus";
+import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 
 interface LeftSidebarProps {
     panelId: string;
@@ -63,7 +65,7 @@ export function LeftSidebar({ panelId, onClose, width }: LeftSidebarProps) {
             }`}
             style={{ width: `${width}px` }}
             onClick={handleClick}
-            tabIndex={0}
+            tabIndex={-1}
         >
             {/* Panel Header */}
             <div className="h-12 flex items-center justify-between px-4 bg-[#0b0d12] border-b border-white/10">
@@ -82,8 +84,13 @@ export function LeftSidebar({ panelId, onClose, width }: LeftSidebarProps) {
             </div>
 
             {/* Panel Content with payload */}
-            <div className="flex-1 overflow-auto">
-                <PanelComponent panelId={panelId} payload={panel.payload} />
+            <div
+                className="flex-1 overflow-auto"
+                onPointerDownCapture={e => blurSidebarRailFocusIfLeavingRail(e.target)}
+            >
+                <WorkspacePanelErrorBoundary regionLabel={panel.title} isolationKey={panelId}>
+                    <PanelComponent panelId={panelId} payload={panel.payload} />
+                </WorkspacePanelErrorBoundary>
             </div>
         </div>
     );

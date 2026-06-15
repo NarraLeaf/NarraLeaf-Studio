@@ -1,57 +1,153 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppLayout } from "@/lib/components/layout";
-import { SettingsGeneralTab } from "./tabs/SettingsGeneralTab";
-import { SettingsAppearanceTab } from "./tabs/SettingsAppearanceTab";
-import { SettingsEditorTab } from "./tabs/SettingsEditorTab";
+import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
+import { SettingsExplorer, SettingValue } from "./components/SettingsExplorer";
+import {
+    getAllAppSettings,
+    getAppSettingCategories,
+    getSettingsByCategory,
+} from "@/lib/settings/registry";
+import { AppSettingDefinition, AppSettingCategoryKey, SettingCategory, SettingDescriptor } from "@/lib/settings/models";
+import { getInterface } from "@/lib/app/bridge";
+import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 
-export type SettingsTabKey = "general" | "appearance" | "editor";
+export function SettingsApp() {
+    const categories = useMemo<SettingCategory[]>(() => getAppSettingCategories(), []);
+    const [values, setValues] = useState<Record<string, SettingValue>>({});
+    const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [selectedCategory, setSelectedCategory] = useState<string>(categories[0]?.key ?? "");
+    const [categoryScrollSignal, setCategoryScrollSignal] = useState(0);
 
-interface SettingsAppProps {
-    initialTab?: SettingsTabKey;
-}
+    useEffect(() => {
+        let mounted = true;
+        const loadSettings = async () => {
+            const nextValues: Record<string, SettingValue> = {};
+            await Promise.all(
+                getAllAppSettings().map(async (setting) => {
+                    try {
+                        const result = await getInterface().app.state.getGlobalState(setting.key);
+                        const storedValue = result.success
+                            ? (result.data.value ?? setting.defaultValue)
+                            : setting.defaultValue;
+                        nextValues[setting.key] = storedValue as SettingValue;
+                    } catch (error) {
+                        console.error("Failed to load setting", setting.key, error);
+                        nextValues[setting.key] = setting.defaultValue;
+                    }
+                }),
+            );
+            if (!mounted) {
+                return;
+            }
+            setValues(nextValues);
+            setLoading(false);
+        };
 
-/**
- * Settings application with tabbed interface
- * Uses simple AppLayout without sidebar as settings typically don't need navigation
- */
-export function SettingsApp({ initialTab = "general" }: SettingsAppProps) {
-    const [activeTab, setActiveTab] = useState<SettingsTabKey>(initialTab);
+        loadSettings();
+        return () => {
+            mounted = false;
+        };
+    }, []);
 
-    const tabs = [
-        { key: "general" as const, label: "General", component: SettingsGeneralTab },
-        { key: "appearance" as const, label: "Appearance", component: SettingsAppearanceTab },
-        { key: "editor" as const, label: "Editor", component: SettingsEditorTab },
-    ];
+    const describeAppSetting = useCallback(
+        (setting: AppSettingDefinition): SettingDescriptor => ({
+            id: setting.key,
+            type: setting.type,
+            label: setting.label,
+            description: setting.description,
+            defaultValue: setting.defaultValue,
+            options: setting.options,
+        }),
+        [],
+    );
 
-    const activeTabConfig = tabs.find(tab => tab.key === activeTab);
-    const ActiveComponent = activeTabConfig?.component || SettingsGeneralTab;
+    const getSettingValue = useCallback(
+        (setting: AppSettingDefinition) => {
+            return values[setting.key] ?? setting.defaultValue;
+        },
+        [values],
+    );
+
+    const commitSetting = useCallback(
+        async (setting: AppSettingDefinition, _descriptor: SettingDescriptor, value: SettingValue) => {
+            const key = setting.key;
+            const response = await getInterface().app.state.setGlobalState(
+                key as GlobalStateKeys,
+                value as unknown as GlobalStateValue<GlobalStateKeys>,
+            );
+            if (!response.success) {
+                const errorText = response.error ?? "Failed to persist setting";
+                throw new Error(errorText);
+            }
+            setValues((prev) => ({
+                ...prev,
+                [key]: value,
+            }));
+        },
+        [],
+    );
+
+    const handleCategoryClick = useCallback((categoryKey: string) => {
+        setSelectedCategory(categoryKey);
+        setCategoryScrollSignal(value => value + 1);
+    }, []);
 
     return (
         <AppLayout title="Settings" iconSrc="/favicon.ico">
-            <div className="h-full flex flex-col">
-                {/* Tab Navigation */}
-                <div className="flex items-center gap-1 p-4 border-b border-white/10">
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab.key}
-                            className={`
-                                px-4 py-2 text-sm rounded-md transition-colors cursor-default
-                                ${activeTab === tab.key
-                                    ? "bg-white/10 text-white"
-                                    : "text-gray-300 hover:bg-white/10 hover:text-white"
-                                }
-                            `}
-                            onClick={() => setActiveTab(tab.key)}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
-
-                {/* Tab Content */}
-                <div className="flex-1 overflow-y-auto">
-                    <ActiveComponent />
-                </div>
+            <div className="flex h-full overflow-hidden rounded-md border border-white/10 bg-[#0f1115] shadow-xl">
+                <aside className="w-64 shrink-0 border-r border-white/5 bg-black/50 p-4 space-y-4">
+                    <div>
+                        <p className="text-lg font-semibold text-white">Settings</p>
+                        <p className="text-xs text-gray-400">
+                            Editor Settings
+                        </p>
+                    </div>
+                    {categories.length > 0 ? (
+                        <>
+                            <SearchBox
+                                value={searchQuery}
+                                onChange={setSearchQuery}
+                                placeholder="Search settings..."
+                                className="w-full"
+                            />
+                            <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+                                {categories.map((category) => {
+                                    const isActive = selectedCategory === category.key;
+                                    return (
+                                        <button
+                                            key={category.key}
+                                            onClick={() => handleCategoryClick(category.key)}
+                                            className={`w-full rounded-md px-3 py-2 text-left transition-colors ${isActive ? "bg-white/10 text-white" : "text-gray-300 hover:bg-white/10 hover:text-white"}`}
+                                        >
+                                            <div className="text-sm font-medium">{category.label}</div>
+                                            <p className="text-xs text-gray-500">{category.description}</p>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    ) : (
+                        <p className="text-xs text-gray-500">
+                            No implemented settings are currently exposed.
+                        </p>
+                    )}
+                </aside>
+                <section className="flex-1 p-4">
+                    <SettingsExplorer
+                        categories={categories}
+                        getSettingsForCategory={(category) => getSettingsByCategory(category as AppSettingCategoryKey)}
+                        describeSetting={describeAppSetting}
+                        getValue={(setting, _descriptor) => getSettingValue(setting)}
+                        onCommit={commitSetting}
+                        searchQuery={searchQuery}
+                        onSearchChange={setSearchQuery}
+                        showSearch={false}
+                        loading={loading}
+                        selectedCategory={selectedCategory}
+                        selectedCategoryScrollSignal={categoryScrollSignal}
+                    />
+                </section>
             </div>
         </AppLayout>
     );

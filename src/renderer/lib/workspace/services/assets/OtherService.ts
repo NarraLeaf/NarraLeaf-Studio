@@ -6,10 +6,7 @@ export class OtherService extends AssetServiceBase {
 
 
     public async readLocalOther(asset: Asset<AssetType.Other>): Promise<RequestStatus<AssetData<AssetType.Other>>> {
-        // Get storage path for the asset
         const path = this.getAssetPath(asset.id);
-
-        // Read file as buffer
         const fileResult = await this.getFileSystemService().readRaw(path);
         if (!fileResult.ok) {
             return {
@@ -18,10 +15,11 @@ export class OtherService extends AssetServiceBase {
             };
         }
 
-        const buffer = fileResult.data;
-        const size = buffer.byteLength;
+        return this.readOtherFromBuffer(asset, fileResult.data);
+    }
 
-        // Try to detect MIME type from file extension
+    public async readOtherFromBuffer(asset: Asset<AssetType.Other>, buffer: Uint8Array): Promise<RequestStatus<AssetData<AssetType.Other>>> {
+        const size = buffer.byteLength;
         const mimeType = this.detectMimeType(asset.name);
 
         return {

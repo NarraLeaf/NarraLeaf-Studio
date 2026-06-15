@@ -2,7 +2,9 @@ import { AssetType } from "../services/assets/assetTypes";
 
 export const ProjectNameConvention = {
     // Project Root Files
+    // .nlproj is the primary format (msgpack-encoded); project.json is legacy
     ProjectConfig: ["project.json"],
+    ProjectConfigLegacy: ["project.json"],
     
     // Assets metadata and groups (stored in assets/)
     AssetsMetadataShard: (type: AssetType) => ["assets", `assets.metadata.${type}.json` as const],
@@ -14,9 +16,27 @@ export const ProjectNameConvention = {
     EditorConfig: [".nlstudio", "editor.json"],
 
     Assets: ["assets/"],
+    /** Reserved logical folder for shared blueprints; M2 persists bytes via {@link AssetsDataShard} like other assets. */
+    AssetsBlueprints: ["assets", "blueprints/"],
     AssetsContent: ["assets", "content/"],
     AssetsDataShard: (id: string) => ["assets", "content", ...splitId(id)],
     Scripts: ["scripts/"],
+
+    // Editor Related Files
+    // These files are not packaged into the product
+    Editor: ["editor/"],
+    EditorAssets: ["editor", "assets/"],
+    EditorServices: ["editor", "services/"],
+    EditorRemoteAssetsCache: ["editor", "assets", "remote/"],
+    EditorRemoteAssetShard: (id: string) => ["editor", "assets", "remote", ...splitId(id)],
+    EditorThumbnailCache: ["editor", "cache", "thumbnail/"],
+    EditorThumbnailCacheShard: (id: string) => ["editor", "cache", "thumbnail", ...splitId(id), `${id}.png` as const],
+    EditorUI: ["editor", "ui/"],
+    EditorUIDocument: ["editor", "ui", "uidoc.json"],
+    EditorUIGraphs: ["editor", "ui", "uigraphs.json"],
+    EditorStory: ["editor", "story/"],
+    EditorStoryIndex: ["editor", "story", "index.json"],
+    EditorStoryDocument: (storyId: string) => ["editor", "story", "stories", storyId, "storydoc.json"],
 } as const;
 
 /**

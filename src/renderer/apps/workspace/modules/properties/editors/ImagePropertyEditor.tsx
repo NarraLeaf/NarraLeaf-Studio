@@ -37,25 +37,6 @@ export function ImagePropertyEditor({ asset, onChange }: PropertyEditorProps<Ass
 
     return (
         <BasePropertyEditor asset={asset} onChange={onChange}>
-            {/* Preview */}
-            {imageData && (
-                <div className="bg-[#1e1f22] rounded-md p-3 border border-white/10">
-                    <div className="flex items-center gap-2 mb-2">
-                        <ImageIcon className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-300">Preview</span>
-                    </div>
-                    <div className="flex items-center justify-center bg-[#0f1115] rounded p-2">
-                        <div className="text-xs text-gray-500 text-center">
-                            {imageData.metadata.width} × {imageData.metadata.height}
-                            <br />
-                            {imageData.metadata.format.toUpperCase()}
-                            <br />
-                            {(imageData.metadata.size / 1024).toFixed(1)} KB
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* Technical Info (Read-only) */}
             {imageData && (
                 <div>

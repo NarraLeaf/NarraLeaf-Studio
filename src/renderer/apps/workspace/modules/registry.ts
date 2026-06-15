@@ -4,22 +4,36 @@
  * Third-party plugins can register their modules using the same pattern
  */
 
-import { assetsModule } from "./assets";
+import { assetsModule, assetsBottomModule } from "./assets";
 import { propertiesModule } from "./properties";
 import { consoleModule } from "./console";
 import { welcomeModule } from "./welcome";
 import { globalActions, globalActionGroups } from "./actions";
 import { imagePreviewModule } from "./assets/editors/imagePreviewModule";
+import { audioPreviewModule } from "./assets/editors/audioPreviewModule";
+import { charactersModule } from "./characters";
 import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
+import { uiEditorSurfacesModule } from "./ui-editor";
+import { storyPanelModule } from "./story";
+import {
+    localizationPanelModule,
+    runningTasksPanelModule,
+} from "./placeholders/workspacePlaceholderModules";
 
 /**
  * Built-in panel modules
  * All panels that should be registered on workspace startup
  */
 export const builtInPanels: PanelModule[] = [
+    storyPanelModule,
+    uiEditorSurfacesModule,
+    charactersModule,
     assetsModule,
+    localizationPanelModule,
+    assetsBottomModule,
     propertiesModule,
     consoleModule,
+    runningTasksPanelModule,
 ];
 
 /**
@@ -29,6 +43,7 @@ export const builtInPanels: PanelModule[] = [
 export const builtInEditors: EditorModule[] = [
     welcomeModule,
     imagePreviewModule,
+    audioPreviewModule,
 ];
 
 /**
@@ -46,9 +61,15 @@ export const builtInActionGroups: ModuleActionGroup[] = globalActionGroups;
 /**
  * Export individual modules for direct access if needed
  */
-export { assetsModule } from "./assets";
+export { assetsModule, assetsBottomModule } from "./assets";
+export { charactersModule } from "./characters";
 export { propertiesModule } from "./properties";
 export { consoleModule } from "./console";
 export { welcomeModule } from "./welcome";
 export { globalActions, globalActionGroups } from "./actions";
-
+export { uiEditorSurfacesModule } from "./ui-editor";
+export { storyPanelModule } from "./story";
+export {
+    localizationPanelModule,
+    runningTasksPanelModule,
+} from "./placeholders/workspacePlaceholderModules";

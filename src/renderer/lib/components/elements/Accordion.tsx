@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, createContext, useContext, ReactNode } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, createContext, useContext, ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 
 // Accordion context for managing state
@@ -8,6 +8,7 @@ interface AccordionContextValue {
     focusedItemId: string | null;
     setFocusedItem: (id: string | null) => void;
     isActive: boolean; // Whether the accordion is currently focused/active
+    disableAnimation: boolean;
 }
 
 const AccordionContext = createContext<AccordionContextValue | null>(null);
@@ -20,12 +21,14 @@ function useAccordionContext() {
     return context;
 }
 
-// 新增：Nested toggle notification context
+// Added: Nested toggle notification context
 interface AccordionNestedContextValue {
     notifyNestedToggle: () => void;
 }
 
 const AccordionNestedContext = createContext<AccordionNestedContextValue | null>(null);
+
+type AccordionContentHeight = number | "auto";
 
 // Accordion Props
 export interface AccordionProps {
@@ -42,6 +45,8 @@ export interface AccordionProps {
     isActive?: boolean;
     /** Allow multiple items to be open */
     multiple?: boolean;
+    /** Disable item expand/collapse animation for state restoration. */
+    disableAnimation?: boolean;
     className?: string;
 }
 
@@ -57,6 +62,7 @@ export function Accordion({
     onItemFocus,
     isActive = true,
     multiple = true,
+    disableAnimation = false,
     className = "",
 }: AccordionProps) {
     const [internalOpenItems, setInternalOpenItems] = useState<Set<string>>(
@@ -90,46 +96,65 @@ export function Accordion({
         }
     };
 
+    const toggleItemRef = useRef(toggleItem);
+    toggleItemRef.current = toggleItem;
+
     const handleSetFocusedItem = (id: string | null) => {
         setFocusedItemId(id);
         onItemFocus?.(id);
     };
 
-    // Keyboard navigation
+    // Keyboard navigation (scoped to this accordion only; never steal keys from other panels or editable fields)
     useEffect(() => {
         if (!isActive || !containerRef.current) return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Get all accordion items
-            const items = containerRef.current?.querySelectorAll('[data-accordion-item]');
+            const root = containerRef.current;
+            if (!root) return;
+
+            const raw = e.target;
+            const el =
+                raw instanceof Element ? raw : raw instanceof Node ? (raw.parentElement as Element | null) : null;
+            if (!el || !root.contains(el)) return;
+
+            // Nested accordion: let the innermost accordion instance handle the event
+            const nearestRoot = el.closest("[data-accordion-root]");
+            if (nearestRoot !== root) return;
+
+            if (el.closest("input, textarea, select, [contenteditable='true']")) return;
+
+            const items = root.querySelectorAll("[data-accordion-item]");
             if (!items || items.length === 0) return;
 
-            const itemIds = Array.from(items).map(item => item.getAttribute('data-accordion-item')!);
+            const itemIds = Array.from(items).map(item => item.getAttribute("data-accordion-item")!);
             const currentIndex = focusedItemId ? itemIds.indexOf(focusedItemId) : -1;
 
             switch (e.key) {
-                case 'ArrowDown':
+                case "ArrowDown":
                     e.preventDefault();
-                    const nextIndex = (currentIndex + 1) % itemIds.length;
-                    handleSetFocusedItem(itemIds[nextIndex]);
-                    break;
-                case 'ArrowUp':
-                    e.preventDefault();
-                    const prevIndex = currentIndex <= 0 ? itemIds.length - 1 : currentIndex - 1;
-                    handleSetFocusedItem(itemIds[prevIndex]);
-                    break;
-                case 'Enter':
-                case ' ':
-                    e.preventDefault();
-                    if (focusedItemId) {
-                        toggleItem(focusedItemId);
+                    {
+                        const nextIndex = (currentIndex + 1) % itemIds.length;
+                        handleSetFocusedItem(itemIds[nextIndex]);
                     }
+                    break;
+                case "ArrowUp":
+                    e.preventDefault();
+                    {
+                        const prevIndex = currentIndex <= 0 ? itemIds.length - 1 : currentIndex - 1;
+                        handleSetFocusedItem(itemIds[prevIndex]);
+                    }
+                    break;
+                case "Enter":
+                case " ":
+                    if (!focusedItemId) return;
+                    e.preventDefault();
+                    toggleItemRef.current(focusedItemId);
                     break;
             }
         };
 
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
     }, [isActive, focusedItemId, openItems, multiple]);
 
     return (
@@ -140,9 +165,10 @@ export function Accordion({
                 focusedItemId,
                 setFocusedItem: handleSetFocusedItem,
                 isActive,
+                disableAnimation,
             }}
         >
-            <div ref={containerRef} className={`${className}`}>
+            <div ref={containerRef} data-accordion-root="" className={`${className}`}>
                 {children}
             </div>
         </AccordionContext.Provider>
@@ -194,10 +220,16 @@ export function AccordionItem({
     const context = useAccordionContext();
     const { openItems, toggleItem, focusedItemId, setFocusedItem } = context;
     const isActive = context.isActive ?? true;
+    const disableAnimation = context.disableAnimation;
     const isOpen = openItems.has(id);
     const isFocused = focusedItemId === id;
     const contentRef = useRef<HTMLDivElement>(null);
-    const [contentHeight, setContentHeight] = useState<number>(0);
+    const wasOpenRef = useRef(isOpen);
+    const [contentHeight, setContentHeight] = useState<AccordionContentHeight>(isOpen ? "auto" : 0);
+    const isHeightAuto = contentHeight === "auto";
+    const isHeightAutoRef = useRef(isHeightAuto);
+
+    isHeightAutoRef.current = isHeightAuto;
 
     // Nested toggle notification
     const parentNestedContext = useContext(AccordionNestedContext);
@@ -205,7 +237,7 @@ export function AccordionItem({
     const notifyNestedToggle = () => {
         // Use rAF to measure after DOM updates for more accurate height
         requestAnimationFrame(() => {
-            if (contentRef.current) {
+            if (contentRef.current && !isHeightAutoRef.current) {
                 setContentHeight(contentRef.current.scrollHeight);
             }
             // Propagate notification to higher levels after own measurement
@@ -213,12 +245,43 @@ export function AccordionItem({
         });
     };
 
-    // Measure content height for animation
-    useEffect(() => {
-        if (contentRef.current) {
-            setContentHeight(contentRef.current.scrollHeight);
+    // Measure content height for animation. Open items settle on auto height so nested accordions
+    // do not force their parents through a second height transition.
+    useLayoutEffect(() => {
+        const el = contentRef.current;
+        if (!el) return;
+
+        const wasOpen = wasOpenRef.current;
+        wasOpenRef.current = isOpen;
+
+        if (disableAnimation) {
+            setContentHeight(isOpen ? "auto" : 0);
+            return;
         }
-    }, [children, isOpen]);
+
+        if (isOpen) {
+            if (!wasOpen) {
+                setContentHeight(0);
+                const frame = requestAnimationFrame(() => {
+                    setContentHeight(el.scrollHeight);
+                });
+                return () => cancelAnimationFrame(frame);
+            }
+            if (!isHeightAutoRef.current) {
+                setContentHeight(el.scrollHeight);
+            }
+            return;
+        }
+
+        if (wasOpen) {
+            setContentHeight(el.scrollHeight);
+            const frame = requestAnimationFrame(() => {
+                setContentHeight(0);
+            });
+            return () => cancelAnimationFrame(frame);
+        }
+        setContentHeight(0);
+    }, [children, disableAnimation, isOpen]);
 
     // Auto-update height when descendants resize (e.g., nested accordions toggled)
     useEffect(() => {
@@ -229,7 +292,9 @@ export function AccordionItem({
         if (typeof ResizeObserver === 'undefined') return;
 
         const observer = new ResizeObserver(() => {
-            setContentHeight(el.scrollHeight);
+            if (!isHeightAutoRef.current) {
+                setContentHeight(el.scrollHeight);
+            }
             // Notify ancestors because our height changed
             parentNestedContext?.notifyNestedToggle();
         });
@@ -286,7 +351,7 @@ export function AccordionItem({
                     >
                         {/* Expand/collapse icon */}
                         <ChevronRight
-                            className={`w-4 h-4 flex-shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'transform rotate-90' : ''
+                            className={`w-4 h-4 flex-shrink-0 text-gray-400 ${disableAnimation ? '' : 'transition-transform duration-200'} ${isOpen ? 'transform rotate-90' : ''
                                 }`}
                         />
 
@@ -307,10 +372,16 @@ export function AccordionItem({
 
                 {/* Content */}
                 <div
+                    onTransitionEnd={(event) => {
+                        if (event.target !== event.currentTarget || !isOpen) {
+                            return;
+                        }
+                        setContentHeight("auto");
+                    }}
                     style={{
-                        height: isOpen ? `${contentHeight}px` : '0px',
-                        overflow: 'hidden',
-                        transition: 'height 200ms ease-out',
+                        height: contentHeight === "auto" ? "auto" : `${contentHeight}px`,
+                        overflow: isOpen && isHeightAuto ? 'visible' : 'hidden',
+                        transition: disableAnimation ? 'none' : 'height 200ms ease-out',
                     }}
                 >
                     <div ref={contentRef} className={contentClassName}>
@@ -334,15 +405,18 @@ export interface NestedAccordionProps extends AccordionProps {
 export function NestedAccordion({
     parentLevel = 0,
     isActive: providedIsActive,
+    disableAnimation: providedDisableAnimation,
     ...props
 }: NestedAccordionProps) {
     const parentContext = useContext(AccordionContext);
     const isActive = parentContext?.isActive ?? providedIsActive ?? true;
+    const disableAnimation = providedDisableAnimation ?? parentContext?.disableAnimation ?? false;
 
     return (
         <Accordion
             {...props}
             isActive={isActive}
+            disableAnimation={disableAnimation}
         />
     );
 }

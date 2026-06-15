@@ -1,0 +1,211 @@
+/**
+ * Blueprint graph taxonomy — kinds, node type constants, and rules for editors / validators.
+ * Comments in English per project convention.
+ */
+
+import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
+import {
+    resolveGlobalLifecycleEventHeadTypes,
+    resolveSurfaceLifecycleEventHeadTypes,
+} from "@shared/types/ui-editor/blueprintLifecycle";
+
+/** Persisted on BlueprintGraphIr.meta to disambiguate slot semantics (events vs functions vs macros). */
+export type BlueprintGraphKind = "event" | "function" | "macro";
+
+/** Well-known blueprint node type ids (stable contract). */
+/** Entry for widget `init` UI event (surface mount). */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT = "blueprint.event.head.init" as const;
+/** Entry for widget `click` UI event (e.g. buttons). */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK = "blueprint.event.head.click" as const;
+/** Entry for global `appBoot` lifecycle event (application start). */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
+/** Entry for surface `surfaceInit` lifecycle event (page entered). */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT = "blueprint.event.head.surfaceInit" as const;
+
+const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
+]);
+
+/**
+ * Resolve which event-head node type(s) may run for a widget private event slot id.
+ * Unknown slots fall back to all registered dispatch heads (forward-compatible).
+ */
+export function resolveBlueprintEventHeadTypesForUiSlot(slotId: string, widgetElementType?: string): readonly string[] {
+    const eventDef = getWidgetLogicEvent(widgetElementType, slotId);
+    if (!eventDef) {
+        return [];
+    }
+    if (eventDef.headNodeTypes && eventDef.headNodeTypes.length > 0) {
+        return eventDef.headNodeTypes;
+    }
+    return [...EVENT_DISPATCH_HEAD_TYPES];
+}
+
+/** All node type ids that may start an event graph chain (for validation / normalization). */
+export function listBlueprintEventDispatchHeadTypes(): readonly string[] {
+    return [...EVENT_DISPATCH_HEAD_TYPES];
+}
+
+/** True if this node type can start an event-graph execution chain for UI dispatch. */
+export function isBlueprintEventDispatchHeadType(nodeType: string): boolean {
+    return EVENT_DISPATCH_HEAD_TYPES.has(nodeType);
+}
+
+/**
+ * Pick graph node ids that are valid entry heads for a UI dispatch `eventName` (slot id).
+ */
+export function collectBlueprintEventHeadNodeIdsForDispatch(
+    nodes: Record<string, { type: string }> | undefined,
+    eventName: string,
+    widgetElementType?: string,
+): string[] {
+    const n = nodes ?? {};
+    const allowed = new Set(resolveBlueprintEventHeadTypesForUiSlot(eventName, widgetElementType));
+    if (allowed.size === 0) {
+        return [];
+    }
+    return Object.entries(n)
+        .filter(([, node]) => allowed.has(node.type))
+        .map(([id]) => id)
+        .sort();
+}
+
+/**
+ * Resolve which event-head node types are valid for a surface lifecycle event.
+ */
+export function resolveSurfaceEventHeadTypes(eventName: string): readonly string[] {
+    return resolveSurfaceLifecycleEventHeadTypes(eventName);
+}
+
+/**
+ * Resolve which event-head node types are valid for a global lifecycle event.
+ */
+export function resolveGlobalEventHeadTypes(eventName: string): readonly string[] {
+    return resolveGlobalLifecycleEventHeadTypes(eventName);
+}
+
+/**
+ * Pick graph node ids that are valid entry heads for a surface lifecycle event.
+ */
+export function collectSurfaceEventHeadNodeIdsForDispatch(
+    nodes: Record<string, { type: string }> | undefined,
+    eventName: string,
+): string[] {
+    const n = nodes ?? {};
+    const allowed = new Set(resolveSurfaceEventHeadTypes(eventName));
+    if (allowed.size === 0) {
+        return [];
+    }
+    return Object.entries(n)
+        .filter(([, node]) => allowed.has(node.type))
+        .map(([id]) => id)
+        .sort();
+}
+
+/**
+ * Pick graph node ids that are valid entry heads for a global lifecycle event.
+ */
+export function collectGlobalEventHeadNodeIdsForDispatch(
+    nodes: Record<string, { type: string }> | undefined,
+    eventName: string,
+): string[] {
+    const n = nodes ?? {};
+    const allowed = new Set(resolveGlobalEventHeadTypes(eventName));
+    if (allowed.size === 0) {
+        return [];
+    }
+    return Object.entries(n)
+        .filter(([, node]) => allowed.has(node.type))
+        .map(([id]) => id)
+        .sort();
+}
+export const BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY = "blueprint.function.entry" as const;
+export const BLUEPRINT_NODE_TYPE_LITERAL = "blueprint.data.literal" as const;
+/** Read blueprint execution local variable (pure data source). */
+export const BLUEPRINT_NODE_TYPE_LOCAL_GET = "blueprint.local.get" as const;
+/** Write blueprint execution local variable. */
+export const BLUEPRINT_NODE_TYPE_LOCAL_SET = "blueprint.local.set" as const;
+/** Console log from wired data pin (Studio / Dev Mode). */
+export const BLUEPRINT_NODE_TYPE_LOG = "blueprint.log" as const;
+/** Pure numeric math (data-only). */
+export const BLUEPRINT_NODE_TYPE_MATH_ADD = "blueprint.math.add" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_SUBTRACT = "blueprint.math.subtract" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_MULTIPLY = "blueprint.math.multiply" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_DIVIDE = "blueprint.math.divide" as const;
+/** Unary add-one: result = value + 1 (pure data). */
+export const BLUEPRINT_NODE_TYPE_MATH_INCREMENT = "blueprint.math.increment" as const;
+/** Unary subtract-one: result = value - 1 (pure data). */
+export const BLUEPRINT_NODE_TYPE_MATH_DECREMENT = "blueprint.math.decrement" as const;
+/** Pure float comparison: result is boolean (pure data). */
+export const BLUEPRINT_NODE_TYPE_MATH_EQUAL = "blueprint.math.equal" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_NOT_EQUAL = "blueprint.math.notEqual" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_LESS = "blueprint.math.less" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_LESS_OR_EQUAL = "blueprint.math.lessOrEqual" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_GREATER = "blueprint.math.greater" as const;
+export const BLUEPRINT_NODE_TYPE_MATH_GREATER_OR_EQUAL = "blueprint.math.greaterOrEqual" as const;
+
+/** Concatenate two strings (pure data). */
+export const BLUEPRINT_NODE_TYPE_STRING_CONCAT = "blueprint.string.concat" as const;
+/** String length (UTF-16 code units, pure data). */
+export const BLUEPRINT_NODE_TYPE_STRING_LENGTH = "blueprint.string.length" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_TRIM = "blueprint.string.trim" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_TO_UPPER = "blueprint.string.toUpperCase" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_TO_LOWER = "blueprint.string.toLowerCase" as const;
+
+/** IR meta key for graph kind (string value matches BlueprintGraphKind). */
+export const BLUEPRINT_GRAPH_IR_META_KIND = "graphKind" as const;
+
+export type BlueprintGraphKindRules = {
+    /** Graph kind id */
+    kind: BlueprintGraphKind;
+    /** Whether effectful / Host API nodes are allowed */
+    allowsEffectfulNodes: boolean;
+    /** Whether a dedicated entry node type is required at runtime */
+    requiresDedicatedEntryNode: boolean;
+    /** Node type id for the entry node, if required (event graphs may use several head types). */
+    entryNodeType?:
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT
+        | typeof BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY;
+    /** Whether UI may bind widget events directly to this graph slot */
+    bindableFromWidgetUi: boolean;
+};
+
+const RULES: Record<BlueprintGraphKind, BlueprintGraphKindRules> = {
+    event: {
+        kind: "event",
+        allowsEffectfulNodes: true,
+        requiresDedicatedEntryNode: false,
+        entryNodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+        bindableFromWidgetUi: true,
+    },
+    function: {
+        kind: "function",
+        allowsEffectfulNodes: false,
+        requiresDedicatedEntryNode: true,
+        entryNodeType: BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
+        bindableFromWidgetUi: false,
+    },
+    macro: {
+        kind: "macro",
+        allowsEffectfulNodes: true,
+        requiresDedicatedEntryNode: false,
+        bindableFromWidgetUi: false,
+    },
+};
+
+export function getBlueprintGraphKindRules(kind: BlueprintGraphKind): BlueprintGraphKindRules {
+    return RULES[kind];
+}
+
+export function parseBlueprintGraphKind(raw: unknown): BlueprintGraphKind | undefined {
+    if (raw === "event" || raw === "function" || raw === "macro") {
+        return raw;
+    }
+    return undefined;
+}

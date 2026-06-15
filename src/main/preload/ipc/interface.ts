@@ -3,6 +3,8 @@ import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
+import type { DevModeEntry, DevModeStatus, DevModeBundle } from "@shared/types/devMode";
+import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
 
@@ -59,18 +61,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         launch: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) =>
             ipcClient.invoke(IPCEventType.workspaceLaunch, { props, closeCurrentWindow }),
         close: () => ipcClient.invoke(IPCEventType.workspaceClose, {}),
-        projectSettings: {
-            get: <T = any>(projectPath: string, key: string) =>
-                ipcClient.invoke(IPCEventType.projectSettingsGet, { projectPath, key }) as Promise<RequestStatus<{ value: T }>>,
-            set: <T = any>(projectPath: string, key: string, value: T) =>
-                ipcClient.invoke(IPCEventType.projectSettingsSet, { projectPath, key, value }),
-            setBatch: (projectPath: string, settings: Record<string, any>) =>
-                ipcClient.invoke(IPCEventType.projectSettingsSetBatch, { projectPath, settings }),
-            getAll: (projectPath: string) =>
-                ipcClient.invoke(IPCEventType.projectSettingsGetAll, { projectPath }) as Promise<RequestStatus<{ settings: Record<string, any> }>>,
-            clear: (projectPath: string) =>
-                ipcClient.invoke(IPCEventType.projectSettingsClear, { projectPath }),
-        },
+        onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
+            ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
+        onBlueprintNavigateFromPreview: (handler: (payload: PreviewStudioBlueprintOpenPayload) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceBlueprintNavigateFromPreview, handler),
     },
 
     app: {
@@ -79,8 +73,33 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         state: {
             getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
             setGlobalState: <K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>) => ipcClient.invoke(IPCEventType.appGlobalStateSet, { key, value }) as Promise<RequestStatus<void>>,
+            getAllGlobalState: () =>
+                ipcClient.invoke(IPCEventType.appGlobalStateGetAll, {}) as Promise<RequestStatus<{ settings: Record<string, any> }>>,
         },
-    }
+        addRecentProject: (name: string, path: string) =>
+            ipcClient.invoke(IPCEventType.appAddRecentProject, { name, path }) as Promise<RequestStatus<void>>,
+    },
+
+    devMode: {
+        launch: (projectPath: string, entry: DevModeEntry) =>
+            ipcClient.invoke(IPCEventType.devModeLaunch, { projectPath, entry }) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        stop: () =>
+            ipcClient.invoke(IPCEventType.devModeStop, {}) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        reload: () =>
+            ipcClient.invoke(IPCEventType.devModeReload, {}) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        getStatus: () =>
+            ipcClient.invoke(IPCEventType.devModeGetStatus, {}) as Promise<RequestStatus<{ status: DevModeStatus }>>,
+        onPayloadUpdate: (handler: (payload: { bundle: DevModeBundle }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModePayloadUpdate, handler),
+        onControlReload: (handler: (payload: { revision: number }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeControlReload, handler),
+        onControlError: (handler: (payload: { message: string }) => void) =>
+            ipcClient.onMessage(IPCEventType.devModeControlError, handler),
+        resolveImageAssetUrl: (assetId: string) =>
+            ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
+        openBlueprintInWorkspace: (payload: PreviewStudioBlueprintOpenPayload & { projectPath: string }) =>
+            ipcClient.invoke(IPCEventType.devModeOpenBlueprintInWorkspace, payload) as Promise<RequestStatus<void>>,
+    },
 };
 
 function getPathForFile(file: File): string {

@@ -24,22 +24,36 @@
     "build:apps:dev": "node project/build/build-apps.js --dev",
     "build:main": "node project/build/build-main.js",
     "build:main:dev": "node project/build/build-main.js --dev",
+    "build:shared": "tsc --project src/shared/tsconfig.json",
     "dev": "rimraf dist && node project/app/dev-electron.js",
     "pack-electron": "yarn clean && node project/app/pack-electron.js",
     "clean": "rimraf dist",
-    "lint": "tsc --project src/main/tsconfig.json && tsc --project src/renderer/tsconfig.json"
+    "lint": "tsc --project src/shared/tsconfig.json && tsc --project src/main/tsconfig.json && tsc --project src/renderer/tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@monaco-editor/react": "^4.7.0",
+    "@xyflow/react": "^12.10.2",
     "electron-store": "^9.0.0",
     "lucide-react": "^0.546.0",
     "mime-types": "^3.0.1",
+    "monaco-editor": "^0.55.1",
+    "motion": "^12.34.0",
+    "msgpack-lite": "^0.1.26",
+    "narraleaf-react": "0.9.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-moveable": "^0.56.0",
+    "react-selecto": "^1.26.3",
     "transliteration": "^2.3.5"
   },
   "devDependencies": {
     "@types/electron-store": "^3.2.2",
     "@types/mime-types": "^3.0.1",
+    "@types/msgpack-lite": "^0.1.12",
     "@types/node": "^24.8.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
@@ -57,6 +71,7 @@
     "rimraf": "^6.0.1",
     "tailwindcss": "^3",
     "typescript": "^5.7.3",
+    "vitest": "^3.2.4",
     "ws": "^8.17.0"
   },
   "packageManager": "yarn@4.10.3+sha512.c38cafb5c7bb273f3926d04e55e1d8c9dfa7d9c3ea1f36a4868fa028b9e5f72298f0b7f401ad5eb921749eb012eb1c3bb74bf7503df3ee43fd600d14a018266f"

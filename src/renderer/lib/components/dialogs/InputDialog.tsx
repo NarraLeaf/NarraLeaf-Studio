@@ -107,6 +107,7 @@ const InputDialogContent: React.FC<InputDialogContentProps> = ({
     }, [validationError]);
 
     const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+        event.stopPropagation();
         if (event.key === "Enter") {
             event.preventDefault();
             commit();
@@ -115,7 +116,7 @@ const InputDialogContent: React.FC<InputDialogContentProps> = ({
             cancel();
         } else if (event.ctrlKey || event.altKey || event.metaKey) {
             // Prevent global shortcuts from being triggered when typing in dialog input
-            event.stopPropagation();
+            // Keep propagation stopped above
         }
     }, [commit, cancel]);
 
@@ -270,6 +271,7 @@ export class InputDialog {
             [AssetType.Audio]: 'Audio',
             [AssetType.Video]: 'Video',
             [AssetType.JSON]: 'JSON',
+            [AssetType.Blueprint]: 'Blueprint',
             [AssetType.Font]: 'Font',
             [AssetType.Other]: 'Other'
         };

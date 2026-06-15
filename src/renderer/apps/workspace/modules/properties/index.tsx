@@ -19,3 +19,9 @@ export const propertiesModule: PanelModule = {
     component: PropertiesPanel,
 };
 
+// Export framework
+export * from "./framework";
+
+// Export schemas
+export * from "./schemas";
+
