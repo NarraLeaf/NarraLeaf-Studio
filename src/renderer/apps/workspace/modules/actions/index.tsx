@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import {
     Play,
     Bug,
@@ -5,9 +6,6 @@ import {
     FileText,
     FolderOpen,
     Save,
-    Copy,
-    Scissors,
-    Clipboard,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
 import { Workspace } from "@/lib/workspace/workspace";
@@ -16,6 +14,11 @@ import { Services } from "@/lib/workspace/services/services";
 import { welcomeModule } from "../welcome";
 import { getInterface } from "@/lib/app/bridge";
 import { Separator } from "../../registry/types";
+import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
+import type { DevModeStatus } from "@shared/types/devMode";
+import { useWorkspace } from "../../context";
+import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 
 /**
  * Global toolbar actions
@@ -26,16 +29,69 @@ import { Separator } from "../../registry/types";
  * Run project action
  * Executes the current project
  */
-export const runAction: ModuleAction = {
-    id: "narraleaf-studio:run",
-    icon: <Play className="w-4 h-4" />,
-    tooltip: "Run project",
-    onClick: () => {
-        console.log("Run clicked");
-        // TODO: Implement run functionality
+/**
+ * Dev mode action
+ * Launches dev mode window for the current project
+ */
+export const devModeAction: ModuleAction = {
+    id: "narraleaf-studio:dev-mode",
+    icon: <DevModeActionIcon />,
+    tooltip: "Dev Mode",
+    onClick: (workspace: Workspace) => {
+        const devModeService = workspace.getContext().services.get<DevModeService>(Services.DevMode);
+        const status = devModeService.getStatus();
+        const sessionActive =
+            status === "running" ||
+            status === "compiling" ||
+            status === "starting" ||
+            status === "reloading";
+        if (sessionActive) {
+            void devModeService.stop();
+            return;
+        }
+        void (async () => {
+            try {
+                await flushUIDocAndGraphIfDirty(workspace);
+            } catch (e) {
+                console.error("[DevMode] flush before launch failed", e);
+            }
+            await devModeService.launch({
+                kind: "surface",
+                surfaceId: MAIN_APP_SURFACE_ID,
+            });
+        })();
     },
-    order: 2,
+    order: 1,
 };
+
+function DevModeActionIcon() {
+    const { context } = useWorkspace();
+    const [status, setStatus] = useState<DevModeStatus>("idle");
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const devModeService = context.services.get<DevModeService>(Services.DevMode);
+        setStatus(devModeService.getStatus());
+        const unsub = devModeService.onStatusChanged(setStatus);
+        return () => {
+            unsub();
+        };
+    }, [context]);
+
+    const iconColor = useMemo(() => {
+        if (status === "error") {
+            return "#f87171";
+        }
+        if (status !== "idle") {
+            return "#ffffff";
+        }
+        return "rgba(255,255,255,0.6)";
+    }, [status]);
+
+    return <Play className="w-4 h-4" color={iconColor} />;
+}
 
 /**
  * Debug project action
@@ -82,8 +138,15 @@ export const fileActionGroup: ModuleActionGroup = {
             icon: <FileText className="w-4 h-4" />,
             tooltip: "Create a new workspace",
             onClick: () => {
-                console.log("New file clicked");
-                // TODO: Implement new file functionality
+                void (async () => {
+                    const result = await getInterface().app.launchProjectWizard({});
+                    if (result.success && result.data?.created) {
+                        await getInterface().workspace.launch(
+                            { projectPath: result.data.projectPath },
+                            true
+                        );
+                    }
+                })();
             },
             order: 0,
         },
@@ -93,8 +156,14 @@ export const fileActionGroup: ModuleActionGroup = {
             icon: <FolderOpen className="w-4 h-4" />,
             tooltip: "Open an existing workspace",
             onClick: () => {
-                console.log("Open file clicked");
-                // TODO: Implement open file functionality
+                void (async () => {
+                    const result = await getInterface().selectFolder();
+                    if (!result.success || !result.data?.path) return;
+                    await getInterface().workspace.launch(
+                        { projectPath: result.data.path },
+                        true
+                    );
+                })();
             },
             order: 1,
         },
@@ -106,51 +175,6 @@ export const fileActionGroup: ModuleActionGroup = {
             tooltip: "Close the current workspace",
             onClick: () => {
                 getInterface().workspace.close();
-            },
-            order: 2,
-        },
-    ],
-};
-
-/**
- * Edit action group
- * Contains edit-related actions like copy, cut, paste
- */
-export const editActionGroup: ModuleActionGroup = {
-    id: "narraleaf-studio:edit",
-    label: "Edit",
-    order: 20,
-    actions: [
-        {
-            id: "narraleaf-studio:edit-copy",
-            label: "Copy",
-            icon: <Copy className="w-4 h-4" />,
-            tooltip: "Copy selected content",
-            onClick: () => {
-                console.log("Copy clicked");
-                // TODO: Implement copy functionality
-            },
-            order: 0,
-        },
-        {
-            id: "narraleaf-studio:edit-cut",
-            label: "Cut",
-            icon: <Scissors className="w-4 h-4" />,
-            tooltip: "Cut selected content",
-            onClick: () => {
-                console.log("Cut clicked");
-                // TODO: Implement cut functionality
-            },
-            order: 1,
-        },
-        {
-            id: "narraleaf-studio:edit-paste",
-            label: "Paste",
-            icon: <Clipboard className="w-4 h-4" />,
-            tooltip: "Paste content",
-            onClick: () => {
-                console.log("Paste clicked");
-                // TODO: Implement paste functionality
             },
             order: 2,
         },
@@ -186,11 +210,11 @@ export const helpActionGroup: ModuleActionGroup = {
  * All global actions
  * Array of all actions that should be registered globally
  */
-export const globalActions: ModuleAction[] = [runAction, debugAction, buildAction];
+export const globalActions: ModuleAction[] = [devModeAction, debugAction, buildAction];
 
 /**
  * All global action groups
  * Array of all action groups that should be registered globally
  */
-export const globalActionGroups: ModuleActionGroup[] = [fileActionGroup, editActionGroup, helpActionGroup];
+export const globalActionGroups: ModuleActionGroup[] = [fileActionGroup, helpActionGroup];
 

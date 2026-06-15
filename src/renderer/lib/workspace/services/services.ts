@@ -5,6 +5,60 @@ import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetData, AssetType } from "./assets/assetTypes";
 import { RequestStatus } from "@shared/types/ipcEvents";
+import { Character } from "./character/Character";
+import { CharacterGroup } from "./character/types";
+import type {
+    UIDocument,
+    UISurface,
+    UISurfaceKind,
+    UIHost,
+    UISurfaceSettings,
+    UIStageSurfaceMount,
+    UILayout,
+    UIElement,
+} from "@shared/types/ui-editor/document";
+import type {
+    BindingDefinition,
+    BlueprintDocument,
+    BlueprintField,
+    BlueprintFieldValueSource,
+    BlueprintFrontendKind,
+    BlueprintGraphIr,
+    BlueprintPrivateOwnerRecord,
+    Blueprint,
+} from "@shared/types/blueprint/document";
+import type {
+    ReadonlyBlueprintSurfaceSummary,
+    ReadonlyBlueprintWidgetSummary,
+} from "./ui-editor/blueprint/readonlyBlueprintSummary";
+import type { SubtreeDuplicateRemapPlan } from "./ui-editor/blueprint/blueprintCopyRemap";
+import type { MoveUiElementsResult } from "./ui-editor/uiDocumentTreeMove";
+import type { UIGraph, UIGraphDocument } from "@shared/types/ui-editor/graph";
+import type { UIElementSelection } from "@shared/types/ui-editor/selection";
+import type { ReactElement } from "react";
+import type { ElementRendererDefinition } from "../../ui-editor/runtime/ElementRendererRegistry";
+import type { RenderSurfaceOptions } from "../../ui-editor/runtime/types";
+import type { ViewportTransform } from "../../ui-editor/geometry/types";
+import type { UITool } from "../../ui-editor/editor/types";
+import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/snapping/types";
+import type { SelectionState } from "./ui/UIStore";
+import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
+import type {
+    StoryBlock,
+    StoryBlockId,
+    StoryChapter,
+    StoryDocument,
+    StoryId,
+    StoryLibraryEntry,
+    StoryLibraryIndex,
+    StoryScene,
+    StorySceneId,
+} from "@shared/types/story";
+import type {
+    BlueprintNodeDef,
+    BlueprintNodeEditorCatalogEntry,
+    BlueprintPaletteContext,
+} from "../../ui-editor/blueprint-nodes/types";
 
 interface WorkspaceContext {
     project: Porject;
@@ -18,15 +72,30 @@ interface IService {
 
 enum Services {
     Project = "project",
+    Uuid = "uuid",
     FileSystem = "fileSystem",
     UI = "ui",
-    ProjectSettings = "projectSettings",
+    GlobalSettings = "globalSettings",
+    ServiceAssets = "serviceAssets",
+    PanelState = "panelState",
+    UIDocument = "uiDocument",
+    RuntimeBridge = "runtimeBridge",
+    UIEditorState = "uiEditorState",
+    UIEditorHistory = "uiEditorHistory",
+    UIGraph = "uiGraph",
+    LocalBlueprint = "localBlueprint",
+    UIBlueprintLifecycle = "uiBlueprintLifecycle",
+    DevMode = "devMode",
+    /** Ref-counted FontFace + blob URLs for UI editor widgets */
+    UIEditorFontFace = "uiEditorFontFace",
+    /** Blueprint node definitions (built-ins + plugin extensions); editor + runtime registry */
+    BlueprintNodeCatalog = "blueprintNodeCatalog",
     // Storage = "storage",
     // Command = "command",
     // Logger = "logger",
-    // Settings = "settings",
     // Editor = "editor",
-    // Story = "story",
+    Story = "story",
+    Character = "character",
     Assets = "assets",
     // Texture = "texture",
     // Audio = "audio",
@@ -44,6 +113,10 @@ enum Services {
 // Core Services
 interface IProjectService extends IService {
     getProjectConfig(): ProjectConfig;
+}
+
+interface IUuidService extends IService {
+    generate(compact?: boolean): string;
 }
 
 interface IFileSystemService extends IService {
@@ -70,13 +143,19 @@ interface IFileSystemService extends IService {
     readJSON<T>(path: string): Promise<FsRequestResult<T>>;
 }
 
-interface IProjectSettingsService extends IService {
+interface IGlobalSettingsService extends IService {
     get<T = any>(key: string, defaultValue?: T): Promise<T | undefined>;
     set<T = any>(key: string, value: T): Promise<void>;
+    setBatch(settings: Record<string, any>): Promise<void>;
     getAll(): Record<string, any>;
-    clear(): Promise<void>;
     has(key: string): boolean;
     getSync<T = any>(key: string, defaultValue?: T): T | undefined;
+}
+
+interface IPanelStateService extends IService {
+    getPanelState<T extends Record<string, any>>(panelId: string): T | undefined;
+    setPanelState<T extends Record<string, any>>(panelId: string, partial: Partial<T>): void;
+    replacePanelState<T extends Record<string, any>>(panelId: string, next: T): void;
 }
 
 interface IStorageService extends IService {
@@ -95,21 +174,428 @@ interface IUIService extends IService {
     showError(error: Error | string): void;
 }
 
-interface ISettingsService extends IService { }
+interface IUIDocumentService extends IService {
+    load(): Promise<UIDocument>;
+    save(document: UIDocument): Promise<void>;
+    getDocument(): UIDocument;
+    onDocumentChanged(handler: (doc: UIDocument) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    /** Blueprint M2: invoked after each in-memory uidoc mutation (before auto-save). */
+    setAfterMutateHook(hook: (() => void) | null): void;
+    restoreDocumentFromHistory(document: UIDocument, options?: { skipAfterMutateHook?: boolean }): void;
+    runSurfaceHistoryTransaction(surfaceId: string, action: () => void): void;
+    updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>, options?: { skipHistory?: boolean }): void;
+    updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>): void;
+    updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void;
+    reorderChildren(parentId: string, orderedChildIds: string[]): void;
+    createSurface(input: {
+        kind: UISurfaceKind;
+        name: string;
+        host: UIHost;
+        stageMount?: UIStageSurfaceMount;
+        settings?: UISurfaceSettings;
+    }): UISurface;
+    deleteSurface(surfaceId: string): void;
+    updateSurface(surfaceId: string, updater: (surface: UISurface) => void): void;
+    createElement(parentId: string, type: string, layoutPatch?: Partial<UILayout>): UIElement;
+    deleteElements(elementIds: string[]): void;
+    /**
+     * Reparent one or more elements within the editable tree of a surface (uses effective root for linked stage surfaces).
+     * Inserts `elementIds` (normalized) before `beforeChildId` under `targetParentId`, or appends when `beforeChildId` is null.
+     */
+    moveElementsInSurface(
+        surfaceId: string,
+        elementIds: string[],
+        targetParentId: string,
+        beforeChildId: string | null,
+    ): MoveUiElementsResult;
+    /** Paste a snapshot from `buildUiEditorClipboardPayload` under `targetParentId`. */
+    pasteClipboardPayload(
+        surfaceId: string,
+        targetParentId: string,
+        beforeChildId: string | null,
+        payload: import("@/lib/ui-editor/commands/uiEditorClipboard").UIEditorClipboardPayload,
+    ):
+        | { ok: true; newRootIds: string[] }
+        | { ok: false; reason: "invalid_clipboard" | "invalid_target" };
+    renameElement(elementId: string, name: string): void;
+    /**
+     * Persist UIBehaviorBinding.blueprintEvent and ensure inline event graph under Blueprint.program.graphs.events.
+     */
+    setElementBlueprintEvent(
+        elementId: string,
+        eventName: string,
+        ref: { blueprintId: string; eventId: string },
+    ): void;
+    /** Remove behavior binding and drop the referenced event graph slot from the blueprint document. */
+    clearElementBlueprintEvent(elementId: string, eventName: string): void;
+    /**
+     * Set UI blueprintEvent hooks to noop when they target the given blueprint layer (event graph slot).
+     * Does not remove the graph from the blueprint document — call LocalBlueprintService.removeEventGraph after.
+     */
+    stripBlueprintLayerBindings(surfaceId: string, blueprintId: string, layerEventId: string): void;
+}
+
+interface IUIGraphService extends IService {
+    load(): Promise<UIGraphDocument>;
+    save(document: UIGraphDocument): Promise<void>;
+    getDocument(): UIGraphDocument;
+    onGraphsChanged(handler: (doc: UIGraphDocument) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    applyGraphMutation(mutator: (document: UIGraphDocument) => void): void;
+    createGraph(input: {
+        name?: string;
+        nodes?: Record<string, UIGraph["nodes"][string]>;
+        entries?: UIGraph["entries"];
+        edges?: UIGraph["edges"];
+        variables?: UIGraph["variables"];
+        meta?: UIGraph["meta"];
+    }): UIGraph;
+    updateGraph(graphId: string, updater: (graph: UIGraph) => void): void;
+    deleteGraph(graphId: string): void;
+}
+
+interface ILocalBlueprintService extends IService {
+    getBlueprintDocument(): BlueprintDocument;
+    applyBlueprintMutation(mutator: (bp: BlueprintDocument, doc: UIGraphDocument) => void): void;
+    getBlueprintHistoryLimit(): number;
+    setBlueprintHistoryLimit(limit: number): void;
+    captureBlueprintHistorySnapshot(blueprintId: string, ownerKey?: string): {
+        blueprintId: string;
+        ownerKey: string | null;
+        ownerRecord: BlueprintPrivateOwnerRecord | null;
+        blueprint: Blueprint | null;
+        uiBehavior: unknown;
+    };
+    runBlueprintHistoryTransaction<T>(
+        blueprintId: string,
+        action: () => T,
+        options?: { ownerKey?: string; mergeKey?: string; mergeWindowMs?: number },
+    ): T;
+    canUndoBlueprint(blueprintId: string): boolean;
+    canRedoBlueprint(blueprintId: string): boolean;
+    undoBlueprint(blueprintId: string): boolean;
+    redoBlueprint(blueprintId: string): boolean;
+    clearBlueprintHistory(blueprintId?: string): void;
+    onBlueprintHistoryChanged(handler: (event: { blueprintId: string; ownerKey: string | null }) => void): () => void;
+    ensureSurfaceMain(surfaceId: string, displayName?: string): string;
+    removeSurfaceAndWidgetOwners(surfaceId: string): void;
+    ensureWidgetMain(surfaceId: string, elementId: string, displayName?: string, widgetType?: string): string;
+    removeWidgetMain(surfaceId: string, elementId: string): void;
+    getWidgetMainBlueprintId(surfaceId: string, elementId: string): string | undefined;
+    getSurfaceMainBlueprintId(surfaceId: string): string | undefined;
+    getReadonlySurfaceMainSummary(surfaceId: string): ReadonlyBlueprintSurfaceSummary;
+    createField(
+        blueprintId: string,
+        input: { name: string; kind?: BlueprintField["kind"]; valueSource?: BlueprintFieldValueSource },
+    ): BlueprintField;
+    setFieldValueSource(
+        blueprintId: string,
+        fieldId: string,
+        valueSource: BlueprintFieldValueSource | undefined,
+    ): void;
+    renameField(blueprintId: string, fieldId: string, name: string): void;
+    deleteField(blueprintId: string, fieldId: string): void;
+    setWidgetPropBinding(params: {
+        blueprintId: string;
+        surfaceId: string;
+        elementId: string;
+        propPath: string;
+        fieldId: string;
+        fallback?: BindingDefinition["fallback"];
+    }): string;
+    clearWidgetPropBinding(blueprintId: string, surfaceId: string, elementId: string, propPath: string): void;
+    findWidgetPropBinding(
+        blueprintId: string,
+        surfaceId: string,
+        elementId: string,
+        propPath: string,
+    ): BindingDefinition | undefined;
+    listFields(blueprintId: string): BlueprintField[];
+    createBlueprintVariable(
+        blueprintId: string,
+        input?: { name?: string; defaultValue?: import("@shared/types/blueprint/document").LiteralValue },
+    ): import("@shared/types/blueprint/document").BlueprintVariable;
+    renameBlueprintVariable(blueprintId: string, variableId: string, name: string): void;
+    setBlueprintVariableDefault(
+        blueprintId: string,
+        variableId: string,
+        defaultValue: import("@shared/types/blueprint/document").LiteralValue | undefined,
+    ): void;
+    deleteBlueprintVariable(blueprintId: string, variableId: string): void;
+    ensureEventGraph(blueprintId: string, eventId: string, displayName?: string): void;
+    adoptLegacyEventGraphToSlot(blueprintId: string, slotId: string, legacyEventId: string, displayName?: string): void;
+    renameEventGraph(blueprintId: string, eventId: string, displayName: string): void;
+    removeEventGraph(blueprintId: string, eventId: string): void;
+    listEventGraphIds(blueprintId: string): string[];
+    ensureFunctionGraph(blueprintId: string, functionId: string, displayName?: string): void;
+    removeFunctionGraph(blueprintId: string, functionId: string): void;
+    listFunctionGraphIds(blueprintId: string): string[];
+    updateEventGraphIr(
+        blueprintId: string,
+        eventId: string,
+        updater: (ir: BlueprintGraphIr) => void,
+        options?: { mergeKey?: string; mergeWindowMs?: number },
+    ): void;
+    updateFunctionGraphIr(
+        blueprintId: string,
+        functionId: string,
+        updater: (ir: BlueprintGraphIr) => void,
+        options?: { mergeKey?: string; mergeWindowMs?: number },
+    ): void;
+    updateScriptModuleSource(
+        blueprintId: string,
+        code: string,
+        options?: { mergeKey?: string; mergeWindowMs?: number },
+    ): void;
+    getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary;
+    planSubtreeDuplicateBlueprintRemap(input: {
+        surfaceId: string;
+        oldElementIds: string[];
+        generateId: () => string;
+    }): SubtreeDuplicateRemapPlan;
+    /** Private owner slot keys: globalMain, surfaceMain:<id>, widgetMain:<surfaceId>:<elementId>. */
+    listPrivateBlueprintIdsForOwnerKey(ownerKey: string): string[];
+    setActivePrivateBlueprintForOwnerKey(ownerKey: string, blueprintId: string): void;
+    /** Adds a new blueprint revision for the owner; becomes active; prior blueprints stay in the record. */
+    createSiblingPrivateBlueprintForOwnerKey(ownerKey: string, frontend: BlueprintFrontendKind): string;
+}
+
+interface IUIBlueprintLifecycleCoordinator extends IService {
+    /** Reconcile instance main blueprints with current UIDocument (surfaces + logic-capable widgets). */
+    syncFromUidoc(): void;
+}
+
+interface IUIRuntimeBridgeService extends IService {
+    renderSurface(options: RenderSurfaceOptions): ReactElement | null;
+    registerElementRenderer(definition: ElementRendererDefinition): void;
+}
+
+export type InteractionOverride =
+    | {
+          kind: "imageCrop";
+          surfaceId: string;
+          elementId: string;
+          source: string;
+      }
+    | {
+          kind: "textEdit";
+          surfaceId: string;
+          elementId: string;
+      };
+
+export type InteractionOverrideChange = {
+    previous: InteractionOverride | null;
+    next: InteractionOverride | null;
+};
+
+interface UIEditorStateEvents {
+    toolChanged: UITool;
+    viewportChanged: ViewportTransform;
+    selectionChanged: SelectionState;
+    interactionOverrideChanged: InteractionOverrideChange;
+    /** Editor-only: appearance variant picker in the inspector (per element); drives canvas preview. */
+    appearanceInspectorVariantChanged: { elementId: string };
+    /** Outline panel expand/collapse memory (persisted); payload unused. */
+    outlineExpansionChanged: null;
+    /** Smart snap / smart guides toggle (persisted in project settings). */
+    smartSnapEnabledChanged: boolean;
+    /** Per-category snap targets when smart snap is enabled (persisted). */
+    smartSnapDetailSettingsChanged: SmartSnapDetailSettings;
+    /** Ephemeral snap guide lines in surface space (viewport overlay). */
+    snapGuidesChanged: ActiveSnapGuides | null;
+}
+
+interface IUIEditorFontFaceService extends IService {
+    acquire(
+        assetId: string,
+    ): Promise<{ ok: true; cssFamily: string } | { ok: false; error: string }>;
+    release(assetId: string): void;
+    invalidate(assetId: string): void;
+}
+
+interface IBlueprintNodeCatalogService extends IService {
+    /** Idempotent: loads core built-in node definitions into the shared registry. */
+    ensureBuiltinsRegistered(): void;
+    register(def: BlueprintNodeDef): void;
+    registerMany(defs: BlueprintNodeDef[]): void;
+    get(type: string): BlueprintNodeDef | undefined;
+    getBlueprintNodeEditorCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry | undefined;
+    listPaletteEntries(ctx: BlueprintPaletteContext): BlueprintNodeEditorCatalogEntry[];
+    resolveCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry;
+    /** Pins merged with instance params (dynamic input pins). */
+    resolveCatalogEntryForNode(type: string, params?: Record<string, unknown>): BlueprintNodeEditorCatalogEntry;
+}
+
+interface IUIEditorStateService extends IService {
+    getTool(): UITool;
+    setTool(tool: UITool): void;
+    getViewportTransform(): ViewportTransform;
+    updateViewport(transform: Partial<ViewportTransform>): ViewportTransform;
+    resetViewport(): ViewportTransform;
+    getSelection(): SelectionState;
+    setSelection(selection: SelectionState): void;
+    setUIElementSelection(selection: UIElementSelection): void;
+    getDocument(): UIDocument;
+    getSurface(surfaceId: string): UISurface | undefined;
+    /** Cached appearance variant id for inspector authoring (editing-area cache, not saved in UIDocument). */
+    getAppearanceInspectorVariant(elementId: string): string | null;
+    setAppearanceInspectorVariant(elementId: string, variantId: string): void;
+    /** Whether compact Border panel "sides" row is expanded (per element, persisted with project settings). */
+    getAppearanceBorderSidesExpanded(elementId: string): boolean;
+    setAppearanceBorderSidesExpanded(elementId: string, expanded: boolean): void;
+    /** Outline: branch is collapsed when true (editor-only, project settings). */
+    isOutlineBranchCollapsed(elementId: string): boolean;
+    setOutlineBranchCollapsed(elementId: string, collapsed: boolean): void;
+    /** When true, dragging/resizing/inserting snaps to surface and sibling guides (project settings). */
+    getSmartSnapEnabled(): boolean;
+    setSmartSnapEnabled(enabled: boolean): void;
+    /** Which guide categories participate when smart snap is on (persisted). */
+    getSmartSnapDetailSettings(): SmartSnapDetailSettings;
+    patchSmartSnapDetailSettings(patch: Partial<SmartSnapDetailSettings>): void;
+    /** Active snap guides for the current interaction (null clears overlay). */
+    getSnapGuides(): ActiveSnapGuides | null;
+    setSnapGuides(guides: ActiveSnapGuides | null): void;
+    on<K extends keyof UIEditorStateEvents>(event: K, handler: (data: UIEditorStateEvents[K]) => void): () => void;
+}
+
+interface IDevModeService extends IService {
+    getStatus(): DevModeStatus;
+    refreshStatus(): Promise<DevModeStatus>;
+    launch(entry: DevModeEntry, projectPath?: string): Promise<DevModeStatus>;
+    stop(): Promise<DevModeStatus>;
+    reload(): Promise<DevModeStatus>;
+    onStatusChanged(handler: (status: DevModeStatus) => void): () => void;
+}
 
 // Editor Services
 interface IEditorService extends IService { }
 
-interface IStoryService extends IService { }
+type StoryPluginActionCreateInput = {
+    generateId: () => string;
+    initialText?: string;
+};
+
+type StoryPluginActionRegistration = {
+    id: string;
+    label: string;
+    detail?: string;
+    group?: string;
+    createBlock: (input: StoryPluginActionCreateInput) => StoryBlock;
+};
+
+interface IStoryService extends IService {
+    listStories(): StoryLibraryEntry[];
+    getStoryEntry(storyId: StoryId): StoryLibraryEntry | undefined;
+    getDefaultStoryId(): StoryId | undefined;
+    setDefaultStory(storyId: StoryId | undefined): void;
+    createStory(name: string): StoryLibraryEntry;
+    renameStory(storyId: StoryId, name: string): boolean;
+    deleteStory(storyId: StoryId): boolean;
+    loadLibrary(): Promise<StoryLibraryIndex>;
+    getLibraryIndex(): StoryLibraryIndex;
+    onLibraryChanged(handler: (index: StoryLibraryIndex) => void): () => void;
+    registerPluginAction(registration: StoryPluginActionRegistration): () => void;
+    unregisterPluginAction(actionId: string): boolean;
+    getPluginAction(actionId: string): StoryPluginActionRegistration | undefined;
+    listPluginActions(): StoryPluginActionRegistration[];
+    onPluginActionsChanged(handler: (actions: StoryPluginActionRegistration[]) => void): () => void;
+    loadStory(storyId: StoryId): Promise<StoryDocument>;
+    getStoryDocument(storyId: StoryId): StoryDocument;
+    saveStory(storyId: StoryId): Promise<void>;
+    reloadStory(storyId: StoryId): Promise<StoryDocument>;
+    onDocumentChanged(handler: (event: { storyId: StoryId; document: StoryDocument }) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    createChapter(storyId: StoryId, name: string): StoryChapter;
+    renameChapter(storyId: StoryId, chapterId: string, name: string): boolean;
+    deleteChapter(storyId: StoryId, chapterId: string): boolean;
+    moveChapter(storyId: StoryId, chapterId: string, beforeChapterId: string | null): boolean;
+    createScene(storyId: StoryId, input: { chapterId?: string; name: string }): StoryScene;
+    renameScene(storyId: StoryId, sceneId: StorySceneId, name: string): boolean;
+    deleteScene(storyId: StoryId, sceneId: StorySceneId): boolean;
+    moveScene(storyId: StoryId, sceneId: StorySceneId, target: { chapterId: string; beforeSceneId?: string | null }): boolean;
+    setEntryScene(storyId: StoryId, sceneId: StorySceneId | undefined): void;
+    insertBlock(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        block: StoryBlock,
+        target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null },
+    ): StoryBlock;
+    updateBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId, payload: StoryBlock["payload"]): void;
+    deleteBlock(storyId: StoryId, sceneId: StorySceneId, blockId: StoryBlockId): void;
+    replaceScene(storyId: StoryId, sceneId: StorySceneId, scene: StoryScene): void;
+    moveBlock(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        blockId: StoryBlockId,
+        target: { parentId: StoryBlockId | null; beforeBlockId?: StoryBlockId | null },
+    ): void;
+    canImportStoryPackage(): false;
+    canExportStoryPackage(): false;
+}
+
+interface IUIEditorHistoryService extends IService {
+    getLimit(): number;
+    setLimit(limit: number): void;
+    captureSnapshot(surfaceId: string): {
+        document: UIDocument;
+        blueprint: unknown;
+    };
+    record(options: {
+        surfaceId: string;
+        before: ReturnType<IUIEditorHistoryService["captureSnapshot"]>;
+        after: ReturnType<IUIEditorHistoryService["captureSnapshot"]>;
+        mergeKey?: string;
+        mergeWindowMs?: number;
+    }): void;
+    canUndo(surfaceId: string): boolean;
+    canRedo(surfaceId: string): boolean;
+    undo(surfaceId: string): boolean;
+    redo(surfaceId: string): boolean;
+    clear(surfaceId?: string): void;
+    on(event: "historyChanged", handler: (data: { surfaceId: string }) => void): () => void;
+}
+
+interface ICharacterService extends IService {
+    getCharacter(id: string): Character | undefined;
+    listCharacter(): Character[];
+    createCharacter(name: string): Character;
+    renameCharacter(id: string, name: string): boolean;
+    deleteCharacter(id: string): boolean;
+    listGroups(): CharacterGroup[];
+    getGroup(id: string): CharacterGroup | undefined;
+    createGroup(name: string): CharacterGroup;
+    renameGroup(id: string, name: string): boolean;
+    deleteGroup(id: string): boolean;
+    assignCharacterToGroup(characterId: string, groupId?: string): boolean;
+    listCharactersByGroup(groupId?: string): Character[];
+}
 
 // Asset Services
 interface IAssetService extends IService {
     getAssets(): AssetsMap;
 
     list<T extends AssetType>(type: T): string[];
-    fetch<T extends AssetType>(asset: Asset<T>): Promise<RequestStatus<AssetData<T>>>;
-    exists<T extends AssetType>(asset: Asset<T>): boolean;
+    fetch<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<AssetData<T>>>;
+    exists<T extends AssetType>(asset: Asset<T, AssetSource>): boolean;
     importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>>;
+    importRemoteAsset<T extends AssetType>(type: T, url: string): Promise<RequestStatus<Asset<T, AssetSource.Remote>>>;
+    clearRemoteCache(assetId?: string): Promise<void>;
+}
+
+interface IServiceAssetsService extends IService {
+    writeStore<T extends Record<string, any>>(namespace: string, data: T): Promise<FsRequestResult<{ path: string }>>;
+    readStore<T extends Record<string, any>>(namespace: string): Promise<FsRequestResult<T>>;
+    writeFile(data: string | Buffer | Uint8Array): Promise<FsRequestResult<string>>;
+    readFile(fileId: string, encoding?: BufferEncoding): Promise<FsRequestResult<string>>;
+    readRaw(fileId: string): Promise<FsRequestResult<Uint8Array>>;
+    deleteFile(fileId: string): Promise<FsRequestResult<void>>;
 }
 
 interface ITextureService extends IService { }
@@ -138,6 +624,16 @@ interface IVersionControlService extends IService { }
 interface IPluginService extends IService { }
 
 export {
-    IAssetService, IAudioService, IBuildService, ICommandService, IDebugService, IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService, IPluginService, IPreviewService, IProjectService, IProjectSettingsService, IRuntimeService, IService, ISettingsService, IStorageService, IStoryService, ITextureService, IUIService, IVersionControlService, IVideoService, Services, WorkspaceContext
+    IAssetService, IAudioService, IBlueprintNodeCatalogService, IBuildService, ICommandService, IDebugService,
+    IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
+    IGlobalSettingsService, IPluginService, IPreviewService, IProjectService, IRuntimeService,
+    IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
+    ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
+    ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
+    IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, UIEditorStateEvents,
+    Services, WorkspaceContext
 };
+
+export type { ActiveSnapGuides, SmartSnapDetailSettings };
+export type { StoryPluginActionCreateInput, StoryPluginActionRegistration };
 

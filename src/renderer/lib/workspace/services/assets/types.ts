@@ -7,13 +7,25 @@ export enum AssetSource {
 
 export type AssetResolveMeta<Source extends AssetSource> = Source extends AssetSource.Local ? {} : Source extends AssetSource.Remote ? {
     url: string;
+    /**
+     * The cache lifetime of the asset in milliseconds  
+     * This will only affect the asset fetching in production.
+     */
+    lifetime: number;
+    protocol: string;
+    hostname: string;
+    path: string;
+    query: string;
+    hash: string;
+    search: string;
+    searchParams: Record<string, string>;
 } : never;
 
 /**
  * Asset interface with user metadata
  * Stored in assets metadata files
  */
-export interface Asset<Type extends AssetType = AssetType, Source extends AssetSource = AssetSource.Local> {
+export interface Asset<Type extends AssetType = AssetType, Source extends AssetSource = AssetSource> {
     id: string; // Unique identifier (UUID) used for indexing and file storage
     type: Type;
     name: string;
@@ -27,7 +39,7 @@ export interface Asset<Type extends AssetType = AssetType, Source extends AssetS
 }
 
 export type AssetsMap = {
-    [K in AssetType]: Record<string, Asset<K>>;
+    [K in AssetType]: Record<string, Asset<K, AssetSource>>;
 };
 
 /**

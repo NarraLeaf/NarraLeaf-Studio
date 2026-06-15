@@ -2,6 +2,7 @@ import {IPC, IPCType, OnlyMessage, OnlyRequest, SubNamespace} from "@shared/type
 import {IPCEvents, RequestStatus} from "@shared/types/ipcEvents";
 import {ipcMain} from "electron";
 import { AppEventToken } from "@shared/types/app";
+import crypto from "crypto";
 
 export interface IPCWindow {
     getWebContents(): Electron.WebContents;
@@ -138,16 +139,14 @@ export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
         if (win.isDestroyed()) {
             throw new Error(`Window is destroyed. Tried to invoke IPC request: ${this.getEventName(key)}. (invoke)`);
         }
-        win.getWebContents().send(this.getEventName(key), data);
+        const requestId = crypto.randomUUID();
+        const replyChannel = this.getEventName(key, SubNamespace.Reply) + "." + requestId;
+        win.getWebContents().send(this.getEventName(key), data, requestId);
         return new Promise(resolve => {
-            const handler = (event: Electron.IpcMainEvent, response: Exclude<IPCEvents[K]["response"], never>) => {
-                if (win.isDestroyed() || event.sender !== win.getWebContents()) {
-                    return;
-                }
+            const handler = (_event: Electron.IpcMainEvent, response: Exclude<IPCEvents[K]["response"], never>) => {
                 resolve(response);
-                ipcMain.removeListener(this.getEventName(key, SubNamespace.Reply), handler);
             };
-            ipcMain.once(this.getEventName(key, SubNamespace.Reply), handler);
+            ipcMain.once(replyChannel, handler);
         });
     }
 

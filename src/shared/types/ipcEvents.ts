@@ -4,6 +4,8 @@ import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
+import { DevModeBundle, DevModeEntry, DevModeStatus } from "./devMode";
+import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -19,6 +21,8 @@ export enum IPCEventType {
     appLaunchSettings = "app.settings.launchWindow",
     appGlobalStateGet = "app.globalState.get",
     appGlobalStateSet = "app.globalState.set",
+    appGlobalStateGetAll = "app.globalState.getAll",
+    appAddRecentProject = "app.addRecentProject",
 
     fsStat = "fs.stat",
     fsList = "fs.list",
@@ -50,13 +54,18 @@ export enum IPCEventType {
     workspaceLaunch = "workspace.launch",
     workspaceSelectFolder = "workspace.selectFolder",
     workspaceClose = "workspace.close",
+    workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
+    workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
     
-    // Project Settings
-    projectSettingsGet = "projectSettings.get",
-    projectSettingsSet = "projectSettings.set",
-    projectSettingsSetBatch = "projectSettings.setBatch",
-    projectSettingsGetAll = "projectSettings.getAll",
-    projectSettingsClear = "projectSettings.clear",
+    devModeLaunch = "devMode.launch",
+    devModeStop = "devMode.stop",
+    devModeReload = "devMode.reload",
+    devModeGetStatus = "devMode.getStatus",
+    devModePayloadUpdate = "devMode.payload.update",
+    devModeControlReload = "devMode.control.reload",
+    devModeControlError = "devMode.control.error",
+    devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
+    devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -166,7 +175,24 @@ export type IPCEvents = {
         },
         response: void;
     };
-} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCProjectSettingsEvents;
+    [IPCEventType.appGlobalStateGetAll]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            settings: Record<string, any>;
+        };
+    };
+    [IPCEventType.appAddRecentProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            name: string;
+            path: string;
+        },
+        response: void;
+    };
+} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -406,55 +432,99 @@ export type IPCWorkspaceEvents = {
         data: {},
         response: void;
     };
+    [IPCEventType.workspaceResolveImageAssetUrl]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: {
+            assetId: string;
+        };
+        response: RequestStatus<{ url: string }>;
+    };
+    [IPCEventType.workspaceBlueprintNavigateFromPreview]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: PreviewStudioBlueprintOpenPayload;
+        response: never;
+    };
 };
 
-export type IPCProjectSettingsEvents = {
-    [IPCEventType.projectSettingsGet]: {
+export type IPCDevModeEvents = {
+    [IPCEventType.devModeLaunch]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {
             projectPath: string;
-            key: string;
+            entry: DevModeEntry;
         },
         response: {
-            value: any;
+            status: DevModeStatus;
         };
     };
-    [IPCEventType.projectSettingsSet]: {
+    [IPCEventType.devModeStop]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {
-            projectPath: string;
-            key: string;
-            value: any;
-        },
-        response: void;
-    };
-    [IPCEventType.projectSettingsSetBatch]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: {
-            projectPath: string;
-            settings: Record<string, any>;
-        },
-        response: void;
-    };
-    [IPCEventType.projectSettingsGetAll]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: {
-            projectPath: string;
-        },
+        data: {},
         response: {
-            settings: Record<string, any>;
+            status: DevModeStatus;
         };
     };
-    [IPCEventType.projectSettingsClear]: {
+    [IPCEventType.devModeReload]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            status: DevModeStatus;
+        };
+    };
+    [IPCEventType.devModeGetStatus]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            status: DevModeStatus;
+        };
+    };
+    /** Payload includes optional blueprint forward-compat fields on `DevModeBundle.ui` (M1+). */
+    [IPCEventType.devModePayloadUpdate]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            bundle: DevModeBundle;
+        },
+        response: never;
+    };
+    [IPCEventType.devModeControlReload]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            revision: number;
+        },
+        response: never;
+    };
+    [IPCEventType.devModeControlError]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: {
+            message: string;
+        },
+        response: never;
+    };
+    [IPCEventType.devModeResolveImageAssetUrl]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: {
+            assetId: string;
+        };
+        response: {
+            url: string;
+        };
+    };
+    [IPCEventType.devModeOpenBlueprintInWorkspace]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: PreviewStudioBlueprintOpenPayload & {
             projectPath: string;
-        },
+        };
         response: void;
     };
 };

@@ -65,15 +65,18 @@ export function useAssetsContextMenu({
 
         // Always add copy/cut operations first if applicable
         if (isMultiSelectMode) {
-            // Check if all selected items are assets (not groups)
+            // Check selected items: assets and groups
             const selectedAssetItems = Array.from(selectedItems).filter(id => id.startsWith('asset:'));
+            const selectedGroupItems = Array.from(selectedItems).filter(id => id.startsWith('group:'));
             const hasAssets = selectedAssetItems.length > 0;
+            const hasGroups = selectedGroupItems.length > 0;
+            const totalItems = selectedAssetItems.length + selectedGroupItems.length;
 
-            if (hasAssets) {
+            if (hasAssets || hasGroups) {
                 items.push(
                     {
                         id: "copy-selected",
-                        label: `Copy ${selectedAssetItems.length} item(s)`,
+                        label: `Copy ${totalItems} item(s)`,
                         onClick: () => {
                             handleCopy();
                             closeContextMenu();
@@ -81,7 +84,7 @@ export function useAssetsContextMenu({
                     },
                     {
                         id: "cut-selected",
-                        label: `Cut ${selectedAssetItems.length} item(s)`,
+                        label: `Cut ${totalItems} item(s)`,
                         onClick: () => {
                             handleCut();
                             closeContextMenu();
@@ -114,8 +117,8 @@ export function useAssetsContextMenu({
                     },
                 });
             }
-        } else if (contextMenuTarget.item && !contextMenuTarget.isGroup) {
-            // Single asset selected
+        } else if (contextMenuTarget.item) {
+            // Single asset or group selected
             items.push(
                 {
                     id: "copy",

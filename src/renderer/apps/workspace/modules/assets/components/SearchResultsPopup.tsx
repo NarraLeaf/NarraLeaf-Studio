@@ -3,7 +3,7 @@ import ReactDOM from "react-dom";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
 import {
-    Image, Music, Video, FileJson, Type, File,
+    Image, Music, Video, FileJson, Workflow, Type, File,
     Folder
 } from "lucide-react";
 
@@ -33,6 +33,7 @@ const ASSET_TYPE_ICONS = {
     [AssetType.Audio]: Music,
     [AssetType.Video]: Video,
     [AssetType.JSON]: FileJson,
+    [AssetType.Blueprint]: Workflow,
     [AssetType.Font]: Type,
     [AssetType.Other]: File,
 };

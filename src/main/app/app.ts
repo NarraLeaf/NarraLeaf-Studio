@@ -1,9 +1,7 @@
 import { WindowAppType, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
-import path from "path";
-import { Fs } from "@shared/utils/fs";
-import { throwException } from "@shared/utils/error";
+import { DevModeManager } from "./application/managers/devMode/DevModeManager";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -15,6 +13,22 @@ export class App extends BaseApp {
 
     constructor(public readonly config: AppConfig) {
         super(config);
+        this.devModeManager = new DevModeManager(this);
+    }
+
+    private readonly devModeManager: DevModeManager;
+
+    public getDevModeManager(): DevModeManager {
+        return this.devModeManager;
+    }
+
+    private applyWindowIcon(window: AppWindow): void {
+        const iconPath = this.getWindowIconPath();
+        if (!iconPath) {
+            return;
+        }
+
+        window.setIcon(iconPath);
     }
 
     async launchLauncher(options: Partial<Electron.BrowserWindowConstructorOptions>): Promise<AppWindow<WindowAppType.Launcher>> {
@@ -37,7 +51,7 @@ export class App extends BaseApp {
         };
         const window = new AppWindow<WindowAppType.Launcher>(this, config, {});
         window.setTitle("Launcher - NarraLeaf Studio");
-        window.setIcon(this.resolveResource("app-icon.ico"));
+        this.applyWindowIcon(window);
         window.showWhenReady();
 
         try {
@@ -75,7 +89,7 @@ export class App extends BaseApp {
         };
         const window = new AppWindow<WindowAppType.Settings>(this, config, props);
         window.setTitle("Settings - NarraLeaf Studio");
-        window.setIcon(this.resolveResource("app-icon.ico"));
+        this.applyWindowIcon(window);
         window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.Settings));
@@ -107,35 +121,11 @@ export class App extends BaseApp {
         };
         const window = new AppWindow<WindowAppType.Workspace>(this, config, props);
         window.setTitle("Workspace - NarraLeaf Studio");
-        window.setIcon(this.resolveResource("app-icon.ico"));
+        this.applyWindowIcon(window);
 
         await window.loadFile(this.getAppEntry(WindowAppType.Workspace));
 
-        // Add project to recently opened list
-        try {
-            // Try to read project name from project.json, fallback to directory name
-            let projectName = path.basename(props.projectPath);
-            try {
-                const projectConfigPath = path.join(props.projectPath, "project.json");
-                const configContent = throwException(await Fs.read(projectConfigPath, "utf-8"));
-                const config = JSON.parse(configContent);
-                if (config.name && typeof config.name === "string") {
-                    projectName = config.name;
-                }
-            } catch (configError) {
-                // If reading config fails, use directory name (already set above)
-                this.logger.debug("Could not read project config, using directory name:", configError);
-            }
-
-            this.globalState.recentlyOpened.addProject({
-                name: projectName,
-                path: props.projectPath,
-                icon: undefined,
-                openedAt: Date.now(),
-            });
-        } catch (error) {
-            this.logger.error("Failed to add project to recently opened list:", error);
-        }
+        // Project is added to recently opened only when workspace successfully loads it (see WorkspaceContext)
 
         return window;
     }
@@ -161,10 +151,61 @@ export class App extends BaseApp {
         };
         const window = new AppWindow(this, config, props);
         window.setTitle("Project Wizard - NarraLeaf Studio");
-        window.setIcon(this.resolveResource("app-icon.ico"));
+        this.applyWindowIcon(window);
         window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.ProjectWizard));
+
+        return window;
+    }
+
+    async launchDevMode(
+        props: WindowProps[WindowAppType.DevMode],
+        options: Partial<Electron.BrowserWindowConstructorOptions> = {},
+    ): Promise<AppWindow<WindowAppType.DevMode>> {
+        const config: WindowConfig<WindowAppType.DevMode> = {
+            windowType: WindowAppType.DevMode,
+            isolated: true,
+            autoFocus: true,
+            preload: this.getPreloadScript(),
+            options: {
+                minWidth: 900,
+                minHeight: 600,
+                width: 1400,
+                height: 900,
+                center: true,
+                frame: false,
+                titleBarStyle: "hidden",
+                backgroundColor: "#0f1115",
+                show: false,
+                ...options,
+            },
+        };
+        const window = new AppWindow<WindowAppType.DevMode>(this, config, props);
+        window.setTitle("Dev Mode - NarraLeaf Studio");
+        this.applyWindowIcon(window);
+
+        try {
+            await window.loadFile(this.getAppEntry(WindowAppType.DevMode));
+        } catch (error: any) {
+            if (error && (error.code === "ERR_ABORTED" || error.errno === -3)) {
+                this.logger.warn("[DevMode] Initial navigation aborted by reload, continuing...");
+            } else {
+                throw error;
+            }
+        }
+
+        // Do not rely only on renderer `appWindowReady` + showWhenReady: if the renderer never
+        // announces ready (crash, IPC timing, aborted load), the window would stay hidden while
+        // DevModeManager still reports running. Show as soon as main navigation completes.
+        await window.show();
+        window.win.focus();
+
+        if (this.isDevMode()) {
+            window.onKeyUp("F12", () => {
+                window.toggleDevTools();
+            });
+        }
 
         return window;
     }

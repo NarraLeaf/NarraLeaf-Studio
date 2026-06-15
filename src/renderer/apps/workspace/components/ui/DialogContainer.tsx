@@ -1,13 +1,35 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Dialog } from "@/lib/workspace/services/ui/types";
 import { useWorkspace } from "../../context";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
+import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 
 /**
  * Individual dialog component
  */
 function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => void }) {
+    const dialogRef = useRef<HTMLDivElement | null>(null);
+    const defaultButtonRef = useRef<HTMLButtonElement | null>(null);
+    const defaultButtonIndex = dialog.buttons?.findIndex(button => button.primary && !button.disabled) ?? -1;
+    const fallbackButtonIndex = dialog.buttons?.findIndex(button => !button.disabled) ?? -1;
+    const focusButtonIndex = defaultButtonIndex >= 0 ? defaultButtonIndex : fallbackButtonIndex;
+
+    useEffect(() => {
+        const frame = window.requestAnimationFrame(() => {
+            (defaultButtonRef.current ?? dialogRef.current)?.focus();
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [dialog.id]);
+
+    const invokeDefaultButton = () => {
+        const button = focusButtonIndex >= 0 ? dialog.buttons?.[focusButtonIndex] : undefined;
+        if (!button || button.disabled) {
+            return;
+        }
+        void button.onClick?.();
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             {/* Backdrop */}
@@ -18,10 +40,32 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
 
             {/* Dialog */}
             <div
+                ref={dialogRef}
+                tabIndex={-1}
+                role="dialog"
+                aria-modal="true"
                 className="relative bg-[#1e1e1e] border border-white/10 rounded-lg shadow-2xl max-h-[90vh] overflow-hidden animate-scale-in"
                 style={{
                     width: dialog.width ?? 500,
                     height: dialog.height,
+                }}
+                onKeyDown={event => {
+                    if (event.key === "Escape" && dialog.closable) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onClose();
+                        return;
+                    }
+                    if (event.key !== "Enter") {
+                        return;
+                    }
+                    const target = event.target instanceof Element ? event.target : null;
+                    if (target?.closest("button") || isEditableKeyboardTarget(event.target)) {
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    invokeDefaultButton();
                 }}
             >
                 {/* Header */}
@@ -56,6 +100,7 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
                         {dialog.buttons.map((button, index) => (
                             <button
                                 key={index}
+                                ref={index === focusButtonIndex ? defaultButtonRef : undefined}
                                 onClick={async () => {
                                     if (button.onClick) {
                                         await button.onClick();

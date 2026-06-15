@@ -6,13 +6,15 @@ interface SearchBoxProps {
     onChange: (value: string) => void;
     placeholder?: string;
     className?: string;
+    variant?: "default" | "minimal";
+    onBlur?: () => void;
 }
 
 /**
  * Search box component for asset panel
  */
 export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
-    ({ value, onChange, placeholder = "Search", className = "" }, ref) => {
+    ({ value, onChange, placeholder = "Search", className = "", variant = "default", onBlur }, ref) => {
         const [isFocused, setIsFocused] = useState(false);
 
         const handleClear = useCallback(() => {
@@ -27,7 +29,36 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
             if (e.key === "Escape") {
                 handleClear();
             }
+            if (e.key === " ") {
+                e.stopPropagation();
+            }
         }, [handleClear]);
+
+        const handleInputFocus = useCallback(() => {
+            setIsFocused(true);
+        }, []);
+
+        const handleInputBlur = useCallback(() => {
+            setIsFocused(false);
+            onBlur?.();
+        }, [onBlur]);
+
+        if (variant === "minimal") {
+            return (
+                <input
+                    ref={ref as React.Ref<HTMLInputElement>}
+                    type="text"
+                    value={value}
+                    onChange={handleInputChange}
+                    onFocus={handleInputFocus}
+                    onBlur={handleInputBlur}
+                    onKeyDown={handleKeyDown}
+                    placeholder={placeholder}
+                    autoFocus
+                    className={`bg-transparent text-sm text-gray-300 placeholder-gray-500 outline-none w-full ${className}`}
+                />
+            );
+        }
 
         return (
             <div ref={ref as React.Ref<HTMLDivElement>} className={`relative ${className}`}>
@@ -43,8 +74,8 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                         type="text"
                         value={value}
                         onChange={handleInputChange}
-                        onFocus={() => setIsFocused(true)}
-                        onBlur={() => setIsFocused(false)}
+                        onFocus={handleInputFocus}
+                        onBlur={handleInputBlur}
                         onKeyDown={handleKeyDown}
                         placeholder={placeholder}
                         className="flex-1 bg-transparent text-sm text-gray-300 placeholder-gray-500 outline-none"

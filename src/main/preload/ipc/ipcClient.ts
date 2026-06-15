@@ -33,9 +33,12 @@ export class IPCClient extends IPC<IPCEvents, IPCType.Client> {
         key: K,
         listener: (data: IPCEvents[K]["data"]) => MayPromise<Exclude<IPCEvents[K]["response"], never>>
     ): AppEventToken {
-        const listenerFn = async (_event: Electron.IpcRendererEvent, data: IPCEvents[K]["data"]) => {
+        const listenerFn = async (_event: Electron.IpcRendererEvent, data: IPCEvents[K]["data"], requestId?: string) => {
             const response = await listener(data);
-            ipcRenderer.send(this.getEventName(key, SubNamespace.Reply), response);
+            const replyChannel = requestId
+                ? this.getEventName(key, SubNamespace.Reply) + "." + requestId
+                : this.getEventName(key, SubNamespace.Reply);
+            ipcRenderer.send(replyChannel, response);
         };
         ipcRenderer.on(this.getEventName(key), listenerFn);
         return {
