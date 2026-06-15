@@ -5,7 +5,7 @@ import { AssetResolved, AssetResolver, ProtocolHandler, ProtocolResponse, Protoc
 import { Fs, getMimeType } from "@shared/utils/fs";
 import { normalizePath } from "@shared/utils/string";
 import { FsRejectErrorCode } from "@shared/types/os";
-import { StorageManager } from "../storageManager";
+import { FileStorageInfo, StorageManager } from "../storageManager";
 
 export class FileSystemHandler implements ProtocolHandler, AssetResolver {
     private rules: ProtocolRule[] = [];
@@ -169,10 +169,14 @@ export class FileSystemHashHandler implements ProtocolHandler {
 
         try {
             if (request.method === 'GET') {
-                // Handle file read
+                if (storageInfo.operation !== "read") {
+                    return this.methodNotAllowed("Hash is not valid for read operations");
+                }
                 return await this.handleRead(hash, storageInfo);
             } else if (request.method === 'PUT') {
-                // Handle file write
+                if (storageInfo.operation !== "write") {
+                    return this.methodNotAllowed("Hash is not valid for write operations");
+                }
                 return await this.handleWrite(hash, request, storageInfo);
             } else {
                 return {
@@ -191,7 +195,15 @@ export class FileSystemHashHandler implements ProtocolHandler {
         }
     }
 
-    private async handleRead(hash: string, storageInfo: any): Promise<ProtocolResponse> {
+    private methodNotAllowed(message: string): ProtocolResponse {
+        return {
+            statusCode: 405,
+            headers: { "Content-Type": "text/plain" },
+            data: message
+        };
+    }
+
+    private async handleRead(hash: string, storageInfo: FileStorageInfo): Promise<ProtocolResponse> {
         let result;
         if (storageInfo.raw) {
             result = await Fs.readRaw(storageInfo.path);
@@ -223,7 +235,7 @@ export class FileSystemHashHandler implements ProtocolHandler {
         };
     }
 
-    private async handleWrite(hash: string, request: Request, storageInfo: any): Promise<ProtocolResponse> {
+    private async handleWrite(hash: string, request: Request, storageInfo: FileStorageInfo): Promise<ProtocolResponse> {
         try {
             const content = await request.arrayBuffer();
             const buffer = Buffer.from(content);

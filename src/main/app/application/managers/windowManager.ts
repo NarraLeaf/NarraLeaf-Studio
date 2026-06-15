@@ -47,6 +47,7 @@ export class WindowManager {
     }
 
     public unregisterWindow(win: AppWindow): void {
+        this.app.storageManager.revokeWindowFileSystemAccess(win);
         this.windows = this.windows.filter(w => w !== win);
     }
 
