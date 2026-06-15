@@ -6,10 +6,7 @@ import { AssetServiceBase } from "./AssetServiceBase";
 export class VideoService extends AssetServiceBase {
 
     public async readLocalVideo(asset: Asset<AssetType.Video>): Promise<RequestStatus<AssetData<AssetType.Video>>> {
-        // Get storage path for the asset
         const path = this.getAssetPath(asset.id);
-
-        // Read video file as buffer
         const fileResult = await this.getFileSystemService().readRaw(path);
         if (!fileResult.ok) {
             return {
@@ -18,10 +15,12 @@ export class VideoService extends AssetServiceBase {
             };
         }
 
-        const buffer = fileResult.data;
+        return this.readVideoFromBuffer(asset, fileResult.data);
+    }
+
+    public async readVideoFromBuffer(asset: Asset<AssetType.Video>, buffer: Uint8Array): Promise<RequestStatus<AssetData<AssetType.Video>>> {
         const size = buffer.byteLength;
 
-        // Get video metadata using HTML Video API
         try {
             const metadata = await this.getVideoMetadata(buffer, asset);
 

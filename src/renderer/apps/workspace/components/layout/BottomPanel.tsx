@@ -6,6 +6,7 @@ import { PanelPosition } from "../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
+import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 
 interface BottomPanelProps {
     panelId: string;
@@ -83,7 +84,9 @@ export function BottomPanel({ panelId, onClose, height }: BottomPanelProps) {
 
             {/* Panel Content with payload */}
             <div className="flex-1 overflow-auto">
-                <PanelComponent panelId={panelId} payload={panel.payload} />
+                <WorkspacePanelErrorBoundary regionLabel={panel.title} isolationKey={panelId}>
+                    <PanelComponent panelId={panelId} payload={panel.payload} />
+                </WorkspacePanelErrorBoundary>
             </div>
         </div>
     );

@@ -1,4 +1,5 @@
 import { Singleton } from "@shared/utils/singleton";
+import { ensureWidgetModulesRegistered } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { IService, WorkspaceContext } from "./services";
 
 export abstract class Service<T extends Service<T> = Service<any>> extends Singleton<T> implements IService {
@@ -6,6 +7,8 @@ export abstract class Service<T extends Service<T> = Service<any>> extends Singl
     private _initialized = false;
 
     public static async initializeAll(ctx: WorkspaceContext): Promise<void> {
+        await ensureWidgetModulesRegistered();
+
         const pending = new Set<Service>();
 
         const init = async (service: Service): Promise<void> => {

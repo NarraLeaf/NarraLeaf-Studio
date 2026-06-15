@@ -1,95 +1,83 @@
-import { useEffect, useRef } from 'react';
-import { WorkspaceContext } from '@/lib/workspace/services/services';
-import { UIService } from '@/lib/workspace/services/core/UIService';
-import { Services } from '@/lib/workspace/services/services';
-import { FocusArea, FocusContext } from '@/lib/workspace/services/ui/types';
+import { useMemo } from "react";
+import { FocusArea } from "@/lib/workspace/services/ui/types";
+import {
+    useKeybindings,
+    whenFocused,
+    type KeybindingDefinition,
+} from "@/apps/workspace/hooks";
 
 export interface UseKeyboardShortcutsParams {
-    context: WorkspaceContext | null;
+    /** Whether the shortcuts should be enabled */
     isInitialized: boolean;
+    /** Panel ID to scope the shortcuts to */
     panelId: string;
+    /** Copy handler */
     onCopy: () => void;
+    /** Cut handler */
     onCut: () => void;
+    /** Paste handler */
     onPaste: () => void;
     /** Callback to rename selected asset/group */
     onRename: () => void;
+    /** Whether to register clipboard shortcuts. Defaults to true. */
+    registerClipboardShortcuts?: boolean;
 }
 
+/**
+ * Hook to register keyboard shortcuts for the assets panel
+ * Uses the new simplified keybinding system
+ */
 export function useKeyboardShortcuts({
-    context,
     isInitialized,
     panelId,
     onCopy,
     onCut,
     onPaste,
     onRename,
+    registerClipboardShortcuts = true,
 }: UseKeyboardShortcutsParams) {
-    // Use refs to store the latest function references
-    const onCopyRef = useRef(onCopy);
-    const onCutRef = useRef(onCut);
-    const onPasteRef = useRef(onPaste);
-    const onRenameRef = useRef(onRename);
+    // Build keybinding definitions based on options
+    const keybindings = useMemo(() => {
+        const bindings: KeybindingDefinition[] = [];
 
-    // Update refs when functions change
-    onCopyRef.current = onCopy;
-    onCutRef.current = onCut;
-    onPasteRef.current = onPaste;
-    onRenameRef.current = onRename;
+        if (registerClipboardShortcuts) {
+            bindings.push(
+                {
+                    id: "copy",
+                    key: "ctrl+c",
+                    description: "Copy selected assets",
+                    handler: onCopy,
+                },
+                {
+                    id: "cut",
+                    key: "ctrl+x",
+                    description: "Cut selected assets",
+                    handler: onCut,
+                },
+                {
+                    id: "paste",
+                    key: "ctrl+v",
+                    description: "Paste assets",
+                    handler: onPaste,
+                }
+            );
+        }
 
-    useEffect(() => {
-        console.log('useKeyboardShortcuts initialized for panel:', panelId);
-        if (!context || !isInitialized) return;
-
-        const uiService = context.services.get<UIService>(Services.UI);
-        const when = (focusContext: FocusContext) => focusContext.area === FocusArea.LeftPanel && focusContext.targetId === panelId;
-
-        // Register keybindings through the global keybinding service
-        const unregisterCopy = uiService.keybindings.register({
-            id: `assets-${panelId}-copy`,
-            key: 'ctrl+c',
-            description: 'Copy selected assets',
-            handler: () => {
-                onCopyRef.current();
-            },
-            when,
+        bindings.push({
+            id: "rename",
+            key: "f2",
+            description: "Rename selected asset or group",
+            handler: onRename,
         });
 
+        return bindings;
+    }, [registerClipboardShortcuts, onCopy, onCut, onPaste, onRename]);
 
-        const unregisterCut = uiService.keybindings.register({
-            id: `assets-${panelId}-cut`,
-            key: 'ctrl+x',
-            description: 'Cut selected assets',
-            handler: () => {
-                onCutRef.current();
-            },
-            when,
-        });
-
-        const unregisterPaste = uiService.keybindings.register({
-            id: `assets-${panelId}-paste`,
-            key: 'ctrl+v',
-            description: 'Paste assets',
-            handler: () => {
-                onPasteRef.current();
-            },
-            when,
-        });
-
-        const unregisterRename = uiService.keybindings.register({
-            id: `assets-${panelId}-rename`,
-            key: 'f2',
-            description: 'Rename selected asset or group',
-            handler: () => {
-                onRenameRef.current();
-            },
-            when,
-        });
-
-        return () => {
-            unregisterCopy();
-            unregisterCut();
-            unregisterPaste();
-            unregisterRename();
-        };
-    }, [context, isInitialized, panelId]); // Removed function dependencies
+    // Use the new keybindings hook with common condition
+    useKeybindings({
+        keybindings,
+        enabled: isInitialized,
+        when: whenFocused(FocusArea.LeftPanel, panelId),
+        idPrefix: `assets-${panelId}`,
+    });
 }

@@ -28,6 +28,8 @@ export interface UseAssetActionsParams {
     setClipboard: (clipboard: ClipboardState | null) => void;
     /** Notify caller when a long-running action starts/ends */
     setActionLoading?: (loading: boolean) => void;
+    /** Function to expand a group by its ID */
+    expandGroup?: (groupId: string) => void;
 }
 
 export function useAssetActions({
@@ -41,7 +43,8 @@ export function useAssetActions({
     focusedItemId,
     onActionComplete,
     setClipboard,
-    setActionLoading
+    setActionLoading,
+    expandGroup
 }: UseAssetActionsParams) {
     // Use ref to always have latest context inside callbacks to avoid stale closure issues.
     const contextRef = useRef(context);
@@ -65,6 +68,60 @@ export function useAssetActions({
         const ids = Array.from(selectedItems).filter(id => id.startsWith('asset:')).map(id => id.replace('asset:', ''));
         return Object.values(assets).flat().filter(a => ids.includes(a.id));
     }, [selectedItems, assets]);
+
+    const getSelectedGroups = useCallback((): AssetGroup[] => {
+        const ids = Array.from(selectedItems).filter(id => id.startsWith('group:')).map(id => id.replace('group:', ''));
+        return Object.values(groups).flat().filter(g => ids.includes(g.id));
+    }, [selectedItems, groups]);
+
+    /**
+     * Check if an asset belongs to any of the selected groups (including nested groups).
+     * This is used to avoid duplicating assets that are already inside a selected group.
+     */
+    const isAssetInSelectedGroups = useCallback((asset: Asset, selectedGroupIds: Set<string>): boolean => {
+        if (!asset.groupId) return false;
+        
+        const allGroups = Object.values(groups).flat();
+        let currentGroupId: string | undefined = asset.groupId;
+        
+        // Walk up the group hierarchy and check if any ancestor is in the selected groups
+        while (currentGroupId) {
+            if (selectedGroupIds.has(currentGroupId)) {
+                return true;
+            }
+            
+            const currentGroup = allGroups.find(g => g.id === currentGroupId);
+            if (!currentGroup) break;
+            
+            currentGroupId = currentGroup.parentGroupId;
+        }
+        
+        return false;
+    }, [groups]);
+
+    /**
+     * Check if a group is a child of any selected group (to avoid duplicating nested groups).
+     */
+    const isGroupChildOfSelectedGroups = useCallback((group: AssetGroup, selectedGroupIds: Set<string>): boolean => {
+        if (!group.parentGroupId) return false;
+        
+        const allGroups = Object.values(groups).flat();
+        let currentGroupId: string | undefined = group.parentGroupId;
+        
+        // Walk up the parent hierarchy and check if any ancestor is in the selected groups
+        while (currentGroupId) {
+            if (selectedGroupIds.has(currentGroupId)) {
+                return true;
+            }
+            
+            const currentGroup = allGroups.find(g => g.id === currentGroupId);
+            if (!currentGroup) break;
+            
+            currentGroupId = currentGroup.parentGroupId;
+        }
+        
+        return false;
+    }, [groups]);
 
     const handleImport = useCallback(async (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
         if (!context) return;
@@ -126,6 +183,45 @@ export function useAssetActions({
         onActionComplete();
         notifyLoading(false);
     }, [context, withAssetsService, onActionComplete, notifyLoading]);
+
+    const handleImportRemote = useCallback(async (type: AssetType) => {
+        if (!context || !inputDialog) return;
+        notifyLoading(true);
+
+        const url = await inputDialog.show({
+            title: "Import Remote Asset",
+            placeholder: "https://example.com/asset.png",
+            description: "Paste a direct link to the remote asset",
+            required: true,
+            validation: (value) => {
+                try {
+                    new URL(value.trim());
+                    return null;
+                } catch {
+                    return "Please enter a valid URL";
+                }
+            },
+            assetType: type,
+        });
+
+        if (!url) {
+            notifyLoading(false);
+            return;
+        }
+
+        await withAssetsService(async (assetsService) => {
+            const result = await assetsService.importRemoteAsset(type, url.trim());
+            if (!result.success) {
+                context.services.get<UIService>(Services.UI).showAlert(
+                    "Failed to import remote asset",
+                    result.error || "Unknown error"
+                );
+            }
+        });
+
+        onActionComplete();
+        notifyLoading(false);
+    }, [context, inputDialog, withAssetsService, onActionComplete, notifyLoading]);
     
     // Support drag-in files directly to a group
     const handleImportToGroup = useCallback(async (type: AssetType, groupId?: string, files?: FileList, dataTransfer?: DataTransfer) => {
@@ -153,43 +249,83 @@ export function useAssetActions({
 
     const handleCopy = useCallback(() => {
         let assetsToCopy: Asset[] = [];
-        if (selectedItems.size > 1) {
-            assetsToCopy = getSelectedAssets();
-        } else if (contextMenuTarget?.item && !contextMenuTarget.isGroup) {
-            assetsToCopy = [contextMenuTarget.item as Asset];
-        } else if (focusedItemId?.startsWith('asset:')) {
-            const assetId = focusedItemId.replace('asset:', '');
-            const asset = Object.values(assets).flat().find(a => a.id === assetId);
-            if (asset) assetsToCopy = [asset];
-        } else {
-            const selected = getSelectedAssets();
-            if (selected.length === 1) assetsToCopy = selected;
+        let groupsToCopy: AssetGroup[] = [];
+
+        if (selectedItems.size > 0) {
+            const allSelectedGroups = getSelectedGroups();
+            const selectedGroupIds = new Set(allSelectedGroups.map(g => g.id));
+            
+            // Filter out groups that are children of other selected groups
+            groupsToCopy = allSelectedGroups.filter(
+                group => !isGroupChildOfSelectedGroups(group, selectedGroupIds)
+            );
+            
+            // Filter out assets that are inside selected groups to avoid duplication
+            assetsToCopy = getSelectedAssets().filter(
+                asset => !isAssetInSelectedGroups(asset, selectedGroupIds)
+            );
+        } else if (contextMenuTarget?.item) {
+            if (contextMenuTarget.isGroup) {
+                groupsToCopy = [contextMenuTarget.item as AssetGroup];
+            } else {
+                assetsToCopy = [contextMenuTarget.item as Asset];
+            }
+        } else if (focusedItemId) {
+            if (focusedItemId.startsWith('asset:')) {
+                const assetId = focusedItemId.replace('asset:', '');
+                const asset = Object.values(assets).flat().find(a => a.id === assetId);
+                if (asset) assetsToCopy = [asset];
+            } else if (focusedItemId.startsWith('group:')) {
+                const groupId = focusedItemId.replace('group:', '');
+                const group = Object.values(groups).flat().find(g => g.id === groupId);
+                if (group) groupsToCopy = [group];
+            }
         }
 
-        if (assetsToCopy.length > 0) {
-            setClipboard({ type: 'copy', assets: assetsToCopy });
+        if (assetsToCopy.length > 0 || groupsToCopy.length > 0) {
+            setClipboard({ type: 'copy', assets: assetsToCopy, groups: groupsToCopy });
         }
-    }, [contextMenuTarget, selectedItems, assets, focusedItemId, getSelectedAssets, setClipboard]);
+    }, [contextMenuTarget, selectedItems, assets, groups, focusedItemId, getSelectedAssets, getSelectedGroups, isAssetInSelectedGroups, isGroupChildOfSelectedGroups, setClipboard]);
 
     const handleCut = useCallback(() => {
         let assetsToCut: Asset[] = [];
-        if (selectedItems.size > 1) {
-            assetsToCut = getSelectedAssets();
-        } else if (contextMenuTarget?.item && !contextMenuTarget.isGroup) {
-            assetsToCut = [contextMenuTarget.item as Asset];
-        } else if (focusedItemId?.startsWith('asset:')) {
-            const assetId = focusedItemId.replace('asset:', '');
-            const asset = Object.values(assets).flat().find(a => a.id === assetId);
-            if (asset) assetsToCut = [asset];
-        } else {
-            const selected = getSelectedAssets();
-            if (selected.length === 1) assetsToCut = selected;
+        let groupsToCut: AssetGroup[] = [];
+
+        if (selectedItems.size > 0) {
+            const allSelectedGroups = getSelectedGroups();
+            const selectedGroupIds = new Set(allSelectedGroups.map(g => g.id));
+            
+            // Filter out groups that are children of other selected groups
+            groupsToCut = allSelectedGroups.filter(
+                group => !isGroupChildOfSelectedGroups(group, selectedGroupIds)
+            );
+            
+            // Filter out assets that are inside selected groups to avoid duplication
+            assetsToCut = getSelectedAssets().filter(
+                asset => !isAssetInSelectedGroups(asset, selectedGroupIds)
+            );
+        } else if (contextMenuTarget?.item) {
+            if (contextMenuTarget.isGroup) {
+                groupsToCut = [contextMenuTarget.item as AssetGroup];
+            } else {
+                assetsToCut = [contextMenuTarget.item as Asset];
+            }
+        } else if (focusedItemId) {
+            if (focusedItemId.startsWith('asset:')) {
+                const assetId = focusedItemId.replace('asset:', '');
+                const asset = Object.values(assets).flat().find(a => a.id === assetId);
+                if (asset) assetsToCut = [asset];
+            } else if (focusedItemId.startsWith('group:')) {
+                const groupId = focusedItemId.replace('group:', '');
+                const group = Object.values(groups).flat().find(g => g.id === groupId);
+                if (group) groupsToCut = [group];
+            }
         }
 
-        if (assetsToCut.length > 0) {
-            setClipboard({ type: 'cut', assets: assetsToCut });
+        if (assetsToCut.length > 0 || groupsToCut.length > 0) {
+            setClipboard({ type: 'cut', assets: assetsToCut, groups: groupsToCut });
         }
-    }, [contextMenuTarget, selectedItems, assets, focusedItemId, getSelectedAssets, setClipboard]);
+    }, [contextMenuTarget, selectedItems, assets, groups, focusedItemId, getSelectedAssets, getSelectedGroups, isAssetInSelectedGroups, isGroupChildOfSelectedGroups, setClipboard]);
 
     const handlePaste = useCallback(async () => {
         if (!context || !clipboard) return;
@@ -211,24 +347,39 @@ export function useAssetActions({
         await withAssetsService(async (assetsService) => {
             await assetsService.transaction(async (svc) => {
                 if (clipboard.type === 'cut') {
+                    // Move assets
                     for (const a of clipboard.assets) {
                         await svc.moveAssetToGroup(a, targetGroupId);
                     }
+                    // Move groups
+                    for (const g of clipboard.groups) {
+                        await svc.moveGroupToParent(g.type, g.id, targetGroupId);
+                    }
                     setClipboard(null);
                 } else if (clipboard.type === 'copy') {
+                    // Duplicate assets
                     for (const a of clipboard.assets) {
                         const dupResult = await svc.duplicateAsset(a);
-                        if (dupResult.success && dupResult.data && targetGroupId) {
+                        if (dupResult.success && dupResult.data) {
                             await svc.moveAssetToGroup(dupResult.data, targetGroupId);
                         }
+                    }
+                    // Duplicate groups (recursively copies all assets and child groups)
+                    for (const g of clipboard.groups) {
+                        await svc.duplicateGroup(g.type, g.id, targetGroupId);
                     }
                 }
             });
         });
 
+        // Expand the target group if pasting into a group
+        if (targetGroupId && expandGroup) {
+            expandGroup(targetGroupId);
+        }
+
         onActionComplete();
         notifyLoading(false);
-    }, [clipboard, context, contextMenuTarget, focusedItemId, assets, onActionComplete, withAssetsService, setClipboard, notifyLoading]);
+    }, [clipboard, context, contextMenuTarget, focusedItemId, assets, onActionComplete, withAssetsService, setClipboard, notifyLoading, expandGroup]);
     
     const handleRename = useCallback(async () => {
         if (!context || !inputDialog) return;
@@ -278,6 +429,7 @@ export function useAssetActions({
                 await assetsService.renameAsset(target.item as Asset, newName);
             }
         });
+
         onActionComplete();
     }, [context, contextMenuTarget, selectedItems, focusedItemId, assets, groups, inputDialog, onActionComplete, withAssetsService]);
 
@@ -286,6 +438,7 @@ export function useAssetActions({
         const ctx = contextRef.current;
         if (!ctx) { notifyLoading(false); return; }
         const uiService = ctx.services.get<UIService>(Services.UI);
+        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
         
         // Determine targets in priority order: selection > context menu target > focused item
         let targets: { isGroup: boolean; type: AssetType; item: Asset | AssetGroup }[] = [];
@@ -338,8 +491,37 @@ export function useAssetActions({
 
         if (targets.length === 0) return;
 
-        const confirmed = await uiService.showConfirm(`Delete ${targets.length} item(s)?`, 'All assets in the group will be deleted. This cannot be undone.');
-        if (!confirmed) return;
+        // Check for locked assets
+        const lockedAssets: { asset: Asset; reasons: string[] }[] = [];
+        for (const target of targets) {
+            if (!target.isGroup) {
+                const asset = target.item as Asset;
+                if (assetsService.isAssetLocked(asset.id)) {
+                    const reasons = assetsService.getAssetLocks(asset.id);
+                    lockedAssets.push({ asset, reasons });
+                }
+            }
+        }
+
+        // If there are locked assets, show warning
+        if (lockedAssets.length > 0) {
+            const lockMessages = lockedAssets.map(({ asset, reasons }) => 
+                `- ${asset.name}:\n  ${reasons.join('\n  ')}`
+            ).join('\n');
+            
+            const message = `${lockMessages}`;
+            const forceConfirmed = await uiService.showConfirm('Assets are in use', message);
+            if (!forceConfirmed) {
+                notifyLoading(false);
+                return;
+            }
+        }
+
+        const confirmed = await uiService.showConfirm(`Delete ${targets.length} items?`, 'All assets in the group will be deleted. This action cannot be undone.');
+        if (!confirmed) {
+            notifyLoading(false);
+            return;
+        }
 
         // Remove duplicate targets by id to avoid double deletion
         const uniqueTargets = Array.from(new Map(targets.map(t => [t.item.id, t])).values());
@@ -433,6 +615,7 @@ export function useAssetActions({
         handleCreateGroup,
         handleImport,
         handleImportToGroup,
+        handleImportRemote,
         handleCopy,
         handleCut,
         handlePaste,

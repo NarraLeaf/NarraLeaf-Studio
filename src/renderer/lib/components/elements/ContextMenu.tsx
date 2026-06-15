@@ -6,10 +6,15 @@ import { ChevronRight } from "lucide-react";
 export interface ContextMenuItemDef {
     id: string;
     label: string;
+    /** Leading icon; when the menu has `iconsEnabled`, the column is still reserved if this is omitted. */
     icon?: ReactNode;
     disabled?: boolean;
     onClick?: () => void;
     submenu?: ContextMenuItemDef[];
+    /**
+     * When this item opens a submenu, sets `iconsEnabled` for that submenu only (not inherited from the parent menu).
+     */
+    submenuIconsEnabled?: boolean;
     separator?: never;
 }
 
@@ -21,6 +26,15 @@ export interface ContextMenuSeparatorDef {
 export type ContextMenuDef = (ContextMenuItemDef | ContextMenuSeparatorDef)[];
 
 // ContextMenu Props
+export interface ContextMenuAnchorRect {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+    width: number;
+    height: number;
+}
+
 export interface ContextMenuProps {
     /** Menu items */
     items: ContextMenuDef;
@@ -30,6 +44,14 @@ export interface ContextMenuProps {
     onClose: () => void;
     /** Whether the menu is visible */
     visible?: boolean;
+    /** Optional anchor bounds for aligning related menus */
+    anchorRect?: ContextMenuAnchorRect;
+    /**
+     * When true, every row in this menu reserves a fixed leading slot for `item.icon` so labels align.
+     * When false (default), an icon is only rendered if `item.icon` is set (legacy behavior).
+     * Does not apply to nested submenus; those use `submenuIconsEnabled` on the item that owns the submenu.
+     */
+    iconsEnabled?: boolean;
 }
 
 /**
@@ -41,11 +63,24 @@ export function ContextMenu({
     position,
     onClose,
     visible = true,
+    anchorRect,
+    iconsEnabled = false,
 }: ContextMenuProps) {
     const menuRef = useRef<HTMLDivElement>(null);
     const [adjustedPosition, setAdjustedPosition] = useState(position);
     const [focusedIndex, setFocusedIndex] = useState(0);
     const [openSubmenuIndex, setOpenSubmenuIndex] = useState<number | null>(null);
+
+    useLayoutEffect(() => {
+        if (!visible) {
+            setOpenSubmenuIndex(null);
+            return;
+        }
+
+        setFocusedIndex(0);
+        setOpenSubmenuIndex(null);
+        setAdjustedPosition(position);
+    }, [visible, position.x, position.y]);
 
     // Adjust position to keep menu on screen
     useLayoutEffect(() => {
@@ -54,54 +89,65 @@ export function ContextMenu({
         const rect = menuRef.current.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
-
         let { x, y } = position;
+        const padding = 8;
 
-        // Adjust horizontal position
-        if (x + rect.width > viewportWidth) {
-            x = viewportWidth - rect.width - 8;
-        }
-        if (x < 0) {
-            x = 8;
-        }
-
-        // Adjust vertical position
-        if (y + rect.height > viewportHeight) {
-            y = viewportHeight - rect.height - 8;
-        }
-        if (y < 0) {
-            y = 8;
+        if (anchorRect) {
+            const spaceRight = viewportWidth - anchorRect.right - padding;
+            const spaceLeft = anchorRect.left - padding;
+            const shouldOpenLeft = spaceRight < rect.width && spaceLeft >= rect.width;
+            if (shouldOpenLeft) {
+                x = anchorRect.left - rect.width;
+            } else if (x + rect.width > viewportWidth - padding) {
+                x = viewportWidth - rect.width - padding;
+            }
+        } else if (x + rect.width > viewportWidth - padding) {
+            x = viewportWidth - rect.width - padding;
         }
 
-        if (x !== adjustedPosition.x || y !== adjustedPosition.y) {
-            setAdjustedPosition({ x, y });
+        if (x < padding) {
+            x = padding;
         }
-    }, [position, visible, items]);
+
+        if (y + rect.height > viewportHeight - padding) {
+            y = viewportHeight - rect.height - padding;
+        }
+        if (y < padding) {
+            y = padding;
+        }
+
+        setAdjustedPosition(prev => (x !== prev.x || y !== prev.y ? { x, y } : prev));
+    }, [position, visible, items, anchorRect]);
 
     // Close on click outside
     useEffect(() => {
         if (!visible) return;
 
         const handleClickOutside = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-                onClose();
-            }
+            const target = e.target as Node | null;
+            if (!target) return;
+            const inAnyMenu = (target as HTMLElement).closest?.('[data-context-menu="true"]');
+            if (inAnyMenu) return;
+            onClose();
         };
 
         // Delay to prevent immediate closure from the opening click
         const timer = setTimeout(() => {
-            document.addEventListener('mousedown', handleClickOutside);
+            document.addEventListener('mousedown', handleClickOutside, true);
         }, 0);
 
         return () => {
             clearTimeout(timer);
-            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('mousedown', handleClickOutside, true);
         };
     }, [visible, onClose]);
 
     // Keyboard navigation
     useEffect(() => {
-        if (!visible) return;
+        if (!visible) {
+            setOpenSubmenuIndex(null);
+            return;
+        }
 
         const enabledItems = items.filter(
             item => !('separator' in item && item.separator) && !item.disabled
@@ -159,6 +205,7 @@ export function ContextMenu({
     const menuContent = (
         <div
             ref={menuRef}
+            data-context-menu="true"
             className="fixed z-50 min-w-48 bg-[#1e1f22] border border-white/10 rounded-md shadow-lg py-1"
             style={{
                 left: `${adjustedPosition.x}px`,
@@ -166,6 +213,7 @@ export function ContextMenu({
                 maxHeight: "calc(100vh - 16px)",
                 overflowY: "auto",
             }}
+            onMouseDown={(e) => e.stopPropagation()}
         >
             {items.map((item, index) => {
                 if ('separator' in item && item.separator) {
@@ -183,7 +231,9 @@ export function ContextMenu({
                         isFocused={isFocused}
                         onClose={onClose}
                         isSubmenuOpen={isOpen}
-                        onSubmenuToggle={() => setOpenSubmenuIndex(isOpen ? null : index)}
+                        onSubmenuOpen={() => setOpenSubmenuIndex(index)}
+                        onSubmenuClose={() => setOpenSubmenuIndex(null)}
+                        iconsEnabled={iconsEnabled}
                     />
                 );
             })}
@@ -203,7 +253,9 @@ interface ContextMenuItemProps {
     isFocused: boolean;
     onClose: () => void;
     isSubmenuOpen: boolean;
-    onSubmenuToggle: () => void;
+    onSubmenuOpen: () => void;
+    onSubmenuClose: () => void;
+    iconsEnabled: boolean;
 }
 
 function ContextMenuItem({
@@ -211,10 +263,13 @@ function ContextMenuItem({
     isFocused,
     onClose,
     isSubmenuOpen,
-    onSubmenuToggle,
+    onSubmenuOpen,
+    onSubmenuClose,
+    iconsEnabled,
 }: ContextMenuItemProps) {
     const itemRef = useRef<HTMLDivElement>(null);
     const [submenuPosition, setSubmenuPosition] = useState({ x: 0, y: 0 });
+    const [submenuAnchor, setSubmenuAnchor] = useState<ContextMenuAnchorRect | null>(null);
 
     const hasSubmenu = item.submenu && item.submenu.length > 0;
 
@@ -226,6 +281,16 @@ function ContextMenuItem({
                 x: rect.right,
                 y: rect.top,
             });
+            setSubmenuAnchor({
+                left: rect.left,
+                right: rect.right,
+                top: rect.top,
+                bottom: rect.bottom,
+                width: rect.width,
+                height: rect.height,
+            });
+        } else {
+            setSubmenuAnchor(null);
         }
     }, [isSubmenuOpen]);
 
@@ -233,7 +298,11 @@ function ContextMenuItem({
         if (item.disabled) return;
 
         if (hasSubmenu) {
-            onSubmenuToggle();
+            if (isSubmenuOpen) {
+                onSubmenuClose();
+            } else {
+                onSubmenuOpen();
+            }
         } else {
             item.onClick?.();
             onClose();
@@ -242,7 +311,7 @@ function ContextMenuItem({
 
     const handleMouseEnter = () => {
         if (hasSubmenu && !item.disabled) {
-            onSubmenuToggle();
+            onSubmenuOpen();
         }
     };
 
@@ -254,7 +323,7 @@ function ContextMenuItem({
                     px-3 py-1.5 flex items-center gap-2 text-sm cursor-default
                     transition-colors duration-150
                     ${item.disabled
-                        ? 'opacity-50 cursor-not-allowed'
+                        ? 'opacity-50 cursor-not-allowed text-gray-300'
                         : isFocused
                         ? 'bg-primary/20 text-white'
                         : 'text-gray-300 hover:bg-white/10 hover:text-white'
@@ -262,12 +331,17 @@ function ContextMenuItem({
                 `}
                 onClick={handleClick}
                 onMouseEnter={handleMouseEnter}
+                onMouseDown={(e) => e.stopPropagation()}
             >
-                {/* Icon */}
-                {item.icon && (
-                    <span className="w-4 h-4 flex-shrink-0">
-                        {item.icon}
+                {/* Icon column: optional slot; reserved when iconsEnabled */}
+                {iconsEnabled ? (
+                    <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                        {item.icon ?? null}
                     </span>
+                ) : (
+                    item.icon ? (
+                        <span className="h-4 w-4 flex-shrink-0">{item.icon}</span>
+                    ) : null
                 )}
 
                 {/* Label */}
@@ -286,6 +360,8 @@ function ContextMenuItem({
                     position={submenuPosition}
                     onClose={onClose}
                     visible={isSubmenuOpen}
+                    anchorRect={submenuAnchor ?? undefined}
+                    iconsEnabled={item.submenuIconsEnabled ?? false}
                 />
             )}
         </>

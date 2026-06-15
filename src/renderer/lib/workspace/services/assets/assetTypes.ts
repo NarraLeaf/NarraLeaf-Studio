@@ -3,6 +3,8 @@ export enum AssetType {
     Audio = "audio",
     Video = "video",
     JSON = "json",
+    /** Shared blueprint asset (M2); content is {@link import("@shared/types/blueprint/document").SharedBlueprintAsset} JSON */
+    Blueprint = "blueprint",
     Font = "font",
     Other = "other",
 }
@@ -37,6 +39,13 @@ export type JSONAssetMetadata = {
     schema?: string;
 };
 
+export type BlueprintAssetMetadata = {
+    size: number;
+    isValid: boolean;
+    /** Logical schema version of the on-disk JSON wrapper; not the instance BlueprintDocument schema */
+    schemaVersion?: number;
+};
+
 export type FontAssetMetadata = {
     family?: string;
     style?: string;
@@ -62,6 +71,9 @@ export type AssetData<Type extends AssetType> = Type extends AssetType.Image ? {
 } : Type extends AssetType.JSON ? {
     data: Record<string, any>;
     metadata: JSONAssetMetadata;
+} : Type extends AssetType.Blueprint ? {
+    data: import("@shared/types/blueprint/document").SharedBlueprintAsset;
+    metadata: BlueprintAssetMetadata;
 } : Type extends AssetType.Font ? {
     data: Uint8Array;
     metadata: FontAssetMetadata;
@@ -96,6 +108,7 @@ export const AssetExtensions = {
         // Standard JSON and JSON with comments (supported by many editors)
         "json", "jsonc"
     ],
+    [AssetType.Blueprint]: ["json", "nlbp"],
     [AssetType.Font]: [
         // Font formats loadable in Chromium
         "ttf", "otf", "ttc", // TrueType / OpenType collections
