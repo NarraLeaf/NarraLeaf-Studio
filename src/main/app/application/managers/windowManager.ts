@@ -5,7 +5,7 @@ import { AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppInfoHandler, App
 import { AppSettingsWindowLaunchHandler } from "./window/handlers/settingAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
-    FsCreateDirHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
+    FsCreateDirHandler, FsEnsureRegularFileHandler, FsWriteFileNoFollowHandler, FsRecoverCorruptedJsonFileHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
     FsCopyFileHandler, FsCopyDirHandler, FsMoveFileHandler, FsMoveDirHandler,
     FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
     FsSelectFileHandler, FsSelectDirectoryHandler, FsHashHandler,
@@ -101,6 +101,9 @@ export class WindowManager {
         win.registerIPCHandler(new FsDetailsHandler());
         win.registerIPCHandler(new FsRequestReadHandler());
         win.registerIPCHandler(new FsRequestWriteHandler());
+        win.registerIPCHandler(new FsEnsureRegularFileHandler());
+        win.registerIPCHandler(new FsWriteFileNoFollowHandler());
+        win.registerIPCHandler(new FsRecoverCorruptedJsonFileHandler());
         win.registerIPCHandler(new FsCreateDirHandler());
         win.registerIPCHandler(new FsDeleteFileHandler());
         win.registerIPCHandler(new FsDeleteDirHandler());

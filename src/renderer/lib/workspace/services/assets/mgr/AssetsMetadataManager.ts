@@ -1,5 +1,4 @@
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
-import { FsRequestResult } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
@@ -123,13 +122,7 @@ export class AssetsMetadataManager {
             AssetType.Image, AssetType.Audio, AssetType.Video, AssetType.JSON, AssetType.Font, AssetType.Other,
         ].map(type => this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type)));
 
-        const tasks = files.map(async file => {
-            const existsResult = await filesystemService.isFileExists(file);
-            if (!existsResult.ok || !existsResult.data) {
-                return filesystemService.write(file, JSON.stringify({}), "utf-8");
-            }
-            return { ok: true, data: void 0 } satisfies FsRequestResult<void, true>;
-        });
+        const tasks = files.map(file => filesystemService.ensureRegularFile(file, JSON.stringify({}), "utf-8"));
         const results = await Promise.all(tasks);
         if (results.some(result => !result.ok)) {
             throw new RendererError(`Failed to read assets metadata shards`);
@@ -171,10 +164,10 @@ export class AssetsMetadataManager {
                     Object.assign(data[type], parsed);
                 } else {
                     console.warn(`AssetsService: metadata shard corrupted, backing up and resetting: ${shardPath}`);
-                    // Backup corrupted file
-                    await filesystemService.copyFile(shardPath, `${shardPath}.bak`);
-                    // Overwrite with empty object
-                    await filesystemService.write(shardPath, JSON.stringify({}), "utf-8");
+                    const recoveryResult = await filesystemService.recoverCorruptedJsonFile(shardPath, JSON.stringify({}), "utf-8");
+                    if (!recoveryResult.ok) {
+                        console.warn(`AssetsService: failed to recover corrupted metadata shard: ${shardPath}`, recoveryResult.error);
+                    }
                 }
             }
         }

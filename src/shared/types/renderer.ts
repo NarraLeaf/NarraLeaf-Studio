@@ -38,6 +38,9 @@ export interface RendererPreloadedInterface {
         requestReadRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWrite(path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWriteRaw(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
+        ensureRegularFile(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
+        writeFileNoFollow(path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
+        recoverCorruptedJsonFile(path: string, replacement: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         createDir(path: string): Promise<RequestStatus<FsRequestResult<void>>>;
         deleteFile(path: string): Promise<RequestStatus<FsRequestResult<void>>>;
         deleteDir(path: string): Promise<RequestStatus<FsRequestResult<void>>>;
