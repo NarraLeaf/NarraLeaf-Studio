@@ -3,10 +3,14 @@ import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
 import { EditorComponentProps } from "../../types";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
+import { useKeybindings, whenEditorFocused } from "@/apps/workspace/hooks";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { FocusArea } from "@/lib/workspace/services/ui/types";
+import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
@@ -53,7 +57,11 @@ function getGraphToolbarLabel(bp: Blueprint, view: BlueprintEditorGraphView | nu
     return `Function · ${name}`;
 }
 
-export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
+function isTypingInField(): boolean {
+    return isEditableKeyboardTarget(document.activeElement);
+}
+
+export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
     const revision = useBlueprintDocumentRevision();
 
@@ -68,6 +76,7 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
     const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
     const uuid = context.services.get<UuidService>(Services.Uuid);
     const uidoc = context.services.get<UIDocumentService>(Services.UIDocument);
+    const uiService = context.services.get<UIService>(Services.UI);
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const doc = localBp.getBlueprintDocument();
     const bp = doc.blueprints[payload.blueprintId];
@@ -99,6 +108,9 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
         widgetSurfaceId: payload.surfaceId,
     });
     const openBlueprint = useOpenBlueprintTarget();
+    const focusBlueprintEditor = useCallback(() => {
+        uiService.focus.setFocus(FocusArea.Editor, tabId);
+    }, [tabId, uiService]);
 
     const reopenRevision = useCallback(
         (blueprintId: string) => {
@@ -120,10 +132,59 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
         [localBp, payload.blueprintId],
     );
 
+    const blueprintHistoryKeybindings = useMemo(
+        () => [
+            {
+                id: "undo-ctrl",
+                key: "ctrl+z",
+                handler: () => {
+                    if (!isTypingInField()) {
+                        localBp.undoBlueprint(payload.blueprintId);
+                    }
+                },
+            },
+            {
+                id: "redo-ctrl",
+                key: "ctrl+shift+z",
+                handler: () => {
+                    if (!isTypingInField()) {
+                        localBp.redoBlueprint(payload.blueprintId);
+                    }
+                },
+            },
+            {
+                id: "undo-meta",
+                key: "meta+z",
+                handler: () => {
+                    if (!isTypingInField()) {
+                        localBp.undoBlueprint(payload.blueprintId);
+                    }
+                },
+            },
+            {
+                id: "redo-meta",
+                key: "meta+shift+z",
+                handler: () => {
+                    if (!isTypingInField()) {
+                        localBp.redoBlueprint(payload.blueprintId);
+                    }
+                },
+            },
+        ],
+        [localBp, payload.blueprintId],
+    );
+
+    useKeybindings({
+        keybindings: blueprintHistoryKeybindings,
+        enabled: Boolean(payload.blueprintId),
+        when: whenEditorFocused(tabId),
+        idPrefix: `blueprint-editor-${tabId}`,
+    });
+
     const ir = getActiveIr(bp, editor.graphView);
 
     const commitIr = useCallback(
-        (next: BlueprintGraphIr) => {
+        (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => {
             if (!editor.graphView) {
                 return;
             }
@@ -135,9 +196,9 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
                 draft.variables = next.variables;
             };
             if (editor.graphView.kind === "event") {
-                localBp.updateEventGraphIr(blueprintId, editor.graphView.graphId, apply);
+                localBp.updateEventGraphIr(blueprintId, editor.graphView.graphId, apply, history);
             } else {
-                localBp.updateFunctionGraphIr(blueprintId, editor.graphView.graphId, apply);
+                localBp.updateFunctionGraphIr(blueprintId, editor.graphView.graphId, apply, history);
             }
         },
         [editor.graphView, localBp, payload],
@@ -174,9 +235,11 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
 
     const onDeleteLayer = useCallback(
         (layerId: string) => {
-            uidoc.stripBlueprintLayerBindings(payload.surfaceId, payload.blueprintId, layerId);
             const wasActive = editor.graphView?.kind === "event" && editor.graphView.graphId === layerId;
-            localBp.removeEventGraph(payload.blueprintId, layerId);
+            localBp.runBlueprintHistoryTransaction(payload.blueprintId, () => {
+                uidoc.stripBlueprintLayerBindings(payload.surfaceId, payload.blueprintId, layerId);
+                localBp.removeEventGraph(payload.blueprintId, layerId);
+            });
             if (wasActive) {
                 const remaining = localBp.listEventGraphIds(payload.blueprintId);
                 if (remaining.length > 0) {
@@ -303,27 +366,33 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
     if (bp.program.kind === "scriptModule") {
         const src = bp.program.source.code;
         return (
-            <BlueprintEditorLayout
-                header={
-                    <div
-                        className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5"
-                        title={contextTitle}
-                    >
-                        <span className="text-sm font-semibold text-white">TypeScript</span>
-                        <BlueprintFrontendBadge kind="typescript" />
-                        <span className="truncate font-mono text-[11px] text-gray-400">{bp.name}</span>
-                    </div>
-                }
-                memberTree={
-                    <BlueprintPrivateRevisionBar
-                        blueprint={bp}
-                        localBp={localBp}
-                        onReopenRevision={reopenRevision}
-                    />
-                }
-                canvas={<TypeScriptBlueprintEditorPane code={src} onChange={onTsSourceChange} />}
-                diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
-            />
+            <div
+                className="h-full min-h-0"
+                onMouseDownCapture={focusBlueprintEditor}
+                onFocusCapture={focusBlueprintEditor}
+            >
+                <BlueprintEditorLayout
+                    header={
+                        <div
+                            className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5"
+                            title={contextTitle}
+                        >
+                            <span className="text-sm font-semibold text-white">TypeScript</span>
+                            <BlueprintFrontendBadge kind="typescript" />
+                            <span className="truncate font-mono text-[11px] text-gray-400">{bp.name}</span>
+                        </div>
+                    }
+                    memberTree={
+                        <BlueprintPrivateRevisionBar
+                            blueprint={bp}
+                            localBp={localBp}
+                            onReopenRevision={reopenRevision}
+                        />
+                    }
+                    canvas={<TypeScriptBlueprintEditorPane code={src} onChange={onTsSourceChange} />}
+                    diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
+                />
+            </div>
         );
     }
 
@@ -378,25 +447,31 @@ export function BlueprintEntryTab({ payload }: EditorComponentProps<BlueprintEnt
         );
 
     return (
-        <BlueprintEditorLayout
-            header={header}
-            onMemberPanelFocusContainedChange={setMemberPanelFocusContained}
-            memberTree={
-                <BlueprintMemberTree
-                    blueprint={bp}
-                    blueprintId={payload.blueprintId}
-                    blueprintDocumentRevision={revision}
-                    graphView={editor.graphView}
-                    diagnostics={diagnostics}
-                    localBp={localBp}
-                    widgetElementType={widgetElement?.type}
-                    onSelectLayer={editor.selectEventGraph}
-                    onAddLayer={onAddEvent}
-                    onDeleteLayer={onDeleteLayer}
-                />
-            }
-            canvas={canvas}
-            diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
-        />
+        <div
+            className="h-full min-h-0"
+            onMouseDownCapture={focusBlueprintEditor}
+            onFocusCapture={focusBlueprintEditor}
+        >
+            <BlueprintEditorLayout
+                header={header}
+                onMemberPanelFocusContainedChange={setMemberPanelFocusContained}
+                memberTree={
+                    <BlueprintMemberTree
+                        blueprint={bp}
+                        blueprintId={payload.blueprintId}
+                        blueprintDocumentRevision={revision}
+                        graphView={editor.graphView}
+                        diagnostics={diagnostics}
+                        localBp={localBp}
+                        widgetElementType={widgetElement?.type}
+                        onSelectLayer={editor.selectEventGraph}
+                        onAddLayer={onAddEvent}
+                        onDeleteLayer={onDeleteLayer}
+                    />
+                }
+                canvas={canvas}
+                diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
+            />
+        </div>
     );
 }

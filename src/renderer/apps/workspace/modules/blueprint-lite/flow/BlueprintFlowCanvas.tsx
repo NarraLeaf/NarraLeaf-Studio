@@ -97,7 +97,7 @@ type BlueprintFlowCanvasInnerProps = {
     blueprintMemberVariables: Array<{ id: string; name: string }>;
     selectedNodeIds: readonly string[];
     onSelectNodeIds: (ids: string[]) => void;
-    onCommitIr: (next: BlueprintGraphIr) => void;
+    onCommitIr: (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => void;
     /**
      * When set, right-click on the pane opens a compact search menu. After picking a type, a preview follows
      * the cursor until click; this callback runs on confirm with the final flow position. Return the new id
@@ -135,6 +135,14 @@ function BlueprintFlowCanvasInner({
     const irRef = useRef(ir);
     irRef.current = ir;
 
+    const commitBlueprintIr = useCallback(
+        (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => {
+            irRef.current = next;
+            onCommitIr(next, history);
+        },
+        [onCommitIr],
+    );
+
     const patchNodeParam = useCallback(
         (nodeId: string, key: string, value: unknown) => {
             const snap = cloneBlueprintIr(irRef.current);
@@ -149,9 +157,9 @@ function BlueprintFlowCanvasInner({
                 next[key] = value;
             }
             n.params = next;
-            onCommitIr(snap);
+            commitBlueprintIr(snap);
         },
-        [onCommitIr],
+        [commitBlueprintIr],
     );
 
     const patchNodeParamRef = useRef(patchNodeParam);
@@ -181,9 +189,9 @@ function BlueprintFlowCanvasInner({
             const list = [...readDynamicInputPinIds(params, d.storageKey), nextId];
             params[d.storageKey] = list;
             n.params = params;
-            onCommitIr(snap);
+            commitBlueprintIr(snap);
         },
-        [onCommitIr],
+        [commitBlueprintIr],
     );
 
     const removeDynamicInputPin = useCallback(
@@ -224,9 +232,9 @@ function BlueprintFlowCanvasInner({
                     !(e.to.nodeId === nodeId && e.to.port === pinId) &&
                     !(e.from.nodeId === nodeId && e.from.port === pinId),
             );
-            onCommitIr(snap);
+            commitBlueprintIr(snap);
         },
-        [onCommitIr],
+        [commitBlueprintIr],
     );
 
     const addDynamicInputPinRef = useRef(addDynamicInputPin);
@@ -453,8 +461,8 @@ function BlueprintFlowCanvasInner({
         isNodeDragActiveRef.current = false;
         const next = cloneBlueprintIr(irRef.current);
         applyFlowPositionsToIr(next, getNodes() as Node[]);
-        onCommitIr(next);
-    }, [getNodes, onCommitIr]);
+        commitBlueprintIr(next);
+    }, [commitBlueprintIr, getNodes]);
 
     const isValidConnection = useCallback((connection: Connection | Edge) => {
         if (
@@ -493,9 +501,9 @@ function BlueprintFlowCanvasInner({
                 sourceHandle: connection.sourceHandle,
                 targetHandle: connection.targetHandle,
             });
-            onCommitIr(next);
+            commitBlueprintIr(next);
         },
-        [onCommitIr],
+        [commitBlueprintIr],
     );
 
     const onEdgesDelete = useCallback(
@@ -515,9 +523,9 @@ function BlueprintFlowCanvasInner({
                             (d.targetHandle ?? "") === e.to.port,
                     ),
             );
-            onCommitIr(next);
+            commitBlueprintIr(next);
         },
-        [onCommitIr],
+        [commitBlueprintIr],
     );
 
     const onEdgeDoubleClick = useCallback(
@@ -536,9 +544,9 @@ function BlueprintFlowCanvasInner({
             }
             const next = cloneBlueprintIr(snap);
             next.edges = filtered;
-            onCommitIr(next);
+            commitBlueprintIr(next);
         },
-        [onCommitIr],
+        [commitBlueprintIr],
     );
 
     const onNodesDelete = useCallback(
@@ -559,9 +567,9 @@ function BlueprintFlowCanvasInner({
                 removeBlueprintNodeFromIr(next, n.id);
             }
             onSelectNodeIds([]);
-            onCommitIr(next);
+            commitBlueprintIr(next);
         },
-        [onCommitIr, onSelectNodeIds],
+        [commitBlueprintIr, onSelectNodeIds],
     );
 
     const onPaneClick = useCallback(
