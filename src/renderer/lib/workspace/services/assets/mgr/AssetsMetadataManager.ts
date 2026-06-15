@@ -1,4 +1,4 @@
-import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
+import { ProjectNameConvention, isValidAssetStorageId } from "@/lib/workspace/project/nameConvention";
 import { RendererError } from "@shared/utils/error";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
@@ -154,7 +154,7 @@ export class AssetsMetadataManager {
             const shardPath = this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type));
             const shardResult = await filesystemService.readJSON<Record<string, Asset>>(shardPath);
             if (shardResult.ok) {
-                Object.assign(data[type], shardResult.data);
+                this.assignValidAssets(data[type], shardResult.data, type, shardPath);
             } else {
                 // readJSON failed (file missing or invalid JSON) – attempt manual recovery
                 const rawResult = await filesystemService.read(shardPath, "utf-8");
@@ -168,7 +168,7 @@ export class AssetsMetadataManager {
                 }
 
                 if (parsed) {
-                    Object.assign(data[type], parsed);
+                    this.assignValidAssets(data[type], parsed, type, shardPath);
                 } else {
                     console.warn(`AssetsService: metadata shard corrupted, backing up and resetting: ${shardPath}`);
                     const recoveryResult = await filesystemService.recoverCorruptedJsonFile(shardPath, JSON.stringify({}), "utf-8");
@@ -183,6 +183,37 @@ export class AssetsMetadataManager {
         this.migrateAssetExtensions(data);
 
         return data;
+    }
+
+    private assignValidAssets<T extends AssetType>(
+        target: Record<string, Asset<T, AssetSource>>,
+        source: Record<string, Asset>,
+        type: T,
+        shardPath: string
+    ): void {
+        for (const [id, asset] of Object.entries(source)) {
+            if (!this.isValidMetadataAsset(id, asset, type)) {
+                console.warn(`AssetsService: ignoring invalid asset metadata entry in ${shardPath}: ${id}`);
+                continue;
+            }
+
+            target[id] = asset;
+        }
+    }
+
+    private isValidMetadataAsset<T extends AssetType>(
+        id: string,
+        asset: Asset | undefined,
+        type: T
+    ): asset is Asset<T, AssetSource> {
+        return Boolean(
+            asset
+            && isValidAssetStorageId(id)
+            && asset.id === id
+            && isValidAssetStorageId(asset.id)
+            && asset.type === type
+            && Object.values(AssetSource).includes(asset.source)
+        );
     }
 
     private migrateAssetExtensions(data: AssetsMap): void {

@@ -1,27 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { ProjectNameConvention } from "./nameConvention";
+import { isValidAssetStorageId, ProjectNameConvention } from "./nameConvention";
 
-const hasUnsafePathSegment = (segments: readonly string[]): boolean => segments.some(segment => (
-    segment === ".." ||
-    segment.includes("/") ||
-    segment.includes("\\") ||
-    segment.startsWith("/") ||
-    /^[a-zA-Z]:/.test(segment)
-));
+describe("ProjectNameConvention asset storage ids", () => {
+    const uuid = "123e4567-e89b-12d3-a456-426614174000";
+    const sha256 = "a".repeat(64);
 
-describe("ProjectNameConvention", () => {
-    it("keeps thumbnail cache shard paths under the thumbnail cache root for unsafe asset ids", () => {
-        const shard = ProjectNameConvention.EditorThumbnailCacheShard("aaaa/../../../../home/alice/target");
-
-        expect(shard.slice(0, 3)).toEqual(["editor", "cache", "thumbnail"]);
-        expect(hasUnsafePathSegment(shard.slice(3))).toBe(false);
-        expect(shard.at(-1)).toMatch(/^asset-[0-9a-f]+\.png$/);
+    it("accepts generated UUIDs and legacy SHA-256 hashes", () => {
+        expect(isValidAssetStorageId(uuid)).toBe(true);
+        expect(isValidAssetStorageId(sha256)).toBe(true);
+        expect(ProjectNameConvention.AssetsDataShard(uuid)).toEqual([
+            "assets",
+            "content",
+            "12",
+            "3e",
+            "4567e89b12d3a456426614174000",
+        ]);
     });
 
-    it("does not emit traversal segments for short dot-only asset ids", () => {
-        const shard = ProjectNameConvention.EditorThumbnailCacheShard("..");
+    it("rejects traversal and non-storage identifiers before building path shards", () => {
+        const traversal = "aaaa../../../../../victim.txt";
 
-        expect(hasUnsafePathSegment(shard.slice(3))).toBe(false);
-        expect(shard.at(-1)).toBe("asset-2e2e.png");
+        expect(isValidAssetStorageId(traversal)).toBe(false);
+        expect(() => ProjectNameConvention.AssetsDataShard(traversal)).toThrow("Invalid asset storage id");
+        expect(() => ProjectNameConvention.EditorRemoteAssetShard("/tmp/asset")).toThrow("Invalid asset storage id");
     });
 });
