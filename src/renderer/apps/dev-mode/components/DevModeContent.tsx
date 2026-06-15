@@ -354,6 +354,7 @@ export function DevModeContent(props: DevModeContentProps) {
                             <BlueprintRuntimeDebugPanel
                                 debug={bpCore.debug}
                                 blueprintDocument={bundle.ui.localBlueprints}
+                                uiDocument={uidoc}
                                 activeSurfaceId={activeSurface.id}
                                 scopeBridge={bpCore.scopeBridge}
                                 widgetRuntimeStore={widgetRuntimeStore}
