@@ -368,7 +368,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const data = JSON.stringify(metadata[type]);
 
-        return await filesystemService.write(this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type)), data, "utf-8");
+        return await filesystemService.writeFileNoFollow(this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type)), data, "utf-8");
     }
 
     public async createGroup<T extends AssetType>(

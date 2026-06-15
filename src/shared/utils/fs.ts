@@ -1,6 +1,6 @@
 import path from "path";
 import fs from "fs/promises";
-import {Dirent, default as fsSync} from "fs";
+import {Dirent, default as fsSync, Stats} from "fs";
 import mime from "mime-types";
 import { FsRequestResult, FsRejectError, FsRejectErrorCode } from "../types/os";
 
@@ -37,6 +37,52 @@ export class Fs {
 
     public static writeRaw(path: string, data: Buffer): Promise<FsRequestResult<void>> {
         return this.wrap(fs.writeFile(path, data));
+    }
+
+    public static ensureRegularFile(path: string, data: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
+        return this.wrap((async () => {
+            try {
+                this.assertSafeFileStat(path, await fs.lstat(path));
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+                    await fs.writeFile(path, data, {encoding, flag: "wx"});
+                    return;
+                }
+
+                throw error;
+            }
+        })());
+    }
+
+    public static writeFileNoFollow(path: string, data: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
+        return this.wrap((async () => {
+            const originalStat = await fs.lstat(path);
+            this.assertSafeFileStat(path, originalStat);
+
+            const handle = await this.openExistingFileNoFollow(path, originalStat);
+            try {
+                await this.replaceOpenFileContents(handle, data, encoding);
+            } finally {
+                await handle.close();
+            }
+        })());
+    }
+
+    public static recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
+        return this.wrap((async () => {
+            const originalStat = await fs.lstat(path);
+            this.assertSafeFileStat(path, originalStat);
+
+            const handle = await this.openExistingFileNoFollow(path, originalStat);
+            try {
+                const corruptedContent = await handle.readFile();
+                await this.writeNewBackup(path, corruptedContent);
+
+                await this.replaceOpenFileContents(handle, replacement, encoding);
+            } finally {
+                await handle.close();
+            }
+        })());
     }
 
     public static append(path: string, data: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<void>> {
@@ -235,6 +281,63 @@ export class Fs {
         return this.wrap(fs.rename(src, dest));
     }
 
+    private static assertSafeFileStat(filePath: string, stats: Stats): void {
+        if (!stats.isFile() || stats.isSymbolicLink() || stats.nlink !== 1) {
+            throw this.createNodeError("EINVAL", `Refusing to use unsafe file path: ${filePath}`);
+        }
+    }
+
+    private static async replaceOpenFileContents(handle: Awaited<ReturnType<typeof fs.open>>, data: string, encoding: BufferEncoding): Promise<void> {
+        const buffer = Buffer.from(data, encoding);
+        await handle.write(buffer, 0, buffer.length, 0);
+        await handle.truncate(buffer.length);
+    }
+
+    private static async writeNewBackup(src: string, data: Buffer): Promise<void> {
+        for (let attempt = 0; attempt < 10; attempt++) {
+            const backupPath = attempt === 0
+                ? `${src}.bak`
+                : `${src}.bak.${Date.now()}.${process.pid}.${attempt}`;
+
+            try {
+                await fs.writeFile(backupPath, data, {flag: "wx"});
+                return;
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException)?.code === "EEXIST") {
+                    continue;
+                }
+                throw error;
+            }
+        }
+
+        throw this.createNodeError("EEXIST", `Unable to create a new backup file for ${src}`);
+    }
+
+    private static async openExistingFileNoFollow(filePath: string, expectedStat: Stats) {
+        const constants = fsSync.constants as typeof fsSync.constants & { O_NOFOLLOW?: number };
+        const flags = constants.O_RDWR | (constants.O_NOFOLLOW ?? 0);
+        const handle = await fs.open(filePath, flags);
+
+        try {
+            const currentStat = await handle.stat();
+            this.assertSafeFileStat(filePath, currentStat);
+            if (currentStat.dev !== expectedStat.dev || currentStat.ino !== expectedStat.ino) {
+                throw this.createNodeError("EINVAL", `Refusing to write changed file path: ${filePath}`);
+            }
+
+            return handle;
+        } catch (error) {
+            await handle.close();
+            throw error;
+        }
+    }
+
+    private static createNodeError(code: string, message: string): NodeJS.ErrnoException {
+        const error = new Error(message) as NodeJS.ErrnoException;
+        error.code = code;
+        return error;
+    }
+
     private static createError(error: unknown): FsRejectError {
         if (error instanceof Error) {
             const nodeError = error as NodeJS.ErrnoException;
@@ -246,6 +349,7 @@ export class Fs {
                     case 'EPERM':
                         return { code: FsRejectErrorCode.PERMISSION_DENIED, message: nodeError.message };
                     case 'EINVAL':
+                    case 'EEXIST':
                         return { code: FsRejectErrorCode.INVALID_PATH, message: nodeError.message };
                     case 'EFBIG':
                         return { code: FsRejectErrorCode.FILE_TOO_LARGE, message: nodeError.message };
