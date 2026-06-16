@@ -240,7 +240,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     if (!surface) {
         return (
             <div className="h-full flex items-center justify-center text-sm text-gray-500">
-                Surface not found
+                Interface not found
             </div>
         );
     }
@@ -309,7 +309,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                             type="button"
                             className={toolButtonClass(false)}
                             onClick={handleStartCurrentSurface}
-                            title="Open this surface in Dev Mode"
+                            title="Open this interface in Dev Mode"
                             disabled={!surfaceId}
                         >
                             <Play className="w-4 h-4" />

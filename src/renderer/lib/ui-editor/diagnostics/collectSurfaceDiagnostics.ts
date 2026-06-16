@@ -3,7 +3,6 @@ import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { buildReadonlySurfaceMainSummary } from "@/lib/workspace/services/ui-editor/blueprint/readonlyBlueprintSummary";
 import { collectSubtreeElements } from "./collectSubtreeElements";
-import { collectLinkDiagnostics } from "./rules/linkDiagnostics";
 import { collectResourceDiagnostics } from "./rules/resourceDiagnostics";
 import { collectStageDiagnostics } from "./rules/stageDiagnostics";
 import { collectLayoutDiagnostics } from "./rules/layoutDiagnostics";
@@ -36,7 +35,6 @@ export function collectSurfaceDiagnostics(
     const elements = collectSubtreeElements(document, rootId);
 
     const parts: UISurfaceDiagnostic[] = [
-        ...collectLinkDiagnostics(document, surface),
         ...collectStageDiagnostics(surface),
         ...collectResourceDiagnostics(elements),
         ...collectLayoutDiagnostics(document, surface, elements),

@@ -1,6 +1,8 @@
 import React, { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { animate, motion, useMotionValue } from "motion/react";
-import { listInsertPaletteModules } from "../widget-modules/insertPalette";
+import { listInsertPaletteEntries } from "../widget-modules/insertPalette";
+import type { InsertPaletteEntry } from "../widget-modules/insertPalette";
 import { widgetModuleRegistry } from "../widget-modules/registryInstance";
 import type {
     UIWidgetModule,
@@ -17,6 +19,7 @@ import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import type { UITool } from "../editor/types";
 import { DeferredNumberInput } from "@/lib/components/inputs/DeferredNumberInput";
 import { Select } from "@/lib/components/elements/Select";
+import { MoreHorizontal } from "lucide-react";
 
 // Props
 type UIEditorDockerBarProps = {
@@ -27,17 +30,151 @@ type UIEditorDockerBarProps = {
 
 // Palette Mode (no selection)
 function PaletteDockerBar({
-    modules,
+    primaryEntries,
+    overflowEntries,
     activeInsertType,
     onSelectType,
 }: {
-    modules: UIWidgetModule[];
+    primaryEntries: InsertPaletteEntry[];
+    overflowEntries: InsertPaletteEntry[];
     activeInsertType: string | null;
     onSelectType: (type: string) => void;
 }) {
+    const overflowButtonRef = useRef<HTMLButtonElement | null>(null);
+    const overflowMenuRef = useRef<HTMLDivElement | null>(null);
+    const [overflowOpen, setOverflowOpen] = useState(false);
+    const [overflowMenuStyle, setOverflowMenuStyle] = useState<React.CSSProperties>({});
+
+    const stopPointerPropagation = useCallback((event: React.SyntheticEvent) => {
+        event.stopPropagation();
+    }, []);
+
+    const closeOverflow = useCallback(() => {
+        setOverflowOpen(false);
+    }, []);
+
+    const selectType = useCallback(
+        (type: string) => {
+            onSelectType(type);
+            closeOverflow();
+        },
+        [closeOverflow, onSelectType],
+    );
+
+    useLayoutEffect(() => {
+        if (!overflowOpen) {
+            return;
+        }
+
+        const positionMenu = () => {
+            const buttonRect = overflowButtonRef.current?.getBoundingClientRect();
+            const menuRect = overflowMenuRef.current?.getBoundingClientRect();
+            if (!buttonRect || !menuRect) {
+                return;
+            }
+
+            const gap = 10;
+            const padding = 8;
+            const left = Math.min(
+                Math.max(padding, buttonRect.left + buttonRect.width / 2 - menuRect.width / 2),
+                window.innerWidth - menuRect.width - padding,
+            );
+            const top = Math.max(padding, buttonRect.top - menuRect.height - gap);
+            setOverflowMenuStyle({
+                position: "fixed",
+                left,
+                top,
+                zIndex: 100,
+            });
+        };
+
+        positionMenu();
+        const raf = requestAnimationFrame(positionMenu);
+        window.addEventListener("resize", positionMenu);
+        window.addEventListener("scroll", positionMenu, true);
+        return () => {
+            cancelAnimationFrame(raf);
+            window.removeEventListener("resize", positionMenu);
+            window.removeEventListener("scroll", positionMenu, true);
+        };
+    }, [overflowOpen, overflowEntries.length]);
+
+    useEffect(() => {
+        if (!overflowOpen) {
+            return;
+        }
+
+        const handleMouseDown = (event: MouseEvent) => {
+            const target = event.target as Node | null;
+            if (!target) {
+                return;
+            }
+            if (overflowButtonRef.current?.contains(target) || overflowMenuRef.current?.contains(target)) {
+                return;
+            }
+            closeOverflow();
+        };
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                closeOverflow();
+            }
+        };
+
+        document.addEventListener("mousedown", handleMouseDown, true);
+        document.addEventListener("keydown", handleKeyDown, true);
+        return () => {
+            document.removeEventListener("mousedown", handleMouseDown, true);
+            document.removeEventListener("keydown", handleKeyDown, true);
+        };
+    }, [closeOverflow, overflowOpen]);
+
+    useEffect(() => {
+        if (overflowEntries.length === 0) {
+            setOverflowOpen(false);
+        }
+    }, [overflowEntries.length]);
+
+    const overflowActive = overflowEntries.some(entry => entry.module.type === activeInsertType);
+
+    const overflowMenu = overflowOpen && overflowEntries.length > 0 ? (
+        <div
+            ref={overflowMenuRef}
+            className="min-w-40 rounded-md border border-white/15 bg-[#1e1f22] py-1 shadow-lg shadow-black/30"
+            style={overflowMenuStyle}
+            onPointerDown={stopPointerPropagation}
+            onMouseDown={stopPointerPropagation}
+        >
+            {overflowEntries.map(entry => {
+                const mod = entry.module;
+                const Icon = mod.icon;
+                const isActive = activeInsertType === mod.type;
+                return (
+                    <button
+                        key={mod.type}
+                        type="button"
+                        className={`flex h-8 w-full items-center gap-2 px-3 text-left text-xs transition-colors ${
+                            isActive
+                                ? "bg-primary/20 text-white"
+                                : "text-gray-300 hover:bg-white/10 hover:text-white"
+                        }`}
+                        title={`Insert ${mod.displayName}`}
+                        onClick={() => selectType(mod.type)}
+                        onPointerDown={stopPointerPropagation}
+                        onMouseDown={stopPointerPropagation}
+                    >
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">{mod.displayName}</span>
+                    </button>
+                );
+            })}
+        </div>
+    ) : null;
+
     return (
         <div className="flex items-center gap-1">
-            {modules.map((mod) => {
+            {primaryEntries.map((entry) => {
+                const mod = entry.module;
                 const Icon = mod.icon;
                 const isActive = activeInsertType === mod.type;
                 return (
@@ -49,7 +186,9 @@ function PaletteDockerBar({
                                 ? "bg-primary/20 text-white border border-primary/40"
                                 : "text-gray-300 hover:bg-white/10 hover:text-white border border-transparent"
                         }`}
-                        onClick={() => onSelectType(mod.type)}
+                        onClick={() => selectType(mod.type)}
+                        onPointerDown={stopPointerPropagation}
+                        onMouseDown={stopPointerPropagation}
                         title={isActive ? `Drawing ${mod.displayName} - drag on canvas to create` : `Insert ${mod.displayName}`}
                     >
                         <Icon className="w-3.5 h-3.5" />
@@ -57,6 +196,29 @@ function PaletteDockerBar({
                     </button>
                 );
             })}
+            {overflowEntries.length > 0 ? (
+                <>
+                    <button
+                        ref={overflowButtonRef}
+                        type="button"
+                        className={`flex h-8 items-center justify-center rounded-md border px-2.5 text-xs font-medium transition-colors ${
+                            overflowOpen || overflowActive
+                                ? "border-primary/40 bg-primary/20 text-white"
+                                : "border-transparent text-gray-300 hover:bg-white/10 hover:text-white"
+                        }`}
+                        onClick={() => setOverflowOpen(open => !open)}
+                        onPointerDown={stopPointerPropagation}
+                        onMouseDown={stopPointerPropagation}
+                        title="More insert elements"
+                        aria-label="More insert elements"
+                        aria-haspopup="menu"
+                        aria-expanded={overflowOpen}
+                    >
+                        <MoreHorizontal className="h-3.5 w-3.5" />
+                    </button>
+                    {typeof document === "undefined" ? overflowMenu : createPortal(overflowMenu, document.body)}
+                </>
+            ) : null}
         </div>
     );
 }
@@ -347,7 +509,15 @@ export function UIEditorDockerBar({
     stateService,
     documentService,
 }: UIEditorDockerBarProps) {
-    const modules = useMemo(() => listInsertPaletteModules(), []);
+    const paletteEntries = useMemo(() => listInsertPaletteEntries(), []);
+    const primaryEntries = useMemo(
+        () => paletteEntries.filter(entry => entry.placement === "primary"),
+        [paletteEntries],
+    );
+    const overflowEntries = useMemo(
+        () => paletteEntries.filter(entry => entry.placement === "overflow"),
+        [paletteEntries],
+    );
     const [selection, setSelection] = useState<SelectionState>(stateService.getSelection());
     const [tool, setTool] = useState<UITool>(stateService.getTool());
     const [docVersion, setDocVersion] = useState(0);
@@ -479,7 +649,8 @@ export function UIEditorDockerBar({
                     />
                 ) : (
                     <PaletteDockerBar
-                        modules={modules}
+                        primaryEntries={primaryEntries}
+                        overflowEntries={selectedElements.length === 0 ? overflowEntries : []}
                         activeInsertType={activeInsertType}
                         onSelectType={handleSelectType}
                     />

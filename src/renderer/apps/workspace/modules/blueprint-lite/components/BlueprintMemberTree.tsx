@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Blueprint, BlueprintVariable, LiteralValue } from "@shared/types/blueprint/document";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import type { Blueprint, BlueprintField, BlueprintVariable, LiteralValue } from "@shared/types/blueprint/document";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
@@ -9,7 +9,9 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/ui";
 import { createInputDialog } from "@/lib/components/dialogs";
-import { Trash2 } from "lucide-react";
+import { GLOBAL_MAIN_OWNER_KEY } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
+import { BlueprintVariableDialogContent, type BlueprintVariableDialogValue } from "./BlueprintVariableDialogContent";
+import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
 
 const FIELD_INPUT =
     "w-full rounded-md border border-white/20 bg-white/5 px-2 py-1 text-[11px] text-gray-200 outline-none transition-colors focus:border-[#40a8c4] focus:ring-1 focus:ring-[#40a8c4]/30";
@@ -22,10 +24,22 @@ type Props = {
     graphView: BlueprintEditorGraphView | null;
     diagnostics: BlueprintGraphEditorDiagnostic[];
     localBp: LocalBlueprintService;
+    surfaceId?: string;
     widgetElementType?: string;
     onSelectLayer: (layerId: string) => void;
-    onAddLayer: () => void;
+    onAddLayer: () => void | Promise<void>;
     onDeleteLayer: (layerId: string) => void;
+};
+
+type VariableGroup = {
+    key: string;
+    label: string;
+    scopeLabel: string;
+    blueprintId: string;
+    blueprint: Blueprint;
+    defaultOpen: boolean;
+    accentClass: string;
+    emptyText: string;
 };
 
 function countForGraph(
@@ -49,16 +63,51 @@ function countForGraph(
     return { errors, warnings };
 }
 
+function CollapsibleSection({
+    title,
+    defaultOpen,
+    action,
+    children,
+}: {
+    title: string;
+    defaultOpen: boolean;
+    action?: ReactNode;
+    children: ReactNode;
+}) {
+    const [open, setOpen] = useState(defaultOpen);
+
+    return (
+        <section className="shrink-0">
+            <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-wide text-gray-500">
+                <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-gray-300"
+                    onClick={() => setOpen(value => !value)}
+                >
+                    {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                    <span className="truncate">{title}</span>
+                </button>
+                {action}
+            </div>
+            {open ? children : null}
+        </section>
+    );
+}
+
 function BlueprintVariableRow({
     v,
     blueprintId,
     localBp,
     uiService,
+    scopeLabel,
+    accentClass,
 }: {
     v: BlueprintVariable;
     blueprintId: string;
     localBp: LocalBlueprintService;
     uiService: UIService | null;
+    scopeLabel: string;
+    accentClass: string;
 }) {
     const [draftName, setDraftName] = useState(v.name);
 
@@ -80,7 +129,14 @@ function BlueprintVariableRow({
     return (
         <div className="group rounded border border-white/10 bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
             <div className="flex items-center justify-between gap-1">
-                <span className="text-[9px] uppercase text-amber-200/80">Var</span>
+                <div className="flex min-w-0 items-center gap-1.5">
+                    <span className={`text-[9px] uppercase ${accentClass}`}>{scopeLabel}</span>
+                    {v.valueType ? (
+                        <span className="truncate rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[9px] text-gray-400">
+                            {v.valueType}
+                        </span>
+                    ) : null}
+                </div>
                 <button
                     type="button"
                     title={`Delete variable "${v.name}"`}
@@ -135,6 +191,159 @@ function BlueprintVariableRow({
     );
 }
 
+function FieldRow({
+    field,
+    blueprintId,
+    localBp,
+    uiService,
+}: {
+    field: BlueprintField;
+    blueprintId: string;
+    localBp: LocalBlueprintService;
+    uiService: UIService | null;
+}) {
+    return (
+        <div className="rounded border border-white/10 bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
+            <div className="flex items-center justify-between gap-1">
+                <span className="text-[9px] uppercase text-cyan-200/80">Field</span>
+                <button
+                    type="button"
+                    className="text-[10px] text-red-400/90 hover:text-red-300"
+                    onClick={() => {
+                        if (!uiService) {
+                            return;
+                        }
+                        void (async () => {
+                            const ok = await uiService.showConfirm(
+                                `Delete field "${field.name}"?`,
+                                "This cannot be undone.",
+                            );
+                            if (ok) {
+                                localBp.deleteField(blueprintId, field.id);
+                            }
+                        })();
+                    }}
+                >
+                    Delete
+                </button>
+            </div>
+            <input
+                className={FIELD_INPUT}
+                value={field.name}
+                onChange={e => localBp.renameField(blueprintId, field.id, e.target.value)}
+                onKeyDown={e => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                    }
+                }}
+            />
+            <label className="block space-y-0.5">
+                <span className="text-[9px] text-gray-500">Page state key</span>
+                <input
+                    className={`${FIELD_INPUT} font-mono`}
+                    value={field.valueSource?.kind === "surfaceState" ? field.valueSource.key : ""}
+                    placeholder="w:elementId:propPath"
+                    onChange={e => {
+                        const key = e.target.value.trim();
+                        if (!key) {
+                            localBp.setFieldValueSource(blueprintId, field.id, undefined);
+                            return;
+                        }
+                        localBp.setFieldValueSource(blueprintId, field.id, {
+                            kind: "surfaceState",
+                            key,
+                        });
+                    }}
+                    onKeyDown={e => {
+                        e.stopPropagation();
+                        if (e.key === "Enter") {
+                            e.preventDefault();
+                            e.currentTarget.blur();
+                        }
+                    }}
+                />
+            </label>
+        </div>
+    );
+}
+
+function sortedVariables(blueprint: Blueprint): BlueprintVariable[] {
+    return Object.values(blueprint.members?.variables ?? {}).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function sortedFields(blueprint: Blueprint): BlueprintField[] {
+    return Object.values(blueprint.members?.fields ?? {}).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function buildVariableGroups(input: {
+    currentBlueprint: Blueprint;
+    currentBlueprintId: string;
+    pageBlueprint?: Blueprint;
+    pageBlueprintId?: string;
+    globalBlueprint?: Blueprint;
+    globalBlueprintId?: string;
+}): VariableGroup[] {
+    const groups: VariableGroup[] = [];
+    const used = new Set<string>();
+    const currentIsPage = Boolean(input.pageBlueprintId && input.currentBlueprintId === input.pageBlueprintId);
+    const currentIsGlobal = Boolean(input.globalBlueprintId && input.currentBlueprintId === input.globalBlueprintId);
+
+    const addGroup = (group: VariableGroup | null) => {
+        if (!group || used.has(group.blueprintId)) {
+            return;
+        }
+        used.add(group.blueprintId);
+        groups.push(group);
+    };
+
+    addGroup(
+        input.pageBlueprint && input.pageBlueprintId
+            ? {
+                  key: "page",
+                  label: "Page variables",
+                  scopeLabel: "Page",
+                  blueprintId: input.pageBlueprintId,
+                  blueprint: input.pageBlueprint,
+                  defaultOpen: false,
+                  accentClass: "text-sky-200/80",
+                  emptyText: "No page variables.",
+              }
+            : null,
+    );
+
+    if (!currentIsPage && !currentIsGlobal) {
+        addGroup({
+            key: "blueprint",
+            label: "Blueprint variables",
+            scopeLabel: "Blueprint",
+            blueprintId: input.currentBlueprintId,
+            blueprint: input.currentBlueprint,
+            defaultOpen: true,
+            accentClass: "text-amber-200/80",
+            emptyText: "No blueprint variables.",
+        });
+    }
+
+    addGroup(
+        input.globalBlueprint && input.globalBlueprintId
+            ? {
+                  key: "global",
+                  label: "Global variables",
+                  scopeLabel: "Global",
+                  blueprintId: input.globalBlueprintId,
+                  blueprint: input.globalBlueprint,
+                  defaultOpen: false,
+                  accentClass: "text-violet-200/80",
+                  emptyText: "No global variables.",
+              }
+            : null,
+    );
+
+    return groups;
+}
+
 export function BlueprintMemberTree({
     blueprint,
     blueprintId,
@@ -142,6 +351,7 @@ export function BlueprintMemberTree({
     graphView,
     diagnostics,
     localBp,
+    surfaceId,
     onSelectLayer,
     onAddLayer,
     onDeleteLayer,
@@ -164,22 +374,139 @@ export function BlueprintMemberTree({
         return createInputDialog(uiService);
     }, [uiService]);
 
+    const promptCreateVariable = useCallback(
+        (group: VariableGroup): Promise<BlueprintVariableDialogValue | null> => {
+            if (!uiService) {
+                return Promise.resolve(null);
+            }
+            return new Promise(resolve => {
+                let dialogId: string | null = null;
+                let settled = false;
+                const existingNames = sortedVariables(group.blueprint).map(v => v.name);
+                const selection: BlueprintVariableDialogValue = {
+                    name: "Variable",
+                    valueType: "string",
+                    defaultValue: "",
+                    valid: true,
+                };
+
+                const safeResolve = (value: BlueprintVariableDialogValue | null) => {
+                    if (settled) {
+                        return;
+                    }
+                    settled = true;
+                    resolve(value);
+                };
+
+                const closeDialog = () => {
+                    if (dialogId) {
+                        uiService.dialogs.close(dialogId);
+                        dialogId = null;
+                    }
+                };
+
+                const handleConfirm = () => {
+                    if (!selection.valid) {
+                        uiService.showNotification("Check the variable name and data type before creating it.", "warning");
+                        return;
+                    }
+                    safeResolve({ ...selection });
+                    closeDialog();
+                };
+
+                const handleCancel = () => {
+                    safeResolve(null);
+                    closeDialog();
+                };
+
+                dialogId = uiService.dialogs.show({
+                    title: `Create ${group.scopeLabel} variable`,
+                    content: (
+                        <BlueprintVariableDialogContent
+                            defaultName="Variable"
+                            existingNames={existingNames}
+                            onChange={value => {
+                                selection.name = value.name;
+                                selection.valueType = value.valueType;
+                                selection.defaultValue = value.defaultValue;
+                                selection.valid = value.valid;
+                            }}
+                        />
+                    ),
+                    closable: true,
+                    width: 420,
+                    buttons: [
+                        {
+                            label: "Cancel",
+                            onClick: handleCancel,
+                        },
+                        {
+                            label: "Create",
+                            primary: true,
+                            onClick: handleConfirm,
+                        },
+                    ],
+                    onClose: handleCancel,
+                });
+            });
+        },
+        [uiService],
+    );
+
+    const handleCreateVariable = useCallback(
+        async (group: VariableGroup) => {
+            const selection = await promptCreateVariable(group);
+            if (!selection) {
+                return;
+            }
+            localBp.createBlueprintVariable(group.blueprintId, {
+                name: selection.name,
+                valueType: selection.valueType,
+                defaultValue: selection.defaultValue,
+            });
+        },
+        [localBp, promptCreateVariable],
+    );
+
     if (blueprint.program.kind !== "graph") {
         return <p className="text-xs text-gray-500">Not a graph blueprint.</p>;
     }
 
+    const blueprintDocument = localBp.getBlueprintDocument();
+    const globalBlueprintId = blueprintDocument.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.activeBlueprintId;
+    const globalBlueprint = globalBlueprintId ? blueprintDocument.blueprints[globalBlueprintId] : undefined;
+    const pageBlueprintId =
+        blueprint.owner.kind === "surfaceMain"
+            ? blueprintId
+            : surfaceId
+              ? localBp.getSurfaceMainBlueprintId(surfaceId)
+              : undefined;
+    const pageBlueprint = pageBlueprintId ? blueprintDocument.blueprints[pageBlueprintId] : undefined;
+
     const events = blueprint.program.graphs.events ?? {};
-    const vars = blueprint.members?.variables ?? {};
     const fields = blueprint.members?.fields ?? {};
 
-    const sortedVars = useMemo(
-        () => Object.values(vars).sort((a, b) => a.name.localeCompare(b.name)),
-        [vars, blueprintDocumentRevision],
+    const variableGroups = useMemo(
+        () =>
+            buildVariableGroups({
+                currentBlueprint: blueprint,
+                currentBlueprintId: blueprintId,
+                pageBlueprint,
+                pageBlueprintId,
+                globalBlueprint,
+                globalBlueprintId,
+            }),
+        [
+            blueprint,
+            blueprintDocumentRevision,
+            blueprintId,
+            globalBlueprint,
+            globalBlueprintId,
+            pageBlueprint,
+            pageBlueprintId,
+        ],
     );
-    const sortedFields = useMemo(
-        () => Object.values(fields).sort((a, b) => a.name.localeCompare(b.name)),
-        [fields, blueprintDocumentRevision],
-    );
+    const sortedFieldList = useMemo(() => sortedFields(blueprint), [fields, blueprintDocumentRevision, blueprint]);
 
     const layerActive = (id: string) => graphView?.kind === "event" && graphView.graphId === id;
 
@@ -192,7 +519,7 @@ export function BlueprintMemberTree({
         return [
             {
                 id: "rename",
-                label: "Rename layer…",
+                label: "Rename layer...",
                 onClick: () => {
                     const id = menuLayerId;
                     hideMenu();
@@ -218,7 +545,7 @@ export function BlueprintMemberTree({
             },
             {
                 id: "delete",
-                label: "Delete layer…",
+                label: "Delete layer...",
                 onClick: () => {
                     const id = menuLayerId;
                     hideMenu();
@@ -247,10 +574,11 @@ export function BlueprintMemberTree({
                     <span>Layers</span>
                     <button
                         type="button"
-                        className="text-cyan-400/90 hover:text-cyan-300"
-                        onClick={() => onAddLayer()}
+                        className="inline-flex items-center gap-1 text-cyan-400/90 hover:text-cyan-300"
+                        onClick={() => void onAddLayer()}
                     >
-                        + New
+                        <Plus className="h-3 w-3" />
+                        New
                     </button>
                 </div>
                 <ul className="space-y-0.5">
@@ -276,9 +604,9 @@ export function BlueprintMemberTree({
                                     >
                                         {events[id]?.name ?? id.slice(0, 10)}
                                         {errors > 0 ? (
-                                            <span className="ml-1 text-red-400">· {errors} err</span>
+                                            <span className="ml-1 text-red-400">- {errors} err</span>
                                         ) : warnings > 0 ? (
-                                            <span className="ml-1 text-amber-400">· {warnings} warn</span>
+                                            <span className="ml-1 text-amber-400">- {warnings} warn</span>
                                         ) : null}
                                     </button>
                                 </li>
@@ -288,21 +616,51 @@ export function BlueprintMemberTree({
                 </ul>
             </section>
 
-            <section className="flex min-h-0 flex-1 flex-col gap-1">
-                <div className="mb-1 flex shrink-0 items-center justify-between text-[10px] uppercase tracking-wide text-gray-500">
-                    <span>Members</span>
-                    <div className="flex gap-1">
-                        <button
-                            type="button"
-                            className="text-cyan-400/90 hover:text-cyan-300"
-                            onClick={() => localBp.createBlueprintVariable(blueprintId, {})}
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto border-t border-white/5 pt-2">
+                {variableGroups.map(group => {
+                    const vars = sortedVariables(group.blueprint);
+                    return (
+                        <CollapsibleSection
+                            key={`${group.key}:${group.blueprintId}`}
+                            title={group.label}
+                            defaultOpen={group.defaultOpen}
+                            action={
+                                <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1 text-cyan-400/90 hover:text-cyan-300"
+                                    onClick={() => void handleCreateVariable(group)}
+                                >
+                                    <Plus className="h-3 w-3" />
+                                    New
+                                </button>
+                            }
                         >
-                            + Var
-                        </button>
-                        {canDefineBindingFields ? (
+                            <div className="space-y-2">
+                                {vars.length === 0 ? <p className="text-gray-500">{group.emptyText}</p> : null}
+                                {vars.map(v => (
+                                    <BlueprintVariableRow
+                                        key={v.id}
+                                        v={v}
+                                        blueprintId={group.blueprintId}
+                                        localBp={localBp}
+                                        uiService={uiService}
+                                        scopeLabel={group.scopeLabel}
+                                        accentClass={group.accentClass}
+                                    />
+                                ))}
+                            </div>
+                        </CollapsibleSection>
+                    );
+                })}
+
+                {canDefineBindingFields ? (
+                    <CollapsibleSection
+                        title="Binding fields"
+                        defaultOpen={sortedFieldList.length > 0}
+                        action={
                             <button
                                 type="button"
-                                className="text-cyan-400/90 hover:text-cyan-300"
+                                className="inline-flex items-center gap-1 text-cyan-400/90 hover:text-cyan-300"
                                 onClick={() =>
                                     localBp.createField(blueprintId, {
                                         name: "Field",
@@ -310,94 +668,26 @@ export function BlueprintMemberTree({
                                     })
                                 }
                             >
-                                + Field
+                                <Plus className="h-3 w-3" />
+                                New
                             </button>
-                        ) : null}
-                    </div>
-                </div>
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto border-t border-white/5 pt-2">
-                    {sortedVars.length === 0 && sortedFields.length === 0 ? (
-                        <p className="text-gray-500">No members yet.</p>
-                    ) : null}
-                    {sortedVars.map(v => (
-                        <BlueprintVariableRow
-                            key={v.id}
-                            v={v}
-                            blueprintId={blueprintId}
-                            localBp={localBp}
-                            uiService={uiService}
-                        />
-                    ))}
-                    {sortedFields.map(d => (
-                        <div
-                            key={d.id}
-                            className="rounded border border-white/10 bg-[#0d0f12] px-2 py-1.5 space-y-1.5"
-                        >
-                            <div className="flex items-center justify-between gap-1">
-                                <span className="text-[9px] uppercase text-cyan-200/80">Field</span>
-                                <button
-                                    type="button"
-                                    className="text-[10px] text-red-400/90 hover:text-red-300"
-                                    onClick={() => {
-                                        if (!uiService) {
-                                            return;
-                                        }
-                                        void (async () => {
-                                            const ok = await uiService.showConfirm(
-                                                `Delete field "${d.name}"?`,
-                                                "This cannot be undone.",
-                                            );
-                                            if (ok) {
-                                                localBp.deleteField(blueprintId, d.id);
-                                            }
-                                        })();
-                                    }}
-                                >
-                                    Delete
-                                </button>
-                            </div>
-                            <input
-                                className={FIELD_INPUT}
-                                value={d.name}
-                                onChange={e => localBp.renameField(blueprintId, d.id, e.target.value)}
-                                onKeyDown={e => {
-                                    e.stopPropagation();
-                                    if (e.key === "Enter") {
-                                        e.preventDefault();
-                                        e.currentTarget.blur();
-                                    }
-                                }}
-                            />
-                            <label className="block space-y-0.5">
-                                <span className="text-[9px] text-gray-500">Surface state key</span>
-                                <input
-                                    className={`${FIELD_INPUT} font-mono`}
-                                    value={d.valueSource?.kind === "surfaceState" ? d.valueSource.key : ""}
-                                    placeholder="w:elementId:propPath"
-                                    onChange={e => {
-                                        const key = e.target.value.trim();
-                                        if (!key) {
-                                            localBp.setFieldValueSource(blueprintId, d.id, undefined);
-                                            return;
-                                        }
-                                        localBp.setFieldValueSource(blueprintId, d.id, {
-                                            kind: "surfaceState",
-                                            key,
-                                        });
-                                    }}
-                                    onKeyDown={e => {
-                                        e.stopPropagation();
-                                        if (e.key === "Enter") {
-                                            e.preventDefault();
-                                            e.currentTarget.blur();
-                                        }
-                                    }}
+                        }
+                    >
+                        <div className="space-y-2">
+                            {sortedFieldList.length === 0 ? <p className="text-gray-500">No binding fields.</p> : null}
+                            {sortedFieldList.map(field => (
+                                <FieldRow
+                                    key={field.id}
+                                    field={field}
+                                    blueprintId={blueprintId}
+                                    localBp={localBp}
+                                    uiService={uiService}
                                 />
-                            </label>
+                            ))}
                         </div>
-                    ))}
-                </div>
-            </section>
+                    </CollapsibleSection>
+                ) : null}
+            </div>
 
             <ContextMenu items={layerMenuItems} position={menuState.position} visible={menuState.visible} onClose={hideMenu} />
         </div>

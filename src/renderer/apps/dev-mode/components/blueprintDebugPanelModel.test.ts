@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Blueprint, BlueprintOwnerRef } from "@shared/types/blueprint/document";
-import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import { listBlueprintsForDevTools } from "./blueprintDebugPanelModel";
 
 function visualBlueprint(
@@ -77,7 +77,7 @@ function element(id: string, parentId: string | null, childrenIds: string[] = []
 
 function scopedUiDocument(): UIDocument {
     return {
-        schemaVersion: 5,
+        schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
         id: "doc",
         name: "Doc",
         surfaces: [
@@ -96,8 +96,7 @@ function scopedUiDocument(): UIDocument {
                 kind: "stageSurface",
                 designSize: { width: 100, height: 100 },
                 rootElementId: "mounted-stage-root",
-                mount: { kind: "layer" },
-                link: { kind: "appSurface", surfaceId: "app" },
+                mount: { kind: "slot", slotId: "onStage" },
             },
             {
                 id: "unmounted-stage",
@@ -106,8 +105,7 @@ function scopedUiDocument(): UIDocument {
                 kind: "stageSurface",
                 designSize: { width: 100, height: 100 },
                 rootElementId: "unmounted-stage-root",
-                mount: { kind: "slot", slotId: "none" },
-                link: { kind: "appSurface", surfaceId: "app" },
+                mount: { kind: "slot", slotId: "dialog" },
             },
             {
                 id: "other",
@@ -164,7 +162,7 @@ describe("listBlueprintsForDevTools", () => {
         expect(listBlueprintsForDevTools({ zed, alpha }).map(bp => bp.id)).toEqual(["a", "z"]);
     });
 
-    it("scopes the blueprints tab to global, current app surface, and mounted stage surfaces", () => {
+    it("scopes the blueprints tab to global and the current interface", () => {
         const document = scopedUiDocument();
         const blueprints = {
             global: authoredBlueprint("global", "Global", { kind: "globalMain" }),
@@ -211,12 +209,10 @@ describe("listBlueprintsForDevTools", () => {
             "app-surface",
             "app-widget",
             "global",
-            "stage-surface",
-            "stage-widget",
         ]);
     });
 
-    it("scopes a linked stage surface to its own nodes and the app surface it renders", () => {
+    it("scopes a Game UI to its own nodes", () => {
         const document = scopedUiDocument();
         const blueprints = {
             appSurface: authoredBlueprint("app-surface", "App Surface", {
@@ -250,6 +246,6 @@ describe("listBlueprintsForDevTools", () => {
 
         expect(
             listBlueprintsForDevTools(blueprints, { document, activeSurfaceId: "mounted-stage" }).map(bp => bp.id),
-        ).toEqual(["app-surface", "app-widget", "linked-app-widget-in-stage", "stage-surface", "stage-widget"]);
+        ).toEqual(["stage-surface", "stage-widget"]);
     });
 });

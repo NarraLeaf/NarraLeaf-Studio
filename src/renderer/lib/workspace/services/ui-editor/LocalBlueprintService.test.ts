@@ -171,14 +171,16 @@ describe("LocalBlueprintService history", () => {
     it("undoes and redoes blueprint member edits", () => {
         const { service, graphDocument } = createHarness();
 
-        const created = service.createBlueprintVariable("bp-main", { name: "health" });
+        const created = service.createBlueprintVariable("bp-main", { name: "health", valueType: "integer" });
         expect(graphDocument.blueprintDocument.blueprints["bp-main"].members?.variables[created.id]?.name).toBe("health");
+        expect(graphDocument.blueprintDocument.blueprints["bp-main"].members?.variables[created.id]?.valueType).toBe("integer");
 
         expect(service.undoBlueprint("bp-main")).toBe(true);
         expect(graphDocument.blueprintDocument.blueprints["bp-main"].members?.variables[created.id]).toBeUndefined();
 
         expect(service.redoBlueprint("bp-main")).toBe(true);
         expect(graphDocument.blueprintDocument.blueprints["bp-main"].members?.variables[created.id]?.name).toBe("health");
+        expect(graphDocument.blueprintDocument.blueprints["bp-main"].members?.variables[created.id]?.valueType).toBe("integer");
     });
 
     it("clears redo after a new edit following undo", () => {

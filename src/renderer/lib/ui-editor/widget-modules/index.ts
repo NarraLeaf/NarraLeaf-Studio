@@ -10,5 +10,10 @@ export type {
     DockerBarSeparator,
     DockerBarContext,
 } from "./types";
+export type {
+    InsertPaletteConfigEntry,
+    InsertPaletteEntry,
+    InsertPalettePlacement,
+} from "./insertPalette";
 export { WidgetModuleRegistry } from "./WidgetModuleRegistry";
 export { BuiltinWidgetModules } from "./builtin";
