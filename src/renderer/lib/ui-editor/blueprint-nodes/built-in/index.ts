@@ -6,6 +6,7 @@
 import type { BlueprintNodeDef } from "../types";
 import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
+import { mathBlueprintNodes } from "./mathNodes";
 
 export { controlFlowBlueprintNodes } from "./controlFlowNodes";
 export { devtoolsBlueprintNodes } from "./devtoolsNodes";
@@ -23,4 +24,5 @@ export { widgetHostBlueprintNodes } from "./widget/widgetHostNodes";
 export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...eventHeadBlueprintNodes,
     ...localVariableBlueprintNodes,
+    ...mathBlueprintNodes,
 ];
