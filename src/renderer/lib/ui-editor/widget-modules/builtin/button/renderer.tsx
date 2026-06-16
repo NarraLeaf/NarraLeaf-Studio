@@ -9,7 +9,6 @@ import {
     type FocusEvent,
     type FormEvent,
     type KeyboardEvent,
-    type MouseEvent,
 } from "react";
 import { motion } from "motion/react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
@@ -34,6 +33,7 @@ import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { getButtonProps } from "./helpers";
+import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 
 export function ButtonRenderer(props: WidgetRendererProps) {
     const { element, children, surface, hostAdapter, useAppearanceInspectorPreview } = props;
@@ -95,8 +95,12 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     const p = getButtonProps(element);
     const interactionDisabled = Boolean(p.interactionDisabled);
     const runtimeState = useWidgetRuntimeElementState(element.id, interactionDisabled);
+    const listScopedVariantId =
+        typeof (element.extra as UIListElementExtra | undefined)?.runtimeVariantOverrideId === "string"
+            ? (element.extra as UIListElementExtra).runtimeVariantOverrideId
+            : null;
     const resolveCtx = {
-        variantOverrideId: runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        variantOverrideId: listScopedVariantId ?? runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
         signals: runtimeState.signals,
     };
     const v = resolveButtonVisualProps(element, p.appearance ?? undefined, resolveCtx);
@@ -156,8 +160,6 @@ export function ButtonRenderer(props: WidgetRendererProps) {
               }
           }
         : undefined;
-
-    const onClick = dispatchClick ? (_e: MouseEvent<HTMLDivElement>) => dispatchClick() : undefined;
 
     const showLabel = p.label.trim().length > 0;
     const hasChildNodes = children != null && Children.count(children) > 0;
@@ -306,7 +308,6 @@ export function ButtonRenderer(props: WidgetRendererProps) {
             extraRootProps={{
                 role: canDispatchClick ? ("button" as const) : ("presentation" as const),
                 tabIndex: canDispatchClick ? 0 : undefined,
-                onClick,
                 onKeyDown,
             }}
         >

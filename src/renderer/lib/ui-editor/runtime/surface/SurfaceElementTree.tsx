@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { type UIDocument, type UISurface, type UIElement, isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
+import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
@@ -56,6 +57,8 @@ export function SurfaceElementTree(props: SurfaceElementTreeProps): ReactNode {
         useAppearanceInspectorPreview === true,
         blueprintBindingContext ?? null,
         widgetRuntimePatches,
+        null,
+        "",
     );
 }
 
@@ -87,6 +90,8 @@ function renderElementTree(
     useAppearanceInspectorPreview: boolean,
     blueprintBindingContext: SurfaceBlueprintBindingContext | null,
     widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>,
+    listItemScope?: UIListItemScope | null,
+    instanceKey = "",
 ): ReactNode {
     const patched = applyWidgetRuntimePatches(element, widgetRuntimePatches ?? {});
     const resolved =
@@ -99,6 +104,7 @@ function renderElementTree(
                   e => blueprintBindingContext.debug.emit(e),
                   blueprintBindingContext.coalescer,
                   blueprintBindingContext.globalState,
+                  listItemScope ?? null,
               )
             : patched;
 
@@ -106,8 +112,15 @@ function renderElementTree(
         return null;
     }
 
-    const children = resolved.childrenIds
-        .map(childId => {
+    const renderChildren = (options?: {
+        childrenIds?: string[];
+        listItemScope?: UIListItemScope | null;
+        instanceKey?: string;
+    }): ReactNode[] => {
+        const childIds = options?.childrenIds ?? resolved.childrenIds;
+        const childScope = options?.listItemScope === undefined ? listItemScope : options.listItemScope;
+        const childInstanceKey = options?.instanceKey ?? instanceKey;
+        return childIds.map(childId => {
             const childElement = document.elements[childId];
             if (!childElement) {
                 return null;
@@ -121,9 +134,14 @@ function renderElementTree(
                 useAppearanceInspectorPreview,
                 blueprintBindingContext,
                 widgetRuntimePatches,
+                childScope ?? null,
+                childInstanceKey,
             );
         })
         .filter((node): node is ReactNode => node !== null);
+    };
+
+    const children = resolved.type === "nl.list" ? [] : renderChildren();
 
     const renderer = rendererRegistry.get(resolved.type);
     const content = renderer
@@ -133,6 +151,13 @@ function renderElementTree(
               surface,
               hostAdapter,
               children,
+              renderChildren,
+              runtimeData: blueprintBindingContext
+                  ? {
+                        surfaceState: blueprintBindingContext.surfaceState,
+                        globalState: blueprintBindingContext.globalState,
+                    }
+                  : undefined,
               useAppearanceInspectorPreview,
           })
         : renderUnknownWidgetTypeContent(resolved, children);
@@ -146,12 +171,13 @@ function renderElementTree(
               : "absolute";
     return (
         <EditorNodeWrapper
-            key={resolved.id}
+            key={`${resolved.id}${instanceKey ? `:${instanceKey}` : ""}`}
             element={resolved}
             layout={resolved.layout}
             isRoot={resolved.parentId === null}
             layoutMode={layoutMode}
             styleOverrides={styleOverrides}
+            hostAdapter={hostAdapter}
         >
             {hostAdapter.blueprintRuntime ? (
                 <BlueprintWidgetInitLifecycle

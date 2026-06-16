@@ -1,7 +1,9 @@
 import React, { useCallback, useMemo } from "react";
-import type { CSSProperties, MouseEvent } from "react";
+import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent } from "react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 
 export type EditorNodeLayoutMode = "absolute" | "flow";
 
@@ -12,8 +14,19 @@ type EditorNodeWrapperProps = {
     /** Flow children are laid out by a flex parent (`nl.container` stack/scroll or `nl.list`); skip absolute x/y. */
     layoutMode?: EditorNodeLayoutMode;
     styleOverrides?: CSSProperties;
+    hostAdapter?: UIHostAdapter;
     children?: React.ReactNode;
 };
+
+function eventTargetElement(target: EventTarget | null): Element | null {
+    if (target instanceof Element) {
+        return target;
+    }
+    if (target instanceof Node) {
+        return target.parentElement;
+    }
+    return null;
+}
 
 export function EditorNodeWrapper({
     element,
@@ -21,25 +34,128 @@ export function EditorNodeWrapper({
     isRoot = false,
     layoutMode = "absolute",
     styleOverrides,
+    hostAdapter,
     children,
 }: EditorNodeWrapperProps) {
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
+    const blueprintRuntime = hostAdapter?.blueprintRuntime;
 
-    const onMouseEnter = useCallback(() => {
+    const isDirectElementEvent = useCallback(
+        (target: EventTarget | null) => {
+            const targetEl = eventTargetElement(target);
+            const closest = targetEl?.closest("[data-ui-element-id]");
+            return closest?.getAttribute("data-ui-element-id") === element.id;
+        },
+        [element.id],
+    );
+
+    const dispatchWidgetEvent = useCallback(
+        (eventName: string, target: EventTarget | null) => {
+            if (!blueprintRuntime || !isDirectElementEvent(target)) {
+                return false;
+            }
+            if (!getWidgetLogicEvent(element.type, eventName)) {
+                return false;
+            }
+            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName);
+            return true;
+        },
+        [blueprintRuntime, element.id, element.type, isDirectElementEvent],
+    );
+
+    const onPointerEnter = useCallback((e: PointerEvent<HTMLDivElement>) => {
         widgetRuntimeStore?.setHoverTarget(element.id);
-    }, [widgetRuntimeStore, element.id]);
+        dispatchWidgetEvent("pointerEnter", e.target);
+    }, [dispatchWidgetEvent, widgetRuntimeStore, element.id]);
 
-    const onMouseOut = useCallback(
-        (e: MouseEvent<HTMLDivElement>) => {
+    const onPointerLeave = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => {
             if (!widgetRuntimeStore) {
+                dispatchWidgetEvent("pointerLeave", e.target);
                 return;
             }
             const related = e.relatedTarget;
             if (!related || !e.currentTarget.contains(related as Node)) {
                 widgetRuntimeStore.clearHoverIf(element.id);
+                widgetRuntimeStore.setActivePointerTarget(null);
+                dispatchWidgetEvent("pointerLeave", e.target);
             }
         },
-        [widgetRuntimeStore, element.id]
+        [dispatchWidgetEvent, widgetRuntimeStore, element.id],
+    );
+
+    const onPointerDown = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => {
+            if (isDirectElementEvent(e.target)) {
+                widgetRuntimeStore?.setActivePointerTarget(element.id);
+            }
+            dispatchWidgetEvent("pointerDown", e.target);
+        },
+        [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore, element.id],
+    );
+
+    const onPointerUp = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => {
+            if (isDirectElementEvent(e.target)) {
+                widgetRuntimeStore?.setActivePointerTarget(null);
+            }
+            dispatchWidgetEvent("pointerUp", e.target);
+        },
+        [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore],
+    );
+
+    const onPointerCancel = useCallback(() => {
+        widgetRuntimeStore?.setActivePointerTarget(null);
+    }, [widgetRuntimeStore]);
+
+    const onPointerMove = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => {
+            dispatchWidgetEvent("pointerMove", e.target);
+        },
+        [dispatchWidgetEvent],
+    );
+
+    const onClick = useCallback(
+        (e: MouseEvent<HTMLDivElement>) => {
+            dispatchWidgetEvent("click", e.target);
+        },
+        [dispatchWidgetEvent],
+    );
+
+    const onDoubleClick = useCallback(
+        (e: MouseEvent<HTMLDivElement>) => {
+            dispatchWidgetEvent("doubleClick", e.target);
+        },
+        [dispatchWidgetEvent],
+    );
+
+    const onContextMenu = useCallback(
+        (e: MouseEvent<HTMLDivElement>) => {
+            if (dispatchWidgetEvent("contextMenu", e.target)) {
+                e.preventDefault();
+            }
+        },
+        [dispatchWidgetEvent],
+    );
+
+    const onFocus = useCallback(
+        (e: FocusEvent<HTMLDivElement>) => {
+            if (isDirectElementEvent(e.target)) {
+                widgetRuntimeStore?.setFocusedTarget(element.id);
+            }
+            dispatchWidgetEvent("focus", e.target);
+        },
+        [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore, element.id],
+    );
+
+    const onBlur = useCallback(
+        (e: FocusEvent<HTMLDivElement>) => {
+            if (isDirectElementEvent(e.target)) {
+                widgetRuntimeStore?.setFocusedTarget(null);
+            }
+            dispatchWidgetEvent("blur", e.target);
+        },
+        [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore],
     );
 
     const containerStyle = useMemo<CSSProperties>(() => {
@@ -86,8 +202,17 @@ export function EditorNodeWrapper({
             data-ui-element-id={element.id}
             className={`ui-editor-node ${isRoot ? "ui-editor-node-root" : ""}`}
             style={containerStyle}
-            onMouseEnter={widgetRuntimeStore ? onMouseEnter : undefined}
-            onMouseOut={widgetRuntimeStore ? onMouseOut : undefined}
+            onPointerEnter={widgetRuntimeStore || blueprintRuntime ? onPointerEnter : undefined}
+            onPointerLeave={widgetRuntimeStore || blueprintRuntime ? onPointerLeave : undefined}
+            onPointerDown={widgetRuntimeStore || blueprintRuntime ? onPointerDown : undefined}
+            onPointerUp={widgetRuntimeStore || blueprintRuntime ? onPointerUp : undefined}
+            onPointerCancel={widgetRuntimeStore ? onPointerCancel : undefined}
+            onPointerMove={blueprintRuntime ? onPointerMove : undefined}
+            onClick={blueprintRuntime ? onClick : undefined}
+            onDoubleClick={blueprintRuntime ? onDoubleClick : undefined}
+            onContextMenu={blueprintRuntime ? onContextMenu : undefined}
+            onFocus={widgetRuntimeStore || blueprintRuntime ? onFocus : undefined}
+            onBlur={widgetRuntimeStore || blueprintRuntime ? onBlur : undefined}
         >
             {children}
         </div>

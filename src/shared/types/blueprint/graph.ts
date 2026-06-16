@@ -17,6 +17,24 @@ export type BlueprintGraphKind = "event" | "function" | "macro";
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT = "blueprint.event.head.init" as const;
 /** Entry for widget `click` UI event (e.g. buttons). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK = "blueprint.event.head.click" as const;
+/** Entry for widget `doubleClick` UI event. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_DOUBLE_CLICK = "blueprint.event.head.doubleClick" as const;
+/** Entry for widget `pointerDown` UI event. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_DOWN = "blueprint.event.head.pointerDown" as const;
+/** Entry for widget `pointerUp` UI event. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_UP = "blueprint.event.head.pointerUp" as const;
+/** Entry for widget `pointerEnter` UI event. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_ENTER = "blueprint.event.head.pointerEnter" as const;
+/** Entry for widget `pointerMove` UI event. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_MOVE = "blueprint.event.head.pointerMove" as const;
+/** Entry for widget `pointerLeave` UI event. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_LEAVE = "blueprint.event.head.pointerLeave" as const;
+/** Entry for widget `focus` UI event. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus" as const;
+/** Entry for widget `blur` UI event. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR = "blueprint.event.head.blur" as const;
+/** Entry for widget `contextMenu` UI event. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_CONTEXT_MENU = "blueprint.event.head.contextMenu" as const;
 /** Entry for global `appBoot` lifecycle event (application start). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
 /** Entry for surface `surfaceInit` lifecycle event (page entered). */
@@ -25,6 +43,15 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT = "blueprint.event.head
 const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_DOUBLE_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_ENTER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_MOVE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_LEAVE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_CONTEXT_MENU,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
 ]);
@@ -124,6 +151,11 @@ export function collectGlobalEventHeadNodeIdsForDispatch(
 }
 export const BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY = "blueprint.function.entry" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL = "blueprint.data.literal" as const;
+export const BLUEPRINT_NODE_TYPE_LITERAL_STRING = "blueprint.data.stringLiteral" as const;
+export const BLUEPRINT_NODE_TYPE_LITERAL_NUMBER = "blueprint.data.numberLiteral" as const;
+export const BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN = "blueprint.data.booleanLiteral" as const;
+export const BLUEPRINT_NODE_TYPE_LITERAL_NULL = "blueprint.data.nullLiteral" as const;
+export const BLUEPRINT_NODE_TYPE_LITERAL_JSON = "blueprint.data.jsonLiteral" as const;
 /** Read blueprint execution local variable (pure data source). */
 export const BLUEPRINT_NODE_TYPE_LOCAL_GET = "blueprint.local.get" as const;
 /** Write blueprint execution local variable. */

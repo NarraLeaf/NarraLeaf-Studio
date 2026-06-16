@@ -78,7 +78,7 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
         draftRef.current = docEl ? getTextProps(docEl).text : "";
     }, [isEditing, documentService, element.id]);
 
-    const liveElement = document.elements[element.id] ?? element;
+    const liveElement = isEditing ? document.elements[element.id] ?? element : element;
     const p = getTextProps(liveElement);
     const color = colorValueToCss({ hex: p.color, alpha: 1 });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);

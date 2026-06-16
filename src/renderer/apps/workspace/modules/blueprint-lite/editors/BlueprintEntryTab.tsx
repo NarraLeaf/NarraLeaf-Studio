@@ -34,6 +34,7 @@ import { BlueprintFrontendBadge } from "../components/BlueprintFrontendBadge";
 import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevisionBar";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
+import { createInputDialog } from "@/lib/components/dialogs";
 
 function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
     if (!view || bp.program.kind !== "graph") {
@@ -77,6 +78,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const uuid = context.services.get<UuidService>(Services.Uuid);
     const uidoc = context.services.get<UIDocumentService>(Services.UIDocument);
     const uiService = context.services.get<UIService>(Services.UI);
+    const inputDialog = useMemo(() => createInputDialog(uiService), [uiService]);
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const doc = localBp.getBlueprintDocument();
     const bp = doc.blueprints[payload.blueprintId];
@@ -227,11 +229,21 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         [editor.graphView, localBp, payload.blueprintId, uuid],
     );
 
-    const onAddEvent = useCallback(() => {
+    const onAddEvent = useCallback(async () => {
+        const name = await inputDialog.show({
+            title: "Create layer",
+            placeholder: "Layer name",
+            initialValue: `Layer ${eventIds.length + 1}`,
+            required: true,
+            maxLength: 120,
+        });
+        if (!name) {
+            return;
+        }
         const id = uuid.generate();
-        localBp.ensureEventGraph(payload.blueprintId, id, `Layer ${id.slice(0, 8)}`);
+        localBp.ensureEventGraph(payload.blueprintId, id, name);
         editor.selectEventGraph(id);
-    }, [editor, localBp, payload.blueprintId, uuid]);
+    }, [editor, eventIds.length, inputDialog, localBp, payload.blueprintId, uuid]);
 
     const onDeleteLayer = useCallback(
         (layerId: string) => {
@@ -463,6 +475,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                         graphView={editor.graphView}
                         diagnostics={diagnostics}
                         localBp={localBp}
+                        surfaceId={payload.surfaceId}
                         widgetElementType={widgetElement?.type}
                         onSelectLayer={editor.selectEventGraph}
                         onAddLayer={onAddEvent}

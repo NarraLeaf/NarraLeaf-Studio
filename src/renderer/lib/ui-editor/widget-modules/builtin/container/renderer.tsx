@@ -15,6 +15,7 @@ import {
     type ContainerStackAlignItems,
     type ContainerStackJustifyContent,
 } from "@shared/types/ui-editor/container";
+import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 
 function mapAlign(v: ContainerStackAlignItems): CSSProperties["alignItems"] {
     switch (v) {
@@ -275,9 +276,13 @@ export function ContainerRenderer(props: WidgetRendererProps) {
     const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
     const p = getContainerProps(element);
     const runtimeState = useWidgetRuntimeElementState(element.id);
+    const listScopedVariantId =
+        typeof (element.extra as UIListElementExtra | undefined)?.runtimeVariantOverrideId === "string"
+            ? (element.extra as UIListElementExtra).runtimeVariantOverrideId
+            : null;
     const clip = p.clipContent;
     const resolveCtx = {
-        variantOverrideId: runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        variantOverrideId: listScopedVariantId ?? runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
         signals: runtimeState.signals,
     };
     const rectangleLike = resolveContainerRectangleLike(element, p.appearance ?? undefined, resolveCtx);

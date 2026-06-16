@@ -48,6 +48,27 @@ export function resolveBeforeChildIdForOutlineDrop(
     return insertVisualIndex <= 0 ? null : visualWithoutMovers[insertVisualIndex - 1] ?? null;
 }
 
+export function resolveBeforeChildIdForOutlineGap(
+    document: UIDocument,
+    targetParentId: string,
+    movers: string[],
+    visualInsertIndex: number,
+): string | null | undefined {
+    const targetParent = document.elements[targetParentId];
+    if (!targetParent) {
+        return undefined;
+    }
+
+    const moverSet = new Set(movers);
+    const visualWithoutMovers = getOutlineVisualChildren(targetParent).filter(id => !moverSet.has(id));
+    const clampedVisualIndex = Math.max(0, Math.min(visualInsertIndex, visualWithoutMovers.length));
+
+    // `childrenIds` is back -> front, while the outline is front -> back.
+    const documentChildren = [...visualWithoutMovers].reverse();
+    const documentInsertIndex = visualWithoutMovers.length - clampedVisualIndex;
+    return documentInsertIndex >= documentChildren.length ? null : documentChildren[documentInsertIndex] ?? null;
+}
+
 export function moveLogReason(result: MoveUiElementsResult): void {
     if (!result.ok) {
         console.warn("[UILayersPanel] moveElementsInSurface rejected:", result.reason);

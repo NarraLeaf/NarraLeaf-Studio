@@ -1,17 +1,34 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintPaletteContext } from "@/lib/ui-editor/blueprint-nodes/types";
-import { Search } from "lucide-react";
+import {
+    Box,
+    Bug,
+    Database,
+    Map as MapIcon,
+    Route,
+    Save,
+    Search,
+    Settings2,
+    Sigma,
+    Type as TypeIcon,
+    Variable,
+    X,
+    Zap,
+    type LucideIcon,
+} from "lucide-react";
+import {
+    BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID,
+    buildBlueprintAddNodeCategories,
+    filterBlueprintAddNodeEntries,
+} from "./BlueprintAddNodeMenuModel";
 
-const MENU_W = 256;
-const MENU_MAX_H = 224;
+const MENU_W = 440;
+const MENU_MAX_H = 520;
+const MENU_CHROME_H = 132;
 
 type PaletteEntry = ReturnType<IBlueprintNodeCatalogService["listPaletteEntries"]>[number];
-
-type SectionRow =
-    | { kind: "heading"; category: string; key: string }
-    | { kind: "item"; entry: PaletteEntry; flatIndex: number; key: string };
 
 type Props = {
     nodeCatalog: IBlueprintNodeCatalogService;
@@ -23,28 +40,39 @@ type Props = {
     onPickType: (type: string, flowPosition: { x: number; y: number }) => void;
 };
 
-function buildSectionsWithFlatIndices(entries: readonly PaletteEntry[]): SectionRow[] {
-    const m = new Map<string, PaletteEntry[]>();
-    for (const e of entries) {
-        const list = m.get(e.category) ?? [];
-        list.push(e);
-        m.set(e.category, list);
+type CategoryVisual = {
+    icon: LucideIcon;
+    color: string;
+};
+
+function getCategoryVisual(categoryId: string): CategoryVisual {
+    switch (categoryId) {
+        case "Events":
+            return { icon: Zap, color: "#d9b36a" };
+        case "Flow":
+            return { icon: Route, color: "#8fa9c7" };
+        case "Data":
+            return { icon: Database, color: "#96b8a0" };
+        case "Math":
+            return { icon: Sigma, color: "#b2a6c9" };
+        case "String":
+            return { icon: TypeIcon, color: "#d2a679" };
+        case "Navigation":
+            return { icon: MapIcon, color: "#7ec7c1" };
+        case "Persistence":
+            return { icon: Save, color: "#b8aa86" };
+        case "State":
+        case "Variables":
+            return { icon: Variable, color: "#8fb3d9" };
+        case "Widget":
+            return { icon: Box, color: "var(--narraleaf-accent, #40a8c4)" };
+        case "Debug":
+            return { icon: Bug, color: "#bd97a3" };
+        case BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID:
+            return { icon: Settings2, color: "#a8adb5" };
+        default:
+            return { icon: Settings2, color: "#9aa3ad" };
     }
-    const sorted = [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-    let flatIndex = 0;
-    const rows: SectionRow[] = [];
-    for (const [category, list] of sorted) {
-        rows.push({ kind: "heading", category, key: `h:${category}` });
-        for (const entry of list) {
-            rows.push({
-                kind: "item",
-                entry,
-                flatIndex: flatIndex++,
-                key: `i:${category}:${entry.type}`,
-            });
-        }
-    }
-    return rows;
 }
 
 export function BlueprintAddNodeMenu({
@@ -57,14 +85,17 @@ export function BlueprintAddNodeMenu({
     onPickType,
 }: Props) {
     const [query, setQuery] = useState("");
+    const [activeCategoryId, setActiveCategoryId] = useState(BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
     const [activeFlatIndex, setActiveFlatIndex] = useState(-1);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
+    const categoryListRef = useRef<HTMLDivElement>(null);
     const navStateRef = useRef({ activeFlatIndex: -1, itemCount: 0 });
 
     useEffect(() => {
         if (open) {
             setQuery("");
+            setActiveCategoryId(BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
             setActiveFlatIndex(-1);
             requestAnimationFrame(() => inputRef.current?.focus());
         }
@@ -72,29 +103,31 @@ export function BlueprintAddNodeMenu({
 
     useEffect(() => {
         setActiveFlatIndex(-1);
-    }, [query]);
+    }, [activeCategoryId, query]);
 
     const entries = useMemo(
         () => nodeCatalog.listPaletteEntries(paletteContext),
         [nodeCatalog, paletteContext],
     );
 
-    const filtered = useMemo(() => {
-        const q = query.trim().toLowerCase();
-        if (!q) {
-            return entries;
-        }
-        return entries.filter(
-            e =>
-                e.displayName.toLowerCase().includes(q) ||
-                e.type.toLowerCase().includes(q) ||
-                e.category.toLowerCase().includes(q) ||
-                e.keywords?.some(k => k.toLowerCase().includes(q)),
-        );
-    }, [entries, query]);
+    const categories = useMemo(() => buildBlueprintAddNodeCategories(entries), [entries]);
+    const categoriesRef = useRef(categories);
+    categoriesRef.current = categories;
+    const activeCategoryIdRef = useRef(activeCategoryId);
+    activeCategoryIdRef.current = activeCategoryId;
 
-    const displayRows = useMemo(() => buildSectionsWithFlatIndices(filtered), [filtered]);
-    const itemCount = filtered.length;
+    useEffect(() => {
+        if (!categories.some(category => category.id === activeCategoryId)) {
+            setActiveCategoryId(BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
+        }
+    }, [activeCategoryId, categories]);
+
+    const filteredEntries = useMemo(
+        () => filterBlueprintAddNodeEntries(entries, activeCategoryId, query),
+        [activeCategoryId, entries, query],
+    );
+    const itemCount = filteredEntries.length;
+    const listMaxHeight = Math.max(220, MENU_MAX_H - MENU_CHROME_H);
 
     useEffect(() => {
         navStateRef.current = { activeFlatIndex, itemCount };
@@ -112,10 +145,33 @@ export function BlueprintAddNodeMenu({
         });
     }, [itemCount]);
 
-    const displayRowsRef = useRef(displayRows);
-    displayRowsRef.current = displayRows;
+    const filteredEntriesRef = useRef(filteredEntries);
+    filteredEntriesRef.current = filteredEntries;
     const actionsRef = useRef({ onPickType, flowPosition, onClose });
     actionsRef.current = { onPickType, flowPosition, onClose };
+
+    const pickEntry = useCallback((entry: PaletteEntry) => {
+        const { onPickType: pick, flowPosition: pos, onClose: close } = actionsRef.current;
+        pick(entry.type, pos);
+        close();
+    }, []);
+
+    const selectRelativeCategory = useCallback((offset: number) => {
+        const currentCategories = categoriesRef.current;
+        if (currentCategories.length === 0) {
+            return;
+        }
+        const currentIndex = Math.max(
+            0,
+            currentCategories.findIndex(category => category.id === activeCategoryIdRef.current),
+        );
+        const nextIndex = (currentIndex + offset + currentCategories.length) % currentCategories.length;
+        setActiveCategoryId(currentCategories[nextIndex]!.id);
+        requestAnimationFrame(() => {
+            const el = categoryListRef.current?.querySelector(`[data-bp-add-node-category-idx="${nextIndex}"]`);
+            el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        });
+    }, []);
 
     useEffect(() => {
         if (!open || activeFlatIndex < 0) {
@@ -135,7 +191,20 @@ export function BlueprintAddNodeMenu({
         }
         const onKey = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
+                e.preventDefault();
                 actionsRef.current.onClose();
+                return;
+            }
+
+            if (e.key === "ArrowLeft") {
+                e.preventDefault();
+                selectRelativeCategory(-1);
+                return;
+            }
+
+            if (e.key === "ArrowRight") {
+                e.preventDefault();
+                selectRelativeCategory(1);
                 return;
             }
 
@@ -146,12 +215,7 @@ export function BlueprintAddNodeMenu({
 
             if (e.key === "ArrowDown") {
                 e.preventDefault();
-                setActiveFlatIndex(prev => {
-                    if (prev < 0) {
-                        return 0;
-                    }
-                    return Math.min(prev + 1, n - 1);
-                });
+                setActiveFlatIndex(prev => prev < 0 ? 0 : Math.min(prev + 1, n - 1));
                 return;
             }
 
@@ -179,40 +243,32 @@ export function BlueprintAddNodeMenu({
                 return;
             }
 
-            if (e.key === "Enter") {
-                if (cur >= 0 && cur < n) {
-                    const row = displayRowsRef.current.find(r => r.kind === "item" && r.flatIndex === cur);
-                    if (row?.kind === "item") {
-                        e.preventDefault();
-                        const { onPickType: pick, flowPosition: pos, onClose: close } = actionsRef.current;
-                        pick(row.entry.type, pos);
-                        close();
-                    }
+            if (e.key === "Enter" && cur >= 0 && cur < n) {
+                const entry = filteredEntriesRef.current[cur];
+                if (entry) {
+                    e.preventDefault();
+                    pickEntry(entry);
                 }
             }
         };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, [open]);
+    }, [open, pickEntry, selectRelativeCategory]);
 
     const layout = useMemo(() => {
         if (typeof window === "undefined") {
-            return { left: anchor.x, top: anchor.y };
+            return { left: anchor.x, top: anchor.y, maxHeight: MENU_MAX_H };
         }
         const pad = 8;
+        const maxHeight = Math.min(MENU_MAX_H, Math.max(280, window.innerHeight - pad * 2));
         const left = Math.max(pad, Math.min(anchor.x, window.innerWidth - MENU_W - pad));
-        const top = Math.max(pad, Math.min(anchor.y, window.innerHeight - MENU_MAX_H - 80));
-        return { left, top };
+        const top = Math.max(pad, Math.min(anchor.y, window.innerHeight - maxHeight - pad));
+        return { left, top, maxHeight };
     }, [anchor.x, anchor.y]);
 
     if (!open) {
         return null;
     }
-
-    const itemRowClass = (isActive: boolean) =>
-        `flex w-full items-center justify-between gap-2 px-2 py-1 text-left text-[11px] text-gray-200 ${
-            isActive ? "bg-white/15" : "hover:bg-white/10"
-        }`;
 
     return createPortal(
         <>
@@ -224,79 +280,148 @@ export function BlueprintAddNodeMenu({
             />
             <div
                 role="presentation"
-                className="fixed z-[101] w-64 overflow-hidden rounded-md border border-white/15 bg-[#14181c] shadow-xl"
-                style={{ left: layout.left, top: layout.top, maxHeight: MENU_MAX_H + 48 }}
+                className="fixed z-[101] flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-md border border-white/15 bg-[#101318] shadow-xl"
+                style={{ left: layout.left, top: layout.top, width: MENU_W, maxHeight: layout.maxHeight }}
                 onContextMenu={e => e.preventDefault()}
             >
-                <div className="border-b border-white/10 px-2 py-1.5">
-                    <div className="flex items-center gap-1.5 rounded border border-white/10 bg-[#0f1115] px-2 py-1">
-                        <Search className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-hidden />
+                <div className="border-b border-white/10 bg-[#0f1115] px-3 py-3">
+                    <div className="flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 transition-colors focus-within:border-primary/60 focus-within:bg-primary/5">
+                        <Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
                         <input
                             ref={inputRef}
                             type="search"
                             value={query}
                             onChange={e => setQuery(e.target.value)}
-                            placeholder="Search nodes…"
-                            className="min-w-0 flex-1 bg-transparent text-[11px] text-gray-200 outline-none placeholder:text-gray-600"
+                            placeholder="Search nodes"
+                            className="min-w-0 flex-1 bg-transparent text-sm text-slate-200 outline-none placeholder:text-slate-500"
                             autoComplete="off"
                             aria-controls="bp-add-node-list"
                             aria-activedescendant={
                                 activeFlatIndex >= 0 ? `bp-add-node-option-${activeFlatIndex}` : undefined
                             }
                         />
+                        {query ? (
+                            <button
+                                type="button"
+                                className="grid h-5 w-5 shrink-0 place-items-center rounded text-slate-500 transition-colors hover:bg-white/10 hover:text-slate-200"
+                                title="Clear search"
+                                onClick={() => setQuery("")}
+                            >
+                                <X className="h-3.5 w-3.5" aria-hidden />
+                            </button>
+                        ) : null}
+                    </div>
+                    <div
+                        ref={categoryListRef}
+                        className="mt-3 flex gap-1 overflow-x-auto pb-0.5"
+                        onWheel={event => {
+                            if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) {
+                                return;
+                            }
+                            event.preventDefault();
+                            event.currentTarget.scrollLeft += event.deltaY;
+                        }}
+                    >
+                        {categories.map((category, index) => {
+                            const active = activeCategoryId === category.id;
+                            const visual = getCategoryVisual(category.id);
+                            const Icon = visual.icon;
+                            return (
+                                <button
+                                    key={category.id}
+                                    type="button"
+                                    data-bp-add-node-category-idx={index}
+                                    className={[
+                                        "flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
+                                        active
+                                            ? "border-primary/45 bg-primary/15 text-white"
+                                            : "border-white/10 bg-white/[0.03] text-slate-400 hover:bg-white/[0.06] hover:text-slate-100",
+                                    ].join(" ")}
+                                    onClick={() => setActiveCategoryId(category.id)}
+                                >
+                                    <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: visual.color }} aria-hidden />
+                                    <span>{category.label}</span>
+                                    <span className="text-[10px] text-slate-500">{category.count}</span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
+
                 <div
                     id="bp-add-node-list"
                     ref={listRef}
                     role="listbox"
                     aria-label="Node types"
-                    className="max-h-56 overflow-y-auto py-0.5"
-                    style={{ maxHeight: MENU_MAX_H }}
+                    className="min-h-0 flex-1 overflow-y-auto p-2"
+                    style={{ maxHeight: Math.min(listMaxHeight, layout.maxHeight - MENU_CHROME_H) }}
                 >
-                    {displayRows.length === 0 || itemCount === 0 ? (
-                        <p className="px-2 py-2 text-[11px] text-gray-500">No matches.</p>
+                    {filteredEntries.length === 0 ? (
+                        <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-500">
+                            No node found.
+                        </div>
                     ) : (
-                        displayRows.map(row => {
-                            if (row.kind === "heading") {
-                                return (
-                                    <p
-                                        key={row.key}
-                                        role="presentation"
-                                        className="px-2 py-0.5 text-[9px] uppercase tracking-wide text-gray-600"
-                                    >
-                                        {row.category}
-                                    </p>
-                                );
-                            }
-                            const isActive = activeFlatIndex === row.flatIndex;
-                            return (
-                                <button
-                                    key={row.key}
-                                    id={`bp-add-node-option-${row.flatIndex}`}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={isActive}
-                                    data-bp-add-node-idx={row.flatIndex}
-                                    className={itemRowClass(isActive)}
-                                    title={row.entry.keywords?.join(", ") ?? row.entry.type}
-                                    onClick={() => {
-                                        onPickType(row.entry.type, flowPosition);
-                                        onClose();
-                                    }}
-                                    onMouseEnter={() => setActiveFlatIndex(row.flatIndex)}
-                                >
-                                    <span className="truncate">{row.entry.displayName}</span>
-                                    <span className="shrink-0 font-mono text-[9px] text-gray-600">
-                                        {row.entry.type}
-                                    </span>
-                                </button>
-                            );
-                        })
+                        <div className="grid gap-1">
+                            {filteredEntries.map((entry, index) => (
+                                <BlueprintAddNodeRow
+                                    key={entry.type}
+                                    entry={entry}
+                                    active={activeFlatIndex === index}
+                                    flatIndex={index}
+                                    onPick={pickEntry}
+                                    onHover={setActiveFlatIndex}
+                                />
+                            ))}
+                        </div>
                     )}
                 </div>
             </div>
         </>,
         document.body,
+    );
+}
+
+function BlueprintAddNodeRow(props: {
+    entry: PaletteEntry;
+    active: boolean;
+    flatIndex: number;
+    onPick: (entry: PaletteEntry) => void;
+    onHover: (flatIndex: number) => void;
+}) {
+    const visual = getCategoryVisual(props.entry.category);
+    const Icon = visual.icon;
+
+    return (
+        <div
+            className={[
+                "group flex items-center rounded-md transition-colors",
+                props.active ? "bg-white/[0.08]" : "hover:bg-white/[0.06]",
+            ].join(" ")}
+        >
+            <button
+                id={`bp-add-node-option-${props.flatIndex}`}
+                type="button"
+                role="option"
+                aria-selected={props.active}
+                data-bp-add-node-idx={props.flatIndex}
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                title={`${props.entry.displayName}\n${props.entry.type}${
+                    props.entry.keywords?.length ? `\n${props.entry.keywords.join(", ")}` : ""
+                }`}
+                onClick={() => props.onPick(props.entry)}
+                onMouseEnter={() => props.onHover(props.flatIndex)}
+            >
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04]">
+                    <Icon className="h-4 w-4" style={{ color: visual.color }} aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-slate-100">{props.entry.displayName}</span>
+                    <span className="block truncate text-[11px] text-slate-500">{props.entry.category}</span>
+                </span>
+                <span className="min-w-0 max-w-[180px] shrink-0 truncate font-mono text-[11px] text-slate-500">
+                    {props.entry.type}
+                </span>
+            </button>
+        </div>
     );
 }

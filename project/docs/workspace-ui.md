@@ -42,6 +42,7 @@
 - 当前主路径是 `UIStore.openEditorTabInGroup()`、`closeEditorTabInGroup()`、`setActiveEditorTabInGroup()`。
 - `UIService.editor.open()` 已路由到 group-aware API，但 `EditorService.close()`、`getAll()` 等仍读写旧 flat tab 状态；处理当前 Workspace tab 时优先使用 Registry 或 `UIStore` 的 group-aware API。
 - Tab 定义使用 `EditorTabDefinition`，通常包含 `id`、`title`、`component`、`payload`、`closable`、`modified` 等。
+- Workspace 已有 VS Code 风格的 editor quick switch：`Ctrl+Tab` / `Ctrl+Shift+Tab` 在所有 group-aware editor tabs 间按运行时 MRU 顺序切换，按住 `Ctrl` 显示列表，松开 `Ctrl` 激活高亮项，`Esc` 取消；该状态不持久化。
 - 新增可恢复 tab 时必须补 `workspaceEditorSession.ts` 的 serialize/restore 逻辑。
 - 当前 session restore 主要支持 root 为单一 editor group 的布局；不要假设 split layout 已完整持久化。
 
@@ -52,6 +53,7 @@
 - Dialog 打开时 focus 切到 `FocusArea.Dialog`，关闭时从 focus stack 恢复之前焦点。
 - `KeybindingService` 在 `UIService.init()` 启动；action 和 action group 的 shortcut 会由 `UIStore` 自动注册。
 - 需要键盘行为时检查 `when`、`allowInEditable` 和 `keyboardEditable.ts`，避免在输入框中吞掉文本编辑快捷键。
+- `WorkspaceEditorQuickSwitch` 是全局 overlay，但仍通过现有 keybinding service 注册；它设置 `allowInEditable: true`，因为 `Ctrl+Tab` 需要从文本编辑控件中切换 editor tab。
 
 ## Dialog / Notification / Status
 
@@ -87,5 +89,6 @@
 
 - 新增 Workspace tab：先定义稳定 tab id 和 payload，再补 session serialize/restore。
 - 新增全局快捷键：优先通过 action/actionGroup shortcut 或 `KeybindingService.registerMany()`，并设置正确 `when` / `allowInEditable`。
+- 新增 editor tab 切换行为：使用 group-aware `editorLayout` 和 Registry 的 `setActiveEditorTab(tabId, groupId)`；不要回退到旧 flat `activeEditorTabId`。
 - 新增 dialog：简单确认用 confirm/alert，复杂 UI 用 custom content；不要调用 QuickPick/InputBox 后假设已有真实选择器。
 - 改 panel 状态：可恢复的 panel 私有 UI 状态放 `PanelStateService`，持久业务数据放对应 domain service。

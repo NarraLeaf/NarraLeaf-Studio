@@ -143,6 +143,9 @@ class BlueprintNodeDefinitionsRegistry {
     public listPaletteEntries(ctx: BlueprintPaletteContext): BlueprintNodeEditorCatalogEntry[] {
         const out: BlueprintNodeEditorCatalogEntry[] = [];
         for (const def of this.byType.values()) {
+            if (def.hideInPalette) {
+                continue;
+            }
             if (!def.graphKinds.includes(ctx.graphKind)) {
                 continue;
             }

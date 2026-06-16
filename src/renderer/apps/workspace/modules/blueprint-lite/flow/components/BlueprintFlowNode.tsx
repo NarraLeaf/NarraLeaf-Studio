@@ -7,6 +7,8 @@ import {
     type BlueprintInspectorParamSelectOption,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BlueprintLiteralValueControl } from "../../components/BlueprintLiteralValueControl";
+import { Select, type SelectOption } from "@/lib/components/elements/Select";
+import { Button, Input, TextArea } from "@/lib/components/elements";
 
 /**
  * React Flow handles node selection / drag on pointer down. Stopping propagation on click alone is too late;
@@ -39,12 +41,12 @@ export type BlueprintFlowNodeData = {
 const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-white/30 !bg-cyan-500";
 const DATA_HANDLE_CLASS = "!h-2 !w-2 !border border-amber-200/35 !bg-amber-500";
 
-const CARD_SELECT =
-    "w-full rounded border border-white/15 bg-[#111418] px-1.5 py-1 text-[10px] text-gray-200 outline-none focus:border-[#40a8c4]";
 const CARD_TEXTAREA =
-    "w-full min-h-[2.5rem] rounded border border-white/15 bg-[#111418] px-1.5 py-1 font-mono text-[10px] text-gray-200 outline-none focus:border-[#40a8c4]";
+    "min-h-[2.5rem] resize-none rounded border-white/15 bg-[#111418] px-1.5 py-1 font-mono text-[10px]";
 const CARD_INPUT =
-    "w-full rounded border border-white/15 bg-[#111418] px-1.5 py-1 font-mono text-[10px] text-gray-200 outline-none focus:border-[#40a8c4]";
+    "rounded border-white/15 bg-[#111418] px-1.5 py-1 font-mono text-[10px]";
+const CARD_ICON_BUTTON =
+    "nodrag !h-4 !w-4 shrink-0 !gap-0 rounded !p-0.5 text-gray-400 hover:bg-white/5 hover:text-gray-300";
 
 /** Hide native number steppers — keep same look as other card fields (WebKit + Firefox). */
 const INPUT_NUMBER_NO_SPINNER =
@@ -95,61 +97,73 @@ function PinInlineLiteralInput({
 
     if (vt === "string") {
         return (
-            <input
-                className={baseClass}
-                type="text"
-                value={raw !== undefined && raw !== null ? String(raw) : ""}
-                onMouseDown={stopFlowNodePointerBubble}
-                onPointerDown={stopFlowNodePointerBubble}
-                onChange={e => {
-                    const t = e.target.value;
-                    onPatchNodeParam(nodeId, pin.id, t.length > 0 ? t : undefined);
-                }}
-            />
+            <div className="min-w-0 flex-1">
+                <Input
+                    className={baseClass}
+                    type="text"
+                    value={raw !== undefined && raw !== null ? String(raw) : ""}
+                    size="sm"
+                    fullWidth
+                    onMouseDown={stopFlowNodePointerBubble}
+                    onPointerDown={stopFlowNodePointerBubble}
+                    onChange={e => {
+                        const t = e.target.value;
+                        onPatchNodeParam(nodeId, pin.id, t.length > 0 ? t : undefined);
+                    }}
+                />
+            </div>
         );
     }
 
     if (vt === "integer") {
         return (
-            <input
-                className={numberClass}
-                type="number"
-                step={1}
-                value={typeof raw === "number" && Number.isFinite(raw) ? raw : raw === undefined ? "" : String(raw)}
-                onMouseDown={stopFlowNodePointerBubble}
-                onPointerDown={stopFlowNodePointerBubble}
-                onChange={e => {
-                    const t = e.target.value.trim();
-                    if (!t) {
-                        onPatchNodeParam(nodeId, pin.id, undefined);
-                        return;
-                    }
-                    const n = parseInt(t, 10);
-                    onPatchNodeParam(nodeId, pin.id, Number.isFinite(n) ? n : undefined);
-                }}
-            />
+            <div className="min-w-0 flex-1">
+                <Input
+                    className={numberClass}
+                    type="number"
+                    step={1}
+                    value={typeof raw === "number" && Number.isFinite(raw) ? raw : raw === undefined ? "" : String(raw)}
+                    size="sm"
+                    fullWidth
+                    onMouseDown={stopFlowNodePointerBubble}
+                    onPointerDown={stopFlowNodePointerBubble}
+                    onChange={e => {
+                        const t = e.target.value.trim();
+                        if (!t) {
+                            onPatchNodeParam(nodeId, pin.id, undefined);
+                            return;
+                        }
+                        const n = parseInt(t, 10);
+                        onPatchNodeParam(nodeId, pin.id, Number.isFinite(n) ? n : undefined);
+                    }}
+                />
+            </div>
         );
     }
 
     if (vt === "float") {
         return (
-            <input
-                className={numberClass}
-                type="number"
-                step="any"
-                value={typeof raw === "number" && Number.isFinite(raw) ? raw : raw === undefined ? "" : String(raw)}
-                onMouseDown={stopFlowNodePointerBubble}
-                onPointerDown={stopFlowNodePointerBubble}
-                onChange={e => {
-                    const t = e.target.value.trim();
-                    if (!t) {
-                        onPatchNodeParam(nodeId, pin.id, undefined);
-                        return;
-                    }
-                    const n = Number(t);
-                    onPatchNodeParam(nodeId, pin.id, Number.isFinite(n) ? n : undefined);
-                }}
-            />
+            <div className="min-w-0 flex-1">
+                <Input
+                    className={numberClass}
+                    type="number"
+                    step="any"
+                    value={typeof raw === "number" && Number.isFinite(raw) ? raw : raw === undefined ? "" : String(raw)}
+                    size="sm"
+                    fullWidth
+                    onMouseDown={stopFlowNodePointerBubble}
+                    onPointerDown={stopFlowNodePointerBubble}
+                    onChange={e => {
+                        const t = e.target.value.trim();
+                        if (!t) {
+                            onPatchNodeParam(nodeId, pin.id, undefined);
+                            return;
+                        }
+                        const n = Number(t);
+                        onPatchNodeParam(nodeId, pin.id, Number.isFinite(n) ? n : undefined);
+                    }}
+                />
+            </div>
         );
     }
 
@@ -210,10 +224,13 @@ function InputPinRow({
             <div className="relative flex min-h-[20px] w-full min-w-0 items-center gap-0.5 pl-1 pr-0.5">
                 <div className="flex min-w-0 flex-1 items-center gap-1 pl-3.5">
                     {removable && onRemovePin ? (
-                        <button
+                        <Button
                             type="button"
                             title="Remove input pin"
-                            className="nodrag shrink-0 rounded p-0.5 text-gray-500 hover:bg-white/5 hover:text-gray-300"
+                            aria-label="Remove input pin"
+                            variant="ghost"
+                            size="sm"
+                            className={`${CARD_ICON_BUTTON} text-gray-500`}
                             onMouseDown={stopFlowNodePointerBubble}
                             onPointerDown={stopFlowNodePointerBubble}
                             onClick={e => {
@@ -222,7 +239,7 @@ function InputPinRow({
                             }}
                         >
                             <Minus className="h-3 w-3" aria-hidden />
-                        </button>
+                        </Button>
                     ) : null}
                     <span
                         className="shrink-0 text-[9px] leading-tight text-gray-400"
@@ -237,10 +254,13 @@ function InputPinRow({
                         onPatchNodeParam={onPatchNodeParam}
                         className={`${CARD_INPUT} min-h-[20px] min-w-0 flex-1 py-0.5`}
                     />
-                    <button
+                    <Button
                         type="button"
                         title="Show input pin"
-                        className="nodrag shrink-0 rounded p-0.5 text-gray-400 hover:bg-white/5 hover:text-gray-300"
+                        aria-label="Show input pin"
+                        variant="ghost"
+                        size="sm"
+                        className={CARD_ICON_BUTTON}
                         onMouseDown={stopFlowNodePointerBubble}
                         onPointerDown={stopFlowNodePointerBubble}
                         onClick={e => {
@@ -249,7 +269,7 @@ function InputPinRow({
                         }}
                     >
                         <Link2 className="h-3 w-3" aria-hidden />
-                    </button>
+                    </Button>
                 </div>
             </div>
         );
@@ -269,10 +289,13 @@ function InputPinRow({
             <div className="flex min-w-0 flex-1 items-center pl-3.5">
                 <div className="flex min-w-0 max-w-full items-center gap-0.5">
                     {removable && onRemovePin ? (
-                        <button
+                        <Button
                             type="button"
                             title="Remove input pin"
-                            className="nodrag shrink-0 rounded p-0.5 text-gray-500 hover:bg-white/5 hover:text-gray-300"
+                            aria-label="Remove input pin"
+                            variant="ghost"
+                            size="sm"
+                            className={`${CARD_ICON_BUTTON} text-gray-500`}
                             onMouseDown={stopFlowNodePointerBubble}
                             onPointerDown={stopFlowNodePointerBubble}
                             onClick={e => {
@@ -281,7 +304,7 @@ function InputPinRow({
                             }}
                         >
                             <Minus className="h-3 w-3" aria-hidden />
-                        </button>
+                        </Button>
                     ) : null}
                     <span
                         className="min-w-0 shrink truncate text-[9px] leading-tight text-gray-400"
@@ -290,10 +313,13 @@ function InputPinRow({
                         {pinCaption(pin, semantic)}
                     </span>
                     {canInlineLiteral && selected ? (
-                        <button
+                        <Button
                             type="button"
                             title="Edit value on card"
-                            className="nodrag shrink-0 rounded p-0.5 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/5 hover:text-gray-300 focus-visible:opacity-100"
+                            aria-label="Edit value on card"
+                            variant="ghost"
+                            size="sm"
+                            className={`${CARD_ICON_BUTTON} opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100`}
                             onMouseDown={stopFlowNodePointerBubble}
                             onPointerDown={stopFlowNodePointerBubble}
                             onClick={e => {
@@ -302,7 +328,7 @@ function InputPinRow({
                             }}
                         >
                             <Link2 className="h-3 w-3" aria-hidden />
-                        </button>
+                        </Button>
                     ) : null}
                 </div>
             </div>
@@ -358,44 +384,48 @@ function InspectorParamOnCard({
         spec.kind === "select"
             ? spec.options ?? (spec.dynamicOptionsSource ? dynamicSelectOptions?.[spec.dynamicOptionsSource] : undefined)
             : undefined;
+    const selectComponentOptions: SelectOption[] | undefined = selectOptions
+        ? [{ value: "", label: "-" }, ...selectOptions.map(opt => ({ value: opt.value, label: opt.label }))]
+        : undefined;
+    const variableComponentOptions: SelectOption[] = [
+        { value: "", label: "-" },
+        ...(memberVariables ?? []).map(v => ({ value: v.id, label: v.name })),
+    ];
 
     return (
-        <div key={spec.key} className="mt-1.5 border-t border-white/5 pt-1.5">
+        <div
+            key={spec.key}
+            className="mt-1.5 border-t border-white/5 pt-1.5"
+            onMouseDownCapture={stopFlowNodePointerBubble}
+            onPointerDownCapture={stopFlowNodePointerBubble}
+        >
             <div className="mb-0.5 text-[9px] uppercase tracking-wide text-gray-500">{spec.label}</div>
-            {spec.kind === "select" && selectOptions ? (
-                <select
-                    className={CARD_SELECT}
+            {spec.kind === "select" && selectComponentOptions ? (
+                <Select
+                    fullWidth
+                    size="sm"
+                    options={selectComponentOptions}
                     value={typeof raw === "string" ? raw : ""}
-                    onMouseDown={stopFlowNodePointerBubble}
-                    onPointerDown={stopFlowNodePointerBubble}
-                    onChange={e => {
-                        const v = e.target.value;
+                    onChange={value => {
+                        const v = String(value);
                         onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
                     }}
-                >
-                    <option value="">-</option>
-                    {selectOptions.map(opt => (
-                        <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                        </option>
-                    ))}
-                </select>
+                    portalMenu
+                    menuPlacement="below"
+                />
             ) : spec.kind === "variableRef" ? (
-                <select
-                    className={CARD_SELECT}
+                <Select
+                    fullWidth
+                    size="sm"
+                    options={variableComponentOptions}
                     value={variableSelectValue}
-                    onChange={e => {
-                        const v = e.target.value;
+                    onChange={value => {
+                        const v = String(value);
                         onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
                     }}
-                >
-                    <option value="">-</option>
-                    {(memberVariables ?? []).map(v => (
-                        <option key={v.id} value={v.id}>
-                            {v.name}
-                        </option>
-                    ))}
-                </select>
+                    portalMenu
+                    menuPlacement="below"
+                />
             ) : spec.kind === "literal" ? (
                 <BlueprintLiteralValueControl
                     variant="nodeCard"
@@ -403,10 +433,12 @@ function InspectorParamOnCard({
                     onChange={v => onPatchNodeParam(nodeId, spec.key, v)}
                 />
             ) : spec.kind === "json" ? (
-                <textarea
+                <TextArea
                     className={CARD_TEXTAREA}
                     rows={2}
                     value={raw !== undefined ? JSON.stringify(raw, null, 0) : ""}
+                    size="sm"
+                    fullWidth
                     onChange={e => {
                         const t = e.target.value.trim();
                         if (!t) {
@@ -421,7 +453,7 @@ function InspectorParamOnCard({
                     }}
                 />
             ) : (
-                <input
+                <Input
                     className={
                         spec.kind === "number"
                             ? `${CARD_INPUT} ${INPUT_NUMBER_NO_SPINNER}`
@@ -429,6 +461,8 @@ function InspectorParamOnCard({
                     }
                     type={spec.kind === "number" ? "number" : "text"}
                     value={spec.kind === "number" ? String(raw ?? "") : String(raw ?? "")}
+                    size="sm"
+                    fullWidth
                     onChange={e => {
                         const v =
                             spec.kind === "number" ? Number(e.target.value) : e.target.value;
@@ -521,10 +555,12 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                                 />
                             ))}
                             {showAddInputRow ? (
-                                <button
+                                <Button
                                     type="button"
                                     title="Add input pin"
-                                    className="nodrag mt-0.5 flex w-full items-center justify-center rounded border border-dashed border-white/10 py-0.5 text-gray-500 hover:border-white/20 hover:bg-white/[0.03] hover:text-gray-400"
+                                    className="nodrag mt-0.5 flex w-full items-center justify-center rounded border border-dashed border-white/10 !py-0.5 text-gray-500 hover:border-white/20 hover:bg-white/[0.03] hover:text-gray-400"
+                                    variant="ghost"
+                                    size="sm"
                                     onMouseDown={stopFlowNodePointerBubble}
                                     onPointerDown={stopFlowNodePointerBubble}
                                     onClick={e => {
@@ -533,7 +569,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                                     }}
                                 >
                                     <Plus className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
-                                </button>
+                                </Button>
                             ) : null}
                         </div>
                     ) : (

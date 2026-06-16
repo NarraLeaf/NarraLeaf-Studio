@@ -106,6 +106,8 @@ export type BlueprintNodeDef = {
     keywords?: string[];
     /** Graph kinds where this node may appear */
     graphKinds: BlueprintGraphKind[];
+    /** Keep registered for old graphs/runtime, but omit from add-node palette. */
+    hideInPalette?: boolean;
     /** Pure nodes have no side effects; used for validation hints */
     isPure: boolean;
     /** Latent/async execution (delay, host awaits) — disallowed in function graphs */

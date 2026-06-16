@@ -57,6 +57,66 @@ const CLICK_EVENT: WidgetLogicEventDef = {
     headNodeTypes: ["blueprint.event.head.click"],
 };
 
+const COMMON_POINTER_EVENTS: readonly WidgetLogicEventDef[] = [
+    CLICK_EVENT,
+    {
+        id: "doubleClick",
+        displayName: "Double click",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.doubleClick"],
+    },
+    {
+        id: "pointerDown",
+        displayName: "Pointer down",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.pointerDown"],
+    },
+    {
+        id: "pointerUp",
+        displayName: "Pointer up",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.pointerUp"],
+    },
+    {
+        id: "pointerEnter",
+        displayName: "Pointer enter",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.pointerEnter"],
+    },
+    {
+        id: "pointerMove",
+        displayName: "Pointer move",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.pointerMove"],
+    },
+    {
+        id: "pointerLeave",
+        displayName: "Pointer leave",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.pointerLeave"],
+    },
+    {
+        id: "focus",
+        displayName: "Focus",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.focus"],
+    },
+    {
+        id: "blur",
+        displayName: "Blur",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.blur"],
+    },
+    {
+        id: "contextMenu",
+        displayName: "Context menu",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.contextMenu"],
+    },
+];
+
+const BASE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [INIT_EVENT, ...COMMON_POINTER_EVENTS];
+
 const baseCommands: readonly WidgetLogicCommandDef[] = [
     {
         id: "setVisible",
@@ -90,7 +150,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.container": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Container logic",
-        events: [INIT_EVENT],
+        events: BASE_WIDGET_EVENTS,
         commands: baseCommands,
         readableState: [
             { id: "visible", displayName: "Visible" },
@@ -98,6 +158,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { id: "variant", displayName: "Variant" },
         ],
         writableProps: [
+            { propPath: "variant", displayName: "Variant" },
             { propPath: "appearance", displayName: "Appearance" },
             { propPath: "clipContent", displayName: "Clip content" },
         ],
@@ -105,7 +166,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.text": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Text logic",
-        events: [INIT_EVENT],
+        events: BASE_WIDGET_EVENTS,
         commands: [
             ...baseCommands,
             {
@@ -124,7 +185,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.image": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Image logic",
-        events: [INIT_EVENT],
+        events: BASE_WIDGET_EVENTS,
         commands: [
             ...baseCommands,
             {
@@ -143,7 +204,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.button": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Button logic",
-        events: [INIT_EVENT, CLICK_EVENT],
+        events: BASE_WIDGET_EVENTS,
         commands: [
             ...baseCommands,
             {
@@ -159,15 +220,16 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { id: "variant", displayName: "Variant" },
         ],
         writableProps: [
+            { propPath: "variant", displayName: "Variant" },
             { propPath: "label", displayName: "Label" },
             { propPath: "appearance", displayName: "Appearance" },
             { propPath: "interactionDisabled", displayName: "Interaction disabled" },
         ],
     },
     "nl.list": {
-        supportsPrivateBlueprint: false,
+        supportsPrivateBlueprint: true,
         blueprintLabel: "List logic",
-        events: [],
+        events: [INIT_EVENT],
         commands: [
             {
                 id: "refreshItems",
@@ -175,8 +237,16 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
                 availability: "planned",
             },
         ],
-        readableState: [{ id: "itemCount", displayName: "Item count" }],
-        writableProps: [{ propPath: "previewCount", displayName: "Preview count" }],
+        readableState: [
+            { id: "itemCount", displayName: "Item count" },
+            { id: "scrollOffset", displayName: "Scroll offset" },
+            { id: "selectedIndex", displayName: "Selected index" },
+        ],
+        writableProps: [
+            { propPath: "itemsBinding", displayName: "Items binding" },
+            { propPath: "previewCount", displayName: "Preview count" },
+            { propPath: "selectedIndex", displayName: "Selected index" },
+        ],
     },
 };
 

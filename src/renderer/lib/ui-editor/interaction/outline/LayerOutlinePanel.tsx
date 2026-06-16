@@ -3,12 +3,13 @@ import {
     useCallback,
     useEffect,
     useMemo,
+    useRef,
     useState,
     type MouseEvent,
 } from "react";
-import type { DragEndEvent } from "@dnd-kit/core";
-import { closestCorners, DndContext, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { createPortal } from "react-dom";
+import type { Collision, CollisionDetection, DragEndEvent, DragMoveEvent, DragStartEvent } from "@dnd-kit/core";
+import { DndContext, PointerSensor, pointerWithin, useSensor, useSensors } from "@dnd-kit/core";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { isUIElementSelection } from "@services/ui/UIStore";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
@@ -18,14 +19,15 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import {
-    getOutlineVisualChildren,
     moveLogReason,
+    resolveBeforeChildIdForOutlineGap,
     resolveBeforeChildIdForOutlineDrop,
 } from "@/lib/ui-editor/interaction/outline/outlineDropGeometry";
 import {
-    OutlineAppendDropZone,
+    type OutlineGapDropData,
     OUTLINE_ROOT_WIDGET_TYPE,
-    SortableOutlineRow,
+    OutlineDragPreview,
+    OutlineSubtree,
 } from "@/lib/ui-editor/interaction/outline/LayerOutlineRows";
 import { useLayerOutlineContextMenus } from "@/lib/ui-editor/interaction/outline/useLayerOutlineContextMenus";
 
@@ -37,6 +39,58 @@ export type UILayersPanelProps = {
     inputDialog: InputDialog | null;
 };
 
+function isOutlineGapDropData(value: unknown): value is OutlineGapDropData {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+    const data = value as Partial<OutlineGapDropData>;
+    return data.kind === "outline-gap" && typeof data.parentId === "string" && typeof data.visualIndex === "number";
+}
+
+function collisionHasOutlineGapData(collision: Collision): boolean {
+    return isOutlineGapDropData(collision.data?.droppableContainer.data.current);
+}
+
+function getActivatorClientPoint(event: Event | null): { x: number; y: number } | null {
+    if (!event) {
+        return null;
+    }
+    const eventRecord = event as unknown as Record<string, unknown>;
+    const clientX = eventRecord.clientX;
+    const clientY = eventRecord.clientY;
+    if (typeof clientX === "number" && typeof clientY === "number") {
+        return { x: clientX, y: clientY };
+    }
+
+    const touches = eventRecord.touches;
+    const firstTouch = getFirstTouchPoint(touches);
+    if (firstTouch) {
+        return firstTouch;
+    }
+
+    const changedTouches = eventRecord.changedTouches;
+    return getFirstTouchPoint(changedTouches);
+}
+
+function getFirstTouchPoint(value: unknown): { x: number; y: number } | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const touchList = value as { length?: unknown; item?: (index: number) => unknown; 0?: unknown };
+    const length = typeof touchList.length === "number" ? touchList.length : 0;
+    if (length <= 0) {
+        return null;
+    }
+    const first = typeof touchList.item === "function" ? touchList.item(0) : touchList[0];
+    if (!first || typeof first !== "object") {
+        return null;
+    }
+    const touch = first as Record<string, unknown>;
+    return typeof touch.clientX === "number" && typeof touch.clientY === "number"
+        ? { x: touch.clientX, y: touch.clientY }
+        : null;
+}
+
 export function UILayersPanel({
     surfaceId,
     stateService,
@@ -47,6 +101,10 @@ export function UILayersPanel({
     const [docVersion, setDocVersion] = useState(0);
     const [selection, setSelection] = useState(stateService.getSelection());
     const [outlineRev, setOutlineRev] = useState(0);
+    const [activeDragId, setActiveDragId] = useState<string | null>(null);
+    const [activeDragPoint, setActiveDragPoint] = useState<{ x: number; y: number } | null>(null);
+    const initialDragPointRef = useRef<{ x: number; y: number } | null>(null);
+    const lastGapCollisionRef = useRef<{ collisions: Collision[]; at: number } | null>(null);
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
 
@@ -200,12 +258,60 @@ export function UILayersPanel({
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
-            activationConstraint: { delay: 85, tolerance: 8 },
+            activationConstraint: { distance: 4 },
         })
     );
 
+    const collisionDetection = useCallback<CollisionDetection>((args) => {
+        const collisions = pointerWithin(args);
+        const gapCollisions = collisions.filter(collisionHasOutlineGapData);
+        const now = Date.now();
+
+        if (gapCollisions.length > 0) {
+            lastGapCollisionRef.current = { collisions: gapCollisions, at: now };
+            return gapCollisions;
+        }
+
+        const lastGap = lastGapCollisionRef.current;
+        if (lastGap && now - lastGap.at < 320) {
+            return lastGap.collisions;
+        }
+
+        return collisions;
+    }, []);
+
+    const handleDragStart = useCallback((event: DragStartEvent) => {
+        lastGapCollisionRef.current = null;
+        const point = getActivatorClientPoint(event.activatorEvent);
+        initialDragPointRef.current = point;
+        setActiveDragPoint(point);
+        setActiveDragId(String(event.active.id));
+    }, []);
+
+    const handleDragMove = useCallback((event: DragMoveEvent) => {
+        const initialPoint = initialDragPointRef.current;
+        if (!initialPoint) {
+            return;
+        }
+        setActiveDragPoint({
+            x: initialPoint.x + event.delta.x,
+            y: initialPoint.y + event.delta.y,
+        });
+    }, []);
+
+    const handleDragCancel = useCallback(() => {
+        lastGapCollisionRef.current = null;
+        initialDragPointRef.current = null;
+        setActiveDragPoint(null);
+        setActiveDragId(null);
+    }, []);
+
     const handleDragEnd = useCallback(
         (event: DragEndEvent) => {
+            lastGapCollisionRef.current = null;
+            initialDragPointRef.current = null;
+            setActiveDragPoint(null);
+            setActiveDragId(null);
             if (!surface) {
                 return;
             }
@@ -221,14 +327,18 @@ export function UILayersPanel({
 
             const moversRaw = selectedIds.has(activeId) ? Array.from(selectedIds) : [activeId];
 
-            if (overId.startsWith("append:")) {
-                const targetParentId = overId.slice("append:".length);
-                // Append zone sits at the bottom of the reversed visual list (= back-most paint order).
-                // Insert before the first non-mover child so movers land at the back of childrenIds.
-                const targetParent = document.elements[targetParentId];
-                const moverSet = new Set(moversRaw);
-                const firstNonMover = targetParent?.childrenIds.find(id => !moverSet.has(id)) ?? null;
-                const result = documentService.moveElementsInSurface(surfaceId, moversRaw, targetParentId, firstNonMover);
+            const gapData = isOutlineGapDropData(over.data.current) ? over.data.current : null;
+            if (gapData) {
+                const beforeChildId = resolveBeforeChildIdForOutlineGap(
+                    document,
+                    gapData.parentId,
+                    moversRaw,
+                    gapData.visualIndex,
+                );
+                if (beforeChildId === undefined) {
+                    return;
+                }
+                const result = documentService.moveElementsInSurface(surfaceId, moversRaw, gapData.parentId, beforeChildId);
                 moveLogReason(result);
                 return;
             }
@@ -245,7 +355,7 @@ export function UILayersPanel({
             const result = documentService.moveElementsInSurface(surfaceId, moversRaw, overParentId, beforeChildId);
             moveLogReason(result);
         },
-        [document.elements, documentService, selectedIds, surface, surfaceId]
+        [document, documentService, selectedIds, surface, surfaceId]
     );
 
     const rowBase = useMemo(
@@ -279,7 +389,23 @@ export function UILayersPanel({
         return <div className="p-4 text-xs text-gray-500">No surface available</div>;
     }
 
-    const visualRootChildren = getOutlineVisualChildren(root);
+    const activeDragElement = activeDragId ? document.elements[activeDragId] : undefined;
+    const dragPreview =
+        activeDragElement && activeDragPoint && globalThis.document?.body
+            ? createPortal(
+                  <div
+                      className="pointer-events-none fixed z-[10000]"
+                      style={{
+                          left: activeDragPoint.x,
+                          top: activeDragPoint.y,
+                          transform: "translate(12px, 12px)",
+                      }}
+                  >
+                      <OutlineDragPreview element={activeDragElement} />
+                  </div>,
+                  globalThis.document.body,
+              )
+            : null;
 
     return (
         <div className="space-y-2 px-2 py-2" onContextMenu={openBlankContextMenu}>
@@ -289,25 +415,17 @@ export function UILayersPanel({
                     Linked surface — editing the linked app root tree (same as canvas).
                 </div>
             ) : null}
-            <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
-                <SortableContext items={visualRootChildren} strategy={verticalListSortingStrategy}>
-                    {visualRootChildren.map(childId => {
-                        const child = document.elements[childId];
-                        if (!child) {
-                            return null;
-                        }
-                        return (
-                            <SortableOutlineRow
-                                key={child.id}
-                                element={child}
-                                depth={0}
-                                {...rowBase}
-                            />
-                        );
-                    })}
-                </SortableContext>
-                <OutlineAppendDropZone parentId={root.id} depth={0} visible />
+            <DndContext
+                sensors={sensors}
+                collisionDetection={collisionDetection}
+                onDragStart={handleDragStart}
+                onDragMove={handleDragMove}
+                onDragCancel={handleDragCancel}
+                onDragEnd={handleDragEnd}
+            >
+                <OutlineSubtree parentId={root.id} depth={0} {...rowBase} />
             </DndContext>
+            {dragPreview}
             <ContextMenu items={menuItems} position={menuState.position} visible={menuState.visible} onClose={hideMenu} />
         </div>
     );

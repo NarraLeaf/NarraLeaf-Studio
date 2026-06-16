@@ -5,6 +5,11 @@
 
 import {
     BLUEPRINT_NODE_TYPE_LITERAL,
+    BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+    BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+    BLUEPRINT_NODE_TYPE_LITERAL_NULL,
+    BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_MATH_ADD,
     BLUEPRINT_NODE_TYPE_MATH_DECREMENT,
@@ -325,6 +330,22 @@ export function resolveDataPinValue(
     }
     if (src.type === BLUEPRINT_NODE_TYPE_LITERAL && edge.from.port === "value") {
         return src.params?.value;
+    }
+    if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_STRING && edge.from.port === "value") {
+        return String(src.params?.value ?? "");
+    }
+    if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_NUMBER && edge.from.port === "value") {
+        const n = Number(src.params?.value ?? 0);
+        return Number.isFinite(n) ? n : 0;
+    }
+    if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN && edge.from.port === "value") {
+        return src.params?.value === true || src.params?.value === "true";
+    }
+    if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_NULL && edge.from.port === "value") {
+        return null;
+    }
+    if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_JSON && edge.from.port === "value") {
+        return src.params?.value ?? null;
     }
     if (src.type === BLUEPRINT_NODE_TYPE_LOCAL_GET && edge.from.port === "value") {
         const vid = String(src.params?.variableId ?? "").trim();

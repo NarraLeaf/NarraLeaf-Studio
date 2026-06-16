@@ -4,7 +4,8 @@
  */
 
 import { useEffect, useState } from "react";
-import { Select } from "@/lib/components/elements/Select";
+import { Input, TextArea } from "@/lib/components/elements/Input";
+import { Select, type SelectOption } from "@/lib/components/elements/Select";
 
 export type LiteralEditMode = "string" | "number" | "boolean" | "null" | "json";
 
@@ -55,11 +56,13 @@ const MODE_OPTIONS: { id: LiteralEditMode; label: string }[] = [
 ];
 
 const selectOptions = MODE_OPTIONS.map(o => ({ value: o.id, label: o.label }));
+const booleanOptions: SelectOption[] = [
+    { value: "true", label: "True" },
+    { value: "false", label: "False" },
+];
 
-const inputInspector =
-    "w-full rounded-md border border-white/20 bg-white/5 px-2 py-1 text-[11px] text-gray-200 outline-none transition-colors focus:border-[#40a8c4] focus:ring-1 focus:ring-[#40a8c4]/30";
-const inputNodeCard =
-    "w-full min-w-0 rounded-md border border-white/20 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-gray-200 outline-none transition-colors focus:border-[#40a8c4] focus:ring-1 focus:ring-[#40a8c4]/30";
+const inputInspector = "px-2 py-1 text-[11px]";
+const inputNodeCard = "min-w-0 px-1.5 py-0.5 font-mono text-[10px]";
 
 export function BlueprintLiteralValueControl({ value, onChange, variant }: Props) {
     const [mode, setMode] = useState<LiteralEditMode>(() => inferLiteralEditMode(value));
@@ -122,6 +125,7 @@ export function BlueprintLiteralValueControl({ value, onChange, variant }: Props
     return (
         <div
             className={variant === "inspector" ? "space-y-2" : "flex flex-col gap-1"}
+            onMouseDownCapture={e => e.stopPropagation()}
             onPointerDownCapture={e => e.stopPropagation()}
         >
             <div className={variant === "nodeCard" ? "flex min-w-0 items-center gap-1.5" : ""}>
@@ -136,40 +140,39 @@ export function BlueprintLiteralValueControl({ value, onChange, variant }: Props
                     className={variant === "nodeCard" ? "min-w-0 flex-1" : ""}
                 />
                 {mode === "boolean" ? (
-                    <label
-                        className={
-                            variant === "nodeCard"
-                                ? "flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-[10px] text-gray-300"
-                                : "flex cursor-pointer items-center gap-2 text-[11px] text-gray-300"
-                        }
-                    >
-                        <input
-                            type="checkbox"
-                            className="rounded border-white/20 bg-white/5"
-                            checked={Boolean(value)}
-                            onChange={e => onChange(e.target.checked)}
-                        />
-                        {variant === "inspector" ? "True / false" : String(Boolean(value))}
-                    </label>
+                    <Select
+                        options={booleanOptions}
+                        value={Boolean(value) ? "true" : "false"}
+                        onChange={v => onChange(String(v) === "true")}
+                        size="sm"
+                        fullWidth={variant === "inspector"}
+                        portalMenu
+                        menuPlacement="below"
+                        className={variant === "nodeCard" ? "min-w-0 flex-1" : ""}
+                    />
                 ) : null}
                 {mode === "null" ? (
                     <span className="text-[10px] text-gray-500 italic">no value</span>
                 ) : null}
             </div>
             {mode === "string" ? (
-                <input
+                <Input
                     className={variant === "inspector" ? inputInspector : inputNodeCard}
                     type="text"
                     value={typeof value === "string" ? value : ""}
-                    placeholder="Text…"
+                    placeholder="Text..."
+                    size="sm"
+                    fullWidth
                     onChange={e => onChange(e.target.value)}
                 />
             ) : null}
             {mode === "number" ? (
-                <input
+                <Input
                     className={variant === "inspector" ? inputInspector : inputNodeCard}
                     type="number"
                     value={typeof value === "number" && Number.isFinite(value) ? value : 0}
+                    size="sm"
+                    fullWidth
                     onChange={e => {
                         const n = Number(e.target.value);
                         onChange(Number.isFinite(n) ? n : 0);
@@ -177,7 +180,7 @@ export function BlueprintLiteralValueControl({ value, onChange, variant }: Props
                 />
             ) : null}
             {mode === "json" ? (
-                <textarea
+                <TextArea
                     className={
                         variant === "inspector"
                             ? `${inputInspector} min-h-[4.5rem] font-mono`
@@ -186,6 +189,8 @@ export function BlueprintLiteralValueControl({ value, onChange, variant }: Props
                     spellCheck={false}
                     value={jsonDraft}
                     placeholder='e.g. {"a":1} or [1,2]'
+                    size="sm"
+                    fullWidth
                     onChange={e => setJsonDraft(e.target.value)}
                     onBlur={e => onChange(parseJsonDraft(e.currentTarget.value))}
                 />

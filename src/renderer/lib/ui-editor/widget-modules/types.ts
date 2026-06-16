@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode, InputHTMLAttributes } from "react";
 import type { UIElement, UIDocument, UISurface } from "@shared/types/ui-editor/document";
+import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { UIHostAdapter } from "../runtime/types";
 import type { PropertyEditorSchema } from "@/apps/workspace/modules/properties/framework/types";
@@ -18,6 +19,20 @@ export type WidgetRendererProps = {
     document: UIDocument;
     hostAdapter: UIHostAdapter;
     children?: ReactNode;
+    /**
+     * Structural widgets may render children lazily with an instance scope.
+     * `nl.list` uses this to repeat one authored item template without cloning UIDocument elements.
+     */
+    renderChildren?: (options?: {
+        childrenIds?: string[];
+        listItemScope?: UIListItemScope | null;
+        instanceKey?: string;
+    }) => ReactNode[];
+    /** Runtime state readers exposed to structural widgets that resolve their own data source. */
+    runtimeData?: {
+        surfaceState?: { get(key: string): unknown };
+        globalState?: { get(key: string): unknown };
+    };
     /**
      * When true, canvas appearance resolves the variant from the inspector cache (editing-area preview).
      * Dev Mode and other hosts omit this so runtime/blueprint variant overrides stay authoritative.
