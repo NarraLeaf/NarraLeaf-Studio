@@ -51,6 +51,7 @@ import {
     DEFAULT_UI_SURFACE_SIZE,
     MAIN_APP_SURFACE_ID,
 } from "@shared/constants/ui-editor";
+import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 
 type UIDocumentServiceEvents = {
     documentChanged: UIDocument;
@@ -61,6 +62,7 @@ type CreateSurfaceInput = {
     kind: UISurfaceKind;
     name: string;
     host: UIHost;
+    designSize?: UISurfaceDesignSize;
     settings?: UISurfaceSettings;
     stageMount?: UIStageSurfaceMount;
 };
@@ -77,7 +79,7 @@ type UIDocumentMutationOptions = {
     history?: UIDocumentMutationHistoryOptions;
 };
 
-const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = "dialog";
+const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = "onStage";
 
 type LegacyUISurfaceKind = "appSurface" | "playerStageSurface" | "playerOverlaySurface";
 
@@ -323,6 +325,27 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    public updateElementExtra(elementId: string, extraPatch: Record<string, unknown>): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element) {
+                return;
+            }
+            element.extra = {
+                ...(element.extra ?? {}),
+                ...extraPatch,
+            };
+        }, {
+            history: surfaceId
+                ? {
+                      surfaceId,
+                      mergeKey: `extra:${elementId}:${Object.keys(extraPatch).sort().join(",")}`,
+                  }
+                : false,
+        });
+    }
+
     public reorderChildren(parentId: string, orderedChildIds: string[]): void {
         const surfaceId = this.getElementSurfaceId(parentId);
         this.mutateDocument(document => {
@@ -349,6 +372,24 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         this.mutateDocument(doc => {
             applyPlannedMove(doc, planned.plan);
+            const targetParent = doc.elements[targetParentId];
+            if (targetParent?.type === "nl.list") {
+                for (const elementId of elementIds) {
+                    const moved = doc.elements[elementId];
+                    const slot = moved?.extra?.listSlot;
+                    if (
+                        moved &&
+                        slot !== "itemTemplate" &&
+                        slot !== "scrollbarTrack" &&
+                        slot !== "scrollbarThumb"
+                    ) {
+                        moved.extra = {
+                            ...(moved.extra ?? {}),
+                            listSlot: "itemTemplate",
+                        };
+                    }
+                }
+            }
         }, {
             history: { surfaceId },
         });
@@ -519,39 +560,84 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (document.schemaVersion === 4) {
             return this.migrateFromV4Document(document);
         }
+        if (document.schemaVersion === 5) {
+            return this.migrateFromV5Document(document);
+        }
         throw new RendererError("UI document migration is not implemented");
     }
 
     private migrateFromLegacyDocument(document: UIDocument): UIDocument {
         const legacy = document as LegacyUIDocument;
         const migratedSurfaces = legacy.surfaces.map(surface => this.migrateLegacySurface(surface));
-        return {
+        return this.normalizeListSlots({
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
             surfaces: migratedSurfaces,
-        };
+        });
     }
 
     private migrateFromV2Document(document: UIDocument): UIDocument {
-        return {
+        return this.normalizeListSlots({
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        };
+        });
     }
 
     private migrateFromV3Document(document: UIDocument): UIDocument {
-        return {
+        return this.normalizeListSlots({
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        };
+        });
     }
 
     /** P5 hard cutover marker: documents authored on schema 4 (unified container model) bump to current. */
     private migrateFromV4Document(document: UIDocument): UIDocument {
-        return {
+        return this.normalizeListSlots({
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        };
+        });
+    }
+
+    /** P6: list child slots distinguish item template children from authored scrollbar parts. */
+    private migrateFromV5Document(document: UIDocument): UIDocument {
+        return this.normalizeListSlots({
+            ...document,
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        });
+    }
+
+    private normalizeListSlots(document: UIDocument): UIDocument {
+        for (const element of Object.values(document.elements)) {
+            if (element.type !== "nl.list") {
+                continue;
+            }
+            const props = (element.props ?? {}) as Record<string, unknown>;
+            const scrollbar = props.scrollbar && typeof props.scrollbar === "object"
+                ? props.scrollbar as Record<string, unknown>
+                : {};
+            const trackElementId = typeof scrollbar.trackElementId === "string" ? scrollbar.trackElementId : null;
+            const thumbElementId = typeof scrollbar.thumbElementId === "string" ? scrollbar.thumbElementId : null;
+            for (const childId of element.childrenIds) {
+                const child = document.elements[childId];
+                if (!child) {
+                    continue;
+                }
+                const slot = child.extra?.listSlot;
+                if (slot === "itemTemplate" || slot === "scrollbarTrack" || slot === "scrollbarThumb") {
+                    continue;
+                }
+                child.extra = {
+                    ...(child.extra ?? {}),
+                    listSlot:
+                        childId === trackElementId
+                            ? "scrollbarTrack"
+                            : childId === thumbElementId
+                              ? "scrollbarThumb"
+                              : "itemTemplate",
+                };
+            }
+        }
+        return document;
     }
 
     private migrateLegacySurface(surface: LegacyUISurface): UISurface {
@@ -571,13 +657,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             };
         }
 
-        const stageMount: UIStageSurfaceMount =
-            surface.kind === "playerStageSurface"
-                ? {
-                      kind: "slot",
-                      slotId: surface.settings?.stageElementType ?? DEFAULT_STAGE_SLOT_ID,
-                  }
-                : { kind: "layer" };
+        const stageMount: UIStageSurfaceMount = {
+            kind: "slot",
+            slotId: surface.settings?.stageElementType ?? DEFAULT_STAGE_SLOT_ID,
+        };
 
         return {
             id: surface.id,
@@ -635,7 +718,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     public createSurface(input: CreateSurfaceInput): UISurface {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const designSize = this.getProjectDesignSize();
+        const designSize = input.designSize ?? this.getProjectDesignSize();
         const rootElementId = uuidService.generate();
         const surfaceId = uuidService.generate();
 
@@ -646,10 +729,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 : undefined;
 
         if (kind === "stageSurface" && host !== "player") {
-            throw new RendererError("Stage surfaces must be hosted by player");
+            throw new RendererError("Game UI must be hosted by player");
         }
         if (kind === "appSurface" && host !== "app") {
-            throw new RendererError("App surfaces must be hosted by app");
+            throw new RendererError("Pages must be hosted by app");
         }
 
         const surface: UISurface =
@@ -777,7 +860,13 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             props: defaultElement.props,
             style: defaultElement.style,
             behavior: defaultElement.behavior,
-            extra: defaultElement.extra,
+            extra:
+                parent.type === "nl.list"
+                    ? ({
+                          ...(defaultElement.extra ?? {}),
+                          listSlot: "itemTemplate",
+                      } satisfies UIListElementExtra)
+                    : defaultElement.extra,
         };
 
         this.mutateDocument(documentData => {
@@ -863,6 +952,15 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (copy.behavior?.events) {
                     const remapped = remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap);
                     copy.behavior = { ...copy.behavior, events: remapped };
+                }
+                if (isTop && parentEl.type === "nl.list") {
+                    const slot = copy.extra?.listSlot;
+                    if (slot !== "itemTemplate" && slot !== "scrollbarTrack" && slot !== "scrollbarThumb") {
+                        copy.extra = {
+                            ...(copy.extra ?? {}),
+                            listSlot: "itemTemplate",
+                        };
+                    }
                 }
 
                 if (isTop) {

@@ -1,4 +1,11 @@
 import type { BlueprintGraphEdge, BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_NODE_TYPE_LITERAL,
+    BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+    BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+    BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+} from "@shared/types/blueprint/graph";
 import { isValidBlueprintExecConnection } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 
 export {
@@ -123,8 +130,14 @@ export function createGraphNodeForPalette(type: string, id: string): BlueprintGr
             editorLayout: { x: 140 + Math.random() * 60, y: 100 + Math.random() * 60 },
         },
     };
-    if (type === "blueprint.data.literal") {
+    if (type === BLUEPRINT_NODE_TYPE_LITERAL || type === BLUEPRINT_NODE_TYPE_LITERAL_STRING) {
         base.params = { value: "" };
+    } else if (type === BLUEPRINT_NODE_TYPE_LITERAL_NUMBER) {
+        base.params = { value: 0 };
+    } else if (type === BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN) {
+        base.params = { value: "false" };
+    } else if (type === BLUEPRINT_NODE_TYPE_LITERAL_JSON) {
+        base.params = { value: {} };
     }
     return base;
 }

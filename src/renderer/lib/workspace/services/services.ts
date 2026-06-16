@@ -12,6 +12,7 @@ import type {
     UISurface,
     UISurfaceKind,
     UIHost,
+    UISurfaceDesignSize,
     UISurfaceSettings,
     UIStageSurfaceMount,
     UILayout,
@@ -192,11 +193,13 @@ interface IUIDocumentService extends IService {
     updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>, options?: { skipHistory?: boolean }): void;
     updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>): void;
     updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void;
+    updateElementExtra(elementId: string, extraPatch: Record<string, unknown>): void;
     reorderChildren(parentId: string, orderedChildIds: string[]): void;
     createSurface(input: {
         kind: UISurfaceKind;
         name: string;
         host: UIHost;
+        designSize?: UISurfaceDesignSize;
         stageMount?: UIStageSurfaceMount;
         settings?: UISurfaceSettings;
     }): UISurface;
@@ -321,7 +324,11 @@ interface ILocalBlueprintService extends IService {
     listFields(blueprintId: string): BlueprintField[];
     createBlueprintVariable(
         blueprintId: string,
-        input?: { name?: string; defaultValue?: import("@shared/types/blueprint/document").LiteralValue },
+        input?: {
+            name?: string;
+            valueType?: string;
+            defaultValue?: import("@shared/types/blueprint/document").LiteralValue;
+        },
     ): import("@shared/types/blueprint/document").BlueprintVariable;
     renameBlueprintVariable(blueprintId: string, variableId: string, name: string): void;
     setBlueprintVariableDefault(

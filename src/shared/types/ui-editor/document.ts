@@ -1,6 +1,6 @@
 import { isContainerFlowLayoutParent } from "./container";
 
-export const UI_DOCUMENT_SCHEMA_VERSION = 5 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 6 as const;
 
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;
@@ -25,23 +25,11 @@ export type UIHost = "app" | "player";
 
 export type UISurfaceKind = "appSurface" | "stageSurface";
 
-export type UIStageSlotId = "dialog" | "menu" | "notification" | "none";
+export type UIStageSlotId = "onStage" | "dialog" | "notification" | "choice";
 
-export type UIStageSurfaceMount =
-    | {
-          kind: "slot";
-          slotId: UIStageSlotId;
-      }
-    | {
-          kind: "persistent";
-      }
-    | {
-          kind: "layer";
-      };
-
-export type UIStageSurfaceLink = {
-    kind: "appSurface";
-    surfaceId: UISurfaceId;
+export type UIStageSurfaceMount = {
+    kind: "slot";
+    slotId: UIStageSlotId;
 };
 
 export type UIAppSurface = {
@@ -64,7 +52,6 @@ export type UIStageSurface = {
     settings?: UISurfaceSettings;
     mount: UIStageSurfaceMount;
     slots?: Record<string, UISlotDefinition>;
-    link?: UIStageSurfaceLink;
 };
 
 export type UISurface = UIAppSurface | UIStageSurface;

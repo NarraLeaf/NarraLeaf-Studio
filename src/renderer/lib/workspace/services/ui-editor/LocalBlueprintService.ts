@@ -442,11 +442,6 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             if (!bp) {
                 throw new RendererError(`Blueprint not found: ${blueprintId}`);
             }
-            if (bp.owner.kind === "widgetMain") {
-                throw new RendererError(
-                    "Widget main blueprints cannot define binding fields; define fields on global or surface main blueprints instead.",
-                );
-            }
             bp.members = bp.members ?? emptyMemberIndex();
             bp.members.fields[field.id] = field;
         });
@@ -752,13 +747,15 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
 
     public createBlueprintVariable(
         blueprintId: string,
-        input?: { name?: string; defaultValue?: LiteralValue },
+        input?: { name?: string; valueType?: string; defaultValue?: LiteralValue },
     ): BlueprintVariable {
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
         const id = uuid.generate();
+        const valueType = input?.valueType?.trim();
         const v: BlueprintVariable = {
             id,
             name: input?.name?.trim() || `var_${id.slice(0, 8)}`,
+            valueType: valueType || undefined,
             defaultValue: input?.defaultValue,
         };
         this.applyBlueprintEdit({ blueprintId }, doc => {
