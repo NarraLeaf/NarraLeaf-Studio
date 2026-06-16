@@ -43,13 +43,6 @@ export type WidgetLogicApi = {
     writableProps: readonly WidgetLogicWritablePropDef[];
 };
 
-const INIT_EVENT: WidgetLogicEventDef = {
-    id: "init",
-    displayName: "Init",
-    dispatchKind: "lifecycle",
-    headNodeTypes: ["blueprint.event.head.init"],
-};
-
 const CLICK_EVENT: WidgetLogicEventDef = {
     id: "click",
     displayName: "Click",
@@ -57,65 +50,7 @@ const CLICK_EVENT: WidgetLogicEventDef = {
     headNodeTypes: ["blueprint.event.head.click"],
 };
 
-const COMMON_POINTER_EVENTS: readonly WidgetLogicEventDef[] = [
-    CLICK_EVENT,
-    {
-        id: "doubleClick",
-        displayName: "Double click",
-        dispatchKind: "interaction",
-        headNodeTypes: ["blueprint.event.head.doubleClick"],
-    },
-    {
-        id: "pointerDown",
-        displayName: "Pointer down",
-        dispatchKind: "interaction",
-        headNodeTypes: ["blueprint.event.head.pointerDown"],
-    },
-    {
-        id: "pointerUp",
-        displayName: "Pointer up",
-        dispatchKind: "interaction",
-        headNodeTypes: ["blueprint.event.head.pointerUp"],
-    },
-    {
-        id: "pointerEnter",
-        displayName: "Pointer enter",
-        dispatchKind: "interaction",
-        headNodeTypes: ["blueprint.event.head.pointerEnter"],
-    },
-    {
-        id: "pointerMove",
-        displayName: "Pointer move",
-        dispatchKind: "interaction",
-        headNodeTypes: ["blueprint.event.head.pointerMove"],
-    },
-    {
-        id: "pointerLeave",
-        displayName: "Pointer leave",
-        dispatchKind: "interaction",
-        headNodeTypes: ["blueprint.event.head.pointerLeave"],
-    },
-    {
-        id: "focus",
-        displayName: "Focus",
-        dispatchKind: "interaction",
-        headNodeTypes: ["blueprint.event.head.focus"],
-    },
-    {
-        id: "blur",
-        displayName: "Blur",
-        dispatchKind: "interaction",
-        headNodeTypes: ["blueprint.event.head.blur"],
-    },
-    {
-        id: "contextMenu",
-        displayName: "Context menu",
-        dispatchKind: "interaction",
-        headNodeTypes: ["blueprint.event.head.contextMenu"],
-    },
-];
-
-const BASE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [INIT_EVENT, ...COMMON_POINTER_EVENTS];
+const BASE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [CLICK_EVENT];
 
 const baseCommands: readonly WidgetLogicCommandDef[] = [
     {
@@ -229,7 +164,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.list": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "List logic",
-        events: [INIT_EVENT],
+        events: [],
         commands: [
             {
                 id: "refreshItems",
