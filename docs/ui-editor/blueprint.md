@@ -1,16 +1,18 @@
 # UI Editor Blueprint Node Development Guide
 
-This guide explains how Studio blueprint nodes are defined, registered, displayed in the editor palette, and executed at runtime. It is intended for contributors who need to add new nodes after the built-in catalog was reduced to the minimal starter set.
+This guide explains how Studio blueprint nodes are defined, registered, displayed in the editor palette, and executed at runtime. It is intended for contributors who need to add new nodes after the built-in catalog was reduced to the current starter set.
 
 ## Current built-in catalog
 
-The current core catalog intentionally registers only three built-in node types:
+The current core catalog intentionally keeps a reduced starter set: component initialization, click, local variables, and basic math operations.
 
 | Node type | Display name | Category | Purpose |
 | --- | --- | --- | --- |
+| `blueprint.event.head.init` | `On init` | `Events` | Entry node for component/widget initialization. It is available to widgets that expose the `init` lifecycle event. |
 | `blueprint.event.head.click` | `On click` | `Events` | Entry node for widget click interactions. It is available to widgets that expose the `click` event, including buttons, images, containers, and text elements. |
 | `blueprint.local.get` | `Get Var` | `Variables` | Pure data node that reads an execution-local blueprint variable. |
 | `blueprint.local.set` | `Set Var` | `Variables` | Exec node that writes an execution-local blueprint variable and continues through `next`. |
+| `blueprint.math.*` | Basic math operators | `Math` | Pure arithmetic, increment/decrement, and comparison nodes such as `+`, `−`, `×`, `÷`, `+1`, `−1`, `=`, `≠`, `<`, `≤`, `>`, and `≥`. |
 
 Node categories are still part of the node API and palette model. Do not remove category handling when trimming or adding nodes; categories are how the add-node palette groups nodes.
 
@@ -23,8 +25,9 @@ Node categories are still part of the node API and palette model. Do not remove 
 | `src/renderer/lib/ui-editor/blueprint-nodes/defineBlueprintNode.ts` | Public helper API for registering one or more node definitions. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes.ts` | One-shot registration entry point for built-in nodes. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/index.ts` | Built-in node catalog aggregation. Add a new built-in node here when it should ship in Studio by default. |
-| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/events/eventHeadNodes.ts` | Built-in event entry-head nodes. Currently only `On click` is registered. |
+| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/events/eventHeadNodes.ts` | Built-in event entry-head nodes. Currently `On init` and `On click` are registered. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/localVariableNodes.ts` | Built-in local variable nodes. Currently `Get Var` and `Set Var`. |
+| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/mathNodes.ts` | Built-in basic math and comparison nodes. |
 | `src/shared/types/blueprint/graph.ts` | Shared graph taxonomy and stable node type constants. Use this for node type ids that are persisted or shared across process boundaries. |
 | `src/shared/types/ui-editor/widgetLogic.ts` | Widget logic capability catalog. Event slots here determine what widget event heads can appear for each widget type. |
 | `src/shared/types/ui-editor/graph.ts` | Persisted graph IR shape used by UI graph documents. |
@@ -78,7 +81,7 @@ export const exampleNode: BlueprintNodeDef = {
 | --- | --- |
 | `type` | Stable node type id. It is persisted in graph documents, so treat it as a compatibility contract. |
 | `displayName` | Human-readable card/palette label. |
-| `category` | Palette group name. Categories must remain meaningful even when the catalog is minimal. |
+| `category` | Palette group name. Categories must remain meaningful even when the catalog is reduced. |
 | `graphKinds` | Graph kinds where the node is allowed: `event`, `function`, `macro`. |
 | `isPure` | Whether the node has no side effects. Pure nodes are data providers/calculations. |
 | `pins` | Ordered list of input/output pins shown on the node card. |
@@ -104,7 +107,7 @@ Recommended category names:
 
 | Category | Use for |
 | --- | --- |
-| `Events` | Event entry heads such as `On click`. |
+| `Events` | Event entry heads such as `On init` and `On click`. |
 | `Variables` | Local variables and future blueprint/member variables. |
 | `Flow` | Branching, sequence, delay, gate, loop, debounce. |
 | `Data` | Literals, objects, arrays, type conversion. |
@@ -330,9 +333,16 @@ Event-head nodes should set `role: "eventHead"`. The palette uses widget event c
 
 Widget event slots are declared in `src/shared/types/ui-editor/widgetLogic.ts`.
 
-To make a widget expose `On click`, its logic API should include the `click` event with this head type:
+To make a widget expose `On init` and `On click`, its logic API should include the `init` lifecycle event and the `click` interaction event with these head types:
 
 ```ts
+{
+    id: "init",
+    displayName: "Init",
+    dispatchKind: "lifecycle",
+    headNodeTypes: ["blueprint.event.head.init"],
+}
+
 {
     id: "click",
     displayName: "Click",
@@ -341,7 +351,7 @@ To make a widget expose `On click`, its logic API should include the `click` eve
 }
 ```
 
-The current built-in widgets that support private blueprint logic share the click event. Keep this model when adding other event types later: add the event capability first, then add the matching event-head node definition.
+The current built-in widgets that support private blueprint logic share the init and click events. Keep this model when adding other event types later: add the event capability first, then add the matching event-head node definition.
 
 ## Adding a new built-in node
 
@@ -468,4 +478,4 @@ Node `type` ids are persisted. Renaming a node type breaks old graph documents u
 
 ## Minimal-node policy
 
-The built-in catalog is currently minimal by design. Add nodes deliberately and keep each node's API small. When a node belongs to a future category, use the category string now, but only add it to `allBuiltinBlueprintNodes` when it should become available to authors.
+The built-in catalog is currently reduced by design. Add nodes deliberately and keep each node's API small. When a node belongs to a future category, use the category string now, but only add it to `allBuiltinBlueprintNodes` when it should become available to authors.

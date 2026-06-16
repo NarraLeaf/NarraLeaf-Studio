@@ -43,6 +43,13 @@ export type WidgetLogicApi = {
     writableProps: readonly WidgetLogicWritablePropDef[];
 };
 
+const INIT_EVENT: WidgetLogicEventDef = {
+    id: "init",
+    displayName: "Init",
+    dispatchKind: "lifecycle",
+    headNodeTypes: ["blueprint.event.head.init"],
+};
+
 const CLICK_EVENT: WidgetLogicEventDef = {
     id: "click",
     displayName: "Click",
@@ -50,7 +57,7 @@ const CLICK_EVENT: WidgetLogicEventDef = {
     headNodeTypes: ["blueprint.event.head.click"],
 };
 
-const BASE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [CLICK_EVENT];
+const BASE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [INIT_EVENT, CLICK_EVENT];
 
 const baseCommands: readonly WidgetLogicCommandDef[] = [
     {
