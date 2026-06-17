@@ -1,7 +1,12 @@
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle } from "@shared/types/devMode";
+import { BLUEPRINT_HOST_API_CONTRACT_VERSION } from "@shared/types/blueprint/hostApi";
 import type { UIHostAdapter, UIHostAdapterBlueprintRuntime } from "../types";
-import { dispatchBlueprintUiEvent } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
+import {
+    countBlueprintBroadcastListeners,
+    dispatchBlueprintBroadcastEvent,
+    dispatchBlueprintUiEvent,
+} from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
@@ -38,17 +43,18 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
 
     const adapter: UIHostAdapter = {
         host: surface.host,
-        blueprintHostApiVersion: 2,
+        blueprintHostApiVersion: BLUEPRINT_HOST_API_CONTRACT_VERSION,
         blueprintRuntime,
     };
 
-    blueprintRuntime.dispatchElementBlueprintEvent = async (elementId, eventName) => {
+    blueprintRuntime.dispatchElementBlueprintEvent = async (elementId, eventName, eventPayload) => {
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
             surfaceId: surface.id,
             elementId,
             eventName,
+            eventPayload,
             hostAdapter: adapter,
             debug,
             getSurfaceState: key => scopeBridge.getSurfaceStore(surface.id).get(key),
@@ -57,6 +63,31 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             },
         });
     };
+
+    blueprintRuntime.dispatchBroadcastEvent = async (eventName, data, sender) => {
+        await dispatchBlueprintBroadcastEvent({
+            document,
+            blueprintDocument,
+            surfaceId: surface.id,
+            eventName,
+            data,
+            sender,
+            hostAdapter: adapter,
+            debug,
+            getSurfaceState: key => scopeBridge.getSurfaceStore(surface.id).get(key),
+            setSurfaceState: (key, value) => {
+                hostApi.state.set("surface", key, value);
+            },
+        });
+    };
+
+    blueprintRuntime.getBroadcastListenerCount = eventName =>
+        countBlueprintBroadcastListeners({
+            document,
+            blueprintDocument,
+            surfaceId: surface.id,
+            eventName,
+        });
 
     return adapter;
 }

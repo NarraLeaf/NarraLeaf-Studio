@@ -15,45 +15,48 @@ export type BlueprintGraphKind = "event" | "function" | "macro";
 /** Well-known blueprint node type ids (stable contract). */
 /** Entry for widget `init` UI event (surface mount). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT = "blueprint.event.head.init" as const;
-/** Entry for widget `click` UI event (e.g. buttons). */
-export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK = "blueprint.event.head.click" as const;
-/** Entry for widget `doubleClick` UI event. */
-export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_DOUBLE_CLICK = "blueprint.event.head.doubleClick" as const;
-/** Entry for widget `pointerDown` UI event. */
-export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_DOWN = "blueprint.event.head.pointerDown" as const;
-/** Entry for widget `pointerUp` UI event. */
-export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_UP = "blueprint.event.head.pointerUp" as const;
-/** Entry for widget `pointerEnter` UI event. */
-export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_ENTER = "blueprint.event.head.pointerEnter" as const;
-/** Entry for widget `pointerMove` UI event. */
-export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_MOVE = "blueprint.event.head.pointerMove" as const;
-/** Entry for widget `pointerLeave` UI event. */
-export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_LEAVE = "blueprint.event.head.pointerLeave" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK = "blueprint.event.head.mouseClick" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOUBLE_CLICK = "blueprint.event.head.mouseDoubleClick" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER = "blueprint.event.head.mouseEnter" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_LEAVE = "blueprint.event.head.mouseLeave" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_MOVE = "blueprint.event.head.mouseMove" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOWN = "blueprint.event.head.mouseDown" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_UP = "blueprint.event.head.mouseUp" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_WHEEL = "blueprint.event.head.mouseWheel" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK = "blueprint.event.head.rightClick" as const;
 /** Entry for widget `focus` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus" as const;
 /** Entry for widget `blur` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR = "blueprint.event.head.blur" as const;
-/** Entry for widget `contextMenu` UI event. */
-export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_CONTEXT_MENU = "blueprint.event.head.contextMenu" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL = "blueprint.event.head.scroll" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST = "blueprint.event.head.onAnyBroadcast" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST = "blueprint.event.head.onBroadcast" as const;
 /** Entry for global `appBoot` lifecycle event (application start). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
 /** Entry for surface `surfaceInit` lifecycle event (page entered). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT = "blueprint.event.head.surfaceInit" as const;
+/** Entry for surface `surfaceUnmount` lifecycle event (page left). */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT = "blueprint.event.head.surfaceUnmount" as const;
 
 const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_DOUBLE_CLICK,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_DOWN,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_UP,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_ENTER,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_MOVE,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_POINTER_LEAVE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOUBLE_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_LEAVE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_MOVE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_WHEEL,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_CONTEXT_MENU,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
 ]);
 
 /**
@@ -156,10 +159,22 @@ export const BLUEPRINT_NODE_TYPE_LITERAL_NUMBER = "blueprint.data.numberLiteral"
 export const BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN = "blueprint.data.booleanLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL_NULL = "blueprint.data.nullLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL_JSON = "blueprint.data.jsonLiteral" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT = "blueprint.data.toFloat" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER = "blueprint.data.toInteger" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_TO_BOOLEAN = "blueprint.data.toBoolean" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_TO_JSON = "blueprint.data.toJson" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_PARSE_INT = "blueprint.data.parseInt" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_PARSE_FLOAT = "blueprint.data.parseFloat" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_PARSE_JSON = "blueprint.data.parseJson" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON = "blueprint.data.stringifyJson" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_JSON_GET = "blueprint.data.jsonGet" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_JSON_HAS = "blueprint.data.jsonHas" as const;
 /** Read blueprint execution local variable (pure data source). */
 export const BLUEPRINT_NODE_TYPE_LOCAL_GET = "blueprint.local.get" as const;
 /** Write blueprint execution local variable. */
 export const BLUEPRINT_NODE_TYPE_LOCAL_SET = "blueprint.local.set" as const;
+/** Persisted helper param for variableRef nodes whose pin type follows the selected variable. */
+export const BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE = "__variableValueType" as const;
 /** Console log from wired data pin (Studio / Dev Mode). */
 export const BLUEPRINT_NODE_TYPE_LOG = "blueprint.log" as const;
 /** Pure numeric math (data-only). */
@@ -180,12 +195,68 @@ export const BLUEPRINT_NODE_TYPE_MATH_GREATER = "blueprint.math.greater" as cons
 export const BLUEPRINT_NODE_TYPE_MATH_GREATER_OR_EQUAL = "blueprint.math.greaterOrEqual" as const;
 
 /** Concatenate two strings (pure data). */
+export const BLUEPRINT_NODE_TYPE_STRING_TO_STRING = "blueprint.string.toString" as const;
 export const BLUEPRINT_NODE_TYPE_STRING_CONCAT = "blueprint.string.concat" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_FORMAT = "blueprint.string.format" as const;
 /** String length (UTF-16 code units, pure data). */
 export const BLUEPRINT_NODE_TYPE_STRING_LENGTH = "blueprint.string.length" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_IS_EMPTY = "blueprint.string.isEmpty" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_IS_BLANK = "blueprint.string.isBlank" as const;
 export const BLUEPRINT_NODE_TYPE_STRING_TRIM = "blueprint.string.trim" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_TRIM_START = "blueprint.string.trimStart" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_TRIM_END = "blueprint.string.trimEnd" as const;
 export const BLUEPRINT_NODE_TYPE_STRING_TO_UPPER = "blueprint.string.toUpperCase" as const;
 export const BLUEPRINT_NODE_TYPE_STRING_TO_LOWER = "blueprint.string.toLowerCase" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_CAPITALIZE = "blueprint.string.capitalize" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_CONTAINS = "blueprint.string.contains" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_STARTS_WITH = "blueprint.string.startsWith" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_ENDS_WITH = "blueprint.string.endsWith" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_EQUALS = "blueprint.string.equals" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_EQUALS_IGNORE_CASE = "blueprint.string.equalsIgnoreCase" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_INDEX_OF = "blueprint.string.indexOf" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_LAST_INDEX_OF = "blueprint.string.lastIndexOf" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_COUNT = "blueprint.string.count" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_CHAR_AT = "blueprint.string.charAt" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_SUBSTRING = "blueprint.string.substring" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_INSERT = "blueprint.string.insert" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_REPLACE = "blueprint.string.replace" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_REPLACE_ALL = "blueprint.string.replaceAll" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_SPLIT = "blueprint.string.split" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_JOIN = "blueprint.string.join" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_REPEAT = "blueprint.string.repeat" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_PAD_START = "blueprint.string.padStart" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_PAD_END = "blueprint.string.padEnd" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_MATCHES_REGEX = "blueprint.string.matchesRegex" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_EXTRACT_REGEX = "blueprint.string.extractRegex" as const;
+export const BLUEPRINT_NODE_TYPE_STRING_NORMALIZE_LINE_BREAKS = "blueprint.string.normalizeLineBreaks" as const;
+
+export const BLUEPRINT_NODE_TYPE_BROADCAST_SEND = "blueprint.broadcast.send" as const;
+export const BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT = "blueprint.broadcast.getListenerCount" as const;
+
+export const BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT = "blueprint.text.getText" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT = "blueprint.text.setText" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_APPEND_TEXT = "blueprint.text.appendText" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_CLEAR_TEXT = "blueprint.text.clearText" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_GET_FONT = "blueprint.text.getFont" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_SET_FONT = "blueprint.text.setFont" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_GET_FONT_SIZE = "blueprint.text.getFontSize" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_SET_FONT_SIZE = "blueprint.text.setFontSize" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_GET_FONT_WEIGHT = "blueprint.text.getFontWeight" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_SET_FONT_WEIGHT = "blueprint.text.setFontWeight" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_COLOR = "blueprint.text.getTextColor" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_COLOR = "blueprint.text.setTextColor" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_ALIGN = "blueprint.text.getTextAlign" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_ALIGN = "blueprint.text.setTextAlign" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_VERTICAL_ALIGN = "blueprint.text.getTextVerticalAlign" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_VERTICAL_ALIGN = "blueprint.text.setTextVerticalAlign" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_GET_LINE_HEIGHT = "blueprint.text.getLineHeight" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_SET_LINE_HEIGHT = "blueprint.text.setLineHeight" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_GET_WRAP_MODE = "blueprint.text.getWrapMode" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_SET_WRAP_MODE = "blueprint.text.setWrapMode" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_GET_EFFECTS = "blueprint.text.getEffects" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_SET_EFFECTS = "blueprint.text.setEffects" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES = "blueprint.text.getAllProperties" as const;
+export const BLUEPRINT_NODE_TYPE_TEXT_SET_ALL_PROPERTIES = "blueprint.text.setAllProperties" as const;
 
 /** IR meta key for graph kind (string value matches BlueprintGraphKind). */
 export const BLUEPRINT_GRAPH_IR_META_KIND = "graphKind" as const;
@@ -200,7 +271,7 @@ export type BlueprintGraphKindRules = {
     /** Node type id for the entry node, if required (event graphs may use several head types). */
     entryNodeType?:
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT
-        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_CLICK
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT
         | typeof BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY;

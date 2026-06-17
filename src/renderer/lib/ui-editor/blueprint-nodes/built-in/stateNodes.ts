@@ -86,7 +86,11 @@ export const stateBlueprintNodes: BlueprintNodeDef[] = [
             if (!key) {
                 throw new BlueprintGraphExecutionError("Missing key", ctx.node.id);
             }
-            const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals);
+            const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals, 0, {
+                hostAdapter: ctx.hostAdapter,
+                eventPayload: ctx.eventPayload,
+                executionOwner: ctx.executionOwner,
+            });
             const value = wired !== undefined ? wired : ctx.params.value;
             await api.state.set(scope, key, value);
             return { nextPort: "next" };

@@ -3,10 +3,14 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+    BLUEPRINT_NODE_TYPE_LITERAL_NULL,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
 } from "@shared/types/blueprint/graph";
-import { isValidBlueprintExecConnection } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
+import {
+    isValidBlueprintExecConnection,
+    resolveBlueprintNodeEditorCatalogEntryForNode,
+} from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 
 export {
     ensureBlueprintEventGraphIrStructure,
@@ -52,6 +56,30 @@ export function writeNodeEditorLayout(node: BlueprintGraphNode, pos: EditorNodeL
     node.meta = { ...node.meta, [LAYOUT_KEY]: { x: pos.x, y: pos.y } };
 }
 
+export function isBlueprintLiteralNodeType(type: string): boolean {
+    return (
+        type === BLUEPRINT_NODE_TYPE_LITERAL ||
+        type === BLUEPRINT_NODE_TYPE_LITERAL_STRING ||
+        type === BLUEPRINT_NODE_TYPE_LITERAL_NUMBER ||
+        type === BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN ||
+        type === BLUEPRINT_NODE_TYPE_LITERAL_NULL ||
+        type === BLUEPRINT_NODE_TYPE_LITERAL_JSON
+    );
+}
+
+function isBlueprintExecInputPin(
+    ir: Pick<BlueprintGraphIr, "nodes">,
+    nodeId: string,
+    portId: string,
+): boolean {
+    const node = ir.nodes?.[nodeId];
+    if (!node) {
+        return false;
+    }
+    const entry = resolveBlueprintNodeEditorCatalogEntryForNode(node.type, node.params);
+    return entry.pins.some(pin => pin.id === portId && pin.kind === "input" && pin.semantic === "exec");
+}
+
 /**
  * Whether a React Flow connection is allowed (exec↔exec and data↔data with optional type match).
  */
@@ -83,7 +111,7 @@ export function isValidBlueprintIrExecConnection(
 }
 
 export function applyBlueprintIrConnection(
-    ir: Pick<BlueprintGraphIr, "edges">,
+    ir: Pick<BlueprintGraphIr, "edges" | "nodes">,
     connection: {
         source: string;
         target: string;
@@ -106,10 +134,15 @@ export function applyBlueprintIrConnection(
         return edges;
     }
 
+    const sourceNode = ir.nodes?.[connection.source];
+    const allowSourceFanOut = sourceNode ? isBlueprintLiteralNodeType(sourceNode.type) : false;
+    const allowTargetFanIn = isBlueprintExecInputPin(ir, connection.target, connection.targetHandle);
     const withoutReplacedPinEdges = edges.filter(
         e =>
-            !(e.from.nodeId === connection.source && e.from.port === connection.sourceHandle) &&
-            !(e.to.nodeId === connection.target && e.to.port === connection.targetHandle),
+            (allowSourceFanOut ||
+                !(e.from.nodeId === connection.source && e.from.port === connection.sourceHandle)) &&
+            (allowTargetFanIn ||
+                !(e.to.nodeId === connection.target && e.to.port === connection.targetHandle)),
     );
 
     return [
@@ -136,6 +169,8 @@ export function createGraphNodeForPalette(type: string, id: string): BlueprintGr
         base.params = { value: 0 };
     } else if (type === BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN) {
         base.params = { value: "false" };
+    } else if (type === BLUEPRINT_NODE_TYPE_LITERAL_NULL) {
+        base.params = { value: null };
     } else if (type === BLUEPRINT_NODE_TYPE_LITERAL_JSON) {
         base.params = { value: {} };
     }

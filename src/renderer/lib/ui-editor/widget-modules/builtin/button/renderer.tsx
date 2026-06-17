@@ -9,6 +9,7 @@ import {
     type FocusEvent,
     type FormEvent,
     type KeyboardEvent,
+    type MouseEvent,
 } from "react";
 import { motion } from "motion/react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
@@ -28,6 +29,7 @@ import {
 import {
     useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { beginInlineTextEdit } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
@@ -83,6 +85,18 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         interactionOverride.surfaceId === surface.id &&
         interactionOverride.elementId === element.id;
 
+    const handleStartInlineTextEdit = useCallback(
+        (e: MouseEvent<HTMLDivElement>) => {
+            if (isEditing || hostAdapter.blueprintRuntime) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            beginInlineTextEdit(stateService, surface.id, element.id);
+        },
+        [element.id, hostAdapter.blueprintRuntime, isEditing, stateService, surface.id],
+    );
+
     useLayoutEffect(() => {
         if (!isEditing) {
             return;
@@ -111,7 +125,10 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     const dispatchClick =
         canDispatchClick && !isEditing
             ? () => {
-                  void rt!.dispatchElementBlueprintEvent(element.id, "click");
+                  void rt!.dispatchElementBlueprintEvent(element.id, "mouseClick", {
+                      x: Math.abs(element.layout.width) / 2,
+                      y: Math.abs(element.layout.height) / 2,
+                  });
               }
             : undefined;
 
@@ -309,6 +326,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                 role: canDispatchClick ? ("button" as const) : ("presentation" as const),
                 tabIndex: canDispatchClick ? 0 : undefined,
                 onKeyDown,
+                onDoubleClick: handleStartInlineTextEdit,
             }}
         >
             {paddingMotionActive ? (
