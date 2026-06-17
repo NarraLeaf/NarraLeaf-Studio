@@ -8,6 +8,9 @@ import {
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_JSON_HAS,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_INT,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_JSON,
@@ -16,6 +19,8 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
+    BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
@@ -84,7 +89,8 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
-import { resolveEffectiveBlueprintNodePins } from "../effectivePins";
+import { readDynamicInputPinLabels, resolveEffectiveBlueprintNodePins } from "../effectivePins";
+import { readBlueprintNodeOutputValue } from "../nodeOutputValues";
 
 const MAX_RESOLVE_DEPTH = 32;
 const MAX_REPEAT_COUNT = 10000;
@@ -165,10 +171,44 @@ function toBlueprintBoolean(v: unknown): boolean {
     return Boolean(v);
 }
 
-function toBlueprintJson(v: unknown): unknown {
+function toJsonSafeValue(v: unknown, seen = new WeakSet<object>()): unknown {
     if (v === undefined) {
         return null;
     }
+    if (v === null || typeof v === "string" || typeof v === "boolean") {
+        return v;
+    }
+    if (typeof v === "number") {
+        return Number.isFinite(v) ? v : null;
+    }
+    if (typeof v === "bigint" || typeof v === "symbol" || typeof v === "function") {
+        return String(v);
+    }
+    if (Array.isArray(v)) {
+        if (seen.has(v)) {
+            return null;
+        }
+        seen.add(v);
+        const out = v.map(item => toJsonSafeValue(item, seen));
+        seen.delete(v);
+        return out;
+    }
+    if (typeof v === "object") {
+        if (seen.has(v)) {
+            return null;
+        }
+        seen.add(v);
+        const out: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(v as Record<string, unknown>)) {
+            out[key] = toJsonSafeValue(value, seen);
+        }
+        seen.delete(v);
+        return out;
+    }
+    return null;
+}
+
+function toBlueprintJson(v: unknown): unknown {
     if (typeof v === "string") {
         const trimmed = v.trim();
         if (!trimmed) {
@@ -180,13 +220,7 @@ function toBlueprintJson(v: unknown): unknown {
             return v;
         }
     }
-    if (typeof v === "number") {
-        return Number.isFinite(v) ? v : null;
-    }
-    if (typeof v === "bigint" || typeof v === "symbol" || typeof v === "function") {
-        return String(v);
-    }
-    return v;
+    return toJsonSafeValue(v);
 }
 
 function parseBlueprintJson(v: unknown): unknown {
@@ -505,6 +539,50 @@ function readJsonPath(value: unknown, path: string): { exists: boolean; value: u
     return { exists: true, value: current };
 }
 
+function resolveJsonMakeObjectResult(
+    graph: DataPinGraph,
+    nodeId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): Record<string, unknown> {
+    const def = blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT);
+    if (!def) {
+        return {};
+    }
+    const labels = readDynamicInputPinLabels(params, def.dynamicInputPins?.pinLabelParamKey);
+    const out: Record<string, unknown> = {};
+    for (const pin of resolveEffectiveBlueprintNodePins(def, params)) {
+        if (pin.kind !== "input" || pin.semantic !== "data") {
+            continue;
+        }
+        const key = (labels[pin.id] ?? pin.label ?? pin.id).trim();
+        if (!key || Object.prototype.hasOwnProperty.call(out, key)) {
+            continue;
+        }
+        out[key] = toJsonSafeValue(resolveInput(graph, nodeId, pin.id, params, blueprintLocals, depth, runtime));
+    }
+    return out;
+}
+
+function resolveJsonMakeArrayResult(
+    graph: DataPinGraph,
+    nodeId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown[] {
+    const def = blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY);
+    if (!def) {
+        return [];
+    }
+    return resolveEffectiveBlueprintNodePins(def, params)
+        .filter(pin => pin.kind === "input" && pin.semantic === "data")
+        .map(pin => toJsonSafeValue(resolveInput(graph, nodeId, pin.id, params, blueprintLocals, depth, runtime)));
+}
+
 function resolveStringNodeOutput(
     graph: DataPinGraph,
     nodeId: string,
@@ -732,8 +810,18 @@ function resolveDataNodeOutput(
     depth: number,
     runtime?: DataPinResolveRuntime,
 ): unknown {
+    if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH && portId === "length") {
+        const value = resolveInput(graph, nodeId, "value", params, blueprintLocals, depth, runtime);
+        return Array.isArray(value) ? value.length : 0;
+    }
     if (portId !== "result") {
         return undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT) {
+        return resolveJsonMakeObjectResult(graph, nodeId, params, blueprintLocals, depth, runtime);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY) {
+        return resolveJsonMakeArrayResult(graph, nodeId, params, blueprintLocals, depth, runtime);
     }
     const value = resolveInput(graph, nodeId, "value", params, blueprintLocals, depth, runtime);
     if (type === BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT) {
@@ -792,6 +880,13 @@ function resolveSelfOutput(
     }
     if (isBlueprintEventDispatchHeadType(selfNode.type) && portId !== "then") {
         return runtime?.eventPayload?.[portId];
+    }
+    if (
+        (selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH) &&
+        (portId === "index" || portId === "item")
+    ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
     const mathOp = MATH_RESULT_OPS[selfNode.type];
     if (mathOp && portId === "result") {

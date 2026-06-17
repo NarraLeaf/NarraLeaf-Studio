@@ -3,6 +3,7 @@ import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintHostApiContractVersion } from "@shared/types/blueprint/hostApi";
 import type { UISurfaceId } from "@shared/types/ui-editor/document";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 
 export type UIHost = "app" | "player";
 
@@ -42,6 +43,8 @@ export type UIHostAdapter = {
     blueprintHostApiVersion?: BlueprintHostApiContractVersion;
     /** M3-min: optional Blueprint runtime surface (Dev Mode). */
     blueprintRuntime?: UIHostAdapterBlueprintRuntime;
+    /** Editor preview: use the active workspace service instance for canvas-local interaction overrides. */
+    editorStateService?: UIEditorStateService;
 };
 
 export type RenderSurfaceOptions = {

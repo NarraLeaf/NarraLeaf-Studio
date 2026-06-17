@@ -110,7 +110,7 @@ Recommended category names:
 | --- | --- |
 | `Events` | Event entry heads such as `On init` and `On click`. |
 | `Variables` | Local variables and future blueprint/member variables. |
-| `Flow` | Branching, sequence, delay, gate, loop, debounce. |
+| `Flow` | Branching, string switching, bounded loops, array iteration, and delay. |
 | `Data` | Literals, objects, arrays, type conversion. |
 | `Math` | Numeric calculation and comparisons. |
 | `String` | Text operations and formatting. |
@@ -200,10 +200,13 @@ dynamicInputPins: {
     generatedIdPrefix: "in",
     valueType: "string",
     allowInlineLiteral: true,
+    labelPrefix: "Input",
+    pinLabelParamKey: "__inputLabels",
+    defaultPinLabelPrefix: "field",
 }
 ```
 
-Dynamic pin ids are stored in node `params`, so never treat them as temporary UI-only state.
+Dynamic pin ids and optional dynamic pin labels are stored in node `params`, so never treat them as temporary UI-only state. `pinLabelParamKey` is only needed for nodes where the user-visible pin name has runtime meaning, such as `Make JSON Object`.
 
 ## Inspector params
 

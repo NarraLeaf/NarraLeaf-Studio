@@ -2,14 +2,16 @@ import { useCallback } from "react";
 import { SELECTABLE_TARGET } from "@/lib/ui-editor/interaction/constants";
 import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
 import { beginInlineTextEdit, isInlineTextEditableElement } from "@/lib/ui-editor/interaction/inlineTextEdit";
+import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import type { EditorDocumentService, EditorStateService } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
-
-const MOVEABLE_DOUBLE_CLICK_TARGET =
-    ".moveable, .moveable-control, .moveable-line, .moveable-rotation, .moveable-rotation-handle, .moveable-area";
+import {
+    getSingleSelectedElementId,
+    MOVEABLE_DOUBLE_CLICK_TARGET_SELECTOR,
+} from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
 
 export function useSurfaceDoubleClick(params: {
     surfaceId: string;
@@ -47,12 +49,9 @@ export function useSurfaceDoubleClick(params: {
                 return true;
             };
             const selection = stateService.getSelection();
-            const selectionData = selection.type === "element" ? selection.data : null;
-            const selectedSingleElementId =
-                selectionData != null && selectionData.surfaceId === surfaceId && selectionData.elementIds.length === 1
-                    ? selectionData.elementIds[0]
-                    : null;
-            if (target.closest(MOVEABLE_DOUBLE_CLICK_TARGET)) {
+            const selectionData = isUIElementSelection(selection) ? selection.data : null;
+            const selectedSingleElementId = getSingleSelectedElementId(selectionData, surfaceId);
+            if (target.closest(MOVEABLE_DOUBLE_CLICK_TARGET_SELECTOR)) {
                 if (selectedSingleElementId && beginTextEdit(selectedSingleElementId)) {
                     return;
                 }

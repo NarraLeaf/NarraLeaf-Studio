@@ -28,6 +28,10 @@ export interface SelectProps {
     portalMenu?: boolean;
     /** Where to open the menu; "auto" picks based on viewport space when not portaled, or when portaled. */
     menuPlacement?: SelectMenuPlacement;
+    /** Extra class names applied to the dropdown menu panel. */
+    menuClassName?: string;
+    /** Extra data attributes applied to the dropdown menu panel. Useful when a portaled menu belongs to another surface. */
+    menuDataAttributes?: Record<`data-${string}`, string | undefined>;
 }
 
 const sizeStyles = {
@@ -62,6 +66,8 @@ export function Select({
     multiple = false,
     portalMenu = false,
     menuPlacement = "auto",
+    menuClassName = "",
+    menuDataAttributes,
 }: SelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     const selectRef = useRef<HTMLDivElement>(null);
@@ -217,12 +223,13 @@ export function Select({
             ref={dropdownRef}
             className={
                 portalMenu
-                    ? "bg-[#1e1f22] border border-white/20 rounded-md shadow-lg overflow-y-auto"
+                    ? `bg-[#1e1f22] border border-white/20 rounded-md shadow-lg overflow-y-auto ${menuClassName}`
                     : `absolute z-50 w-full left-0 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg max-h-60 overflow-y-auto ${
                           openMenuDown ? "top-full mt-1" : "bottom-full mb-1"
-                      }`
+                      } ${menuClassName}`
             }
             style={portalMenu ? portalMenuStyle : undefined}
+            {...menuDataAttributes}
         >
             {options.map((option) => (
                 <button

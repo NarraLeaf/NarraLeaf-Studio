@@ -19,6 +19,7 @@ import { ProtocolManager } from "./managers/protocolManager";
 import { StorageManager } from "./managers/storageManager";
 import { WindowManager } from "./managers/windowManager";
 import { GlobalStateManager } from "./managers/storage/globalState";
+import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 
 export interface AppDependencies {
     protocolManager: ProtocolManager;
@@ -47,6 +48,7 @@ export class BaseApp {
     public readonly menuManager: MenuManager;
     public readonly storageManager: StorageManager;
     public readonly globalState: GlobalStateManager;
+    public readonly pluginPermissionManager: PluginPermissionManager;
 
     private initialized: boolean = false;
     protected appInfo: AppInfo | null = null;
@@ -66,6 +68,7 @@ export class BaseApp {
         this.storageManager = new StorageManager(this);
 
         this.globalState = new GlobalStateManager(this.getUserDataDir());
+        this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
 
         this.prepare();
     }
@@ -231,6 +234,7 @@ export class BaseApp {
         this.protocolManager.initialize();
         this.menuManager.initialize();
         this.storageManager.initialize();
+        this.pluginPermissionManager.initialize();
 
         this.electronApp.whenReady().then(async () => {
             // Retrieve app info
