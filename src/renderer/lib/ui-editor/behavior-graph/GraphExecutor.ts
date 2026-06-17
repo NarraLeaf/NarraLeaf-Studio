@@ -4,6 +4,7 @@ import { registerCoreBlueprintNodes } from "../blueprint-nodes/registerCoreBluep
 import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
 import type { BehaviorGraphExecutionTrace, BehaviorNodeExecutionContext } from "./BehaviorNodeRegistry";
 import { BlueprintGraphExecutionError } from "./GraphExecutionError";
+import { writeBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
 
 export type ExecuteGraphOptions = {
     graph: UIGraph;
@@ -21,6 +22,7 @@ const DEFAULT_MAX_STEPS = 1024;
 export async function executeGraph(options: ExecuteGraphOptions): Promise<void> {
     registerCoreBlueprintNodes();
     const { entry, graph, hostAdapter } = options;
+    const blueprintLocals = options.blueprintLocals ?? {};
     let cursorNodeId = entry.start.nodeId;
     let steps = 0;
 
@@ -65,7 +67,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<void> 
             params: node.params ?? {},
             hostAdapter,
             trace,
-            blueprintLocals: options.blueprintLocals,
+            blueprintLocals,
             eventPayload: options.eventPayload,
             executionOwner: options.executionOwner,
         };
@@ -92,6 +94,9 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<void> 
             if (trace) {
                 trace.emit({ type: "node.exit", executionId: trace.executionId, nodeId: node.id });
             }
+        }
+        if (result && Object.prototype.hasOwnProperty.call(result, "outputValues")) {
+            writeBlueprintNodeOutputValues(blueprintLocals, node.id, result.outputValues ?? {});
         }
         const nextPort = result?.nextPort ?? "next";
 

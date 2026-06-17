@@ -51,6 +51,12 @@ export type BlueprintNodeDynamicInputPinsConfig = {
     generatedIdPrefix: string;
     valueType: string;
     allowInlineLiteral: boolean;
+    /** Optional display label prefix for generated pins. Defaults to "Input". */
+    labelPrefix?: string;
+    /** Optional param key storing user-visible labels by generated pin id. */
+    pinLabelParamKey?: string;
+    /** Optional prefix used when initializing labels in pinLabelParamKey. */
+    defaultPinLabelPrefix?: string;
 };
 
 export type BlueprintInspectorParamKind = "string" | "number" | "json" | "literal" | "variableRef" | "select";
@@ -171,6 +177,8 @@ export type BlueprintNodeEditorCatalogEntry = {
     scope?: BlueprintNodeScope;
     /** When true, node card may offer add-input control (see dynamicInputPins on def). */
     supportsDynamicInputPins?: boolean;
+    /** Param key storing user-visible labels for dynamic input pins, if editable. */
+    dynamicInputPinLabelParamKey?: string;
 };
 
 export type { BehaviorNodeExecutionContext };

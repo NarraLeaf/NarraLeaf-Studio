@@ -8,6 +8,12 @@ import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import { DevModeBundle, DevModeEntry, DevModeStatus } from "./devMode";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
+import type {
+    PluginPermissionDecision,
+    PluginPermissionGrantResult,
+    PluginPermissionPromptResult,
+    PluginPermissionRequest,
+} from "./pluginPermissions";
 import { AppEventToken } from "./app";
 
 export interface RendererPreloadedInterface {
@@ -98,6 +104,14 @@ export interface RendererPreloadedInterface {
         openBlueprintInWorkspace(
             payload: PreviewStudioBlueprintOpenPayload & { projectPath: string },
         ): Promise<RequestStatus<void>>;
+    };
+
+    pluginPermissions: {
+        request(request: PluginPermissionRequest): Promise<RequestStatus<PluginPermissionPromptResult>>;
+        grant(
+            request: PluginPermissionRequest,
+            decision: PluginPermissionDecision,
+        ): Promise<RequestStatus<PluginPermissionGrantResult>>;
     };
 }
 

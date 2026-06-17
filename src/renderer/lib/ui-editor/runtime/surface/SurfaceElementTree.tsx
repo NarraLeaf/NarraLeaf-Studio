@@ -116,12 +116,13 @@ function renderElementTree(
         childrenIds?: string[];
         listItemScope?: UIListItemScope | null;
         instanceKey?: string;
+        elementOverrides?: Record<string, UIElement>;
     }): ReactNode[] => {
         const childIds = options?.childrenIds ?? resolved.childrenIds;
         const childScope = options?.listItemScope === undefined ? listItemScope : options.listItemScope;
         const childInstanceKey = options?.instanceKey ?? instanceKey;
         return childIds.map(childId => {
-            const childElement = document.elements[childId];
+            const childElement = options?.elementOverrides?.[childId] ?? document.elements[childId];
             if (!childElement) {
                 return null;
             }

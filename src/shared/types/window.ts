@@ -1,10 +1,13 @@
 
+import type { PluginPermissionPromptProps, PluginPermissionPromptResult } from "./pluginPermissions";
+
 export enum WindowAppType {
     Launcher = "launcher",
     Settings = "settings",
     Workspace = "workspace",
     ProjectWizard = "project-wizard",
     DevMode = "dev-mode",
+    PluginPermissionPrompt = "plugin-permission",
     Raw = "raw",
 }
 
@@ -23,6 +26,7 @@ export type WindowProps = {
         projectPath: string;
         entry: import("./devMode").DevModeEntry;
     },
+    [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptProps,
     [WindowAppType.Raw]: {
     },
 }
@@ -53,5 +57,6 @@ export type WindowCloseResults = {
     [WindowAppType.Workspace]: null;
     [WindowAppType.ProjectWizard]: { created: boolean; projectPath: string } | null;
     [WindowAppType.DevMode]: null;
+    [WindowAppType.PluginPermissionPrompt]: PluginPermissionPromptResult;
     [WindowAppType.Raw]: null;
 };

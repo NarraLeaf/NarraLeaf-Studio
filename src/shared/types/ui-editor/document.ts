@@ -1,4 +1,5 @@
 import { isContainerFlowLayoutParent } from "./container";
+import { getUIListChildSlot, isUIListScrollbarSlot } from "./list";
 
 export const UI_DOCUMENT_SCHEMA_VERSION = 6 as const;
 
@@ -138,6 +139,9 @@ export function isUIElementFlowLayoutChild(document: UIDocument, element: UIElem
         return false;
     }
     const parent = document.elements[element.parentId];
+    if (parent?.type === "nl.list" && isUIListScrollbarSlot(getUIListChildSlot(element.extra))) {
+        return false;
+    }
     return parent != null && isUIFlowLayoutParentElement(parent);
 }
 

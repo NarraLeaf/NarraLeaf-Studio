@@ -39,7 +39,7 @@ import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 
 export function ButtonRenderer(props: WidgetRendererProps) {
     const { element, children, surface, hostAdapter, useAppearanceInspectorPreview } = props;
-    const stateService = UIEditorStateService.getInstance();
+    const stateService = hostAdapter.editorStateService ?? UIEditorStateService.getInstance();
     const documentService = UIDocumentService.getInstance();
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
     const draftRef = useRef("");

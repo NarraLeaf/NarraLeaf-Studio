@@ -169,6 +169,16 @@ export const BLUEPRINT_NODE_TYPE_DATA_PARSE_JSON = "blueprint.data.parseJson" as
 export const BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON = "blueprint.data.stringifyJson" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_JSON_GET = "blueprint.data.jsonGet" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_JSON_HAS = "blueprint.data.jsonHas" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT = "blueprint.data.jsonMakeObject" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY = "blueprint.data.jsonMakeArray" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH = "blueprint.data.jsonArrayLength" as const;
+export const BLUEPRINT_NODE_TYPE_FLOW_IF = "if" as const;
+export const BLUEPRINT_NODE_TYPE_FLOW_NOOP = "blueprint.flow.noop" as const;
+export const BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING = "blueprint.flow.switchString" as const;
+export const BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP = "blueprint.flow.forLoop" as const;
+export const BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH = "blueprint.flow.forEach" as const;
+export const BLUEPRINT_NODE_TYPE_FLOW_WHILE = "blueprint.flow.while" as const;
+export const BLUEPRINT_NODE_TYPE_FLOW_DELAY = "blueprint.flow.delay" as const;
 /** Read blueprint execution local variable (pure data source). */
 export const BLUEPRINT_NODE_TYPE_LOCAL_GET = "blueprint.local.get" as const;
 /** Write blueprint execution local variable. */

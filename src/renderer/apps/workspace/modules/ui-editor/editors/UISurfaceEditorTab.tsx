@@ -1,4 +1,11 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+    useCallback,
+    useDeferredValue,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
@@ -14,6 +21,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { Services } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
+import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { UIEditorHistoryService } from "@/lib/workspace/services/ui-editor/UIEditorHistoryService";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
@@ -160,11 +168,12 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         requestRenamePrimary,
     });
 
-    const hostAdapter = useMemo(() => {
+    const hostAdapter = useMemo<UIHostAdapter>(() => {
         return {
             host: surface?.host ?? "app",
+            editorStateService: stateService ?? undefined,
         };
-    }, [surface?.host]);
+    }, [stateService, surface?.host]);
 
     const surfaceContent = useMemo(() => {
         if (!surfaceId || !runtimeBridge) {
@@ -343,12 +352,16 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         </div>
                     </div>
 
-                    <UIEditorInteractionLayer
-                        surfaceId={surface.id}
-                        surface={surface}
-                        containerRef={viewportRef}
-                        showOutlines={true}
-                    />
+                    {stateService && documentService ? (
+                        <UIEditorInteractionLayer
+                            surfaceId={surface.id}
+                            surface={surface}
+                            containerRef={viewportRef}
+                            stateService={stateService}
+                            documentService={documentService}
+                            showOutlines={true}
+                        />
+                    ) : null}
 
                     {/* Docker bar */}
                     {stateService && documentService && (

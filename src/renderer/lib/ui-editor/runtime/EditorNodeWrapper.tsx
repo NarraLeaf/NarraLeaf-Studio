@@ -28,6 +28,20 @@ function eventTargetElement(target: EventTarget | null): Element | null {
     return null;
 }
 
+function eventTargetNode(target: EventTarget | null, ownerDocument: Document): Node | null {
+    if (!target) {
+        return null;
+    }
+    if (typeof Node !== "undefined" && target instanceof Node) {
+        return target;
+    }
+    const viewNode = ownerDocument.defaultView?.Node;
+    if (viewNode && target instanceof viewNode) {
+        return target;
+    }
+    return null;
+}
+
 export function EditorNodeWrapper({
     element,
     layout,
@@ -95,7 +109,8 @@ export function EditorNodeWrapper({
                 return;
             }
             const related = e.relatedTarget;
-            if (!related || !e.currentTarget.contains(related as Node)) {
+            const relatedNode = eventTargetNode(related, e.currentTarget.ownerDocument);
+            if (!relatedNode || !e.currentTarget.contains(relatedNode)) {
                 widgetRuntimeStore.clearHoverIf(element.id);
                 widgetRuntimeStore.setActivePointerTarget(null);
                 dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e));

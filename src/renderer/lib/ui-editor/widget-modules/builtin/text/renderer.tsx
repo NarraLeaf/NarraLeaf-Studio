@@ -25,7 +25,7 @@ import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/ef
 import { getTextProps } from "./helpers";
 
 export function TextRenderer({ element, surface, document, hostAdapter }: WidgetRendererProps) {
-    const stateService = UIEditorStateService.getInstance();
+    const stateService = hostAdapter.editorStateService ?? UIEditorStateService.getInstance();
     const documentService = UIDocumentService.getInstance();
     useUIDocumentRevision(documentService);
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());

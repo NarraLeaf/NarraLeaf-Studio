@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef } from "react";
 import { flushSync } from "react-dom";
 import Selecto from "react-selecto";
-import Moveable from "react-moveable";
+import Moveable, { type OnClick, type OnClickGroup } from "react-moveable";
 import { ViewportTransform, clientToSurface, Rect2D } from "../geometry";
 import { isHTMLElement } from "./utils";
 import { useSurfaceInteractionEvents } from "./useSurfaceInteractionEvents";
-import { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
-import { isUIElementSelection } from "@services/ui/UIStore";
+import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { ActiveSnapGuides } from "@/lib/ui-editor/snapping/types";
@@ -24,6 +24,8 @@ import {
     promoteHitToDirectChildOfSurfaceRoot,
     shouldPromoteToSurfaceRootChild,
 } from "./containerDrillSelection";
+import { isMoveableInteractionTarget } from "./surfaceInlineTextEditActivation";
+import { beginInlineTextEdit, isInlineTextEditableElement } from "./inlineTextEdit";
 
 function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
     const x = Math.min(preview.startX, preview.currentX);
@@ -60,14 +62,21 @@ type Props = {
     surfaceId: string;
     surface: UISurface;
     containerRef: React.RefObject<HTMLElement | null>;
+    stateService: UIEditorStateService;
+    documentService: UIDocumentService;
     showOutlines?: boolean;
 };
-export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, showOutlines = true }: Props) {
-    const stateService = UIEditorStateService.getInstance();
+export function UIEditorInteractionLayer({
+    surfaceId,
+    surface,
+    containerRef,
+    stateService,
+    documentService,
+    showOutlines = true,
+}: Props) {
     const [selection, setSelection] = useState(stateService.getSelection());
     const previousSelectedTargets = useRef<HTMLElement[]>([]);
     const outlineCache = useRef<WeakMap<HTMLElement, { outline?: string; outlineOffset?: string }>>(new WeakMap());
-    const documentService = UIDocumentService.getInstance();
     const documentRevision = useUIDocumentRevision(documentService);
     type MoveableInstance = React.ElementRef<typeof Moveable>;
     const moveableRef = useRef<MoveableInstance | null>(null);
@@ -246,6 +255,14 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         !isGroupSelection &&
         selectionIds.length === 1 &&
         selectionIds[0] === inlineTextEditElementId;
+    const selectedSingleElementId =
+        selectionData?.surfaceId === surfaceId && selectionIds.length === 1
+            ? selectionIds[0] ?? null
+            : null;
+    const selectedSingleElement = selectedSingleElementId
+        ? documentService.getDocument().elements[selectedSingleElementId]
+        : null;
+    const isInlineTextEditableSelection = isInlineTextEditableElement(selectedSingleElement);
 
     const beginTransform = () => {
         transformLocks.current += 1;
@@ -366,11 +383,7 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
     );
 
     const isMoveableControlTarget = useCallback((target: Element | null | undefined) => {
-        return Boolean(
-            target?.closest(
-                ".moveable, .moveable-control, .moveable-line, .moveable-rotation, .moveable-rotation-handle, .moveable-area",
-            ),
-        );
+        return isMoveableInteractionTarget(target);
     }, []);
 
     const isTargetInsideSelection = useCallback(
@@ -466,9 +479,39 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         return candidates[0] ?? transformController;
     }, [imageCropController, transformController]);
 
+    const handleMoveableInlineTextClick = useCallback(
+        (event: OnClick | OnClickGroup) => {
+            if (!event.isDouble || activeController.id !== "transform") {
+                return;
+            }
+            if (!selectedSingleElementId) {
+                return;
+            }
+            const element = documentService.getDocument().elements[selectedSingleElementId];
+            if (!isInlineTextEditableElement(element)) {
+                return;
+            }
+            const inputTarget = event.inputTarget as Element | null | undefined;
+            if (inputTarget?.closest?.("textarea, input, [contenteditable='true']")) {
+                return;
+            }
+            event.inputEvent?.preventDefault?.();
+            event.inputEvent?.stopPropagation?.();
+            beginInlineTextEdit(stateService, surfaceId, selectedSingleElementId);
+        },
+        [activeController.id, documentService, selectedSingleElementId, stateService, surfaceId],
+    );
+
     const SELECTO_CLASS_NAME = "narraleaf-selecto";
 
     const moveablePointerClass = isInlineTextEditing ? "pointer-events-none" : "pointer-events-auto";
+    const isInlineTextMoveableTarget =
+        activeController.id === "transform" && isInlineTextEditableSelection && !isInlineTextEditing;
+    const moveableModeClass = activeController.id === "imageCrop"
+        ? "narraleaf-moveable--crop"
+        : isInlineTextMoveableTarget
+          ? "narraleaf-moveable--inline-text-target"
+          : "";
 
     return (
         <>
@@ -498,12 +541,11 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
                         targets={activeController.targets}
                         container={surfaceElement}
                         flushSync={flushSync}
-                        className={
-                            activeController.id === "imageCrop"
-                                ? `narraleaf-moveable narraleaf-moveable--crop ${moveablePointerClass}`
-                                : `narraleaf-moveable ${moveablePointerClass}`
-                        }
+                        className={`narraleaf-moveable ${moveableModeClass} ${moveablePointerClass}`.trim()}
                         {...activeController.moveableProps}
+                        clickable={isInlineTextMoveableTarget ? true : activeController.moveableProps.clickable}
+                        onClick={handleMoveableInlineTextClick}
+                        onClickGroup={handleMoveableInlineTextClick}
                     />
                     {activeController.overlay ? (
                         <div className="pointer-events-auto">{activeController.overlay}</div>

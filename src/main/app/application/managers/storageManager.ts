@@ -54,6 +54,10 @@ export class StorageManager extends Manager {
 
     public async isPathAllowed(window: AppWindow, fsPath: string, mode: FileSystemAccessMode): Promise<boolean> {
         const target = await this.resolvePathForAuthorization(fsPath);
+        if (await this.isProtectedStoragePath(target)) {
+            return false;
+        }
+
         for (const grant of this.getFileSystemGrants(window, mode)) {
             const root = await this.resolvePathForAuthorization(grant.path);
             if (grant.recursive ? this.isSameOrChild(target, root) : target === root) {
@@ -222,6 +226,22 @@ export class StorageManager extends Manager {
                 return resolvedPath;
             }
         }
+    }
+
+    private async isProtectedStoragePath(target: string): Promise<boolean> {
+        for (const root of this.getProtectedStorageRoots()) {
+            const resolvedRoot = await this.resolvePathForAuthorization(root);
+            if (this.isSameOrChild(target, resolvedRoot)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private getProtectedStorageRoots(): string[] {
+        return [
+            path.join(this.app.getUserDataDir(), UserDataNamespace.Authorization),
+        ];
     }
 
     private isSameOrChild(target: string, root: string): boolean {

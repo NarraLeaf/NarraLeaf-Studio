@@ -28,6 +28,8 @@ export type ListWidgetProps = {
     /** Layout of template children inside each item. */
     templateDirection: ListDirection;
     templateGap: number;
+    /** Allow pointer-dragging the list viewport content to scroll naturally. */
+    dragContentScroll: boolean;
     /** List-owned scrollbar style / authored part ids. */
     scrollbar: UIListScrollbarProps;
     /** Static visual effects on the list host (no appearance / motion authoring). */
@@ -81,6 +83,7 @@ export const defaultListWidgetProps: ListWidgetProps = {
     contentPaddingLeft: 0,
     templateDirection: "vertical",
     templateGap: 4,
+    dragContentScroll: false,
     scrollbar: defaultListScrollbarProps,
     effects: { ...DEFAULT_ELEMENT_EFFECT_VALUES },
 };

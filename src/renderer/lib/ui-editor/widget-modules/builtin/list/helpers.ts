@@ -105,6 +105,10 @@ export function getListProps(element: UIElement): ListWidgetProps {
                 ? raw.templateDirection
                 : defaultListWidgetProps.templateDirection,
         templateGap: clampNumber(raw.templateGap, defaultListWidgetProps.templateGap, 0, 512),
+        dragContentScroll:
+            typeof raw.dragContentScroll === "boolean"
+                ? raw.dragContentScroll
+                : defaultListWidgetProps.dragContentScroll,
         scrollbar: normalizeScrollbar(raw.scrollbar),
         effects: normalizeElementEffectValues(raw.effects ?? defaultListWidgetProps.effects),
     };

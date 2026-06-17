@@ -38,7 +38,11 @@ import {
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 import { BlueprintFlowZoomControls } from "./components/BlueprintFlowZoomControls";
 import { BlueprintAddNodeMenu } from "../components/BlueprintAddNodeMenu";
-import { generateNextDynamicInputPinId, readDynamicInputPinIds } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
+import {
+    generateNextDynamicInputPinId,
+    readDynamicInputPinIds,
+    readDynamicInputPinLabels,
+} from "@/lib/ui-editor/blueprint-nodes/effectivePins";
 import {
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
     type BlueprintInspectorParamSelectOption,
@@ -48,6 +52,18 @@ import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/serv
 
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
+
+function generateUniqueDynamicPinLabel(existing: Record<string, string>, prefix: string): string {
+    const used = new Set(Object.values(existing).map(label => label.trim()).filter(Boolean));
+    let n = 1;
+    for (;;) {
+        const candidate = `${prefix}${n}`;
+        if (!used.has(candidate)) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
 
 function buildPlacementPreviewFlowNode(
     nodeType: string,
@@ -151,7 +167,7 @@ function BlueprintFlowCanvasInner({
                 return;
             }
             const next = { ...(n.params ?? {}) };
-            if (value === undefined || value === "") {
+            if (value === undefined) {
                 delete next[key];
             } else {
                 next[key] = value;
@@ -199,6 +215,16 @@ function BlueprintFlowCanvasInner({
             const nextId = generateNextDynamicInputPinId(def, params);
             const list = [...readDynamicInputPinIds(params, d.storageKey), nextId];
             params[d.storageKey] = list;
+            if (d.pinLabelParamKey) {
+                const labels = readDynamicInputPinLabels(params, d.pinLabelParamKey);
+                params[d.pinLabelParamKey] = {
+                    ...labels,
+                    [nextId]: generateUniqueDynamicPinLabel(
+                        labels,
+                        d.defaultPinLabelPrefix ?? d.labelPrefix ?? "input",
+                    ),
+                };
+            }
             n.params = params;
             commitBlueprintIr(snap);
         },
@@ -235,6 +261,15 @@ function BlueprintFlowCanvasInner({
                     params[BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY] = nextOpen;
                 } else {
                     delete params[BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY];
+                }
+            }
+            if (d.pinLabelParamKey) {
+                const labels = readDynamicInputPinLabels(params, d.pinLabelParamKey);
+                delete labels[pinId];
+                if (Object.keys(labels).length > 0) {
+                    params[d.pinLabelParamKey] = labels;
+                } else {
+                    delete params[d.pinLabelParamKey];
                 }
             }
             n.params = params;
