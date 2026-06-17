@@ -27,6 +27,27 @@ export function readDynamicInputPinIds(
     return raw.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
 }
 
+/** Read dynamic input pin labels from node.params. */
+export function readDynamicInputPinLabels(
+    params: Record<string, unknown> | undefined,
+    storageKey: string | undefined,
+): Record<string, string> {
+    if (!params || !storageKey) {
+        return {};
+    }
+    const raw = params[storageKey];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return {};
+    }
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof value === "string" && value.trim().length > 0) {
+            out[key] = value.trim();
+        }
+    }
+    return out;
+}
+
 /** Next unused id `${prefix}_${n}` avoiding static pins and existing dynamic ids. */
 export function generateNextDynamicInputPinId(def: BlueprintNodeDef, params: Record<string, unknown>): string {
     const cfg = def.dynamicInputPins;
@@ -66,7 +87,7 @@ export function resolveEffectiveBlueprintNodePins(
         p => p.semantic === "data" && cfg.fixedDataInputIds.includes(p.id),
     );
 
-    const fixedSet = new Set(cfg.fixedDataInputIds);
+    const labels = readDynamicInputPinLabels(params, cfg.pinLabelParamKey);
     const dynamicPins: BlueprintNodePinDef[] = [];
     let dynOrdinal = 0;
     for (const id of extraIds) {
@@ -80,7 +101,7 @@ export function resolveEffectiveBlueprintNodePins(
             semantic: "data",
             valueType: cfg.valueType,
             allowInlineLiteral: cfg.allowInlineLiteral,
-            label: `Input ${fixedDataInputs.length + dynOrdinal}`,
+            label: labels[id] ?? `${cfg.labelPrefix ?? "Input"} ${fixedDataInputs.length + dynOrdinal}`,
         });
     }
 
@@ -106,6 +127,7 @@ export function resolveEffectiveBlueprintCatalogEntry(
     def: BlueprintNodeDef,
     params?: Record<string, unknown>,
 ): BlueprintNodeEditorCatalogEntry {
+    const cfg = def.dynamicInputPins;
     const base = {
         type: def.type,
         category: def.category,
@@ -116,10 +138,10 @@ export function resolveEffectiveBlueprintCatalogEntry(
         graphKinds: def.graphKinds,
         role: def.role,
         scope: def.scope,
+        dynamicInputPinLabelParamKey: cfg?.pinLabelParamKey,
     };
 
     const effective = resolveEffectiveBlueprintNodePins(def, params);
-    const cfg = def.dynamicInputPins;
     const dynamicIdSet = cfg
         ? new Set(readDynamicInputPinIds(params, cfg.storageKey))
         : new Set<string>();

@@ -241,6 +241,19 @@ input[type="radio"]:focus {
     will-change: transform;
 }
 
+.moveable.narraleaf-moveable--inline-text-target .moveable-control-box,
+.moveable.narraleaf-moveable--inline-text-target .moveable-area {
+    pointer-events: none !important;
+}
+
+.moveable.narraleaf-moveable--inline-text-target .moveable-line,
+.moveable.narraleaf-moveable--inline-text-target .moveable-control,
+.moveable.narraleaf-moveable--inline-text-target .moveable-around-control,
+.moveable.narraleaf-moveable--inline-text-target .moveable-rotation,
+.moveable.narraleaf-moveable--inline-text-target .moveable-rotation-handle {
+    pointer-events: auto !important;
+}
+
 .moveable.narraleaf-moveable--crop,
 .moveable.narraleaf-moveable--crop * {
     --moveable-color: var(--narraleaf-accent-weak);

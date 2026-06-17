@@ -8,7 +8,7 @@ export type BlueprintAddNodeCategory = {
     count: number;
 };
 
-const DOCUMENTED_CATEGORY_ORDER = ["Events", "Flow", "Displayable", "Data", "String", "Text"] as const;
+const DOCUMENTED_CATEGORY_ORDER = ["Events", "Flow", "Displayable", "Data", "JSON", "String", "Text"] as const;
 
 function compareCategoryId(a: string, b: string): number {
     const ai = DOCUMENTED_CATEGORY_ORDER.indexOf(a as (typeof DOCUMENTED_CATEGORY_ORDER)[number]);

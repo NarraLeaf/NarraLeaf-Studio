@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from "react";
+import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type {
     UIListItemScope,
     UIListScrollbarPartStyle,
@@ -17,6 +17,40 @@ type ScrollMetrics = {
     content: number;
     offset: number;
 };
+
+function eventTargetElement(target: EventTarget | null): Element | null {
+    if (target instanceof Element) {
+        return target;
+    }
+    if (target instanceof Node) {
+        return target.parentElement;
+    }
+    return null;
+}
+
+function closestUiElementIdInSet(target: EventTarget | null, ids: Set<string>): string | null {
+    let element = eventTargetElement(target);
+    while (element) {
+        const id = element.getAttribute("data-ui-element-id");
+        if (id && ids.has(id)) {
+            return id;
+        }
+        element = element.parentElement;
+    }
+    return null;
+}
+
+function findRenderedUiElement(root: Element | null, id: string): HTMLElement | null {
+    if (!root) {
+        return null;
+    }
+    for (const element of root.querySelectorAll<HTMLElement>("[data-ui-element-id]")) {
+        if (element.getAttribute("data-ui-element-id") === id) {
+            return element;
+        }
+    }
+    return null;
+}
 
 function readPath(source: unknown, path: string): unknown {
     const clean = path.trim();
@@ -129,10 +163,37 @@ function useScrollMetrics(ref: React.RefObject<HTMLDivElement | null>, horizonta
     return metrics;
 }
 
+function axisSize(layout: UILayout, horizontal: boolean): number {
+    return Math.max(1, Math.abs(horizontal ? layout.width : layout.height));
+}
+
+function scrollbarProgress(metrics: ScrollMetrics): number {
+    const range = Math.max(0, metrics.content - metrics.viewport);
+    return range > 0 ? metrics.offset / range : 0;
+}
+
+function layoutWithMainAxisOffset(layout: UILayout, horizontal: boolean, offset: number): UILayout {
+    return horizontal
+        ? { ...layout, x: layout.x + offset }
+        : { ...layout, y: layout.y + offset };
+}
+
+function resolveAuthoredThumbLayout(
+    track: UIElement,
+    thumb: UIElement,
+    horizontal: boolean,
+    metrics: ScrollMetrics,
+): UILayout {
+    const travel = Math.max(0, axisSize(track.layout, horizontal) - axisSize(thumb.layout, horizontal));
+    return layoutWithMainAxisOffset(thumb.layout, horizontal, scrollbarProgress(metrics) * travel);
+}
+
 export function ListRenderer(props: WidgetRendererProps) {
     const { element, document, hostAdapter, renderChildren, runtimeData } = props;
     const p = getListProps(element);
+    const listHostRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
+    const suppressContentClickRef = useRef(false);
     const horizontalScrollbar = p.scrollbar.side === "top" || p.scrollbar.side === "bottom";
     const metrics = useScrollMetrics(viewportRef, horizontalScrollbar);
     useEffect(() => {
@@ -262,23 +323,27 @@ export function ListRenderer(props: WidgetRendererProps) {
     });
 
     const scrollRange = Math.max(1, metrics.content - metrics.viewport);
-    const trackLength = Math.max(1, metrics.viewport - p.scrollbar.contentInset * 2);
-    const thumbLength = Math.max(
+    const fallbackTrackLength = Math.max(1, metrics.viewport - p.scrollbar.contentInset * 2);
+    const fallbackThumbLength = Math.max(
         minThumbLength,
-        Math.min(trackLength, (metrics.viewport / Math.max(metrics.content, metrics.viewport)) * trackLength),
+        Math.min(fallbackTrackLength, (metrics.viewport / Math.max(metrics.content, metrics.viewport)) * fallbackTrackLength),
     );
-    const thumbTravel = Math.max(1, trackLength - thumbLength);
-    const thumbOffset = overflowAvailable ? (metrics.offset / scrollRange) * thumbTravel : 0;
+    const fallbackThumbTravel = Math.max(1, fallbackTrackLength - fallbackThumbLength);
+    const fallbackThumbOffset = overflowAvailable ? (metrics.offset / scrollRange) * fallbackThumbTravel : 0;
+    const authoredThumbLength = scrollbarThumbElement ? axisSize(scrollbarThumbElement.layout, horizontalScrollbar) : fallbackThumbLength;
+    const authoredThumbTravel = scrollbarTrackElement
+        ? Math.max(1, axisSize(scrollbarTrackElement.layout, horizontalScrollbar) - authoredThumbLength)
+        : fallbackThumbTravel;
 
     const scrollToRatio = useCallback(
-        (clientPosition: number, trackRect: DOMRect) => {
+        (clientPosition: number, trackRect: DOMRect, thumbLength: number, thumbTravel: number) => {
             const viewport = viewportRef.current;
             if (!viewport) {
                 return;
             }
             const trackStart = horizontalScrollbar ? trackRect.left : trackRect.top;
             const position = clientPosition - trackStart - thumbLength / 2;
-            const ratio = Math.max(0, Math.min(1, position / thumbTravel));
+            const ratio = Math.max(0, Math.min(1, position / Math.max(1, thumbTravel)));
             const nextOffset = ratio * scrollRange;
             if (horizontalScrollbar) {
                 viewport.scrollLeft = nextOffset;
@@ -286,25 +351,24 @@ export function ListRenderer(props: WidgetRendererProps) {
                 viewport.scrollTop = nextOffset;
             }
         },
-        [horizontalScrollbar, scrollRange, thumbLength, thumbTravel],
+        [horizontalScrollbar, scrollRange],
     );
 
-    const handleThumbPointerDown = useCallback(
-        (event: PointerEvent<HTMLDivElement>) => {
+    const startThumbDrag = useCallback(
+        (event: PointerEvent<Element>, thumbTravel: number) => {
             event.preventDefault();
             event.stopPropagation();
             const viewport = viewportRef.current;
-            const track = event.currentTarget.parentElement;
-            if (!viewport || !track) {
+            if (!viewport) {
                 return;
             }
-            const trackRect = track.getBoundingClientRect();
             const startPointer = horizontalScrollbar ? event.clientX : event.clientY;
             const startOffset = horizontalScrollbar ? viewport.scrollLeft : viewport.scrollTop;
             const onMove = (moveEvent: globalThis.PointerEvent) => {
+                moveEvent.preventDefault();
                 const pointer = horizontalScrollbar ? moveEvent.clientX : moveEvent.clientY;
                 const delta = pointer - startPointer;
-                const ratioDelta = delta / Math.max(1, trackRect[horizontalScrollbar ? "width" : "height"] - thumbLength);
+                const ratioDelta = delta / Math.max(1, thumbTravel);
                 const nextOffset = startOffset + ratioDelta * scrollRange;
                 if (horizontalScrollbar) {
                     viewport.scrollLeft = nextOffset;
@@ -315,12 +379,151 @@ export function ListRenderer(props: WidgetRendererProps) {
             const onUp = () => {
                 window.removeEventListener("pointermove", onMove);
                 window.removeEventListener("pointerup", onUp);
+                window.removeEventListener("pointercancel", onUp);
             };
-            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointermove", onMove, { passive: false });
             window.addEventListener("pointerup", onUp, { once: true });
+            window.addEventListener("pointercancel", onUp, { once: true });
         },
-        [horizontalScrollbar, scrollRange, thumbLength],
+        [horizontalScrollbar, scrollRange],
     );
+
+    const handleFallbackThumbPointerDown = useCallback(
+        (event: PointerEvent<HTMLDivElement>) => {
+            const track = event.currentTarget.parentElement;
+            if (!track) {
+                return;
+            }
+            startThumbDrag(event, fallbackThumbTravel);
+        },
+        [fallbackThumbTravel, startThumbDrag],
+    );
+
+    const handleAuthoredScrollbarPointerDown = useCallback(
+        (event: PointerEvent<HTMLDivElement>) => {
+            if (!scrollbarTrackElement || !scrollbarThumbElement || event.button !== 0) {
+                return;
+            }
+            const targetId = closestUiElementIdInSet(
+                event.target,
+                new Set([scrollbarTrackElement.id, scrollbarThumbElement.id]),
+            );
+            if (!targetId) {
+                return;
+            }
+            const trackNode = findRenderedUiElement(listHostRef.current, scrollbarTrackElement.id);
+            if (!trackNode) {
+                return;
+            }
+            const trackRect = trackNode.getBoundingClientRect();
+            if (targetId === scrollbarThumbElement.id) {
+                startThumbDrag(event, authoredThumbTravel);
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            scrollToRatio(
+                horizontalScrollbar ? event.clientX : event.clientY,
+                trackRect,
+                authoredThumbLength,
+                authoredThumbTravel,
+            );
+        },
+        [
+            authoredThumbLength,
+            authoredThumbTravel,
+            horizontalScrollbar,
+            scrollToRatio,
+            scrollbarThumbElement,
+            scrollbarTrackElement,
+            startThumbDrag,
+        ],
+    );
+
+    const handleContentDragPointerDown = useCallback(
+        (event: PointerEvent<HTMLDivElement>) => {
+            if (!p.dragContentScroll || event.button !== 0) {
+                return;
+            }
+            const scrollbarIds = new Set(
+                [scrollbarTrackElement?.id, scrollbarThumbElement?.id].filter((id): id is string => Boolean(id)),
+            );
+            if (closestUiElementIdInSet(event.target, scrollbarIds)) {
+                return;
+            }
+            const viewport = viewportRef.current;
+            if (!viewport) {
+                return;
+            }
+
+            const useHorizontal = p.repeatDirection === "horizontal";
+            const scrollable = useHorizontal
+                ? viewport.scrollWidth > viewport.clientWidth + 1
+                : viewport.scrollHeight > viewport.clientHeight + 1;
+            if (!scrollable) {
+                return;
+            }
+
+            const startX = event.clientX;
+            const startY = event.clientY;
+            const startScrollLeft = viewport.scrollLeft;
+            const startScrollTop = viewport.scrollTop;
+            const bodyStyle = globalThis.document.body.style;
+            const originalUserSelect = bodyStyle.userSelect;
+            const originalCursor = bodyStyle.cursor;
+            let dragging = false;
+
+            event.stopPropagation();
+
+            const onMove = (moveEvent: globalThis.PointerEvent) => {
+                const dx = moveEvent.clientX - startX;
+                const dy = moveEvent.clientY - startY;
+                if (!dragging && Math.hypot(dx, dy) < 3) {
+                    return;
+                }
+                if (!dragging) {
+                    dragging = true;
+                    suppressContentClickRef.current = true;
+                    bodyStyle.userSelect = "none";
+                    bodyStyle.cursor = "grabbing";
+                }
+                moveEvent.preventDefault();
+                if (useHorizontal) {
+                    viewport.scrollLeft = startScrollLeft - dx;
+                } else {
+                    viewport.scrollTop = startScrollTop - dy;
+                }
+            };
+
+            const cleanup = () => {
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", cleanup);
+                window.removeEventListener("pointercancel", cleanup);
+                bodyStyle.userSelect = originalUserSelect;
+                bodyStyle.cursor = originalCursor;
+            };
+
+            window.addEventListener("pointermove", onMove, { passive: false });
+            window.addEventListener("pointerup", cleanup, { once: true });
+            window.addEventListener("pointercancel", cleanup, { once: true });
+        },
+        [
+            p.dragContentScroll,
+            p.repeatDirection,
+            scrollbarThumbElement?.id,
+            scrollbarTrackElement?.id,
+        ],
+    );
+
+    const handleContentDragClickCapture = useCallback((event: MouseEvent<HTMLDivElement>) => {
+        if (!suppressContentClickRef.current) {
+            return;
+        }
+        suppressContentClickRef.current = false;
+        event.preventDefault();
+        event.stopPropagation();
+    }, []);
 
     const trackPlacement: CSSProperties = horizontalScrollbar
         ? {
@@ -338,16 +541,16 @@ export function ListRenderer(props: WidgetRendererProps) {
 
     const thumbPlacement: CSSProperties = horizontalScrollbar
         ? {
-              left: thumbOffset,
+              left: fallbackThumbOffset,
               top: 0,
-              width: thumbLength,
+              width: fallbackThumbLength,
               height: "100%",
           }
         : {
-              top: thumbOffset,
+              top: fallbackThumbOffset,
               left: 0,
               width: "100%",
-              height: thumbLength,
+              height: fallbackThumbLength,
           };
 
     const fakeTrack: UIElement = {
@@ -363,22 +566,51 @@ export function ListRenderer(props: WidgetRendererProps) {
         id: `${element.id}:scrollbarThumb`,
     };
 
-    const renderPart = (part: "track" | "thumb", authored: UIElement | undefined, style: UIListScrollbarPartStyle) => {
-        const partElement = authored ?? (part === "track" ? fakeTrack : fakeThumb);
+    const renderPart = (part: "track" | "thumb", style: UIListScrollbarPartStyle) => {
+        const partElement = part === "track" ? fakeTrack : fakeThumb;
         return (
             <RectangleChromeRenderer
                 {...props}
                 element={partElement}
                 children={null}
-                rectangleLike={authored ? undefined : styleToRectangleLike(style)}
+                rectangleLike={styleToRectangleLike(style)}
                 clipContent={true}
             />
         );
     };
 
-    const scrollbar = showScrollbar ? (
+    const hasAuthoredScrollbar = Boolean(scrollbarTrackElement && scrollbarThumbElement && renderChildren);
+    const authoredScrollbar =
+        showScrollbar && hasAuthoredScrollbar && scrollbarTrackElement && scrollbarThumbElement && renderChildren ? (
+            <>
+                {renderChildren({
+                    childrenIds: [scrollbarTrackElement.id],
+                    instanceKey: `scrollbar-${element.id}`,
+                })}
+                {renderChildren({
+                    childrenIds: [scrollbarThumbElement.id],
+                    instanceKey: `scrollbar-${element.id}`,
+                    elementOverrides: {
+                        [scrollbarThumbElement.id]: {
+                            ...scrollbarThumbElement,
+                            layout: resolveAuthoredThumbLayout(
+                                scrollbarTrackElement,
+                                scrollbarThumbElement,
+                                horizontalScrollbar,
+                                metrics,
+                            ),
+                            style: {
+                                ...(scrollbarThumbElement.style ?? {}),
+                                cursor: horizontalScrollbar ? "ew-resize" : "ns-resize",
+                            },
+                        },
+                    },
+                })}
+            </>
+        ) : null;
+
+    const fallbackScrollbar = showScrollbar && !hasAuthoredScrollbar ? (
         <div
-            data-ui-element-id={scrollbarTrackElement?.id}
             data-ui-list-scrollbar-part="track"
             style={{
                 position: "absolute",
@@ -389,12 +621,18 @@ export function ListRenderer(props: WidgetRendererProps) {
                 if (event.target !== event.currentTarget) {
                     return;
                 }
-                scrollToRatio(horizontalScrollbar ? event.clientX : event.clientY, event.currentTarget.getBoundingClientRect());
+                event.preventDefault();
+                event.stopPropagation();
+                scrollToRatio(
+                    horizontalScrollbar ? event.clientX : event.clientY,
+                    event.currentTarget.getBoundingClientRect(),
+                    fallbackThumbLength,
+                    fallbackThumbTravel,
+                );
             }}
         >
-            {renderPart("track", scrollbarTrackElement, p.scrollbar.trackStyle)}
+            {renderPart("track", p.scrollbar.trackStyle)}
             <div
-                data-ui-element-id={scrollbarThumbElement?.id}
                 data-ui-list-scrollbar-part="thumb"
                 style={{
                     position: "absolute",
@@ -402,9 +640,9 @@ export function ListRenderer(props: WidgetRendererProps) {
                     cursor: horizontalScrollbar ? "ew-resize" : "ns-resize",
                     ...thumbPlacement,
                 }}
-                onPointerDown={handleThumbPointerDown}
+                onPointerDown={handleFallbackThumbPointerDown}
             >
-                {renderPart("thumb", scrollbarThumbElement, p.scrollbar.thumbStyle)}
+                {renderPart("thumb", p.scrollbar.thumbStyle)}
             </div>
         </div>
     ) : null;
@@ -412,10 +650,17 @@ export function ListRenderer(props: WidgetRendererProps) {
     const body = (
         <>
             <style>{`[data-ui-element-id="${element.id}"] [data-ui-list-viewport]::-webkit-scrollbar { display: none; }`}</style>
-            <div ref={viewportRef} data-ui-list-viewport="true" style={viewportStyle}>
+            <div
+                ref={viewportRef}
+                data-ui-list-viewport="true"
+                style={viewportStyle}
+                onPointerDown={handleContentDragPointerDown}
+                onClickCapture={handleContentDragClickCapture}
+            >
                 <div style={flexHost}>{listBody}</div>
             </div>
-            {scrollbar}
+            {authoredScrollbar}
+            {fallbackScrollbar}
         </>
     );
 
@@ -423,6 +668,7 @@ export function ListRenderer(props: WidgetRendererProps) {
         return (
             <div style={hostStyle}>
                 <div
+                    ref={listHostRef}
                     style={{
                         position: "relative",
                         width: "100%",
@@ -430,6 +676,7 @@ export function ListRenderer(props: WidgetRendererProps) {
                         overflow: "hidden",
                         borderRadius: "inherit",
                     }}
+                    onPointerDown={handleAuthoredScrollbarPointerDown}
                 >
                     {body}
                 </div>
@@ -437,5 +684,9 @@ export function ListRenderer(props: WidgetRendererProps) {
         );
     }
 
-    return <div style={hostStyle}>{body}</div>;
+    return (
+        <div ref={listHostRef} style={hostStyle} onPointerDown={handleAuthoredScrollbarPointerDown}>
+            {body}
+        </div>
+    );
 }

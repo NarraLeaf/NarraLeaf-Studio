@@ -27,6 +27,7 @@ export type WidgetRendererProps = {
         childrenIds?: string[];
         listItemScope?: UIListItemScope | null;
         instanceKey?: string;
+        elementOverrides?: Record<string, UIElement>;
     }) => ReactNode[];
     /** Runtime state readers exposed to structural widgets that resolve their own data source. */
     runtimeData?: {

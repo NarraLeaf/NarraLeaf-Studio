@@ -4,6 +4,7 @@ import type { UIHostAdapter } from "../runtime/types";
 
 export type BehaviorNodeExecuteResult = {
     nextPort?: string;
+    outputValues?: Record<string, unknown>;
 };
 
 /** Optional execution trace for M3-full (node.enter / node.exit + structured errors). */

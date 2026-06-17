@@ -5,6 +5,7 @@ import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalSta
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
 import type { DevModeEntry, DevModeStatus, DevModeBundle } from "@shared/types/devMode";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
+import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
 
@@ -102,6 +103,13 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
         openBlueprintInWorkspace: (payload: PreviewStudioBlueprintOpenPayload & { projectPath: string }) =>
             ipcClient.invoke(IPCEventType.devModeOpenBlueprintInWorkspace, payload) as Promise<RequestStatus<void>>,
+    },
+
+    pluginPermissions: {
+        request: (request: PluginPermissionRequest) =>
+            ipcClient.invoke(IPCEventType.pluginPermissionPromptLaunch, { props: { request } }),
+        grant: (request: PluginPermissionRequest, decision: PluginPermissionDecision) =>
+            ipcClient.invoke(IPCEventType.pluginPermissionGrant, { request, decision }),
     },
 };
 

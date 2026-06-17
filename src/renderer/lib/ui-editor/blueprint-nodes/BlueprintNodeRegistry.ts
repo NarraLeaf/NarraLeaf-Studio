@@ -104,6 +104,8 @@ class BlueprintNodeDefinitionsRegistry {
             graphKinds: def.graphKinds,
             role: def.role,
             scope: def.scope,
+            supportsDynamicInputPins: Boolean(def.dynamicInputPins),
+            dynamicInputPinLabelParamKey: def.dynamicInputPins?.pinLabelParamKey,
         };
     }
 
@@ -249,6 +251,9 @@ class BlueprintNodeDefinitionsRegistry {
         }
         if (!d.generatedIdPrefix.trim()) {
             throw new Error(`[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.generatedIdPrefix is empty`);
+        }
+        if (d.pinLabelParamKey !== undefined && !d.pinLabelParamKey.trim()) {
+            throw new Error(`[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.pinLabelParamKey is empty`);
         }
         const dataInputIds = new Set(
             def.pins.filter(p => p.kind === "input" && p.semantic === "data").map(p => p.id),

@@ -66,6 +66,15 @@ describe("BlueprintAddNodeMenuModel", () => {
                 outputs: 1,
             }),
             entry({
+                type: "blueprint.data.jsonMakeObject",
+                displayName: "Make JSON Object",
+                category: "JSON",
+                keywords: ["json"],
+                isPure: true,
+                inputs: 2,
+                outputs: 1,
+            }),
+            entry({
                 type: "blueprint.text.setText",
                 displayName: "Set Text",
                 category: "Text",
@@ -81,6 +90,7 @@ describe("BlueprintAddNodeMenuModel", () => {
             "Events",
             "Flow",
             "Data",
+            "JSON",
             "String",
             "Text",
             "Math",
