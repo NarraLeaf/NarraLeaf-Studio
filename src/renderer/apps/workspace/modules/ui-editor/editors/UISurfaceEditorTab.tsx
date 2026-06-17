@@ -256,6 +256,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                 <div
                     className="relative flex-1 bg-[#050f10]"
                     onContextMenu={handleCanvasContextMenu}
+                    onDoubleClickCapture={handleSurfaceDoubleClick}
                     onMouseDownCapture={focusSurfaceEditor}
                     onFocusCapture={focusSurfaceEditor}
                 >
@@ -321,7 +322,6 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         ref={viewportRef}
                         className={`absolute inset-0 overflow-hidden ${surfaceImageDropOverlayClass}`}
                         {...surfaceImageDropTargetProps}
-                        onDoubleClick={handleSurfaceDoubleClick}
                     >
                         {surfaceLevelDiagnosticMessages.length > 0 ? (
                             <div className="absolute left-64 right-36 top-14 z-20 rounded-md border border-amber-500/35 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-100/90">

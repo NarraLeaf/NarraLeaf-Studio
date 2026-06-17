@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from "react";
-import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent } from "react";
+import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -50,38 +50,58 @@ export function EditorNodeWrapper({
     );
 
     const dispatchWidgetEvent = useCallback(
-        (eventName: string, target: EventTarget | null) => {
+        (eventName: string, target: EventTarget | null, payload?: Record<string, unknown>) => {
             if (!blueprintRuntime || !isDirectElementEvent(target)) {
                 return false;
             }
             if (!getWidgetLogicEvent(element.type, eventName)) {
                 return false;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName);
+            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName, payload);
             return true;
         },
         [blueprintRuntime, element.id, element.type, isDirectElementEvent],
     );
 
+    const localMousePayload = useCallback(
+        (
+            e:
+                | MouseEvent<HTMLDivElement>
+                | PointerEvent<HTMLDivElement>
+                | WheelEvent<HTMLDivElement>,
+        ): Record<string, number> => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const width = Math.max(1, Math.abs(layout.width));
+            const height = Math.max(1, Math.abs(layout.height));
+            const scaleX = rect.width > 0 ? width / rect.width : 1;
+            const scaleY = rect.height > 0 ? height / rect.height : 1;
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY,
+            };
+        },
+        [layout.height, layout.width],
+    );
+
     const onPointerEnter = useCallback((e: PointerEvent<HTMLDivElement>) => {
         widgetRuntimeStore?.setHoverTarget(element.id);
-        dispatchWidgetEvent("pointerEnter", e.target);
-    }, [dispatchWidgetEvent, widgetRuntimeStore, element.id]);
+        dispatchWidgetEvent("mouseEnter", e.target, localMousePayload(e));
+    }, [dispatchWidgetEvent, localMousePayload, widgetRuntimeStore, element.id]);
 
     const onPointerLeave = useCallback(
         (e: PointerEvent<HTMLDivElement>) => {
             if (!widgetRuntimeStore) {
-                dispatchWidgetEvent("pointerLeave", e.target);
+                dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e));
                 return;
             }
             const related = e.relatedTarget;
             if (!related || !e.currentTarget.contains(related as Node)) {
                 widgetRuntimeStore.clearHoverIf(element.id);
                 widgetRuntimeStore.setActivePointerTarget(null);
-                dispatchWidgetEvent("pointerLeave", e.target);
+                dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e));
             }
         },
-        [dispatchWidgetEvent, widgetRuntimeStore, element.id],
+        [dispatchWidgetEvent, localMousePayload, widgetRuntimeStore, element.id],
     );
 
     const onPointerDown = useCallback(
@@ -89,9 +109,9 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setActivePointerTarget(element.id);
             }
-            dispatchWidgetEvent("pointerDown", e.target);
+            dispatchWidgetEvent("mouseDown", e.target, { ...localMousePayload(e), button: e.button });
         },
-        [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore, element.id],
+        [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, widgetRuntimeStore, element.id],
     );
 
     const onPointerUp = useCallback(
@@ -99,9 +119,9 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setActivePointerTarget(null);
             }
-            dispatchWidgetEvent("pointerUp", e.target);
+            dispatchWidgetEvent("mouseUp", e.target, { ...localMousePayload(e), button: e.button });
         },
-        [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore],
+        [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, widgetRuntimeStore],
     );
 
     const onPointerCancel = useCallback(() => {
@@ -110,32 +130,43 @@ export function EditorNodeWrapper({
 
     const onPointerMove = useCallback(
         (e: PointerEvent<HTMLDivElement>) => {
-            dispatchWidgetEvent("pointerMove", e.target);
+            dispatchWidgetEvent("mouseMove", e.target, localMousePayload(e));
         },
-        [dispatchWidgetEvent],
+        [dispatchWidgetEvent, localMousePayload],
     );
 
     const onClick = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            dispatchWidgetEvent("click", e.target);
+            dispatchWidgetEvent("mouseClick", e.target, localMousePayload(e));
         },
-        [dispatchWidgetEvent],
+        [dispatchWidgetEvent, localMousePayload],
     );
 
     const onDoubleClick = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            dispatchWidgetEvent("doubleClick", e.target);
+            dispatchWidgetEvent("mouseDoubleClick", e.target, localMousePayload(e));
         },
-        [dispatchWidgetEvent],
+        [dispatchWidgetEvent, localMousePayload],
     );
 
     const onContextMenu = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            if (dispatchWidgetEvent("contextMenu", e.target)) {
+            if (dispatchWidgetEvent("rightClick", e.target, localMousePayload(e))) {
                 e.preventDefault();
             }
         },
-        [dispatchWidgetEvent],
+        [dispatchWidgetEvent, localMousePayload],
+    );
+
+    const onWheel = useCallback(
+        (e: WheelEvent<HTMLDivElement>) => {
+            dispatchWidgetEvent("mouseWheel", e.target, {
+                ...localMousePayload(e),
+                deltaX: e.deltaX,
+                deltaY: e.deltaY,
+            });
+        },
+        [dispatchWidgetEvent, localMousePayload],
     );
 
     const onFocus = useCallback(
@@ -211,6 +242,7 @@ export function EditorNodeWrapper({
             onClick={blueprintRuntime ? onClick : undefined}
             onDoubleClick={blueprintRuntime ? onDoubleClick : undefined}
             onContextMenu={blueprintRuntime ? onContextMenu : undefined}
+            onWheel={blueprintRuntime ? onWheel : undefined}
             onFocus={widgetRuntimeStore || blueprintRuntime ? onFocus : undefined}
             onBlur={widgetRuntimeStore || blueprintRuntime ? onBlur : undefined}
         >

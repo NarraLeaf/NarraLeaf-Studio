@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
 import { EditorComponentProps } from "../../types";
 import { useWorkspace } from "../../../context";
@@ -35,6 +35,13 @@ import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevis
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
 import { createInputDialog } from "@/lib/components/dialogs";
+import { buildAccessibleBlueprintVariableOptions } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
+import {
+    buildBlueprintGraphClipboardPayload,
+    getBlueprintGraphClipboard,
+    pasteBlueprintGraphClipboardPayload,
+    setBlueprintGraphClipboard,
+} from "@/lib/workspace/services/ui-editor/blueprint/graphClipboard";
 
 function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
     if (!view || bp.program.kind !== "graph") {
@@ -134,7 +141,89 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         [localBp, payload.blueprintId],
     );
 
-    const blueprintHistoryKeybindings = useMemo(
+    const ir = getActiveIr(bp, editor.graphView);
+    const activeIrRef = useRef<BlueprintGraphIr | null>(null);
+    activeIrRef.current = ir;
+
+    const commitIr = useCallback(
+        (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => {
+            if (!editor.graphView) {
+                return;
+            }
+            activeIrRef.current = next;
+            const { blueprintId } = payload;
+            const apply = (draft: BlueprintGraphIr) => {
+                draft.nodes = next.nodes;
+                draft.edges = next.edges;
+                draft.meta = next.meta;
+                draft.variables = next.variables;
+            };
+            if (editor.graphView.kind === "event") {
+                localBp.updateEventGraphIr(blueprintId, editor.graphView.graphId, apply, history);
+            } else {
+                localBp.updateFunctionGraphIr(blueprintId, editor.graphView.graphId, apply, history);
+            }
+        },
+        [editor.graphView, localBp, payload],
+    );
+
+    const copySelectedGraphNodes = useCallback(() => {
+        if (isTypingInField()) {
+            return;
+        }
+        const activeIr = activeIrRef.current;
+        if (!activeIr) {
+            return;
+        }
+        const clipboard = buildBlueprintGraphClipboardPayload(activeIr, editor.selectedNodeIds);
+        if (!clipboard) {
+            return;
+        }
+        setBlueprintGraphClipboard(clipboard);
+    }, [editor.selectedNodeIds]);
+
+    const cutSelectedGraphNodes = useCallback(() => {
+        if (isTypingInField()) {
+            return;
+        }
+        const activeIr = activeIrRef.current;
+        if (!activeIr) {
+            return;
+        }
+        const clipboard = buildBlueprintGraphClipboardPayload(activeIr, editor.selectedNodeIds);
+        if (!clipboard) {
+            return;
+        }
+        setBlueprintGraphClipboard(clipboard);
+        const next = cloneBlueprintIr(activeIr);
+        for (const nodeId of clipboard.nodeIds) {
+            removeBlueprintNodeFromIr(next, nodeId);
+        }
+        commitIr(next);
+        editor.setSelectedNodeIds([]);
+    }, [commitIr, editor]);
+
+    const pasteGraphNodes = useCallback(() => {
+        if (isTypingInField()) {
+            return;
+        }
+        const activeIr = activeIrRef.current;
+        if (!activeIr) {
+            return;
+        }
+        const pasted = pasteBlueprintGraphClipboardPayload({
+            ir: activeIr,
+            payload: getBlueprintGraphClipboard(),
+            generateId: () => uuid.generate(),
+        });
+        if (!pasted) {
+            return;
+        }
+        commitIr(pasted.ir);
+        editor.setSelectedNodeIds(pasted.newNodeIds);
+    }, [commitIr, editor, uuid]);
+
+    const blueprintKeybindings = useMemo(
         () => [
             {
                 id: "undo-ctrl",
@@ -155,6 +244,21 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 },
             },
             {
+                id: "copy-ctrl",
+                key: "ctrl+c",
+                handler: copySelectedGraphNodes,
+            },
+            {
+                id: "cut-ctrl",
+                key: "ctrl+x",
+                handler: cutSelectedGraphNodes,
+            },
+            {
+                id: "paste-ctrl",
+                key: "ctrl+v",
+                handler: pasteGraphNodes,
+            },
+            {
                 id: "undo-meta",
                 key: "meta+z",
                 handler: () => {
@@ -172,39 +276,37 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                     }
                 },
             },
+            {
+                id: "copy-meta",
+                key: "meta+c",
+                handler: copySelectedGraphNodes,
+            },
+            {
+                id: "cut-meta",
+                key: "meta+x",
+                handler: cutSelectedGraphNodes,
+            },
+            {
+                id: "paste-meta",
+                key: "meta+v",
+                handler: pasteGraphNodes,
+            },
         ],
-        [localBp, payload.blueprintId],
+        [
+            copySelectedGraphNodes,
+            cutSelectedGraphNodes,
+            localBp,
+            pasteGraphNodes,
+            payload.blueprintId,
+        ],
     );
 
     useKeybindings({
-        keybindings: blueprintHistoryKeybindings,
+        keybindings: blueprintKeybindings,
         enabled: Boolean(payload.blueprintId),
         when: whenEditorFocused(tabId),
         idPrefix: `blueprint-editor-${tabId}`,
     });
-
-    const ir = getActiveIr(bp, editor.graphView);
-
-    const commitIr = useCallback(
-        (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => {
-            if (!editor.graphView) {
-                return;
-            }
-            const { blueprintId } = payload;
-            const apply = (draft: BlueprintGraphIr) => {
-                draft.nodes = next.nodes;
-                draft.edges = next.edges;
-                draft.meta = next.meta;
-                draft.variables = next.variables;
-            };
-            if (editor.graphView.kind === "event") {
-                localBp.updateEventGraphIr(blueprintId, editor.graphView.graphId, apply, history);
-            } else {
-                localBp.updateFunctionGraphIr(blueprintId, editor.graphView.graphId, apply, history);
-            }
-        },
-        [editor.graphView, localBp, payload],
-    );
 
     const onAddGraphNodeAtFlowPosition = useCallback(
         (type: string, flowPosition: { x: number; y: number }): string | undefined => {
@@ -337,13 +439,21 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     );
 
     const blueprintMemberVariables = useMemo(() => {
-        return Object.values(bp.members?.variables ?? {})
-            .map(v => ({ id: v.id, name: v.name }))
-            .sort((a, b) => a.name.localeCompare(b.name));
-    }, [revision, payload.blueprintId, bp]);
+        return buildAccessibleBlueprintVariableOptions({
+            doc,
+            currentBlueprintId: payload.blueprintId,
+            surfaceId: payload.surfaceId,
+        }).map(option => ({
+            id: option.id,
+            name: option.name,
+            value: option.value,
+            valueType: option.valueType,
+            disambiguationLabel: option.disambiguationLabel,
+        }));
+    }, [doc, revision, payload.blueprintId, payload.surfaceId]);
 
     const blueprintMembersSig = useMemo(
-        () => blueprintMemberVariables.map(v => `${v.id}:${v.name}`).join("|"),
+        () => blueprintMemberVariables.map(v => `${v.value}:${v.name}:${v.valueType ?? ""}:${v.disambiguationLabel ?? ""}`).join("|"),
         [blueprintMemberVariables],
     );
 

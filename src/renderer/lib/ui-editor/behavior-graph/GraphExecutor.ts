@@ -12,6 +12,8 @@ export type ExecuteGraphOptions = {
     maxSteps?: number;
     trace?: BehaviorGraphExecutionTrace;
     blueprintLocals?: Record<string, unknown>;
+    eventPayload?: Record<string, unknown>;
+    executionOwner?: BehaviorNodeExecutionContext["executionOwner"];
 };
 
 const DEFAULT_MAX_STEPS = 1024;
@@ -64,6 +66,8 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<void> 
             hostAdapter,
             trace,
             blueprintLocals: options.blueprintLocals,
+            eventPayload: options.eventPayload,
+            executionOwner: options.executionOwner,
         };
 
         let result: Awaited<ReturnType<NonNullable<typeof definition.execute>>>;

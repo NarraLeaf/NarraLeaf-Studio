@@ -9,7 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { Collision, CollisionDetection, DragEndEvent, DragMoveEvent, DragStartEvent } from "@dnd-kit/core";
-import { DndContext, PointerSensor, pointerWithin, useSensor, useSensors } from "@dnd-kit/core";
+import { DndContext, MeasuringStrategy, PointerSensor, pointerWithin, useSensor, useSensors } from "@dnd-kit/core";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { isUIElementSelection } from "@services/ui/UIStore";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
@@ -21,9 +21,9 @@ import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateServ
 import {
     moveLogReason,
     resolveBeforeChildIdForOutlineGap,
-    resolveBeforeChildIdForOutlineDrop,
 } from "@/lib/ui-editor/interaction/outline/outlineDropGeometry";
 import {
+    isOutlineGapDropData,
     type OutlineGapDropData,
     OUTLINE_ROOT_WIDGET_TYPE,
     OutlineDragPreview,
@@ -39,16 +39,45 @@ export type UILayersPanelProps = {
     inputDialog: InputDialog | null;
 };
 
-function isOutlineGapDropData(value: unknown): value is OutlineGapDropData {
-    if (!value || typeof value !== "object") {
-        return false;
-    }
-    const data = value as Partial<OutlineGapDropData>;
-    return data.kind === "outline-gap" && typeof data.parentId === "string" && typeof data.visualIndex === "number";
-}
-
 function collisionHasOutlineGapData(collision: Collision): boolean {
     return isOutlineGapDropData(collision.data?.droppableContainer.data.current);
+}
+
+const OUTLINE_DND_MEASURING = {
+    droppable: {
+        strategy: MeasuringStrategy.Always,
+    },
+};
+
+function getOutlineGapCollisionAtPointer(args: Parameters<CollisionDetection>[0]): Collision[] | null {
+    const { pointerCoordinates } = args;
+    const doc = globalThis.document;
+    if (!pointerCoordinates || typeof doc?.elementsFromPoint !== "function") {
+        return null;
+    }
+
+    const elements = doc.elementsFromPoint(pointerCoordinates.x, pointerCoordinates.y);
+    for (const element of elements) {
+        const gapElement = element.closest("[data-outline-gap-id]") as HTMLElement | null;
+        const gapId = gapElement?.dataset.outlineGapId;
+        if (!gapId) {
+            continue;
+        }
+        const droppableContainer = args.droppableContainers.find(container => String(container.id) === gapId);
+        if (!droppableContainer || !isOutlineGapDropData(droppableContainer.data.current)) {
+            continue;
+        }
+        return [
+            {
+                id: droppableContainer.id,
+                data: {
+                    droppableContainer,
+                    value: 0,
+                },
+            },
+        ];
+    }
+    return [];
 }
 
 function getActivatorClientPoint(event: Event | null): { x: number; y: number } | null {
@@ -104,7 +133,6 @@ export function UILayersPanel({
     const [activeDragId, setActiveDragId] = useState<string | null>(null);
     const [activeDragPoint, setActiveDragPoint] = useState<{ x: number; y: number } | null>(null);
     const initialDragPointRef = useRef<{ x: number; y: number } | null>(null);
-    const lastGapCollisionRef = useRef<{ collisions: Collision[]; at: number } | null>(null);
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
 
@@ -263,25 +291,25 @@ export function UILayersPanel({
     );
 
     const collisionDetection = useCallback<CollisionDetection>((args) => {
-        const collisions = pointerWithin(args);
-        const gapCollisions = collisions.filter(collisionHasOutlineGapData);
-        const now = Date.now();
-
-        if (gapCollisions.length > 0) {
-            lastGapCollisionRef.current = { collisions: gapCollisions, at: now };
-            return gapCollisions;
+        const gapCollision = getOutlineGapCollisionAtPointer(args);
+        if (gapCollision) {
+            if (gapCollision.length > 0) {
+                return gapCollision;
+            }
+            return pointerWithin(args).filter(collision => !collisionHasOutlineGapData(collision));
         }
 
-        const lastGap = lastGapCollisionRef.current;
-        if (lastGap && now - lastGap.at < 320) {
-            return lastGap.collisions;
+        const collisions = pointerWithin(args);
+        const gapCollisions = collisions.filter(collisionHasOutlineGapData);
+
+        if (gapCollisions.length > 0) {
+            return gapCollisions;
         }
 
         return collisions;
     }, []);
 
     const handleDragStart = useCallback((event: DragStartEvent) => {
-        lastGapCollisionRef.current = null;
         const point = getActivatorClientPoint(event.activatorEvent);
         initialDragPointRef.current = point;
         setActiveDragPoint(point);
@@ -300,7 +328,6 @@ export function UILayersPanel({
     }, []);
 
     const handleDragCancel = useCallback(() => {
-        lastGapCollisionRef.current = null;
         initialDragPointRef.current = null;
         setActiveDragPoint(null);
         setActiveDragId(null);
@@ -308,7 +335,6 @@ export function UILayersPanel({
 
     const handleDragEnd = useCallback(
         (event: DragEndEvent) => {
-            lastGapCollisionRef.current = null;
             initialDragPointRef.current = null;
             setActiveDragPoint(null);
             setActiveDragId(null);
@@ -343,17 +369,6 @@ export function UILayersPanel({
                 return;
             }
 
-            const overEl = document.elements[overId];
-            if (!overEl?.parentId) {
-                return;
-            }
-            const overParentId = overEl.parentId;
-            const beforeChildId = resolveBeforeChildIdForOutlineDrop(document, overParentId, moversRaw, overId);
-            if (beforeChildId === undefined) {
-                return;
-            }
-            const result = documentService.moveElementsInSurface(surfaceId, moversRaw, overParentId, beforeChildId);
-            moveLogReason(result);
         },
         [document, documentService, selectedIds, surface, surfaceId]
     );
@@ -418,6 +433,7 @@ export function UILayersPanel({
             <DndContext
                 sensors={sensors}
                 collisionDetection={collisionDetection}
+                measuring={OUTLINE_DND_MEASURING}
                 onDragStart={handleDragStart}
                 onDragMove={handleDragMove}
                 onDragCancel={handleDragCancel}

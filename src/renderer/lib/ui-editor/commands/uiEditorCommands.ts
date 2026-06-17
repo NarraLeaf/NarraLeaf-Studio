@@ -1,3 +1,4 @@
+import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { resolveInsertTargetParent } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
@@ -19,6 +20,11 @@ import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiD
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import type { Blueprint } from "@shared/types/blueprint/document";
 
+export type UIEditorPasteTarget = {
+    parentId: string;
+    beforeChildId: string | null;
+};
+
 function getWidgetMainBlueprintSnapshot(localBp: LocalBlueprintService, surfaceId: string, elementId: string): Blueprint | undefined {
     const bpId = localBp.getWidgetMainBlueprintId(surfaceId, elementId);
     if (!bpId) {
@@ -26,6 +32,82 @@ function getWidgetMainBlueprintSnapshot(localBp: LocalBlueprintService, surfaceI
     }
     const raw = localBp.getBlueprintDocument().blueprints[bpId];
     return raw ? (JSON.parse(JSON.stringify(raw)) as Blueprint) : undefined;
+}
+
+function isElementInSubtree(document: UIDocument, elementId: string, rootId: string): boolean {
+    let cur: string | null | undefined = elementId;
+    while (cur) {
+        if (cur === rootId) {
+            return true;
+        }
+        cur = document.elements[cur]?.parentId ?? null;
+    }
+    return false;
+}
+
+function pickPasteAnchorTopLevelId(
+    document: UIDocument,
+    selection: UIElementSelection,
+    topLevelIds: string[],
+): string | null {
+    const primaryId = getSelectionPrimaryId(selection);
+    if (primaryId) {
+        const primaryTop = topLevelIds.find(topId => isElementInSubtree(document, primaryId, topId));
+        if (primaryTop) {
+            return primaryTop;
+        }
+    }
+    return topLevelIds[topLevelIds.length - 1] ?? null;
+}
+
+export function resolvePasteTargetAfterSelection(
+    document: UIDocument,
+    surfaceId: string,
+    selection: UIElementSelection | null,
+): UIEditorPasteTarget | null {
+    const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
+    if (!effectiveRootId) {
+        return null;
+    }
+    if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
+        return { parentId: effectiveRootId, beforeChildId: null };
+    }
+
+    const allowed = collectSubtreeElementIds(document, effectiveRootId);
+    const topLevelIds = filterSelectionToTopLevelMovers(document, selection).filter(id => {
+        const el = document.elements[id];
+        return el != null && el.type !== "nl.root" && allowed.has(id);
+    });
+    const anchorId = pickPasteAnchorTopLevelId(document, selection, topLevelIds);
+    const anchor = anchorId ? document.elements[anchorId] : null;
+    if (!anchor?.parentId) {
+        return { parentId: effectiveRootId, beforeChildId: null };
+    }
+
+    const parent = document.elements[anchor.parentId];
+    if (!parent || !allowed.has(parent.id)) {
+        return { parentId: effectiveRootId, beforeChildId: null };
+    }
+
+    const sameParentTopIds = new Set(
+        topLevelIds.filter(id => document.elements[id]?.parentId === parent.id),
+    );
+    let insertAfterIndex = -1;
+    parent.childrenIds.forEach((childId, index) => {
+        if (sameParentTopIds.has(childId)) {
+            insertAfterIndex = Math.max(insertAfterIndex, index);
+        }
+    });
+    if (insertAfterIndex < 0) {
+        insertAfterIndex = parent.childrenIds.indexOf(anchor.id);
+    }
+
+    const beforeChildId =
+        insertAfterIndex >= 0 && insertAfterIndex < parent.childrenIds.length - 1
+            ? parent.childrenIds[insertAfterIndex + 1]
+            : null;
+
+    return { parentId: parent.id, beforeChildId };
 }
 
 export function uiEditorCopySelection(
@@ -92,6 +174,37 @@ export function uiEditorPaste(
         return false;
     }
     const result = documentService.pasteClipboardPayload(surfaceId, resolved.parentId, null, payload);
+    if (!result.ok || result.newRootIds.length === 0) {
+        return false;
+    }
+    const primary = result.newRootIds[result.newRootIds.length - 1];
+    stateService.setUIElementSelection({
+        editor: "ui",
+        surfaceId,
+        elementIds: result.newRootIds,
+        primaryId: primary,
+    });
+    void localBp;
+    return true;
+}
+
+export function uiEditorPasteAfterSelection(
+    documentService: UIDocumentService,
+    localBp: LocalBlueprintService,
+    stateService: UIEditorStateService,
+    surfaceId: string,
+    selection: UIElementSelection | null,
+): boolean {
+    const payload = getUiEditorClipboard();
+    if (!payload) {
+        return false;
+    }
+    const doc = documentService.getDocument();
+    const target = resolvePasteTargetAfterSelection(doc, surfaceId, selection);
+    if (!target) {
+        return false;
+    }
+    const result = documentService.pasteClipboardPayload(surfaceId, target.parentId, target.beforeChildId, payload);
     if (!result.ok || result.newRootIds.length === 0) {
         return false;
     }

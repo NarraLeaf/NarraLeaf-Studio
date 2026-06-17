@@ -4,7 +4,7 @@ This guide explains how Studio blueprint nodes are defined, registered, displaye
 
 ## Current built-in catalog
 
-The current core catalog intentionally keeps a reduced starter set: component initialization, click, local variables, and basic math operations.
+The current core catalog includes event heads, local variables, basic flow branching, data/string/math utilities, and documented UI-domain nodes.
 
 | Node type | Display name | Category | Purpose |
 | --- | --- | --- | --- |
@@ -12,6 +12,7 @@ The current core catalog intentionally keeps a reduced starter set: component in
 | `blueprint.event.head.click` | `On click` | `Events` | Entry node for widget click interactions. It is available to widgets that expose the `click` event, including buttons, images, containers, and text elements. |
 | `blueprint.local.get` | `Get Var` | `Variables` | Pure data node that reads an execution-local blueprint variable. |
 | `blueprint.local.set` | `Set Var` | `Variables` | Exec node that writes an execution-local blueprint variable and continues through `next`. |
+| `if` | `If` | `Flow` | Exec branch node that routes execution through `true` or `false` based on a boolean condition. |
 | `blueprint.math.*` | Basic math operators | `Math` | Pure arithmetic, increment/decrement, and comparison nodes such as `+`, `−`, `×`, `÷`, `+1`, `−1`, `=`, `≠`, `<`, `≤`, `>`, and `≥`. |
 
 Node categories are still part of the node API and palette model. Do not remove category handling when trimming or adding nodes; categories are how the add-node palette groups nodes.
@@ -166,6 +167,10 @@ Common `valueType` strings:
 - `boolean`
 - `json`
 - `any`
+
+Connection compatibility is strict by default. `any` is the wildcard type. `integer` and `float` outputs may connect to `string` inputs and are converted to strings when the input is read. `json` is not a wildcard; use an explicit Data conversion node when a scalar value must feed a JSON input.
+
+Data input pins accept one incoming edge. Exec input pins may accept multiple incoming exec edges, which lets branches merge back into a shared continuation. Most output pins replace their previous outgoing edge when reconnected, but Data literal output pins may fan out to multiple targets.
 
 Example:
 

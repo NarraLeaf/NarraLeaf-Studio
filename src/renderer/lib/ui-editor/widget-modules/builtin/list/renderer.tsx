@@ -135,6 +135,27 @@ export function ListRenderer(props: WidgetRendererProps) {
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const horizontalScrollbar = p.scrollbar.side === "top" || p.scrollbar.side === "bottom";
     const metrics = useScrollMetrics(viewportRef, horizontalScrollbar);
+    useEffect(() => {
+        const runtime = hostAdapter.blueprintRuntime;
+        const viewport = viewportRef.current;
+        if (!runtime || !viewport) {
+            return undefined;
+        }
+        const dispatchScroll = () => {
+            const viewportSize = horizontalScrollbar ? viewport.clientWidth : viewport.clientHeight;
+            const contentSize = horizontalScrollbar ? viewport.scrollWidth : viewport.scrollHeight;
+            const offset = horizontalScrollbar ? viewport.scrollLeft : viewport.scrollTop;
+            const maxOffset = Math.max(0, contentSize - viewportSize);
+            const progress = maxOffset > 0 ? offset / maxOffset : 0;
+            void runtime.dispatchElementBlueprintEvent(element.id, "scroll", {
+                offset,
+                maxOffset,
+                progress,
+            });
+        };
+        viewport.addEventListener("scroll", dispatchScroll, { passive: true });
+        return () => viewport.removeEventListener("scroll", dispatchScroll);
+    }, [element.id, horizontalScrollbar, hostAdapter.blueprintRuntime]);
     const runtimeItems = resolveBoundItems(p, runtimeData);
     const items = runtimeItems ?? (p.previewItems.length > 0 ? p.previewItems : Array.from({ length: p.previewCount }, (_, i) => ({ index: i })));
     const count = Math.max(1, Math.min(128, items.length));

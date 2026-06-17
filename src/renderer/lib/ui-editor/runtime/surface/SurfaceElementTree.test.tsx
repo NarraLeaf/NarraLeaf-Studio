@@ -80,9 +80,10 @@ describe("SurfaceElementTree", () => {
             hostAdapter,
         });
 
-        const wrappers = flattenNodes(tree)
-            .filter(isValidElement)
-            .filter(node => node.type === EditorNodeWrapper);
+        const wrappers = flattenNodes(tree).filter(
+            (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
+                isValidElement(node) && node.type === EditorNodeWrapper,
+        );
         const buttonWrapper = wrappers.find(node => node.props.element.id === "button");
 
         expect(buttonWrapper?.props.hostAdapter).toBe(hostAdapter);

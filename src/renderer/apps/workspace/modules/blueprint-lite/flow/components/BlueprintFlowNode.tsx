@@ -27,8 +27,14 @@ export type BlueprintFlowNodeData = {
     onAddDynamicInputPin?: (nodeId: string) => void;
     /** Remove a user-added input pin and clean edges / literals. */
     onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void;
-    /** Execution-local variables for variableRef inspector controls */
-    memberVariables?: Array<{ id: string; name: string }>;
+    /** Accessible variables for variableRef inspector controls. */
+    memberVariables?: Array<{
+        id: string;
+        name: string;
+        value: string;
+        valueType?: string;
+        disambiguationLabel?: string;
+    }>;
     /** Input ports that have an incoming edge (any semantic). */
     wiredInputPortIds?: ReadonlySet<string>;
     /**
@@ -369,13 +375,13 @@ function InspectorParamOnCard({
     nodeId: string;
     params: Record<string, unknown>;
     onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
-    memberVariables?: Array<{ id: string; name: string }>;
+    memberVariables?: BlueprintFlowNodeData["memberVariables"];
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
 }) {
     const raw = spec.key in params ? params[spec.key] : undefined;
     const variableSelectValue =
         spec.kind === "variableRef"
-            ? typeof raw === "string" && memberVariables?.some(v => v.id === raw)
+            ? typeof raw === "string" && memberVariables?.some(v => v.value === raw)
                 ? raw
                 : ""
             : undefined;
@@ -389,7 +395,11 @@ function InspectorParamOnCard({
         : undefined;
     const variableComponentOptions: SelectOption[] = [
         { value: "", label: "-" },
-        ...(memberVariables ?? []).map(v => ({ value: v.id, label: v.name })),
+        ...(memberVariables ?? []).map(v => ({
+            value: v.value,
+            label: v.name,
+            secondaryLabel: v.disambiguationLabel,
+        })),
     ];
 
     return (

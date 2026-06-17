@@ -20,6 +20,7 @@ import {
     type Node,
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
+import { BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE } from "@shared/types/blueprint/graph";
 import {
     applyBlueprintIrConnection,
     createGraphNodeForPalette,
@@ -29,7 +30,6 @@ import { blueprintFlowNodeTypes } from "./nodeTypes";
 import {
     applyBlueprintFlowNodeSelection,
     applyFlowPositionsToIr,
-    blueprintFlowEdgesTopologySignature,
     blueprintIrToFlowEdges,
     blueprintIrToFlowNodes,
     blueprintSelectedNodesDependencyKey,
@@ -53,7 +53,7 @@ function buildPlacementPreviewFlowNode(
     nodeType: string,
     position: { x: number; y: number },
     nodeCatalog: IBlueprintNodeCatalogService,
-    memberVariables: Array<{ id: string; name: string }>,
+    memberVariables: BlueprintFlowNodeData["memberVariables"],
 ): Node<BlueprintFlowNodeData> {
     const stub = createGraphNodeForPalette(nodeType, BP_PLACEMENT_PREVIEW_ID);
     return {
@@ -94,7 +94,7 @@ type BlueprintFlowCanvasInnerProps = {
     revision: number;
     /** Bumps React Flow sync when blueprint member variables change (node card dropdowns). */
     blueprintMembersSig: string;
-    blueprintMemberVariables: Array<{ id: string; name: string }>;
+    blueprintMemberVariables: NonNullable<BlueprintFlowNodeData["memberVariables"]>;
     selectedNodeIds: readonly string[];
     onSelectNodeIds: (ids: string[]) => void;
     onCommitIr: (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => void;
@@ -156,10 +156,21 @@ function BlueprintFlowCanvasInner({
             } else {
                 next[key] = value;
             }
+            if (key === "variableId") {
+                const selectedVariable =
+                    typeof value === "string"
+                        ? blueprintMemberVariables.find(variable => variable.value === value)
+                        : undefined;
+                if (selectedVariable?.valueType) {
+                    next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE] = selectedVariable.valueType;
+                } else {
+                    delete next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
+                }
+            }
             n.params = next;
             commitBlueprintIr(snap);
         },
-        [commitBlueprintIr],
+        [blueprintMemberVariables, commitBlueprintIr],
     );
 
     const patchNodeParamRef = useRef(patchNodeParam);
@@ -390,13 +401,7 @@ function BlueprintFlowCanvasInner({
                     return live ? { ...n, position: live.position } : n;
                 });
             });
-            setEdges(prev => {
-                const next = blueprintIrToFlowEdges(snap, nodeCatalog);
-                if (blueprintFlowEdgesTopologySignature(prev) === blueprintFlowEdgesTopologySignature(next)) {
-                    return prev;
-                }
-                return next;
-            });
+            setEdges(blueprintIrToFlowEdges(snap, nodeCatalog));
         } else {
             setNodes(nds => {
                 const withoutPreview = nds.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID);

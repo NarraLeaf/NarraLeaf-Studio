@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+    BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+    BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_STRING_FORMAT,
+    BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
+} from "@shared/types/blueprint/graph";
+import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { applyBlueprintIrConnection, isValidBlueprintIrExecConnection } from "./graphEditing";
 
 describe("blueprint graph editing", () => {
@@ -47,6 +55,29 @@ describe("blueprint graph editing", () => {
         ]);
     });
 
+    it("allows literal output pins to connect to multiple targets", () => {
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                source: { id: "source", type: BLUEPRINT_NODE_TYPE_LITERAL_NUMBER },
+                first: { id: "first", type: BLUEPRINT_NODE_TYPE_STRING_TO_STRING },
+                second: { id: "second", type: BLUEPRINT_NODE_TYPE_STRING_TO_STRING },
+            },
+            edges: [{ from: { nodeId: "source", port: "value" }, to: { nodeId: "first", port: "value" } }],
+        };
+
+        const edges = applyBlueprintIrConnection(ir, {
+            source: "source",
+            sourceHandle: "value",
+            target: "second",
+            targetHandle: "value",
+        });
+
+        expect(edges).toEqual([
+            { from: { nodeId: "source", port: "value" }, to: { nodeId: "first", port: "value" } },
+            { from: { nodeId: "source", port: "value" }, to: { nodeId: "second", port: "value" } },
+        ]);
+    });
+
     it("replaces an existing incoming edge to the same target port", () => {
         const ir: BlueprintGraphIr = {
             nodes: {
@@ -66,6 +97,29 @@ describe("blueprint graph editing", () => {
 
         expect(edges).toEqual([
             { from: { nodeId: "secondSource", port: "result" }, to: { nodeId: "target", port: "value" } },
+        ]);
+    });
+
+    it("allows multiple exec outputs to connect to one exec input", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                branch: { id: "branch", type: "if" },
+                target: { id: "target", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
+            },
+            edges: [{ from: { nodeId: "branch", port: "true" }, to: { nodeId: "target", port: "in" } }],
+        };
+
+        const edges = applyBlueprintIrConnection(ir, {
+            source: "branch",
+            sourceHandle: "false",
+            target: "target",
+            targetHandle: "in",
+        });
+
+        expect(edges).toEqual([
+            { from: { nodeId: "branch", port: "true" }, to: { nodeId: "target", port: "in" } },
+            { from: { nodeId: "branch", port: "false" }, to: { nodeId: "target", port: "in" } },
         ]);
     });
 
@@ -113,5 +167,43 @@ describe("blueprint graph editing", () => {
                 targetHandle: "in",
             }),
         ).toEqual([]);
+    });
+
+    it("rejects float output to json input unless explicitly converted", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                floatValue: { id: "floatValue", type: BLUEPRINT_NODE_TYPE_LITERAL_NUMBER },
+                jsonValue: { id: "jsonValue", type: BLUEPRINT_NODE_TYPE_DATA_TO_JSON },
+                format: { id: "format", type: BLUEPRINT_NODE_TYPE_STRING_FORMAT },
+                stringify: { id: "stringify", type: BLUEPRINT_NODE_TYPE_STRING_TO_STRING },
+            },
+            edges: [],
+        };
+
+        expect(
+            isValidBlueprintIrExecConnection(ir, {
+                source: "floatValue",
+                sourceHandle: "value",
+                target: "format",
+                targetHandle: "values",
+            }),
+        ).toBe(false);
+        expect(
+            isValidBlueprintIrExecConnection(ir, {
+                source: "jsonValue",
+                sourceHandle: "result",
+                target: "format",
+                targetHandle: "values",
+            }),
+        ).toBe(true);
+        expect(
+            isValidBlueprintIrExecConnection(ir, {
+                source: "floatValue",
+                sourceHandle: "value",
+                target: "stringify",
+                targetHandle: "value",
+            }),
+        ).toBe(true);
     });
 });

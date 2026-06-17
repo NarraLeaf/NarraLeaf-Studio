@@ -4,6 +4,7 @@
  */
 
 import { resolveBlueprintEventHeadTypesForUiSlot } from "@shared/types/blueprint/graph";
+import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { behaviorNodeRegistry } from "../behavior-graph/BehaviorNodeRegistry";
 import {
     BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES,
@@ -40,9 +41,8 @@ function resolveAllowedWidgetEventHeadTypesForPalette(ctx: BlueprintPaletteConte
                 addSlot(ev.id);
             }
         } else {
-            addSlot("init");
-            if (widgetElementType === "nl.button") {
-                addSlot("click");
+            for (const eventId of listWidgetLogicEventIds(widgetElementType)) {
+                addSlot(eventId);
             }
         }
         return allow;

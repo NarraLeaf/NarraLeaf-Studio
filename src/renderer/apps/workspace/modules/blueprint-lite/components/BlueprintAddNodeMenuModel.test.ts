@@ -41,7 +41,50 @@ describe("BlueprintAddNodeMenuModel", () => {
         const categories = buildBlueprintAddNodeCategories(entries);
 
         expect(categories[0]).toEqual({ id: BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID, label: "All", count: 3 });
-        expect(categories.map(category => category.id)).toEqual(["all", "Data", "Events", "Math"]);
+        expect(categories.map(category => category.id)).toEqual(["all", "Events", "Data", "Math"]);
+    });
+
+    it("orders documented blueprint node categories before fallback categories", () => {
+        const categories = buildBlueprintAddNodeCategories([
+            ...entries,
+            entry({
+                type: "if",
+                displayName: "If",
+                category: "Flow",
+                keywords: ["branch"],
+                isPure: false,
+                inputs: 1,
+                outputs: 2,
+            }),
+            entry({
+                type: "blueprint.string.concat",
+                displayName: "Concat",
+                category: "String",
+                keywords: ["string"],
+                isPure: true,
+                inputs: 2,
+                outputs: 1,
+            }),
+            entry({
+                type: "blueprint.text.setText",
+                displayName: "Set Text",
+                category: "Text",
+                keywords: ["text"],
+                isPure: false,
+                inputs: 1,
+                outputs: 0,
+            }),
+        ]);
+
+        expect(categories.map(category => category.id)).toEqual([
+            "all",
+            "Events",
+            "Flow",
+            "Data",
+            "String",
+            "Text",
+            "Math",
+        ]);
     });
 
     it("shows all entries in the active category when the query is empty", () => {

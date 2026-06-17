@@ -21,9 +21,9 @@ function graphBlueprint(id = "bp-main"): Blueprint {
             kind: "graph",
             graphs: {
                 events: {
-                    click: {
-                        id: "click",
-                        name: "Click",
+                    mouseClick: {
+                        id: "mouseClick",
+                        name: "Mouse Click",
                         graph: {
                             nodes: {
                                 nodeA: {
@@ -82,7 +82,7 @@ function buttonElement(): UIElement {
         layout: { x: 0, y: 0, width: 100, height: 40, visible: true, opacity: 1 },
         behavior: {
             events: {
-                click: { kind: "blueprintEvent", blueprintId: "bp-main", eventId: "click" },
+                mouseClick: { kind: "blueprintEvent", blueprintId: "bp-main", eventId: "mouseClick" },
             },
         },
     };
@@ -197,13 +197,13 @@ describe("LocalBlueprintService history", () => {
     it("undoes repeated node parameter edits one committed value at a time", () => {
         const { service, graphDocument } = createHarness();
 
-        service.updateEventGraphIr("bp-main", "click", ir => {
+        service.updateEventGraphIr("bp-main", "mouseClick", ir => {
             const node = ir.nodes?.nodeA;
             if (node) {
                 node.params = { ...(node.params ?? {}), value: 2 };
             }
         });
-        service.updateEventGraphIr("bp-main", "click", ir => {
+        service.updateEventGraphIr("bp-main", "mouseClick", ir => {
             const node = ir.nodes?.nodeA;
             if (node) {
                 node.params = { ...(node.params ?? {}), value: 3 };
@@ -215,7 +215,7 @@ describe("LocalBlueprintService history", () => {
             if (bp.program.kind !== "graph") {
                 return undefined;
             }
-            return bp.program.graphs.events.click?.graph?.nodes?.nodeA?.params?.value;
+            return bp.program.graphs.events.mouseClick?.graph?.nodes?.nodeA?.params?.value;
         };
 
         expect(readValue()).toBe(3);
@@ -225,31 +225,66 @@ describe("LocalBlueprintService history", () => {
         expect(readValue()).toBe(1);
     });
 
+    it("restores graph connections when undoing an edge deletion", () => {
+        const { service, graphDocument } = createHarness();
+
+        service.updateEventGraphIr("bp-main", "mouseClick", ir => {
+            ir.nodes = {
+                ...(ir.nodes ?? {}),
+                nodeB: {
+                    id: "nodeB",
+                    type: "test.next",
+                    params: {},
+                },
+            };
+            ir.edges = [
+                { from: { nodeId: "nodeA", port: "next" }, to: { nodeId: "nodeB", port: "in" } },
+            ];
+        });
+        service.updateEventGraphIr("bp-main", "mouseClick", ir => {
+            ir.edges = [];
+        });
+
+        const readEdges = () => {
+            const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
+            if (bp.program.kind !== "graph") {
+                return undefined;
+            }
+            return bp.program.graphs.events.mouseClick?.graph?.edges;
+        };
+
+        expect(readEdges()).toEqual([]);
+        expect(service.undoBlueprint("bp-main")).toBe(true);
+        expect(readEdges()).toEqual([
+            { from: { nodeId: "nodeA", port: "next" }, to: { nodeId: "nodeB", port: "in" } },
+        ]);
+    });
+
     it("restores UI behavior changes recorded in a blueprint transaction", () => {
         const { service, graphDocument, uidoc } = createHarness();
 
         service.runBlueprintHistoryTransaction("bp-main", () => {
-            uidoc.stripBlueprintLayerBindings("surface-a", "bp-main", "click");
-            service.removeEventGraph("bp-main", "click");
+            uidoc.stripBlueprintLayerBindings("surface-a", "bp-main", "mouseClick");
+            service.removeEventGraph("bp-main", "mouseClick");
         });
 
-        expect(uidoc.document.elements["button-a"].behavior?.events?.click.kind).toBe("noop");
+        expect(uidoc.document.elements["button-a"].behavior?.events?.mouseClick.kind).toBe("noop");
         expect(graphDocument.blueprintDocument.blueprints["bp-main"].program.kind).toBe("graph");
         if (graphDocument.blueprintDocument.blueprints["bp-main"].program.kind === "graph") {
-            expect(graphDocument.blueprintDocument.blueprints["bp-main"].program.graphs.events.click).toBeUndefined();
+            expect(graphDocument.blueprintDocument.blueprints["bp-main"].program.graphs.events.mouseClick).toBeUndefined();
         }
 
         expect(service.undoBlueprint("bp-main")).toBe(true);
 
-        expect(uidoc.document.elements["button-a"].behavior?.events?.click).toEqual({
+        expect(uidoc.document.elements["button-a"].behavior?.events?.mouseClick).toEqual({
             kind: "blueprintEvent",
             blueprintId: "bp-main",
-            eventId: "click",
+            eventId: "mouseClick",
         });
         const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
         expect(bp.program.kind).toBe("graph");
         if (bp.program.kind === "graph") {
-            expect(bp.program.graphs.events.click?.name).toBe("Click");
+            expect(bp.program.graphs.events.mouseClick?.name).toBe("Mouse Click");
         }
     });
 });

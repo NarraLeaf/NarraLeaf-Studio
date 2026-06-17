@@ -24,6 +24,12 @@ export type BehaviorNodeExecutionContext = {
     trace?: BehaviorGraphExecutionTrace;
     /** Per-event execution locals; initialized from blueprint member variables (M4 simplified editor). */
     blueprintLocals?: Record<string, unknown>;
+    eventPayload?: Record<string, unknown>;
+    executionOwner?: {
+        surfaceId?: string;
+        elementId?: string;
+        blueprintId?: string;
+    };
 };
 
 export type BehaviorNodeDefinition = {
