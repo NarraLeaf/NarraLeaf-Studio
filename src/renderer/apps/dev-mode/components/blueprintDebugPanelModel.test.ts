@@ -33,9 +33,9 @@ function visualBlueprint(
 function authoredBlueprint(id: string, name: string, owner: BlueprintOwnerRef): Blueprint {
     const bp = visualBlueprint(id, name, owner);
     if (bp.program.kind === "graph") {
-        bp.program.graphs.events.click = {
-            id: "click",
-            name: "Click",
+        bp.program.graphs.events.mouseClick = {
+            id: "mouseClick",
+            name: "Mouse Click",
             graph: { nodes: {}, edges: [] },
         };
     }
@@ -139,9 +139,9 @@ describe("listBlueprintsForDevTools", () => {
     it("shows visual blueprints once they have authored graph content", () => {
         const authored = visualBlueprint("authored", "Authored");
         if (authored.program.kind === "graph") {
-            authored.program.graphs.events.click = {
-                id: "click",
-                name: "Click",
+            authored.program.graphs.events.mouseClick = {
+                id: "mouseClick",
+                name: "Mouse Click",
                 graph: { nodes: {}, edges: [] },
             };
         }

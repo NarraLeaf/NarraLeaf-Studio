@@ -11,6 +11,8 @@ import type { UIElement } from "@shared/types/ui-editor/document";
 import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBehaviorGraphEntry";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
 import { behaviorNodeRegistry } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
+import { buildAccessibleBlueprintVariableOptions, createExplicitBlueprintVariableRef } from "./blueprintVariableRefs";
+import { isBlueprintLiteralNodeType } from "./graphEditing";
 import {
     isValidBlueprintExecConnection,
     resolveBlueprintNodeEditorCatalogEntryForNode,
@@ -69,6 +71,18 @@ function reportDuplicatePinConnection(
         return;
     }
     seenPins.set(input.key, input.edge);
+}
+
+function isExecInputEdge(
+    nodes: NonNullable<BlueprintGraphIr["nodes"]>,
+    edge: BlueprintGraphEdge,
+): boolean {
+    const toNode = nodes[edge.to.nodeId];
+    if (!toNode) {
+        return false;
+    }
+    const entry = resolveBlueprintNodeEditorCatalogEntryForNode(toNode.type, toNode.params);
+    return entry.pins.some(pin => pin.id === edge.to.port && pin.kind === "input" && pin.semantic === "exec");
 }
 
 function collectBlueprintEventHooks(element: UIElement): BlueprintEventHook[] {
@@ -297,7 +311,7 @@ export function validateBlueprintGraphIr(
                 });
             }
         }
-        if (nodeIds.has(edge.from.nodeId)) {
+        if (nodeIds.has(edge.from.nodeId) && !isBlueprintLiteralNodeType(nodes[edge.from.nodeId]?.type ?? "")) {
             reportDuplicatePinConnection(out, seenPins, {
                 key: `out\0${edge.from.nodeId}\0${edge.from.port}`,
                 nodeId: edge.from.nodeId,
@@ -308,7 +322,7 @@ export function validateBlueprintGraphIr(
                 edge,
             });
         }
-        if (nodeIds.has(edge.to.nodeId)) {
+        if (nodeIds.has(edge.to.nodeId) && !isExecInputEdge(nodes, edge)) {
             reportDuplicatePinConnection(out, seenPins, {
                 key: `in\0${edge.to.nodeId}\0${edge.to.port}`,
                 nodeId: edge.to.nodeId,
@@ -405,7 +419,7 @@ export function validateBlueprintDocumentGraphs(
                 : [];
         return [...base, ...wiring];
     }
-    const validVariableIds = new Set(Object.keys(bp.members?.variables ?? {}));
+    const validVariableIds = buildValidVariableRefSet(doc, blueprintId, options?.widgetSurfaceId);
     const out: BlueprintGraphEditorDiagnostic[] = [];
     for (const [eventId, eg] of Object.entries(bp.program.graphs.events ?? {})) {
         const layerUiSlots =
@@ -443,6 +457,23 @@ export function validateBlueprintDocumentGraphs(
         );
     }
     return out;
+}
+
+function buildValidVariableRefSet(
+    doc: BlueprintDocument,
+    blueprintId: string,
+    surfaceId?: string,
+): ReadonlySet<string> {
+    const values = new Set<string>();
+    for (const option of buildAccessibleBlueprintVariableOptions({
+        doc,
+        currentBlueprintId: blueprintId,
+        surfaceId,
+    })) {
+        values.add(option.value);
+        values.add(createExplicitBlueprintVariableRef(option.blueprintId, option.variableId));
+    }
+    return values;
 }
 
 function ensureIr(ir: BlueprintGraphIr | undefined): BlueprintGraphIr {

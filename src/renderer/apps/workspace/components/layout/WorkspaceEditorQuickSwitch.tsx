@@ -286,7 +286,6 @@ export function WorkspaceEditorQuickSwitch() {
                                 role="option"
                                 aria-selected={selected}
                                 data-editor-quick-switch-key={candidate.key}
-                                onMouseEnter={() => setState(previous => ({ ...previous, selectedIndex: index }))}
                                 onMouseDown={event => event.preventDefault()}
                                 onClick={() => commitCandidate(candidate)}
                                 className={`flex h-10 w-full items-center gap-3 px-3 text-left transition-colors ${

@@ -46,6 +46,12 @@ export const SURFACE_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
         dispatchKind: "lifecycle",
         headNodeTypes: ["blueprint.event.head.surfaceInit"],
     },
+    {
+        id: "surfaceUnmount",
+        displayName: "Page unmount",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.surfaceUnmount"],
+    },
 ];
 
 export const SURFACE_LIFECYCLE_API: OwnerLifecycleApi = {

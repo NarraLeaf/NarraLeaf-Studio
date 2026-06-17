@@ -8,6 +8,7 @@ import {
     type FocusEvent,
     type FormEvent,
     type KeyboardEvent,
+    type MouseEvent,
 } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -15,6 +16,7 @@ import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevisi
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { beginInlineTextEdit } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import {
     lineWrapCss,
     textVerticalAlignToJustifyContent,
@@ -22,7 +24,7 @@ import {
 import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
 import { getTextProps } from "./helpers";
 
-export function TextRenderer({ element, surface, document }: WidgetRendererProps) {
+export function TextRenderer({ element, surface, document, hostAdapter }: WidgetRendererProps) {
     const stateService = UIEditorStateService.getInstance();
     const documentService = UIDocumentService.getInstance();
     useUIDocumentRevision(documentService);
@@ -69,6 +71,18 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
         interactionOverride?.kind === "textEdit" &&
         interactionOverride.surfaceId === surface.id &&
         interactionOverride.elementId === element.id;
+
+    const handleStartInlineTextEdit = useCallback(
+        (e: MouseEvent<HTMLDivElement>) => {
+            if (isEditing || hostAdapter.blueprintRuntime) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            beginInlineTextEdit(stateService, surface.id, element.id);
+        },
+        [element.id, hostAdapter.blueprintRuntime, isEditing, stateService, surface.id],
+    );
 
     useLayoutEffect(() => {
         if (!isEditing) {
@@ -222,7 +236,7 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
     }
 
     return (
-        <div style={outerStyle}>
+        <div style={outerStyle} onDoubleClick={handleStartInlineTextEdit}>
             {useEffectShell ? (
                 <div style={effectShellStyle}>
                     <p style={{ ...textBodyStyle, flexShrink: 0 }}>{p.text}</p>

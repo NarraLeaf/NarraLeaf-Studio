@@ -1,7 +1,5 @@
-import { type CSSProperties, type MouseEvent } from "react";
-import { useDndContext, useDroppable } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { type MouseEvent } from "react";
+import { useDndContext, useDraggable, useDroppable } from "@dnd-kit/core";
 import { ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, Lock } from "lucide-react";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { uiElementTypeAcceptsChildren } from "@shared/types/ui-editor/document";
@@ -12,12 +10,34 @@ export const OUTLINE_ROOT_WIDGET_TYPE = "nl.root";
 const ROW_LEFT_PADDING = 6;
 const ROW_INDENT = 16;
 const GUIDE_OFFSET = 8;
+const OUTLINE_ACTIVE_GAP_HEIGHT = 8;
+const OUTLINE_TERMINAL_GAP_HEIGHT = 10;
+
+export type OutlineGapIntent = "child" | "sibling" | "root";
 
 export type OutlineGapDropData = {
     kind: "outline-gap";
     parentId: string;
     visualIndex: number;
+    intent: OutlineGapIntent;
+    terminalChildDrop?: boolean;
 };
+
+export function isOutlineGapDropData(value: unknown): value is OutlineGapDropData {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+    const data = value as Partial<OutlineGapDropData>;
+    return data.kind === "outline-gap" && typeof data.parentId === "string" && typeof data.visualIndex === "number";
+}
+
+function useActiveOutlineGapData(): OutlineGapDropData | null {
+    const { active, over } = useDndContext();
+    if (!active || !isOutlineGapDropData(over?.data.current)) {
+        return null;
+    }
+    return over.data.current;
+}
 
 function getOutlineElementLabel(element: UIElement): string {
     return element.type === OUTLINE_ROOT_WIDGET_TYPE
@@ -38,7 +58,7 @@ export type OutlineRowBase = {
     onStartRename: (element: UIElement) => void;
 };
 
-export function SortableOutlineRow({
+export function OutlineRow({
     element,
     depth,
     document,
@@ -52,14 +72,9 @@ export function SortableOutlineRow({
     onToggleVisible,
     onStartRename,
 }: OutlineRowBase & { element: UIElement; depth: number }) {
-    const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
+    const { attributes, listeners, setActivatorNodeRef, setNodeRef, isDragging } = useDraggable({
         id: element.id,
     });
-    const style: CSSProperties = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0 : undefined,
-    };
 
     const hasChildren = element.childrenIds.length > 0;
     const expanded = !isCollapsed(element.id);
@@ -68,8 +83,20 @@ export function SortableOutlineRow({
     const label = getOutlineElementLabel(element);
     const isPrimary = primaryId === element.id;
     const rowSelected = selectedIds.has(element.id);
+    const activeDropGap = useActiveOutlineGapData();
+    const isDropParentPreview = activeDropGap?.parentId === element.id;
     const rowPaddingLeft = ROW_LEFT_PADDING + depth * ROW_INDENT;
     const guideLevels = Array.from({ length: depth }, (_, index) => index + 1);
+    const rowToneClass = rowSelected
+        ? isPrimary
+            ? "bg-primary/25 text-white ring-1 ring-primary/45"
+            : "bg-primary/[0.12] text-white"
+        : isDropParentPreview
+          ? "bg-primary/[0.10] text-gray-100 ring-1 ring-primary/25"
+          : "text-gray-300 hover:bg-white/[0.055]";
+    const rowDropPreviewClass = isDropParentPreview
+        ? "shadow-[inset_2px_0_0_rgba(64,168,196,0.55)]"
+        : "";
 
     return (
         <div className="relative select-none" data-outline-row>
@@ -96,14 +123,8 @@ export function SortableOutlineRow({
             ) : null}
             <div
                 ref={setNodeRef}
-                className={`group/outline-row relative flex min-h-[26px] items-center gap-1 rounded text-xs pr-1 transition-colors ${
-                    rowSelected
-                        ? isPrimary
-                            ? "bg-primary/25 text-white ring-1 ring-primary/45"
-                            : "bg-primary/[0.12] text-white"
-                        : "text-gray-300 hover:bg-white/[0.055]"
-                } ${isDimmed ? "opacity-60" : ""}`}
-                style={{ ...style, paddingLeft: rowPaddingLeft }}
+                className={`group/outline-row relative flex min-h-[26px] items-center gap-1 rounded text-xs pr-1 transition-[background-color,box-shadow,color,opacity] duration-150 ease-out ${rowToneClass} ${rowDropPreviewClass} ${isDimmed ? "opacity-60" : ""}`}
+                style={{ paddingLeft: rowPaddingLeft, opacity: isDragging ? 0 : undefined }}
                 onContextMenu={e => onRowContextMenu(element, e)}
             >
                 <button
@@ -193,7 +214,13 @@ export function SortableOutlineRow({
                 />
             ) : null}
             {!hasChildren && uiElementTypeAcceptsChildren(element.type) ? (
-                <OutlineGapDropZone parentId={element.id} depth={depth + 1} visualIndex={0} />
+                <OutlineGapDropZone
+                    parentId={element.id}
+                    depth={depth + 1}
+                    visualIndex={0}
+                    intent="child"
+                    terminalChildDrop
+                />
             ) : null}
         </div>
     );
@@ -229,58 +256,95 @@ export function OutlineGapDropZone({
     parentId,
     depth,
     visualIndex,
+    intent,
+    terminalChildDrop = false,
 }: {
     parentId: string;
     depth: number;
     visualIndex: number;
+    intent: OutlineGapIntent;
+    terminalChildDrop?: boolean;
 }) {
     const { active } = useDndContext();
+    const gapId = `gap:${parentId}:${visualIndex}`;
     const { setNodeRef, isOver } = useDroppable({
-        id: `gap:${parentId}:${visualIndex}`,
-        disabled: !active,
+        id: gapId,
         data: {
             kind: "outline-gap",
             parentId,
             visualIndex,
+            intent,
+            terminalChildDrop,
         } satisfies OutlineGapDropData,
     });
     const lineLeft = ROW_LEFT_PADDING + depth * ROW_INDENT;
+    const expandedHeight = terminalChildDrop ? OUTLINE_TERMINAL_GAP_HEIGHT : OUTLINE_ACTIVE_GAP_HEIGHT;
+    const isActiveDropLine = isOver && active != null;
     return (
         <div
-            ref={setNodeRef}
-            className="relative overflow-hidden transition-[height,opacity] duration-150 ease-out"
+            className="relative overflow-visible transition-[height,opacity] duration-150 ease-out"
             style={{
-                height: active ? 10 : 0,
                 marginLeft: lineLeft,
+                height: active ? expandedHeight : 0,
                 opacity: active ? 1 : 0,
             }}
-            title="Drop here"
         >
-            <span
-                aria-hidden
-                className={`absolute left-0 right-2 top-1/2 h-0.5 -translate-y-1/2 rounded-full transition-opacity ${
-                    isOver ? "bg-primary opacity-100 shadow-[0_0_0_1px_rgba(64,168,196,0.28)]" : "bg-primary/40 opacity-0"
-                }`}
-            />
+            <div
+                ref={setNodeRef}
+                className="absolute left-0 right-2 top-0 z-10"
+                data-outline-gap-id={gapId}
+                style={{
+                    height: active ? expandedHeight : 0,
+                    pointerEvents: active ? "auto" : "none",
+                }}
+            >
+                <span
+                    aria-hidden
+                    className={`pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-1/2 rounded-full transition-[background-color,box-shadow,opacity,height] duration-100 ${
+                        isActiveDropLine
+                            ? "bg-primary/85 opacity-100 shadow-[0_0_0_1px_rgba(64,168,196,0.22)]"
+                            : "bg-primary/40 opacity-30"
+                    }`}
+                    style={{ height: isActiveDropLine ? 2 : 1 }}
+                />
+            </div>
         </div>
     );
 }
 
 export function OutlineSubtree(props: OutlineRowBase & { parentId: string; depth: number }) {
+    const activeDropGap = useActiveOutlineGapData();
     const parent = props.document.elements[props.parentId];
     if (!parent) {
         return null;
     }
+    const isDropParentPreview = activeDropGap?.parentId === props.parentId;
     const visualChildren = getOutlineVisualChildren(parent);
+    const gapIntent: OutlineGapIntent = parent.type === OUTLINE_ROOT_WIDGET_TYPE ? "root" : "child";
+    const lastVisualIndex = visualChildren.length;
     return (
-        <SortableContext items={visualChildren} strategy={verticalListSortingStrategy}>
-            <OutlineGapDropZone parentId={props.parentId} depth={props.depth} visualIndex={0} />
+        <div
+            className={`rounded-sm transition-colors duration-150 ease-out ${
+                isDropParentPreview ? "bg-primary/[0.045]" : ""
+            }`}
+            data-outline-subtree-parent-id={props.parentId}
+        >
+            <OutlineGapDropZone
+                parentId={props.parentId}
+                depth={props.depth}
+                visualIndex={0}
+                intent={gapIntent}
+                terminalChildDrop={gapIntent === "child" && lastVisualIndex === 0}
+            />
             {visualChildren.map((childId, index) => {
                 const child = props.document.elements[childId];
+                const childCanOwnChildren = child != null && uiElementTypeAcceptsChildren(child.type);
+                const childHasVisibleChildDrop =
+                    childCanOwnChildren && (child.childrenIds.length === 0 || !props.isCollapsed(child.id));
                 return (
                     <div key={childId}>
                         {child ? (
-                            <SortableOutlineRow
+                            <OutlineRow
                                 element={child}
                                 depth={props.depth}
                                 document={props.document}
@@ -295,10 +359,16 @@ export function OutlineSubtree(props: OutlineRowBase & { parentId: string; depth
                                 onStartRename={props.onStartRename}
                             />
                         ) : null}
-                        <OutlineGapDropZone parentId={props.parentId} depth={props.depth} visualIndex={index + 1} />
+                        <OutlineGapDropZone
+                            parentId={props.parentId}
+                            depth={props.depth}
+                            visualIndex={index + 1}
+                            intent={childHasVisibleChildDrop ? "sibling" : gapIntent}
+                            terminalChildDrop={gapIntent === "child" && index + 1 === lastVisualIndex}
+                        />
                     </div>
                 );
             })}
-        </SortableContext>
+        </div>
     );
 }

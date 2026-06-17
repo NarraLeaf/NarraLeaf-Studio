@@ -259,6 +259,29 @@ export function DevModeContent(props: DevModeContentProps) {
         });
     }, [bpCore, bundle, activeSurface, hostAdapter, makeStateAccessors]);
 
+    // Dispatch surfaceMain surfaceUnmount when a page leaves the active runtime.
+    useEffect(() => {
+        if (!bpCore || !bundle || !activeSurface || !hostAdapter.blueprintRuntime) {
+            return undefined;
+        }
+        const surfaceToUnmount = activeSurface.id;
+        return () => {
+            const acc = makeStateAccessors(surfaceToUnmount);
+            if (!acc) {
+                return;
+            }
+            void dispatchSurfaceBlueprintEvent({
+                blueprintDocument: bundle.ui.localBlueprints,
+                surfaceId: surfaceToUnmount,
+                eventName: "surfaceUnmount",
+                hostAdapter,
+                debug: bpCore.debug,
+                getSurfaceState: acc.get,
+                setSurfaceState: acc.set,
+            });
+        };
+    }, [bpCore, bundle, activeSurface, hostAdapter, makeStateAccessors]);
+
     if (!bundle) {
         return (
             <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">

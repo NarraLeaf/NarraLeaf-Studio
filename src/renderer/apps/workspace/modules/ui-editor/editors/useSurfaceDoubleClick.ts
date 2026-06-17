@@ -1,11 +1,15 @@
 import { useCallback } from "react";
 import { SELECTABLE_TARGET } from "@/lib/ui-editor/interaction/constants";
 import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
+import { beginInlineTextEdit, isInlineTextEditableElement } from "@/lib/ui-editor/interaction/inlineTextEdit";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import type { EditorDocumentService, EditorStateService } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
+
+const MOVEABLE_DOUBLE_CLICK_TARGET =
+    ".moveable, .moveable-control, .moveable-line, .moveable-rotation, .moveable-rotation-handle, .moveable-area";
 
 export function useSurfaceDoubleClick(params: {
     surfaceId: string;
@@ -20,21 +24,38 @@ export function useSurfaceDoubleClick(params: {
             if (!stateService || !documentService || !surfaceId) {
                 return;
             }
-            if (consumeSuppressNextCanvasWidgetDoubleClick()) {
-                return;
-            }
             if (tool.kind !== "select") {
                 return;
             }
+            const suppressWidgetDoubleClick = consumeSuppressNextCanvasWidgetDoubleClick();
             const target = event.target as HTMLElement | null;
             if (!target) {
                 return;
             }
-            if (
-                target.closest(
-                    ".moveable, .moveable-control, .moveable-line, .moveable-rotation, .moveable-rotation-handle, .moveable-area"
-                )
-            ) {
+            if (target.closest("textarea, input, [contenteditable='true']")) {
+                return;
+            }
+            const editorDocument = documentService.getDocument();
+            const beginTextEdit = (elementId: string) => {
+                const element = editorDocument.elements[elementId];
+                if (!isInlineTextEditableElement(element)) {
+                    return false;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                beginInlineTextEdit(stateService, surfaceId, elementId);
+                return true;
+            };
+            const selection = stateService.getSelection();
+            const selectionData = selection.type === "element" ? selection.data : null;
+            const selectedSingleElementId =
+                selectionData != null && selectionData.surfaceId === surfaceId && selectionData.elementIds.length === 1
+                    ? selectionData.elementIds[0]
+                    : null;
+            if (target.closest(MOVEABLE_DOUBLE_CLICK_TARGET)) {
+                if (selectedSingleElementId && beginTextEdit(selectedSingleElementId)) {
+                    return;
+                }
                 return;
             }
             const elementNode = target.closest(SELECTABLE_TARGET) as HTMLElement | null;
@@ -45,27 +66,22 @@ export function useSurfaceDoubleClick(params: {
             if (!elementId) {
                 return;
             }
-            const selection = stateService.getSelection();
-            const selectionData = selection.type === "element" ? selection.data : null;
-            if (
-                !selectionData ||
-                selectionData.surfaceId !== surfaceId ||
-                selectionData.elementIds.length !== 1 ||
-                selectionData.elementIds[0] !== elementId
-            ) {
-                return;
-            }
-            const element = documentService.getDocument().elements[elementId];
+            const isSelectedElement =
+                selectionData != null &&
+                selectionData.surfaceId === surfaceId &&
+                selectionData.elementIds.length === 1 &&
+                selectionData.elementIds[0] === elementId;
+            const element = editorDocument.elements[elementId];
             if (!element) {
                 return;
             }
-            if (element.type === "nl.text" || element.type === "nl.button") {
-                event.preventDefault();
-                stateService.setInteractionOverride({
-                    kind: "textEdit",
-                    surfaceId,
-                    elementId,
-                });
+            if (beginTextEdit(elementId)) {
+                return;
+            }
+            if (!isSelectedElement) {
+                return;
+            }
+            if (suppressWidgetDoubleClick) {
                 return;
             }
             const isContainer = element.type === "nl.container";

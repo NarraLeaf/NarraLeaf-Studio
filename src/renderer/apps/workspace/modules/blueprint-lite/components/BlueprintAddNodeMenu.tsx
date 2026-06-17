@@ -57,6 +57,8 @@ function getCategoryVisual(categoryId: string): CategoryVisual {
             return { icon: Sigma, color: "#b2a6c9" };
         case "String":
             return { icon: TypeIcon, color: "#d2a679" };
+        case "Text":
+            return { icon: TypeIcon, color: "#8fc7b5" };
         case "Navigation":
             return { icon: MapIcon, color: "#7ec7c1" };
         case "Persistence":
