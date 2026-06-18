@@ -3,7 +3,7 @@ import { Service } from "../Service";
 import { Services, IUIBlueprintLifecycleCoordinator, WorkspaceContext } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
 import { LocalBlueprintService } from "./LocalBlueprintService";
-import { widgetMainOwnerKey } from "./blueprint/ownerKeys";
+import { decodeWidgetValueOwnerKey, widgetMainOwnerKey, widgetValueOwnerKey } from "./blueprint/ownerKeys";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 
 /**
@@ -55,6 +55,7 @@ export class UIBlueprintLifecycleCoordinator
         }
 
         const validWidgetKeys = new Set<string>();
+        const validWidgetValueKeys = new Set<string>();
         for (const surface of doc.surfaces) {
             for (const [elementId, el] of Object.entries(doc.elements)) {
                 if (elementId === surface.rootElementId) {
@@ -62,6 +63,9 @@ export class UIBlueprintLifecycleCoordinator
                 }
                 if (this.owningSurfaceId(elementId, doc) !== surface.id) {
                     continue;
+                }
+                for (const propPath of Object.keys(el.valueBindings ?? {})) {
+                    validWidgetValueKeys.add(widgetValueOwnerKey(surface.id, elementId, propPath));
                 }
                 const mod = widgetModuleRegistry.get(el.type);
                 if (!mod?.logicApi?.supportsPrivateBlueprint) {
@@ -76,6 +80,10 @@ export class UIBlueprintLifecycleCoordinator
             const m = /^widgetMain:([^:]+):(.+)$/.exec(key);
             if (m && !validWidgetKeys.has(key)) {
                 localBp.removeWidgetMain(m[1], m[2]);
+            }
+            const widgetValue = decodeWidgetValueOwnerKey(key);
+            if (widgetValue && !validWidgetValueKeys.has(key)) {
+                localBp.removeWidgetValueBlueprint(widgetValue.surfaceId, widgetValue.elementId, widgetValue.propPath);
             }
         }
     }

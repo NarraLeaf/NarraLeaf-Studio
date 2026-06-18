@@ -41,3 +41,11 @@
 - Collection
 - Broadcast
 
+## Page
+
+- `nl.frame`
+
+`Page` 元素用于在当前 Page 中嵌入另一个 Page。默认拥有以下节点组：
+- Page
+- Broadcast
+

@@ -48,8 +48,41 @@ export function readDynamicInputPinLabels(
     return out;
 }
 
-/** Next unused id `${prefix}_${n}` avoiding static pins and existing dynamic ids. */
-export function generateNextDynamicInputPinId(def: BlueprintNodeDef, params: Record<string, unknown>): string {
+function dynamicIdsForBase(cfg: BlueprintNodeDynamicInputPinsConfig, baseId: string): string[] {
+    const templates = cfg.generatedPinTemplates;
+    if (!templates?.length) {
+        return [baseId];
+    }
+    return templates.map(template => `${baseId}_${template.idSuffix}`);
+}
+
+function readDynamicGroupBaseId(
+    cfg: BlueprintNodeDynamicInputPinsConfig,
+    pinId: string,
+): string | undefined {
+    for (const template of cfg.generatedPinTemplates ?? []) {
+        const suffix = `_${template.idSuffix}`;
+        if (pinId.endsWith(suffix)) {
+            return pinId.slice(0, -suffix.length);
+        }
+    }
+    return undefined;
+}
+
+function readDynamicPinTemplate(
+    cfg: BlueprintNodeDynamicInputPinsConfig,
+    pinId: string,
+): NonNullable<BlueprintNodeDynamicInputPinsConfig["generatedPinTemplates"]>[number] | undefined {
+    for (const template of cfg.generatedPinTemplates ?? []) {
+        if (pinId.endsWith(`_${template.idSuffix}`)) {
+            return template;
+        }
+    }
+    return undefined;
+}
+
+/** Next unused id set, avoiding static pins and existing dynamic ids. */
+export function generateNextDynamicInputPinIds(def: BlueprintNodeDef, params: Record<string, unknown>): string[] {
     const cfg = def.dynamicInputPins;
     if (!cfg) {
         throw new Error("[effectivePins] Node has no dynamicInputPins config");
@@ -58,12 +91,40 @@ export function generateNextDynamicInputPinId(def: BlueprintNodeDef, params: Rec
     const dynamicIds = new Set(readDynamicInputPinIds(params, cfg.storageKey));
     let n = 1;
     for (;;) {
-        const id = `${cfg.generatedIdPrefix}_${n}`;
-        if (!staticIds.has(id) && !dynamicIds.has(id)) {
-            return id;
+        const baseId = `${cfg.generatedIdPrefix}_${n}`;
+        const ids = dynamicIdsForBase(cfg, baseId);
+        if (
+            !dynamicIds.has(baseId) &&
+            ids.every(id => !staticIds.has(id) && !dynamicIds.has(id))
+        ) {
+            return ids;
         }
         n += 1;
     }
+}
+
+/** Next unused id `${prefix}_${n}` avoiding static pins and existing dynamic ids. */
+export function generateNextDynamicInputPinId(def: BlueprintNodeDef, params: Record<string, unknown>): string {
+    return generateNextDynamicInputPinIds(def, params)[0];
+}
+
+/** Dynamic ids removed together when a generated grouped pin is deleted. */
+export function getDynamicInputPinRemovalIds(
+    def: BlueprintNodeDef,
+    params: Record<string, unknown> | undefined,
+    pinId: string,
+): string[] {
+    const cfg = def.dynamicInputPins;
+    if (!cfg) {
+        return [pinId];
+    }
+    const dynamicIdSet = new Set(readDynamicInputPinIds(params, cfg.storageKey));
+    const baseId = readDynamicGroupBaseId(cfg, pinId);
+    if (!baseId) {
+        return [pinId];
+    }
+    const ids = dynamicIdsForBase(cfg, baseId).filter(id => dynamicIdSet.has(id));
+    return ids.length > 0 ? ids : [pinId];
 }
 
 /**
@@ -95,13 +156,17 @@ export function resolveEffectiveBlueprintNodePins(
             continue;
         }
         dynOrdinal += 1;
+        const template = readDynamicPinTemplate(cfg, id);
         dynamicPins.push({
             id,
             kind: "input",
             semantic: "data",
-            valueType: cfg.valueType,
-            allowInlineLiteral: cfg.allowInlineLiteral,
-            label: labels[id] ?? `${cfg.labelPrefix ?? "Input"} ${fixedDataInputs.length + dynOrdinal}`,
+            valueType: template?.valueType ?? cfg.valueType,
+            allowInlineLiteral: template?.allowInlineLiteral ?? cfg.allowInlineLiteral,
+            label:
+                labels[id] ??
+                template?.label ??
+                `${cfg.labelPrefix ?? "Input"} ${fixedDataInputs.length + dynOrdinal}`,
         });
     }
 

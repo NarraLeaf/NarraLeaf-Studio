@@ -4,20 +4,37 @@ import {
     BLUEPRINT_NODE_TYPE_BROADCAST_SEND,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_JSON_HAS,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_REMOVE,
     BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH,
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY,
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_INT,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_JSON,
+    BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON,
     BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_RENDER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_FRAME_EMIT,
+    BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
@@ -30,6 +47,8 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_LOG,
+    BLUEPRINT_NODE_TYPE_STATE_GET,
+    BLUEPRINT_NODE_TYPE_STATE_SET,
     BLUEPRINT_NODE_TYPE_STRING_LENGTH,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
@@ -40,12 +59,15 @@ import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
 import { isValidBlueprintPinConnection } from "../connectionPolicy";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { executeGraph } from "../../behavior-graph/GraphExecutor";
+import { listBlueprintNodePaletteEntries } from "../../behavior-graph/nodeEditorCatalog";
 import { broadcastBlueprintNodes } from "./broadcastNodes";
 import { controlFlowBlueprintNodes } from "./controlFlowNodes";
 import { dataBlueprintNodes } from "./dataNodes";
 import { devtoolsBlueprintNodes } from "./devtoolsNodes";
 import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
+import { frameBlueprintNodes } from "./frameNodes";
 import { resolveDataPinValue } from "./graphParamResolvers";
+import { stateBlueprintNodes } from "./stateNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
 
@@ -58,21 +80,31 @@ describe("built-in blueprint nodes", () => {
         for (const def of [
             ...eventHeadBlueprintNodes,
             ...broadcastBlueprintNodes,
+            ...frameBlueprintNodes,
             ...controlFlowBlueprintNodes,
             ...dataBlueprintNodes,
             ...stringBlueprintNodes,
+            ...stateBlueprintNodes,
             ...textBlueprintNodes,
             ...devtoolsBlueprintNodes,
         ]) {
             expect(types.has(def.type)).toBe(true);
         }
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_RENDER)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_BROADCAST_SEND)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_EMIT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_IF)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_NOOP)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING)).toBe(true);
@@ -90,10 +122,16 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_JSON_GET)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_JSON_HAS)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_JSON_SET)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_JSON_REMOVE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_STRING_TO_STRING)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_STATE_GET)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LOG)).toBe(true);
@@ -104,7 +142,17 @@ describe("built-in blueprint nodes", () => {
 
         expect(eventHeadBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(broadcastBlueprintNodes.every(def => def.category === "Events")).toBe(true);
+        expect(frameBlueprintNodes.every(def => def.category === "Page")).toBe(true);
         expect(controlFlowBlueprintNodes.every(def => def.category === "Flow")).toBe(true);
+        const stateVariableNodeTypes = new Set<string>([
+            BLUEPRINT_NODE_TYPE_STATE_GET,
+            BLUEPRINT_NODE_TYPE_STATE_SET,
+        ]);
+        expect(
+            stateBlueprintNodes
+                .filter(def => stateVariableNodeTypes.has(def.type))
+                .every(def => def.category === "Variables"),
+        ).toBe(true);
         const jsonNodeTypes = new Set<string>([
             BLUEPRINT_NODE_TYPE_LITERAL_JSON,
             BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
@@ -112,9 +160,13 @@ describe("built-in blueprint nodes", () => {
             BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON,
             BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
             BLUEPRINT_NODE_TYPE_DATA_JSON_HAS,
+            BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
+            BLUEPRINT_NODE_TYPE_DATA_JSON_REMOVE,
             BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
             BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY,
             BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH,
+            BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,
+            BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE,
         ]);
         expect(dataBlueprintNodes.filter(def => !jsonNodeTypes.has(def.type)).every(def => def.category === "Data")).toBe(true);
         expect(dataBlueprintNodes.filter(def => jsonNodeTypes.has(def.type)).every(def => def.category === "JSON")).toBe(true);
@@ -299,8 +351,23 @@ describe("built-in blueprint nodes", () => {
                 object: {
                     type: BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
                     params: {
+                        __jsonObjectInputPins: [
+                            "field_1_name",
+                            "field_1_value",
+                            "field_2_name",
+                            "field_2_value",
+                        ],
+                        field_1_name: "name",
+                        field_1_value: "Ada",
+                        field_2_name: "score",
+                        field_2_value: 42,
+                    },
+                },
+                legacyObject: {
+                    type: BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
+                    params: {
                         __jsonObjectInputPins: ["field_1", "field_2"],
-                        __jsonObjectFieldNames: { field_1: "name", field_2: "score" },
+                        __jsonObjectFieldNames: { field_1: "legacyName", field_2: "legacyScore" },
                         field_1: "Ada",
                         field_2: 42,
                     },
@@ -324,11 +391,70 @@ describe("built-in blueprint nodes", () => {
             name: "Ada",
             score: 42,
         });
+        expect(resolveDataPinValue(graph, "legacyObject", "result", graph.nodes.legacyObject.params, undefined)).toEqual({
+            legacyName: "Ada",
+            legacyScore: 42,
+        });
         expect(resolveDataPinValue(graph, "array", "result", graph.nodes.array.params, undefined)).toEqual([
             true,
             null,
         ]);
         expect(resolveDataPinValue(graph, "length", "length", graph.nodes.length.params, undefined)).toBe(2);
+    });
+
+    it("resolves JSON set, remove, merge object, and clone nodes", () => {
+        registerCoreBlueprintNodes();
+
+        const graph = {
+            nodes: {
+                set: {
+                    type: BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
+                    params: {
+                        json: { user: { name: "Ada" }, items: [10] },
+                        path: "user.score",
+                        value: 42,
+                    },
+                },
+                remove: {
+                    type: BLUEPRINT_NODE_TYPE_DATA_JSON_REMOVE,
+                    params: {
+                        json: { user: { name: "Ada", score: 42 }, items: [10, 20] },
+                        path: "items.0",
+                    },
+                },
+                merge: {
+                    type: BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,
+                    params: {
+                        a: { name: "Ada", score: 1 },
+                        b: { score: 42, ok: true },
+                    },
+                },
+                clone: {
+                    type: BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE,
+                    params: {
+                        value: { nested: { enabled: true } },
+                    },
+                },
+            },
+            edges: [],
+        };
+
+        expect(resolveDataPinValue(graph, "set", "result", graph.nodes.set.params, undefined)).toEqual({
+            user: { name: "Ada", score: 42 },
+            items: [10],
+        });
+        expect(resolveDataPinValue(graph, "remove", "result", graph.nodes.remove.params, undefined)).toEqual({
+            user: { name: "Ada", score: 42 },
+            items: [20],
+        });
+        expect(resolveDataPinValue(graph, "merge", "result", graph.nodes.merge.params, undefined)).toEqual({
+            name: "Ada",
+            score: 42,
+            ok: true,
+        });
+        const cloned = resolveDataPinValue(graph, "clone", "result", graph.nodes.clone.params, undefined);
+        expect(cloned).toEqual({ nested: { enabled: true } });
+        expect(cloned).not.toBe(graph.nodes.clone.params.value);
     });
 
     it("keeps JSON pin compatibility strict while allowing numeric values into string inputs", () => {
@@ -585,6 +711,56 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);
     });
 
+    it("scopes Blueprint Value event heads and return nodes to value blueprints", () => {
+        registerCoreBlueprintNodes();
+
+        const valuePaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetValue", surfaceId: "surface", elementId: "text", propPath: "text" },
+                widgetElementType: "nl.text",
+                isBlueprintValueGraph: true,
+            }).map(entry => entry.type),
+        );
+        const widgetPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetMain", surfaceId: "surface", elementId: "text" },
+                widgetElementType: "nl.text",
+            }).map(entry => entry.type),
+        );
+
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_STATE_GET)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_STATE_SET)).toBe(false);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_DELAY)).toBe(false);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOG)).toBe(false);
+
+        expect(widgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(true);
+        expect(widgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)).toBe(false);
+        expect(widgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)).toBe(false);
+    });
+
+    it("exposes Blueprint Value nodes through the editor palette facade", () => {
+        const entries = listBlueprintNodePaletteEntries({
+            graphKind: "event",
+            owner: { kind: "widgetValue", surfaceId: "surface", elementId: "text", propPath: "text" },
+            widgetElementType: "nl.text",
+            isBlueprintValueGraph: true,
+        });
+        const byType = new Map(entries.map(entry => [entry.type, entry]));
+
+        expect(byType.get(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)?.category).toBe("Events");
+        expect(byType.get(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)?.category).toBe("Events");
+        expect(byType.get(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)?.category).toBe("Data");
+        expect(byType.get(BLUEPRINT_NODE_TYPE_STATE_GET)?.category).toBe("Variables");
+        expect(byType.has(BLUEPRINT_NODE_TYPE_STATE_SET)).toBe(false);
+        expect(byType.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);
+    });
+
     it("exposes Broadcast nodes for surface blueprints", () => {
         registerCoreBlueprintNodes();
 
@@ -599,6 +775,104 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_BROADCAST_SEND)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT)).toBe(true);
+    });
+
+    it("scopes event heads by owner and widget capability without duplicate click aliases", () => {
+        registerCoreBlueprintNodes();
+
+        const globalPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "globalMain" },
+            }).map(entry => entry.type),
+        );
+        const surfacePaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "surfaceMain", surfaceId: "surface" },
+            }).map(entry => entry.type),
+        );
+        const buttonPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
+                widgetElementType: "nl.button",
+            }).map(entry => entry.type),
+        );
+        const listPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetMain", surfaceId: "surface", elementId: "list" },
+                widgetElementType: "nl.list",
+            }).map(entry => entry.type),
+        );
+        const framePaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetMain", surfaceId: "surface", elementId: "frame" },
+                widgetElementType: "nl.frame",
+            }).map(entry => entry.type),
+        );
+        const allTypes = new Set(blueprintNodeRegistry.list().map(def => def.type));
+
+        expect(allTypes.has("blueprint.event.head.click")).toBe(false);
+        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT)).toBe(true);
+        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT)).toBe(false);
+        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT)).toBe(false);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(false);
+
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL)).toBe(false);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toBe(false);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END)).toBe(false);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(false);
+
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_RENDER)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST)).toBe(true);
+    });
+
+    it("filters widget event heads by the active event layer slot when provided", () => {
+        registerCoreBlueprintNodes();
+
+        const listScrollPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetMain", surfaceId: "surface", elementId: "list" },
+                widgetElementType: "nl.list",
+                widgetEventLayerSlots: ["scroll"],
+            }).map(entry => entry.type),
+        );
+
+        expect(listScrollPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL)).toBe(true);
+        expect(listScrollPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(false);
+        expect(listScrollPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toBe(false);
+        expect(listScrollPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+
+        const listItemClickPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetMain", surfaceId: "surface", elementId: "list" },
+                widgetElementType: "nl.list",
+                widgetEventLayerSlots: ["itemClick"],
+            }).map(entry => entry.type),
+        );
+
+        expect(listItemClickPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toBe(true);
+        expect(listItemClickPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL)).toBe(false);
+        expect(listItemClickPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED)).toBe(false);
     });
 
     it("executes Text write nodes and resolves Text read nodes against the current widget owner", async () => {

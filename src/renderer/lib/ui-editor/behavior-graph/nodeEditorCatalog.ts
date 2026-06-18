@@ -40,6 +40,7 @@ export function buildBlueprintPaletteContext(input: {
     widgetEventLayerSlots?: string[];
     hasEventHead?: boolean;
     hasFunctionEntry?: boolean;
+    isBlueprintValueGraph?: boolean;
 }): BlueprintPaletteContext {
     const gk: BlueprintGraphKind = input.graphKind;
     return {
@@ -50,6 +51,7 @@ export function buildBlueprintPaletteContext(input: {
         widgetEventLayerSlots: input.widgetEventLayerSlots,
         hasEventHead: input.hasEventHead,
         hasFunctionEntry: input.hasFunctionEntry,
+        isBlueprintValueGraph: input.isBlueprintValueGraph,
     };
 }
 

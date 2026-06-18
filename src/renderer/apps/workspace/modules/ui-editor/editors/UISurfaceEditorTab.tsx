@@ -9,7 +9,7 @@ import {
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
-import { MousePointer2, Move, Play, Magnet, ChevronDown } from "lucide-react";
+import { MousePointer2, Move, Play, Magnet, ChevronDown, PanelsTopLeft } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { ContextMenu, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -46,11 +46,22 @@ import {
     SurfaceEditorToolbarSegButton,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarButtonGroup";
 import { SurfaceSnapSettingsTrigger } from "@/apps/workspace/modules/ui-editor/editors/SurfaceSnapSettingsMenu";
+import { listInsertPaletteModules } from "@/lib/ui-editor/widget-modules/insertPalette";
+import { MOVEABLE_DOUBLE_CLICK_TARGET_SELECTOR } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
+import {
+    debugUIDoubleClick,
+    describeDoubleClickTarget,
+} from "@/lib/ui-editor/interaction/doubleClickDebug";
+import { useRegistry } from "@/apps/workspace/registry";
+
+const SURFACE_TAB_PREFIX = "ui-editor:surface:";
+const getSurfaceTabId = (targetSurfaceId: string) => `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
 
 export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ surfaceId: string }>) {
     const surfaceId = payload?.surfaceId;
-    const { runtimeBridge, stateService, documentService, uiService, widgetModules } = useUISurfaceEditorServices();
+    const { runtimeBridge, stateService, documentService, uiService } = useUISurfaceEditorServices();
     const { context, workspace } = useWorkspace();
+    const { openEditorTab } = useRegistry();
     const localBlueprint = useMemo(
         () => context?.services.get<LocalBlueprintService>(Services.LocalBlueprint) ?? null,
         [context],
@@ -76,6 +87,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const smartSnapEnabled = useSmartSnapEnabled(stateService);
     const smartSnapDetail = useSmartSnapDetailSettings(stateService);
     const { surface, documentVersion } = useSurfaceDocument(surfaceId, stateService, documentService);
+    const widgetModules = useMemo(() => listInsertPaletteModules(surface?.kind), [surface?.kind]);
     const deferredDocumentVersion = useDeferredValue(documentVersion);
     const deferredGraphVersion = useDeferredValue(graphVersion);
 
@@ -103,8 +115,15 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
 
     const { menuState, showMenu, hideMenu } = useContextMenu();
 
+    const editorRootRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
+    const doubleClickMouseDownRef = useRef<{
+        time: number;
+        x: number;
+        y: number;
+        button: number;
+    } | null>(null);
     const focusSurfaceEditor = useCallback(() => {
         uiService?.focus.setFocus(FocusArea.Editor, tabId);
     }, [tabId, uiService]);
@@ -225,6 +244,25 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         })();
     }, [devModeService, surfaceId, workspace]);
 
+    const handleOpenSurfaceEditor = useCallback(
+        (targetSurfaceId: string) => {
+            const targetSurface = documentService?.getDocument().surfaces.find(next => next.id === targetSurfaceId);
+            if (!targetSurface) {
+                return;
+            }
+            openEditorTab({
+                id: getSurfaceTabId(targetSurface.id),
+                title: targetSurface.name,
+                icon: <PanelsTopLeft className="w-4 h-4" />,
+                component: UISurfaceEditorTab,
+                payload: { surfaceId: targetSurface.id },
+                closable: true,
+                modified: false,
+            });
+        },
+        [documentService, openEditorTab],
+    );
+
     const toolButtonClass = (active: boolean) =>
         `w-9 h-9 rounded-md border flex items-center justify-center text-xs transition-colors ${
             active
@@ -246,6 +284,85 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         documentService,
     });
 
+    useEffect(() => {
+        const root = editorRootRef.current;
+        if (!root) {
+            return undefined;
+        }
+        const shouldHandleEditorClick = (event: MouseEvent) => {
+            const target = event.target instanceof Element ? event.target : null;
+            if (!target) {
+                debugUIDoubleClick("document dblclick ignored no element target", {});
+                return false;
+            }
+            const isInsideEditor = root.contains(target);
+            const isMoveableTarget = Boolean(target.closest(MOVEABLE_DOUBLE_CLICK_TARGET_SELECTOR));
+            debugUIDoubleClick("document editor click candidate", {
+                target: describeDoubleClickTarget(target),
+                isInsideEditor,
+                isMoveableTarget,
+                clientX: event.clientX,
+                clientY: event.clientY,
+            });
+            return isInsideEditor || isMoveableTarget;
+        };
+
+        const handleNativeDoubleClick = (event: MouseEvent) => {
+            if (!shouldHandleEditorClick(event)) {
+                return;
+            }
+            debugUIDoubleClick("native dblclick handled", {
+                clientX: event.clientX,
+                clientY: event.clientY,
+            });
+            handleSurfaceDoubleClick(event);
+        };
+
+        const handleMouseDown = (event: MouseEvent) => {
+            if (event.button !== 0 || !shouldHandleEditorClick(event)) {
+                doubleClickMouseDownRef.current = null;
+                return;
+            }
+
+            const now = event.timeStamp || performance.now();
+            const previous = doubleClickMouseDownRef.current;
+            doubleClickMouseDownRef.current = {
+                time: now,
+                x: event.clientX,
+                y: event.clientY,
+                button: event.button,
+            };
+            if (!previous || previous.button !== event.button) {
+                return;
+            }
+
+            const dt = now - previous.time;
+            const dx = event.clientX - previous.x;
+            const dy = event.clientY - previous.y;
+            const closeEnough = dx * dx + dy * dy <= 64;
+            if (dt < 80 || dt > 500 || !closeEnough) {
+                return;
+            }
+
+            doubleClickMouseDownRef.current = null;
+            debugUIDoubleClick("manual doubleclick handled", {
+                dt,
+                dx,
+                dy,
+                clientX: event.clientX,
+                clientY: event.clientY,
+            });
+            handleSurfaceDoubleClick(event);
+        };
+
+        document.addEventListener("mousedown", handleMouseDown, true);
+        document.addEventListener("dblclick", handleNativeDoubleClick, true);
+        return () => {
+            document.removeEventListener("mousedown", handleMouseDown, true);
+            document.removeEventListener("dblclick", handleNativeDoubleClick, true);
+        };
+    }, [handleSurfaceDoubleClick]);
+
     if (!surface) {
         return (
             <div className="h-full flex items-center justify-center text-sm text-gray-500">
@@ -263,9 +380,9 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         <div className="h-full flex overflow-hidden border border-white/10">
             <WidgetRuntimeStateProvider key={surface.id}>
                 <div
+                    ref={editorRootRef}
                     className="relative flex-1 bg-[#050f10]"
                     onContextMenu={handleCanvasContextMenu}
-                    onDoubleClickCapture={handleSurfaceDoubleClick}
                     onMouseDownCapture={focusSurfaceEditor}
                     onFocusCapture={focusSurfaceEditor}
                 >
@@ -360,6 +477,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                             stateService={stateService}
                             documentService={documentService}
                             showOutlines={true}
+                            openSurfaceEditor={handleOpenSurfaceEditor}
                         />
                     ) : null}
 

@@ -5,6 +5,7 @@ import { ImageWidgetModule } from "./image";
 import { ContainerWidgetModule } from "./container";
 import { ButtonWidgetModule } from "./button";
 import { ListWidgetModule } from "./list";
+import { FrameWidgetModule } from "./frame";
 
 /**
  * All built-in widget modules registered at startup (includes internal `nl.root`).
@@ -17,6 +18,7 @@ export const BuiltinWidgetModules: UIWidgetModule[] = [
     ImageWidgetModule,
     ButtonWidgetModule,
     ListWidgetModule,
+    FrameWidgetModule,
 ];
 
 /** Runs optional `registerBlueprintNodes` on each built-in module (idempotent per module). */

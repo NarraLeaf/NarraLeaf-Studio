@@ -11,6 +11,7 @@ import {
     UIStageSurfaceMount,
     UIElement,
     UIElementId,
+    UIElementValueBindingValueType,
     UIBehaviorBinding,
     UISlotDefinition,
     UILayout,
@@ -40,9 +41,14 @@ import {
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { isValidUIInsertParent } from "@/lib/ui-editor/tree/resolveInsertTargetParent";
 import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditorClipboard";
-import { cloneWidgetMainBlueprintForPaste, remapElementBehaviorBlueprintIds } from "./blueprint/cloneBlueprintForPaste";
+import {
+    cloneWidgetMainBlueprintForPaste,
+    cloneWidgetValueBlueprintForPaste,
+    remapElementBehaviorBlueprintIds,
+    remapElementValueBindingBlueprintIds,
+} from "./blueprint/cloneBlueprintForPaste";
 import { registerPrivateBlueprintAsActive } from "./blueprint/ownerRecords";
-import { widgetMainOwnerKey } from "./blueprint/ownerKeys";
+import { widgetMainOwnerKey, widgetValueOwnerKey } from "./blueprint/ownerKeys";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import {
     DEFAULT_APP_SURFACE_NAME,
@@ -325,6 +331,78 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    public ensureElementBlueprintValueBinding(
+        elementId: string,
+        propPath: string,
+        input: { valueType: UIElementValueBindingValueType; displayName?: string; literalValue?: unknown },
+    ): { blueprintId: string } {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        if (!surfaceId) {
+            throw new RendererError(`Element ${elementId} does not belong to a surface`);
+        }
+        const historyService = this.getHistoryService();
+        const beforeHistory = historyService ? historyService.captureSnapshot(surfaceId) : null;
+        const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const blueprintId = localBp.ensureWidgetValueBlueprint({
+            surfaceId,
+            elementId,
+            propPath,
+            valueType: input.valueType,
+            displayName: input.displayName,
+            literalValue: input.literalValue,
+        });
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element) {
+                return;
+            }
+            element.valueBindings = {
+                ...(element.valueBindings ?? {}),
+                [propPath]: {
+                    kind: "blueprintValue",
+                    blueprintId,
+                    valueType: input.valueType,
+                },
+            };
+        }, { history: false });
+        if (historyService && beforeHistory) {
+            historyService.record({
+                surfaceId,
+                before: beforeHistory,
+                after: historyService.captureSnapshot(surfaceId),
+            });
+        }
+        return { blueprintId };
+    }
+
+    public clearElementBlueprintValueBinding(elementId: string, propPath: string): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        if (!surfaceId) {
+            return;
+        }
+        const historyService = this.getHistoryService();
+        const beforeHistory = historyService ? historyService.captureSnapshot(surfaceId) : null;
+        const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        localBp.removeWidgetValueBlueprint(surfaceId, elementId, propPath);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element?.valueBindings) {
+                return;
+            }
+            delete element.valueBindings[propPath];
+            if (Object.keys(element.valueBindings).length === 0) {
+                delete element.valueBindings;
+            }
+        }, { history: false });
+        if (historyService && beforeHistory) {
+            historyService.record({
+                surfaceId,
+                before: beforeHistory,
+                after: historyService.captureSnapshot(surfaceId),
+            });
+        }
+    }
+
     public updateElementExtra(elementId: string, extraPatch: Record<string, unknown>): void {
         const surfaceId = this.getElementSurfaceId(elementId);
         this.mutateDocument(document => {
@@ -563,6 +641,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (document.schemaVersion === 5) {
             return this.migrateFromV5Document(document);
         }
+        if (document.schemaVersion === 6) {
+            return this.migrateFromV6Document(document);
+        }
         throw new RendererError("UI document migration is not implemented");
     }
 
@@ -600,6 +681,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     /** P6: list child slots distinguish item template children from authored scrollbar parts. */
     private migrateFromV5Document(document: UIDocument): UIDocument {
+        return this.normalizeListSlots({
+            ...document,
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        });
+    }
+
+    /** P7: per-property Blueprint Value bindings live on UIElement.valueBindings. */
+    private migrateFromV6Document(document: UIDocument): UIDocument {
         return this.normalizeListSlots({
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
@@ -923,6 +1012,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         for (const oldBpId of Object.keys(payload.widgetMainBlueprints)) {
             blueprintIdMap[oldBpId] = uuidService.generate();
         }
+        for (const oldBpId of Object.keys(payload.widgetValueBlueprints ?? {})) {
+            blueprintIdMap[oldBpId] = uuidService.generate();
+        }
 
         const newRootIds: string[] = [];
 
@@ -952,6 +1044,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (copy.behavior?.events) {
                     const remapped = remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap);
                     copy.behavior = { ...copy.behavior, events: remapped };
+                }
+                if (copy.valueBindings) {
+                    copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
                 }
                 if (isTop && parentEl.type === "nl.list") {
                     const slot = copy.extra?.listSlot;
@@ -1029,6 +1124,34 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 registerPrivateBlueprintAsActive(
                     bpDoc,
                     widgetMainOwnerKey(surfaceId, newElementId),
+                    newBpId,
+                    cloned.frontend,
+                );
+            }
+            for (const [oldBpId, sourceBp] of Object.entries(payload.widgetValueBlueprints ?? {})) {
+                const newBpId = blueprintIdMap[oldBpId];
+                if (!newBpId) {
+                    continue;
+                }
+                const owner = sourceBp.owner;
+                if (owner.kind !== "widgetValue" || owner.surfaceId !== payload.sourceSurfaceId) {
+                    continue;
+                }
+                const newElementId = elementIdMap[owner.elementId];
+                if (!newElementId || !payload.elements[owner.elementId]) {
+                    continue;
+                }
+                const cloned: Blueprint = cloneWidgetValueBlueprintForPaste({
+                    source: sourceBp,
+                    newBlueprintId: newBpId,
+                    surfaceId,
+                    newOwnerElementId: newElementId,
+                    propPath: owner.propPath,
+                });
+                bpDoc.blueprints[newBpId] = cloned;
+                registerPrivateBlueprintAsActive(
+                    bpDoc,
+                    widgetValueOwnerKey(surfaceId, newElementId, owner.propPath),
                     newBpId,
                     cloned.frontend,
                 );

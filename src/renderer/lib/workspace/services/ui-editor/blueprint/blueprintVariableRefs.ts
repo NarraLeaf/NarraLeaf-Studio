@@ -89,7 +89,11 @@ function pushGroup(out: VariableGroupInput[], used: Set<string>, group: Variable
 }
 
 function resolveCurrentSurfaceId(blueprint: Blueprint, fallback?: string): string | undefined {
-    if (blueprint.owner.kind === "surfaceMain" || blueprint.owner.kind === "widgetMain") {
+    if (
+        blueprint.owner.kind === "surfaceMain" ||
+        blueprint.owner.kind === "widgetMain" ||
+        blueprint.owner.kind === "widgetValue"
+    ) {
         return blueprint.owner.surfaceId;
     }
     return fallback;

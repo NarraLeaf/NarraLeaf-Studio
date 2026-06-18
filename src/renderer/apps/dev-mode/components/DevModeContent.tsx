@@ -6,6 +6,7 @@ import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRen
 import type { UISurface, UIDocument } from "@shared/types/ui-editor/document";
 import type { DevModeBundle } from "@shared/types/devMode";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import { DevModeSurfaceRenderer } from "./DevModeSurfaceRenderer";
 import { BlueprintRuntimeDebugPanel } from "./BlueprintRuntimeDebugPanel";
 import { useDevModeBlueprintRuntime } from "../hooks/useDevModeBlueprintRuntime";
@@ -77,7 +78,8 @@ export function DevModeContent(props: DevModeContentProps) {
     const uiDocument: UIDocument | null = bundle?.ui.uidoc ?? null;
     const bpCore = useDevModeBlueprintRuntime(bundle);
     const [navStack, setNavStack] = useState<string[]>([]);
-    const [widgetPatches, setWidgetPatches] = useState<Record<string, DevModeWidgetRuntimePatch>>({});
+    const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});
+    const widgetPatchesByScopeRef = useRef(widgetPatchesByScope);
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
     const [blueprintPanelOpen, setBlueprintPanelOpen] = useState(false);
     const devtoolsFabRef = useRef<HTMLButtonElement>(null);
@@ -86,9 +88,13 @@ export function DevModeContent(props: DevModeContentProps) {
     useEffect(() => {
         if (surface?.id) {
             setNavStack([surface.id]);
-            setWidgetPatches({});
+            setWidgetPatchesByScope({});
         }
     }, [surface?.id, bundle?.revision, bundle?.bundleId]);
+
+    useEffect(() => {
+        widgetPatchesByScopeRef.current = widgetPatchesByScope;
+    }, [widgetPatchesByScope]);
 
     useEffect(() => {
         if (!bpCore) {
@@ -151,10 +157,12 @@ export function DevModeContent(props: DevModeContentProps) {
         if (!bpCore || !uiDocument || !activeSurface) {
             return null;
         }
+        const runtimeScopeId = activeSurface.id;
         return createDevModeBlueprintHostApi({
             document: uiDocument,
             scope: bpCore.scopeBridge,
             activeSurfaceId: activeSurface.id,
+            runtimeScopeId,
             emit: e => bpCore.debug.emit(e),
             onOpenSurface: id => {
                 setNavStack(prev => [...prev, id]);
@@ -163,9 +171,15 @@ export function DevModeContent(props: DevModeContentProps) {
                 setNavStack(prev => (prev.length > 1 ? prev.slice(0, -1) : prev));
             },
             onWidgetPatch: (elementId, patch) => {
-                setWidgetPatches(prev => ({
+                setWidgetPatchesByScope(prev => ({
                     ...prev,
-                    [elementId]: { ...prev[elementId], ...patch },
+                    [runtimeScopeId]: {
+                        ...(prev[runtimeScopeId] ?? {}),
+                        [elementId]: {
+                            ...(prev[runtimeScopeId]?.[elementId] ?? {}),
+                            ...patch,
+                        },
+                    },
                 }));
             },
             widgetRuntimeStore,
@@ -182,6 +196,7 @@ export function DevModeContent(props: DevModeContentProps) {
         return createDevModeBlueprintHostAdapter({
             bundle,
             surface: activeSurface,
+            runtimeScopeId: activeSurface.id,
             scopeBridge: bpCore.scopeBridge,
             debug: bpCore.debug,
             hostApi,
@@ -251,6 +266,7 @@ export function DevModeContent(props: DevModeContentProps) {
         void dispatchSurfaceBlueprintEvent({
             blueprintDocument: bundle.ui.localBlueprints,
             surfaceId: activeSurface.id,
+            runtimeScopeId: activeSurface.id,
             eventName: "surfaceInit",
             hostAdapter,
             debug: bpCore.debug,
@@ -273,6 +289,7 @@ export function DevModeContent(props: DevModeContentProps) {
             void dispatchSurfaceBlueprintEvent({
                 blueprintDocument: bundle.ui.localBlueprints,
                 surfaceId: surfaceToUnmount,
+                runtimeScopeId: surfaceToUnmount,
                 eventName: "surfaceUnmount",
                 hostAdapter,
                 debug: bpCore.debug,
@@ -281,6 +298,101 @@ export function DevModeContent(props: DevModeContentProps) {
             });
         };
     }, [bpCore, bundle, activeSurface, hostAdapter, makeStateAccessors]);
+
+    const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
+        if (!bpCore || !bundle || !uiDocument) {
+            return undefined;
+        }
+        const globalReader = {
+            get: (key: string) => bpCore.scopeBridge.globalGet(key),
+            subscribe: (listener: () => void) => bpCore.scopeBridge.subscribeGlobals(listener),
+        };
+        return {
+            createHostAdapter: input => {
+                const runtimeScopeId = input.runtimeScopeId;
+                const hostApi = createDevModeBlueprintHostApi({
+                    document: uiDocument,
+                    scope: bpCore.scopeBridge,
+                    activeSurfaceId: input.targetSurface.id,
+                    runtimeScopeId,
+                    frameParams: input.params,
+                    onFrameEmit: async (eventName, data) => {
+                        await input.parentHostAdapter.blueprintRuntime?.dispatchElementBlueprintEvent(
+                            input.frameElement.id,
+                            "pageEvent",
+                            { event: eventName, data },
+                        );
+                    },
+                    emit: e => bpCore.debug.emit(e),
+                    onOpenSurface: id => {
+                        setNavStack(prev => [...prev, id]);
+                    },
+                    onCloseLayer: () => {
+                        setNavStack(prev => (prev.length > 1 ? prev.slice(0, -1) : prev));
+                    },
+                    onWidgetPatch: (elementId, patch) => {
+                        setWidgetPatchesByScope(prev => ({
+                            ...prev,
+                            [runtimeScopeId]: {
+                                ...(prev[runtimeScopeId] ?? {}),
+                                [elementId]: {
+                                    ...(prev[runtimeScopeId]?.[elementId] ?? {}),
+                                    ...patch,
+                                },
+                            },
+                        }));
+                    },
+                    widgetRuntimeStore,
+                });
+                return createDevModeBlueprintHostAdapter({
+                    bundle,
+                    surface: input.targetSurface,
+                    runtimeScopeId,
+                    scopeBridge: bpCore.scopeBridge,
+                    debug: bpCore.debug,
+                    hostApi,
+                });
+            },
+            createBindingContext: input => ({
+                blueprintDocument: bundle.ui.localBlueprints,
+                surfaceState: bpCore.scopeBridge.getSurfaceStore(input.runtimeScopeId),
+                debug: bpCore.debug,
+                coalescer: bpCore.bindingDebugCoalescer,
+                globalState: globalReader,
+            }),
+            mountSurface: input => {
+                const acc = makeStateAccessors(input.runtimeScopeId);
+                if (!acc) {
+                    return undefined;
+                }
+                if (lifecycleRef.current.onSurfaceEnter(input.runtimeScopeId)) {
+                    void dispatchSurfaceBlueprintEvent({
+                        blueprintDocument: bundle.ui.localBlueprints,
+                        surfaceId: input.targetSurface.id,
+                        runtimeScopeId: input.runtimeScopeId,
+                        eventName: "surfaceInit",
+                        hostAdapter: input.hostAdapter,
+                        debug: bpCore.debug,
+                        getSurfaceState: acc.get,
+                        setSurfaceState: acc.set,
+                    });
+                }
+                return () => {
+                    void dispatchSurfaceBlueprintEvent({
+                        blueprintDocument: bundle.ui.localBlueprints,
+                        surfaceId: input.targetSurface.id,
+                        runtimeScopeId: input.runtimeScopeId,
+                        eventName: "surfaceUnmount",
+                        hostAdapter: input.hostAdapter,
+                        debug: bpCore.debug,
+                        getSurfaceState: acc.get,
+                        setSurfaceState: acc.set,
+                    });
+                };
+            },
+            getWidgetRuntimePatches: input => widgetPatchesByScopeRef.current[input.runtimeScopeId] ?? {},
+        };
+    }, [bpCore, bundle, makeStateAccessors, uiDocument, widgetRuntimeStore]);
 
     if (!bundle) {
         return (
@@ -320,7 +432,10 @@ export function DevModeContent(props: DevModeContentProps) {
     const baseHeight = activeSurface.designSize.height;
 
     const globalStateReader = bpCore
-        ? { get: (key: string) => bpCore.scopeBridge.globalGet(key) }
+        ? {
+              get: (key: string) => bpCore.scopeBridge.globalGet(key),
+              subscribe: (listener: () => void) => bpCore.scopeBridge.subscribeGlobals(listener),
+          }
         : undefined;
 
     const bindingContext =
@@ -356,7 +471,8 @@ export function DevModeContent(props: DevModeContentProps) {
                                 scale={scale}
                                 hostAdapter={hostAdapter}
                                 blueprintBindingContext={bindingContext}
-                                widgetRuntimePatches={widgetPatches}
+                                widgetRuntimePatches={widgetPatchesByScope[activeSurface.id] ?? {}}
+                                nestedSurfaceRuntime={nestedSurfaceRuntime}
                             />
                         </WidgetRuntimeStateProvider>
                     </FixedAspectRatioContainer>

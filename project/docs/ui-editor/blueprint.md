@@ -4,18 +4,34 @@ This guide explains how Studio blueprint nodes are defined, registered, displaye
 
 ## Current built-in catalog
 
-The current core catalog includes event heads, local variables, basic flow branching, data/string/math utilities, and documented UI-domain nodes.
+The current core catalog includes event heads, local and runtime variables, basic flow branching, data/string/math utilities, and documented UI-domain nodes.
 
 | Node type | Display name | Category | Purpose |
 | --- | --- | --- | --- |
-| `blueprint.event.head.init` | `On init` | `Events` | Entry node for component/widget initialization. It is available to widgets that expose the `init` lifecycle event. |
-| `blueprint.event.head.click` | `On click` | `Events` | Entry node for widget click interactions. It is available to widgets that expose the `click` event, including buttons, images, containers, and text elements. |
+| `blueprint.event.head.appBoot` | `App Boot` | `Events` | Entry node for the global UI runtime startup event. It is only available on `globalMain` blueprints. |
+| `blueprint.event.head.surfaceInit` | `Surface Init` | `Events` | Entry node for Page/Game UI surface initialization. It is only available on `surfaceMain` blueprints. |
+| `blueprint.event.head.surfaceUnmount` | `Surface Unmount` | `Events` | Entry node for Page/Game UI surface unmount. It is only available on `surfaceMain` blueprints. |
+| `blueprint.event.head.init` | `Init` | `Events` | Entry node for widget initialization and Blueprint Value initial evaluation. It is available to widgets that expose the `init` lifecycle event and to `widgetValue` blueprints. |
+| `blueprint.event.head.flush` | `Flush` | `Events` | Refresh entry node for Blueprint Value graphs. It is only available on `widgetValue` blueprints and is queued by the runtime. |
+| `blueprint.event.head.mouseClick` | `Mouse Click` | `Events` | Entry node for widget mouse click interactions. It is available through the widget logic capability catalog. |
+| `blueprint.event.head.scroll` | `Scroll` | `Events` | Entry node for List scroll interactions. It is available to `nl.list` widget private blueprints. |
+| `blueprint.event.head.scrollEnd` | `Scroll End` | `Events` | Entry node fired when a List runtime scrolls from non-end to the scroll end. It is available to `nl.list` widget private blueprints. |
+| `blueprint.event.head.itemRender` | `Item Render` | `Events` | Entry node fired for each rendered List item scope. It is available to `nl.list` widget private blueprints. |
+| `blueprint.event.head.itemClick` | `Item Click` | `Events` | Entry node fired when a rendered List item is clicked. It is available to `nl.list` widget private blueprints. |
+| `blueprint.event.head.itemHover` | `Item Hover` | `Events` | Entry node fired when the pointer enters a rendered List item. It is available to `nl.list` widget private blueprints. |
+| `blueprint.event.head.selectionChanged` | `Selection Changed` | `Events` | Entry node fired when a List item click changes the runtime selected index. It is available to `nl.list` widget private blueprints. |
+| `blueprint.event.head.pageEvent` | `Page Event` | `Events` | Entry node for Page component child-to-parent events. It is available to `nl.frame` widget private blueprints. |
+| `blueprint.data.returnValue` | `Return Value` | `Data` | Exec sink that returns the produced value from a Blueprint Value graph. It is only available on `widgetValue` blueprints. |
 | `blueprint.local.get` | `Get Var` | `Variables` | Pure data node that reads an execution-local blueprint variable. |
 | `blueprint.local.set` | `Set Var` | `Variables` | Exec node that writes an execution-local blueprint variable and continues through `next`. |
+| `blueprint.state.get` | `Get state` | `Variables` | Pure data node that reads a Page/App runtime variable by scope and key. |
+| `blueprint.state.set` | `Set state` | `Variables` | Exec node that writes a Page/App runtime variable and continues through `next`. |
 | `if` | `If` | `Flow` | Exec branch node that routes execution through `true` or `false` based on a boolean condition. |
 | `blueprint.math.*` | Basic math operators | `Math` | Pure arithmetic, increment/decrement, and comparison nodes such as `+`, `−`, `×`, `÷`, `+1`, `−1`, `=`, `≠`, `<`, `≤`, `>`, and `≥`. |
 
 Node categories are still part of the node API and palette model. Do not remove category handling when trimming or adding nodes; categories are how the add-node palette groups nodes.
+
+Event-head nodes are surfaced in the canvas add-node palette for the current Blueprint owner and widget event slot. The left member tree's `Layers > New` flow also has an optional Event field; it defaults to `-` and creates an empty layer unless the user explicitly selects an event head to insert.
 
 ## Important files
 
@@ -26,19 +42,23 @@ Node categories are still part of the node API and palette model. Do not remove 
 | `src/renderer/lib/ui-editor/blueprint-nodes/defineBlueprintNode.ts` | Public helper API for registering one or more node definitions. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes.ts` | One-shot registration entry point for built-in nodes. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/index.ts` | Built-in node catalog aggregation. Add a new built-in node here when it should ship in Studio by default. |
-| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/events/eventHeadNodes.ts` | Built-in event entry-head nodes. Currently `On init` and `On click` are registered. |
+| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/events/eventHeadNodes.ts` | Built-in event entry-head nodes, including lifecycle, widget input, scroll, broadcast, and Page Event heads. |
+| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/frameNodes.ts` | Built-in Page component host nodes for Frame params and child-to-parent Page events. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/localVariableNodes.ts` | Built-in local variable nodes. Currently `Get Var` and `Set Var`. |
+| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/stateNodes.ts` | Built-in Page/App runtime variable nodes. Currently `Get state` and `Set state`, both under `Variables`. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/mathNodes.ts` | Built-in basic math and comparison nodes. |
 | `src/shared/types/blueprint/graph.ts` | Shared graph taxonomy and stable node type constants. Use this for node type ids that are persisted or shared across process boundaries. |
 | `src/shared/types/ui-editor/widgetLogic.ts` | Widget logic capability catalog. Event slots here determine what widget event heads can appear for each widget type. |
+| `src/shared/types/ui-editor/blueprintLifecycle.ts` | Global and surface lifecycle event capability catalog for `globalMain` and `surfaceMain` owners. |
 | `src/shared/types/ui-editor/graph.ts` | Persisted graph IR shape used by UI graph documents. |
+| `src/renderer/lib/ui-editor/blueprint-runtime/BlueprintDispatcher.ts` | Runtime dispatch for widget, broadcast, surface lifecycle, and global lifecycle event graphs. |
 | `src/renderer/lib/ui-editor/behavior-graph/BehaviorNodeRegistry.ts` | Runtime behavior-node registry and execution context type. |
 
 ## Blueprint document concepts
 
 A blueprint is not just a node list. The main concepts are:
 
-- **Owner**: where the blueprint belongs. Supported owner kinds include `globalMain`, `surfaceMain`, `widgetMain`, and `sharedAsset`.
+- **Owner**: where the blueprint belongs. Supported owner kinds include `globalMain`, `surfaceMain`, `widgetMain`, `widgetValue`, and `sharedAsset`.
 - **Program kind**: currently graph-based visual programs and script modules are represented separately.
 - **Graph kind**: each graph declares semantic rules through `event`, `function`, or `macro`.
 - **Members**: blueprint-owned variables, fields, and function signatures.
@@ -46,6 +66,16 @@ A blueprint is not just a node list. The main concepts are:
 - **Graph IR**: persisted nodes and edges, including node `params`, `meta`, and editor layout.
 
 When adding a node, make sure you know which owner kinds and graph kinds it should support. A node that mutates UI state usually belongs in `event` and/or `macro` graphs, while a pure calculation node can also be available in `function` graphs.
+
+## Blueprint Value
+
+Blueprint Value is a per-property dynamic value provider. A `widgetValue` private owner is keyed as `widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`, and the UI document stores the active binding on the element in `valueBindings`. The current supported targets are `nl.text` -> `props.text`, `nl.button` -> `props.label`, and `nl.frame` -> `props.params`.
+
+Value blueprints are visual graph programs only. They are seeded with one `init` event graph that returns the current literal value through `blueprint.data.returnValue`. `string` values seed a Text literal, while `json` values seed a JSON literal. `Flush` is an available automatic refresh head, but Studio does not create a default `flush` layer. On mount, the value runtime executes `init` and then attempts `flush`; if both return values, `flush` wins. Surface or global state updates queue `flush` automatically. Evaluation is serialized per binding so an in-flight run is followed by the latest pending `flush`.
+
+If a value graph does not execute `returnValue`, the runtime keeps the previous resolved value. If there is no previous resolved value, the widget uses its literal prop from the UI document. String results are coerced to string, and `null` or `undefined` become an empty string. Page `params` expects a JSON object; non-object results fall back to `{}`.
+
+The Blueprint Value palette is intentionally restricted to safe value-producing nodes: event heads, non-latent flow, pure Data/String/Math/JSON nodes, surface/global variable reads, and local variables. Surface/global variable writes, widget mutations, navigation, persistence writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
 
 ## Node definition API
 
@@ -108,15 +138,15 @@ Recommended category names:
 
 | Category | Use for |
 | --- | --- |
-| `Events` | Event entry heads such as `On init` and `On click`. |
-| `Variables` | Local variables and future blueprint/member variables. |
+| `Events` | Event entry heads such as `Init`, `Mouse Click`, `Surface Init`, `App Boot`, broadcast receivers, and `Page Event`. |
+| `Variables` | Local variables, blueprint/member variables, and Page/App runtime variables. |
 | `Flow` | Branching, string switching, bounded loops, array iteration, and delay. |
 | `Data` | Literals, objects, arrays, type conversion. |
 | `Math` | Numeric calculation and comparisons. |
 | `String` | Text operations and formatting. |
 | `Widget` | UI element mutations and reads. |
+| `Page` | Page component host reads and child-to-parent Page events. |
 | `Navigation` | Page and modal navigation. |
-| `State` | Page/app state reads and writes. |
 | `Persistence` | Save/load key-value data. |
 | `Debug` | Logs, assertions, debug overlays. |
 
@@ -206,7 +236,25 @@ dynamicInputPins: {
 }
 ```
 
-Dynamic pin ids and optional dynamic pin labels are stored in node `params`, so never treat them as temporary UI-only state. `pinLabelParamKey` is only needed for nodes where the user-visible pin name has runtime meaning, such as `Make JSON Object`.
+Dynamic pin ids and optional dynamic pin labels are stored in node `params`, so never treat them as temporary UI-only state. `pinLabelParamKey` is only needed for legacy or custom nodes where the user-visible pin label itself has runtime meaning. Prefer an explicit data input when that value should be connectable.
+
+When one add action must create several related inputs, set `generatedPinTemplates`. The stored dynamic id list still contains concrete pin ids, but each add action generates one base id and expands it into template ids:
+
+```ts
+dynamicInputPins: {
+    storageKey: "__jsonObjectInputPins",
+    fixedDataInputIds: [],
+    generatedIdPrefix: "field",
+    valueType: "any",
+    allowInlineLiteral: false,
+    generatedPinTemplates: [
+        { idSuffix: "name", label: "Name", valueType: "string", allowInlineLiteral: true },
+        { idSuffix: "value", label: "Value", valueType: "any", allowInlineLiteral: false },
+    ],
+}
+```
+
+`Make JSON Object` uses this grouped form and new nodes start with one `Name` / `Value` field pair. Pressing the node-card add button creates `field_N_name` (`string`) and `field_N_value` (`any`); the runtime reads the field name from the `Name` input, so the name can be typed inline or wired from another string node. Older graphs that stored field names in `__jsonObjectFieldNames` are still resolved for compatibility.
 
 ## Inspector params
 
@@ -341,7 +389,7 @@ Event-head nodes should set `role: "eventHead"`. The palette uses widget event c
 
 Widget event slots are declared in `src/shared/types/ui-editor/widgetLogic.ts`.
 
-To make a widget expose `On init` and `On click`, its logic API should include the `init` lifecycle event and the `click` interaction event with these head types:
+To make a widget expose `Init` and `Mouse Click`, its logic API should include the `init` lifecycle event and the `mouseClick` interaction event with these head types:
 
 ```ts
 {
@@ -352,14 +400,14 @@ To make a widget expose `On init` and `On click`, its logic API should include t
 }
 
 {
-    id: "click",
-    displayName: "Click",
+    id: "mouseClick",
+    displayName: "Mouse click",
     dispatchKind: "interaction",
-    headNodeTypes: ["blueprint.event.head.click"],
+    headNodeTypes: ["blueprint.event.head.mouseClick"],
 }
 ```
 
-The current built-in widgets that support private blueprint logic share the init and click events. Keep this model when adding other event types later: add the event capability first, then add the matching event-head node definition.
+The current built-in widgets expose event heads through capability catalogs rather than aliases. Do not add duplicate node ids for the same user action; add or update the event capability first, then add the matching event-head node definition.
 
 ## Adding a new built-in node
 

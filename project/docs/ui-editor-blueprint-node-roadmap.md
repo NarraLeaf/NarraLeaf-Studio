@@ -4,13 +4,14 @@
 
 ## Events
 
+当前已落地的 Events Head 覆盖从 `On App Boot` 到 `On Scroll End` 的节点。`itemRender`、`itemClick`、`itemHover`、`selectionChanged` 和 `scrollEnd` 当前接入 `nl.list` 的真实运行时渲染、点击、悬停、选择变化和滚动末端逻辑；表中提到的 Repeater、选项组或其他可选择控件可在对应 widget 落地后复用这些稳定 ID。
+
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
 | On App Boot | `blueprint.event.head.appBoot` | 应用 UI 运行时启动时触发。 |
 | On Surface Init | `blueprint.event.head.surfaceInit` | Page 或 Game UI surface 初始化时触发。 |
 | On Surface Unmount | `blueprint.event.head.surfaceUnmount` | Page 或 Game UI surface 卸载时触发。 |
 | On Init | `blueprint.event.head.init` | 当前 widget 初始化时触发。 |
-| On Click | `blueprint.event.head.click` | 当前 widget 被点击时触发。 |
 | Mouse Click | `blueprint.event.head.mouseClick` | 鼠标左键点击元素时触发。 |
 | Mouse Double Click | `blueprint.event.head.mouseDoubleClick` | 鼠标双击元素时触发。 |
 | Mouse Enter | `blueprint.event.head.mouseEnter` | 鼠标进入元素区域时触发。 |
@@ -25,6 +26,7 @@
 | Scroll | `blueprint.event.head.scroll` | 可滚动元素发生滚动时触发。 |
 | On Any Broadcast | `blueprint.event.head.onAnyBroadcast` | 当前元素收到任意广播事件时触发。 |
 | On Broadcast | `blueprint.event.head.onBroadcast` | 当前元素收到指定广播事件时触发。 |
+| Page Event | `blueprint.event.head.pageEvent` | Page 组件收到嵌入 Page 发出的事件时触发。 |
 | On Item Render | `blueprint.event.head.itemRender` | List 或 Repeater 渲染单个条目时触发。 |
 | On Item Click | `blueprint.event.head.itemClick` | List 或 Repeater 条目被点击时触发。 |
 | On Item Hover | `blueprint.event.head.itemHover` | List 或 Repeater 条目被悬停时触发。 |

@@ -55,6 +55,10 @@ export type BlueprintHostApiRuntime = {
         get: (key: string) => Promise<unknown>;
         set: (key: string, value: unknown) => Promise<void>;
     };
+    frame: {
+        getParam: (key: string) => unknown;
+        emit: (eventName: string, data: unknown) => Promise<void>;
+    };
     devtools: {
         log: (level: string, message: string) => void;
     };
@@ -64,6 +68,9 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     document: UIDocument;
     scope: ScopeStoreBridge;
     activeSurfaceId: string;
+    runtimeScopeId?: string;
+    frameParams?: Record<string, unknown>;
+    onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string) => void;
     onCloseLayer: () => void;
@@ -218,12 +225,29 @@ function emitHostCall(emit: (event: BlueprintDebugEvent) => void, capabilityId: 
     }
 }
 
+function scopedWidgetRuntimeKey(runtimeScopeId: string | undefined, activeSurfaceId: string, elementId: string): string {
+    return `${runtimeScopeId ?? activeSurfaceId}\0${elementId}`;
+}
+
 /**
  * Unified Host API implementation for Dev Mode (M3-full). Workspace editor does not instantiate this.
  */
 export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRuntimeOptions): BlueprintHostApiRuntime {
-    const { document, scope, activeSurfaceId, emit, onOpenSurface, onCloseLayer, onWidgetPatch, widgetRuntimeStore } =
+    const {
+        document,
+        scope,
+        activeSurfaceId,
+        runtimeScopeId,
+        frameParams,
+        onFrameEmit,
+        emit,
+        onOpenSurface,
+        onCloseLayer,
+        onWidgetPatch,
+        widgetRuntimeStore,
+    } =
         options;
+    const stateScopeId = runtimeScopeId ?? activeSurfaceId;
 
     return {
         navigation: {
@@ -284,7 +308,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.setVariant";
                 emitHostCall(emit, cap, "call");
                 assertAppearanceVariantId(document, elementId, variantId);
-                widgetRuntimeStore.setVariantOverride(elementId, variantId);
+                widgetRuntimeStore.setVariantOverride(
+                    scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                    variantId,
+                );
                 emitHostCall(emit, cap, "return");
             },
             getTextProperties: (elementId: string) => {
@@ -316,7 +343,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             get: (scopeKind: string, key: string) => {
                 emit({ type: "state.read", scope: scopeKind, key });
                 if (scopeKind === "surface") {
-                    return scope.getSurfaceStore(activeSurfaceId).get(key);
+                    return scope.getSurfaceStore(stateScopeId).get(key);
                 }
                 if (scopeKind === "global") {
                     return scope.globalGet(key);
@@ -328,7 +355,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             },
             set: (scopeKind: string, key: string, value: unknown) => {
                 if (scopeKind === "surface") {
-                    scope.getSurfaceStore(activeSurfaceId).set(key, value);
+                    scope.getSurfaceStore(stateScopeId).set(key, value);
                 } else if (scopeKind === "global") {
                     scope.globalSet(key, value);
                 } else if (scopeKind === "persistence") {
@@ -349,6 +376,23 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 scope.persistenceSet(key, value);
                 emit({ type: "state.write", scope: "persistence", key });
                 emitHostCall(emit, "persistence.set", "return");
+            },
+        },
+        frame: {
+            getParam: (key: string) => {
+                emitHostCall(emit, "frame.getParam", "call");
+                const value = frameParams?.[key];
+                emitHostCall(emit, "frame.getParam", "return");
+                return value;
+            },
+            emit: async (eventName: string, data: unknown) => {
+                const cap = "frame.emit";
+                emitHostCall(emit, cap, "call");
+                const safeEventName = String(eventName ?? "").trim();
+                if (safeEventName && onFrameEmit) {
+                    await onFrameEmit(safeEventName, data);
+                }
+                emitHostCall(emit, cap, "return");
             },
         },
         devtools: {

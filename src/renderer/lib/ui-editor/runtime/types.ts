@@ -13,6 +13,8 @@ export type UIHost = "app" | "player";
  */
 export type UIHostAdapterBlueprintRuntime = {
     surfaceId: string;
+    /** Instance-specific scope id. Defaults to `surfaceId` for top-level surfaces. */
+    runtimeScopeId?: string;
     setSurfaceState: (key: string, value: unknown) => void;
     getSurfaceState: (key: string) => unknown;
     emitDebug: (event: BlueprintDebugEvent) => void;
@@ -24,6 +26,10 @@ export type UIHostAdapterBlueprintRuntime = {
     ) => Promise<void>;
     dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
     getBroadcastListenerCount?: (eventName: string) => number;
+    frame?: {
+        getParam: (key: string) => unknown;
+        emit: (eventName: string, data: unknown) => Promise<void> | void;
+    };
     /** M3-full: Dev Mode host API (graphs + TS ctx); absent in editor preview. */
     hostApi?: BlueprintHostApiRuntime;
 };

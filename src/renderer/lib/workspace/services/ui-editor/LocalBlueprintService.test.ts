@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import {
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+} from "@shared/types/blueprint/graph";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import { Services } from "../services";
@@ -113,6 +118,7 @@ function uiDocument(): UIDocument {
 
 function createHarness() {
     const graphDocument = { blueprintDocument: blueprintDocument() };
+    let nextId = 0;
     const uidoc = {
         document: uiDocument(),
         getDocument() {
@@ -158,7 +164,7 @@ function createHarness() {
                     return uidoc;
                 }
                 if (serviceId === Services.Uuid) {
-                    return { generate: () => "generated-id" };
+                    return { generate: () => `generated-id-${++nextId}` };
                 }
                 throw new Error(`Unexpected service ${serviceId}`);
             },
@@ -168,6 +174,66 @@ function createHarness() {
 }
 
 describe("LocalBlueprintService history", () => {
+    it("seeds widget value blueprints with an init layer only", () => {
+        const { service, graphDocument } = createHarness();
+
+        const blueprintId = service.ensureWidgetValueBlueprint({
+            surfaceId: "surface-a",
+            elementId: "button-a",
+            propPath: "text",
+            valueType: "string",
+            displayName: "Text value",
+            literalValue: "Hello",
+        });
+
+        const bp = graphDocument.blueprintDocument.blueprints[blueprintId];
+        expect(bp.owner).toEqual({
+            kind: "widgetValue",
+            surfaceId: "surface-a",
+            elementId: "button-a",
+            propPath: "text",
+        });
+        expect(bp.program.kind).toBe("graph");
+        if (bp.program.kind !== "graph") {
+            throw new Error("Expected graph blueprint");
+        }
+        expect(Object.keys(bp.program.graphs.events)).toEqual(["init"]);
+        const initGraph = bp.program.graphs.events.init?.graph;
+        if (!initGraph) {
+            throw new Error("Expected init graph");
+        }
+        const nodeTypes = Object.values(initGraph.nodes ?? {}).map(node => node.type);
+        expect(nodeTypes).toContain(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
+        expect(nodeTypes).not.toContain(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH);
+    });
+
+    it("seeds JSON widget value blueprints with a JSON literal", () => {
+        const { service, graphDocument } = createHarness();
+
+        const blueprintId = service.ensureWidgetValueBlueprint({
+            surfaceId: "surface-a",
+            elementId: "button-a",
+            propPath: "params",
+            valueType: "json",
+            displayName: "Page props",
+            literalValue: { title: "Hello" },
+        });
+
+        const bp = graphDocument.blueprintDocument.blueprints[blueprintId];
+        expect(bp.meta?.valueType).toBe("json");
+        expect(bp.program.kind).toBe("graph");
+        if (bp.program.kind !== "graph") {
+            throw new Error("Expected graph blueprint");
+        }
+        const initGraph = bp.program.graphs.events.init?.graph;
+        if (!initGraph) {
+            throw new Error("Expected init graph");
+        }
+        const nodes = Object.values(initGraph.nodes ?? {});
+        const literal = nodes.find(node => node.type === BLUEPRINT_NODE_TYPE_LITERAL_JSON);
+        expect(literal?.params?.value).toEqual({ title: "Hello" });
+    });
+
     it("undoes and redoes blueprint member edits", () => {
         const { service, graphDocument } = createHarness();
 

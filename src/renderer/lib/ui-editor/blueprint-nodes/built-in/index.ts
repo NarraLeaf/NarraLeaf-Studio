@@ -9,8 +9,10 @@ import { controlFlowBlueprintNodes } from "./controlFlowNodes";
 import { dataBlueprintNodes } from "./dataNodes";
 import { devtoolsBlueprintNodes } from "./devtoolsNodes";
 import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
+import { frameBlueprintNodes } from "./frameNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
+import { stateBlueprintNodes } from "./stateNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
 
@@ -19,6 +21,7 @@ export { controlFlowBlueprintNodes } from "./controlFlowNodes";
 export { dataBlueprintNodes } from "./dataNodes";
 export { devtoolsBlueprintNodes } from "./devtoolsNodes";
 export { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
+export { frameBlueprintNodes } from "./frameNodes";
 export { localVariableBlueprintNodes } from "./localVariableNodes";
 export { mathBlueprintNodes } from "./mathNodes";
 export { navigationBlueprintNodes } from "./navigationNodes";
@@ -33,10 +36,12 @@ export { widgetHostBlueprintNodes } from "./widget/widgetHostNodes";
 export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...eventHeadBlueprintNodes,
     ...broadcastBlueprintNodes,
+    ...frameBlueprintNodes,
     ...controlFlowBlueprintNodes,
     ...dataBlueprintNodes,
     ...localVariableBlueprintNodes,
     ...mathBlueprintNodes,
+    ...stateBlueprintNodes,
     ...stringBlueprintNodes,
     ...textBlueprintNodes,
     ...devtoolsBlueprintNodes,

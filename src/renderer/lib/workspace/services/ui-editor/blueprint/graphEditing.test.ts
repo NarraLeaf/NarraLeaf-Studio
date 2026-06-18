@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
+    BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
@@ -8,7 +9,7 @@ import {
     BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
 } from "@shared/types/blueprint/graph";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
-import { applyBlueprintIrConnection, isValidBlueprintIrExecConnection } from "./graphEditing";
+import { applyBlueprintIrConnection, createGraphNodeForPalette, isValidBlueprintIrExecConnection } from "./graphEditing";
 
 describe("blueprint graph editing", () => {
     it("replaces an existing outgoing exec edge from the same source port", () => {
@@ -205,5 +206,15 @@ describe("blueprint graph editing", () => {
                 targetHandle: "value",
             }),
         ).toBe(true);
+    });
+
+    it("creates Make JSON Object with one editable field pair", () => {
+        const node = createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT, "jsonObject");
+
+        expect(node.params).toMatchObject({
+            __jsonObjectInputPins: ["field_1_name", "field_1_value"],
+            __inlineLiteralPins: ["field_1_name"],
+            field_1_name: "field1",
+        });
     });
 });

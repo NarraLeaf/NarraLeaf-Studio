@@ -84,6 +84,10 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
     if (sv === BLUEPRINT_DOCUMENT_SCHEMA_VERSION) {
         return migrateLegacyDeclarationsToFields(raw as BlueprintDocument);
     }
+    if (sv === 5 && isRecord(raw.blueprints)) {
+        const migrated = migrateLegacyDeclarationsToFields(raw as BlueprintDocument);
+        return { ...migrated, schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
+    }
     if (sv === 4 && isRecord(raw.blueprints)) {
         const migrated = migrateLegacyDeclarationsToFields(raw as BlueprintDocument);
         return { ...migrated, schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };

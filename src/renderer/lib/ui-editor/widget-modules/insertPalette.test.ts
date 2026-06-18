@@ -7,7 +7,7 @@ import {
     type InsertPaletteConfigEntry,
 } from "./insertPalette";
 
-const DEFAULT_MODULE_TYPES = ["nl.container", "nl.text", "nl.image", "nl.button", "nl.list"] as const;
+const DEFAULT_MODULE_TYPES = ["nl.container", "nl.text", "nl.image", "nl.button", "nl.list", "nl.frame"] as const;
 
 function createModule(type: string): UIWidgetModule {
     return {
@@ -25,14 +25,37 @@ function createResolver(types: readonly string[]) {
 }
 
 describe("insert palette", () => {
-    it("resolves the default built-in entries as primary palette items", () => {
+    it("resolves the default built-in entries with Page in overflow", () => {
         const entries = resolveInsertPaletteEntries(
             DEFAULT_INSERT_PALETTE_CONFIG,
             createResolver(DEFAULT_MODULE_TYPES),
         );
 
         expect(entries.map(entry => entry.module.type)).toEqual(DEFAULT_MODULE_TYPES);
-        expect(entries.every(entry => entry.placement === "primary")).toBe(true);
+        expect(entries.map(entry => entry.placement)).toEqual([
+            "primary",
+            "primary",
+            "primary",
+            "primary",
+            "primary",
+            "overflow",
+        ]);
+    });
+
+    it("filters surface-aware entries by surface kind", () => {
+        const appEntries = resolveInsertPaletteEntries(
+            DEFAULT_INSERT_PALETTE_CONFIG,
+            createResolver(DEFAULT_MODULE_TYPES),
+            "appSurface",
+        );
+        const stageEntries = resolveInsertPaletteEntries(
+            DEFAULT_INSERT_PALETTE_CONFIG,
+            createResolver(DEFAULT_MODULE_TYPES),
+            "stageSurface",
+        );
+
+        expect(appEntries.map(entry => entry.module.type)).toContain("nl.frame");
+        expect(stageEntries.map(entry => entry.module.type)).not.toContain("nl.frame");
     });
 
     it("keeps overflow entries in the resolved palette entries", () => {

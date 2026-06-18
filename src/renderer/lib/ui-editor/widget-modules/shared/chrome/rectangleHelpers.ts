@@ -1,4 +1,4 @@
-import type { ImageFill } from "@shared/types/ui-editor/imageFill";
+import type { ImageFill, ImageFillCropPlacement } from "@shared/types/ui-editor/imageFill";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { DEFAULT_RECTANGLE_CROP_PLACEMENT, mapLegacyFitToMode } from "@shared/types/ui-editor/rectangleLike";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
@@ -56,4 +56,38 @@ export function normalizeImageFill(props: RectangleLikeProps): ImageFill | undef
 
 export function ensureCropPlacement(fill?: ImageFill) {
     return fill?.cropPlacement ?? DEFAULT_RECTANGLE_CROP_PLACEMENT;
+}
+
+export function computeCoverCropPlacement(options: {
+    imageWidth: number;
+    imageHeight: number;
+    containerWidth: number;
+    containerHeight: number;
+}): ImageFillCropPlacement | null {
+    const { imageWidth, imageHeight, containerWidth, containerHeight } = options;
+    if (
+        !Number.isFinite(imageWidth) ||
+        !Number.isFinite(imageHeight) ||
+        !Number.isFinite(containerWidth) ||
+        !Number.isFinite(containerHeight) ||
+        imageWidth <= 0 ||
+        imageHeight <= 0 ||
+        containerWidth <= 0 ||
+        containerHeight <= 0
+    ) {
+        return null;
+    }
+
+    const scale = Math.max(containerWidth / imageWidth, containerHeight / imageHeight);
+    const scaledWidth = imageWidth * scale;
+    const scaledHeight = imageHeight * scale;
+    const widthPct = (scaledWidth / containerWidth) * 100;
+    const heightPct = (scaledHeight / containerHeight) * 100;
+
+    return {
+        leftPct: (100 - widthPct) / 2,
+        topPct: (100 - heightPct) / 2,
+        widthPct,
+        heightPct,
+    };
 }

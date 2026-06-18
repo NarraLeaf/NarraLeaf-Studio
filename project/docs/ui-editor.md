@@ -53,7 +53,10 @@
 ## Blueprint 模型
 
 - 当前事件图真相是 `UIGraphDocument.blueprintDocument.blueprints[*].program.graphs`，不是 legacy `graphs` map。
-- Private owner slot 包括 `globalMain`、`surfaceMain:<surfaceId>`、`widgetMain:<surfaceId>:<elementId>`。
+- Private owner slot 包括 `globalMain`、`surfaceMain:<surfaceId>`、`widgetMain:<surfaceId>:<elementId>`、`widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`。
+- Blueprint Value 是新的单点属性动态数据提供方案，当前覆盖 `nl.text` 的 `props.text`、`nl.button` 的 `props.label`、Page 组件 `nl.frame` 的 `props.params`。Text / Button 检视器不再使用旧 `binding:` 元数据连接内容字段，而是在 `UIElement.valueBindings` 中记录 `{ kind: "blueprintValue", blueprintId, valueType }`。
+- 字面值切换为 Blueprint Value 时，`LocalBlueprintService` 会为该属性创建私有 value blueprint，并用当前字面值种子化默认 `Init` layer：`blueprint.event.head.init` 连接到 `blueprint.data.returnValue`。`string` 值使用 Text literal，`json` 值使用 JSON literal。`Flush` 是运行时自动刷新入口，但不会默认创建同名 layer。
+- `nl.list` 私有 Blueprint 具有 Collection Events Head：`scroll`、`scrollEnd`、`itemRender`、`itemClick`、`itemHover`、`selectionChanged`。这些节点会在 List widget 的创建上下文浮窗中出现，并由真实滚动、条目渲染、点击、悬停和选中索引变化触发。
 - `UIBlueprintLifecycleCoordinator` 在 UIDocument mutate 后同步 Page / Game UI / widget private blueprint ownerRecords，并清理已删除对象。
 - `LocalBlueprintService` 不单独落盘，所有 mutation 通过 `UIGraphService.applyGraphMutation()` 进入 `uigraphs.json`。
 - UI history snapshot 同时覆盖 UIDocument 界面子树和相关 private blueprints，但 history 本身不落盘。
@@ -65,7 +68,15 @@
 - Workspace preview 不默认执行完整 blueprint runtime，也不等同 player runtime。
 - 启动 Dev Mode 前，调用方需要确保 dirty UIDocument/UIGraph 已保存；Dev Mode 主进程从磁盘读取 `uidoc.json` 和 `uigraphs.json`。
 - Dev Mode 的 runtime、Host API trace、binding evaluation、debug event bus 在 `src/renderer/apps/dev-mode/` 与 `src/renderer/lib/ui-editor/blueprint-runtime/`。
-- Frame 系统本次只预留接口概念：未来可放置名为 Page 的组件，在其中渲染其他 Page 内容；渲染宽高比固定为目标 Page 尺寸；嵌套路径上不能出现重复 Page。本次不实现可拖拽 Page widget。
+- Blueprint Value runtime 在元素挂载时先执行 `init`，再尝试执行带 `blueprint.event.head.flush` 的刷新入口；两者都有返回值时以 `flush` 为准。surface/global state 更新会自动排队执行 `flush`，用户不需要也不能手动派发该事件。没有返回值时保留上一次解析值，或退回 UIDocument 中的字面 props。
+- 内部 widget `nl.frame` 在用户界面显示为 Page。它只出现在 Page surface 的 insert palette overflow 中，Game UI 不显示入口。
+- Page 组件不是 iframe；它通过共享 renderer 在当前 UIDocument 中真实渲染目标 Page。目标必须是另一个 Page，不能指向当前 Page、Game UI、缺失 surface，或形成循环嵌套；非法目标显示占位错误而不是中断渲染。
+- 在 Workspace 编辑器中，Page 组件内部是只读预览，不注入可编辑的子 Page editor chrome，也不会让选择/resize 命中子 Page 的元素。选中 Page 组件时，resize 控制器上方的浮动按钮组显示 Share 图标按钮，用于打开目标 Page 的独立编辑器 tab。
+- Page 组件在属性面板中隐藏通用 Width / Height 行，改用 Scale。Scale 基于目标 Page 的 `designSize` 换算；`100%` 会把 Page 组件布局尺寸设为目标 Page 的真实分辨率。
+- Page 组件首版为静态目标：props 包含 `targetSurfaceId`、`params`、`navigationMode: "static"`，并预留动画字段；不实现 frame-local push / replace / back。嵌入内容仍会渲染子 Page 内已有 widget / appearance 动画能力。
+- Dev Mode 中每个 Page 组件实例创建独立 `runtimeScopeId`。`surfaceId` 仍用于查找 blueprint owner，`runtimeScopeId` 用于 surface state、widget locals、widget runtime state 和 lifecycle 隔离。
+- 子 Page 在 Frame 实例首次挂载时触发自己的 `surfaceInit`，目标变化或组件卸载时触发 `surfaceUnmount`。同一个目标 Page 被多个 Page 组件引用时，这些 lifecycle 和本地状态互不共享。
+- 子 Page 可通过 Host API `frame.getParam(key)` 读取父级传入参数，并通过 `frame.emit(event, data)` 向父 Page 上的 Page 组件实例发送固定 widget 事件 `pageEvent`；事件 head 输出 `event` 和 `data`。
 
 ## 已知缺口
 

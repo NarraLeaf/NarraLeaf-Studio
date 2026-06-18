@@ -34,6 +34,20 @@ function getWidgetMainBlueprintSnapshot(localBp: LocalBlueprintService, surfaceI
     return raw ? (JSON.parse(JSON.stringify(raw)) as Blueprint) : undefined;
 }
 
+function getWidgetValueBlueprintSnapshot(
+    localBp: LocalBlueprintService,
+    surfaceId: string,
+    elementId: string,
+    propPath: string,
+): Blueprint | undefined {
+    const bpId = localBp.getWidgetValueBlueprintId(surfaceId, elementId, propPath);
+    if (!bpId) {
+        return undefined;
+    }
+    const raw = localBp.getBlueprintDocument().blueprints[bpId];
+    return raw ? (JSON.parse(JSON.stringify(raw)) as Blueprint) : undefined;
+}
+
 function isElementInSubtree(document: UIDocument, elementId: string, rootId: string): boolean {
     let cur: string | null | undefined = elementId;
     while (cur) {
@@ -125,6 +139,8 @@ export function uiEditorCopySelection(
         surfaceId,
         selectedElementIds: selection.elementIds,
         getWidgetMainBlueprint: (sid, eid) => getWidgetMainBlueprintSnapshot(localBp, sid, eid),
+        getWidgetValueBlueprint: (sid, eid, propPath) =>
+            getWidgetValueBlueprintSnapshot(localBp, sid, eid, propPath),
     });
     if (!payload) {
         return false;

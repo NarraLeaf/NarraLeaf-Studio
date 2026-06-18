@@ -224,6 +224,9 @@ export function useSurfaceInteractionEvents({
 
         const handlePointerDown = (event: PointerEvent) => {
             const target = event.target as HTMLElement | null;
+            if (target?.closest?.("textarea, input, [contenteditable='true']")) {
+                return;
+            }
             const isInsideSurface = !!(target && surfaceElement.contains(target));
             const elementNode = target?.closest?.(SELECTABLE_TARGET) as HTMLElement | null;
             const isElementNode = !!elementNode;

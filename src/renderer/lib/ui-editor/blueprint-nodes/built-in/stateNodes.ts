@@ -4,6 +4,10 @@
  */
 
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
+import {
+    BLUEPRINT_NODE_TYPE_STATE_GET,
+    BLUEPRINT_NODE_TYPE_STATE_SET,
+} from "@shared/types/blueprint/graph";
 import type { BlueprintNodeDef } from "../types";
 import { requireHostApi } from "./hostApi";
 import { resolveDataPinValue } from "./graphParamResolvers";
@@ -25,9 +29,9 @@ function resolveScope(raw: unknown): StateScope {
 
 export const stateBlueprintNodes: BlueprintNodeDef[] = [
     {
-        type: "blueprint.state.get",
+        type: BLUEPRINT_NODE_TYPE_STATE_GET,
         displayName: "Get state",
-        category: "State",
+        category: "Variables",
         keywords: ["state", "get", "read", "variable", "data"],
         graphKinds: ["event", "macro", "function"],
         isPure: true,
@@ -56,9 +60,9 @@ export const stateBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
-        type: "blueprint.state.set",
+        type: BLUEPRINT_NODE_TYPE_STATE_SET,
         displayName: "Set state",
-        category: "State",
+        category: "Variables",
         keywords: ["state", "set", "write", "variable", "data", "update"],
         graphKinds: ["event", "macro"],
         isPure: false,

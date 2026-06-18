@@ -25,6 +25,11 @@ import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
 import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
 import { BlueprintEditorLayout } from "../components/BlueprintEditorLayout";
 import { BlueprintMemberTree } from "../components/BlueprintMemberTree";
+import {
+    BlueprintEventLayerDialogContent,
+    createDefaultBlueprintEventLayerValue,
+    type BlueprintEventLayerDialogValue,
+} from "../components/BlueprintEventLayerDialogContent";
 import { BlueprintDiagnosticsPanel } from "../components/BlueprintDiagnosticsPanel";
 import { BlueprintFlowCanvas, cloneBlueprintIr, removeBlueprintNodeFromIr } from "../flow/BlueprintFlowCanvas";
 import { BlueprintGraphToolbar } from "../components/BlueprintGraphToolbar";
@@ -34,8 +39,8 @@ import { BlueprintFrontendBadge } from "../components/BlueprintFrontendBadge";
 import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevisionBar";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
-import { createInputDialog } from "@/lib/components/dialogs";
 import { buildAccessibleBlueprintVariableOptions } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
+import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
 import {
     buildBlueprintGraphClipboardPayload,
     getBlueprintGraphClipboard,
@@ -85,7 +90,6 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const uuid = context.services.get<UuidService>(Services.Uuid);
     const uidoc = context.services.get<UIDocumentService>(Services.UIDocument);
     const uiService = context.services.get<UIService>(Services.UI);
-    const inputDialog = useMemo(() => createInputDialog(uiService), [uiService]);
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const doc = localBp.getBlueprintDocument();
     const bp = doc.blueprints[payload.blueprintId];
@@ -98,7 +102,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     }
 
     const widgetElement =
-        payload.ownerKind === "widgetMain" && payload.elementId
+        (payload.ownerKind === "widgetMain" || payload.ownerKind === "widgetValue") && payload.elementId
             ? uidoc.getDocument().elements[payload.elementId]
             : undefined;
     const widgetLogicEvents = useMemo(() => {
@@ -128,6 +132,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 ownerKind: payload.ownerKind,
                 surfaceId: payload.surfaceId,
                 elementId: payload.elementId,
+                propPath: payload.propPath,
                 title: "Blueprint",
             });
         },
@@ -332,20 +337,98 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     );
 
     const onAddEvent = useCallback(async () => {
-        const name = await inputDialog.show({
-            title: "Create layer",
-            placeholder: "Layer name",
-            initialValue: `Layer ${eventIds.length + 1}`,
-            required: true,
-            maxLength: 120,
+        const eventHeadEntries = nodeCatalog.listPaletteEntries(buildBlueprintPaletteContext({
+            graphKind: "event",
+            owner: bp.owner,
+            widgetElementType: widgetElement?.type,
+            widgetBlueprintEvents: widgetLogicEvents,
+            widgetEventLayerSlots: payload.ownerKind === "widgetMain" && widgetElement ? [] : undefined,
+            hasEventHead: false,
+            hasFunctionEntry: false,
+            isBlueprintValueGraph: bp.owner.kind === "widgetValue",
+        })).filter(entry => entry.role === "eventHead");
+        const defaultLayerName = `Layer ${eventIds.length + 1}`;
+
+        let selection: BlueprintEventLayerDialogValue = createDefaultBlueprintEventLayerValue(
+            eventHeadEntries,
+            defaultLayerName,
+        );
+        const selected = await new Promise<BlueprintEventLayerDialogValue | null>(resolve => {
+            let dialogId: string | null = null;
+            let settled = false;
+            const safeResolve = (value: BlueprintEventLayerDialogValue | null) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                resolve(value);
+            };
+            const closeDialog = () => {
+                if (dialogId) {
+                    uiService.dialogs.close(dialogId);
+                    dialogId = null;
+                }
+            };
+            const handleCreate = () => {
+                if (!selection.valid) {
+                    uiService.showNotification("Select an event and name the layer before creating it.", "warning");
+                    return;
+                }
+                safeResolve({ ...selection });
+                closeDialog();
+            };
+            const handleCancel = () => {
+                safeResolve(null);
+                closeDialog();
+            };
+            dialogId = uiService.dialogs.show({
+                title: "Create event layer",
+                content: (
+                    <BlueprintEventLayerDialogContent
+                        entries={eventHeadEntries}
+                        defaultName={defaultLayerName}
+                        onChange={value => {
+                            selection = value;
+                        }}
+                    />
+                ),
+                closable: true,
+                width: 460,
+                buttons: [
+                    { label: "Cancel", onClick: handleCancel },
+                    { label: "Create", primary: true, onClick: handleCreate },
+                ],
+                onClose: handleCancel,
+            });
         });
-        if (!name) {
+        if (!selected) {
             return;
         }
         const id = uuid.generate();
-        localBp.ensureEventGraph(payload.blueprintId, id, name);
+        localBp.runBlueprintHistoryTransaction(payload.blueprintId, () => {
+            localBp.ensureEventGraph(payload.blueprintId, id, selected.name);
+            if (selected.nodeType) {
+                localBp.updateEventGraphIr(payload.blueprintId, id, draft => {
+                    const node = createGraphNodeForPalette(selected.nodeType, uuid.generate());
+                    writeNodeEditorLayout(node, { x: 80, y: 120 });
+                    draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
+                });
+            }
+        });
         editor.selectEventGraph(id);
-    }, [editor, eventIds.length, inputDialog, localBp, payload.blueprintId, uuid]);
+    }, [
+        bp.owner,
+        editor,
+        eventIds.length,
+        localBp,
+        nodeCatalog,
+        payload.blueprintId,
+        payload.ownerKind,
+        uiService,
+        uuid,
+        widgetElement,
+        widgetLogicEvents,
+    ]);
 
     const onDeleteLayer = useCallback(
         (layerId: string) => {
@@ -407,11 +490,14 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const hasAnyGraph = eventIds.length > 0;
 
     const widgetEventLayerSlots = useMemo(() => {
-        if (payload.ownerKind !== "widgetMain" || !widgetElement || editor.graphView?.kind !== "event") {
-            return undefined;
-        }
-        return [];
-    }, [editor.graphView, payload.ownerKind, widgetElement]);
+        return resolveWidgetEventLayerSlotsForPalette({
+            ownerKind: payload.ownerKind,
+            widgetElement,
+            graphView: editor.graphView,
+            blueprintId: payload.blueprintId,
+            widgetBlueprintEvents: widgetLogicEvents,
+        });
+    }, [editor.graphView, payload.blueprintId, payload.ownerKind, widgetElement, widgetLogicEvents]);
 
     const paletteContext = useMemo(() => {
         const gk = editor.graphView?.kind ?? "event";
@@ -424,6 +510,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             widgetEventLayerSlots,
             hasEventHead: false,
             hasFunctionEntry: gk === "function" && activeIr ? graphIrHasFunctionEntry(activeIr) : false,
+            isBlueprintValueGraph: bp.owner.kind === "widgetValue",
         });
     }, [bp.owner, editor.graphView, ir, widgetElement?.type, widgetEventLayerSlots, widgetLogicEvents]);
 
@@ -433,9 +520,10 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 payload.ownerKind,
                 payload.surfaceId,
                 payload.elementId,
+                payload.propPath,
                 bp.id,
             ].filter(Boolean).join(" · "),
-        [bp.id, payload.elementId, payload.ownerKind, payload.surfaceId],
+        [bp.id, payload.elementId, payload.ownerKind, payload.propPath, payload.surfaceId],
     );
 
     const blueprintMemberVariables = useMemo(() => {

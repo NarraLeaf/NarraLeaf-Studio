@@ -91,6 +91,7 @@ export function getListProps(element: UIElement): ListWidgetProps {
         previewItems: Array.isArray(raw.previewItems) ? raw.previewItems : defaultListWidgetProps.previewItems,
         itemKeyPath: typeof raw.itemKeyPath === "string" ? raw.itemKeyPath : defaultListWidgetProps.itemKeyPath,
         previewCount: clampNumber(raw.previewCount, defaultListWidgetProps.previewCount, 1, 128),
+        selectedIndex: clampNumber(raw.selectedIndex, defaultListWidgetProps.selectedIndex, -1, 127),
         itemGap: clampNumber(raw.itemGap, defaultListWidgetProps.itemGap, 0, 512),
         repeatDirection:
             raw.repeatDirection === "horizontal" || raw.repeatDirection === "vertical"

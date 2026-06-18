@@ -1,5 +1,5 @@
 import type { BlueprintDocument, BlueprintFrontendKind, BlueprintOwnerRef } from "@shared/types/blueprint/document";
-import { GLOBAL_MAIN_OWNER_KEY } from "./ownerKeys";
+import { decodeWidgetValueOwnerKey, GLOBAL_MAIN_OWNER_KEY } from "./ownerKeys";
 
 export function getActiveBlueprintId(doc: BlueprintDocument, ownerKey: string): string | undefined {
     return doc.ownerRecords[ownerKey]?.activeBlueprintId;
@@ -30,6 +30,10 @@ export function parsePrivateOwnerKeyToRef(ownerKey: string): BlueprintOwnerRef |
     const wm = /^widgetMain:([^:]+):(.+)$/.exec(ownerKey);
     if (wm) {
         return { kind: "widgetMain", surfaceId: wm[1], elementId: wm[2] };
+    }
+    const wv = decodeWidgetValueOwnerKey(ownerKey);
+    if (wv) {
+        return { kind: "widgetValue", ...wv };
     }
     return null;
 }

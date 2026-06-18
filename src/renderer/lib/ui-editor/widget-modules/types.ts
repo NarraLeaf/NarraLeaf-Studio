@@ -3,7 +3,7 @@ import type { UIElement, UIDocument, UISurface } from "@shared/types/ui-editor/d
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { UIHostAdapter } from "../runtime/types";
-import type { PropertyEditorSchema } from "@/apps/workspace/modules/properties/framework/types";
+import type { FieldDefinition, PropertyEditorSchema } from "@/apps/workspace/modules/properties/framework/types";
 import type { ContextMenuItemDef } from "@/lib/components/elements/ContextMenu";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { LucideIcon } from "lucide-react";
@@ -19,6 +19,8 @@ export type WidgetRendererProps = {
     document: UIDocument;
     hostAdapter: UIHostAdapter;
     children?: ReactNode;
+    /** Stable suffix for repeated structural renderers such as list item previews. */
+    instanceKey?: string;
     /**
      * Structural widgets may render children lazily with an instance scope.
      * `nl.list` uses this to repeat one authored item template without cloning UIDocument elements.
@@ -29,6 +31,16 @@ export type WidgetRendererProps = {
         instanceKey?: string;
         elementOverrides?: Record<string, UIElement>;
     }) => ReactNode[];
+    /**
+     * Render another Page surface inside the current element without using an iframe.
+     * Runtime hosts may isolate state/lifecycle by frame instance.
+     */
+    renderSurface?: (options: {
+        targetSurfaceId: string | null;
+        frameElement: UIElement;
+        params?: Record<string, unknown>;
+        instanceKey?: string;
+    }) => ReactNode;
     /** Runtime state readers exposed to structural widgets that resolve their own data source. */
     runtimeData?: {
         surfaceState?: { get(key: string): unknown };
@@ -131,6 +143,32 @@ export type WidgetContextMenuContext = {
     surfaceId: string;
 };
 
+export type FloatingToolbarButton = {
+    kind: "button";
+    id: string;
+    icon?: LucideIcon;
+    label?: string;
+    tooltip?: string;
+    disabled?: boolean;
+    onClick: () => void;
+};
+
+export type FloatingToolbarItem = FloatingToolbarButton;
+
+export type FloatingToolbarContext = {
+    element: UIElement;
+    documentService: UIDocumentService;
+    surfaceId: string;
+    openSurfaceEditor?: (surfaceId: string) => void;
+};
+
+export type LayoutSizeFieldContext = {
+    element: UIElement;
+    documentService: UIDocumentService;
+    surfaceId?: string;
+    primaryId: string;
+};
+
 // ─── Widget Module ──────────────────────────────────────────────────────────
 
 /**
@@ -190,6 +228,18 @@ export interface UIWidgetModule {
      * Extra context menu items when this element is the sole selection (canvas or outline).
      */
     createContextMenuItems?(context: WidgetContextMenuContext): ContextMenuItemDef[];
+
+    /**
+     * Returns icon actions rendered as one floating toolbar above the selected element's transform box.
+     * Keep actions concise; all modules share the same group renderer.
+     */
+    createFloatingToolbarItems?(context: FloatingToolbarContext): FloatingToolbarItem[];
+
+    /**
+     * Override the common Width / Height row in the layout inspector.
+     * Return `undefined` to use the default row, or `null` to hide the row.
+     */
+    createLayoutSizeField?(context: LayoutSizeFieldContext): FieldDefinition<UIInspectorData> | null | undefined;
 
     /**
      * Optional hook to register additional blueprint nodes (via `defineBlueprintNode`) when the module loads.

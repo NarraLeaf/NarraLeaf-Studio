@@ -31,6 +31,11 @@ const LABELS: Record<BlueprintOwnerRef["kind"], OwnerLabelSet> = {
         titlePrefix: "Component Logic",
         description: "Logic for this control.",
     },
+    widgetValue: {
+        label: "Component Value",
+        titlePrefix: "Component Value",
+        description: "Logic for this control value.",
+    },
     sharedAsset: {
         label: "Shared Blueprint",
         titlePrefix: "Shared",

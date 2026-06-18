@@ -20,6 +20,7 @@ import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftE
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
+import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { StaticEffectsSection } from "@/lib/ui-editor/widget-modules/shared/effects/StaticEffectsSection";
 import { getTextProps } from "./helpers";
 import type { TextAlign, TextVerticalAlign, TextWidgetProps, TextWrapMode } from "./types";
@@ -45,6 +46,28 @@ function TextEffectsField(props: CustomFieldProps<UIInspectorData>) {
     />
   );
 }
+
+const TextBlueprintValueField = createBlueprintValueField({
+  propPath: "text",
+  valueType: "string",
+  valueLabel: "text",
+  title: "Text Value",
+  getDisplayName: ({ liveElement }) => `${liveElement.name ?? "Text"} text`,
+  getLiteralValue: ({ liveElement }) => getTextProps(liveElement).text,
+  renderLiteralEditor: ({ data, liveElement }) => {
+    const textProps = getTextProps(liveElement);
+    return (
+      <textarea
+        className="min-h-[88px] w-full resize-y rounded-md border border-white/10 bg-[#0b0d10] px-2 py-1.5 text-xs text-gray-100 outline-none focus:border-cyan-400/70 focus:ring-1 focus:ring-cyan-400/40"
+        value={textProps.text}
+        rows={4}
+        onChange={event => {
+          data.documentService.updateElementProps(liveElement.id, { text: event.target.value });
+        }}
+      />
+    );
+  },
+});
 
 export function createTextInspector(ctx: InspectorContext) {
   type D = UIInspectorData;
@@ -73,17 +96,9 @@ export function createTextInspector(ctx: InspectorContext) {
             fields: [
               defineField<D, any>({
                 id: "text.content",
-                type: "textarea",
+                type: "custom",
                 label: "Text",
-                rows: 4,
-                binding: {
-                  propPath: "text",
-                  readLiteral: (d: D) => getTextProps(d.element).text,
-                },
-                getValue: (d: D) => getTextProps(d.element).text,
-                setValue: (d: D, v: string) => {
-                  patchProps({ text: v });
-                },
+                component: TextBlueprintValueField,
               }),
             ],
           }),

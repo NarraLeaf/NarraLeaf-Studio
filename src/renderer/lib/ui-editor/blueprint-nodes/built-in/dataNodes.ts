@@ -10,9 +10,14 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_JSON_HAS,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_REMOVE,
     BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH,
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY,
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE,
+    BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_INT,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_JSON,
@@ -26,10 +31,10 @@ import {
 } from "@shared/types/blueprint/graph";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import { resolveDataPinValue } from "./graphParamResolvers";
 
 const GRAPH_KINDS = ["event", "function", "macro"] as const;
 const JSON_OBJECT_INPUT_PINS_KEY = "__jsonObjectInputPins";
-const JSON_OBJECT_FIELD_NAMES_KEY = "__jsonObjectFieldNames";
 const JSON_ARRAY_INPUT_PINS_KEY = "__jsonArrayInputPins";
 
 const dataOnlyExecute: BlueprintNodeDef["execute"] = ctx => {
@@ -159,6 +164,29 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         pins: [out("value", "JSON", "json")],
         inspectorParams: [{ key: "value", label: "JSON", kind: "json" }],
     }),
+    {
+        type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
+        displayName: "Return Value",
+        category: "Data",
+        keywords: ["return", "value", "output", "result"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "valueReturn",
+        scope: { ownerKinds: ["widgetValue"] },
+        pins: [
+            { id: "in", kind: "input", semantic: "exec", label: "In" },
+            anyIn("value", "Value"),
+        ],
+        execute: ctx => {
+            const value = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals, 0, {
+                hostAdapter: ctx.hostAdapter,
+                eventPayload: ctx.eventPayload,
+                executionOwner: ctx.executionOwner,
+            });
+            ctx.valueExecution?.returnValue(value);
+            return { nextPort: undefined };
+        },
+    },
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
         displayName: "To Float",
@@ -233,6 +261,29 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         ],
     }),
     dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
+        displayName: "Set JSON Field",
+        keywords: ["json", "field", "path", "dot", "set", "write"],
+        category: "JSON",
+        pins: [
+            jsonIn("json", "JSON"),
+            stringIn("path", "Path"),
+            anyIn("value", "Value"),
+            out("result", "JSON", "json"),
+        ],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_JSON_REMOVE,
+        displayName: "Remove JSON Field",
+        keywords: ["json", "field", "path", "dot", "remove", "delete"],
+        category: "JSON",
+        pins: [
+            jsonIn("json", "JSON"),
+            stringIn("path", "Path"),
+            out("result", "JSON", "json"),
+        ],
+    }),
+    dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
         displayName: "Make JSON Object",
         keywords: ["json", "object", "make", "map", "struct", "field"],
@@ -244,9 +295,11 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
             generatedIdPrefix: "field",
             valueType: "any",
             allowInlineLiteral: false,
+            generatedPinTemplates: [
+                { idSuffix: "name", label: "Name", valueType: "string", allowInlineLiteral: true },
+                { idSuffix: "value", label: "Value", valueType: "any", allowInlineLiteral: false },
+            ],
             labelPrefix: "Field",
-            pinLabelParamKey: JSON_OBJECT_FIELD_NAMES_KEY,
-            defaultPinLabelPrefix: "field",
         },
     }),
     dataNode({
@@ -270,5 +323,19 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["json", "array", "length", "count", "size"],
         category: "JSON",
         pins: [jsonIn("value", "Array"), out("length", "Length", "integer")],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,
+        displayName: "Merge JSON Object",
+        keywords: ["json", "object", "merge", "combine"],
+        category: "JSON",
+        pins: [jsonIn("a", "A"), jsonIn("b", "B"), out("result", "Object", "json")],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE,
+        displayName: "Clone JSON",
+        keywords: ["json", "clone", "copy", "deep"],
+        category: "JSON",
+        pins: [jsonIn("value", "JSON"), out("result", "JSON", "json")],
     }),
 ];
