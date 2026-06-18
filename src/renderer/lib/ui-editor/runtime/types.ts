@@ -3,6 +3,7 @@ import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintHostApiContractVersion } from "@shared/types/blueprint/hostApi";
 import type { UISurfaceId } from "@shared/types/ui-editor/document";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 
 export type UIHost = "app" | "player";
 
@@ -12,11 +13,23 @@ export type UIHost = "app" | "player";
  */
 export type UIHostAdapterBlueprintRuntime = {
     surfaceId: string;
+    /** Instance-specific scope id. Defaults to `surfaceId` for top-level surfaces. */
+    runtimeScopeId?: string;
     setSurfaceState: (key: string, value: unknown) => void;
     getSurfaceState: (key: string) => unknown;
     emitDebug: (event: BlueprintDebugEvent) => void;
-    /** Dispatch a widget private event slot (for example `init` or `click`) on the owner-local blueprint. */
-    dispatchElementBlueprintEvent: (elementId: string, eventName: string) => Promise<void>;
+    /** Dispatch a widget private event slot (for example `init` or `mouseClick`) on the owner-local blueprint. */
+    dispatchElementBlueprintEvent: (
+        elementId: string,
+        eventName: string,
+        payload?: Record<string, unknown>,
+    ) => Promise<void>;
+    dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
+    getBroadcastListenerCount?: (eventName: string) => number;
+    frame?: {
+        getParam: (key: string) => unknown;
+        emit: (eventName: string, data: unknown) => Promise<void> | void;
+    };
     /** M3-full: Dev Mode host API (graphs + TS ctx); absent in editor preview. */
     hostApi?: BlueprintHostApiRuntime;
 };
@@ -36,6 +49,8 @@ export type UIHostAdapter = {
     blueprintHostApiVersion?: BlueprintHostApiContractVersion;
     /** M3-min: optional Blueprint runtime surface (Dev Mode). */
     blueprintRuntime?: UIHostAdapterBlueprintRuntime;
+    /** Editor preview: use the active workspace service instance for canvas-local interaction overrides. */
+    editorStateService?: UIEditorStateService;
 };
 
 export type RenderSurfaceOptions = {

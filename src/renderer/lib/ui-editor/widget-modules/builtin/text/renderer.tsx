@@ -8,6 +8,7 @@ import {
     type FocusEvent,
     type FormEvent,
     type KeyboardEvent,
+    type MouseEvent,
 } from "react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -15,15 +16,25 @@ import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevisi
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
+import { beginInlineTextEdit } from "@/lib/ui-editor/interaction/inlineTextEdit";
+import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
+import { getSingleSelectedElementId } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
 import {
     lineWrapCss,
     textVerticalAlignToJustifyContent,
 } from "@/lib/ui-editor/widget-modules/shared/text/textLayoutCss";
 import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
 import { getTextProps } from "./helpers";
+import {
+    debugUIDoubleClick,
+    describeDoubleClickTarget,
+} from "@/lib/ui-editor/interaction/doubleClickDebug";
 
-export function TextRenderer({ element, surface, document }: WidgetRendererProps) {
-    const stateService = UIEditorStateService.getInstance();
+const OPENING_BLUR_GRACE_MS = 300;
+
+export function TextRenderer({ element, surface, document, hostAdapter }: WidgetRendererProps) {
+    const stateService = hostAdapter.editorStateService ?? UIEditorStateService.getInstance();
     const documentService = UIDocumentService.getInstance();
     useUIDocumentRevision(documentService);
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
@@ -43,6 +54,17 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
                 next?.kind === "textEdit" &&
                 next.surfaceId === surface.id &&
                 next.elementId === element.id;
+
+            if (wasHere || isHere || next?.kind === "textEdit") {
+                debugUIDoubleClick("TextRenderer override", {
+                    elementId: element.id,
+                    surfaceId: surface.id,
+                    wasHere,
+                    isHere,
+                    previous,
+                    next,
+                });
+            }
 
             if (isHere && !wasHere) {
                 const docEl = documentService.getDocument().elements[element.id];
@@ -70,6 +92,47 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
         interactionOverride.surfaceId === surface.id &&
         interactionOverride.elementId === element.id;
 
+    useEffect(() => {
+        debugUIDoubleClick("TextRenderer editing state", {
+            elementId: element.id,
+            surfaceId: surface.id,
+            isEditing,
+            interactionOverride,
+        });
+    }, [element.id, interactionOverride, isEditing, surface.id]);
+
+    const handleStartInlineTextEdit = useCallback(
+        (e: MouseEvent<HTMLDivElement>) => {
+            if (isEditing || hostAdapter.blueprintRuntime) {
+                return;
+            }
+            if (consumeSuppressNextCanvasWidgetDoubleClick()) {
+                debugUIDoubleClick("TextRenderer suppressed hierarchy drill doubleclick", {
+                    elementId: element.id,
+                    surfaceId: surface.id,
+                });
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            const selection = stateService.getSelection();
+            const selectionData = isUIElementSelection(selection) ? selection.data : null;
+            const selectedSingleElementId = getSingleSelectedElementId(selectionData, surface.id);
+            if (selectedSingleElementId !== element.id) {
+                debugUIDoubleClick("TextRenderer ignored unfocused doubleclick", {
+                    elementId: element.id,
+                    surfaceId: surface.id,
+                    selectedSingleElementId,
+                });
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            beginInlineTextEdit(stateService, surface.id, element.id);
+        },
+        [element.id, hostAdapter.blueprintRuntime, isEditing, stateService, surface.id],
+    );
+
     useLayoutEffect(() => {
         if (!isEditing) {
             return;
@@ -78,7 +141,7 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
         draftRef.current = docEl ? getTextProps(docEl).text : "";
     }, [isEditing, documentService, element.id]);
 
-    const liveElement = document.elements[element.id] ?? element;
+    const liveElement = isEditing ? document.elements[element.id] ?? element : element;
     const p = getTextProps(liveElement);
     const color = colorValueToCss({ hex: p.color, alpha: 1 });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
@@ -131,6 +194,7 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
     };
 
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const editOpenedAtRef = useRef(0);
 
     const commitAndClose = useCallback(
         (nextText: string) => {
@@ -146,12 +210,22 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
 
     useEffect(() => {
         if (!isEditing) {
+            editOpenedAtRef.current = 0;
             return;
         }
+        editOpenedAtRef.current = performance.now();
         const el = textareaRef.current;
         if (!el) {
+            debugUIDoubleClick("TextRenderer textarea missing", {
+                elementId: element.id,
+                surfaceId: surface.id,
+            });
             return;
         }
+        debugUIDoubleClick("TextRenderer textarea focus", {
+            elementId: element.id,
+            surfaceId: surface.id,
+        });
         el.focus();
         el.select();
     }, [isEditing]);
@@ -165,10 +239,14 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
             if (e.key === "Escape") {
                 e.preventDefault();
                 skipBlurCommitRef.current = true;
+                debugUIDoubleClick("TextRenderer escape close", {
+                    elementId: element.id,
+                    surfaceId: surface.id,
+                });
                 stateService.setInteractionOverride(null);
             }
         },
-        [stateService],
+        [element.id, stateService, surface.id],
     );
 
     const handleTextareaBlur = useCallback(
@@ -177,9 +255,45 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
                 skipBlurCommitRef.current = false;
                 return;
             }
+            const openedMsAgo = editOpenedAtRef.current > 0 ? performance.now() - editOpenedAtRef.current : Infinity;
+            const relatedTarget = e.relatedTarget instanceof Element ? e.relatedTarget : null;
+            const relatedElementNode = relatedTarget?.closest("[data-ui-element-id]") as HTMLElement | null;
+            const relatedInsideSameElement = relatedElementNode?.dataset.uiElementId === element.id;
+            const relatedIsEditable = Boolean(relatedTarget?.closest("textarea, input, [contenteditable='true']"));
+            const isOpeningBlur = openedMsAgo < OPENING_BLUR_GRACE_MS;
+            const shouldKeepEditing = isOpeningBlur || (relatedIsEditable && relatedInsideSameElement);
+
+            if (shouldKeepEditing) {
+                debugUIDoubleClick("TextRenderer ignored transient blur", {
+                    elementId: element.id,
+                    surfaceId: surface.id,
+                    openedMsAgo,
+                    isOpeningBlur,
+                    relatedIsEditable,
+                    relatedInsideSameElement,
+                    relatedTarget: describeDoubleClickTarget(relatedTarget),
+                });
+                if (!relatedInsideSameElement) {
+                    requestAnimationFrame(() => {
+                        const el = textareaRef.current;
+                        if (!el) {
+                            return;
+                        }
+                        el.focus();
+                        el.select();
+                    });
+                }
+                return;
+            }
+            debugUIDoubleClick("TextRenderer blur commit", {
+                elementId: element.id,
+                surfaceId: surface.id,
+                openedMsAgo,
+                relatedTarget: describeDoubleClickTarget(relatedTarget),
+            });
             commitAndClose(e.target.value);
         },
-        [commitAndClose],
+        [commitAndClose, element.id, surface.id],
     );
 
     if (isEditing) {
@@ -205,6 +319,8 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
                             onInput={handleTextareaInput}
                             onBlur={handleTextareaBlur}
                             onKeyDown={handleTextareaKeyDown}
+                            onClick={e => e.stopPropagation()}
+                            onMouseDown={e => e.stopPropagation()}
                         />
                     </div>
                 ) : (
@@ -215,6 +331,8 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
                         onInput={handleTextareaInput}
                         onBlur={handleTextareaBlur}
                         onKeyDown={handleTextareaKeyDown}
+                        onClick={e => e.stopPropagation()}
+                        onMouseDown={e => e.stopPropagation()}
                     />
                 )}
             </div>
@@ -222,7 +340,7 @@ export function TextRenderer({ element, surface, document }: WidgetRendererProps
     }
 
     return (
-        <div style={outerStyle}>
+        <div style={outerStyle} onDoubleClick={handleStartInlineTextEdit}>
             {useEffectShell ? (
                 <div style={effectShellStyle}>
                     <p style={{ ...textBodyStyle, flexShrink: 0 }}>{p.text}</p>

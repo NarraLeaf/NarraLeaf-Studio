@@ -34,7 +34,7 @@ export function useImageCropController(config: ImageCropControllerConfig): Inter
 
     const handlers = useImageCropMoveableHandlers({
         documentService: config.documentService,
-        elementId: override?.elementId ?? "",
+        elementId: match ? override?.elementId ?? "" : "",
         container: primaryTarget,
         imageTarget,
         beginTransform: config.beginTransform,

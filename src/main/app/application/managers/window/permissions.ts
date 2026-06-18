@@ -1,5 +1,6 @@
 import path from "path";
 import { WindowAppType } from "@shared/types/window";
+import { ApiCapability } from "@shared/types/pluginPermissions";
 import type { AppWindow } from "./appWindow";
 
 export type FileSystemAccessMode = "read" | "write";
@@ -28,10 +29,12 @@ type WindowPermissionContext = {
 
 type WindowPermissionDeclaration = {
     fs: (context: WindowPermissionContext) => FileSystemGrant[];
+    api?: (context: WindowPermissionContext) => ApiCapability[];
     runtimeGrants?: RuntimeGrantPolicy;
 };
 
 const noFileSystemAccess = (): FileSystemGrant[] => [];
+const noElevatedAccess = (): ApiCapability[] => [];
 const projectFileSystemAccess = ({ window }: WindowPermissionContext): FileSystemGrant[] => {
     const props = window.getProps();
     if (!("projectPath" in props)) {
@@ -50,13 +53,21 @@ const workspaceImportGrants: RuntimeGrantPolicy = {
     selectDirectory: { mode: "read", recursive: true },
 };
 
+const pluginPermissionElevatedAccess = (): ApiCapability[] => [
+    ApiCapability.PluginPermissionGrant,
+    ApiCapability.PluginTrustGrant,
+    ApiCapability.PluginFileSystemGrant,
+    ApiCapability.PluginInstallApprove,
+];
+
 export const windowPermissionDeclarations: { [T in WindowAppType]: WindowPermissionDeclaration } = {
-    [WindowAppType.Launcher]: { fs: noFileSystemAccess },
-    [WindowAppType.Settings]: { fs: noFileSystemAccess },
-    [WindowAppType.ProjectWizard]: { fs: noFileSystemAccess },
+    [WindowAppType.Launcher]: { fs: noFileSystemAccess, api: noElevatedAccess },
+    [WindowAppType.Settings]: { fs: noFileSystemAccess, api: noElevatedAccess },
+    [WindowAppType.ProjectWizard]: { fs: noFileSystemAccess, api: noElevatedAccess },
     [WindowAppType.Workspace]: { fs: projectFileSystemAccess, runtimeGrants: workspaceImportGrants },
-    [WindowAppType.DevMode]: { fs: projectFileSystemAccess },
-    [WindowAppType.Raw]: { fs: noFileSystemAccess },
+    [WindowAppType.DevMode]: { fs: projectFileSystemAccess, api: noElevatedAccess },
+    [WindowAppType.PluginPermissionPrompt]: { fs: noFileSystemAccess, api: pluginPermissionElevatedAccess },
+    [WindowAppType.Raw]: { fs: noFileSystemAccess, api: noElevatedAccess },
 };
 
 export function getDeclaredFileSystemGrants(window: AppWindow, mode: FileSystemAccessMode): FileSystemGrant[] {
@@ -67,4 +78,17 @@ export function getDeclaredFileSystemGrants(window: AppWindow, mode: FileSystemA
 
 export function getRuntimeGrantPolicy(window: AppWindow, grantType: keyof RuntimeGrantPolicy): RuntimeGrantPolicy[typeof grantType] {
     return windowPermissionDeclarations[window.getWindowType()].runtimeGrants?.[grantType];
+}
+
+export function getDeclaredApiCapabilities(window: AppWindow): ApiCapability[] {
+    return windowPermissionDeclarations[window.getWindowType()].api?.({ window }) ?? [];
+}
+
+export function getDeniedApiCapability(window: AppWindow, required: readonly ApiCapability[] | undefined): ApiCapability | null {
+    if (!required || required.length === 0) {
+        return null;
+    }
+
+    const available = new Set(getDeclaredApiCapabilities(window));
+    return required.find(capability => !available.has(capability)) ?? null;
 }

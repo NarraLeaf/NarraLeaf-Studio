@@ -20,6 +20,7 @@ import {
     type Node,
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
+import { BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE } from "@shared/types/blueprint/graph";
 import {
     applyBlueprintIrConnection,
     createGraphNodeForPalette,
@@ -29,7 +30,6 @@ import { blueprintFlowNodeTypes } from "./nodeTypes";
 import {
     applyBlueprintFlowNodeSelection,
     applyFlowPositionsToIr,
-    blueprintFlowEdgesTopologySignature,
     blueprintIrToFlowEdges,
     blueprintIrToFlowNodes,
     blueprintSelectedNodesDependencyKey,
@@ -38,7 +38,12 @@ import {
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 import { BlueprintFlowZoomControls } from "./components/BlueprintFlowZoomControls";
 import { BlueprintAddNodeMenu } from "../components/BlueprintAddNodeMenu";
-import { generateNextDynamicInputPinId, readDynamicInputPinIds } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
+import {
+    generateNextDynamicInputPinIds,
+    getDynamicInputPinRemovalIds,
+    readDynamicInputPinIds,
+    readDynamicInputPinLabels,
+} from "@/lib/ui-editor/blueprint-nodes/effectivePins";
 import {
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
     type BlueprintInspectorParamSelectOption,
@@ -49,11 +54,23 @@ import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/serv
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
 
+function generateUniqueDynamicPinLabel(existing: Record<string, string>, prefix: string): string {
+    const used = new Set(Object.values(existing).map(label => label.trim()).filter(Boolean));
+    let n = 1;
+    for (;;) {
+        const candidate = `${prefix}${n}`;
+        if (!used.has(candidate)) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
 function buildPlacementPreviewFlowNode(
     nodeType: string,
     position: { x: number; y: number },
     nodeCatalog: IBlueprintNodeCatalogService,
-    memberVariables: Array<{ id: string; name: string }>,
+    memberVariables: BlueprintFlowNodeData["memberVariables"],
 ): Node<BlueprintFlowNodeData> {
     const stub = createGraphNodeForPalette(nodeType, BP_PLACEMENT_PREVIEW_ID);
     return {
@@ -94,7 +111,7 @@ type BlueprintFlowCanvasInnerProps = {
     revision: number;
     /** Bumps React Flow sync when blueprint member variables change (node card dropdowns). */
     blueprintMembersSig: string;
-    blueprintMemberVariables: Array<{ id: string; name: string }>;
+    blueprintMemberVariables: NonNullable<BlueprintFlowNodeData["memberVariables"]>;
     selectedNodeIds: readonly string[];
     onSelectNodeIds: (ids: string[]) => void;
     onCommitIr: (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => void;
@@ -151,15 +168,26 @@ function BlueprintFlowCanvasInner({
                 return;
             }
             const next = { ...(n.params ?? {}) };
-            if (value === undefined || value === "") {
+            if (value === undefined) {
                 delete next[key];
             } else {
                 next[key] = value;
             }
+            if (key === "variableId") {
+                const selectedVariable =
+                    typeof value === "string"
+                        ? blueprintMemberVariables.find(variable => variable.value === value)
+                        : undefined;
+                if (selectedVariable?.valueType) {
+                    next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE] = selectedVariable.valueType;
+                } else {
+                    delete next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
+                }
+            }
             n.params = next;
             commitBlueprintIr(snap);
         },
-        [commitBlueprintIr],
+        [blueprintMemberVariables, commitBlueprintIr],
     );
 
     const patchNodeParamRef = useRef(patchNodeParam);
@@ -185,9 +213,20 @@ function BlueprintFlowCanvasInner({
                 return;
             }
             const params = { ...(n.params ?? {}) };
-            const nextId = generateNextDynamicInputPinId(def, params);
-            const list = [...readDynamicInputPinIds(params, d.storageKey), nextId];
+            const nextIds = generateNextDynamicInputPinIds(def, params);
+            const list = [...readDynamicInputPinIds(params, d.storageKey), ...nextIds];
             params[d.storageKey] = list;
+            if (d.pinLabelParamKey) {
+                const labels = readDynamicInputPinLabels(params, d.pinLabelParamKey);
+                const nextLabels = { ...labels };
+                for (const nextId of nextIds) {
+                    nextLabels[nextId] = generateUniqueDynamicPinLabel(
+                        nextLabels,
+                        d.defaultPinLabelPrefix ?? d.labelPrefix ?? "input",
+                    );
+                }
+                params[d.pinLabelParamKey] = nextLabels;
+            }
             n.params = params;
             commitBlueprintIr(snap);
         },
@@ -209,28 +248,45 @@ function BlueprintFlowCanvasInner({
             if (!readDynamicInputPinIds(n.params, d.storageKey).includes(pinId)) {
                 return;
             }
+            const removalIds = getDynamicInputPinRemovalIds(def, n.params, pinId);
+            const removalIdSet = new Set(removalIds);
             const params = { ...(n.params ?? {}) };
-            const list = readDynamicInputPinIds(params, d.storageKey).filter(id => id !== pinId);
+            const list = readDynamicInputPinIds(params, d.storageKey).filter(id => !removalIdSet.has(id));
             if (list.length > 0) {
                 params[d.storageKey] = list;
             } else {
                 delete params[d.storageKey];
             }
-            delete params[pinId];
+            for (const removalId of removalIds) {
+                delete params[removalId];
+            }
             const openRaw = params[BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY];
             if (Array.isArray(openRaw)) {
-                const nextOpen = openRaw.filter((x): x is string => typeof x === "string" && x !== pinId);
+                const nextOpen = openRaw.filter(
+                    (x): x is string => typeof x === "string" && !removalIdSet.has(x),
+                );
                 if (nextOpen.length > 0) {
                     params[BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY] = nextOpen;
                 } else {
                     delete params[BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY];
                 }
             }
+            if (d.pinLabelParamKey) {
+                const labels = readDynamicInputPinLabels(params, d.pinLabelParamKey);
+                for (const removalId of removalIds) {
+                    delete labels[removalId];
+                }
+                if (Object.keys(labels).length > 0) {
+                    params[d.pinLabelParamKey] = labels;
+                } else {
+                    delete params[d.pinLabelParamKey];
+                }
+            }
             n.params = params;
             snap.edges = (snap.edges ?? []).filter(
                 e =>
-                    !(e.to.nodeId === nodeId && e.to.port === pinId) &&
-                    !(e.from.nodeId === nodeId && e.from.port === pinId),
+                    !(e.to.nodeId === nodeId && removalIdSet.has(e.to.port)) &&
+                    !(e.from.nodeId === nodeId && removalIdSet.has(e.from.port)),
             );
             commitBlueprintIr(snap);
         },
@@ -390,13 +446,7 @@ function BlueprintFlowCanvasInner({
                     return live ? { ...n, position: live.position } : n;
                 });
             });
-            setEdges(prev => {
-                const next = blueprintIrToFlowEdges(snap, nodeCatalog);
-                if (blueprintFlowEdgesTopologySignature(prev) === blueprintFlowEdgesTopologySignature(next)) {
-                    return prev;
-                }
-                return next;
-            });
+            setEdges(blueprintIrToFlowEdges(snap, nodeCatalog));
         } else {
             setNodes(nds => {
                 const withoutPreview = nds.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID);

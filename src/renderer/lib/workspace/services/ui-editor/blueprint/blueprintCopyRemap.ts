@@ -9,11 +9,14 @@ export type SubtreeDuplicateRemapPlan = {
     elementIdMap: Record<string, string>;
     /** Old widgetMain blueprint id → new blueprint id to allocate for the duplicate */
     widgetMainBlueprintIdMap: Record<string, string>;
+    /** Old widgetValue blueprint id to new blueprint id to allocate for the duplicate. */
+    widgetValueBlueprintIdMap: Record<string, string>;
 };
 
 export function planSubtreeDuplicateBlueprintRemap(input: {
     oldElementIds: string[];
     getWidgetMainBlueprintId: (elementId: string) => string | undefined;
+    getWidgetValueBlueprintIds?: (elementId: string) => string[];
     generateId: () => string;
 }): SubtreeDuplicateRemapPlan {
     const elementIdMap: Record<string, string> = {};
@@ -29,5 +32,14 @@ export function planSubtreeDuplicateBlueprintRemap(input: {
         }
     }
 
-    return { elementIdMap, widgetMainBlueprintIdMap };
+    const widgetValueBlueprintIdMap: Record<string, string> = {};
+    for (const elId of input.oldElementIds) {
+        for (const oldBp of input.getWidgetValueBlueprintIds?.(elId) ?? []) {
+            if (oldBp && !widgetValueBlueprintIdMap[oldBp]) {
+                widgetValueBlueprintIdMap[oldBp] = input.generateId();
+            }
+        }
+    }
+
+    return { elementIdMap, widgetMainBlueprintIdMap, widgetValueBlueprintIdMap };
 }

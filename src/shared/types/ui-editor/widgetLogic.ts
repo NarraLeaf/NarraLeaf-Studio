@@ -50,12 +50,153 @@ const INIT_EVENT: WidgetLogicEventDef = {
     headNodeTypes: ["blueprint.event.head.init"],
 };
 
-const CLICK_EVENT: WidgetLogicEventDef = {
-    id: "click",
-    displayName: "Click",
+const DISPLAYABLE_EVENTS: readonly WidgetLogicEventDef[] = [
+    {
+        id: "mouseClick",
+        displayName: "Mouse click",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.mouseClick"],
+    },
+    {
+        id: "mouseDoubleClick",
+        displayName: "Mouse double click",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.mouseDoubleClick"],
+    },
+    {
+        id: "mouseEnter",
+        displayName: "Mouse enter",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.mouseEnter"],
+    },
+    {
+        id: "mouseLeave",
+        displayName: "Mouse leave",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.mouseLeave"],
+    },
+    {
+        id: "mouseMove",
+        displayName: "Mouse move",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.mouseMove"],
+    },
+    {
+        id: "mouseDown",
+        displayName: "Mouse down",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.mouseDown"],
+    },
+    {
+        id: "mouseUp",
+        displayName: "Mouse up",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.mouseUp"],
+    },
+    {
+        id: "mouseWheel",
+        displayName: "Mouse wheel",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.mouseWheel"],
+    },
+    {
+        id: "rightClick",
+        displayName: "Right click",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.rightClick"],
+    },
+    {
+        id: "focus",
+        displayName: "Focus",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.focus"],
+    },
+    {
+        id: "blur",
+        displayName: "Blur",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.blur"],
+    },
+];
+
+const SCROLL_EVENT: WidgetLogicEventDef = {
+    id: "scroll",
+    displayName: "Scroll",
     dispatchKind: "interaction",
-    headNodeTypes: ["blueprint.event.head.click"],
+    headNodeTypes: ["blueprint.event.head.scroll"],
 };
+
+const LIST_ITEM_EVENTS: readonly WidgetLogicEventDef[] = [
+    {
+        id: "itemRender",
+        displayName: "Item render",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.itemRender"],
+    },
+    {
+        id: "itemClick",
+        displayName: "Item click",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.itemClick"],
+    },
+    {
+        id: "itemHover",
+        displayName: "Item hover",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.itemHover"],
+    },
+    {
+        id: "selectionChanged",
+        displayName: "Selection changed",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.selectionChanged"],
+    },
+    {
+        id: "scrollEnd",
+        displayName: "Scroll end",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.scrollEnd"],
+    },
+];
+
+const BROADCAST_EVENTS: readonly WidgetLogicEventDef[] = [
+    {
+        id: "onAnyBroadcast",
+        displayName: "Any broadcast",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.onAnyBroadcast"],
+    },
+    {
+        id: "onBroadcast",
+        displayName: "Broadcast",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.onBroadcast"],
+    },
+];
+
+const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
+    INIT_EVENT,
+    {
+        id: "pageEvent",
+        displayName: "Page event",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.pageEvent"],
+    },
+    ...BROADCAST_EVENTS,
+];
+
+const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
+    INIT_EVENT,
+    ...DISPLAYABLE_EVENTS,
+    ...BROADCAST_EVENTS,
+];
+
+const COLLECTION_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
+    INIT_EVENT,
+    SCROLL_EVENT,
+    ...LIST_ITEM_EVENTS,
+    ...BROADCAST_EVENTS,
+];
 
 const baseCommands: readonly WidgetLogicCommandDef[] = [
     {
@@ -90,7 +231,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.container": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Container logic",
-        events: [INIT_EVENT],
+        events: DISPLAYABLE_WIDGET_EVENTS,
         commands: baseCommands,
         readableState: [
             { id: "visible", displayName: "Visible" },
@@ -98,6 +239,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { id: "variant", displayName: "Variant" },
         ],
         writableProps: [
+            { propPath: "variant", displayName: "Variant" },
             { propPath: "appearance", displayName: "Appearance" },
             { propPath: "clipContent", displayName: "Clip content" },
         ],
@@ -105,26 +247,47 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.text": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Text logic",
-        events: [INIT_EVENT],
+        events: DISPLAYABLE_WIDGET_EVENTS,
         commands: [
             ...baseCommands,
             {
                 id: "setText",
                 displayName: "Set text",
-                availability: "planned",
+                capabilityId: "widget.setTextProperties",
+                availability: "available",
             },
         ],
         readableState: [
             { id: "visible", displayName: "Visible" },
             { id: "enabled", displayName: "Enabled" },
             { id: "text", displayName: "Text" },
+            { id: "fontAssetId", displayName: "Font asset" },
+            { id: "fontSize", displayName: "Font size" },
+            { id: "fontWeight", displayName: "Font weight" },
+            { id: "color", displayName: "Text color" },
+            { id: "textAlign", displayName: "Text align" },
+            { id: "textVerticalAlign", displayName: "Vertical align" },
+            { id: "lineHeight", displayName: "Line height" },
+            { id: "textWrapMode", displayName: "Wrap mode" },
+            { id: "effects", displayName: "Effects" },
         ],
-        writableProps: [{ propPath: "text", displayName: "Text" }],
+        writableProps: [
+            { propPath: "text", displayName: "Text" },
+            { propPath: "fontAssetId", displayName: "Font asset" },
+            { propPath: "fontSize", displayName: "Font size" },
+            { propPath: "fontWeight", displayName: "Font weight" },
+            { propPath: "color", displayName: "Text color" },
+            { propPath: "textAlign", displayName: "Text align" },
+            { propPath: "textVerticalAlign", displayName: "Vertical align" },
+            { propPath: "lineHeight", displayName: "Line height" },
+            { propPath: "textWrapMode", displayName: "Wrap mode" },
+            { propPath: "effects", displayName: "Effects" },
+        ],
     },
     "nl.image": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Image logic",
-        events: [INIT_EVENT],
+        events: DISPLAYABLE_WIDGET_EVENTS,
         commands: [
             ...baseCommands,
             {
@@ -143,7 +306,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.button": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Button logic",
-        events: [INIT_EVENT, CLICK_EVENT],
+        events: DISPLAYABLE_WIDGET_EVENTS,
         commands: [
             ...baseCommands,
             {
@@ -159,15 +322,16 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { id: "variant", displayName: "Variant" },
         ],
         writableProps: [
+            { propPath: "variant", displayName: "Variant" },
             { propPath: "label", displayName: "Label" },
             { propPath: "appearance", displayName: "Appearance" },
             { propPath: "interactionDisabled", displayName: "Interaction disabled" },
         ],
     },
     "nl.list": {
-        supportsPrivateBlueprint: false,
+        supportsPrivateBlueprint: true,
         blueprintLabel: "List logic",
-        events: [],
+        events: COLLECTION_WIDGET_EVENTS,
         commands: [
             {
                 id: "refreshItems",
@@ -175,8 +339,37 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
                 availability: "planned",
             },
         ],
-        readableState: [{ id: "itemCount", displayName: "Item count" }],
-        writableProps: [{ propPath: "previewCount", displayName: "Preview count" }],
+        readableState: [
+            { id: "itemCount", displayName: "Item count" },
+            { id: "scrollOffset", displayName: "Scroll offset" },
+            { id: "selectedIndex", displayName: "Selected index" },
+        ],
+        writableProps: [
+            { propPath: "itemsBinding", displayName: "Items binding" },
+            { propPath: "previewCount", displayName: "Preview count" },
+            { propPath: "selectedIndex", displayName: "Selected index" },
+        ],
+    },
+    "nl.frame": {
+        supportsPrivateBlueprint: true,
+        blueprintLabel: "Page logic",
+        events: FRAME_EVENTS,
+        commands: [
+            ...baseCommands,
+            {
+                id: "setPage",
+                displayName: "Set page",
+                availability: "planned",
+            },
+        ],
+        readableState: [
+            { id: "targetSurfaceId", displayName: "Target page" },
+            { id: "params", displayName: "Params" },
+        ],
+        writableProps: [
+            { propPath: "targetSurfaceId", displayName: "Target page" },
+            { propPath: "params", displayName: "Params" },
+        ],
     },
 };
 

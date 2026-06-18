@@ -6,6 +6,7 @@ import { Button } from "./Button";
 export interface SelectOption {
     value: string | number;
     label: string;
+    secondaryLabel?: string;
     disabled?: boolean;
     icon?: React.ReactNode;
 }
@@ -27,6 +28,10 @@ export interface SelectProps {
     portalMenu?: boolean;
     /** Where to open the menu; "auto" picks based on viewport space when not portaled, or when portaled. */
     menuPlacement?: SelectMenuPlacement;
+    /** Extra class names applied to the dropdown menu panel. */
+    menuClassName?: string;
+    /** Extra data attributes applied to the dropdown menu panel. Useful when a portaled menu belongs to another surface. */
+    menuDataAttributes?: Record<`data-${string}`, string | undefined>;
 }
 
 const sizeStyles = {
@@ -61,6 +66,8 @@ export function Select({
     multiple = false,
     portalMenu = false,
     menuPlacement = "auto",
+    menuClassName = "",
+    menuDataAttributes,
 }: SelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     const selectRef = useRef<HTMLDivElement>(null);
@@ -191,7 +198,6 @@ export function Select({
     }, [isOpen, portalMenu, menuPlacement, options.length, value]);
 
     const selectedOption = options.find(option => option.value === value);
-    const displayValue = selectedOption ? selectedOption.label : placeholder;
 
     const handleOptionClick = (option: SelectOption) => {
         if (option.disabled) return;
@@ -217,12 +223,13 @@ export function Select({
             ref={dropdownRef}
             className={
                 portalMenu
-                    ? "bg-[#1e1f22] border border-white/20 rounded-md shadow-lg overflow-y-auto"
+                    ? `bg-[#1e1f22] border border-white/20 rounded-md shadow-lg overflow-y-auto ${menuClassName}`
                     : `absolute z-50 w-full left-0 bg-[#1e1f22] border border-white/20 rounded-md shadow-lg max-h-60 overflow-y-auto ${
                           openMenuDown ? "top-full mt-1" : "bottom-full mb-1"
-                      }`
+                      } ${menuClassName}`
             }
             style={portalMenu ? portalMenuStyle : undefined}
+            {...menuDataAttributes}
         >
             {options.map((option) => (
                 <button
@@ -247,7 +254,12 @@ export function Select({
                     {option.icon && (
                         <div className="flex-shrink-0 text-gray-400">{option.icon}</div>
                     )}
-                    <span className="truncate">{option.label}</span>
+                    <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                        <span className="truncate">{option.label}</span>
+                        {option.secondaryLabel ? (
+                            <span className="shrink-0 text-xs text-gray-500">{option.secondaryLabel}</span>
+                        ) : null}
+                    </span>
                 </button>
             ))}
         </div>
@@ -269,11 +281,16 @@ export function Select({
                 onClick={() => !disabled && setIsOpen(!isOpen)}
             >
                 <span
-                    className={`min-w-0 flex-1 truncate text-left ${
+                    className={`flex min-w-0 flex-1 items-baseline text-left ${
                         selectedOption ? "text-gray-200" : "text-gray-400"
                     }`}
                 >
-                    {displayValue}
+                    <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
+                    {selectedOption?.secondaryLabel ? (
+                        <span className="ml-1.5 shrink-0 text-[10px] text-gray-500">
+                            {selectedOption.secondaryLabel}
+                        </span>
+                    ) : null}
                 </span>
                 <ChevronDown
                     className={`h-4 w-4 shrink-0 text-gray-400 transition-transform duration-150 ${

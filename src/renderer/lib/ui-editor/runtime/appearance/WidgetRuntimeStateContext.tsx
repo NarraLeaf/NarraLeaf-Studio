@@ -6,6 +6,7 @@ import {
 } from "./SystemInteractionState";
 
 const WidgetRuntimeStateContext = createContext<WidgetRuntimeStateStore | null>(null);
+const WidgetRuntimeScopeContext = createContext<string | null>(null);
 const EMPTY_UNSUBSCRIBE = () => () => {};
 const EMPTY_ELEMENT_SIGNATURE = "0|0|0|0|";
 const STATIC_WIDGET_RUNTIME_ELEMENT_STATE = Object.freeze({
@@ -30,8 +31,24 @@ export function WidgetRuntimeStateProvider(props: WidgetRuntimeStateProviderProp
     return <WidgetRuntimeStateContext.Provider value={store}>{children}</WidgetRuntimeStateContext.Provider>;
 }
 
+export function WidgetRuntimeScopeProvider(props: {
+    runtimeScopeId?: string | null;
+    children: React.ReactNode;
+}): React.ReactElement {
+    return (
+        <WidgetRuntimeScopeContext.Provider value={props.runtimeScopeId ?? null}>
+            {props.children}
+        </WidgetRuntimeScopeContext.Provider>
+    );
+}
+
 export function useWidgetRuntimeStateStore(): WidgetRuntimeStateStore | null {
     return useContext(WidgetRuntimeStateContext);
+}
+
+export function useWidgetRuntimeElementKey(elementId: string): string {
+    const runtimeScopeId = useContext(WidgetRuntimeScopeContext);
+    return runtimeScopeId ? `${runtimeScopeId}\0${elementId}` : elementId;
 }
 
 /** Subscribe to any widget-runtime change (hover/active/focus/variant override). */
@@ -77,10 +94,11 @@ export function useWidgetRuntimeElementState(
     interactionDisabled = false,
 ): WidgetRuntimeElementState {
     const store = useWidgetRuntimeStateStore();
+    const runtimeElementKey = useWidgetRuntimeElementKey(elementId);
     const signature = useSyncExternalStore(
         store?.subscribe ?? EMPTY_UNSUBSCRIBE,
-        () => buildElementSignature(store, elementId, interactionDisabled),
-        () => buildElementSignature(store, elementId, interactionDisabled),
+        () => buildElementSignature(store, runtimeElementKey, interactionDisabled),
+        () => buildElementSignature(store, runtimeElementKey, interactionDisabled),
     );
 
     return useMemo(() => {
@@ -89,8 +107,8 @@ export function useWidgetRuntimeElementState(
             return STATIC_WIDGET_RUNTIME_ELEMENT_STATE;
         }
         return {
-            variantOverrideId: store.getVariantOverride(elementId) ?? null,
-            signals: store.getSignalsForElement(elementId, interactionDisabled),
+            variantOverrideId: store.getVariantOverride(runtimeElementKey) ?? null,
+            signals: store.getSignalsForElement(runtimeElementKey, interactionDisabled),
         };
-    }, [elementId, interactionDisabled, signature, store]);
+    }, [interactionDisabled, runtimeElementKey, signature, store]);
 }

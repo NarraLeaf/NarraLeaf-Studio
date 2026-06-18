@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode } from "react";
 import type { UIDocument, UISurface, UIElement } from "@shared/types/ui-editor/document";
+import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "./types";
 
 export type ElementRendererProps = {
@@ -8,6 +9,22 @@ export type ElementRendererProps = {
     document: UIDocument;
     hostAdapter: UIHostAdapter;
     children?: ReactNode;
+    instanceKey?: string;
+    renderChildren?: (options?: {
+        childrenIds?: string[];
+        listItemScope?: UIListItemScope | null;
+        instanceKey?: string;
+    }) => ReactNode[];
+    renderSurface?: (options: {
+        targetSurfaceId: string | null;
+        frameElement: UIElement;
+        params?: Record<string, unknown>;
+        instanceKey?: string;
+    }) => ReactNode;
+    runtimeData?: {
+        surfaceState?: { get(key: string): unknown };
+        globalState?: { get(key: string): unknown };
+    };
     /** Passed by the workspace editor bridge; omitted in Dev Mode and other hosts. */
     useAppearanceInspectorPreview?: boolean;
 };
