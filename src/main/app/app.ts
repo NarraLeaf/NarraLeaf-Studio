@@ -209,4 +209,40 @@ export class App extends BaseApp {
 
         return window;
     }
+
+    async launchPluginPermissionPrompt(
+        parent: AppWindow,
+        props: WindowProps[WindowAppType.PluginPermissionPrompt],
+        options: Partial<Electron.BrowserWindowConstructorOptions> = {},
+    ): Promise<AppWindow<WindowAppType.PluginPermissionPrompt>> {
+        const config: WindowConfig<WindowAppType.PluginPermissionPrompt> = {
+            windowType: WindowAppType.PluginPermissionPrompt,
+            isolated: true,
+            autoFocus: true,
+            preload: this.getPreloadScript(),
+            options: {
+                modal: true,
+                parent: parent.win,
+                resizable: false,
+                minimizable: false,
+                maximizable: false,
+                width: 440,
+                height: 320,
+                center: true,
+                frame: false,
+                titleBarStyle: "hidden",
+                backgroundColor: "#111318",
+                show: false,
+                ...options,
+            },
+        };
+        const window = new AppWindow<WindowAppType.PluginPermissionPrompt>(this, config, props);
+        window.setTitle("Plugin Permission - NarraLeaf Studio");
+        this.applyWindowIcon(window);
+        window.showWhenReady();
+
+        await window.loadFile(this.getAppEntry(WindowAppType.PluginPermissionPrompt));
+
+        return window;
+    }
 }

@@ -14,6 +14,7 @@ export class WindowInstance {
             webPreferences: this.getWebPreference(config),
             ...config.options,
         });
+        this.applyNativeWindowControlVisibility();
     }
 
     public getBrowserWindow(): BrowserWindow {
@@ -33,4 +34,10 @@ export class WindowInstance {
             preload: config.preload ?? undefined,
         };
     }
-} 
+
+    private applyNativeWindowControlVisibility(): void {
+        if (process.platform === "darwin") {
+            this.browserWindow.setWindowButtonVisibility(false);
+        }
+    }
+}

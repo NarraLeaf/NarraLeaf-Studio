@@ -3,7 +3,45 @@
  * Comments in English per project convention.
  */
 
+import {
+    BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
+    BLUEPRINT_NODE_TYPE_LOCAL_SET,
+} from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "./BlueprintNodeRegistry";
+
+function readParamString(params: Record<string, unknown> | undefined, key: string): string | undefined {
+    const value = params?.[key];
+    return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function resolvePinValueType(input: {
+    nodeType: string;
+    portId: string;
+    pinValueType?: string;
+    params?: Record<string, unknown>;
+}): string | undefined {
+    if (
+        (input.nodeType === BLUEPRINT_NODE_TYPE_LOCAL_GET && input.portId === "value") ||
+        (input.nodeType === BLUEPRINT_NODE_TYPE_LOCAL_SET && input.portId === "value")
+    ) {
+        return readParamString(input.params, BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE) ?? input.pinValueType;
+    }
+    return input.pinValueType;
+}
+
+function areDataValueTypesCompatible(sourceType: string | undefined, targetType: string | undefined): boolean {
+    if (!sourceType || !targetType) {
+        return true;
+    }
+    if (sourceType === targetType) {
+        return true;
+    }
+    if (targetType === "string" && (sourceType === "integer" || sourceType === "float")) {
+        return true;
+    }
+    return sourceType === "any" || targetType === "any";
+}
 
 export function isValidBlueprintPinConnection(params: {
     sourceType: string;
@@ -23,12 +61,20 @@ export function isValidBlueprintPinConnection(params: {
     if (outPin.semantic !== inPin.semantic) {
         return false;
     }
-    if (outPin.semantic === "data" && outPin.valueType && inPin.valueType && outPin.valueType !== inPin.valueType) {
-        // `json` / `any` are wildcards for polymorphic or literal outputs (e.g. Literal → Branch condition).
-        const wild = new Set(["json", "any"]);
-        if (!wild.has(outPin.valueType) && !wild.has(inPin.valueType)) {
-            return false;
-        }
+    if (outPin.semantic === "data") {
+        const sourceValueType = resolvePinValueType({
+            nodeType: params.sourceType,
+            portId: params.sourcePort,
+            pinValueType: outPin.valueType,
+            params: params.sourceParams,
+        });
+        const targetValueType = resolvePinValueType({
+            nodeType: params.targetType,
+            portId: params.targetPort,
+            pinValueType: inPin.valueType,
+            params: params.targetParams,
+        });
+        return areDataValueTypesCompatible(sourceValueType, targetValueType);
     }
     return true;
 }

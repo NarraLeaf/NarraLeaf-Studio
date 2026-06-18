@@ -19,7 +19,7 @@ import {
     uiEditorDeleteSelection,
     uiEditorDuplicateSelection,
     uiEditorGroupIntoLeaderContainer,
-    uiEditorPaste,
+    uiEditorPasteAfterSelection,
     uiEditorSelectAllInSurface,
 } from "@/lib/ui-editor/commands/uiEditorCommands";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
@@ -94,20 +94,8 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             if (!documentService || !localBlueprint || !stateService || isTypingInField()) {
                 return;
             }
-            const sel = stateService.getSelection();
-            const data = sel.type === "element" ? sel.data : null;
-            const primary =
-                data && (data as UIElementSelection).editor === "ui" && (data as UIElementSelection).surfaceId === surfaceId
-                    ? ((data as UIElementSelection).primaryId ??
-                      (data as UIElementSelection).elementIds[(data as UIElementSelection).elementIds.length - 1] ??
-                      null)
-                    : null;
-            // Do not pass last context-menu hit: it is stale after the menu closes and would paste
-            // into the wrong container (hit wins over primary in resolveInsertTargetParent).
-            uiEditorPaste(documentService, localBlueprint, stateService, surfaceId, {
-                hitElementId: null,
-                primaryElementId: primary,
-            });
+            const s = getUiSelection(stateService, surfaceId);
+            uiEditorPasteAfterSelection(documentService, localBlueprint, stateService, surfaceId, s);
         };
         const duplicate = () => {
             if (!documentService || !localBlueprint || !stateService || isTypingInField()) {

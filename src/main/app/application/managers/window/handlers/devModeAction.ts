@@ -109,7 +109,7 @@ export class DevModeOpenBlueprintInWorkspaceHandler extends IPCHandler<IPCEventT
         if (!pathsEqual(props.projectPath, data.projectPath)) {
             return this.failed("Project mismatch");
         }
-        if (data.ownerKind !== "surfaceMain" && data.ownerKind !== "widgetMain") {
+        if (data.ownerKind !== "surfaceMain" && data.ownerKind !== "widgetMain" && data.ownerKind !== "widgetValue") {
             return this.failed("Unsupported owner");
         }
 

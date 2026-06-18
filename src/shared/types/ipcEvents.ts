@@ -6,6 +6,7 @@ import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbilit
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import { DevModeBundle, DevModeEntry, DevModeStatus } from "./devMode";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
+import type { PluginPermissionGrantPayload, PluginPermissionGrantResult, PluginPermissionPromptResult } from "./pluginPermissions";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -69,6 +70,9 @@ export enum IPCEventType {
     devModeControlError = "devMode.control.error",
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
     devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
+
+    pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
+    pluginPermissionGrant = "plugin.permission.grant",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -195,7 +199,7 @@ export type IPCEvents = {
         },
         response: void;
     };
-} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents;
+} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPluginPermissionEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -559,5 +563,22 @@ export type IPCDevModeEvents = {
             projectPath: string;
         };
         response: void;
+    };
+};
+
+export type IPCPluginPermissionEvents = {
+    [IPCEventType.pluginPermissionPromptLaunch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            props: WindowProps[WindowAppType.PluginPermissionPrompt];
+        },
+        response: PluginPermissionPromptResult;
+    };
+    [IPCEventType.pluginPermissionGrant]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: PluginPermissionGrantPayload,
+        response: PluginPermissionGrantResult;
     };
 };

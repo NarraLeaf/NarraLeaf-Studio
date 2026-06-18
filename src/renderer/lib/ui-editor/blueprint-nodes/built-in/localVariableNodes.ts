@@ -24,7 +24,7 @@ export const localVariableBlueprintNodes: BlueprintNodeDef[] = [
                 id: "value",
                 kind: "input",
                 semantic: "data",
-                valueType: "json",
+                valueType: "any",
                 label: "Value",
             },
         ],
@@ -40,6 +40,12 @@ export const localVariableBlueprintNodes: BlueprintNodeDef[] = [
                 "value",
                 ctx.params,
                 ctx.blueprintLocals,
+                0,
+                {
+                    hostAdapter: ctx.hostAdapter,
+                    eventPayload: ctx.eventPayload,
+                    executionOwner: ctx.executionOwner,
+                },
             );
             return { nextPort: "next" };
         },
@@ -56,7 +62,7 @@ export const localVariableBlueprintNodes: BlueprintNodeDef[] = [
                 id: "value",
                 kind: "output",
                 semantic: "data",
-                valueType: "json",
+                valueType: "any",
                 label: "Value",
             },
         ],

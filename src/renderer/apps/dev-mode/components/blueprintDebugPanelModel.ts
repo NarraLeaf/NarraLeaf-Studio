@@ -29,64 +29,27 @@ function isBlueprintInSurfaceScope(bp: Blueprint, scope: SurfaceElementScope): b
     if (owner.kind === "surfaceMain") {
         return scope.surfaceIds.has(owner.surfaceId);
     }
-    if (owner.kind === "widgetMain") {
+    if (owner.kind === "widgetMain" || owner.kind === "widgetValue") {
         return scope.elementIdsBySurfaceId.get(owner.surfaceId)?.has(owner.elementId) === true;
     }
     return false;
 }
 
 export function buildBlueprintDevToolsSurfaceScope(document: UIDocument, activeSurfaceId: string): SurfaceElementScope {
-    const surfaceById = new Map(document.surfaces.map(surface => [surface.id, surface]));
-    const activeSurface = surfaceById.get(activeSurfaceId);
+    const activeSurface = document.surfaces.find(surface => surface.id === activeSurfaceId);
     const surfaceIds = new Set<string>();
     const elementIdsBySurfaceId = new Map<string, Set<string>>();
 
-    const includeSurface = (surface: UISurface, includeLinkedAppRoot: boolean) => {
+    const includeSurface = (surface: UISurface) => {
         surfaceIds.add(surface.id);
         addSurfaceOwnElements(document, elementIdsBySurfaceId, surface);
-        if (includeLinkedAppRoot && surface.kind === "stageSurface" && surface.link?.kind === "appSurface") {
-            const linked = surfaceById.get(surface.link.surfaceId);
-            if (linked?.kind === "appSurface") {
-                surfaceIds.add(linked.id);
-                addSurfaceOwnElements(document, elementIdsBySurfaceId, linked);
-                addLinkedElementsToStageScope(document, elementIdsBySurfaceId, surface.id, linked.rootElementId);
-            }
-        }
     };
 
     if (activeSurface) {
-        includeSurface(activeSurface, true);
-    }
-
-    const appSurfaceIds = new Set<string>();
-    if (activeSurface?.kind === "appSurface") {
-        appSurfaceIds.add(activeSurface.id);
-    }
-    if (activeSurface?.kind === "stageSurface" && activeSurface.link?.kind === "appSurface") {
-        appSurfaceIds.add(activeSurface.link.surfaceId);
-    }
-
-    for (const surface of document.surfaces) {
-        if (
-            surface.kind === "stageSurface" &&
-            surface.id !== activeSurfaceId &&
-            isMountedStageSurfaceForApp(surface, appSurfaceIds)
-        ) {
-            includeSurface(surface, false);
-        }
+        includeSurface(activeSurface);
     }
 
     return { surfaceIds, elementIdsBySurfaceId };
-}
-
-function isMountedStageSurfaceForApp(surface: UISurface, appSurfaceIds: ReadonlySet<string>): boolean {
-    if (surface.kind !== "stageSurface" || surface.link?.kind !== "appSurface") {
-        return false;
-    }
-    if (!appSurfaceIds.has(surface.link.surfaceId)) {
-        return false;
-    }
-    return surface.mount.kind !== "slot" || surface.mount.slotId !== "none";
 }
 
 function addSurfaceOwnElements(
@@ -95,15 +58,6 @@ function addSurfaceOwnElements(
     surface: UISurface,
 ): void {
     addElementSubtree(document, getOrCreateElementIdSet(elementIdsBySurfaceId, surface.id), surface.rootElementId);
-}
-
-function addLinkedElementsToStageScope(
-    document: UIDocument,
-    elementIdsBySurfaceId: Map<string, Set<string>>,
-    stageSurfaceId: string,
-    linkedRootElementId: UIElementId,
-): void {
-    addElementSubtree(document, getOrCreateElementIdSet(elementIdsBySurfaceId, stageSurfaceId), linkedRootElementId);
 }
 
 function getOrCreateElementIdSet(map: Map<string, Set<string>>, surfaceId: string): Set<string> {

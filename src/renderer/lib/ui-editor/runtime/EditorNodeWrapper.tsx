@@ -1,7 +1,13 @@
 import React, { useCallback, useMemo } from "react";
-import type { CSSProperties, MouseEvent } from "react";
+import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
-import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import {
+    useWidgetRuntimeElementKey,
+    useWidgetRuntimeStateStore,
+} from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
+import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 
 export type EditorNodeLayoutMode = "absolute" | "flow";
 
@@ -12,8 +18,34 @@ type EditorNodeWrapperProps = {
     /** Flow children are laid out by a flex parent (`nl.container` stack/scroll or `nl.list`); skip absolute x/y. */
     layoutMode?: EditorNodeLayoutMode;
     styleOverrides?: CSSProperties;
+    hostAdapter?: UIHostAdapter;
+    interactive?: boolean;
     children?: React.ReactNode;
 };
+
+function eventTargetElement(target: EventTarget | null): Element | null {
+    if (target instanceof Element) {
+        return target;
+    }
+    if (target instanceof Node) {
+        return target.parentElement;
+    }
+    return null;
+}
+
+function eventTargetNode(target: EventTarget | null, ownerDocument: Document): Node | null {
+    if (!target) {
+        return null;
+    }
+    if (typeof Node !== "undefined" && target instanceof Node) {
+        return target;
+    }
+    const viewNode = ownerDocument.defaultView?.Node;
+    if (viewNode && target instanceof viewNode) {
+        return target;
+    }
+    return null;
+}
 
 export function EditorNodeWrapper({
     element,
@@ -21,25 +53,160 @@ export function EditorNodeWrapper({
     isRoot = false,
     layoutMode = "absolute",
     styleOverrides,
+    hostAdapter,
+    interactive = true,
     children,
 }: EditorNodeWrapperProps) {
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
+    const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
+    const blueprintRuntime = hostAdapter?.blueprintRuntime;
 
-    const onMouseEnter = useCallback(() => {
-        widgetRuntimeStore?.setHoverTarget(element.id);
-    }, [widgetRuntimeStore, element.id]);
+    const isDirectElementEvent = useCallback(
+        (target: EventTarget | null) => shouldHandleBlueprintElementEvent(target, element.id),
+        [element.id],
+    );
 
-    const onMouseOut = useCallback(
-        (e: MouseEvent<HTMLDivElement>) => {
+    const dispatchWidgetEvent = useCallback(
+        (eventName: string, target: EventTarget | null, payload?: Record<string, unknown>) => {
+            if (!interactive || !blueprintRuntime || !isDirectElementEvent(target)) {
+                return false;
+            }
+            if (!getWidgetLogicEvent(element.type, eventName)) {
+                return false;
+            }
+            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName, payload);
+            return true;
+        },
+        [blueprintRuntime, element.id, element.type, interactive, isDirectElementEvent],
+    );
+
+    const localMousePayload = useCallback(
+        (
+            e:
+                | MouseEvent<HTMLDivElement>
+                | PointerEvent<HTMLDivElement>
+                | WheelEvent<HTMLDivElement>,
+        ): Record<string, number> => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const width = Math.max(1, Math.abs(layout.width));
+            const height = Math.max(1, Math.abs(layout.height));
+            const scaleX = rect.width > 0 ? width / rect.width : 1;
+            const scaleY = rect.height > 0 ? height / rect.height : 1;
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY,
+            };
+        },
+        [layout.height, layout.width],
+    );
+
+    const onPointerEnter = useCallback((e: PointerEvent<HTMLDivElement>) => {
+        if (isDirectElementEvent(e.target)) {
+            widgetRuntimeStore?.setHoverTarget(runtimeElementKey);
+        }
+        dispatchWidgetEvent("mouseEnter", e.target, localMousePayload(e));
+    }, [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore]);
+
+    const onPointerLeave = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => {
             if (!widgetRuntimeStore) {
+                dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e));
                 return;
             }
             const related = e.relatedTarget;
-            if (!related || !e.currentTarget.contains(related as Node)) {
-                widgetRuntimeStore.clearHoverIf(element.id);
+            const relatedNode = eventTargetNode(related, e.currentTarget.ownerDocument);
+            if (!relatedNode || !e.currentTarget.contains(relatedNode)) {
+                widgetRuntimeStore.clearHoverIf(runtimeElementKey);
+                widgetRuntimeStore.setActivePointerTarget(null);
+                dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e));
             }
         },
-        [widgetRuntimeStore, element.id]
+        [dispatchWidgetEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore],
+    );
+
+    const onPointerDown = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => {
+            if (isDirectElementEvent(e.target)) {
+                widgetRuntimeStore?.setActivePointerTarget(runtimeElementKey);
+            }
+            dispatchWidgetEvent("mouseDown", e.target, { ...localMousePayload(e), button: e.button });
+        },
+        [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore],
+    );
+
+    const onPointerUp = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => {
+            if (isDirectElementEvent(e.target)) {
+                widgetRuntimeStore?.setActivePointerTarget(null);
+            }
+            dispatchWidgetEvent("mouseUp", e.target, { ...localMousePayload(e), button: e.button });
+        },
+        [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, widgetRuntimeStore],
+    );
+
+    const onPointerCancel = useCallback(() => {
+        widgetRuntimeStore?.setActivePointerTarget(null);
+    }, [widgetRuntimeStore]);
+
+    const onPointerMove = useCallback(
+        (e: PointerEvent<HTMLDivElement>) => {
+            dispatchWidgetEvent("mouseMove", e.target, localMousePayload(e));
+        },
+        [dispatchWidgetEvent, localMousePayload],
+    );
+
+    const onClick = useCallback(
+        (e: MouseEvent<HTMLDivElement>) => {
+            dispatchWidgetEvent("mouseClick", e.target, localMousePayload(e));
+        },
+        [dispatchWidgetEvent, localMousePayload],
+    );
+
+    const onDoubleClick = useCallback(
+        (e: MouseEvent<HTMLDivElement>) => {
+            dispatchWidgetEvent("mouseDoubleClick", e.target, localMousePayload(e));
+        },
+        [dispatchWidgetEvent, localMousePayload],
+    );
+
+    const onContextMenu = useCallback(
+        (e: MouseEvent<HTMLDivElement>) => {
+            if (dispatchWidgetEvent("rightClick", e.target, localMousePayload(e))) {
+                e.preventDefault();
+            }
+        },
+        [dispatchWidgetEvent, localMousePayload],
+    );
+
+    const onWheel = useCallback(
+        (e: WheelEvent<HTMLDivElement>) => {
+            dispatchWidgetEvent("mouseWheel", e.target, {
+                ...localMousePayload(e),
+                deltaX: e.deltaX,
+                deltaY: e.deltaY,
+            });
+        },
+        [dispatchWidgetEvent, localMousePayload],
+    );
+
+    const onFocus = useCallback(
+        (e: FocusEvent<HTMLDivElement>) => {
+            if (isDirectElementEvent(e.target)) {
+                widgetRuntimeStore?.setFocusedTarget(runtimeElementKey);
+            }
+            dispatchWidgetEvent("focus", e.target);
+        },
+        [dispatchWidgetEvent, isDirectElementEvent, runtimeElementKey, widgetRuntimeStore],
+    );
+
+    const onBlur = useCallback(
+        (e: FocusEvent<HTMLDivElement>) => {
+            if (isDirectElementEvent(e.target)) {
+                widgetRuntimeStore?.setFocusedTarget(null);
+            }
+            dispatchWidgetEvent("blur", e.target);
+        },
+        [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore],
     );
 
     const containerStyle = useMemo<CSSProperties>(() => {
@@ -83,11 +250,21 @@ export function EditorNodeWrapper({
 
     return (
         <div
-            data-ui-element-id={element.id}
-            className={`ui-editor-node ${isRoot ? "ui-editor-node-root" : ""}`}
+            data-ui-element-id={interactive ? element.id : undefined}
+            className={`${interactive ? "ui-editor-node" : "ui-editor-node-preview"} ${isRoot ? "ui-editor-node-root" : ""}`}
             style={containerStyle}
-            onMouseEnter={widgetRuntimeStore ? onMouseEnter : undefined}
-            onMouseOut={widgetRuntimeStore ? onMouseOut : undefined}
+            onPointerEnter={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerEnter : undefined}
+            onPointerLeave={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerLeave : undefined}
+            onPointerDown={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerDown : undefined}
+            onPointerUp={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerUp : undefined}
+            onPointerCancel={interactive && widgetRuntimeStore ? onPointerCancel : undefined}
+            onPointerMove={interactive && blueprintRuntime ? onPointerMove : undefined}
+            onClick={interactive && blueprintRuntime ? onClick : undefined}
+            onDoubleClick={interactive && blueprintRuntime ? onDoubleClick : undefined}
+            onContextMenu={interactive && blueprintRuntime ? onContextMenu : undefined}
+            onWheel={interactive && blueprintRuntime ? onWheel : undefined}
+            onFocus={interactive && (widgetRuntimeStore || blueprintRuntime) ? onFocus : undefined}
+            onBlur={interactive && (widgetRuntimeStore || blueprintRuntime) ? onBlur : undefined}
         >
             {children}
         </div>

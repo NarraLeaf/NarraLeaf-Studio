@@ -1,14 +1,38 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import { truncateDebugEventMessage } from "./DebugBridge";
 import type { UIDocument } from "@shared/types/ui-editor/document";
+import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
 import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
+import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
+import type {
+    TextAlign,
+    TextVerticalAlign,
+    TextWidgetProps,
+    TextWrapMode,
+} from "@/lib/ui-editor/widget-modules/builtin/text/types";
 
 export type DevModeWidgetRuntimePatch = {
     visible?: boolean;
     enabled?: boolean;
 };
+
+export type BlueprintTextProperties = Pick<
+    TextWidgetProps,
+    | "text"
+    | "fontAssetId"
+    | "fontSize"
+    | "fontWeight"
+    | "color"
+    | "textAlign"
+    | "textVerticalAlign"
+    | "lineHeight"
+    | "textWrapMode"
+    | "effects"
+>;
+
+export type BlueprintTextPropertiesPatch = Partial<BlueprintTextProperties>;
 
 export type BlueprintHostApiRuntime = {
     navigation: {
@@ -20,6 +44,8 @@ export type BlueprintHostApiRuntime = {
         setEnabled: (elementId: string, enabled: boolean) => Promise<void>;
         /** `null` clears runtime override and restores authored default variant resolution. */
         setVariant: (elementId: string, variantId: string | null) => Promise<void>;
+        getTextProperties: (elementId: string) => BlueprintTextProperties;
+        setTextProperties: (elementId: string, patch: BlueprintTextPropertiesPatch) => Promise<void>;
     };
     state: {
         get: (scope: string, key: string) => unknown;
@@ -28,6 +54,10 @@ export type BlueprintHostApiRuntime = {
     persistence: {
         get: (key: string) => Promise<unknown>;
         set: (key: string, value: unknown) => Promise<void>;
+    };
+    frame: {
+        getParam: (key: string) => unknown;
+        emit: (eventName: string, data: unknown) => Promise<void>;
     };
     devtools: {
         log: (level: string, message: string) => void;
@@ -38,6 +68,9 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     document: UIDocument;
     scope: ScopeStoreBridge;
     activeSurfaceId: string;
+    runtimeScopeId?: string;
+    frameParams?: Record<string, unknown>;
+    onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string) => void;
     onCloseLayer: () => void;
@@ -69,6 +102,121 @@ function assertAppearanceVariantId(document: UIDocument, elementId: string, vari
     }
 }
 
+function assertTextElement(document: UIDocument, elementId: string) {
+    const el = document.elements[elementId];
+    if (!el) {
+        throw new Error(`text: element not found: ${elementId}`);
+    }
+    if (el.type !== "nl.text") {
+        throw new Error(`text: element is not a Text widget: ${el.type}`);
+    }
+    return el;
+}
+
+function cloneJson<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function readTextProperties(document: UIDocument, elementId: string): BlueprintTextProperties {
+    const el = assertTextElement(document, elementId);
+    const p = getTextProps(el);
+    return {
+        text: p.text,
+        fontAssetId: p.fontAssetId,
+        fontSize: p.fontSize,
+        fontWeight: p.fontWeight,
+        color: p.color,
+        textAlign: p.textAlign,
+        textVerticalAlign: p.textVerticalAlign,
+        lineHeight: p.lineHeight,
+        textWrapMode: p.textWrapMode,
+        effects: cloneJson(p.effects),
+    };
+}
+
+function finiteNumber(raw: unknown, fallback: number): number {
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+function normalizeFontAssetId(raw: unknown): string | null {
+    if (raw === null) {
+        return null;
+    }
+    const s = String(raw ?? "").trim();
+    return s.length > 0 ? s : null;
+}
+
+function normalizeString(raw: unknown, fallback: string): string {
+    return raw == null ? fallback : String(raw);
+}
+
+function normalizeColor(raw: unknown, fallback: string): string {
+    const s = String(raw ?? "").trim();
+    return s.length > 0 ? s : fallback;
+}
+
+function normalizeTextAlign(raw: unknown, fallback: TextAlign): TextAlign {
+    return raw === "left" || raw === "center" || raw === "right" ? raw : fallback;
+}
+
+function normalizeTextVerticalAlign(raw: unknown, fallback: TextVerticalAlign): TextVerticalAlign {
+    return raw === "start" || raw === "center" || raw === "end" ? raw : fallback;
+}
+
+function normalizeFontWeight(raw: unknown, fallback: BlueprintTextProperties["fontWeight"]) {
+    return raw === "normal" || raw === "600" || raw === "bold" ? raw : fallback;
+}
+
+function normalizeTextWrapMode(raw: unknown, fallback: TextWrapMode): TextWrapMode {
+    return raw === "word" || raw === "character" || raw === "nowrap" ? raw : fallback;
+}
+
+function patchHas<K extends keyof BlueprintTextProperties>(
+    patch: BlueprintTextPropertiesPatch,
+    key: K,
+): patch is BlueprintTextPropertiesPatch & Pick<BlueprintTextProperties, K> {
+    return Object.prototype.hasOwnProperty.call(patch, key);
+}
+
+function normalizeTextPatch(
+    current: BlueprintTextProperties,
+    patch: BlueprintTextPropertiesPatch,
+): BlueprintTextPropertiesPatch {
+    const next: BlueprintTextPropertiesPatch = {};
+    if (patchHas(patch, "text")) {
+        next.text = normalizeString(patch.text, current.text);
+    }
+    if (patchHas(patch, "fontAssetId")) {
+        next.fontAssetId = normalizeFontAssetId(patch.fontAssetId);
+    }
+    if (patchHas(patch, "fontSize")) {
+        next.fontSize = Math.max(1, finiteNumber(patch.fontSize, current.fontSize));
+    }
+    if (patchHas(patch, "fontWeight")) {
+        next.fontWeight = normalizeFontWeight(patch.fontWeight, current.fontWeight);
+    }
+    if (patchHas(patch, "color")) {
+        next.color = normalizeColor(patch.color, current.color);
+    }
+    if (patchHas(patch, "textAlign")) {
+        next.textAlign = normalizeTextAlign(patch.textAlign, current.textAlign);
+    }
+    if (patchHas(patch, "textVerticalAlign")) {
+        next.textVerticalAlign = normalizeTextVerticalAlign(patch.textVerticalAlign, current.textVerticalAlign);
+    }
+    if (patchHas(patch, "lineHeight")) {
+        next.lineHeight = Math.max(0.1, finiteNumber(patch.lineHeight, current.lineHeight));
+    }
+    if (patchHas(patch, "textWrapMode")) {
+        next.textWrapMode = normalizeTextWrapMode(patch.textWrapMode, current.textWrapMode);
+    }
+    if (patchHas(patch, "effects")) {
+        next.effects = cloneJson<ElementEffectValues>(normalizeElementEffectValues(patch.effects));
+    }
+    return next;
+}
+
 function emitHostCall(emit: (event: BlueprintDebugEvent) => void, capabilityId: string, phase: "call" | "return"): void {
     if (phase === "call") {
         emit({ type: "function.call", functionId: capabilityId });
@@ -77,12 +225,29 @@ function emitHostCall(emit: (event: BlueprintDebugEvent) => void, capabilityId: 
     }
 }
 
+function scopedWidgetRuntimeKey(runtimeScopeId: string | undefined, activeSurfaceId: string, elementId: string): string {
+    return `${runtimeScopeId ?? activeSurfaceId}\0${elementId}`;
+}
+
 /**
  * Unified Host API implementation for Dev Mode (M3-full). Workspace editor does not instantiate this.
  */
 export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRuntimeOptions): BlueprintHostApiRuntime {
-    const { document, scope, activeSurfaceId, emit, onOpenSurface, onCloseLayer, onWidgetPatch, widgetRuntimeStore } =
+    const {
+        document,
+        scope,
+        activeSurfaceId,
+        runtimeScopeId,
+        frameParams,
+        onFrameEmit,
+        emit,
+        onOpenSurface,
+        onCloseLayer,
+        onWidgetPatch,
+        widgetRuntimeStore,
+    } =
         options;
+    const stateScopeId = runtimeScopeId ?? activeSurfaceId;
 
     return {
         navigation: {
@@ -143,15 +308,42 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.setVariant";
                 emitHostCall(emit, cap, "call");
                 assertAppearanceVariantId(document, elementId, variantId);
-                widgetRuntimeStore.setVariantOverride(elementId, variantId);
+                widgetRuntimeStore.setVariantOverride(
+                    scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                    variantId,
+                );
                 emitHostCall(emit, cap, "return");
+            },
+            getTextProperties: (elementId: string) => {
+                const cap = "widget.getTextProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readTextProperties(document, elementId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setTextProperties: async (elementId: string, patch: BlueprintTextPropertiesPatch) => {
+                const cap = "widget.setTextProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const current = readTextProperties(document, elementId);
+                    const el = assertTextElement(document, elementId);
+                    el.props = {
+                        ...(el.props ?? {}),
+                        ...normalizeTextPatch(current, patch),
+                    };
+                    onWidgetPatch(elementId, {});
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
             },
         },
         state: {
             get: (scopeKind: string, key: string) => {
                 emit({ type: "state.read", scope: scopeKind, key });
                 if (scopeKind === "surface") {
-                    return scope.getSurfaceStore(activeSurfaceId).get(key);
+                    return scope.getSurfaceStore(stateScopeId).get(key);
                 }
                 if (scopeKind === "global") {
                     return scope.globalGet(key);
@@ -163,7 +355,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             },
             set: (scopeKind: string, key: string, value: unknown) => {
                 if (scopeKind === "surface") {
-                    scope.getSurfaceStore(activeSurfaceId).set(key, value);
+                    scope.getSurfaceStore(stateScopeId).set(key, value);
                 } else if (scopeKind === "global") {
                     scope.globalSet(key, value);
                 } else if (scopeKind === "persistence") {
@@ -184,6 +376,23 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 scope.persistenceSet(key, value);
                 emit({ type: "state.write", scope: "persistence", key });
                 emitHostCall(emit, "persistence.set", "return");
+            },
+        },
+        frame: {
+            getParam: (key: string) => {
+                emitHostCall(emit, "frame.getParam", "call");
+                const value = frameParams?.[key];
+                emitHostCall(emit, "frame.getParam", "return");
+                return value;
+            },
+            emit: async (eventName: string, data: unknown) => {
+                const cap = "frame.emit";
+                emitHostCall(emit, cap, "call");
+                const safeEventName = String(eventName ?? "").trim();
+                if (safeEventName && onFrameEmit) {
+                    await onFrameEmit(safeEventName, data);
+                }
+                emitHostCall(emit, cap, "return");
             },
         },
         devtools: {

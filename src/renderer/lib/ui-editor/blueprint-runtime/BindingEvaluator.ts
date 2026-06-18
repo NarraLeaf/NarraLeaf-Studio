@@ -1,6 +1,7 @@
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
+import type { UIListElementExtra, UIListItemScope } from "@shared/types/ui-editor/list";
 import { evaluateFieldValue } from "@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation";
 import type { BlueprintStateReader } from "@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation";
 import type { SurfaceStateStore } from "./SurfaceStateStore";
@@ -23,6 +24,14 @@ function coerceLayoutField(key: keyof UILayout, value: unknown): unknown {
 }
 
 function applyWidgetPropPath(element: UIElement, propPath: string, value: unknown): void {
+    if (propPath === "variant") {
+        const variantId = typeof value === "string" ? value.trim() : "";
+        element.extra = {
+            ...(element.extra ?? {}),
+            runtimeVariantOverrideId: variantId || undefined,
+        } satisfies UIListElementExtra;
+        return;
+    }
     if (propPath.startsWith("layout.")) {
         const sub = propPath.slice("layout.".length) as keyof UILayout;
         const coerced = coerceLayoutField(sub, value);
@@ -43,6 +52,7 @@ export function mergeElementWithBlueprintBindings(
     emitDebug: (event: BlueprintDebugEvent) => void,
     coalescer?: BindingDebugCoalescer,
     globalState?: BlueprintStateReader,
+    listItemScope?: UIListItemScope | null,
 ): UIElement {
     const next: UIElement = {
         ...element,
@@ -63,7 +73,7 @@ export function mergeElementWithBlueprintBindings(
             if (bind.target.surfaceId !== surfaceId || bind.target.elementId !== element.id) {
                 continue;
             }
-            if (skipWidgetPropMerge) {
+            if (skipWidgetPropMerge && bind.target.propPath !== "variant") {
                 continue;
             }
             if (bind.status === "broken") {
@@ -87,7 +97,7 @@ export function mergeElementWithBlueprintBindings(
                 }
             }
 
-            const evaluated = evaluateFieldValue(field, surfaceState, globalState);
+            const evaluated = evaluateFieldValue(field, surfaceState, globalState, listItemScope ?? null);
             const hasSource = Boolean(field?.valueSource);
             const resolved = hasSource && evaluated !== undefined ? evaluated : bind.fallback;
             if (resolved === undefined) {

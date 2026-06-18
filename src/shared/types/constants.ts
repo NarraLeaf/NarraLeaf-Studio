@@ -15,4 +15,5 @@ export enum UserDataNamespace {
     State = "state",
     Logs = "logs",
     Plugins = "plugins",
+    Authorization = "authorization",
 }

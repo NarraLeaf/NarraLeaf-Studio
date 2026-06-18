@@ -4,7 +4,7 @@
  */
 
 /** Canonical schema for persisted BlueprintDocument (ownerRecords + blueprints). Bumped on incompatible changes. */
-export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 5 as const;
+export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 6 as const;
 
 export type BlueprintDocumentSchemaVersion = typeof BLUEPRINT_DOCUMENT_SCHEMA_VERSION;
 

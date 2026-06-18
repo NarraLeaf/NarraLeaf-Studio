@@ -6,6 +6,10 @@ import { createListInspector } from "./list/inspector";
 import { createListDockerBarItems } from "./list/dockerBar";
 import { defaultListWidgetProps } from "./list/types";
 
+function createDefaultListProps() {
+    return JSON.parse(JSON.stringify(defaultListWidgetProps));
+}
+
 export const ListWidgetModule: UIWidgetModule = {
     type: "nl.list",
     logicApi: getWidgetLogicApi("nl.list"),
@@ -23,7 +27,7 @@ export const ListWidgetModule: UIWidgetModule = {
             opacity: 1,
             visible: true,
         },
-        props: { ...defaultListWidgetProps },
+        props: createDefaultListProps(),
     }),
 
     render: (props: WidgetRendererProps) => <ListRenderer {...props} />,

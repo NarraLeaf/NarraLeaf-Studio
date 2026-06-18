@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { UIDocument } from "@shared/types/ui-editor/document";
+import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import { collectSnapGuideLines } from "@/lib/ui-editor/snapping/collectCandidates";
 import { getElementSurfaceTopLeft } from "./elementSurfaceGeometry";
 
 function makeDocument(): UIDocument {
     return {
-        schemaVersion: 5,
+        schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
         id: "doc",
         name: "Doc",
         surfaces: [

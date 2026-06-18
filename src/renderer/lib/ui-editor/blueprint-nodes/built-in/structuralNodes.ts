@@ -1,10 +1,11 @@
 /**
- * Graph structure: entry heads, data literal.
+ * Graph structure nodes.
  * Comments in English per project convention.
  */
 
-import { BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY, BLUEPRINT_NODE_TYPE_LITERAL } from "@shared/types/blueprint/graph";
-import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
+import {
+    BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
+} from "@shared/types/blueprint/graph";
 import type { BlueprintNodeDef } from "../types";
 
 export const structuralBlueprintNodes: BlueprintNodeDef[] = [
@@ -21,22 +22,5 @@ export const structuralBlueprintNodes: BlueprintNodeDef[] = [
             { id: "then", kind: "output", semantic: "exec", label: "Then" },
         ],
         execute: () => ({ nextPort: "then" }),
-    },
-    {
-        type: BLUEPRINT_NODE_TYPE_LITERAL,
-        displayName: "Literal",
-        category: "Data",
-        keywords: ["literal", "value", "const"],
-        graphKinds: ["event", "function", "macro"],
-        isPure: true,
-        role: "dataLiteral",
-        pins: [{ id: "value", kind: "output", semantic: "data", valueType: "any", label: "Value" }],
-        inspectorParams: [{ key: "value", label: "Value", kind: "literal" }],
-        execute: ctx => {
-            throw new BlueprintGraphExecutionError(
-                "Literal nodes are data-only and must not sit on the execution path",
-                ctx.node.id,
-            );
-        },
     },
 ];

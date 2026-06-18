@@ -12,7 +12,7 @@ export function emptyMemberIndex(): BlueprintMemberIndex {
 
 const TYPESCRIPT_BLUEPRINT_DEFAULT_SOURCE = `import { events } from "narraleaf-studio";
 
-events.on("click", async (ctx) => {
+events.on("mouseClick", async (ctx) => {
   await ctx.host.devtools.log("TypeScript Blueprint");
 });
 `;

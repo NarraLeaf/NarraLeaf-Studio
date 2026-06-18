@@ -10,71 +10,50 @@ export type SurfaceKindOption = {
 export const SURFACE_KIND_OPTIONS: SurfaceKindOption[] = [
     {
         kind: "appSurface",
-        label: "App",
-        description: "App surfaces represent application-level UI such as start screens or settings.",
+        label: "Page",
+        description: "Pages are complete screens such as title, settings, save, history, or gallery.",
         host: "app",
     },
     {
         kind: "stageSurface",
-        label: "Stage",
-        description: "Stage surfaces run inside the player and can mount as slots, persistent overlays, or layers.",
+        label: "Game UI",
+        description: "Game UI belongs to active gameplay, such as dialog, choices, HUD, shortcuts, and notifications.",
         host: "player",
     },
 ];
 
-export const STAGE_MOUNT_OPTIONS: { kind: UIStageSurfaceMount["kind"]; label: string; description: string }[] = [
+export const GAME_UI_SLOT_OPTIONS: { value: UIStageSlotId; label: string; description: string }[] = [
     {
-        kind: "persistent",
+        value: "onStage",
         label: "On Stage",
-        description: "Always-mounted stage UI such as quick menus.",
+        description: "Always available while the game is running.",
     },
-    {
-        kind: "slot",
-        label: "Slot",
-        description: "Mount inside a stage slot (dialog, notification, etc.).",
-    },
-    {
-        kind: "layer",
-        label: "Layer",
-        description: "Page-like layers such as settings or save screens.",
-    },
-];
-
-export const STAGE_SLOT_OPTIONS: { value: UIStageSlotId; label: string; description: string }[] = [
     {
         value: "dialog",
         label: "Dialog",
-        description: "Game Dialog",
-    },
-    {
-        value: "menu",
-        label: "Menu",
-        description: "Game Menu Choice",
+        description: "The main conversation or narration interface.",
     },
     {
         value: "notification",
         label: "Notification",
-        description: "App Notification",
+        description: "Short runtime messages and prompts.",
     },
     {
-        value: "none",
-        label: "None",
-        description: "No slot-specific behavior.",
+        value: "choice",
+        label: "Choice",
+        description: "Player choice menus and decision prompts.",
     },
 ];
 
 export const STAGE_SLOT_LABELS: Record<UIStageSlotId, string> = {
+    onStage: "On Stage",
     dialog: "Dialog",
-    menu: "Menu",
     notification: "Notification",
-    none: "None",
+    choice: "Choice",
 };
 
-export const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = "dialog";
+export const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = "onStage";
 
 export const formatStageMountLabel = (mount: UIStageSurfaceMount): string => {
-    if (mount.kind === "slot") {
-        return `Slot · ${STAGE_SLOT_LABELS[mount.slotId] ?? mount.slotId}`;
-    }
-    return mount.kind === "persistent" ? "Persistent" : "Layer";
+    return STAGE_SLOT_LABELS[mount.slotId] ?? mount.slotId;
 };

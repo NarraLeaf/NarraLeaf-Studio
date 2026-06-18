@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef } from "react";
 import { flushSync } from "react-dom";
 import Selecto from "react-selecto";
-import Moveable from "react-moveable";
+import Moveable, { type OnClick, type OnClickGroup } from "react-moveable";
 import { ViewportTransform, clientToSurface, Rect2D } from "../geometry";
 import { isHTMLElement } from "./utils";
 import { useSurfaceInteractionEvents } from "./useSurfaceInteractionEvents";
-import { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
-import { isUIElementSelection } from "@services/ui/UIStore";
+import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { ActiveSnapGuides } from "@/lib/ui-editor/snapping/types";
@@ -24,6 +24,15 @@ import {
     promoteHitToDirectChildOfSurfaceRoot,
     shouldPromoteToSurfaceRootChild,
 } from "./containerDrillSelection";
+import {
+    getSingleSelectedElementId,
+    isMoveableInteractionTarget,
+} from "./surfaceInlineTextEditActivation";
+import { beginInlineTextEdit, isInlineTextEditableElement } from "./inlineTextEdit";
+import { beginImageCropEdit } from "./imageCropEdit";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import type { FloatingToolbarItem } from "@/lib/ui-editor/widget-modules/types";
+import { resolveFloatingToolbarPosition } from "./floatingToolbarPosition";
 
 function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
     const x = Math.min(preview.startX, preview.currentX);
@@ -60,14 +69,23 @@ type Props = {
     surfaceId: string;
     surface: UISurface;
     containerRef: React.RefObject<HTMLElement | null>;
+    stateService: UIEditorStateService;
+    documentService: UIDocumentService;
     showOutlines?: boolean;
+    openSurfaceEditor?: (surfaceId: string) => void;
 };
-export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, showOutlines = true }: Props) {
-    const stateService = UIEditorStateService.getInstance();
+export function UIEditorInteractionLayer({
+    surfaceId,
+    surface,
+    containerRef,
+    stateService,
+    documentService,
+    showOutlines = true,
+    openSurfaceEditor,
+}: Props) {
     const [selection, setSelection] = useState(stateService.getSelection());
     const previousSelectedTargets = useRef<HTMLElement[]>([]);
     const outlineCache = useRef<WeakMap<HTMLElement, { outline?: string; outlineOffset?: string }>>(new WeakMap());
-    const documentService = UIDocumentService.getInstance();
     const documentRevision = useUIDocumentRevision(documentService);
     type MoveableInstance = React.ElementRef<typeof Moveable>;
     const moveableRef = useRef<MoveableInstance | null>(null);
@@ -246,6 +264,28 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         !isGroupSelection &&
         selectionIds.length === 1 &&
         selectionIds[0] === inlineTextEditElementId;
+    const selectedSingleElementId =
+        selectionData?.surfaceId === surfaceId && selectionIds.length === 1
+            ? selectionIds[0] ?? null
+            : null;
+    const selectedSingleElement = selectedSingleElementId
+        ? documentService.getDocument().elements[selectedSingleElementId]
+        : null;
+    const isInlineTextEditableSelection = isInlineTextEditableElement(selectedSingleElement);
+    const floatingToolbarItems = useMemo<FloatingToolbarItem[]>(() => {
+        if (!selectedSingleElement) {
+            return [];
+        }
+        const module = widgetModuleRegistry.get(selectedSingleElement.type);
+        return module?.createFloatingToolbarItems?.({
+            element: selectedSingleElement,
+            documentService,
+            surfaceId,
+            openSurfaceEditor,
+        }) ?? [];
+    }, [documentRevision, documentService, openSurfaceEditor, selectedSingleElement, surfaceId]);
+    const hasFloatingToolbar = floatingToolbarItems.length > 0;
+    const [floatingToolbarPosition, setFloatingToolbarPosition] = useState<{ left: number; top: number } | null>(null);
 
     const beginTransform = () => {
         transformLocks.current += 1;
@@ -291,9 +331,69 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         }
     }, [selectedTargets, primaryId, showOutlines]);
 
+    const updateFloatingToolbarPosition = useCallback(() => {
+        if (!hasFloatingToolbar || selectedTargets.length !== 1 || !surfaceElement) {
+            setFloatingToolbarPosition(null);
+            return;
+        }
+        const targetRect = selectedTargets[0].getBoundingClientRect();
+        const surfaceRect = surfaceElement.getBoundingClientRect();
+        const next = resolveFloatingToolbarPosition({ targetRect, surfaceRect });
+        setFloatingToolbarPosition(prev => {
+            if (
+                prev &&
+                Math.abs(prev.left - next.left) < 0.25 &&
+                Math.abs(prev.top - next.top) < 0.25
+            ) {
+                return prev;
+            }
+            return next;
+        });
+    }, [hasFloatingToolbar, selectedTargets, surfaceElement]);
+
+    useLayoutEffect(() => {
+        updateFloatingToolbarPosition();
+    }, [
+        updateFloatingToolbarPosition,
+        viewport.scale,
+        viewport.offsetX,
+        viewport.offsetY,
+        documentRevision,
+    ]);
+
+    useEffect(() => {
+        if (!hasFloatingToolbar) {
+            return undefined;
+        }
+        window.addEventListener("resize", updateFloatingToolbarPosition);
+        return () => {
+            window.removeEventListener("resize", updateFloatingToolbarPosition);
+        };
+    }, [hasFloatingToolbar, updateFloatingToolbarPosition]);
+
+    useEffect(() => {
+        if (!hasFloatingToolbar) {
+            return undefined;
+        }
+        let frameId = 0;
+        let disposed = false;
+        const tick = () => {
+            updateFloatingToolbarPosition();
+            if (!disposed) {
+                frameId = requestAnimationFrame(tick);
+            }
+        };
+        frameId = requestAnimationFrame(tick);
+        return () => {
+            disposed = true;
+            cancelAnimationFrame(frameId);
+        };
+    }, [hasFloatingToolbar, updateFloatingToolbarPosition]);
+
     useLayoutEffect(() => {
         moveableRef.current?.updateRect?.();
     }, [
+        interactionOverride,
         selectedTargets,
         viewport.scale,
         viewport.offsetX,
@@ -366,11 +466,7 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
     );
 
     const isMoveableControlTarget = useCallback((target: Element | null | undefined) => {
-        return Boolean(
-            target?.closest(
-                ".moveable, .moveable-control, .moveable-line, .moveable-rotation, .moveable-rotation-handle, .moveable-area",
-            ),
-        );
+        return isMoveableInteractionTarget(target);
     }, []);
 
     const isTargetInsideSelection = useCallback(
@@ -466,9 +562,56 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
         return candidates[0] ?? transformController;
     }, [imageCropController, transformController]);
 
+    const handleMoveableInlineTextClick = useCallback(
+        (event: OnClick | OnClickGroup) => {
+            if (!event.isDouble || activeController.id !== "transform") {
+                return;
+            }
+            const liveSelection = stateService.getSelection();
+            const liveSelectionData = isUIElementSelection(liveSelection) ? liveSelection.data : null;
+            const liveSelectedSingleElementId = getSingleSelectedElementId(liveSelectionData, surfaceId);
+            if (!liveSelectedSingleElementId) {
+                return;
+            }
+            const inputTarget = event.inputTarget as Element | null | undefined;
+            if (inputTarget?.closest?.("textarea, input, [contenteditable='true']")) {
+                return;
+            }
+
+            const element = documentService.getDocument().elements[liveSelectedSingleElementId];
+            if (isInlineTextEditableElement(element)) {
+                event.inputEvent?.preventDefault?.();
+                event.inputEvent?.stopPropagation?.();
+                beginInlineTextEdit(stateService, surfaceId, liveSelectedSingleElementId);
+                return;
+            }
+
+            if (
+                beginImageCropEdit({
+                    documentService,
+                    stateService,
+                    surfaceId,
+                    elementId: liveSelectedSingleElementId,
+                    source: "moveableDoubleClick",
+                })
+            ) {
+                event.inputEvent?.preventDefault?.();
+                event.inputEvent?.stopPropagation?.();
+            }
+        },
+        [activeController.id, documentService, stateService, surfaceId],
+    );
+
     const SELECTO_CLASS_NAME = "narraleaf-selecto";
 
     const moveablePointerClass = isInlineTextEditing ? "pointer-events-none" : "pointer-events-auto";
+    const isInlineTextMoveableTarget =
+        activeController.id === "transform" && isInlineTextEditableSelection && !isInlineTextEditing;
+    const moveableModeClass = activeController.id === "imageCrop"
+        ? "narraleaf-moveable--crop"
+        : isInlineTextMoveableTarget
+          ? "narraleaf-moveable--inline-text-target"
+          : "";
 
     return (
         <>
@@ -498,13 +641,55 @@ export function UIEditorInteractionLayer({ surfaceId, surface, containerRef, sho
                         targets={activeController.targets}
                         container={surfaceElement}
                         flushSync={flushSync}
-                        className={
-                            activeController.id === "imageCrop"
-                                ? `narraleaf-moveable narraleaf-moveable--crop ${moveablePointerClass}`
-                                : `narraleaf-moveable ${moveablePointerClass}`
-                        }
+                        className={`narraleaf-moveable ${moveableModeClass} ${moveablePointerClass}`.trim()}
                         {...activeController.moveableProps}
+                        clickable={isInlineTextMoveableTarget ? true : activeController.moveableProps.clickable}
+                        onClick={handleMoveableInlineTextClick}
+                        onClickGroup={handleMoveableInlineTextClick}
                     />
+                    {hasFloatingToolbar && floatingToolbarPosition ? (
+                        <div
+                            className="pointer-events-auto absolute z-[10000] flex -translate-y-full overflow-hidden rounded-md border border-white/15 bg-[#080b10]/90 text-gray-200 shadow-lg shadow-black/30"
+                            style={{
+                                left: floatingToolbarPosition.left,
+                                top: floatingToolbarPosition.top,
+                            }}
+                            onPointerDown={event => {
+                                event.stopPropagation();
+                            }}
+                            onMouseDown={event => {
+                                event.stopPropagation();
+                            }}
+                        >
+                            {floatingToolbarItems.map((item, index) => {
+                                const Icon = item.icon;
+                                const label = item.label ?? item.tooltip ?? item.id;
+                                return (
+                                    <button
+                                        key={item.id}
+                                        type="button"
+                                        className={`flex h-7 items-center justify-center text-xs transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 ${
+                                            Icon ? "w-7" : "min-w-7 px-2"
+                                        } ${
+                                            index < floatingToolbarItems.length - 1 ? "border-r border-white/10" : ""
+                                        }`}
+                                        title={item.tooltip ?? label}
+                                        aria-label={item.tooltip ?? label}
+                                        disabled={item.disabled}
+                                        onClick={event => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            if (!item.disabled) {
+                                                item.onClick();
+                                            }
+                                        }}
+                                    >
+                                        {Icon ? <Icon className="h-4 w-4" /> : label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    ) : null}
                     {activeController.overlay ? (
                         <div className="pointer-events-auto">{activeController.overlay}</div>
                     ) : null}

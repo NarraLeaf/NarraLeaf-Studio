@@ -89,6 +89,23 @@ function widgetBlueprint(surfaceId: string, elementId: string, blueprintId: stri
     };
 }
 
+function widgetValueBlueprint(surfaceId: string, elementId: string, blueprintId: string): Blueprint {
+    return {
+        id: blueprintId,
+        name: "Text value",
+        owner: { kind: "widgetValue", surfaceId, elementId, propPath: "text" },
+        frontend: "visual",
+        programKind: "graph",
+        program: {
+            kind: "graph",
+            graphs: {
+                events: {},
+                functions: {},
+            },
+        },
+    };
+}
+
 function createHarness(initialDocument = documentWithPositions(0, 0), initialBlueprint = emptyBlueprintDocument()) {
     const uidoc = {
         document: initialDocument,
@@ -240,5 +257,51 @@ describe("UIEditorHistoryService", () => {
         expect(history.redo("surface-a")).toBe(true);
         expect(graphDocument.blueprintDocument.ownerRecords["widgetMain:surface-a:a"]?.activeBlueprintId).toBe("bp-a");
         expect(graphDocument.blueprintDocument.blueprints["bp-a"]?.owner.kind).toBe("widgetMain");
+    });
+
+    it("restores widgetValue blueprint resources coupled to UI edits", () => {
+        const { history, uidoc, graphDocument } = createHarness();
+        const before = history.captureSnapshot("surface-a");
+        const blueprint = widgetValueBlueprint("surface-a", "a", "bp-value-a");
+
+        graphDocument.blueprintDocument = {
+            ...emptyBlueprintDocument(),
+            blueprints: {
+                "bp-value-a": blueprint,
+            },
+            ownerRecords: {
+                "widgetValue:surface-a:a:text": {
+                    activeBlueprintId: "bp-value-a",
+                    privateBlueprintIds: ["bp-value-a"],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        uidoc.document = {
+            ...documentWithPositions(5, 0),
+            elements: {
+                ...documentWithPositions(5, 0).elements,
+                a: {
+                    ...documentWithPositions(5, 0).elements.a!,
+                    valueBindings: {
+                        text: { kind: "blueprintValue", blueprintId: "bp-value-a", valueType: "string" },
+                    },
+                },
+            },
+        };
+        history.record({ surfaceId: "surface-a", before, after: history.captureSnapshot("surface-a") });
+
+        expect(history.undo("surface-a")).toBe(true);
+        expect(graphDocument.blueprintDocument.ownerRecords["widgetValue:surface-a:a:text"]).toBeUndefined();
+        expect(graphDocument.blueprintDocument.blueprints["bp-value-a"]).toBeUndefined();
+
+        expect(history.redo("surface-a")).toBe(true);
+        expect(graphDocument.blueprintDocument.ownerRecords["widgetValue:surface-a:a:text"]?.activeBlueprintId).toBe("bp-value-a");
+        expect(graphDocument.blueprintDocument.blueprints["bp-value-a"]?.owner.kind).toBe("widgetValue");
+        expect(uidoc.document.elements.a.valueBindings?.text).toEqual({
+            kind: "blueprintValue",
+            blueprintId: "bp-value-a",
+            valueType: "string",
+        });
     });
 });

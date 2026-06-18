@@ -9,7 +9,7 @@ import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint
 import { buildDefaultSurfaceStateKeyForWidgetProp } from "@/lib/workspace/services/ui-editor/blueprint/defaultFieldKeys";
 import type { BlueprintFieldValueSource } from "@shared/types/blueprint/document";
 
-export type FieldStateScope = "surface" | "global";
+export type FieldStateScope = "surface" | "global" | "item";
 
 export type PropertyBindingUiStatus = "literal" | "bound" | "broken";
 
@@ -74,6 +74,15 @@ export function usePropertyBindingState(
         } else if (vs?.kind === "globalState") {
             stateKey = vs.key ?? null;
             stateScope = "global";
+        } else if (vs?.kind === "listItem") {
+            stateKey = vs.path ?? "";
+            stateScope = "item";
+        } else if (vs?.kind === "listIndex") {
+            stateKey = "index";
+            stateScope = "item";
+        } else if (vs?.kind === "listCount") {
+            stateKey = "count";
+            stateScope = "item";
         }
         return {
             blueprintId,
@@ -141,7 +150,9 @@ export function usePropertyBindingState(
             const valueSource: BlueprintFieldValueSource =
                 scope === "global"
                     ? { kind: "globalState", key: stateKey }
-                    : { kind: "surfaceState", key: stateKey };
+                    : scope === "item"
+                      ? { kind: "listItem", path: bindingMeta.propPath }
+                      : { kind: "surfaceState", key: stateKey };
             const field = localBp.createField(snapshot.blueprintId, {
                 name: trimmed,
                 kind: "constant",

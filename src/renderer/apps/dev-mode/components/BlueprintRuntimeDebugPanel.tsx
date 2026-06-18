@@ -368,7 +368,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
 }
 
 function studioPayloadSupported(bp: Blueprint): boolean {
-    return bp.owner.kind === "surfaceMain" || bp.owner.kind === "widgetMain";
+    return bp.owner.kind === "surfaceMain" || bp.owner.kind === "widgetMain" || bp.owner.kind === "widgetValue";
 }
 
 function buildStudioOpenPayload(
@@ -395,6 +395,17 @@ function buildStudioOpenPayload(
             ownerKind: "widgetMain",
             surfaceId: owner.surfaceId,
             elementId: owner.elementId,
+            title: bp.name,
+        };
+    }
+    if (owner.kind === "widgetValue") {
+        return {
+            projectPath,
+            blueprintId: bp.id,
+            ownerKind: "widgetValue",
+            surfaceId: owner.surfaceId,
+            elementId: owner.elementId,
+            propPath: owner.propPath,
             title: bp.name,
         };
     }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import {
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+} from "@shared/types/blueprint/graph";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import { Services } from "../services";
@@ -21,9 +26,9 @@ function graphBlueprint(id = "bp-main"): Blueprint {
             kind: "graph",
             graphs: {
                 events: {
-                    click: {
-                        id: "click",
-                        name: "Click",
+                    mouseClick: {
+                        id: "mouseClick",
+                        name: "Mouse Click",
                         graph: {
                             nodes: {
                                 nodeA: {
@@ -82,7 +87,7 @@ function buttonElement(): UIElement {
         layout: { x: 0, y: 0, width: 100, height: 40, visible: true, opacity: 1 },
         behavior: {
             events: {
-                click: { kind: "blueprintEvent", blueprintId: "bp-main", eventId: "click" },
+                mouseClick: { kind: "blueprintEvent", blueprintId: "bp-main", eventId: "mouseClick" },
             },
         },
     };
@@ -113,6 +118,7 @@ function uiDocument(): UIDocument {
 
 function createHarness() {
     const graphDocument = { blueprintDocument: blueprintDocument() };
+    let nextId = 0;
     const uidoc = {
         document: uiDocument(),
         getDocument() {
@@ -158,7 +164,7 @@ function createHarness() {
                     return uidoc;
                 }
                 if (serviceId === Services.Uuid) {
-                    return { generate: () => "generated-id" };
+                    return { generate: () => `generated-id-${++nextId}` };
                 }
                 throw new Error(`Unexpected service ${serviceId}`);
             },
@@ -168,17 +174,79 @@ function createHarness() {
 }
 
 describe("LocalBlueprintService history", () => {
+    it("seeds widget value blueprints with an init layer only", () => {
+        const { service, graphDocument } = createHarness();
+
+        const blueprintId = service.ensureWidgetValueBlueprint({
+            surfaceId: "surface-a",
+            elementId: "button-a",
+            propPath: "text",
+            valueType: "string",
+            displayName: "Text value",
+            literalValue: "Hello",
+        });
+
+        const bp = graphDocument.blueprintDocument.blueprints[blueprintId];
+        expect(bp.owner).toEqual({
+            kind: "widgetValue",
+            surfaceId: "surface-a",
+            elementId: "button-a",
+            propPath: "text",
+        });
+        expect(bp.program.kind).toBe("graph");
+        if (bp.program.kind !== "graph") {
+            throw new Error("Expected graph blueprint");
+        }
+        expect(Object.keys(bp.program.graphs.events)).toEqual(["init"]);
+        const initGraph = bp.program.graphs.events.init?.graph;
+        if (!initGraph) {
+            throw new Error("Expected init graph");
+        }
+        const nodeTypes = Object.values(initGraph.nodes ?? {}).map(node => node.type);
+        expect(nodeTypes).toContain(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
+        expect(nodeTypes).not.toContain(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH);
+    });
+
+    it("seeds JSON widget value blueprints with a JSON literal", () => {
+        const { service, graphDocument } = createHarness();
+
+        const blueprintId = service.ensureWidgetValueBlueprint({
+            surfaceId: "surface-a",
+            elementId: "button-a",
+            propPath: "params",
+            valueType: "json",
+            displayName: "Page props",
+            literalValue: { title: "Hello" },
+        });
+
+        const bp = graphDocument.blueprintDocument.blueprints[blueprintId];
+        expect(bp.meta?.valueType).toBe("json");
+        expect(bp.program.kind).toBe("graph");
+        if (bp.program.kind !== "graph") {
+            throw new Error("Expected graph blueprint");
+        }
+        const initGraph = bp.program.graphs.events.init?.graph;
+        if (!initGraph) {
+            throw new Error("Expected init graph");
+        }
+        const nodes = Object.values(initGraph.nodes ?? {});
+        const literal = nodes.find(node => node.type === BLUEPRINT_NODE_TYPE_LITERAL_JSON);
+        expect(literal?.params?.value).toEqual({ title: "Hello" });
+    });
+
     it("undoes and redoes blueprint member edits", () => {
         const { service, graphDocument } = createHarness();
 
-        const created = service.createBlueprintVariable("bp-main", { name: "health" });
+        const created = service.createBlueprintVariable("bp-main", { name: "health", valueType: "integer" });
         expect(graphDocument.blueprintDocument.blueprints["bp-main"].members?.variables[created.id]?.name).toBe("health");
+        expect(graphDocument.blueprintDocument.blueprints["bp-main"].members?.variables[created.id]?.valueType).toBe("integer");
 
         expect(service.undoBlueprint("bp-main")).toBe(true);
         expect(graphDocument.blueprintDocument.blueprints["bp-main"].members?.variables[created.id]).toBeUndefined();
 
         expect(service.redoBlueprint("bp-main")).toBe(true);
         expect(graphDocument.blueprintDocument.blueprints["bp-main"].members?.variables[created.id]?.name).toBe("health");
+        expect(graphDocument.blueprintDocument.blueprints["bp-main"].members?.variables[created.id]?.valueType).toBe("integer");
     });
 
     it("clears redo after a new edit following undo", () => {
@@ -195,13 +263,13 @@ describe("LocalBlueprintService history", () => {
     it("undoes repeated node parameter edits one committed value at a time", () => {
         const { service, graphDocument } = createHarness();
 
-        service.updateEventGraphIr("bp-main", "click", ir => {
+        service.updateEventGraphIr("bp-main", "mouseClick", ir => {
             const node = ir.nodes?.nodeA;
             if (node) {
                 node.params = { ...(node.params ?? {}), value: 2 };
             }
         });
-        service.updateEventGraphIr("bp-main", "click", ir => {
+        service.updateEventGraphIr("bp-main", "mouseClick", ir => {
             const node = ir.nodes?.nodeA;
             if (node) {
                 node.params = { ...(node.params ?? {}), value: 3 };
@@ -213,7 +281,7 @@ describe("LocalBlueprintService history", () => {
             if (bp.program.kind !== "graph") {
                 return undefined;
             }
-            return bp.program.graphs.events.click?.graph?.nodes?.nodeA?.params?.value;
+            return bp.program.graphs.events.mouseClick?.graph?.nodes?.nodeA?.params?.value;
         };
 
         expect(readValue()).toBe(3);
@@ -223,31 +291,66 @@ describe("LocalBlueprintService history", () => {
         expect(readValue()).toBe(1);
     });
 
+    it("restores graph connections when undoing an edge deletion", () => {
+        const { service, graphDocument } = createHarness();
+
+        service.updateEventGraphIr("bp-main", "mouseClick", ir => {
+            ir.nodes = {
+                ...(ir.nodes ?? {}),
+                nodeB: {
+                    id: "nodeB",
+                    type: "test.next",
+                    params: {},
+                },
+            };
+            ir.edges = [
+                { from: { nodeId: "nodeA", port: "next" }, to: { nodeId: "nodeB", port: "in" } },
+            ];
+        });
+        service.updateEventGraphIr("bp-main", "mouseClick", ir => {
+            ir.edges = [];
+        });
+
+        const readEdges = () => {
+            const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
+            if (bp.program.kind !== "graph") {
+                return undefined;
+            }
+            return bp.program.graphs.events.mouseClick?.graph?.edges;
+        };
+
+        expect(readEdges()).toEqual([]);
+        expect(service.undoBlueprint("bp-main")).toBe(true);
+        expect(readEdges()).toEqual([
+            { from: { nodeId: "nodeA", port: "next" }, to: { nodeId: "nodeB", port: "in" } },
+        ]);
+    });
+
     it("restores UI behavior changes recorded in a blueprint transaction", () => {
         const { service, graphDocument, uidoc } = createHarness();
 
         service.runBlueprintHistoryTransaction("bp-main", () => {
-            uidoc.stripBlueprintLayerBindings("surface-a", "bp-main", "click");
-            service.removeEventGraph("bp-main", "click");
+            uidoc.stripBlueprintLayerBindings("surface-a", "bp-main", "mouseClick");
+            service.removeEventGraph("bp-main", "mouseClick");
         });
 
-        expect(uidoc.document.elements["button-a"].behavior?.events?.click.kind).toBe("noop");
+        expect(uidoc.document.elements["button-a"].behavior?.events?.mouseClick.kind).toBe("noop");
         expect(graphDocument.blueprintDocument.blueprints["bp-main"].program.kind).toBe("graph");
         if (graphDocument.blueprintDocument.blueprints["bp-main"].program.kind === "graph") {
-            expect(graphDocument.blueprintDocument.blueprints["bp-main"].program.graphs.events.click).toBeUndefined();
+            expect(graphDocument.blueprintDocument.blueprints["bp-main"].program.graphs.events.mouseClick).toBeUndefined();
         }
 
         expect(service.undoBlueprint("bp-main")).toBe(true);
 
-        expect(uidoc.document.elements["button-a"].behavior?.events?.click).toEqual({
+        expect(uidoc.document.elements["button-a"].behavior?.events?.mouseClick).toEqual({
             kind: "blueprintEvent",
             blueprintId: "bp-main",
-            eventId: "click",
+            eventId: "mouseClick",
         });
         const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
         expect(bp.program.kind).toBe("graph");
         if (bp.program.kind === "graph") {
-            expect(bp.program.graphs.events.click?.name).toBe("Click");
+            expect(bp.program.graphs.events.mouseClick?.name).toBe("Mouse Click");
         }
     });
 });

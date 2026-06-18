@@ -13,6 +13,7 @@ export type BlueprintOwnerRef =
     | { kind: "globalMain" }
     | { kind: "surfaceMain"; surfaceId: string }
     | { kind: "widgetMain"; surfaceId: string; elementId: string }
+    | { kind: "widgetValue"; surfaceId: string; elementId: string; propPath: string }
     | { kind: "sharedAsset"; assetId: string };
 
 export type BlueprintFrontendKind = "visual" | "typescript";
@@ -89,7 +90,10 @@ export type BlueprintVariable = {
  */
 export type BlueprintFieldValueSource =
     | { kind: "surfaceState"; key: string }
-    | { kind: "globalState"; key: string };
+    | { kind: "globalState"; key: string }
+    | { kind: "listItem"; path?: string }
+    | { kind: "listIndex" }
+    | { kind: "listCount" };
 
 /**
  * Field members are the only widgetProp binding sources (symbol-first); no arbitrary expression AST in M1.

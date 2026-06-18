@@ -69,6 +69,7 @@ function assignMotionTransition(
 export function RectangleChromeRenderer({
     element,
     children,
+    hostAdapter,
     clipContent = true,
     rectangleLike,
     extraRootStyle,
@@ -87,7 +88,7 @@ export function RectangleChromeRenderer({
     } as CSSProperties;
     const imageFillTransform =
         "scale(calc(var(--nl-image-base-flip-x, 1) * var(--nl-image-drag-flip-x, 1)), calc(var(--nl-image-base-flip-y, 1) * var(--nl-image-drag-flip-y, 1)))";
-    const stateService = UIEditorStateService.getInstance();
+    const stateService = hostAdapter.editorStateService ?? UIEditorStateService.getInstance();
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
 
     useEffect(() => {

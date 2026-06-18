@@ -18,6 +18,7 @@ export function PreviewBlueprintNavigateBridge(): null {
                     ownerKind: payload.ownerKind,
                     surfaceId: payload.surfaceId,
                     elementId: payload.elementId,
+                    propPath: payload.propPath,
                     title: payload.title,
                     focusEventId: payload.focusEventId,
                     focusFunctionId: payload.focusFunctionId,

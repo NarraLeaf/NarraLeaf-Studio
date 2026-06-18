@@ -1,6 +1,7 @@
 import { isContainerFlowLayoutParent } from "./container";
+import { getUIListChildSlot, isUIListScrollbarSlot } from "./list";
 
-export const UI_DOCUMENT_SCHEMA_VERSION = 5 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 7 as const;
 
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;
@@ -25,23 +26,11 @@ export type UIHost = "app" | "player";
 
 export type UISurfaceKind = "appSurface" | "stageSurface";
 
-export type UIStageSlotId = "dialog" | "menu" | "notification" | "none";
+export type UIStageSlotId = "onStage" | "dialog" | "notification" | "choice";
 
-export type UIStageSurfaceMount =
-    | {
-          kind: "slot";
-          slotId: UIStageSlotId;
-      }
-    | {
-          kind: "persistent";
-      }
-    | {
-          kind: "layer";
-      };
-
-export type UIStageSurfaceLink = {
-    kind: "appSurface";
-    surfaceId: UISurfaceId;
+export type UIStageSurfaceMount = {
+    kind: "slot";
+    slotId: UIStageSlotId;
 };
 
 export type UIAppSurface = {
@@ -64,7 +53,6 @@ export type UIStageSurface = {
     settings?: UISurfaceSettings;
     mount: UIStageSurfaceMount;
     slots?: Record<string, UISlotDefinition>;
-    link?: UIStageSurfaceLink;
 };
 
 export type UISurface = UIAppSurface | UIStageSurface;
@@ -101,8 +89,18 @@ export type UIElement = {
     style?: UIStyle;
     props?: Record<string, unknown>;
     behavior?: UIBehavior;
+    valueBindings?: Record<string, UIElementValueBinding>;
     extra?: Record<string, unknown>;
 };
+
+export type UIElementValueBindingValueType = "string" | "json";
+
+export type UIElementValueBinding =
+    | {
+          kind: "blueprintValue";
+          blueprintId: string;
+          valueType: UIElementValueBindingValueType;
+      };
 
 export type UILayout = {
     x: number;
@@ -151,6 +149,9 @@ export function isUIElementFlowLayoutChild(document: UIDocument, element: UIElem
         return false;
     }
     const parent = document.elements[element.parentId];
+    if (parent?.type === "nl.list" && isUIListScrollbarSlot(getUIListChildSlot(element.extra))) {
+        return false;
+    }
     return parent != null && isUIFlowLayoutParentElement(parent);
 }
 

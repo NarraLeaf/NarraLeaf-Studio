@@ -21,6 +21,7 @@ import {
     DevModeStopHandler,
     DevModeResolveImageAssetUrlHandler,
 } from "./window/handlers/devModeAction";
+import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./window/handlers/pluginPermissionAction";
 
 type WindowManagerEvents = {
     "window-created": [window: AppWindow];
@@ -99,6 +100,10 @@ export class WindowManager {
         win.registerIPCHandler(new DevModeGetStatusHandler());
         win.registerIPCHandler(new DevModeOpenBlueprintInWorkspaceHandler());
         win.registerIPCHandler(new DevModeResolveImageAssetUrlHandler());
+
+        // Register plugin permission handlers
+        win.registerIPCHandler(new PluginPermissionPromptLaunchHandler());
+        win.registerIPCHandler(new PluginPermissionGrantHandler());
 
         // Register file system handlers
         win.registerIPCHandler(new FsStatHandler());

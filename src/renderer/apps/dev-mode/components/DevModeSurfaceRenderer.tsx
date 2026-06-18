@@ -4,6 +4,7 @@ import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRen
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import type { SurfaceBlueprintBindingContext } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
+import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import { SurfaceElementTree } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 
@@ -15,10 +16,20 @@ type DevModeSurfaceRendererProps = {
     hostAdapter: UIHostAdapter;
     blueprintBindingContext?: SurfaceBlueprintBindingContext | null;
     widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>;
+    nestedSurfaceRuntime?: NestedSurfaceRuntime;
 };
 
 export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
-    const { document, surface, rendererRegistry, scale, hostAdapter, blueprintBindingContext, widgetRuntimePatches } =
+    const {
+        document,
+        surface,
+        rendererRegistry,
+        scale,
+        hostAdapter,
+        blueprintBindingContext,
+        widgetRuntimePatches,
+        nestedSurfaceRuntime,
+    } =
         props;
     const [, setBindingRenderTick] = useState(0);
     useEffect(() => {
@@ -78,6 +89,7 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
                     hostAdapter={hostAdapter}
                     blueprintBindingContext={blueprintBindingContext}
                     widgetRuntimePatches={widgetRuntimePatches}
+                    nestedSurfaceRuntime={nestedSurfaceRuntime}
                 />
             </div>
         </div>

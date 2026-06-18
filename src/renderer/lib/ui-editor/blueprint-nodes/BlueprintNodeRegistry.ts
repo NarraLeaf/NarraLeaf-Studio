@@ -3,7 +3,17 @@
  * Comments in English per project convention.
  */
 
-import { resolveBlueprintEventHeadTypesForUiSlot } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
+    BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_STATE_GET,
+    resolveBlueprintEventHeadTypesForUiSlot,
+} from "@shared/types/blueprint/graph";
+import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { behaviorNodeRegistry } from "../behavior-graph/BehaviorNodeRegistry";
 import {
     BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES,
@@ -40,9 +50,8 @@ function resolveAllowedWidgetEventHeadTypesForPalette(ctx: BlueprintPaletteConte
                 addSlot(ev.id);
             }
         } else {
-            addSlot("init");
-            if (widgetElementType === "nl.button") {
-                addSlot("click");
+            for (const eventId of listWidgetLogicEventIds(widgetElementType)) {
+                addSlot(eventId);
             }
         }
         return allow;
@@ -51,6 +60,32 @@ function resolveAllowedWidgetEventHeadTypesForPalette(ctx: BlueprintPaletteConte
         addSlot(s);
     }
     return allow;
+}
+
+export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeDef): boolean {
+    if (def.role === "eventHead") {
+        return def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT ||
+            def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH;
+    }
+    if (def.role === "valueReturn" || def.type === BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE) {
+        return true;
+    }
+    if (def.type === BLUEPRINT_NODE_TYPE_LOCAL_GET || def.type === BLUEPRINT_NODE_TYPE_LOCAL_SET) {
+        return !def.isLatent;
+    }
+    if (def.type === BLUEPRINT_NODE_TYPE_STATE_GET) {
+        return true;
+    }
+    if (def.category === "Flow") {
+        return !def.isLatent && def.type !== BLUEPRINT_NODE_TYPE_FLOW_DELAY;
+    }
+    if (!def.isPure || def.isLatent) {
+        return false;
+    }
+    return def.category === "Data" ||
+        def.category === "JSON" ||
+        def.category === "String" ||
+        def.category === "Math";
 }
 
 class BlueprintNodeDefinitionsRegistry {
@@ -104,6 +139,8 @@ class BlueprintNodeDefinitionsRegistry {
             graphKinds: def.graphKinds,
             role: def.role,
             scope: def.scope,
+            supportsDynamicInputPins: Boolean(def.dynamicInputPins),
+            dynamicInputPinLabelParamKey: def.dynamicInputPins?.pinLabelParamKey,
         };
     }
 
@@ -143,10 +180,16 @@ class BlueprintNodeDefinitionsRegistry {
     public listPaletteEntries(ctx: BlueprintPaletteContext): BlueprintNodeEditorCatalogEntry[] {
         const out: BlueprintNodeEditorCatalogEntry[] = [];
         for (const def of this.byType.values()) {
+            if (def.hideInPalette) {
+                continue;
+            }
             if (!def.graphKinds.includes(ctx.graphKind)) {
                 continue;
             }
             if (!this.matchesScope(def, ctx)) {
+                continue;
+            }
+            if (ctx.isBlueprintValueGraph && !isBlueprintNodeAllowedInBlueprintValueGraph(def)) {
                 continue;
             }
             if (ctx.graphKind === "function" && (def.isLatent || !def.isPure)) {
@@ -185,6 +228,13 @@ class BlueprintNodeDefinitionsRegistry {
         const scope = def.scope;
         if (!scope) {
             return true;
+        }
+        return this.matchesScopeValue(scope, ctx);
+    }
+
+    private matchesScopeValue(scope: NonNullable<BlueprintNodeDef["scope"]>, ctx: BlueprintPaletteContext): boolean {
+        if (scope.anyOf && scope.anyOf.length > 0) {
+            return scope.anyOf.some(item => this.matchesScopeValue(item, ctx));
         }
         if (scope.ownerKinds && scope.ownerKinds.length > 0) {
             if (!scope.ownerKinds.includes(ctx.owner.kind)) {
@@ -247,6 +297,9 @@ class BlueprintNodeDefinitionsRegistry {
         if (!d.generatedIdPrefix.trim()) {
             throw new Error(`[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.generatedIdPrefix is empty`);
         }
+        if (d.pinLabelParamKey !== undefined && !d.pinLabelParamKey.trim()) {
+            throw new Error(`[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.pinLabelParamKey is empty`);
+        }
         const dataInputIds = new Set(
             def.pins.filter(p => p.kind === "input" && p.semantic === "data").map(p => p.id),
         );
@@ -263,6 +316,33 @@ class BlueprintNodeDefinitionsRegistry {
                 throw new Error(
                     `[BlueprintNodeRegistry] Node ${def.type} dynamic pins allowInlineLiteral requires valueType string|integer|float`,
                 );
+            }
+        }
+        const templateSuffixes = new Set<string>();
+        for (const template of d.generatedPinTemplates ?? []) {
+            if (!template.idSuffix.trim()) {
+                throw new Error(
+                    `[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.generatedPinTemplates idSuffix is empty`,
+                );
+            }
+            if (templateSuffixes.has(template.idSuffix)) {
+                throw new Error(
+                    `[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.generatedPinTemplates has duplicate idSuffix: ${template.idSuffix}`,
+                );
+            }
+            templateSuffixes.add(template.idSuffix);
+            if (!template.label.trim()) {
+                throw new Error(
+                    `[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.generatedPinTemplates label is empty`,
+                );
+            }
+            if (template.allowInlineLiteral) {
+                const scalarTypes = new Set<string>(BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES);
+                if (!template.valueType || !scalarTypes.has(template.valueType)) {
+                    throw new Error(
+                        `[BlueprintNodeRegistry] Node ${def.type} dynamic pin template allowInlineLiteral requires valueType string|integer|float`,
+                    );
+                }
             }
         }
     }

@@ -132,7 +132,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                 ) : null}
                 {bp.stateKey ? (
                     <span className="block w-full text-[10px] text-gray-500">
-                        {bp.stateScope === "global" ? "App" : "Page"} key{" "}
+                        {bp.stateScope === "global" ? "App" : bp.stateScope === "item" ? "Item" : "Page"} key{" "}
                         <span className="font-mono text-[10px] text-cyan-200/80">{bp.stateKey}</span>
                     </span>
                 ) : null}
@@ -199,7 +199,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                 <div className="border-t border-white/10 pt-2">
                                     <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">New field</p>
                                     <div className="mb-1.5 flex gap-1">
-                                        {(["surface", "global"] as const).map(scope => (
+                                        {(["surface", "global", "item"] as const).map(scope => (
                                             <button
                                                 key={scope}
                                                 type="button"
@@ -210,7 +210,7 @@ export function BindablePropertyField<TData>({ field, data, onSaving, children }
                                                 }`}
                                                 onClick={() => setNewFieldScope(scope)}
                                             >
-                                                {scope === "surface" ? "Page" : "App"}
+                                                {scope === "surface" ? "Page" : scope === "global" ? "App" : "Item"}
                                             </button>
                                         ))}
                                     </div>
