@@ -4,15 +4,13 @@
  */
 
 import { allBuiltinBlueprintNodes } from "./built-in";
-import { defineBlueprintNodes } from "./defineBlueprintNode";
-
-let installed = false;
+import { blueprintNodeRegistry } from "./BlueprintNodeRegistry";
+import { defineBlueprintNode } from "./defineBlueprintNode";
 
 export function registerCoreBlueprintNodes(): void {
-    if (installed) {
-        return;
+    for (const def of allBuiltinBlueprintNodes) {
+        if (!blueprintNodeRegistry.get(def.type)) {
+            defineBlueprintNode(def);
+        }
     }
-    installed = true;
-
-    defineBlueprintNodes(allBuiltinBlueprintNodes);
 }

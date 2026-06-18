@@ -23,6 +23,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
     const doc = localBp.getBlueprintDocument();
     const rec = doc.ownerRecords[ownerKey];
     const ids = rec?.privateBlueprintIds ?? [];
+    const allowTypeScriptRevision = blueprint.owner.kind !== "widgetValue";
 
     return (
         <div className="space-y-2 text-[11px] text-gray-300">
@@ -50,16 +51,18 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
                 })}
             </ul>
             <div className="flex flex-wrap gap-2 pt-1">
-                <button
-                    type="button"
-                    className="rounded border border-white/15 bg-white/5 px-2 py-1 text-[10px] text-gray-200 hover:bg-white/10"
-                    onClick={() => {
-                        const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "typescript");
-                        onReopenRevision?.(newId);
-                    }}
-                >
-                    New TypeScript revision
-                </button>
+                {allowTypeScriptRevision ? (
+                    <button
+                        type="button"
+                        className="rounded border border-white/15 bg-white/5 px-2 py-1 text-[10px] text-gray-200 hover:bg-white/10"
+                        onClick={() => {
+                            const newId = localBp.createSiblingPrivateBlueprintForOwnerKey(ownerKey, "typescript");
+                            onReopenRevision?.(newId);
+                        }}
+                    >
+                        New TypeScript revision
+                    </button>
+                ) : null}
                 <button
                     type="button"
                     className="rounded border border-white/15 bg-white/5 px-2 py-1 text-[10px] text-gray-200 hover:bg-white/10"

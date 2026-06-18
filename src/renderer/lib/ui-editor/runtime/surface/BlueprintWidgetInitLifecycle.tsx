@@ -37,6 +37,7 @@ function blueprintIdsFromWiringKey(key: string): string[] {
  */
 export function BlueprintWidgetInitLifecycle({ surfaceId, elementId, elementType, behavior, initBinding, hostAdapter }: Props) {
     const rt = hostAdapter.blueprintRuntime;
+    const runtimeScopeId = rt?.runtimeScopeId ?? surfaceId;
 
     const logicApi = getWidgetLogicApi(elementType);
     const hasLogicApiInit = Boolean(logicApi?.supportsPrivateBlueprint && logicApi.events.some(e => e.id === "init"));
@@ -67,10 +68,10 @@ export function BlueprintWidgetInitLifecycle({ surfaceId, elementId, elementType
         const blueprintIds = blueprintIdsFromWiringKey(localsWiringKey);
         return () => {
             for (const blueprintId of blueprintIds) {
-                releaseBlueprintWidgetLocals(surfaceId, elementId, blueprintId);
+                releaseBlueprintWidgetLocals(surfaceId, elementId, blueprintId, runtimeScopeId);
             }
         };
-    }, [surfaceId, elementId, rt, localsWiringKey]);
+    }, [surfaceId, runtimeScopeId, elementId, rt, localsWiringKey]);
 
     useEffect(() => {
         if (!rt || !initSig) {

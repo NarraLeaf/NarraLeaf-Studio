@@ -28,7 +28,7 @@ export function blueprintIrToFlowNodes(
     ir: BlueprintGraphIr,
     nodeCatalog: IBlueprintNodeCatalogService,
     onPatchNodeParam?: (nodeId: string, key: string, value: unknown) => void,
-    memberVariables?: Array<{ id: string; name: string }>,
+    memberVariables?: BlueprintFlowNodeData["memberVariables"],
     onAddDynamicInputPin?: (nodeId: string) => void,
     onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void,
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
@@ -127,7 +127,7 @@ export function useBlueprintFlowProjection(
     selectedNodeIds: readonly string[],
     nodeCatalog: IBlueprintNodeCatalogService,
     onPatchNodeParam?: (nodeId: string, key: string, value: unknown) => void,
-    memberVariables?: Array<{ id: string; name: string }>,
+    memberVariables?: BlueprintFlowNodeData["memberVariables"],
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
 ) {
     const selectedKey = blueprintSelectedNodesDependencyKey(selectedNodeIds);

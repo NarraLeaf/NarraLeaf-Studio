@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
 import { EditorComponentProps } from "../../types";
 import { useWorkspace } from "../../../context";
@@ -25,6 +25,11 @@ import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
 import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
 import { BlueprintEditorLayout } from "../components/BlueprintEditorLayout";
 import { BlueprintMemberTree } from "../components/BlueprintMemberTree";
+import {
+    BlueprintEventLayerDialogContent,
+    createDefaultBlueprintEventLayerValue,
+    type BlueprintEventLayerDialogValue,
+} from "../components/BlueprintEventLayerDialogContent";
 import { BlueprintDiagnosticsPanel } from "../components/BlueprintDiagnosticsPanel";
 import { BlueprintFlowCanvas, cloneBlueprintIr, removeBlueprintNodeFromIr } from "../flow/BlueprintFlowCanvas";
 import { BlueprintGraphToolbar } from "../components/BlueprintGraphToolbar";
@@ -34,6 +39,14 @@ import { BlueprintFrontendBadge } from "../components/BlueprintFrontendBadge";
 import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevisionBar";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
+import { buildAccessibleBlueprintVariableOptions } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
+import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
+import {
+    buildBlueprintGraphClipboardPayload,
+    getBlueprintGraphClipboard,
+    pasteBlueprintGraphClipboardPayload,
+    setBlueprintGraphClipboard,
+} from "@/lib/workspace/services/ui-editor/blueprint/graphClipboard";
 
 function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
     if (!view || bp.program.kind !== "graph") {
@@ -89,7 +102,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     }
 
     const widgetElement =
-        payload.ownerKind === "widgetMain" && payload.elementId
+        (payload.ownerKind === "widgetMain" || payload.ownerKind === "widgetValue") && payload.elementId
             ? uidoc.getDocument().elements[payload.elementId]
             : undefined;
     const widgetLogicEvents = useMemo(() => {
@@ -119,6 +132,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 ownerKind: payload.ownerKind,
                 surfaceId: payload.surfaceId,
                 elementId: payload.elementId,
+                propPath: payload.propPath,
                 title: "Blueprint",
             });
         },
@@ -132,7 +146,89 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         [localBp, payload.blueprintId],
     );
 
-    const blueprintHistoryKeybindings = useMemo(
+    const ir = getActiveIr(bp, editor.graphView);
+    const activeIrRef = useRef<BlueprintGraphIr | null>(null);
+    activeIrRef.current = ir;
+
+    const commitIr = useCallback(
+        (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => {
+            if (!editor.graphView) {
+                return;
+            }
+            activeIrRef.current = next;
+            const { blueprintId } = payload;
+            const apply = (draft: BlueprintGraphIr) => {
+                draft.nodes = next.nodes;
+                draft.edges = next.edges;
+                draft.meta = next.meta;
+                draft.variables = next.variables;
+            };
+            if (editor.graphView.kind === "event") {
+                localBp.updateEventGraphIr(blueprintId, editor.graphView.graphId, apply, history);
+            } else {
+                localBp.updateFunctionGraphIr(blueprintId, editor.graphView.graphId, apply, history);
+            }
+        },
+        [editor.graphView, localBp, payload],
+    );
+
+    const copySelectedGraphNodes = useCallback(() => {
+        if (isTypingInField()) {
+            return;
+        }
+        const activeIr = activeIrRef.current;
+        if (!activeIr) {
+            return;
+        }
+        const clipboard = buildBlueprintGraphClipboardPayload(activeIr, editor.selectedNodeIds);
+        if (!clipboard) {
+            return;
+        }
+        setBlueprintGraphClipboard(clipboard);
+    }, [editor.selectedNodeIds]);
+
+    const cutSelectedGraphNodes = useCallback(() => {
+        if (isTypingInField()) {
+            return;
+        }
+        const activeIr = activeIrRef.current;
+        if (!activeIr) {
+            return;
+        }
+        const clipboard = buildBlueprintGraphClipboardPayload(activeIr, editor.selectedNodeIds);
+        if (!clipboard) {
+            return;
+        }
+        setBlueprintGraphClipboard(clipboard);
+        const next = cloneBlueprintIr(activeIr);
+        for (const nodeId of clipboard.nodeIds) {
+            removeBlueprintNodeFromIr(next, nodeId);
+        }
+        commitIr(next);
+        editor.setSelectedNodeIds([]);
+    }, [commitIr, editor]);
+
+    const pasteGraphNodes = useCallback(() => {
+        if (isTypingInField()) {
+            return;
+        }
+        const activeIr = activeIrRef.current;
+        if (!activeIr) {
+            return;
+        }
+        const pasted = pasteBlueprintGraphClipboardPayload({
+            ir: activeIr,
+            payload: getBlueprintGraphClipboard(),
+            generateId: () => uuid.generate(),
+        });
+        if (!pasted) {
+            return;
+        }
+        commitIr(pasted.ir);
+        editor.setSelectedNodeIds(pasted.newNodeIds);
+    }, [commitIr, editor, uuid]);
+
+    const blueprintKeybindings = useMemo(
         () => [
             {
                 id: "undo-ctrl",
@@ -153,6 +249,21 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 },
             },
             {
+                id: "copy-ctrl",
+                key: "ctrl+c",
+                handler: copySelectedGraphNodes,
+            },
+            {
+                id: "cut-ctrl",
+                key: "ctrl+x",
+                handler: cutSelectedGraphNodes,
+            },
+            {
+                id: "paste-ctrl",
+                key: "ctrl+v",
+                handler: pasteGraphNodes,
+            },
+            {
                 id: "undo-meta",
                 key: "meta+z",
                 handler: () => {
@@ -170,39 +281,37 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                     }
                 },
             },
+            {
+                id: "copy-meta",
+                key: "meta+c",
+                handler: copySelectedGraphNodes,
+            },
+            {
+                id: "cut-meta",
+                key: "meta+x",
+                handler: cutSelectedGraphNodes,
+            },
+            {
+                id: "paste-meta",
+                key: "meta+v",
+                handler: pasteGraphNodes,
+            },
         ],
-        [localBp, payload.blueprintId],
+        [
+            copySelectedGraphNodes,
+            cutSelectedGraphNodes,
+            localBp,
+            pasteGraphNodes,
+            payload.blueprintId,
+        ],
     );
 
     useKeybindings({
-        keybindings: blueprintHistoryKeybindings,
+        keybindings: blueprintKeybindings,
         enabled: Boolean(payload.blueprintId),
         when: whenEditorFocused(tabId),
         idPrefix: `blueprint-editor-${tabId}`,
     });
-
-    const ir = getActiveIr(bp, editor.graphView);
-
-    const commitIr = useCallback(
-        (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => {
-            if (!editor.graphView) {
-                return;
-            }
-            const { blueprintId } = payload;
-            const apply = (draft: BlueprintGraphIr) => {
-                draft.nodes = next.nodes;
-                draft.edges = next.edges;
-                draft.meta = next.meta;
-                draft.variables = next.variables;
-            };
-            if (editor.graphView.kind === "event") {
-                localBp.updateEventGraphIr(blueprintId, editor.graphView.graphId, apply, history);
-            } else {
-                localBp.updateFunctionGraphIr(blueprintId, editor.graphView.graphId, apply, history);
-            }
-        },
-        [editor.graphView, localBp, payload],
-    );
 
     const onAddGraphNodeAtFlowPosition = useCallback(
         (type: string, flowPosition: { x: number; y: number }): string | undefined => {
@@ -227,11 +336,99 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         [editor.graphView, localBp, payload.blueprintId, uuid],
     );
 
-    const onAddEvent = useCallback(() => {
+    const onAddEvent = useCallback(async () => {
+        const eventHeadEntries = nodeCatalog.listPaletteEntries(buildBlueprintPaletteContext({
+            graphKind: "event",
+            owner: bp.owner,
+            widgetElementType: widgetElement?.type,
+            widgetBlueprintEvents: widgetLogicEvents,
+            widgetEventLayerSlots: payload.ownerKind === "widgetMain" && widgetElement ? [] : undefined,
+            hasEventHead: false,
+            hasFunctionEntry: false,
+            isBlueprintValueGraph: bp.owner.kind === "widgetValue",
+        })).filter(entry => entry.role === "eventHead");
+        const defaultLayerName = `Layer ${eventIds.length + 1}`;
+
+        let selection: BlueprintEventLayerDialogValue = createDefaultBlueprintEventLayerValue(
+            eventHeadEntries,
+            defaultLayerName,
+        );
+        const selected = await new Promise<BlueprintEventLayerDialogValue | null>(resolve => {
+            let dialogId: string | null = null;
+            let settled = false;
+            const safeResolve = (value: BlueprintEventLayerDialogValue | null) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                resolve(value);
+            };
+            const closeDialog = () => {
+                if (dialogId) {
+                    uiService.dialogs.close(dialogId);
+                    dialogId = null;
+                }
+            };
+            const handleCreate = () => {
+                if (!selection.valid) {
+                    uiService.showNotification("Select an event and name the layer before creating it.", "warning");
+                    return;
+                }
+                safeResolve({ ...selection });
+                closeDialog();
+            };
+            const handleCancel = () => {
+                safeResolve(null);
+                closeDialog();
+            };
+            dialogId = uiService.dialogs.show({
+                title: "Create event layer",
+                content: (
+                    <BlueprintEventLayerDialogContent
+                        entries={eventHeadEntries}
+                        defaultName={defaultLayerName}
+                        onChange={value => {
+                            selection = value;
+                        }}
+                    />
+                ),
+                closable: true,
+                width: 460,
+                buttons: [
+                    { label: "Cancel", onClick: handleCancel },
+                    { label: "Create", primary: true, onClick: handleCreate },
+                ],
+                onClose: handleCancel,
+            });
+        });
+        if (!selected) {
+            return;
+        }
         const id = uuid.generate();
-        localBp.ensureEventGraph(payload.blueprintId, id, `Layer ${id.slice(0, 8)}`);
+        localBp.runBlueprintHistoryTransaction(payload.blueprintId, () => {
+            localBp.ensureEventGraph(payload.blueprintId, id, selected.name);
+            if (selected.nodeType) {
+                localBp.updateEventGraphIr(payload.blueprintId, id, draft => {
+                    const node = createGraphNodeForPalette(selected.nodeType, uuid.generate());
+                    writeNodeEditorLayout(node, { x: 80, y: 120 });
+                    draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
+                });
+            }
+        });
         editor.selectEventGraph(id);
-    }, [editor, localBp, payload.blueprintId, uuid]);
+    }, [
+        bp.owner,
+        editor,
+        eventIds.length,
+        localBp,
+        nodeCatalog,
+        payload.blueprintId,
+        payload.ownerKind,
+        uiService,
+        uuid,
+        widgetElement,
+        widgetLogicEvents,
+    ]);
 
     const onDeleteLayer = useCallback(
         (layerId: string) => {
@@ -293,11 +490,14 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const hasAnyGraph = eventIds.length > 0;
 
     const widgetEventLayerSlots = useMemo(() => {
-        if (payload.ownerKind !== "widgetMain" || !widgetElement || editor.graphView?.kind !== "event") {
-            return undefined;
-        }
-        return [];
-    }, [editor.graphView, payload.ownerKind, widgetElement]);
+        return resolveWidgetEventLayerSlotsForPalette({
+            ownerKind: payload.ownerKind,
+            widgetElement,
+            graphView: editor.graphView,
+            blueprintId: payload.blueprintId,
+            widgetBlueprintEvents: widgetLogicEvents,
+        });
+    }, [editor.graphView, payload.blueprintId, payload.ownerKind, widgetElement, widgetLogicEvents]);
 
     const paletteContext = useMemo(() => {
         const gk = editor.graphView?.kind ?? "event";
@@ -310,6 +510,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             widgetEventLayerSlots,
             hasEventHead: false,
             hasFunctionEntry: gk === "function" && activeIr ? graphIrHasFunctionEntry(activeIr) : false,
+            isBlueprintValueGraph: bp.owner.kind === "widgetValue",
         });
     }, [bp.owner, editor.graphView, ir, widgetElement?.type, widgetEventLayerSlots, widgetLogicEvents]);
 
@@ -319,19 +520,28 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 payload.ownerKind,
                 payload.surfaceId,
                 payload.elementId,
+                payload.propPath,
                 bp.id,
             ].filter(Boolean).join(" · "),
-        [bp.id, payload.elementId, payload.ownerKind, payload.surfaceId],
+        [bp.id, payload.elementId, payload.ownerKind, payload.propPath, payload.surfaceId],
     );
 
     const blueprintMemberVariables = useMemo(() => {
-        return Object.values(bp.members?.variables ?? {})
-            .map(v => ({ id: v.id, name: v.name }))
-            .sort((a, b) => a.name.localeCompare(b.name));
-    }, [revision, payload.blueprintId, bp]);
+        return buildAccessibleBlueprintVariableOptions({
+            doc,
+            currentBlueprintId: payload.blueprintId,
+            surfaceId: payload.surfaceId,
+        }).map(option => ({
+            id: option.id,
+            name: option.name,
+            value: option.value,
+            valueType: option.valueType,
+            disambiguationLabel: option.disambiguationLabel,
+        }));
+    }, [doc, revision, payload.blueprintId, payload.surfaceId]);
 
     const blueprintMembersSig = useMemo(
-        () => blueprintMemberVariables.map(v => `${v.id}:${v.name}`).join("|"),
+        () => blueprintMemberVariables.map(v => `${v.value}:${v.name}:${v.valueType ?? ""}:${v.disambiguationLabel ?? ""}`).join("|"),
         [blueprintMemberVariables],
     );
 
@@ -463,6 +673,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                         graphView={editor.graphView}
                         diagnostics={diagnostics}
                         localBp={localBp}
+                        surfaceId={payload.surfaceId}
                         widgetElementType={widgetElement?.type}
                         onSelectLayer={editor.selectEventGraph}
                         onAddLayer={onAddEvent}

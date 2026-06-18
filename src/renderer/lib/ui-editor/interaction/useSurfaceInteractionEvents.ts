@@ -4,7 +4,7 @@ import type { UITool } from "@/lib/ui-editor/editor/types";
 import type { ViewportTransform } from "../geometry";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
-import { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
+import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { SELECTABLE_TARGET } from "./constants";
 import {
@@ -13,6 +13,7 @@ import {
     promoteHitToDirectChildOfSurfaceRoot,
     shouldPromoteToSurfaceRootChild,
 } from "./containerDrillSelection";
+import { isMoveableInteractionTarget } from "./surfaceInlineTextEditActivation";
 import {
     buildLayoutPatchForNewElementFromSurfaceRect,
     resolveInsertTargetParent,
@@ -223,9 +224,13 @@ export function useSurfaceInteractionEvents({
 
         const handlePointerDown = (event: PointerEvent) => {
             const target = event.target as HTMLElement | null;
+            if (target?.closest?.("textarea, input, [contenteditable='true']")) {
+                return;
+            }
             const isInsideSurface = !!(target && surfaceElement.contains(target));
             const elementNode = target?.closest?.(SELECTABLE_TARGET) as HTMLElement | null;
             const isElementNode = !!elementNode;
+            const isMoveableTarget = isMoveableInteractionTarget(target);
 
             const isPanTool = tool.kind === "pan" && event.button === 0;
             const isMiddleMouse = event.button === 1;
@@ -336,6 +341,9 @@ export function useSurfaceInteractionEvents({
             }
 
             if (isInsideSurface && !isElementNode) {
+                if (isMoveableTarget) {
+                    return;
+                }
                 stateService.setSelection({ type: null, data: null });
                 containerDrillLastPointerRef.current = null;
             }

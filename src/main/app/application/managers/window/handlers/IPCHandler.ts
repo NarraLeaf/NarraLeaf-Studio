@@ -1,4 +1,5 @@
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
+import type { ApiCapability } from "@shared/types/pluginPermissions";
 import { WindowProxy } from "../windowProxy";
 
 export type EventResponse<T extends IPCEventType> = Exclude<IPCEvents[T]["response"], never>;
@@ -7,6 +8,7 @@ export type IPCHandlerProps<T extends IPCEventType> = IPCEvents[T]["data"];
 export abstract class IPCHandler<T extends IPCEventType> {
     abstract readonly name: T;
     abstract readonly type: IPCEvents[T]["type"];
+    readonly requiredApiCapabilities?: readonly ApiCapability[];
     public abstract handle(window: WindowProxy, data: IPCEvents[T]["data"]): Promise<RequestStatus<EventResponse<T>>> | RequestStatus<EventResponse<T>>;
 
     protected failed(err: unknown): RequestStatus<never> {

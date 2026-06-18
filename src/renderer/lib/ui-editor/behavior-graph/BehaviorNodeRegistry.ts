@@ -4,6 +4,7 @@ import type { UIHostAdapter } from "../runtime/types";
 
 export type BehaviorNodeExecuteResult = {
     nextPort?: string;
+    outputValues?: Record<string, unknown>;
 };
 
 /** Optional execution trace for M3-full (node.enter / node.exit + structured errors). */
@@ -15,6 +16,10 @@ export type BehaviorGraphExecutionTrace = {
     emit: (event: BlueprintDebugEvent) => void;
 };
 
+export type BehaviorGraphValueExecution = {
+    returnValue(value: unknown): void;
+};
+
 export type BehaviorNodeExecutionContext = {
     graph: UIGraph;
     entry: UIGraphEntry;
@@ -24,6 +29,13 @@ export type BehaviorNodeExecutionContext = {
     trace?: BehaviorGraphExecutionTrace;
     /** Per-event execution locals; initialized from blueprint member variables (M4 simplified editor). */
     blueprintLocals?: Record<string, unknown>;
+    eventPayload?: Record<string, unknown>;
+    executionOwner?: {
+        surfaceId?: string;
+        elementId?: string;
+        blueprintId?: string;
+    };
+    valueExecution?: BehaviorGraphValueExecution;
 };
 
 export type BehaviorNodeDefinition = {

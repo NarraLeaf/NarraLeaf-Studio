@@ -14,6 +14,8 @@ export type UIEditorClipboardPayload = {
     elements: Record<UIElementId, UIElement>;
     /** Widget main blueprints keyed by original blueprint id (deduped). */
     widgetMainBlueprints: Record<string, Blueprint>;
+    /** Blueprint Value blueprints keyed by original blueprint id (deduped). */
+    widgetValueBlueprints: Record<string, Blueprint>;
 };
 
 let inMemoryClipboard: UIEditorClipboardPayload | null = null;
@@ -59,8 +61,9 @@ export function buildUiEditorClipboardPayload(input: {
     surfaceId: string;
     selectedElementIds: string[];
     getWidgetMainBlueprint: (surfaceId: string, elementId: string) => Blueprint | undefined;
+    getWidgetValueBlueprint?: (surfaceId: string, elementId: string, propPath: string) => Blueprint | undefined;
 }): UIEditorClipboardPayload | null {
-    const { document, surfaceId, selectedElementIds, getWidgetMainBlueprint } = input;
+    const { document, surfaceId, selectedElementIds, getWidgetMainBlueprint, getWidgetValueBlueprint } = input;
     if (selectedElementIds.length === 0) {
         return null;
     }
@@ -75,6 +78,7 @@ export function buildUiEditorClipboardPayload(input: {
     const subtree = collectSubtreeIdsForRoots(document, effectiveRootId, topLevel);
     const elements: Record<string, UIElement> = {};
     const widgetMainBlueprints: Record<string, Blueprint> = {};
+    const widgetValueBlueprints: Record<string, Blueprint> = {};
 
     for (const id of subtree) {
         const el = document.elements[id];
@@ -86,6 +90,12 @@ export function buildUiEditorClipboardPayload(input: {
         if (bp && !widgetMainBlueprints[bp.id]) {
             widgetMainBlueprints[bp.id] = JSON.parse(JSON.stringify(bp)) as Blueprint;
         }
+        for (const propPath of Object.keys(el.valueBindings ?? {})) {
+            const valueBp = getWidgetValueBlueprint?.(surfaceId, id, propPath);
+            if (valueBp && !widgetValueBlueprints[valueBp.id]) {
+                widgetValueBlueprints[valueBp.id] = JSON.parse(JSON.stringify(valueBp)) as Blueprint;
+            }
+        }
     }
 
     return {
@@ -94,5 +104,6 @@ export function buildUiEditorClipboardPayload(input: {
         topLevelElementIds: topLevel,
         elements,
         widgetMainBlueprints,
+        widgetValueBlueprints,
     };
 }

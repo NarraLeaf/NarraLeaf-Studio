@@ -12,10 +12,12 @@ import type {
     UISurface,
     UISurfaceKind,
     UIHost,
+    UISurfaceDesignSize,
     UISurfaceSettings,
     UIStageSurfaceMount,
     UILayout,
     UIElement,
+    UIElementValueBindingValueType,
 } from "@shared/types/ui-editor/document";
 import type {
     BindingDefinition,
@@ -192,11 +194,19 @@ interface IUIDocumentService extends IService {
     updateElementLayout(elementId: string, layoutPatch: Partial<UILayout>, options?: { skipHistory?: boolean }): void;
     updateElementLayouts(layoutPatches: Record<string, Partial<UILayout>>): void;
     updateElementProps(elementId: string, propsPatch: Record<string, unknown>): void;
+    ensureElementBlueprintValueBinding(
+        elementId: string,
+        propPath: string,
+        input: { valueType: UIElementValueBindingValueType; displayName?: string; literalValue?: unknown },
+    ): { blueprintId: string };
+    clearElementBlueprintValueBinding(elementId: string, propPath: string): void;
+    updateElementExtra(elementId: string, extraPatch: Record<string, unknown>): void;
     reorderChildren(parentId: string, orderedChildIds: string[]): void;
     createSurface(input: {
         kind: UISurfaceKind;
         name: string;
         host: UIHost;
+        designSize?: UISurfaceDesignSize;
         stageMount?: UIStageSurfaceMount;
         settings?: UISurfaceSettings;
     }): UISurface;
@@ -290,6 +300,16 @@ interface ILocalBlueprintService extends IService {
     ensureWidgetMain(surfaceId: string, elementId: string, displayName?: string, widgetType?: string): string;
     removeWidgetMain(surfaceId: string, elementId: string): void;
     getWidgetMainBlueprintId(surfaceId: string, elementId: string): string | undefined;
+    ensureWidgetValueBlueprint(input: {
+        surfaceId: string;
+        elementId: string;
+        propPath: string;
+        valueType: UIElementValueBindingValueType;
+        displayName?: string;
+        literalValue?: unknown;
+    }): string;
+    removeWidgetValueBlueprint(surfaceId: string, elementId: string, propPath: string): void;
+    getWidgetValueBlueprintId(surfaceId: string, elementId: string, propPath: string): string | undefined;
     getSurfaceMainBlueprintId(surfaceId: string): string | undefined;
     getReadonlySurfaceMainSummary(surfaceId: string): ReadonlyBlueprintSurfaceSummary;
     createField(
@@ -321,7 +341,11 @@ interface ILocalBlueprintService extends IService {
     listFields(blueprintId: string): BlueprintField[];
     createBlueprintVariable(
         blueprintId: string,
-        input?: { name?: string; defaultValue?: import("@shared/types/blueprint/document").LiteralValue },
+        input?: {
+            name?: string;
+            valueType?: string;
+            defaultValue?: import("@shared/types/blueprint/document").LiteralValue;
+        },
     ): import("@shared/types/blueprint/document").BlueprintVariable;
     renameBlueprintVariable(blueprintId: string, variableId: string, name: string): void;
     setBlueprintVariableDefault(

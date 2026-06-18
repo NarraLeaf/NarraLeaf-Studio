@@ -120,6 +120,16 @@ export function assertValidBlueprintDocument(doc: BlueprintDocument): void {
                         `Field "${field.id}" on blueprint "${bp.id}" has ${vs.kind} valueSource with empty key`,
                     );
                 }
+            } else if (vs.kind === "listItem") {
+                if (vs.path != null && typeof vs.path !== "string") {
+                    throw new BlueprintDocumentValidationError(
+                        `Field "${field.id}" on blueprint "${bp.id}" has listItem valueSource with invalid path`,
+                    );
+                }
+            } else if (vs.kind !== "listIndex" && vs.kind !== "listCount") {
+                throw new BlueprintDocumentValidationError(
+                    `Field "${field.id}" on blueprint "${bp.id}" has unsupported valueSource kind`,
+                );
             }
         }
     }

@@ -35,6 +35,8 @@ import { BLEND_MODE_SELECT_OPTIONS } from "./effectBlendOptions";
 const PANEL_WIDTH = 280;
 const PANEL_GAP = 8;
 const PANEL_MARGIN = 8;
+/** Above the effects detail panel (`z-[80]`) so narrow numeric input portals remain visible. */
+const EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX = 90;
 
 function mergeEffects(prev: ElementEffectValues, patch: Partial<ElementEffectValues>): ElementEffectValues {
     return normalizeElementEffectValues({ ...prev, ...patch });
@@ -89,6 +91,7 @@ function ShadowStoredFields({
             <div className="min-w-0">
                 <span className="text-[10px] font-medium text-gray-500 block mb-0.5">X</span>
                 <NumericDraftEnhancedInput
+                    popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(L.offsetX)}
                     draftResetKey={`${draftResetKey}-ox`}
                     onFiniteNumber={n => commitLayer({ ...L, offsetX: n })}
@@ -100,6 +103,7 @@ function ShadowStoredFields({
             <div className="min-w-0">
                 <span className="text-[10px] font-medium text-gray-500 block mb-0.5">Y</span>
                 <NumericDraftEnhancedInput
+                    popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(L.offsetY)}
                     draftResetKey={`${draftResetKey}-oy`}
                     onFiniteNumber={n => commitLayer({ ...L, offsetY: n })}
@@ -111,6 +115,7 @@ function ShadowStoredFields({
             <div className="min-w-0">
                 <span className="text-[10px] font-medium text-gray-500 block mb-0.5">Blur</span>
                 <NumericDraftEnhancedInput
+                    popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(Math.max(0, L.blur))}
                     draftResetKey={`${draftResetKey}-bl`}
                     onFiniteNumber={n => commitLayer({ ...L, blur: Math.max(0, n) })}
@@ -124,6 +129,7 @@ function ShadowStoredFields({
             <div className="min-w-0">
                 <span className="text-[10px] font-medium text-gray-500 block mb-0.5">Spread</span>
                 <NumericDraftEnhancedInput
+                    popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(L.spread)}
                     draftResetKey={`${draftResetKey}-sp`}
                     onFiniteNumber={n => commitLayer({ ...L, spread: n })}
@@ -214,6 +220,7 @@ function FilterStoredFields({
                 }}
             />
             <NumericDraftEnhancedInput
+                popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                 committedDisplay={String(value.amount)}
                 draftResetKey={`${draftResetKey}-flt-amt`}
                 onFiniteNumber={n =>
@@ -262,6 +269,7 @@ function EffectDetailBody({
         case "blur":
             return (
                 <NumericDraftEnhancedInput
+                    popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(Math.max(0, values.effectBlur))}
                     draftResetKey={`${draftResetKey}-pop-blur`}
                     onFiniteNumber={v => patch({ effectBlur: Math.max(0, v) })}
@@ -276,6 +284,7 @@ function EffectDetailBody({
         case "backgroundBlur":
             return (
                 <NumericDraftEnhancedInput
+                    popoverZIndex={EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX}
                     committedDisplay={String(Math.max(0, values.effectBackgroundBlur))}
                     draftResetKey={`${draftResetKey}-pop-bblur`}
                     onFiniteNumber={v => patch({ effectBackgroundBlur: Math.max(0, v) })}

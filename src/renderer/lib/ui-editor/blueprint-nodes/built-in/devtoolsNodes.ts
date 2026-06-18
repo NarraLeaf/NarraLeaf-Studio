@@ -34,6 +34,12 @@ export const devtoolsBlueprintNodes: BlueprintNodeDef[] = [
                 "value",
                 ctx.params,
                 ctx.blueprintLocals,
+                0,
+                {
+                    hostAdapter: ctx.hostAdapter,
+                    eventPayload: ctx.eventPayload,
+                    executionOwner: ctx.executionOwner,
+                },
             );
             if (wired === undefined) {
                 return { nextPort: "next" };
