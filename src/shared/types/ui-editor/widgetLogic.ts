@@ -126,6 +126,39 @@ const SCROLL_EVENT: WidgetLogicEventDef = {
     headNodeTypes: ["blueprint.event.head.scroll"],
 };
 
+const LIST_ITEM_EVENTS: readonly WidgetLogicEventDef[] = [
+    {
+        id: "itemRender",
+        displayName: "Item render",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.itemRender"],
+    },
+    {
+        id: "itemClick",
+        displayName: "Item click",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.itemClick"],
+    },
+    {
+        id: "itemHover",
+        displayName: "Item hover",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.itemHover"],
+    },
+    {
+        id: "selectionChanged",
+        displayName: "Selection changed",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.selectionChanged"],
+    },
+    {
+        id: "scrollEnd",
+        displayName: "Scroll end",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.scrollEnd"],
+    },
+];
+
 const BROADCAST_EVENTS: readonly WidgetLogicEventDef[] = [
     {
         id: "onAnyBroadcast",
@@ -141,6 +174,17 @@ const BROADCAST_EVENTS: readonly WidgetLogicEventDef[] = [
     },
 ];
 
+const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
+    INIT_EVENT,
+    {
+        id: "pageEvent",
+        displayName: "Page event",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.pageEvent"],
+    },
+    ...BROADCAST_EVENTS,
+];
+
 const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     ...DISPLAYABLE_EVENTS,
@@ -150,6 +194,7 @@ const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
 const COLLECTION_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     SCROLL_EVENT,
+    ...LIST_ITEM_EVENTS,
     ...BROADCAST_EVENTS,
 ];
 
@@ -303,6 +348,27 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { propPath: "itemsBinding", displayName: "Items binding" },
             { propPath: "previewCount", displayName: "Preview count" },
             { propPath: "selectedIndex", displayName: "Selected index" },
+        ],
+    },
+    "nl.frame": {
+        supportsPrivateBlueprint: true,
+        blueprintLabel: "Page logic",
+        events: FRAME_EVENTS,
+        commands: [
+            ...baseCommands,
+            {
+                id: "setPage",
+                displayName: "Set page",
+                availability: "planned",
+            },
+        ],
+        readableState: [
+            { id: "targetSurfaceId", displayName: "Target page" },
+            { id: "params", displayName: "Params" },
+        ],
+        writableProps: [
+            { propPath: "targetSurfaceId", displayName: "Target page" },
+            { propPath: "params", displayName: "Params" },
         ],
     },
 };

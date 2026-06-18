@@ -63,7 +63,9 @@ function cloneBlueprint<T>(value: T): T {
 }
 
 function isSurfaceBlueprintOwnerKey(surfaceId: string, ownerKey: string): boolean {
-    return ownerKey === `surfaceMain:${surfaceId}` || ownerKey.startsWith(`widgetMain:${surfaceId}:`);
+    return ownerKey === `surfaceMain:${surfaceId}` ||
+        ownerKey.startsWith(`widgetMain:${surfaceId}:`) ||
+        ownerKey.startsWith(`widgetValue:${surfaceId}:`);
 }
 
 export function captureBlueprintSurfaceSnapshot(

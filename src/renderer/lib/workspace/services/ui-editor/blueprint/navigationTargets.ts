@@ -9,6 +9,7 @@ export type BlueprintEditorOpenTarget = {
     ownerKind: BlueprintEntryOwnerKind;
     surfaceId: UISurfaceId;
     elementId?: UIElementId;
+    propPath?: string;
     /** Optional tab title when opening from workspace. */
     title?: string;
     /** Focus an event graph by id */

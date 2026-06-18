@@ -59,10 +59,13 @@ function isBlueprintEntryPayload(value: unknown): value is BlueprintEntryTabPayl
     if (typeof o.blueprintId !== "string" || typeof o.surfaceId !== "string") {
         return false;
     }
-    if (o.ownerKind !== "surfaceMain" && o.ownerKind !== "widgetMain") {
+    if (o.ownerKind !== "surfaceMain" && o.ownerKind !== "widgetMain" && o.ownerKind !== "widgetValue") {
         return false;
     }
     if (o.elementId !== undefined && typeof o.elementId !== "string") {
+        return false;
+    }
+    if (o.propPath !== undefined && typeof o.propPath !== "string") {
         return false;
     }
     return true;

@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 3 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 4 as const;
 
 export type BlueprintHostApiContractVersion = typeof BLUEPRINT_HOST_API_CONTRACT_VERSION;
 
@@ -37,6 +37,7 @@ export type BlueprintHostApiContract = {
     widget: BlueprintHostApiFamily;
     state: BlueprintHostApiFamily;
     persistence: BlueprintHostApiFamily;
+    frame: BlueprintHostApiFamily;
     devtools: BlueprintHostApiFamily;
 };
 
@@ -137,6 +138,24 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { key: "", value: undefined },
+            output: undefined,
+        },
+    },
+    frame: {
+        getParam: {
+            capabilityId: "frame.getParam",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { key: "" },
+            output: undefined,
+        },
+        emit: {
+            capabilityId: "frame.emit",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { event: "", data: undefined },
             output: undefined,
         },
     },

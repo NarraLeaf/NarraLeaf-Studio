@@ -45,6 +45,7 @@ function createScriptExecutionContext(input: {
             host: {
                 navigation: api.navigation,
                 widget: api.widget,
+                frame: api.frame,
                 persistence: api.persistence,
                 devtools: {
                     log: (msg: string) => {
@@ -116,6 +117,7 @@ export async function dispatchBlueprintUiEvent(options: {
     document: UIDocument;
     blueprintDocument: BlueprintDocument;
     surfaceId: string;
+    runtimeScopeId?: string;
     elementId: string;
     eventName: string;
     hostAdapter: UIHostAdapter;
@@ -129,6 +131,7 @@ export async function dispatchBlueprintUiEvent(options: {
         document,
         blueprintDocument,
         surfaceId,
+        runtimeScopeId,
         elementId,
         eventName,
         hostAdapter,
@@ -217,6 +220,7 @@ export async function dispatchBlueprintUiEvent(options: {
         blueprintDocument,
         currentBlueprintId: blueprintId,
         surfaceId,
+        runtimeScopeId,
         elementId,
     });
 
@@ -388,6 +392,7 @@ export async function dispatchBlueprintBroadcastEvent(options: {
     document: UIDocument;
     blueprintDocument: BlueprintDocument;
     surfaceId: string;
+    runtimeScopeId?: string;
     eventName: string;
     data: unknown;
     sender?: string;
@@ -401,6 +406,7 @@ export async function dispatchBlueprintBroadcastEvent(options: {
         document,
         blueprintDocument,
         surfaceId,
+        runtimeScopeId,
         eventName,
         data,
         sender,
@@ -419,6 +425,7 @@ export async function dispatchBlueprintBroadcastEvent(options: {
             blueprintDocument,
             currentBlueprintId: target.blueprintId,
             surfaceId,
+            runtimeScopeId,
             elementId: target.elementId,
         });
         try {
@@ -478,6 +485,7 @@ export async function dispatchBlueprintBroadcastEvent(options: {
 export async function dispatchSurfaceBlueprintEvent(options: {
     blueprintDocument: BlueprintDocument;
     surfaceId: string;
+    runtimeScopeId?: string;
     eventName: string;
     hostAdapter: UIHostAdapter;
     debug: DebugBridge;
@@ -485,7 +493,16 @@ export async function dispatchSurfaceBlueprintEvent(options: {
     setSurfaceState: (key: string, value: unknown) => void;
     maxSteps?: number;
 }): Promise<void> {
-    const { blueprintDocument, surfaceId, eventName, hostAdapter, debug, getSurfaceState, setSurfaceState } = options;
+    const {
+        blueprintDocument,
+        surfaceId,
+        runtimeScopeId,
+        eventName,
+        hostAdapter,
+        debug,
+        getSurfaceState,
+        setSurfaceState,
+    } = options;
 
     const ownerKey = surfaceMainOwnerKey(surfaceId);
     const ownerRecord = blueprintDocument.ownerRecords[ownerKey];
@@ -554,6 +571,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
         blueprintDocument,
         currentBlueprintId: blueprintId,
         surfaceId,
+        runtimeScopeId,
     });
 
     try {

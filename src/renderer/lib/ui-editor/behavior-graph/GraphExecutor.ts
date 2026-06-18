@@ -17,12 +17,24 @@ export type ExecuteGraphOptions = {
     executionOwner?: BehaviorNodeExecutionContext["executionOwner"];
 };
 
+export type ExecuteGraphResult = {
+    returnValueSet: boolean;
+    returnValue: unknown;
+};
+
 const DEFAULT_MAX_STEPS = 1024;
 
-export async function executeGraph(options: ExecuteGraphOptions): Promise<void> {
+export async function executeGraph(options: ExecuteGraphOptions): Promise<ExecuteGraphResult> {
     registerCoreBlueprintNodes();
     const { entry, graph, hostAdapter } = options;
     const blueprintLocals = options.blueprintLocals ?? {};
+    const valueResult: ExecuteGraphResult = { returnValueSet: false, returnValue: undefined };
+    const valueExecution = {
+        returnValue: (value: unknown) => {
+            valueResult.returnValueSet = true;
+            valueResult.returnValue = value;
+        },
+    };
     let cursorNodeId = entry.start.nodeId;
     let steps = 0;
 
@@ -70,6 +82,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<void> 
             blueprintLocals,
             eventPayload: options.eventPayload,
             executionOwner: options.executionOwner,
+            valueExecution,
         };
 
         let result: Awaited<ReturnType<NonNullable<typeof definition.execute>>>;
@@ -98,13 +111,17 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<void> 
         if (result && Object.prototype.hasOwnProperty.call(result, "outputValues")) {
             writeBlueprintNodeOutputValues(blueprintLocals, node.id, result.outputValues ?? {});
         }
-        const nextPort = result?.nextPort ?? "next";
+        const hasNextPort = Boolean(result && Object.prototype.hasOwnProperty.call(result, "nextPort"));
+        const nextPort = hasNextPort ? result?.nextPort : "next";
+        if (nextPort == null) {
+            return valueResult;
+        }
 
         const nextEdge = graph.edges.find(
             edge => edge.from.nodeId === cursorNodeId && edge.from.port === nextPort
         );
         if (!nextEdge) {
-            return;
+            return valueResult;
         }
 
         cursorNodeId = nextEdge.to.nodeId;

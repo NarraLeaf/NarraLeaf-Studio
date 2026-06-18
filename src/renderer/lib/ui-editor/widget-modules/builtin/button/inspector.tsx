@@ -20,6 +20,7 @@ import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftE
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
+import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import {
     ensureButtonAppearanceHasAllKeys,
@@ -67,6 +68,31 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
     );
 }
 
+const ButtonLabelBlueprintValueField = createBlueprintValueField({
+    propPath: "label",
+    valueType: "string",
+    valueLabel: "label",
+    title: "Button Text Value",
+    getDisplayName: ({ liveElement }) => `${liveElement.name ?? "Button"} label`,
+    getLiteralValue: ({ liveElement }) => getButtonProps(liveElement).label,
+    renderLiteralEditor: ({ data, liveElement }) => {
+        const buttonProps = getButtonProps(liveElement);
+        return (
+            <textarea
+                className="min-h-[88px] w-full resize-y rounded-md border border-white/10 bg-[#0b0d10] px-2 py-1.5 text-xs text-gray-100 outline-none focus:border-cyan-400/70 focus:ring-1 focus:ring-cyan-400/40"
+                value={buttonProps.label}
+                rows={4}
+                onChange={event => {
+                    data.documentService.updateElementProps(liveElement.id, {
+                        ...liveElement.props,
+                        label: event.target.value,
+                    });
+                }}
+            />
+        );
+    },
+});
+
 export function createButtonInspector(ctx: InspectorContext) {
     type D = UIInspectorData;
     const { element, documentService } = ctx;
@@ -99,15 +125,9 @@ export function createButtonInspector(ctx: InspectorContext) {
                                 fields: [
                                     defineField<D, any>({
                                         id: "button.label",
-                                        type: "textarea",
+                                        type: "custom",
                                         label: "Text",
-                                        rows: 4,
-                                        binding: {
-                                            propPath: "label",
-                                            readLiteral: (d: D) => getButtonProps(d.element).label,
-                                        },
-                                        getValue: (d: D) => getButtonProps(d.element).label,
-                                        setValue: (_d: D, v: string) => patch({ label: v }),
+                                        component: ButtonLabelBlueprintValueField,
                                     }),
                                 ],
                             }),

@@ -18,6 +18,40 @@ type ScrollMetrics = {
     offset: number;
 };
 
+type ListItemEventPayload = {
+    index: number;
+    count: number;
+    key: string;
+    item: unknown;
+};
+
+type BlueprintRuntime = NonNullable<WidgetRendererProps["hostAdapter"]["blueprintRuntime"]>;
+
+function listItemEventPayload(scope: UIListItemScope): ListItemEventPayload {
+    return {
+        index: scope.index,
+        count: scope.count,
+        key: scope.key,
+        item: scope.item,
+    };
+}
+
+function ListItemRenderEvent(props: {
+    runtime: BlueprintRuntime | undefined;
+    elementId: string;
+    scope: UIListItemScope;
+}) {
+    const { runtime, elementId, scope } = props;
+    useEffect(() => {
+        if (!runtime) {
+            return;
+        }
+        void runtime.dispatchElementBlueprintEvent(elementId, "itemRender", listItemEventPayload(scope));
+    }, [elementId, runtime, scope.count, scope.index, scope.item, scope.key]);
+
+    return null;
+}
+
 function eventTargetElement(target: EventTarget | null): Element | null {
     if (target instanceof Element) {
         return target;
@@ -194,8 +228,13 @@ export function ListRenderer(props: WidgetRendererProps) {
     const listHostRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const suppressContentClickRef = useRef(false);
+    const reachedScrollEndRef = useRef(false);
+    const selectedIndexRef = useRef(p.selectedIndex);
     const horizontalScrollbar = p.scrollbar.side === "top" || p.scrollbar.side === "bottom";
     const metrics = useScrollMetrics(viewportRef, horizontalScrollbar);
+    useEffect(() => {
+        selectedIndexRef.current = p.selectedIndex;
+    }, [p.selectedIndex]);
     useEffect(() => {
         const runtime = hostAdapter.blueprintRuntime;
         const viewport = viewportRef.current;
@@ -208,11 +247,19 @@ export function ListRenderer(props: WidgetRendererProps) {
             const offset = horizontalScrollbar ? viewport.scrollLeft : viewport.scrollTop;
             const maxOffset = Math.max(0, contentSize - viewportSize);
             const progress = maxOffset > 0 ? offset / maxOffset : 0;
-            void runtime.dispatchElementBlueprintEvent(element.id, "scroll", {
+            const payload = {
                 offset,
                 maxOffset,
                 progress,
+            };
+            void runtime.dispatchElementBlueprintEvent(element.id, "scroll", {
+                ...payload,
             });
+            const isAtEnd = maxOffset > 0 && offset >= maxOffset - 1;
+            if (isAtEnd && !reachedScrollEndRef.current) {
+                void runtime.dispatchElementBlueprintEvent(element.id, "scrollEnd", payload);
+            }
+            reachedScrollEndRef.current = isAtEnd;
         };
         viewport.addEventListener("scroll", dispatchScroll, { passive: true });
         return () => viewport.removeEventListener("scroll", dispatchScroll);
@@ -297,7 +344,38 @@ export function ListRenderer(props: WidgetRendererProps) {
     };
 
     const innerDir = p.templateDirection === "horizontal" ? "row" : "column";
-    const isRuntime = Boolean(hostAdapter.blueprintRuntime);
+    const blueprintRuntime = hostAdapter.blueprintRuntime;
+    const isRuntime = Boolean(blueprintRuntime);
+    const dispatchListItemEvent = useCallback(
+        (eventName: "itemClick" | "itemHover" | "selectionChanged", scope: UIListItemScope, extra?: Record<string, unknown>) => {
+            if (!blueprintRuntime) {
+                return;
+            }
+            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName, {
+                ...listItemEventPayload(scope),
+                ...extra,
+            });
+        },
+        [blueprintRuntime, element.id],
+    );
+    const handleListItemClick = useCallback(
+        (scope: UIListItemScope) => {
+            dispatchListItemEvent("itemClick", scope);
+            const previousIndex = selectedIndexRef.current;
+            if (previousIndex === scope.index) {
+                return;
+            }
+            selectedIndexRef.current = scope.index;
+            dispatchListItemEvent("selectionChanged", scope, { previousIndex });
+        },
+        [dispatchListItemEvent],
+    );
+    const handleListItemHover = useCallback(
+        (scope: UIListItemScope) => {
+            dispatchListItemEvent("itemHover", scope);
+        },
+        [dispatchListItemEvent],
+    );
     const listBody = items.slice(0, count).map((item, i) => {
         const key = itemKey(item, i, p.itemKeyPath);
         const scope: UIListItemScope = { item, index: i, count, key };
@@ -312,7 +390,10 @@ export function ListRenderer(props: WidgetRendererProps) {
                     flexShrink: 0,
                     pointerEvents: isRuntime || i === 0 ? "auto" : "none",
                 }}
+                onClick={isRuntime ? () => handleListItemClick(scope) : undefined}
+                onPointerEnter={isRuntime ? () => handleListItemHover(scope) : undefined}
             >
+                <ListItemRenderEvent runtime={blueprintRuntime} elementId={element.id} scope={scope} />
                 {renderChildren?.({
                     childrenIds: itemTemplateIds,
                     listItemScope: scope,

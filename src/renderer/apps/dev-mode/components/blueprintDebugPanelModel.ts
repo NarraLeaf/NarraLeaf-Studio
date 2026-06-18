@@ -29,7 +29,7 @@ function isBlueprintInSurfaceScope(bp: Blueprint, scope: SurfaceElementScope): b
     if (owner.kind === "surfaceMain") {
         return scope.surfaceIds.has(owner.surfaceId);
     }
-    if (owner.kind === "widgetMain") {
+    if (owner.kind === "widgetMain" || owner.kind === "widgetValue") {
         return scope.elementIdsBySurfaceId.get(owner.surfaceId)?.has(owner.elementId) === true;
     }
     return false;

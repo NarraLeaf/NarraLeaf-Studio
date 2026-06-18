@@ -5,15 +5,21 @@ import type {
     BlueprintField,
     BlueprintFieldValueSource,
     BlueprintFrontendKind,
+    BlueprintGraphNode,
     BlueprintPrivateOwnerRecord,
     BlueprintVariable,
     LiteralValue,
 } from "@shared/types/blueprint/document";
 import {
+    BLUEPRINT_GRAPH_IR_META_KIND,
+    BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
-import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement, UIElementValueBindingValueType } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { RendererError } from "@shared/utils/error";
 import { EventEmitter } from "../ui/EventEmitter";
@@ -41,7 +47,7 @@ import {
     buildReadonlyWidgetMainSummary,
     type ReadonlyBlueprintWidgetSummary,
 } from "./blueprint/readonlyBlueprintSummary";
-import { ownerRefToIndexKey, surfaceMainOwnerKey, widgetMainOwnerKey } from "./blueprint/ownerKeys";
+import { ownerRefToIndexKey, surfaceMainOwnerKey, widgetMainOwnerKey, widgetValueOwnerKey } from "./blueprint/ownerKeys";
 import {
     buildReadonlySurfaceMainSummary,
     type ReadonlyBlueprintSurfaceSummary,
@@ -134,6 +140,67 @@ function areBlueprintHistorySnapshotsEqual(
 
 function areUIBehaviorSnapshotsEqual(a: UIBehaviorSnapshot, b: UIBehaviorSnapshot): boolean {
     return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function createValueGraphIr(input: {
+    headNodeType: string;
+    valueType: UIElementValueBindingValueType;
+    literalValue: unknown;
+    generateId: () => string;
+}): BlueprintGraphIr {
+    const headId = input.generateId();
+    const literalId = input.generateId();
+    const returnId = input.generateId();
+    const head: BlueprintGraphNode = {
+        id: headId,
+        type: input.headNodeType,
+        params: {},
+        meta: { editorLayout: { x: 80, y: 120 } },
+    };
+    const literal: BlueprintGraphNode = {
+        id: literalId,
+        type: input.valueType === "json" ? BLUEPRINT_NODE_TYPE_LITERAL_JSON : BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+        params: { value: normalizeBlueprintValueLiteral(input.literalValue, input.valueType) },
+        meta: { editorLayout: { x: 300, y: 40 } },
+    };
+    const returnNode: BlueprintGraphNode = {
+        id: returnId,
+        type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
+        params: {},
+        meta: { editorLayout: { x: 540, y: 120 } },
+    };
+    return {
+        nodes: {
+            [headId]: head,
+            [literalId]: literal,
+            [returnId]: returnNode,
+        },
+        edges: [
+            {
+                from: { nodeId: headId, port: "then" },
+                to: { nodeId: returnId, port: "in" },
+            },
+            {
+                from: { nodeId: literalId, port: "value" },
+                to: { nodeId: returnId, port: "value" },
+            },
+        ],
+        meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+    };
+}
+
+function normalizeBlueprintValueLiteral(value: unknown, valueType: UIElementValueBindingValueType): unknown {
+    if (valueType === "string") {
+        return value == null ? "" : String(value);
+    }
+    if (value === undefined) {
+        return {};
+    }
+    try {
+        return JSON.parse(JSON.stringify(value)) as unknown;
+    } catch {
+        return {};
+    }
 }
 
 /**
@@ -306,11 +373,12 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
 
     public removeSurfaceAndWidgetOwners(surfaceId: string): void {
         const prefixWidget = `widgetMain:${surfaceId}:`;
+        const prefixWidgetValue = `widgetValue:${surfaceId}:`;
         const surfaceKey = surfaceMainOwnerKey(surfaceId);
         this.applyBlueprintMutation(doc => {
             const toRemoveBlueprintIds = new Set<string>();
             for (const [k, rec] of Object.entries(doc.ownerRecords)) {
-                if (k === surfaceKey || k.startsWith(prefixWidget)) {
+                if (k === surfaceKey || k.startsWith(prefixWidget) || k.startsWith(prefixWidgetValue)) {
                     for (const bid of rec.privateBlueprintIds) {
                         toRemoveBlueprintIds.add(bid);
                     }
@@ -369,6 +437,74 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return getActiveBlueprintId(this.getBlueprintDocument(), key);
     }
 
+    public ensureWidgetValueBlueprint(input: {
+        surfaceId: string;
+        elementId: string;
+        propPath: string;
+        valueType: UIElementValueBindingValueType;
+        displayName?: string;
+        literalValue?: unknown;
+    }): string {
+        const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
+        const { surfaceId, elementId, propPath } = input;
+        const key = widgetValueOwnerKey(surfaceId, elementId, propPath);
+        let outId = "";
+        this.applyBlueprintMutation(doc => {
+            const active = getActiveBlueprintId(doc, key);
+            if (active && doc.blueprints[active]) {
+                outId = active;
+                if (input.displayName !== undefined) {
+                    doc.blueprints[active].name = input.displayName || doc.blueprints[active].name;
+                }
+                return;
+            }
+            const id = uuid.generate();
+            const blueprint = createMainBlueprint({
+                id,
+                name: input.displayName ?? "Value",
+                owner: { kind: "widgetValue", surfaceId, elementId, propPath },
+            });
+            blueprint.meta = { ...(blueprint.meta ?? {}), valueType: input.valueType };
+            if (blueprint.program.kind === "graph") {
+                blueprint.program.graphs.events = {
+                    init: {
+                        id: "init",
+                        name: "Init",
+                        graph: createValueGraphIr({
+                            headNodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+                            valueType: input.valueType,
+                            literalValue: input.literalValue,
+                            generateId: () => uuid.generate(),
+                        }),
+                    },
+                };
+            }
+            doc.blueprints[id] = blueprint;
+            registerPrivateBlueprintAsActive(doc, key, id, "visual");
+            outId = id;
+        });
+        return outId;
+    }
+
+    public removeWidgetValueBlueprint(surfaceId: string, elementId: string, propPath: string): void {
+        const key = widgetValueOwnerKey(surfaceId, elementId, propPath);
+        this.applyBlueprintMutation(doc => {
+            const rec = doc.ownerRecords[key];
+            if (!rec) {
+                return;
+            }
+            for (const bid of rec.privateBlueprintIds) {
+                delete doc.blueprints[bid];
+            }
+            delete doc.ownerRecords[key];
+        });
+    }
+
+    public getWidgetValueBlueprintId(surfaceId: string, elementId: string, propPath: string): string | undefined {
+        const key = widgetValueOwnerKey(surfaceId, elementId, propPath);
+        return getActiveBlueprintId(this.getBlueprintDocument(), key);
+    }
+
     public getSurfaceMainBlueprintId(surfaceId: string): string | undefined {
         const key = surfaceMainOwnerKey(surfaceId);
         return getActiveBlueprintId(this.getBlueprintDocument(), key);
@@ -389,6 +525,9 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const ownerRef = parsePrivateOwnerKeyToRef(ownerKey);
         if (!ownerRef) {
             throw new RendererError(`Invalid private owner key: ${ownerKey}`);
+        }
+        if (ownerRef.kind === "widgetValue" && frontend === "typescript") {
+            throw new RendererError("Blueprint Value only supports visual blueprints");
         }
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
         const id = uuid.generate();
@@ -1019,10 +1158,17 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         generateId: () => string;
     }): SubtreeDuplicateRemapPlan {
         const { surfaceId } = input;
+        const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
         return planSubtreeDuplicateBlueprintRemap({
             oldElementIds: input.oldElementIds,
             generateId: input.generateId,
             getWidgetMainBlueprintId: (elementId: string) => this.getWidgetMainBlueprintId(surfaceId, elementId),
+            getWidgetValueBlueprintIds: (elementId: string) => {
+                const el = uidoc.getDocument().elements[elementId];
+                return Object.keys(el?.valueBindings ?? {})
+                    .map(propPath => this.getWidgetValueBlueprintId(surfaceId, elementId, propPath))
+                    .filter((id): id is string => Boolean(id));
+            },
         });
     }
 

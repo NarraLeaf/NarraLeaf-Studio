@@ -10,12 +10,14 @@ export function createBlueprintEntryEditorTab(
         blueprintId: target.blueprintId,
         surfaceId: target.surfaceId,
         elementId: target.elementId,
+        propPath: target.propPath,
     });
     const payload: BlueprintEntryTabPayload = {
         blueprintId: target.blueprintId,
         ownerKind: target.ownerKind,
         surfaceId: target.surfaceId,
         elementId: target.elementId,
+        propPath: target.propPath,
         focusEventId: target.focusEventId,
         focusFunctionId: target.focusFunctionId,
         focusFieldId: target.focusFieldId,

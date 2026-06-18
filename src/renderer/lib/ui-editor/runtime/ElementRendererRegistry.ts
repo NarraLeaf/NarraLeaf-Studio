@@ -9,11 +9,18 @@ export type ElementRendererProps = {
     document: UIDocument;
     hostAdapter: UIHostAdapter;
     children?: ReactNode;
+    instanceKey?: string;
     renderChildren?: (options?: {
         childrenIds?: string[];
         listItemScope?: UIListItemScope | null;
         instanceKey?: string;
     }) => ReactNode[];
+    renderSurface?: (options: {
+        targetSurfaceId: string | null;
+        frameElement: UIElement;
+        params?: Record<string, unknown>;
+        instanceKey?: string;
+    }) => ReactNode;
     runtimeData?: {
         surfaceState?: { get(key: string): unknown };
         globalState?: { get(key: string): unknown };

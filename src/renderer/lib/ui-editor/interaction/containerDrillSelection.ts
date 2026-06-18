@@ -8,16 +8,32 @@ import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurf
  * because the gesture was consumed by container drill selection on pointerdown.
  */
 let suppressNextCanvasWidgetDoubleClick = false;
+let suppressNextCanvasWidgetDoubleClickClearTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSuppressNextCanvasWidgetDoubleClickClear(delayMs: number): void {
+    if (suppressNextCanvasWidgetDoubleClickClearTimer) {
+        clearTimeout(suppressNextCanvasWidgetDoubleClickClearTimer);
+    }
+    suppressNextCanvasWidgetDoubleClickClearTimer = setTimeout(() => {
+        suppressNextCanvasWidgetDoubleClick = false;
+        suppressNextCanvasWidgetDoubleClickClearTimer = null;
+    }, delayMs);
+}
 
 export function markSuppressNextCanvasWidgetDoubleClick(): void {
     suppressNextCanvasWidgetDoubleClick = true;
+    scheduleSuppressNextCanvasWidgetDoubleClickClear(750);
+}
+
+export function hasSuppressNextCanvasWidgetDoubleClick(): boolean {
+    return suppressNextCanvasWidgetDoubleClick;
 }
 
 export function consumeSuppressNextCanvasWidgetDoubleClick(): boolean {
     if (!suppressNextCanvasWidgetDoubleClick) {
         return false;
     }
-    suppressNextCanvasWidgetDoubleClick = false;
+    scheduleSuppressNextCanvasWidgetDoubleClickClear(0);
     return true;
 }
 

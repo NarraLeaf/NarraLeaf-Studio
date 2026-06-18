@@ -17,6 +17,7 @@ import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/u
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import {
     lineWrapCss,
     textVerticalAlignToJustifyContent,
@@ -30,12 +31,21 @@ import {
     useWidgetRuntimeElementState,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { beginInlineTextEdit } from "@/lib/ui-editor/interaction/inlineTextEdit";
+import { consumeSuppressNextCanvasWidgetDoubleClick } from "@/lib/ui-editor/interaction/containerDrillSelection";
+import { getSingleSelectedElementId } from "@/lib/ui-editor/interaction/surfaceInlineTextEditActivation";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import { getButtonProps } from "./helpers";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
+import {
+    debugUIDoubleClick,
+    describeDoubleClickTarget,
+} from "@/lib/ui-editor/interaction/doubleClickDebug";
+
+const OPENING_BLUR_GRACE_MS = 300;
+import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
 
 export function ButtonRenderer(props: WidgetRendererProps) {
     const { element, children, surface, hostAdapter, useAppearanceInspectorPreview } = props;
@@ -58,6 +68,17 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                 next?.kind === "textEdit" &&
                 next.surfaceId === surface.id &&
                 next.elementId === element.id;
+
+            if (wasHere || isHere || next?.kind === "textEdit") {
+                debugUIDoubleClick("ButtonRenderer override", {
+                    elementId: element.id,
+                    surfaceId: surface.id,
+                    wasHere,
+                    isHere,
+                    previous,
+                    next,
+                });
+            }
 
             if (isHere && !wasHere) {
                 const docEl = documentService.getDocument().elements[element.id];
@@ -85,9 +106,38 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         interactionOverride.surfaceId === surface.id &&
         interactionOverride.elementId === element.id;
 
+    useEffect(() => {
+        debugUIDoubleClick("ButtonRenderer editing state", {
+            elementId: element.id,
+            surfaceId: surface.id,
+            isEditing,
+            interactionOverride,
+        });
+    }, [element.id, interactionOverride, isEditing, surface.id]);
+
     const handleStartInlineTextEdit = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
             if (isEditing || hostAdapter.blueprintRuntime) {
+                return;
+            }
+            if (consumeSuppressNextCanvasWidgetDoubleClick()) {
+                debugUIDoubleClick("ButtonRenderer suppressed hierarchy drill doubleclick", {
+                    elementId: element.id,
+                    surfaceId: surface.id,
+                });
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+            }
+            const selection = stateService.getSelection();
+            const selectionData = isUIElementSelection(selection) ? selection.data : null;
+            const selectedSingleElementId = getSingleSelectedElementId(selectionData, surface.id);
+            if (selectedSingleElementId !== element.id) {
+                debugUIDoubleClick("ButtonRenderer ignored unfocused doubleclick", {
+                    elementId: element.id,
+                    surfaceId: surface.id,
+                    selectedSingleElementId,
+                });
                 return;
             }
             e.preventDefault();
@@ -177,6 +227,9 @@ export function ButtonRenderer(props: WidgetRendererProps) {
               }
           }
         : undefined;
+    const blueprintEventRootProps = {
+        [BLUEPRINT_EVENTS_DISABLED_ATTR]: interactionDisabled || isEditing ? "true" : undefined,
+    } as Record<string, string | undefined>;
 
     const showLabel = p.label.trim().length > 0;
     const hasChildNodes = children != null && Children.count(children) > 0;
@@ -209,6 +262,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     };
 
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const editOpenedAtRef = useRef(0);
 
     const commitLabelAndClose = useCallback(
         (nextLabel: string) => {
@@ -223,12 +277,22 @@ export function ButtonRenderer(props: WidgetRendererProps) {
 
     useEffect(() => {
         if (!isEditing) {
+            editOpenedAtRef.current = 0;
             return;
         }
+        editOpenedAtRef.current = performance.now();
         const el = textareaRef.current;
         if (!el) {
+            debugUIDoubleClick("ButtonRenderer textarea missing", {
+                elementId: element.id,
+                surfaceId: surface.id,
+            });
             return;
         }
+        debugUIDoubleClick("ButtonRenderer textarea focus", {
+            elementId: element.id,
+            surfaceId: surface.id,
+        });
         el.focus();
         el.select();
     }, [isEditing]);
@@ -242,10 +306,14 @@ export function ButtonRenderer(props: WidgetRendererProps) {
             if (e.key === "Escape") {
                 e.preventDefault();
                 skipBlurCommitRef.current = true;
+                debugUIDoubleClick("ButtonRenderer escape close", {
+                    elementId: element.id,
+                    surfaceId: surface.id,
+                });
                 stateService.setInteractionOverride(null);
             }
         },
-        [stateService],
+        [element.id, stateService, surface.id],
     );
 
     const handleTextareaBlur = useCallback(
@@ -254,9 +322,45 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                 skipBlurCommitRef.current = false;
                 return;
             }
+            const openedMsAgo = editOpenedAtRef.current > 0 ? performance.now() - editOpenedAtRef.current : Infinity;
+            const relatedTarget = e.relatedTarget instanceof Element ? e.relatedTarget : null;
+            const relatedElementNode = relatedTarget?.closest("[data-ui-element-id]") as HTMLElement | null;
+            const relatedInsideSameElement = relatedElementNode?.dataset.uiElementId === element.id;
+            const relatedIsEditable = Boolean(relatedTarget?.closest("textarea, input, [contenteditable='true']"));
+            const isOpeningBlur = openedMsAgo < OPENING_BLUR_GRACE_MS;
+            const shouldKeepEditing = isOpeningBlur || (relatedIsEditable && relatedInsideSameElement);
+
+            if (shouldKeepEditing) {
+                debugUIDoubleClick("ButtonRenderer ignored transient blur", {
+                    elementId: element.id,
+                    surfaceId: surface.id,
+                    openedMsAgo,
+                    isOpeningBlur,
+                    relatedIsEditable,
+                    relatedInsideSameElement,
+                    relatedTarget: describeDoubleClickTarget(relatedTarget),
+                });
+                if (!relatedInsideSameElement) {
+                    requestAnimationFrame(() => {
+                        const el = textareaRef.current;
+                        if (!el) {
+                            return;
+                        }
+                        el.focus();
+                        el.select();
+                    });
+                }
+                return;
+            }
+            debugUIDoubleClick("ButtonRenderer blur commit", {
+                elementId: element.id,
+                surfaceId: surface.id,
+                openedMsAgo,
+                relatedTarget: describeDoubleClickTarget(relatedTarget),
+            });
             commitLabelAndClose(e.target.value);
         },
-        [commitLabelAndClose],
+        [commitLabelAndClose, element.id, surface.id],
     );
 
     const labelBlock =
@@ -323,6 +427,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                 cursor: canDispatchClick ? "pointer" : interactionDisabled ? "not-allowed" : "default",
             }}
             extraRootProps={{
+                ...blueprintEventRootProps,
                 role: canDispatchClick ? ("button" as const) : ("presentation" as const),
                 tabIndex: canDispatchClick ? 0 : undefined,
                 onKeyDown,

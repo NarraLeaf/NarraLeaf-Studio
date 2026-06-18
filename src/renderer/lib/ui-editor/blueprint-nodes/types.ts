@@ -51,6 +51,17 @@ export type BlueprintNodeDynamicInputPinsConfig = {
     generatedIdPrefix: string;
     valueType: string;
     allowInlineLiteral: boolean;
+    /**
+     * Optional grouped pins generated from one add action. When omitted, one pin id
+     * `${prefix}_${n}` is created with valueType / allowInlineLiteral above.
+     */
+    generatedPinTemplates?: readonly {
+        /** Generated ids use `${prefix}_${n}_${idSuffix}`. */
+        idSuffix: string;
+        label: string;
+        valueType: string;
+        allowInlineLiteral: boolean;
+    }[];
     /** Optional display label prefix for generated pins. Defaults to "Input". */
     labelPrefix?: string;
     /** Optional param key storing user-visible labels by generated pin id. */
@@ -92,12 +103,13 @@ export type BlueprintNodeScopeOwnerKind = BlueprintOwnerRef["kind"];
  * that match graphKind (still filtered by graphKinds list).
  */
 export type BlueprintNodeScope = {
+    anyOf?: BlueprintNodeScope[];
     ownerKinds?: BlueprintNodeScopeOwnerKind[];
     /** When set, node only appears for widgetMain blueprints whose element.type matches. */
     widgetElementTypes?: string[];
 };
 
-export type BlueprintNodeRole = "normal" | "eventHead" | "functionEntry" | "reroute" | "dataLiteral";
+export type BlueprintNodeRole = "normal" | "eventHead" | "functionEntry" | "reroute" | "dataLiteral" | "valueReturn";
 
 export type BlueprintNodeExecuteFn = BehaviorNodeDefinition["execute"];
 
@@ -152,6 +164,8 @@ export type BlueprintPaletteContext = {
     hasEventHead?: boolean;
     /** Current function graph already has an entry node */
     hasFunctionEntry?: boolean;
+    /** Blueprint Value graphs have a restricted palette and value-return sink. */
+    isBlueprintValueGraph?: boolean;
 };
 
 /** Legacy editor catalog entry shape (kept for incremental UI migration) */

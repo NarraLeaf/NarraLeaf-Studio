@@ -1,7 +1,7 @@
 import { isContainerFlowLayoutParent } from "./container";
 import { getUIListChildSlot, isUIListScrollbarSlot } from "./list";
 
-export const UI_DOCUMENT_SCHEMA_VERSION = 6 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 7 as const;
 
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;
@@ -89,8 +89,18 @@ export type UIElement = {
     style?: UIStyle;
     props?: Record<string, unknown>;
     behavior?: UIBehavior;
+    valueBindings?: Record<string, UIElementValueBinding>;
     extra?: Record<string, unknown>;
 };
+
+export type UIElementValueBindingValueType = "string" | "json";
+
+export type UIElementValueBinding =
+    | {
+          kind: "blueprintValue";
+          blueprintId: string;
+          valueType: UIElementValueBindingValueType;
+      };
 
 export type UILayout = {
     x: number;

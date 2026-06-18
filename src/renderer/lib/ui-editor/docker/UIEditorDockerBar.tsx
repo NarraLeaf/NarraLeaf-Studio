@@ -509,7 +509,11 @@ export function UIEditorDockerBar({
     stateService,
     documentService,
 }: UIEditorDockerBarProps) {
-    const paletteEntries = useMemo(() => listInsertPaletteEntries(), []);
+    const surfaceKind = useMemo(() => {
+        return documentService.getDocument().surfaces.find(surface => surface.id === surfaceId)?.kind;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [documentService, surfaceId]);
+    const paletteEntries = useMemo(() => listInsertPaletteEntries(surfaceKind), [surfaceKind]);
     const primaryEntries = useMemo(
         () => paletteEntries.filter(entry => entry.placement === "primary"),
         [paletteEntries],

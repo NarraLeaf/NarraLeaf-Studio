@@ -1,5 +1,6 @@
 import type { BlueprintGraphEdge, BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
 import {
+    BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
     BLUEPRINT_NODE_TYPE_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
@@ -11,6 +12,7 @@ import {
     isValidBlueprintExecConnection,
     resolveBlueprintNodeEditorCatalogEntryForNode,
 } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
+import { BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY } from "@/lib/ui-editor/blueprint-nodes/types";
 
 export {
     ensureBlueprintEventGraphIrStructure,
@@ -173,6 +175,12 @@ export function createGraphNodeForPalette(type: string, id: string): BlueprintGr
         base.params = { value: null };
     } else if (type === BLUEPRINT_NODE_TYPE_LITERAL_JSON) {
         base.params = { value: {} };
+    } else if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT) {
+        base.params = {
+            __jsonObjectInputPins: ["field_1_name", "field_1_value"],
+            [BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY]: ["field_1_name"],
+            field_1_name: "field1",
+        };
     }
     return base;
 }

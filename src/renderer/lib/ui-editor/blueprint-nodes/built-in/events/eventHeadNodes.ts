@@ -6,8 +6,12 @@
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_RENDER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOUBLE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOWN,
@@ -18,8 +22,11 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_WHEEL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
 } from "@shared/types/blueprint/graph";
@@ -52,6 +59,41 @@ const PIN_DELTA_Y: BlueprintNodePinDef = {
     valueType: "float",
     label: "Delta Y",
 };
+const PIN_INDEX: BlueprintNodePinDef = {
+    id: "index",
+    kind: "output",
+    semantic: "data",
+    valueType: "integer",
+    label: "Index",
+};
+const PIN_PREVIOUS_INDEX: BlueprintNodePinDef = {
+    id: "previousIndex",
+    kind: "output",
+    semantic: "data",
+    valueType: "integer",
+    label: "Previous Index",
+};
+const PIN_COUNT: BlueprintNodePinDef = {
+    id: "count",
+    kind: "output",
+    semantic: "data",
+    valueType: "integer",
+    label: "Count",
+};
+const PIN_KEY: BlueprintNodePinDef = {
+    id: "key",
+    kind: "output",
+    semantic: "data",
+    valueType: "string",
+    label: "Key",
+};
+const PIN_ITEM: BlueprintNodePinDef = {
+    id: "item",
+    kind: "output",
+    semantic: "data",
+    valueType: "json",
+    label: "Item",
+};
 
 function widgetTypesForHead(headType: string): string[] {
     return Object.entries(BUILTIN_WIDGET_LOGIC_APIS)
@@ -66,6 +108,7 @@ function widgetEventHead(input: {
     keywords: string[];
     pins?: BlueprintNodePinDef[];
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
+    scope?: BlueprintNodeDef["scope"];
 }): BlueprintNodeDef {
     return {
         type: input.type,
@@ -75,7 +118,7 @@ function widgetEventHead(input: {
         graphKinds: ["event"],
         isPure: false,
         role: "eventHead",
-        scope: { widgetElementTypes: widgetTypesForHead(input.type) },
+        scope: input.scope ?? { widgetElementTypes: widgetTypesForHead(input.type) },
         pins: input.pins ?? [THEN_PIN],
         inspectorParams: input.inspectorParams,
         execute: eventHeadExecute,
@@ -145,7 +188,25 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
         displayName: "Init",
         keywords: ["init", "initialize", "component", "mount", "widget", "setup"],
+        scope: {
+            anyOf: [
+                { widgetElementTypes: widgetTypesForHead(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT) },
+                { ownerKinds: ["widgetValue"] },
+            ],
+        },
     }),
+    {
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+        displayName: "Flush",
+        category: "Events",
+        keywords: ["flush", "refresh", "value", "state", "update"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        scope: { ownerKinds: ["widgetValue"] },
+        pins: [THEN_PIN],
+        execute: eventHeadExecute,
+    },
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
         displayName: "Mouse Click",
@@ -221,6 +282,41 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
             { id: "progress", kind: "output", semantic: "data", valueType: "float", label: "Progress" },
         ],
     }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END,
+        displayName: "Scroll End",
+        keywords: ["scroll", "end", "list", "bottom", "edge"],
+        pins: [
+            THEN_PIN,
+            { id: "offset", kind: "output", semantic: "data", valueType: "float", label: "Offset" },
+            { id: "maxOffset", kind: "output", semantic: "data", valueType: "float", label: "Max Offset" },
+            { id: "progress", kind: "output", semantic: "data", valueType: "float", label: "Progress" },
+        ],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_RENDER,
+        displayName: "Item Render",
+        keywords: ["item", "render", "list", "repeater", "row"],
+        pins: [THEN_PIN, PIN_INDEX, PIN_COUNT, PIN_KEY, PIN_ITEM],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
+        displayName: "Item Click",
+        keywords: ["item", "click", "list", "select", "row"],
+        pins: [THEN_PIN, PIN_INDEX, PIN_COUNT, PIN_KEY, PIN_ITEM],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
+        displayName: "Item Hover",
+        keywords: ["item", "hover", "enter", "list", "row"],
+        pins: [THEN_PIN, PIN_INDEX, PIN_COUNT, PIN_KEY, PIN_ITEM],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
+        displayName: "Selection Changed",
+        keywords: ["selection", "selected", "change", "list", "item"],
+        pins: [THEN_PIN, PIN_INDEX, PIN_PREVIOUS_INDEX, PIN_COUNT, PIN_KEY, PIN_ITEM],
+    }),
     broadcastEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,
         displayName: "On Any Broadcast",
@@ -242,5 +338,15 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
             { id: "sender", kind: "output", semantic: "data", valueType: "string", label: "Sender" },
         ],
         inspectorParams: [{ key: "event", label: "Event", kind: "string" }],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT,
+        displayName: "Page Event",
+        keywords: ["page", "frame", "event", "emit", "message"],
+        pins: [
+            THEN_PIN,
+            { id: "event", kind: "output", semantic: "data", valueType: "string", label: "Event" },
+            { id: "data", kind: "output", semantic: "data", valueType: "json", label: "Data" },
+        ],
     }),
 ];

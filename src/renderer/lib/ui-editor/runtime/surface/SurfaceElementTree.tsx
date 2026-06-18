@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { type UIDocument, type UISurface, type UIElement, isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
@@ -6,6 +6,10 @@ import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRen
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
 import { mergeElementWithBlueprintBindings } from "@/lib/ui-editor/blueprint-runtime/BindingEvaluator";
+import {
+    BlueprintValueRuntimeStore,
+    mergeElementWithBlueprintValues,
+} from "@/lib/ui-editor/blueprint-runtime/BlueprintValueRuntimeStore";
 import type { BlueprintStateReader } from "@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation";
 import type { SurfaceStateStore } from "@/lib/ui-editor/blueprint-runtime/SurfaceStateStore";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
@@ -13,13 +17,34 @@ import type { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/Bi
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { renderUnknownWidgetTypeContent } from "@/lib/ui-editor/runtime/unknownWidgetTypeUi";
 import { BlueprintWidgetInitLifecycle } from "@/lib/ui-editor/runtime/surface/BlueprintWidgetInitLifecycle";
+import { WidgetRuntimeScopeProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
     surfaceState: SurfaceStateStore;
     debug: DebugBridge;
     coalescer: BindingDebugCoalescer;
-    globalState?: BlueprintStateReader;
+    globalState?: BlueprintStateReader & { subscribe?: (listener: () => void) => () => void };
+};
+
+export type NestedSurfaceRuntimeInput = {
+    document: UIDocument;
+    parentSurface: UISurface;
+    targetSurface: UISurface;
+    frameElement: UIElement;
+    params: Record<string, unknown>;
+    instanceKey: string;
+    parentHostAdapter: UIHostAdapter;
+    runtimeScopeId: string;
+    surfacePath: string[];
+};
+
+export type NestedSurfaceRuntime = {
+    createRuntimeScopeId?(input: Omit<NestedSurfaceRuntimeInput, "runtimeScopeId">): string;
+    createHostAdapter?(input: NestedSurfaceRuntimeInput): UIHostAdapter;
+    createBindingContext?(input: NestedSurfaceRuntimeInput): SurfaceBlueprintBindingContext | null;
+    mountSurface?(input: NestedSurfaceRuntimeInput & { hostAdapter: UIHostAdapter }): void | (() => void);
+    getWidgetRuntimePatches?(input: NestedSurfaceRuntimeInput): Record<string, DevModeWidgetRuntimePatch> | undefined;
 };
 
 export type SurfaceElementTreeProps = {
@@ -32,12 +57,72 @@ export type SurfaceElementTreeProps = {
     useAppearanceInspectorPreview?: boolean;
     blueprintBindingContext?: SurfaceBlueprintBindingContext | null;
     widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>;
+    nestedSurfaceRuntime?: NestedSurfaceRuntime;
+    surfacePath?: string[];
+    editorChrome?: boolean;
 };
 
 /**
  * Shared element-tree renderer for editor preview and Dev Mode runtime (same layout / registry semantics).
  */
 export function SurfaceElementTree(props: SurfaceElementTreeProps): ReactNode {
+    if (props.blueprintBindingContext) {
+        return <SurfaceValueRuntimeBoundary {...props} />;
+    }
+    return renderSurfaceElementTreeWithValueRuntime(props, null);
+}
+
+function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
+    const {
+        document,
+        surface,
+        hostAdapter,
+        blueprintBindingContext,
+    } = props;
+    const [, setBindingTick] = useState(0);
+    const valueRuntime = useMemo(
+        () => new BlueprintValueRuntimeStore(() => setBindingTick(tick => tick + 1)),
+        [surface.id, hostAdapter.blueprintRuntime?.runtimeScopeId],
+    );
+
+    useEffect(() => () => valueRuntime.dispose(), [valueRuntime]);
+
+    useEffect(() => {
+        if (!blueprintBindingContext) {
+            return;
+        }
+        valueRuntime.sync({
+            document,
+            surface,
+            blueprintDocument: blueprintBindingContext.blueprintDocument,
+            hostAdapter,
+        });
+    }, [blueprintBindingContext, document, hostAdapter, surface, valueRuntime]);
+
+    useEffect(() => {
+        if (!blueprintBindingContext) {
+            return undefined;
+        }
+        const onStateChanged = () => {
+            setBindingTick(tick => tick + 1);
+            valueRuntime.queueFlushAll();
+        };
+        const disposers = [
+            blueprintBindingContext.surfaceState.subscribe(onStateChanged),
+            blueprintBindingContext.globalState?.subscribe?.(onStateChanged),
+        ].filter((dispose): dispose is () => void => Boolean(dispose));
+        return () => {
+            disposers.forEach(dispose => dispose());
+        };
+    }, [blueprintBindingContext, valueRuntime]);
+
+    return <>{renderSurfaceElementTreeWithValueRuntime(props, valueRuntime)}</>;
+}
+
+function renderSurfaceElementTreeWithValueRuntime(
+    props: SurfaceElementTreeProps,
+    valueRuntime: BlueprintValueRuntimeStore | null,
+): ReactNode {
     const {
         document,
         surface,
@@ -48,7 +133,8 @@ export function SurfaceElementTree(props: SurfaceElementTreeProps): ReactNode {
         blueprintBindingContext,
         widgetRuntimePatches,
     } = props;
-    return renderElementTree(
+    const editorChrome = props.editorChrome ?? true;
+    const tree = renderElementTree(
         rootElement,
         document,
         surface,
@@ -59,6 +145,184 @@ export function SurfaceElementTree(props: SurfaceElementTreeProps): ReactNode {
         widgetRuntimePatches,
         null,
         "",
+        props.nestedSurfaceRuntime,
+        props.surfacePath ?? [surface.id],
+        editorChrome,
+        valueRuntime,
+    );
+
+    return (
+        <WidgetRuntimeScopeProvider runtimeScopeId={hostAdapter.blueprintRuntime?.runtimeScopeId ?? null}>
+            {tree}
+        </WidgetRuntimeScopeProvider>
+    );
+}
+
+function NestedSurfacePlaceholder({ label }: { label: string }) {
+    return (
+        <div className="flex h-full w-full items-center justify-center bg-black/20 px-3 text-center text-xs text-gray-400">
+            {label}
+        </div>
+    );
+}
+
+function defaultFrameRuntimeScopeId(input: Omit<NestedSurfaceRuntimeInput, "runtimeScopeId">): string {
+    const parentScope =
+        input.parentHostAdapter.blueprintRuntime?.runtimeScopeId ??
+        input.parentHostAdapter.blueprintRuntime?.surfaceId ??
+        input.parentSurface.id;
+    const instancePart = input.instanceKey ? `:${input.instanceKey}` : "";
+    return `${parentScope}/frame:${input.frameElement.id}${instancePart}->${input.targetSurface.id}`;
+}
+
+function NestedSurfaceRenderer(props: {
+    document: UIDocument;
+    parentSurface: UISurface;
+    targetSurfaceId: string | null;
+    frameElement: UIElement;
+    params: Record<string, unknown>;
+    instanceKey: string;
+    rendererRegistry: ElementRendererRegistry;
+    parentHostAdapter: UIHostAdapter;
+    useAppearanceInspectorPreview: boolean;
+    nestedSurfaceRuntime?: NestedSurfaceRuntime;
+    surfacePath: string[];
+}) {
+    const {
+        document,
+        parentSurface,
+        targetSurfaceId,
+        frameElement,
+        params,
+        instanceKey,
+        rendererRegistry,
+        parentHostAdapter,
+        useAppearanceInspectorPreview,
+        nestedSurfaceRuntime,
+        surfacePath,
+    } = props;
+    const [, setBindingTick] = useState(0);
+    const surfacePathKey = surfacePath.join("\0");
+    const targetSurface = document.surfaces.find(surface => surface.id === targetSurfaceId);
+    const invalidLabel = !targetSurfaceId
+        ? "Select a Page"
+        : !targetSurface
+          ? "Missing Page"
+          : targetSurface.kind !== "appSurface"
+            ? "Target is not a Page"
+            : surfacePath.includes(targetSurface.id)
+              ? "Page loop blocked"
+              : null;
+
+    const runtimeBaseInput = useMemo<Omit<NestedSurfaceRuntimeInput, "runtimeScopeId"> | null>(() => {
+        if (invalidLabel || !targetSurface) {
+            return null;
+        }
+        return {
+            document,
+            parentSurface,
+            targetSurface,
+            frameElement,
+            params,
+            instanceKey,
+            parentHostAdapter,
+            surfacePath,
+        };
+    }, [
+        document,
+        frameElement,
+        instanceKey,
+        invalidLabel,
+        params,
+        parentHostAdapter,
+        parentSurface,
+        surfacePathKey,
+        targetSurface,
+    ]);
+
+    const runtimeScopeId = useMemo(() => {
+        if (!runtimeBaseInput) {
+            return "";
+        }
+        return nestedSurfaceRuntime?.createRuntimeScopeId?.(runtimeBaseInput) ?? defaultFrameRuntimeScopeId(runtimeBaseInput);
+    }, [nestedSurfaceRuntime, runtimeBaseInput]);
+
+    const runtimeInput = useMemo<NestedSurfaceRuntimeInput | null>(() => {
+        if (!runtimeBaseInput || !runtimeScopeId) {
+            return null;
+        }
+        return { ...runtimeBaseInput, runtimeScopeId };
+    }, [runtimeBaseInput, runtimeScopeId]);
+
+    const hostAdapter = useMemo(
+        () => (runtimeInput ? nestedSurfaceRuntime?.createHostAdapter?.(runtimeInput) ?? parentHostAdapter : parentHostAdapter),
+        [nestedSurfaceRuntime, parentHostAdapter, runtimeInput],
+    );
+    const bindingContext = useMemo(
+        () => (runtimeInput ? nestedSurfaceRuntime?.createBindingContext?.(runtimeInput) ?? null : null),
+        [nestedSurfaceRuntime, runtimeInput],
+    );
+    const widgetRuntimePatches = useMemo(
+        () => (runtimeInput ? nestedSurfaceRuntime?.getWidgetRuntimePatches?.(runtimeInput) : undefined),
+        [nestedSurfaceRuntime, runtimeInput],
+    );
+
+    useEffect(() => {
+        const store = bindingContext?.surfaceState;
+        if (!store) {
+            return undefined;
+        }
+        return store.subscribe(() => {
+            setBindingTick(tick => tick + 1);
+        });
+    }, [bindingContext?.surfaceState]);
+
+    useEffect(() => {
+        if (!runtimeInput) {
+            return undefined;
+        }
+        return nestedSurfaceRuntime?.mountSurface?.({ ...runtimeInput, hostAdapter });
+    }, [hostAdapter, nestedSurfaceRuntime, runtimeInput]);
+
+    if (invalidLabel) {
+        return <NestedSurfacePlaceholder label={invalidLabel} />;
+    }
+
+    const rootElementId = targetSurface!.rootElementId;
+    const rootElement = document.elements[rootElementId];
+    if (!rootElement) {
+        return <NestedSurfacePlaceholder label="Page root missing" />;
+    }
+
+    const surfaceStyle: CSSProperties = {
+        position: "relative",
+        width: targetSurface!.designSize.width,
+        height: targetSurface!.designSize.height,
+        overflow: "hidden",
+        backgroundColor: targetSurface!.settings?.backgroundColor ?? "#ffffff",
+    };
+
+    return (
+        <div
+            className="ui-editor-surface"
+            data-ui-surface-id={targetSurface!.id}
+            data-ui-surface-kind={targetSurface!.kind}
+            style={surfaceStyle}
+        >
+            <SurfaceElementTree
+                document={document}
+                surface={targetSurface!}
+                rootElement={rootElement}
+                rendererRegistry={rendererRegistry}
+                hostAdapter={hostAdapter}
+                useAppearanceInspectorPreview={useAppearanceInspectorPreview}
+                blueprintBindingContext={bindingContext}
+                widgetRuntimePatches={widgetRuntimePatches}
+                nestedSurfaceRuntime={nestedSurfaceRuntime}
+                surfacePath={[...surfacePath, targetSurface!.id]}
+                editorChrome={Boolean(parentHostAdapter.blueprintRuntime)}
+            />
+        </div>
     );
 }
 
@@ -92,9 +356,13 @@ function renderElementTree(
     widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>,
     listItemScope?: UIListItemScope | null,
     instanceKey = "",
+    nestedSurfaceRuntime?: NestedSurfaceRuntime,
+    surfacePath: string[] = [surface.id],
+    editorChrome = true,
+    valueRuntime: BlueprintValueRuntimeStore | null = null,
 ): ReactNode {
     const patched = applyWidgetRuntimePatches(element, widgetRuntimePatches ?? {});
-    const resolved =
+    const bound =
         blueprintBindingContext != null
             ? mergeElementWithBlueprintBindings(
                   patched,
@@ -107,6 +375,7 @@ function renderElementTree(
                   listItemScope ?? null,
               )
             : patched;
+    const resolved = mergeElementWithBlueprintValues(bound, surface.id, valueRuntime);
 
     if (resolved.layout.visible === false) {
         return null;
@@ -137,6 +406,10 @@ function renderElementTree(
                 widgetRuntimePatches,
                 childScope ?? null,
                 childInstanceKey,
+                nestedSurfaceRuntime,
+                surfacePath,
+                editorChrome,
+                valueRuntime,
             );
         })
         .filter((node): node is ReactNode => node !== null);
@@ -153,6 +426,22 @@ function renderElementTree(
               hostAdapter,
               children,
               renderChildren,
+              renderSurface: options => (
+                  <NestedSurfaceRenderer
+                      document={document}
+                      parentSurface={surface}
+                      targetSurfaceId={options.targetSurfaceId}
+                      frameElement={options.frameElement}
+                      params={options.params ?? {}}
+                      instanceKey={options.instanceKey ?? instanceKey}
+                      rendererRegistry={rendererRegistry}
+                      parentHostAdapter={hostAdapter}
+                      useAppearanceInspectorPreview={useAppearanceInspectorPreview}
+                      nestedSurfaceRuntime={nestedSurfaceRuntime}
+                      surfacePath={surfacePath}
+                  />
+              ),
+              instanceKey,
               runtimeData: blueprintBindingContext
                   ? {
                         surfaceState: blueprintBindingContext.surfaceState,
@@ -179,8 +468,9 @@ function renderElementTree(
             layoutMode={layoutMode}
             styleOverrides={styleOverrides}
             hostAdapter={hostAdapter}
+            interactive={editorChrome}
         >
-            {hostAdapter.blueprintRuntime ? (
+            {editorChrome && hostAdapter.blueprintRuntime ? (
                 <BlueprintWidgetInitLifecycle
                     surfaceId={surface.id}
                     elementId={resolved.id}

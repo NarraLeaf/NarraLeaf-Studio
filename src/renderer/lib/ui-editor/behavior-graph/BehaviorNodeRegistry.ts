@@ -16,6 +16,10 @@ export type BehaviorGraphExecutionTrace = {
     emit: (event: BlueprintDebugEvent) => void;
 };
 
+export type BehaviorGraphValueExecution = {
+    returnValue(value: unknown): void;
+};
+
 export type BehaviorNodeExecutionContext = {
     graph: UIGraph;
     entry: UIGraphEntry;
@@ -31,6 +35,7 @@ export type BehaviorNodeExecutionContext = {
         elementId?: string;
         blueprintId?: string;
     };
+    valueExecution?: BehaviorGraphValueExecution;
 };
 
 export type BehaviorNodeDefinition = {

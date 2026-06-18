@@ -37,7 +37,7 @@ import type { UIElement } from "@shared/types/ui-editor/document";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import { createPropertyEditorSchema, defineField } from "./framework";
-import type { InlineRowItemContext, PropertyEditorSchema } from "./framework/types";
+import type { FieldDefinition, InlineRowItemContext, PropertyEditorSchema } from "./framework/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { getElementInspector } from "../ui-editor/inspector/registry";
@@ -45,8 +45,13 @@ import type { UIInspectorData } from "../ui-editor/inspector/registry";
 import { useDocumentVersion } from "@/lib/ui-editor/hooks/useDocumentVersion";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { pairLayoutDimensionsForLock } from "@/lib/ui-editor/layout/aspectRatioLock";
+import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 
-function createLayoutInspectorSchema(elements: UIElement[], documentService: UIDocumentService): PropertyEditorSchema<UIInspectorData> {
+function createLayoutInspectorSchema(
+    elements: UIElement[],
+    documentService: UIDocumentService,
+    surfaceId?: string,
+): PropertyEditorSchema<UIInspectorData> {
     const primaryId = elements.map(element => element.id).join("-");
     const applyLayoutPatch = (patch: Partial<UIElement["layout"]>) => {
         elements.forEach(element => {
@@ -72,305 +77,328 @@ function createLayoutInspectorSchema(elements: UIElement[], documentService: UID
 
     const getPrimaryLayout = (data: UIInspectorData) => data.elements[0]?.layout;
 
+    const createDefaultSizeField = (): FieldDefinition<UIInspectorData> =>
+        defineField<UIInspectorData, any>({
+            id: "layout.size",
+            type: "inlineRow",
+            label: "Size",
+            gap: 8,
+            wrap: false,
+            items: [
+                {
+                    id: "layout.width",
+                    className: "min-w-0 flex-1 basis-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                        const w = getPrimaryLayout(data)?.width ?? 0;
+                        return (
+                            <NumericDraftEnhancedInput
+                                committedDisplay={String(w)}
+                                draftResetKey={`${primaryId}-w`}
+                                onFiniteNumber={value => {
+                                    onSaving(true);
+                                    try {
+                                        updateDimension("width", value);
+                                    } finally {
+                                        onSaving(false);
+                                    }
+                                }}
+                                inputMode="numeric"
+                                type="number"
+                                precision={2}
+                                unit="px"
+                                leftIcon={<ArrowLeftRight className="w-4 h-4 text-gray-400" />}
+                                className="w-full min-w-0"
+                                selectAllOnFocus
+                                aria-label="Width"
+                            />
+                        );
+                    },
+                },
+                {
+                    id: "layout.height",
+                    className: "min-w-0 flex-1 basis-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                        const h = getPrimaryLayout(data)?.height ?? 0;
+                        return (
+                            <NumericDraftEnhancedInput
+                                committedDisplay={String(h)}
+                                draftResetKey={`${primaryId}-h`}
+                                onFiniteNumber={value => {
+                                    onSaving(true);
+                                    try {
+                                        updateDimension("height", value);
+                                    } finally {
+                                        onSaving(false);
+                                    }
+                                }}
+                                inputMode="numeric"
+                                type="number"
+                                precision={2}
+                                unit="px"
+                                leftIcon={<ArrowUpDown className="w-4 h-4 text-gray-400" />}
+                                className="w-full min-w-0"
+                                selectAllOnFocus
+                                aria-label="Height"
+                            />
+                        );
+                    },
+                },
+                {
+                    id: "layout.aspectLock",
+                    className: "flex-shrink-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                        // Multi-select: all on when not every element is locked; all off when every element is locked.
+                        const allLocked = elements.every(el => el.layout.lockAspectRatio === true);
+                        const primaryLocked = getPrimaryLayout(data)?.lockAspectRatio === true;
+                        const pressed = elements.length === 1 ? primaryLocked : allLocked;
+                        const toggle = () => {
+                            const nextLocked = !allLocked;
+                            onSaving(true);
+                            try {
+                                elements.forEach(el => {
+                                    documentService.updateElementLayout(el.id, {
+                                        lockAspectRatio: nextLocked,
+                                    });
+                                });
+                            } finally {
+                                onSaving(false);
+                            }
+                        };
+                        return (
+                            <button
+                                type="button"
+                                onClick={toggle}
+                                aria-pressed={pressed}
+                                aria-label={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                                title={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                                className={controlButtonClass(pressed)}
+                            >
+                                <Link className="w-4 h-4" />
+                            </button>
+                        );
+                    },
+                },
+            ],
+            order: 1,
+        });
+
+    const createSizeField = (): FieldDefinition<UIInspectorData> | null => {
+        if (elements.length !== 1) {
+            return createDefaultSizeField();
+        }
+        const element = elements[0]!;
+        const mod = widgetModuleRegistry.get(element.type);
+        const custom = mod?.createLayoutSizeField?.({
+            element,
+            documentService,
+            surfaceId,
+            primaryId,
+        });
+        return custom === undefined ? createDefaultSizeField() : custom;
+    };
+
+    const sizeField = createSizeField();
+    const fields: FieldDefinition<UIInspectorData>[] = [
+        defineField<UIInspectorData, any>({
+            id: "layout.position",
+            type: "inputGroup",
+            label: "Position",
+            gap: 8,
+            wrap: false,
+            inputs: [
+                {
+                    id: "layout.x",
+                    label: "X",
+                    icon: <MoveHorizontal className="w-4 h-4 text-gray-400" />,
+                    type: "number",
+                    precision: 2,
+                    getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.x ?? 0),
+                    setValue: (_data: UIInspectorData, raw: string) => {
+                        const number = toNumber(raw);
+                        if (number === null) {
+                            return;
+                        }
+                        applyLayoutPatch({ x: number });
+                    },
+                    selectAllOnFocus: true,
+                },
+                {
+                    id: "layout.y",
+                    label: "Y",
+                    icon: <MoveVertical className="w-4 h-4 text-gray-400" />,
+                    type: "number",
+                    precision: 2,
+                    getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.y ?? 0),
+                    setValue: (_data: UIInspectorData, raw: string) => {
+                        const number = toNumber(raw);
+                        if (number === null) {
+                            return;
+                        }
+                        applyLayoutPatch({ y: number });
+                    },
+                    selectAllOnFocus: true,
+                },
+            ],
+            order: 0,
+        }),
+        defineField<UIInspectorData, any>({
+            id: "layout.rotation",
+            type: "inlineRow",
+            label: "Rotation",
+            gap: 8,
+            wrap: false,
+            items: [
+                {
+                    id: "layout.rotationValue",
+                    className: "flex-1 min-w-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                        const layoutRotation = getPrimaryLayout(data)?.rotation;
+                        const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation! : 0;
+                        return (
+                            <NumericDraftEnhancedInput
+                                committedDisplay={String(rotationValue)}
+                                draftResetKey={primaryId}
+                                onFiniteNumber={value => {
+                                    const clamped = Math.min(360, Math.max(-360, value));
+                                    onSaving(true);
+                                    try {
+                                        applyLayoutPatch({ rotation: clamped });
+                                    } finally {
+                                        onSaving(false);
+                                    }
+                                }}
+                                inputMode="numeric"
+                                type="number"
+                                min={-360}
+                                max={360}
+                                unit="°"
+                                precision={2}
+                                leftIcon={<RotateCw className="w-4 h-4 text-gray-400" />}
+                                className="w-full min-w-0"
+                                selectAllOnFocus
+                            />
+                        );
+                    },
+                },
+                {
+                    id: "layout.rotationReset",
+                    className: "flex-shrink-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                        const layoutRotation = getPrimaryLayout(data)?.rotation;
+                        const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation! : 0;
+                        const reset = () => {
+                            if (!rotationValue) return;
+                            onSaving(true);
+                            try {
+                                applyLayoutPatch({ rotation: 0 });
+                            } finally {
+                                onSaving(false);
+                            }
+                        };
+                        return (
+                            <button
+                                type="button"
+                                onClick={reset}
+                                aria-label="Reset rotation"
+                                disabled={rotationValue === 0}
+                                className={controlButtonClass(rotationValue !== 0)}
+                            >
+                                <RotateCw className="w-4 h-4" />
+                            </button>
+                        );
+                    },
+                },
+            ],
+            order: 2,
+        }),
+        defineField<UIInspectorData, any>({
+            id: "layout.visibility",
+            type: "inlineRow",
+            label: "Appearance",
+            gap: 8,
+            wrap: false,
+            items: [
+                {
+                    id: "layout.opacity-inline",
+                    className: "flex-1",
+                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                        const layout = getPrimaryLayout(data);
+                        const percent = Math.round(((layout?.opacity ?? 1) * 10000)) / 100;
+                        const handleChange = (next: string) => {
+                            const number = toNumber(next);
+                            if (number === null) {
+                                return;
+                            }
+                            const clamped = Math.min(100, Math.max(0, number));
+                            onSaving(true);
+                            try {
+                                applyLayoutPatch({ opacity: clamped / 100 });
+                            } finally {
+                                onSaving(false);
+                            }
+                        };
+
+                        return (
+                            <EnhancedInput
+                                value={String(percent)}
+                                onChange={handleChange}
+                                inputMode="decimal"
+                                unit="%"
+                                min={0}
+                                max={100}
+                                precision={null}
+                                popoverWhenNarrow
+                                popoverThreshold={124}
+                                leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
+                                className="w-full min-w-0"
+                            />
+                        );
+                    },
+                },
+                {
+                    id: "layout.visible-inline",
+                    className: "flex-shrink-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                        const layout = getPrimaryLayout(data);
+                        const visible = layout?.visible ?? true;
+                        const toggleVisibility = () => {
+                            onSaving(true);
+                            try {
+                                applyLayoutPatch({ visible: !visible });
+                            } finally {
+                                onSaving(false);
+                            }
+                        };
+
+                        return (
+                            <button
+                                type="button"
+                                onClick={toggleVisibility}
+                                className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-transparent text-gray-300 transition hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                aria-pressed={visible}
+                                aria-label="Toggle visibility"
+                            >
+                                {visible ? (
+                                    <Eye className="w-4 h-4" />
+                                ) : (
+                                    <EyeOff className="w-4 h-4" />
+                                )}
+                            </button>
+                        );
+                    },
+                },
+            ],
+            order: 3,
+        }),
+    ];
+    if (sizeField) {
+        fields.splice(1, 0, sizeField);
+    }
+
     return createPropertyEditorSchema<UIInspectorData>({
         id: `ui-layout-${primaryId}`,
         title: "Layout",
-        fields: [
-            defineField<UIInspectorData, any>({
-                id: "layout.position",
-                type: "inputGroup",
-                label: "Position",
-                gap: 8,
-                wrap: false,
-                inputs: [
-                    {
-                        id: "layout.x",
-                        label: "X",
-                        icon: <MoveHorizontal className="w-4 h-4 text-gray-400" />,
-                        type: "number",
-                        precision: 2,
-                        getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.x ?? 0),
-                        setValue: (_data: UIInspectorData, raw: string) => {
-                            const number = toNumber(raw);
-                            if (number === null) {
-                                return;
-                            }
-                            applyLayoutPatch({ x: number });
-                        },
-                        selectAllOnFocus: true,
-                    },
-                    {
-                        id: "layout.y",
-                        label: "Y",
-                        icon: <MoveVertical className="w-4 h-4 text-gray-400" />,
-                        type: "number",
-                        precision: 2,
-                        getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.y ?? 0),
-                        setValue: (_data: UIInspectorData, raw: string) => {
-                            const number = toNumber(raw);
-                            if (number === null) {
-                                return;
-                            }
-                            applyLayoutPatch({ y: number });
-                        },
-                        selectAllOnFocus: true,
-                    },
-                ],
-                order: 0,
-            }),
-            defineField<UIInspectorData, any>({
-                id: "layout.size",
-                type: "inlineRow",
-                label: "Size",
-                gap: 8,
-                wrap: false,
-                items: [
-                    {
-                        id: "layout.width",
-                        className: "min-w-0 flex-1 basis-0",
-                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                            const w = getPrimaryLayout(data)?.width ?? 0;
-                            return (
-                                <NumericDraftEnhancedInput
-                                    committedDisplay={String(w)}
-                                    draftResetKey={`${primaryId}-w`}
-                                    onFiniteNumber={value => {
-                                        onSaving(true);
-                                        try {
-                                            updateDimension("width", value);
-                                        } finally {
-                                            onSaving(false);
-                                        }
-                                    }}
-                                    inputMode="numeric"
-                                    type="number"
-                                    precision={2}
-                                    unit="px"
-                                    leftIcon={<ArrowLeftRight className="w-4 h-4 text-gray-400" />}
-                                    className="w-full min-w-0"
-                                    selectAllOnFocus
-                                    aria-label="Width"
-                                />
-                            );
-                        },
-                    },
-                    {
-                        id: "layout.height",
-                        className: "min-w-0 flex-1 basis-0",
-                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                            const h = getPrimaryLayout(data)?.height ?? 0;
-                            return (
-                                <NumericDraftEnhancedInput
-                                    committedDisplay={String(h)}
-                                    draftResetKey={`${primaryId}-h`}
-                                    onFiniteNumber={value => {
-                                        onSaving(true);
-                                        try {
-                                            updateDimension("height", value);
-                                        } finally {
-                                            onSaving(false);
-                                        }
-                                    }}
-                                    inputMode="numeric"
-                                    type="number"
-                                    precision={2}
-                                    unit="px"
-                                    leftIcon={<ArrowUpDown className="w-4 h-4 text-gray-400" />}
-                                    className="w-full min-w-0"
-                                    selectAllOnFocus
-                                    aria-label="Height"
-                                />
-                            );
-                        },
-                    },
-                    {
-                        id: "layout.aspectLock",
-                        className: "flex-shrink-0",
-                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                            // Multi-select: all on when not every element is locked; all off when every element is locked.
-                            const allLocked = elements.every(el => el.layout.lockAspectRatio === true);
-                            const primaryLocked = getPrimaryLayout(data)?.lockAspectRatio === true;
-                            const pressed = elements.length === 1 ? primaryLocked : allLocked;
-                            const toggle = () => {
-                                const nextLocked = !allLocked;
-                                onSaving(true);
-                                try {
-                                    elements.forEach(el => {
-                                        documentService.updateElementLayout(el.id, {
-                                            lockAspectRatio: nextLocked,
-                                        });
-                                    });
-                                } finally {
-                                    onSaving(false);
-                                }
-                            };
-                            return (
-                                <button
-                                    type="button"
-                                    onClick={toggle}
-                                    aria-pressed={pressed}
-                                    aria-label={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
-                                    title={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
-                                    className={controlButtonClass(pressed)}
-                                >
-                                    <Link className="w-4 h-4" />
-                                </button>
-                            );
-                        },
-                    },
-                ],
-                order: 1,
-            }),
-            defineField<UIInspectorData, any>({
-                id: "layout.rotation",
-                type: "inlineRow",
-                label: "Rotation",
-                gap: 8,
-                wrap: false,
-                items: [
-                    {
-                        id: "layout.rotationValue",
-                        className: "flex-1 min-w-0",
-                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                            const layoutRotation = getPrimaryLayout(data)?.rotation;
-                            const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation! : 0;
-                            return (
-                                <NumericDraftEnhancedInput
-                                    committedDisplay={String(rotationValue)}
-                                    draftResetKey={primaryId}
-                                    onFiniteNumber={value => {
-                                        const clamped = Math.min(360, Math.max(-360, value));
-                                        onSaving(true);
-                                        try {
-                                            applyLayoutPatch({ rotation: clamped });
-                                        } finally {
-                                            onSaving(false);
-                                        }
-                                    }}
-                                    inputMode="numeric"
-                                    type="number"
-                                    min={-360}
-                                    max={360}
-                                    unit="°"
-                                    precision={2}
-                                    leftIcon={<RotateCw className="w-4 h-4 text-gray-400" />}
-                                    className="w-full min-w-0"
-                                    selectAllOnFocus
-                                />
-                            );
-                        },
-                    },
-                    {
-                        id: "layout.rotationReset",
-                        className: "flex-shrink-0",
-                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                            const layoutRotation = getPrimaryLayout(data)?.rotation;
-                            const rotationValue = Number.isFinite(layoutRotation) ? layoutRotation! : 0;
-                            const reset = () => {
-                                if (!rotationValue) return;
-                                onSaving(true);
-                                try {
-                                    applyLayoutPatch({ rotation: 0 });
-                                } finally {
-                                    onSaving(false);
-                                }
-                            };
-                            return (
-                                <button
-                                    type="button"
-                                    onClick={reset}
-                                    aria-label="Reset rotation"
-                                    disabled={rotationValue === 0}
-                                    className={controlButtonClass(rotationValue !== 0)}
-                                >
-                                    <RotateCw className="w-4 h-4" />
-                                </button>
-                            );
-                        },
-                    },
-                ],
-                order: 2,
-            }),
-            defineField<UIInspectorData, any>({
-                id: "layout.visibility",
-                type: "inlineRow",
-                label: "Appearance",
-                gap: 8,
-                wrap: false,
-                items: [
-                    {
-                        id: "layout.opacity-inline",
-                        className: "flex-1",
-                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                            const layout = getPrimaryLayout(data);
-                            const percent = Math.round(((layout?.opacity ?? 1) * 10000)) / 100;
-                            const handleChange = (next: string) => {
-                                const number = toNumber(next);
-                                if (number === null) {
-                                    return;
-                                }
-                                const clamped = Math.min(100, Math.max(0, number));
-                                onSaving(true);
-                                try {
-                                    applyLayoutPatch({ opacity: clamped / 100 });
-                                } finally {
-                                    onSaving(false);
-                                }
-                            };
-
-                            return (
-                                <EnhancedInput
-                                    value={String(percent)}
-                                    onChange={handleChange}
-                                    inputMode="decimal"
-                                    unit="%"
-                                    min={0}
-                                    max={100}
-                                    precision={null}
-                                    popoverWhenNarrow
-                                    popoverThreshold={124}
-                                    leftIcon={<Droplets className="w-4 h-4 text-gray-400" />}
-                                    className="w-full min-w-0"
-                                />
-                            );
-                        },
-                    },
-                    {
-                        id: "layout.visible-inline",
-                        className: "flex-shrink-0",
-                        render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                            const layout = getPrimaryLayout(data);
-                            const visible = layout?.visible ?? true;
-                            const toggleVisibility = () => {
-                                onSaving(true);
-                                try {
-                                    applyLayoutPatch({ visible: !visible });
-                                } finally {
-                                    onSaving(false);
-                                }
-                            };
-
-                            return (
-                                <button
-                                    type="button"
-                                    onClick={toggleVisibility}
-                                    className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-transparent text-gray-300 transition hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-primary/50"
-                                    aria-pressed={visible}
-                                    aria-label="Toggle visibility"
-                                >
-                                    {visible ? (
-                                        <Eye className="w-4 h-4" />
-                                    ) : (
-                                        <EyeOff className="w-4 h-4" />
-                                    )}
-                                </button>
-                            );
-                        },
-                    },
-                ],
-                order: 3,
-            }),
-        ],
+        fields,
     });
 }
 
@@ -549,7 +577,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return null;
         }
 
-        const layoutSchema = createLayoutInspectorSchema(elements, documentService);
+        const layoutSchema = createLayoutInspectorSchema(elements, documentService, deferredUiSelection.surfaceId);
         if (elements.length === 1) {
             const element = elements[0];
             const inspectorSchema = getElementInspector(element, documentService);
