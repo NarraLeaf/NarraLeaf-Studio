@@ -83,17 +83,37 @@ describe("BlueprintAddNodeMenuModel", () => {
                 inputs: 1,
                 outputs: 0,
             }),
+            entry({
+                type: "blueprint.frame.emit",
+                displayName: "Emit Page Event",
+                category: "Page",
+                keywords: ["page"],
+                isPure: false,
+                inputs: 1,
+                outputs: 1,
+            }),
+            entry({
+                type: "blueprint.state.get",
+                displayName: "Get state",
+                category: "Variables",
+                keywords: ["state", "variable"],
+                isPure: true,
+                inputs: 0,
+                outputs: 1,
+            }),
         ]);
 
         expect(categories.map(category => category.id)).toEqual([
             "all",
             "Events",
             "Flow",
+            "Page",
+            "Variables",
             "Data",
             "JSON",
+            "Math",
             "String",
             "Text",
-            "Math",
         ]);
     });
 

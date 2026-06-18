@@ -63,7 +63,6 @@ function getCategoryVisual(categoryId: string): CategoryVisual {
             return { icon: MapIcon, color: "#7ec7c1" };
         case "Persistence":
             return { icon: Save, color: "#b8aa86" };
-        case "State":
         case "Variables":
             return { icon: Variable, color: "#8fb3d9" };
         case "Widget":

@@ -585,6 +585,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     const dataOuts = catalog.pins.filter(p => p.kind === "output" && p.semantic === "data");
 
     const isEventHead = catalog.role === "eventHead";
+    const isValueReturn = catalog.role === "valueReturn";
     const showAddInputRow =
         Boolean(catalog.supportsDynamicInputPins) && Boolean(onAddDynamicInputPin);
     const inspectorParams = catalog.inspectorParams ?? [];
@@ -602,16 +603,19 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         ...execOuts.map(pin => ({ pin, semantic: "exec" as const })),
         ...dataOuts.map(pin => ({ pin, semantic: "data" as const })),
     ];
+    const hasLeftColumn = leftPins.length > 0 || showAddInputRow;
 
     /** When only one side has pins, that column must span full card width so handles align to the true edge. */
-    const onlyRightPins = leftPins.length === 0 && rightPins.length > 0;
-    const onlyLeftPins = leftPins.length > 0 && rightPins.length === 0;
+    const onlyRightPins = !hasLeftColumn && rightPins.length > 0;
+    const onlyLeftPins = hasLeftColumn && rightPins.length === 0;
 
     return (
         <div
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-[#1a1d21] text-xs shadow-md ${
                 selected ? "border-cyan-400/80 ring-1 ring-cyan-500/40" : "border-white/15"
-            } ${isEventHead ? "border-l-2 border-l-cyan-400/70" : ""}`}
+            } ${isEventHead ? "border-l-2 border-l-cyan-400/70" : ""} ${
+                isValueReturn ? "border-r-2 border-r-cyan-400/70" : ""
+            }`}
         >
             <div className="border-b border-white/5 px-2 py-1.5">
                 <div className="text-[10px] uppercase tracking-wide text-gray-500">{catalog.category}</div>
@@ -630,9 +634,9 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                       ))
                     : null}
             </div>
-            {leftPins.length > 0 || rightPins.length > 0 ? (
+            {hasLeftColumn || rightPins.length > 0 ? (
                 <div className="flex items-start gap-1 px-1 py-1.5">
-                    {leftPins.length > 0 ? (
+                    {hasLeftColumn ? (
                         <div
                             className={`flex min-w-0 flex-col gap-0.5 ${onlyLeftPins ? "w-full flex-1" : "flex-1"}`}
                         >

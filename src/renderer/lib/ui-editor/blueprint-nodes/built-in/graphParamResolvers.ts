@@ -8,9 +8,13 @@ import {
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_JSON_HAS,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_REMOVE,
     BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH,
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY,
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_INT,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_JSON,
@@ -19,6 +23,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+    BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_LITERAL,
@@ -74,6 +79,7 @@ import {
     BLUEPRINT_NODE_TYPE_STRING_TRIM,
     BLUEPRINT_NODE_TYPE_STRING_TRIM_END,
     BLUEPRINT_NODE_TYPE_STRING_TRIM_START,
+    BLUEPRINT_NODE_TYPE_STATE_GET,
     BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES,
     BLUEPRINT_NODE_TYPE_TEXT_GET_EFFECTS,
     BLUEPRINT_NODE_TYPE_TEXT_GET_FONT,
@@ -89,11 +95,19 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
-import { readDynamicInputPinLabels, resolveEffectiveBlueprintNodePins } from "../effectivePins";
+import {
+    readDynamicInputPinIds,
+    readDynamicInputPinLabels,
+    resolveEffectiveBlueprintNodePins,
+} from "../effectivePins";
 import { readBlueprintNodeOutputValue } from "../nodeOutputValues";
 
 const MAX_RESOLVE_DEPTH = 32;
 const MAX_REPEAT_COUNT = 10000;
+const MAX_JSON_ARRAY_INDEX = 10000;
+const JSON_OBJECT_FIELD_NAMES_KEY = "__jsonObjectFieldNames";
+const JSON_OBJECT_NAME_PIN_SUFFIX = "_name";
+const JSON_OBJECT_VALUE_PIN_SUFFIX = "_value";
 
 const MATH_RESULT_OPS: Record<string, "add" | "subtract" | "multiply" | "divide"> = {
     [BLUEPRINT_NODE_TYPE_MATH_ADD]: "add",
@@ -539,6 +553,147 @@ function readJsonPath(value: unknown, path: string): { exists: boolean; value: u
     return { exists: true, value: current };
 }
 
+function isJsonObjectRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isJsonContainer(value: unknown): value is Record<string, unknown> | unknown[] {
+    return Array.isArray(value) || isJsonObjectRecord(value);
+}
+
+function isJsonArrayIndex(segment: string): boolean {
+    return /^\d+$/.test(segment) && Number(segment) <= MAX_JSON_ARRAY_INDEX;
+}
+
+function createJsonContainerForNextSegment(nextSegment: string | undefined): Record<string, unknown> | unknown[] {
+    return nextSegment !== undefined && isJsonArrayIndex(nextSegment) ? [] : {};
+}
+
+function setJsonContainerChild(
+    container: Record<string, unknown> | unknown[],
+    segment: string,
+    value: unknown,
+): boolean {
+    if (Array.isArray(container)) {
+        if (!isJsonArrayIndex(segment)) {
+            return false;
+        }
+        container[Number(segment)] = value;
+        return true;
+    }
+    container[segment] = value;
+    return true;
+}
+
+function readJsonContainerChild(
+    container: Record<string, unknown> | unknown[],
+    segment: string,
+): unknown {
+    if (Array.isArray(container)) {
+        if (!isJsonArrayIndex(segment)) {
+            return undefined;
+        }
+        return container[Number(segment)];
+    }
+    return container[segment];
+}
+
+function resolveMutableJsonRoot(value: unknown, firstSegment: string | undefined): unknown {
+    const safe = toJsonSafeValue(value);
+    return isJsonContainer(safe) ? safe : createJsonContainerForNextSegment(firstSegment);
+}
+
+function setJsonPath(value: unknown, path: string, nextValue: unknown): unknown {
+    const segments = splitJsonPath(path.trim());
+    const safeNextValue = toJsonSafeValue(nextValue);
+    if (segments.length === 0) {
+        return safeNextValue;
+    }
+
+    const root = resolveMutableJsonRoot(value, segments[0]);
+    if (!isJsonContainer(root)) {
+        return root;
+    }
+
+    let current: Record<string, unknown> | unknown[] = root;
+    for (let i = 0; i < segments.length - 1; i += 1) {
+        const segment = segments[i];
+        const nextSegment = segments[i + 1];
+        const child = readJsonContainerChild(current, segment);
+        let nextContainer: Record<string, unknown> | unknown[];
+        if (isJsonContainer(child)) {
+            nextContainer = child;
+        } else {
+            nextContainer = createJsonContainerForNextSegment(nextSegment);
+            if (!setJsonContainerChild(current, segment, nextContainer)) {
+                return root;
+            }
+        }
+        current = nextContainer;
+    }
+
+    setJsonContainerChild(current, segments[segments.length - 1], safeNextValue);
+    return root;
+}
+
+function removeJsonPath(value: unknown, path: string): unknown {
+    const root = toJsonSafeValue(value);
+    const segments = splitJsonPath(path.trim());
+    if (!isJsonContainer(root) || segments.length === 0) {
+        return root;
+    }
+
+    let current: unknown = root;
+    for (let i = 0; i < segments.length - 1; i += 1) {
+        if (!isJsonContainer(current)) {
+            return root;
+        }
+        current = readJsonContainerChild(current, segments[i]);
+    }
+
+    if (!isJsonContainer(current)) {
+        return root;
+    }
+    const lastSegment = segments[segments.length - 1];
+    if (Array.isArray(current)) {
+        if (isJsonArrayIndex(lastSegment)) {
+            const index = Number(lastSegment);
+            if (index < current.length) {
+                current.splice(index, 1);
+            }
+        }
+        return root;
+    }
+    delete current[lastSegment];
+    return root;
+}
+
+function mergeJsonObjectValues(a: unknown, b: unknown): Record<string, unknown> {
+    const left = toJsonSafeValue(a);
+    const right = toJsonSafeValue(b);
+    return {
+        ...(isJsonObjectRecord(left) ? left : {}),
+        ...(isJsonObjectRecord(right) ? right : {}),
+    };
+}
+
+function readJsonObjectFieldPair(
+    pinId: string,
+    dynamicIdSet: ReadonlySet<string>,
+): { nameId: string; valueId: string } | undefined {
+    if (pinId.endsWith(JSON_OBJECT_NAME_PIN_SUFFIX)) {
+        const baseId = pinId.slice(0, -JSON_OBJECT_NAME_PIN_SUFFIX.length);
+        const valueId = `${baseId}${JSON_OBJECT_VALUE_PIN_SUFFIX}`;
+        return dynamicIdSet.has(valueId) ? { nameId: pinId, valueId } : undefined;
+    }
+    if (pinId.endsWith(JSON_OBJECT_VALUE_PIN_SUFFIX)) {
+        const baseId = pinId.slice(0, -JSON_OBJECT_VALUE_PIN_SUFFIX.length);
+        const nameId = `${baseId}${JSON_OBJECT_NAME_PIN_SUFFIX}`;
+        return dynamicIdSet.has(nameId) ? { nameId, valueId: pinId } : undefined;
+    }
+    return undefined;
+}
+
 function resolveJsonMakeObjectResult(
     graph: DataPinGraph,
     nodeId: string,
@@ -551,10 +706,39 @@ function resolveJsonMakeObjectResult(
     if (!def) {
         return {};
     }
-    const labels = readDynamicInputPinLabels(params, def.dynamicInputPins?.pinLabelParamKey);
+    const dynamicPinIds = def.dynamicInputPins
+        ? readDynamicInputPinIds(params, def.dynamicInputPins.storageKey)
+        : [];
+    const dynamicPinIdSet = new Set(dynamicPinIds);
+    const labels = readDynamicInputPinLabels(params, JSON_OBJECT_FIELD_NAMES_KEY);
+    const handledPinIds = new Set<string>();
     const out: Record<string, unknown> = {};
+    for (const pinId of dynamicPinIds) {
+        if (handledPinIds.has(pinId)) {
+            continue;
+        }
+        const pair = readJsonObjectFieldPair(pinId, dynamicPinIdSet);
+        if (!pair) {
+            continue;
+        }
+        handledPinIds.add(pair.nameId);
+        handledPinIds.add(pair.valueId);
+        const key = toBlueprintString(
+            resolveInput(graph, nodeId, pair.nameId, params, blueprintLocals, depth, runtime),
+        ).trim();
+        if (!key || Object.prototype.hasOwnProperty.call(out, key)) {
+            continue;
+        }
+        out[key] = toJsonSafeValue(
+            resolveInput(graph, nodeId, pair.valueId, params, blueprintLocals, depth, runtime),
+        );
+    }
+
     for (const pin of resolveEffectiveBlueprintNodePins(def, params)) {
         if (pin.kind !== "input" || pin.semantic !== "data") {
+            continue;
+        }
+        if (handledPinIds.has(pin.id)) {
             continue;
         }
         const key = (labels[pin.id] ?? pin.label ?? pin.id).trim();
@@ -746,6 +930,47 @@ function resolveBroadcastNodeOutput(
     return runtime?.hostAdapter?.blueprintRuntime?.getBroadcastListenerCount?.(eventName) ?? 0;
 }
 
+function resolveFrameNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (portId !== "value") {
+        return undefined;
+    }
+    const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
+    if (!api) {
+        return undefined;
+    }
+    const key = toBlueprintString(resolveInput(graph, nodeId, "key", params, blueprintLocals, depth, runtime)).trim();
+    return key ? api.frame.getParam(key) : undefined;
+}
+
+function resolveStateNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (portId !== "result") {
+        return undefined;
+    }
+    const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
+    if (!api) {
+        return undefined;
+    }
+    const scope = String(params.scope ?? "surface").trim().toLowerCase() === "global" ? "global" : "surface";
+    const key = toBlueprintString(resolveInput(graph, nodeId, "key", params, blueprintLocals, depth, runtime) ?? params.key).trim();
+    return key ? api.state.get(scope, key) : undefined;
+}
+
 function resolveTextNodeOutput(type: string, portId: string, runtime?: DataPinResolveRuntime): unknown {
     const elementId = runtime?.executionOwner?.elementId;
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
@@ -823,7 +1048,26 @@ function resolveDataNodeOutput(
     if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY) {
         return resolveJsonMakeArrayResult(graph, nodeId, params, blueprintLocals, depth, runtime);
     }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_SET) {
+        const json = resolveInput(graph, nodeId, "json", params, blueprintLocals, depth, runtime);
+        const path = toBlueprintString(resolveInput(graph, nodeId, "path", params, blueprintLocals, depth, runtime));
+        const nextValue = resolveInput(graph, nodeId, "value", params, blueprintLocals, depth, runtime);
+        return setJsonPath(json, path, nextValue);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_REMOVE) {
+        const json = resolveInput(graph, nodeId, "json", params, blueprintLocals, depth, runtime);
+        const path = toBlueprintString(resolveInput(graph, nodeId, "path", params, blueprintLocals, depth, runtime));
+        return removeJsonPath(json, path);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT) {
+        const a = resolveInput(graph, nodeId, "a", params, blueprintLocals, depth, runtime);
+        const b = resolveInput(graph, nodeId, "b", params, blueprintLocals, depth, runtime);
+        return mergeJsonObjectValues(a, b);
+    }
     const value = resolveInput(graph, nodeId, "value", params, blueprintLocals, depth, runtime);
+    if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE) {
+        return toJsonSafeValue(value);
+    }
     if (type === BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT) {
         const n = toFiniteNumber(value);
         return Number.isNaN(n) ? 0 : n;
@@ -902,6 +1146,12 @@ function resolveSelfOutput(
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT) {
         return resolveBroadcastNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
+    }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM) {
+        return resolveFrameNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
+    }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_STATE_GET) {
+        return resolveStateNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
     }
     const textOutput = resolveTextNodeOutput(selfNode.type, portId, runtime);
     if (textOutput !== undefined) {

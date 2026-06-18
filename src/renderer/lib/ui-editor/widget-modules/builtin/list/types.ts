@@ -17,6 +17,8 @@ export type ListWidgetProps = {
     itemKeyPath?: string;
     /** Design-time number of preview rows/columns. */
     previewCount: number;
+    /** Current selected item index. -1 means no selection. */
+    selectedIndex: number;
     /** Gap between list items (main axis of repeat). */
     itemGap: number;
     /** Stack preview copies vertically or horizontally. */
@@ -75,6 +77,7 @@ export const defaultListWidgetProps: ListWidgetProps = {
     previewItems: [],
     itemKeyPath: "id",
     previewCount: 4,
+    selectedIndex: -1,
     itemGap: 8,
     repeatDirection: "vertical",
     contentPaddingTop: 0,

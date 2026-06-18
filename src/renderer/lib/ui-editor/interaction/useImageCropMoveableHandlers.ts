@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 import type {
     OnDrag,
     OnDragEnd,
@@ -8,9 +8,13 @@ import type {
     OnResizeStart,
 } from "react-moveable";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
-import type { ImageFill } from "@shared/types/ui-editor/imageFill";
+import type { ImageFill, ImageFillCropPlacement } from "@shared/types/ui-editor/imageFill";
+import { DEFAULT_RECTANGLE_CROP_PLACEMENT } from "@shared/types/ui-editor/rectangleLike";
+import { computeCoverCropPlacement } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
+import { buildImageFillPropsUpdate } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
 
 const MIN_SIZE_PCT = 5;
+const CROP_PLACEMENT_EPSILON = 0.001;
 
 interface ImageCropHandlersConfig {
     documentService: UIDocumentService;
@@ -22,6 +26,101 @@ interface ImageCropHandlersConfig {
     scheduleMoveableRectUpdate: () => void;
 }
 
+function parsePixelValue(value: string): number | null {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readCropPlacementFromDom(
+    container: HTMLElement,
+    imageTarget: HTMLElement,
+): ImageFillCropPlacement | null {
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    if (containerWidth <= 0 || containerHeight <= 0) {
+        return null;
+    }
+
+    const computed = window.getComputedStyle(imageTarget);
+    const widthPx = parsePixelValue(computed.width) ?? imageTarget.offsetWidth;
+    const heightPx = parsePixelValue(computed.height) ?? imageTarget.offsetHeight;
+    const leftPx = parsePixelValue(computed.left) ?? imageTarget.offsetLeft;
+    const topPx = parsePixelValue(computed.top) ?? imageTarget.offsetTop;
+    if (widthPx <= 0 || heightPx <= 0) {
+        return null;
+    }
+
+    return {
+        leftPct: (leftPx / containerWidth) * 100,
+        topPct: (topPx / containerHeight) * 100,
+        widthPct: (widthPx / containerWidth) * 100,
+        heightPct: (heightPx / containerHeight) * 100,
+    };
+}
+
+function isDefaultCropPlacement(placement: ImageFillCropPlacement): boolean {
+    return (
+        Math.abs(placement.leftPct - DEFAULT_RECTANGLE_CROP_PLACEMENT.leftPct) < CROP_PLACEMENT_EPSILON &&
+        Math.abs(placement.topPct - DEFAULT_RECTANGLE_CROP_PLACEMENT.topPct) < CROP_PLACEMENT_EPSILON &&
+        Math.abs(placement.widthPct - DEFAULT_RECTANGLE_CROP_PLACEMENT.widthPct) < CROP_PLACEMENT_EPSILON &&
+        Math.abs(placement.heightPct - DEFAULT_RECTANGLE_CROP_PLACEMENT.heightPct) < CROP_PLACEMENT_EPSILON
+    );
+}
+
+function getNaturalImageSize(imageTarget: HTMLElement): { width: number; height: number } | null {
+    if (!(imageTarget instanceof HTMLImageElement)) {
+        return null;
+    }
+    if (imageTarget.naturalWidth <= 0 || imageTarget.naturalHeight <= 0) {
+        return null;
+    }
+    return {
+        width: imageTarget.naturalWidth,
+        height: imageTarget.naturalHeight,
+    };
+}
+
+function resolveInitialCropPlacement(
+    container: HTMLElement,
+    imageTarget: HTMLElement,
+    storedPlacement?: ImageFillCropPlacement,
+): ImageFillCropPlacement {
+    if (storedPlacement) {
+        return storedPlacement;
+    }
+
+    const domPlacement = readCropPlacementFromDom(container, imageTarget);
+    if (domPlacement && !isDefaultCropPlacement(domPlacement)) {
+        return domPlacement;
+    }
+
+    const naturalSize = getNaturalImageSize(imageTarget);
+    const coverPlacement = naturalSize
+        ? computeCoverCropPlacement({
+              imageWidth: naturalSize.width,
+              imageHeight: naturalSize.height,
+              containerWidth: container.clientWidth,
+              containerHeight: container.clientHeight,
+          })
+        : null;
+
+    return coverPlacement ?? domPlacement ?? DEFAULT_RECTANGLE_CROP_PLACEMENT;
+}
+
+function applyCropPlacementStyles(
+    imageTarget: HTMLElement,
+    placement: ImageFillCropPlacement,
+    options: { clearTransform?: boolean } = {},
+): void {
+    if (options.clearTransform !== false) {
+        imageTarget.style.transform = "";
+    }
+    imageTarget.style.left = `${placement.leftPct}%`;
+    imageTarget.style.top = `${placement.topPct}%`;
+    imageTarget.style.width = `${placement.widthPct}%`;
+    imageTarget.style.height = `${placement.heightPct}%`;
+}
+
 export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
     const lastDragRef = useRef<{ translateX: number; translateY: number } | null>(null);
     const lastResizeRef = useRef<{
@@ -30,6 +129,44 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
         translateX: number;
         translateY: number;
     } | null>(null);
+    const gestureBaseRef = useRef<ImageFillCropPlacement | null>(null);
+
+    const ensureStoredCropPlacement = useCallback(() => {
+        const { container, imageTarget, documentService, elementId, scheduleMoveableRectUpdate } =
+            config;
+        if (!container || !imageTarget || !elementId) {
+            return null;
+        }
+
+        const doc = documentService.getDocument();
+        const element = doc.elements[elementId];
+        if (!element) {
+            return null;
+        }
+
+        const prevFill = (element.props?.imageFill as ImageFill) ?? {
+            mode: "crop",
+            assetId: null,
+        };
+        const placement = resolveInitialCropPlacement(container, imageTarget, prevFill.cropPlacement);
+        if (prevFill.cropPlacement) {
+            return placement;
+        }
+
+        const nextFill: ImageFill = {
+            ...prevFill,
+            mode: "crop",
+            cropPlacement: placement,
+        };
+        documentService.updateElementProps(elementId, buildImageFillPropsUpdate(element, nextFill));
+        applyCropPlacementStyles(imageTarget, placement, { clearTransform: false });
+        scheduleMoveableRectUpdate();
+        return placement;
+    }, [config]);
+
+    useLayoutEffect(() => {
+        ensureStoredCropPlacement();
+    }, [ensureStoredCropPlacement]);
 
     /**
      * Persist the crop placement from tracked pixel deltas, then directly
@@ -79,12 +216,8 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
                 mode: "crop",
                 assetId: null,
             };
-            const prev = prevFill.cropPlacement ?? {
-                leftPct: 0,
-                topPct: 0,
-                widthPct: 100,
-                heightPct: 100,
-            };
+            const prev = gestureBaseRef.current ??
+                resolveInitialCropPlacement(container, imageTarget, prevFill.cropPlacement);
 
             // Convert stored percentages → local pixels
             const baseWidthPx = (prev.widthPct / 100) * containerWidth;
@@ -112,20 +245,13 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
                 mode: "crop",
                 cropPlacement: { leftPct, topPct, widthPct, heightPct },
             };
-            documentService.updateElementProps(elementId, {
-                ...element.props,
-                imageFill: nextFill,
-            });
+            documentService.updateElementProps(elementId, buildImageFillPropsUpdate(element, nextFill));
 
             // ── 2. Directly apply styles to the DOM element ─────────────────
             // This removes the Moveable-applied transform and sets the
             // authoritative percentage values so that the image is visually
             // correct even before React reconciles.
-            imageTarget.style.transform = "";
-            imageTarget.style.left = `${leftPct}%`;
-            imageTarget.style.top = `${topPct}%`;
-            imageTarget.style.width = `${widthPct}%`;
-            imageTarget.style.height = `${heightPct}%`;
+            applyCropPlacementStyles(imageTarget, { leftPct, topPct, widthPct, heightPct });
 
             scheduleMoveableRectUpdate();
         },
@@ -139,9 +265,10 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             if (!config.imageTarget) {
                 return;
             }
+            gestureBaseRef.current = ensureStoredCropPlacement();
             config.beginTransform();
         },
-        [config],
+        [config, ensureStoredCropPlacement],
     );
 
     const handleDrag = useCallback((event: OnDrag) => {
@@ -168,6 +295,7 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
                 });
             }
             lastDragRef.current = null;
+            gestureBaseRef.current = null;
             config.endTransform();
         },
         [config, updatePlacement],
@@ -180,9 +308,10 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
             if (!config.imageTarget) {
                 return;
             }
+            gestureBaseRef.current = ensureStoredCropPlacement();
             config.beginTransform();
         },
-        [config],
+        [config, ensureStoredCropPlacement],
     );
 
     const handleResize = useCallback((event: OnResize) => {
@@ -219,6 +348,7 @@ export function useImageCropMoveableHandlers(config: ImageCropHandlersConfig) {
                 });
             }
             lastResizeRef.current = null;
+            gestureBaseRef.current = null;
             config.endTransform();
         },
         [config, updatePlacement],

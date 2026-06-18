@@ -16,20 +16,23 @@ function defaultLocalsFromBlueprint(bp: Blueprint): Record<string, unknown> {
 
 const store = new Map<string, Record<string, unknown>>();
 
-function widgetVariableStoreKey(surfaceId: string, elementId: string, blueprintId: string): string {
-    return `widget\0${surfaceId}\0${elementId}\0${blueprintId}`;
+function widgetVariableStoreKey(runtimeScopeId: string, elementId: string, blueprintId: string): string {
+    return `widget\0${runtimeScopeId}\0${elementId}\0${blueprintId}`;
 }
 
-function blueprintVariableStoreKey(blueprint: Blueprint): string {
+function blueprintVariableStoreKey(blueprint: Blueprint, runtimeScopeId?: string): string {
     const owner = blueprint.owner;
     if (owner.kind === "globalMain") {
         return `global\0${blueprint.id}`;
     }
     if (owner.kind === "surfaceMain") {
-        return `surface\0${owner.surfaceId}\0${blueprint.id}`;
+        return `surface\0${runtimeScopeId ?? owner.surfaceId}\0${blueprint.id}`;
     }
     if (owner.kind === "widgetMain") {
-        return `widget\0${owner.surfaceId}\0${owner.elementId}\0${blueprint.id}`;
+        return `widget\0${runtimeScopeId ?? owner.surfaceId}\0${owner.elementId}\0${blueprint.id}`;
+    }
+    if (owner.kind === "widgetValue") {
+        return `widgetValue\0${runtimeScopeId ?? owner.surfaceId}\0${owner.elementId}\0${owner.propPath}\0${blueprint.id}`;
     }
     return `asset\0${owner.assetId}\0${blueprint.id}`;
 }
@@ -70,14 +73,21 @@ function defineVariableAccessor(target: Record<string, unknown>, key: string, st
  * Mutable per-widget blueprint execution locals: one map per (surface, element, blueprint) until release.
  * Syncs variable ids with the current blueprint definition without wiping values for existing vars.
  */
-export function acquireBlueprintWidgetLocals(surfaceId: string, elementId: string, blueprintId: string, bp: Blueprint): Record<string, unknown> {
-    return acquireVariableStore(widgetVariableStoreKey(surfaceId, elementId, blueprintId), bp);
+export function acquireBlueprintWidgetLocals(
+    surfaceId: string,
+    elementId: string,
+    blueprintId: string,
+    bp: Blueprint,
+    runtimeScopeId?: string,
+): Record<string, unknown> {
+    return acquireVariableStore(widgetVariableStoreKey(runtimeScopeId ?? surfaceId, elementId, blueprintId), bp);
 }
 
 export function acquireBlueprintExecutionLocals(input: {
     blueprintDocument: BlueprintDocument;
     currentBlueprintId: string;
     surfaceId?: string;
+    runtimeScopeId?: string;
     elementId?: string;
 }): Record<string, unknown> {
     const current = input.blueprintDocument.blueprints[input.currentBlueprintId];
@@ -100,7 +110,7 @@ export function acquireBlueprintExecutionLocals(input: {
         }
         let variableStore = storesByBlueprintId.get(option.blueprintId);
         if (!variableStore) {
-            variableStore = acquireVariableStore(blueprintVariableStoreKey(bp), bp);
+            variableStore = acquireVariableStore(blueprintVariableStoreKey(bp, input.runtimeScopeId), bp);
             storesByBlueprintId.set(option.blueprintId, variableStore);
         }
         const explicitKey = createExplicitBlueprintVariableRef(option.blueprintId, option.variableId);
@@ -130,6 +140,11 @@ export function resolveBlueprintLocalValue(input: {
     return input.blueprintLocals[key];
 }
 
-export function releaseBlueprintWidgetLocals(surfaceId: string, elementId: string, blueprintId: string): void {
-    store.delete(widgetVariableStoreKey(surfaceId, elementId, blueprintId));
+export function releaseBlueprintWidgetLocals(
+    surfaceId: string,
+    elementId: string,
+    blueprintId: string,
+    runtimeScopeId?: string,
+): void {
+    store.delete(widgetVariableStoreKey(runtimeScopeId ?? surfaceId, elementId, blueprintId));
 }

@@ -39,7 +39,8 @@ import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 import { BlueprintFlowZoomControls } from "./components/BlueprintFlowZoomControls";
 import { BlueprintAddNodeMenu } from "../components/BlueprintAddNodeMenu";
 import {
-    generateNextDynamicInputPinId,
+    generateNextDynamicInputPinIds,
+    getDynamicInputPinRemovalIds,
     readDynamicInputPinIds,
     readDynamicInputPinLabels,
 } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
@@ -212,18 +213,19 @@ function BlueprintFlowCanvasInner({
                 return;
             }
             const params = { ...(n.params ?? {}) };
-            const nextId = generateNextDynamicInputPinId(def, params);
-            const list = [...readDynamicInputPinIds(params, d.storageKey), nextId];
+            const nextIds = generateNextDynamicInputPinIds(def, params);
+            const list = [...readDynamicInputPinIds(params, d.storageKey), ...nextIds];
             params[d.storageKey] = list;
             if (d.pinLabelParamKey) {
                 const labels = readDynamicInputPinLabels(params, d.pinLabelParamKey);
-                params[d.pinLabelParamKey] = {
-                    ...labels,
-                    [nextId]: generateUniqueDynamicPinLabel(
-                        labels,
+                const nextLabels = { ...labels };
+                for (const nextId of nextIds) {
+                    nextLabels[nextId] = generateUniqueDynamicPinLabel(
+                        nextLabels,
                         d.defaultPinLabelPrefix ?? d.labelPrefix ?? "input",
-                    ),
-                };
+                    );
+                }
+                params[d.pinLabelParamKey] = nextLabels;
             }
             n.params = params;
             commitBlueprintIr(snap);
@@ -246,17 +248,23 @@ function BlueprintFlowCanvasInner({
             if (!readDynamicInputPinIds(n.params, d.storageKey).includes(pinId)) {
                 return;
             }
+            const removalIds = getDynamicInputPinRemovalIds(def, n.params, pinId);
+            const removalIdSet = new Set(removalIds);
             const params = { ...(n.params ?? {}) };
-            const list = readDynamicInputPinIds(params, d.storageKey).filter(id => id !== pinId);
+            const list = readDynamicInputPinIds(params, d.storageKey).filter(id => !removalIdSet.has(id));
             if (list.length > 0) {
                 params[d.storageKey] = list;
             } else {
                 delete params[d.storageKey];
             }
-            delete params[pinId];
+            for (const removalId of removalIds) {
+                delete params[removalId];
+            }
             const openRaw = params[BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY];
             if (Array.isArray(openRaw)) {
-                const nextOpen = openRaw.filter((x): x is string => typeof x === "string" && x !== pinId);
+                const nextOpen = openRaw.filter(
+                    (x): x is string => typeof x === "string" && !removalIdSet.has(x),
+                );
                 if (nextOpen.length > 0) {
                     params[BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY] = nextOpen;
                 } else {
@@ -265,7 +273,9 @@ function BlueprintFlowCanvasInner({
             }
             if (d.pinLabelParamKey) {
                 const labels = readDynamicInputPinLabels(params, d.pinLabelParamKey);
-                delete labels[pinId];
+                for (const removalId of removalIds) {
+                    delete labels[removalId];
+                }
                 if (Object.keys(labels).length > 0) {
                     params[d.pinLabelParamKey] = labels;
                 } else {
@@ -275,8 +285,8 @@ function BlueprintFlowCanvasInner({
             n.params = params;
             snap.edges = (snap.edges ?? []).filter(
                 e =>
-                    !(e.to.nodeId === nodeId && e.to.port === pinId) &&
-                    !(e.from.nodeId === nodeId && e.from.port === pinId),
+                    !(e.to.nodeId === nodeId && removalIdSet.has(e.to.port)) &&
+                    !(e.from.nodeId === nodeId && removalIdSet.has(e.from.port)),
             );
             commitBlueprintIr(snap);
         },

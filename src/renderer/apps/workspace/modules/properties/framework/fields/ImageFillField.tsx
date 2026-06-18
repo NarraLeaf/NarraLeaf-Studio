@@ -13,6 +13,7 @@ import type { ImageFill, ImageFillMode } from "@shared/types/ui-editor/imageFill
 import type { ImageFillFieldDefinition } from "../types";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import type { Asset } from "@/lib/workspace/services/assets/types";
+import { computeCoverCropPlacement } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 
 const MODE_OPTIONS: { value: ImageFillMode; label: string }[] = [
     { value: "cover", label: "Cover" },
@@ -114,19 +115,12 @@ export function ImageFillField<TData extends UIInspectorData>({
         if (elementWidth === 0 || elementHeight === 0 || imageWidth === 0 || imageHeight === 0) {
             return null;
         }
-        const scale = Math.max(elementWidth / imageWidth, elementHeight / imageHeight);
-        const scaledWidth = imageWidth * scale;
-        const scaledHeight = imageHeight * scale;
-        const widthPct = (scaledWidth / elementWidth) * 100;
-        const heightPct = (scaledHeight / elementHeight) * 100;
-        const leftPct = (100 - widthPct) / 2;
-        const topPct = (100 - heightPct) / 2;
-        return {
-            leftPct,
-            topPct,
-            widthPct,
-            heightPct,
-        };
+        return computeCoverCropPlacement({
+            imageWidth,
+            imageHeight,
+            containerWidth: elementWidth,
+            containerHeight: elementHeight,
+        });
     }, [layout.height, layout.width, metadata]);
 
     useEffect(() => {

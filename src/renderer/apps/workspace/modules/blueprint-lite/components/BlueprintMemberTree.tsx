@@ -510,7 +510,7 @@ export function BlueprintMemberTree({
 
     const layerActive = (id: string) => graphView?.kind === "event" && graphView.graphId === id;
 
-    const canDefineBindingFields = blueprint.owner.kind !== "widgetMain";
+    const canDefineBindingFields = blueprint.owner.kind !== "widgetMain" && blueprint.owner.kind !== "widgetValue";
 
     const layerMenuItems: ContextMenuDef = useMemo(() => {
         if (!menuLayerId) {

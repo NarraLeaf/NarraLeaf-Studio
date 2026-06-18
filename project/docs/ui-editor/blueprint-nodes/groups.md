@@ -9,7 +9,18 @@
 ## Common
 
 Common 节点组默认具有：
-- `blueprint.event.head.init` - 元素初始化事件
+- `blueprint.event.head.init` - 元素初始化事件；在 Blueprint Value 中也作为初始求值事件
+
+## Blueprint Value
+
+Blueprint Value 节点组只存在于 `widgetValue` 私有蓝图。当前用于 `nl.text` 的 `props.text`、`nl.button` 的 `props.label` 和 Page 组件 `nl.frame` 的 `props.params` 动态值。
+
+Blueprint Value 可用节点包括：
+- `blueprint.event.head.init` - 初始求值事件
+- `blueprint.event.head.flush` - 自动刷新求值事件
+- `blueprint.data.returnValue` - 返回当前属性值的无尾执行节点
+
+Blueprint Value 只允许安全的数据生产节点：事件 Head、非 latent Flow、纯 Data / JSON / String / Math、surface/global 变量读取和本地变量。它不允许 surface/global 变量写入、Widget 改写、Navigation、Persistence 写入、Broadcast、latent 节点和 TypeScript revision。
 
 ## Flow
 
@@ -46,6 +57,15 @@ Displayable 节点组默认具有：
 - `blueprint.displayable.getOpacity` - 获取元素透明度
 - `blueprint.displayable.getVisible` - 获取元素可见状态
 
+## Page
+
+Page 节点组用于 Page 组件和被 Page 组件嵌入的子 Page 之间传递参数与事件。`nl.frame` 元素拥有 Page Event；被 Page 组件嵌入的子 Page 可以通过 Host API 读取参数并向父级 Page 组件发出事件。
+
+Page 节点组默认具有：
+- `blueprint.event.head.pageEvent` - Page 组件收到子 Page 事件
+- `blueprint.frame.getParam` - 读取父级 Page 组件传入的参数
+- `blueprint.frame.emit` - 向父级 Page 组件发送事件
+
 ## Global
 
 只有全局蓝图具有 Global 节点组。
@@ -66,6 +86,11 @@ Surface 节点组默认具有：
 
 Collection 节点组默认具有：
 - `blueprint.event.head.scroll` - 列表滚动事件
+- `blueprint.event.head.scrollEnd` - 列表滚动到末端事件
+- `blueprint.event.head.itemRender` - 列表条目渲染事件
+- `blueprint.event.head.itemClick` - 列表条目点击事件
+- `blueprint.event.head.itemHover` - 列表条目悬停事件
+- `blueprint.event.head.selectionChanged` - 列表选中项变化事件
 
 ## Broadcast
 
@@ -93,6 +118,7 @@ Data 节点组默认具有：
 - `blueprint.data.numberLiteral` - 浮点数常量
 - `blueprint.data.booleanLiteral` - 布尔常量
 - `blueprint.data.nullLiteral` - Null 常量
+- `blueprint.data.returnValue` - 返回 Blueprint Value 的值（仅 Blueprint Value 具有）
 - `blueprint.data.toFloat` - 转换为 Float
 - `blueprint.data.toInteger` - 转换为 Integer
 - `blueprint.data.toBoolean` - 转换为 Boolean
@@ -110,9 +136,13 @@ JSON 节点组默认具有：
 - `blueprint.data.stringifyJson` - 将 JSON 转换为字符串
 - `blueprint.data.jsonGet` - 使用点路径读取 JSON 字段
 - `blueprint.data.jsonHas` - 判断 JSON 字段路径是否存在
-- `blueprint.data.jsonMakeObject` - 由命名输入创建 JSON Object
+- `blueprint.data.jsonSet` - 使用点路径写入 JSON 字段并输出新 JSON
+- `blueprint.data.jsonRemove` - 使用点路径移除 JSON 字段并输出新 JSON
+- `blueprint.data.jsonMakeObject` - 由动态 `Name` / `Value` 输入对创建 JSON Object
 - `blueprint.data.jsonMakeArray` - 由顺序输入创建 JSON Array
 - `blueprint.data.jsonArrayLength` - 获取 JSON Array 长度
+- `blueprint.data.jsonMergeObject` - 合并两个 JSON Object
+- `blueprint.data.jsonClone` - 深拷贝 JSON 值
 
 ## String
 

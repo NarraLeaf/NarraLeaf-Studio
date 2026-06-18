@@ -23,6 +23,11 @@ Network分类具有：
 Displayable分类具有：
 - Displayable节点
 
+## Page
+
+Page分类具有：
+- Page节点
+
 ## Data
 
 Data分类具有：

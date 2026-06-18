@@ -13,6 +13,7 @@ export type BlueprintOwnerRef =
     | { kind: "globalMain" }
     | { kind: "surfaceMain"; surfaceId: string }
     | { kind: "widgetMain"; surfaceId: string; elementId: string }
+    | { kind: "widgetValue"; surfaceId: string; elementId: string; propPath: string }
     | { kind: "sharedAsset"; assetId: string };
 
 export type BlueprintFrontendKind = "visual" | "typescript";
