@@ -263,8 +263,6 @@ export const BLUEPRINT_NODE_TYPE_BROADCAST_SEND = "blueprint.broadcast.send" as 
 export const BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT = "blueprint.broadcast.getListenerCount" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM = "blueprint.frame.getParam" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_EMIT = "blueprint.frame.emit" as const;
-export const BLUEPRINT_NODE_TYPE_STATE_GET = "blueprint.state.get" as const;
-export const BLUEPRINT_NODE_TYPE_STATE_SET = "blueprint.state.set" as const;
 
 export const BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT = "blueprint.text.getText" as const;
 export const BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT = "blueprint.text.setText" as const;

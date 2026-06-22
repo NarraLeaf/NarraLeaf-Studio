@@ -67,21 +67,12 @@
 
 ## Variables
 
+当前 Variable 节点组只规划并落地本地变量读写，不包含 surface/global state 操作。
+
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
 | Get Var | `blueprint.local.get` | 读取执行局部变量。 |
 | Set Var | `blueprint.local.set` | 写入执行局部变量。 |
-| Get Local Var | `blueprint.variable.getLocal` | 读取图执行局部变量。 |
-| Set Local Var | `blueprint.variable.setLocal` | 写入图执行局部变量。 |
-| Get Blueprint Var | `blueprint.variable.getBlueprint` | 读取当前 blueprint 成员变量。 |
-| Set Blueprint Var | `blueprint.variable.setBlueprint` | 写入当前 blueprint 成员变量。 |
-| Get Surface Var | `blueprint.variable.getSurface` | 读取当前 Page 或 Game UI surface 状态变量。 |
-| Set Surface Var | `blueprint.variable.setSurface` | 写入当前 Page 或 Game UI surface 状态变量。 |
-| Get Global UI Var | `blueprint.variable.getGlobalUi` | 读取 UI runtime 全局变量。 |
-| Set Global UI Var | `blueprint.variable.setGlobalUi` | 写入 UI runtime 全局变量。 |
-| Watch Var Changed | `blueprint.variable.watchChanged` | 监听变量变化并触发后续逻辑。 |
-| Reset Var | `blueprint.variable.reset` | 将变量恢复为默认值。 |
-| Has Var | `blueprint.variable.has` | 判断指定变量是否存在。 |
 
 ## Data
 

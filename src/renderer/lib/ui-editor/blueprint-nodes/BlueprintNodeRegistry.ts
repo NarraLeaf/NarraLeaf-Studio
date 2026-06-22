@@ -10,7 +10,6 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
-    BLUEPRINT_NODE_TYPE_STATE_GET,
     resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
@@ -72,9 +71,6 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeDe
     }
     if (def.type === BLUEPRINT_NODE_TYPE_LOCAL_GET || def.type === BLUEPRINT_NODE_TYPE_LOCAL_SET) {
         return !def.isLatent;
-    }
-    if (def.type === BLUEPRINT_NODE_TYPE_STATE_GET) {
-        return true;
     }
     if (def.category === "Flow") {
         return !def.isLatent && def.type !== BLUEPRINT_NODE_TYPE_FLOW_DELAY;

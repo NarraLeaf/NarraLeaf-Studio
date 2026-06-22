@@ -4,6 +4,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_STRING_FORMAT,
     BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
@@ -16,8 +17,8 @@ describe("blueprint graph editing", () => {
         const ir: BlueprintGraphIr = {
             nodes: {
                 source: { id: "source", type: "delay" },
-                first: { id: "first", type: "blueprint.state.set" },
-                second: { id: "second", type: "blueprint.state.set" },
+                first: { id: "first", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
+                second: { id: "second", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
             },
             edges: [{ from: { nodeId: "source", port: "next" }, to: { nodeId: "first", port: "in" } }],
         };
@@ -37,22 +38,22 @@ describe("blueprint graph editing", () => {
     it("replaces an existing outgoing data edge from the same source port", () => {
         const ir: BlueprintGraphIr = {
             nodes: {
-                source: { id: "source", type: "blueprint.state.get" },
-                first: { id: "first", type: "blueprint.state.set" },
-                second: { id: "second", type: "blueprint.state.set" },
+                source: { id: "source", type: BLUEPRINT_NODE_TYPE_LOCAL_GET },
+                first: { id: "first", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
+                second: { id: "second", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
             },
-            edges: [{ from: { nodeId: "source", port: "result" }, to: { nodeId: "first", port: "value" } }],
+            edges: [{ from: { nodeId: "source", port: "value" }, to: { nodeId: "first", port: "value" } }],
         };
 
         const edges = applyBlueprintIrConnection(ir, {
             source: "source",
-            sourceHandle: "result",
+            sourceHandle: "value",
             target: "second",
             targetHandle: "value",
         });
 
         expect(edges).toEqual([
-            { from: { nodeId: "source", port: "result" }, to: { nodeId: "second", port: "value" } },
+            { from: { nodeId: "source", port: "value" }, to: { nodeId: "second", port: "value" } },
         ]);
     });
 
@@ -82,11 +83,11 @@ describe("blueprint graph editing", () => {
     it("replaces an existing incoming edge to the same target port", () => {
         const ir: BlueprintGraphIr = {
             nodes: {
-                firstSource: { id: "firstSource", type: "blueprint.state.get" },
-                secondSource: { id: "secondSource", type: "blueprint.persistence.get" },
-                target: { id: "target", type: "blueprint.state.set" },
+                firstSource: { id: "firstSource", type: BLUEPRINT_NODE_TYPE_LOCAL_GET },
+                secondSource: { id: "secondSource", type: BLUEPRINT_NODE_TYPE_STRING_TO_STRING },
+                target: { id: "target", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
             },
-            edges: [{ from: { nodeId: "firstSource", port: "result" }, to: { nodeId: "target", port: "value" } }],
+            edges: [{ from: { nodeId: "firstSource", port: "value" }, to: { nodeId: "target", port: "value" } }],
         };
 
         const edges = applyBlueprintIrConnection(ir, {
@@ -129,7 +130,7 @@ describe("blueprint graph editing", () => {
         const ir: BlueprintGraphIr = {
             nodes: {
                 source: { id: "source", type: "delay" },
-                target: { id: "target", type: "blueprint.state.set" },
+                target: { id: "target", type: BLUEPRINT_NODE_TYPE_LOCAL_SET },
             },
             edges: [edge],
         };

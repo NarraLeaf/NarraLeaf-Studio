@@ -20,7 +20,13 @@ Blueprint Value 可用节点包括：
 - `blueprint.event.head.flush` - 自动刷新求值事件
 - `blueprint.data.returnValue` - 返回当前属性值的无尾执行节点
 
-Blueprint Value 只允许安全的数据生产节点：事件 Head、非 latent Flow、纯 Data / JSON / String / Math、surface/global 变量读取和本地变量。它不允许 surface/global 变量写入、Widget 改写、Navigation、Persistence 写入、Broadcast、latent 节点和 TypeScript revision。
+Blueprint Value 只允许安全的数据生产节点：事件 Head、非 latent Flow、纯 Data / JSON / String / Math 和本地变量。当前核心目录不提供 surface/global state 读写节点；Blueprint Value 也不允许 Widget 改写、Navigation、Persistence 写入、Broadcast、latent 节点和 TypeScript revision。
+
+## Variables
+
+Variables 节点组用于读写当前蓝图可访问的本地变量。当前核心目录只保留：
+- `blueprint.local.get` - 读取变量
+- `blueprint.local.set` - 写入变量
 
 ## Flow
 

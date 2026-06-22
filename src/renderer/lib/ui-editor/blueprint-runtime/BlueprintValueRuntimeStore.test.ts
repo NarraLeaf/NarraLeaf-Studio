@@ -8,7 +8,6 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-    BLUEPRINT_NODE_TYPE_STATE_GET,
 } from "@shared/types/blueprint/graph";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -42,21 +41,21 @@ function literalInitGraph(nodeType: string, value: unknown): BlueprintGraphIr {
     };
 }
 
-function stateFlushGraph(): BlueprintGraphIr {
+function flushGraph(value: string): BlueprintGraphIr {
     return {
         nodes: {
             head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH, params: {} },
-            state: { id: "state", type: BLUEPRINT_NODE_TYPE_STATE_GET, params: { scope: "surface", key: "title" } },
+            value: { id: "value", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value } },
             ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
         },
         edges: [
             { from: { nodeId: "head", port: "then" }, to: { nodeId: "ret", port: "in" } },
-            { from: { nodeId: "state", port: "result" }, to: { nodeId: "ret", port: "value" } },
+            { from: { nodeId: "value", port: "value" }, to: { nodeId: "ret", port: "value" } },
         ],
     };
 }
 
-function blueprintDocument(): BlueprintDocument {
+function blueprintDocument(flushValue = "first"): BlueprintDocument {
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: {
@@ -72,7 +71,7 @@ function blueprintDocument(): BlueprintDocument {
                     graphs: {
                         events: {
                             init: { id: "init", graph: initGraph() },
-                            flush: { id: "flush", graph: stateFlushGraph() },
+                            flush: { id: "flush", graph: flushGraph(flushValue) },
                         },
                         functions: {},
                     },
@@ -185,9 +184,8 @@ async function waitFor(assertion: () => void): Promise<void> {
 }
 
 describe("BlueprintValueRuntimeStore", () => {
-    it("runs init then flush and lets queued flush update from state", async () => {
+    it("runs init then flush and lets queued flush update from document changes", async () => {
         const { document, surface } = uiDocument();
-        let stateValue: unknown = "first";
         let changes = 0;
         const hostAdapter = {
             host: "player",
@@ -198,12 +196,6 @@ describe("BlueprintValueRuntimeStore", () => {
                 getSurfaceState: () => undefined,
                 emitDebug: () => undefined,
                 dispatchElementBlueprintEvent: async () => undefined,
-                hostApi: {
-                    state: {
-                        get: () => stateValue,
-                        set: () => undefined,
-                    },
-                },
             },
         } as unknown as UIHostAdapter;
         const store = new BlueprintValueRuntimeStore(() => {
@@ -213,7 +205,7 @@ describe("BlueprintValueRuntimeStore", () => {
         store.sync({
             document,
             surface,
-            blueprintDocument: blueprintDocument(),
+            blueprintDocument: blueprintDocument("first"),
             hostAdapter,
         });
 
@@ -224,8 +216,12 @@ describe("BlueprintValueRuntimeStore", () => {
             });
         });
 
-        stateValue = "second";
-        store.queueFlushAll();
+        store.sync({
+            document,
+            surface,
+            blueprintDocument: blueprintDocument("second"),
+            hostAdapter,
+        });
 
         await waitFor(() => {
             expect(store.getResolvedValue("surface", "text", "text", "bp-value")).toEqual({

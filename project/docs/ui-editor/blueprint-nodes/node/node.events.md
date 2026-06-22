@@ -40,7 +40,7 @@
 
 `blueprint.event.head.flush` - Blueprint Value 刷新事件
 
-该节点只出现在 Blueprint Value 图中。运行时会在初始 `init` 后自动尝试执行 `flush`，并在 surface/global state 更新后自动排队重新执行；默认 Blueprint Value 只创建 `Init` layer，不会额外创建 `Flush` layer。
+该节点只出现在 Blueprint Value 图中。运行时会在初始 `init` 后自动尝试执行 `flush`，并在外部刷新请求后自动排队重新执行；默认 Blueprint Value 只创建 `Init` layer，不会额外创建 `Flush` layer。
 - `then` - 执行出口
 
 ## Mouse Click
