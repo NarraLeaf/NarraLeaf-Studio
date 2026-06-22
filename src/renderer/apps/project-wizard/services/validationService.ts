@@ -1,6 +1,6 @@
 import { transliterate } from "transliteration";
 import { getInterface } from "@/lib/app/bridge";
-import { PlatformSystem } from "@shared/types/os";
+import { FsRequestResult } from "@shared/types/os";
 import { ProjectData, DirectoryValidationResult, ValidationErrors } from "../types";
 
 /**
@@ -41,42 +41,11 @@ export class ValidationService {
     }
 
     /**
-     * Validate if path points to a valid drive/directory that exists
-     * This checks basic path validity without requiring the directory to exist
+     * Keep drive/root probing out of the renderer because filesystem access is permission-scoped.
+     * The target directory checks below surface invalid or unauthorized paths.
      */
-    static async validatePathDrive(path: string, platformInfo?: any): Promise<{ success: boolean; error?: string }> {
-        try {
-            const interface_ = getInterface();
-
-            // For Windows, check if the drive exists
-            if (platformInfo?.system === PlatformSystem.win32) {
-                // Extract drive letter (e.g., "C:" from "C:\Projects")
-                const driveMatch = path.match(/^([A-Za-z]):/);
-                if (driveMatch) {
-                    const drive = driveMatch[1];
-                    const drivePath = `${drive}:\\`;
-
-                    // Check if drive exists and is accessible
-                    const driveExistsResult = await interface_.fs.isDirExists(drivePath);
-                    if (!driveExistsResult.success) {
-                        return { success: false, error: `Drive ${drive}: is not accessible` };
-                    }
-                }
-            }
-
-            // For Unix-like systems, check if we can access basic directories
-            else {
-                // Check if we can access the root directory (basic system validation)
-                const rootResult = await interface_.fs.isDirExists("/");
-                if (!rootResult.success) {
-                    return { success: false, error: "Root directory is not accessible" };
-                }
-            }
-
-            return { success: true };
-        } catch (error) {
-            return { success: false, error: "Path validation failed" };
-        }
+    static async validatePathDrive(_path: string, _platformInfo?: any): Promise<{ success: boolean; error?: string }> {
+        return { success: true };
     }
 
     /**
@@ -91,17 +60,12 @@ export class ValidationService {
             if (!dirExistsResult.success) {
                 return { success: false, error: "Failed to check directory existence" };
             }
-
-            // Check if it's actually a directory
-            const isDirResult = await interface_.fs.isDir(path);
-            if (!isDirResult.success) {
-                return { success: false, error: "Failed to check if path is directory" };
+            const dirExists = this.unwrapFsResult(dirExistsResult.data, "Failed to check directory existence");
+            if (!dirExists.success) {
+                return { success: false, error: dirExists.error };
             }
 
-            const exists = dirExistsResult.success ? (dirExistsResult.data?.ok ? dirExistsResult.data.data : false) : false;
-            const isDirectory = isDirResult.success ? (isDirResult.data?.ok ? isDirResult.data.data : false) : false;
-
-            if (!exists) {
+            if (!dirExists.data) {
                 return {
                     success: true,
                     data: {
@@ -113,7 +77,17 @@ export class ValidationService {
                 };
             }
 
-            if (!isDirectory) {
+            // Check if it's actually a directory
+            const isDirResult = await interface_.fs.isDir(path);
+            if (!isDirResult.success) {
+                return { success: false, error: "Failed to check if path is directory" };
+            }
+            const isDir = this.unwrapFsResult(isDirResult.data, "Failed to check if path is directory");
+            if (!isDir.success) {
+                return { success: false, error: isDir.error };
+            }
+
+            if (!isDir.data) {
                 return {
                     success: true,
                     data: {
@@ -131,19 +105,23 @@ export class ValidationService {
             if (!listResult.success) {
                 return { success: false, error: "Failed to list directory contents" };
             }
+            const entries = this.unwrapFsResult(listResult.data, "Failed to list directory contents");
+            if (!entries.success) {
+                return { success: false, error: entries.error };
+            }
 
             // Directory is empty if the list has no entries
-            const isEmpty = listResult.data?.ok ? (listResult.data.data?.length ?? 0) === 0 : false;
+            const isEmpty = (entries.data?.length ?? 0) === 0;
 
             // For now, assume we can write if it exists and is a directory
             // In a real implementation, you might want to check write permissions
-            const canWrite = exists && isDirectory;
+            const canWrite = true;
 
             return {
                 success: true,
                 data: {
-                    exists,
-                    isDirectory,
+                    exists: true,
+                    isDirectory: true,
                     isEmpty,
                     canWrite
                 }
@@ -151,6 +129,16 @@ export class ValidationService {
         } catch (error) {
             return { success: false, error: "Failed to validate directory" };
         }
+    }
+
+    private static unwrapFsResult<T>(result: FsRequestResult<T> | undefined, fallback: string): { success: true; data: T } | { success: false; error: string } {
+        if (!result) {
+            return { success: false, error: fallback };
+        }
+        if (!result.ok) {
+            return { success: false, error: result.error.message || fallback };
+        }
+        return { success: true, data: result.data };
     }
 
     /**

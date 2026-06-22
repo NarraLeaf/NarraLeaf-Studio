@@ -452,7 +452,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
 
         if (result.success) {
-            await this.clearThumbnailCache(asset.id);
+            try {
+                await this.clearThumbnailCache(asset.id);
+            } catch (error) {
+                console.warn(`Failed to clear thumbnail cache for asset: ${asset.id}`, error);
+            }
         }
 
         return result;
