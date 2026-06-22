@@ -12,6 +12,7 @@ import type {
     PrivilegedBashExecuteResult,
     PrivilegedFileSystemCallPayload,
     PrivilegedFileSystemCallResult,
+    PrivilegedPermissionRevokePluginPayload,
     PrivilegedPermissionRequestPayload,
 } from "./privileged";
 
@@ -31,6 +32,7 @@ export enum IPCEventType {
     appGlobalStateSet = "app.globalState.set",
     appGlobalStateGetAll = "app.globalState.getAll",
     appAddRecentProject = "app.addRecentProject",
+    appSystemPath = "app.systemPath",
 
     fsStat = "fs.stat",
     fsList = "fs.list",
@@ -83,6 +85,7 @@ export enum IPCEventType {
 
     privilegedFsCall = "privileged.fs.call",
     privilegedPermissionRequest = "privileged.permission.request",
+    privilegedPermissionRevokePlugin = "privileged.permission.revokePlugin",
     privilegedBashExecute = "privileged.bash.execute",
 }
 
@@ -209,6 +212,16 @@ export type IPCEvents = {
             path: string;
         },
         response: void;
+    };
+    [IPCEventType.appSystemPath]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            name: "desktop";
+        },
+        response: {
+            path: string;
+        };
     };
 } & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPluginPermissionEvents & IPCPrivilegedEvents;
 
@@ -606,6 +619,12 @@ export type IPCPrivilegedEvents = {
         consumer: IPCType.Host,
         data: PrivilegedPermissionRequestPayload,
         response: PluginPermissionPromptResult;
+    };
+    [IPCEventType.privilegedPermissionRevokePlugin]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: PrivilegedPermissionRevokePluginPayload,
+        response: void;
     };
     [IPCEventType.privilegedBashExecute]: {
         type: IPCMessageType.request,

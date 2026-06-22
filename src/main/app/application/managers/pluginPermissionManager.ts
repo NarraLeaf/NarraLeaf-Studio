@@ -94,6 +94,62 @@ export class PluginPermissionManager {
         return this.getApiGrants(pluginId).some(grant => grant.capability === capability);
     }
 
+    public revokePluginPermissions(pluginId: string): void {
+        const normalized = pluginId.trim();
+        if (!normalized) {
+            throw new Error("Plugin id is required");
+        }
+
+        const trustGrants = this.getPersistentTrustGrants();
+        delete trustGrants[normalized];
+        this.state.setItem("plugin.trustGrants", trustGrants);
+        this.temporaryTrustGrants.delete(normalized);
+
+        const fileSystemGrants = this.getPersistentFileSystemGrants();
+        delete fileSystemGrants[normalized];
+        this.state.setItem("plugin.fileSystemGrants", fileSystemGrants);
+        this.temporaryFileSystemGrants.delete(normalized);
+
+        const apiGrants = this.getPersistentApiGrants();
+        delete apiGrants[normalized];
+        this.state.setItem("plugin.apiGrants", apiGrants);
+        this.temporaryApiGrants.delete(normalized);
+    }
+
+    public getExistingGrantResult(request: PluginPermissionRequest): PluginPermissionGrantResult | null {
+        switch (request.kind) {
+            case "trust": {
+                const grant = this.getTrustGrant(request.plugin.id);
+                return grant ? this.grantRecordToResult(request, grant.persistence, grant.grantedAt) : null;
+            }
+            case "filesystem": {
+                const grants = this.getMatchingFileSystemGrants(
+                    request.plugin.id,
+                    request.path,
+                    request.mode,
+                    request.recursive,
+                );
+                if (!grants) {
+                    return null;
+                }
+                return this.grantRecordToResult(
+                    request,
+                    grants.every(grant => grant.persistence === "permanent") ? "permanent" : "temporary",
+                    Math.max(...grants.map(grant => grant.grantedAt)),
+                );
+            }
+            case "api": {
+                const grant = this.getApiGrants(request.plugin.id)
+                    .find(record => record.capability === request.capability);
+                return grant ? this.grantRecordToResult(request, grant.persistence, grant.grantedAt) : null;
+            }
+            case "install":
+                return null;
+            default:
+                return null;
+        }
+    }
+
     private grantTrust(
         request: Extract<PluginPermissionRequest, { kind: "trust" }>,
         persistence: PluginPermissionPersistence,
@@ -222,6 +278,10 @@ export class PluginPermissionManager {
         };
     }
 
+    private getTrustGrant(pluginId: string): PluginTrustGrantRecord | undefined {
+        return this.getPersistentTrustGrants()[pluginId] ?? this.temporaryTrustGrants.get(pluginId);
+    }
+
     private getFileSystemGrants(pluginId: string): PluginFileSystemGrantRecord[] {
         return [
             ...(this.getPersistentFileSystemGrants()[pluginId] ?? []),
@@ -236,8 +296,55 @@ export class PluginPermissionManager {
         ];
     }
 
+    private getMatchingFileSystemGrants(
+        pluginId: string,
+        fsPath: string,
+        mode: PluginFileSystemPermissionMode,
+        recursive: boolean,
+    ): PluginFileSystemGrantRecord[] | null {
+        const target = path.resolve(fsPath);
+        const grants = this.getFileSystemGrants(pluginId)
+            .filter(grant => this.fileSystemPathAllows(grant, target, recursive));
+
+        if (mode === "readwrite") {
+            const readGrant = grants.find(grant => this.fileSystemModeAllows(grant.mode, "read"));
+            const writeGrant = grants.find(grant => this.fileSystemModeAllows(grant.mode, "write"));
+            return readGrant && writeGrant ? Array.from(new Set([readGrant, writeGrant])) : null;
+        }
+
+        const grant = grants.find(record => this.fileSystemModeAllows(record.mode, mode));
+        return grant ? [grant] : null;
+    }
+
     private fileSystemModeAllows(grantMode: PluginFileSystemPermissionMode, requestedMode: "read" | "write"): boolean {
         return grantMode === "readwrite" || grantMode === requestedMode;
+    }
+
+    private fileSystemPathAllows(
+        grant: PluginFileSystemGrantRecord,
+        target: string,
+        requestedRecursive: boolean,
+    ): boolean {
+        if (requestedRecursive && !grant.recursive) {
+            return false;
+        }
+        const root = path.resolve(grant.path);
+        return grant.recursive ? this.isSameOrChild(target, root) : target === root;
+    }
+
+    private grantRecordToResult(
+        request: PluginPermissionRequest,
+        persistence: PluginPermissionPersistence,
+        grantedAt: number,
+    ): PluginPermissionGrantResult {
+        return {
+            requestId: request.requestId,
+            pluginId: request.plugin.id,
+            kind: request.kind,
+            approved: true,
+            persistence,
+            grantedAt,
+        };
     }
 
     private isSameOrChild(target: string, root: string): boolean {

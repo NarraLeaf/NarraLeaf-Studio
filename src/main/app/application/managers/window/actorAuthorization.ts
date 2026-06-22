@@ -1,6 +1,9 @@
 import { PrivilegedActor, PrivilegedCapability } from "@shared/types/privileged";
 import type { AppWindow } from "./appWindow";
-import { getDeclaredDefaultCapabilities } from "./permissions";
+import {
+    canUsePluginFileSystemGrantsAsWindowPolicy,
+    getDeclaredDefaultCapabilities,
+} from "./permissions";
 
 export type ActorAuthorizationResult = {
     allowed: boolean;
@@ -13,6 +16,10 @@ export async function authorizeActorFileSystemRequest(
     fsPath: string,
     mode: "read" | "write",
 ): Promise<ActorAuthorizationResult> {
+    if (await window.app.storageManager.isPathProtected(fsPath)) {
+        return { allowed: false, reason: "Protected application storage cannot be accessed" };
+    }
+
     if (actor.kind === "facade") {
         if (actor.id !== "default") {
             return { allowed: false, reason: `Unknown facade actor: ${actor.id}` };
@@ -23,19 +30,25 @@ export async function authorizeActorFileSystemRequest(
         };
     }
 
-    const windowAllowed = await window.app.storageManager.isPathAllowed(window, fsPath, mode);
-    if (!windowAllowed) {
-        return { allowed: false, reason: "Window file system policy denied access" };
-    }
-
     const pluginAllowed = window.app.pluginPermissionManager.isPluginFileSystemAllowed(
         actor.pluginId,
         fsPath,
         mode,
     );
+    if (!pluginAllowed) {
+        return {
+            allowed: false,
+            reason: `Plugin file system permission denied: ${actor.pluginId}`,
+        };
+    }
+
+    const windowAllowed = await window.app.storageManager.isPathAllowed(window, fsPath, mode);
+    if (!windowAllowed && !canUsePluginFileSystemGrantsAsWindowPolicy(window)) {
+        return { allowed: false, reason: "Window file system policy denied access" };
+    }
+
     return {
-        allowed: pluginAllowed,
-        reason: `Plugin file system permission denied: ${actor.pluginId}`,
+        allowed: true,
     };
 }
 
