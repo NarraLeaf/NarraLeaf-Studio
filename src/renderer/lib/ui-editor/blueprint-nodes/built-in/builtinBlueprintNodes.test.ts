@@ -45,10 +45,9 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_LOG,
-    BLUEPRINT_NODE_TYPE_STATE_GET,
-    BLUEPRINT_NODE_TYPE_STATE_SET,
     BLUEPRINT_NODE_TYPE_STRING_LENGTH,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
@@ -66,8 +65,8 @@ import { dataBlueprintNodes } from "./dataNodes";
 import { devtoolsBlueprintNodes } from "./devtoolsNodes";
 import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { frameBlueprintNodes } from "./frameNodes";
+import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { resolveDataPinValue } from "./graphParamResolvers";
-import { stateBlueprintNodes } from "./stateNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
 
@@ -83,8 +82,8 @@ describe("built-in blueprint nodes", () => {
             ...frameBlueprintNodes,
             ...controlFlowBlueprintNodes,
             ...dataBlueprintNodes,
+            ...localVariableBlueprintNodes,
             ...stringBlueprintNodes,
-            ...stateBlueprintNodes,
             ...textBlueprintNodes,
             ...devtoolsBlueprintNodes,
         ]) {
@@ -131,10 +130,26 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_STRING_TO_STRING)).toBe(true);
-        expect(types.has(BLUEPRINT_NODE_TYPE_STATE_GET)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_GET)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_SET)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LOG)).toBe(true);
+    });
+
+    it("keeps the Variables category scoped to Get Var and Set Var", () => {
+        registerCoreBlueprintNodes();
+
+        const variableTypes = blueprintNodeRegistry
+            .list()
+            .filter(def => def.category === "Variables")
+            .map(def => def.type)
+            .sort();
+
+        expect(variableTypes).toEqual([
+            BLUEPRINT_NODE_TYPE_LOCAL_GET,
+            BLUEPRINT_NODE_TYPE_LOCAL_SET,
+        ].sort());
     });
 
     it("uses class.md palette categories for the new node groups", () => {
@@ -144,15 +159,7 @@ describe("built-in blueprint nodes", () => {
         expect(broadcastBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(frameBlueprintNodes.every(def => def.category === "Page")).toBe(true);
         expect(controlFlowBlueprintNodes.every(def => def.category === "Flow")).toBe(true);
-        const stateVariableNodeTypes = new Set<string>([
-            BLUEPRINT_NODE_TYPE_STATE_GET,
-            BLUEPRINT_NODE_TYPE_STATE_SET,
-        ]);
-        expect(
-            stateBlueprintNodes
-                .filter(def => stateVariableNodeTypes.has(def.type))
-                .every(def => def.category === "Variables"),
-        ).toBe(true);
+        expect(localVariableBlueprintNodes.every(def => def.category === "Variables")).toBe(true);
         const jsonNodeTypes = new Set<string>([
             BLUEPRINT_NODE_TYPE_LITERAL_JSON,
             BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
@@ -733,8 +740,8 @@ describe("built-in blueprint nodes", () => {
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)).toBe(true);
-        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_STATE_GET)).toBe(true);
-        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_STATE_SET)).toBe(false);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_GET)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_SET)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_DELAY)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOG)).toBe(false);
@@ -756,8 +763,8 @@ describe("built-in blueprint nodes", () => {
         expect(byType.get(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)?.category).toBe("Events");
         expect(byType.get(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)?.category).toBe("Events");
         expect(byType.get(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)?.category).toBe("Data");
-        expect(byType.get(BLUEPRINT_NODE_TYPE_STATE_GET)?.category).toBe("Variables");
-        expect(byType.has(BLUEPRINT_NODE_TYPE_STATE_SET)).toBe(false);
+        expect(byType.get(BLUEPRINT_NODE_TYPE_LOCAL_GET)?.category).toBe("Variables");
+        expect(byType.get(BLUEPRINT_NODE_TYPE_LOCAL_SET)?.category).toBe("Variables");
         expect(byType.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);
     });
 

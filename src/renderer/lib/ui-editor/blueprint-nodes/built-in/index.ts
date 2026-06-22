@@ -12,7 +12,6 @@ import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { frameBlueprintNodes } from "./frameNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
-import { stateBlueprintNodes } from "./stateNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
 
@@ -28,7 +27,6 @@ export { navigationBlueprintNodes } from "./navigationNodes";
 export { stringBlueprintNodes } from "./stringNodes";
 export { textBlueprintNodes } from "./textNodes";
 export { persistenceBlueprintNodes } from "./persistenceNodes";
-export { stateBlueprintNodes } from "./stateNodes";
 export { structuralBlueprintNodes } from "./structuralNodes";
 export { widgetHostBlueprintNodes } from "./widget/widgetHostNodes";
 
@@ -41,7 +39,6 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...dataBlueprintNodes,
     ...localVariableBlueprintNodes,
     ...mathBlueprintNodes,
-    ...stateBlueprintNodes,
     ...stringBlueprintNodes,
     ...textBlueprintNodes,
     ...devtoolsBlueprintNodes,

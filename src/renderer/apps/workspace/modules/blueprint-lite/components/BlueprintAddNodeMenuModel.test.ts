@@ -93,10 +93,10 @@ describe("BlueprintAddNodeMenuModel", () => {
                 outputs: 1,
             }),
             entry({
-                type: "blueprint.state.get",
-                displayName: "Get state",
+                type: "blueprint.local.get",
+                displayName: "Get Var",
                 category: "Variables",
-                keywords: ["state", "variable"],
+                keywords: ["get", "local", "variable"],
                 isPure: true,
                 inputs: 0,
                 outputs: 1,
