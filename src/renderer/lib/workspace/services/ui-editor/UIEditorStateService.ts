@@ -29,6 +29,9 @@ const APPEARANCE_BORDER_SIDES_EXPANDED_CACHE_KEY = "uiEditor.editingArea.appeara
 /** Outline panel: keys are element ids with collapsed branches (editor-only global settings). */
 const OUTLINE_COLLAPSED_BRANCHES_KEY = "uiEditor.outline.collapsedBranchesByElementId";
 
+/** Outline panel chrome: whether the panel itself is collapsed. */
+const OUTLINE_PANEL_COLLAPSED_KEY = "uiEditor.outline.panelCollapsed";
+
 const APPEARANCE_INSPECTOR_UI_CACHE_PERSIST_MS = 250;
 
 const OUTLINE_COLLAPSE_CACHE_PERSIST_MS = 250;
@@ -49,6 +52,7 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     private appearanceInspectorUiCachePersistTimer: ReturnType<typeof setTimeout> | null = null;
     /** Presence means the outline branch is collapsed. */
     private readonly outlineCollapsedBranchIds = new Set<string>();
+    private outlinePanelCollapsed = false;
     private outlineCollapsePersistTimer: ReturnType<typeof setTimeout> | null = null;
 
     private smartSnapEnabled = true;
@@ -106,6 +110,11 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
                     this.outlineCollapsedBranchIds.add(elementId);
                 }
             }
+        }
+
+        const outlinePanelCollapsed = this.settingsService.getSync<boolean>(OUTLINE_PANEL_COLLAPSED_KEY);
+        if (typeof outlinePanelCollapsed === "boolean") {
+            this.outlinePanelCollapsed = outlinePanelCollapsed;
         }
 
         const snapStored = this.settingsService.getSync<boolean>(SMART_SNAP_ENABLED_KEY);
@@ -252,6 +261,24 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
         }
         this.events.emit("outlineExpansionChanged", null);
         this.scheduleOutlineCollapsePersistence();
+    }
+
+    public getOutlinePanelCollapsed(): boolean {
+        return this.outlinePanelCollapsed;
+    }
+
+    public setOutlinePanelCollapsed(collapsed: boolean): void {
+        if (this.outlinePanelCollapsed === collapsed) {
+            return;
+        }
+        this.outlinePanelCollapsed = collapsed;
+        this.events.emit("outlinePanelCollapsedChanged", collapsed);
+        if (!this.settingsService) {
+            return;
+        }
+        void this.settingsService.set(OUTLINE_PANEL_COLLAPSED_KEY, collapsed).catch(err => {
+            console.warn("[UIEditorStateService] failed to persist outline panel state", err);
+        });
     }
 
     public getSmartSnapEnabled(): boolean {

@@ -34,7 +34,7 @@ export const ProjectNameConvention = {
     EditorThumbnailCache: ["editor", "cache", "thumbnail/"],
     EditorThumbnailCacheShard: (id: string) => {
         const safeId = encodePathSegmentId(id);
-        return ["editor", "cache", "thumbnail", ...splitId(safeId), `${safeId}.png` as const];
+        return ["editor", "cache", "thumbnail", ...splitEncodedPathSegmentId(safeId), `${safeId}.png` as const];
     },
     EditorUI: ["editor", "ui/"],
     EditorUIDocument: ["editor", "ui", "uidoc.json"],
@@ -51,6 +51,14 @@ export const ProjectNameConvention = {
  */
 function splitId(id: string): [string, string, string] {
     return splitAssetStorageId(id);
+}
+
+function splitEncodedPathSegmentId(id: string): [string, string, string] {
+    return [
+        id.slice(0, 2) || "id",
+        id.slice(2, 4) || "id",
+        id.slice(4) || "empty",
+    ];
 }
 
 

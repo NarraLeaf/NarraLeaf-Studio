@@ -5,6 +5,10 @@ import { dialog } from "electron";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
+function normalizeProjectPath(projectPath: string): string {
+    return projectPath.replace(/[\\/]+$/, "");
+}
+
 /**
  * Handler for launching workspace window
  */
@@ -16,6 +20,20 @@ export class WorkspaceLaunchHandler extends IPCHandler<IPCEventType.workspaceLau
         window: AppWindow,
         { props, closeCurrentWindow }: IPCEvents[IPCEventType.workspaceLaunch]["data"]
     ): Promise<RequestStatus<void>> {
+        const recentProject = window.getApp().globalState.recentlyOpened.list().find(project =>
+            normalizeProjectPath(project.path) === normalizeProjectPath(props.projectPath)
+        );
+        if (recentProject?.securityScopedBookmark) {
+            window.app.storageManager.grantFileSystemAccess(
+                window,
+                props.projectPath,
+                "readwrite",
+                true,
+                recentProject.securityScopedBookmark,
+                "session",
+            );
+        }
+
         const workspaceWindow = await window.getApp().launchWorkspace(window, props, {
             minWidth: 800,
             minHeight: 600,
@@ -53,6 +71,7 @@ export class WorkspaceSelectFolderHandler extends IPCHandler<IPCEventType.worksp
             title: "Select Project Folder",
             properties: ["openDirectory", "createDirectory"],
             buttonLabel: "Open Folder",
+            securityScopedBookmarks: true,
         });
 
         if (result.canceled || result.filePaths.length === 0) {
@@ -60,7 +79,7 @@ export class WorkspaceSelectFolderHandler extends IPCHandler<IPCEventType.worksp
         }
 
         const selectedPath = result.filePaths[0];
-        window.app.storageManager.grantFileSystemAccess(window, selectedPath);
+        window.app.storageManager.grantFileSystemAccess(window, selectedPath, "readwrite", true, result.bookmarks?.[0], "session");
 
         return this.success({ path: selectedPath });
     }
@@ -101,4 +120,3 @@ export class WorkspaceCloseHandler extends IPCHandler<IPCEventType.workspaceClos
         return this.success(void 0);
     }
 }
-

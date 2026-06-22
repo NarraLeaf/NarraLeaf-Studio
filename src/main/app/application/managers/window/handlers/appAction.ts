@@ -155,6 +155,7 @@ export class AppAddRecentProjectHandler extends IPCHandler<IPCEventType.appAddRe
             path: data.path,
             icon: undefined,
             openedAt: Date.now(),
+            securityScopedBookmark: window.app.storageManager.getSecurityScopedBookmarkForPath(data.path),
         });
         return this.success(void 0);
     }

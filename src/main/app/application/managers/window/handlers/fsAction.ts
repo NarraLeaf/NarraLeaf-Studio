@@ -446,7 +446,8 @@ export class FsSelectFileHandler extends IPCHandler<IPCEventType.fsSelectFile> {
             const dialogOptions: Electron.OpenDialogOptions = {
                 title: "Select File",
                 buttonLabel: "Select",
-                properties: multiple ? ["openFile", "multiSelections"] : ["openFile"]
+                properties: multiple ? ["openFile", "multiSelections"] : ["openFile"],
+                securityScopedBookmarks: true,
             };
 
             // Convert filters from string[] to Electron dialog format
@@ -472,8 +473,8 @@ export class FsSelectFileHandler extends IPCHandler<IPCEventType.fsSelectFile> {
                 });
             }
 
-            for (const filePath of result.filePaths) {
-                window.app.storageManager.grantFileSystemAccess(window, filePath, grantPolicy.mode, grantPolicy.recursive);
+            for (const [index, filePath] of result.filePaths.entries()) {
+                window.app.storageManager.grantFileSystemAccess(window, filePath, grantPolicy.mode, grantPolicy.recursive, result.bookmarks?.[index]);
             }
 
             return this.success({
@@ -506,7 +507,8 @@ export class FsSelectDirectoryHandler extends IPCHandler<IPCEventType.fsSelectDi
             const dialogOptions: Electron.OpenDialogOptions = {
                 title: "Select Directory",
                 buttonLabel: "Select",
-                properties: multiple ? ["openDirectory", "multiSelections", "createDirectory"] : ["openDirectory", "createDirectory"]
+                properties: multiple ? ["openDirectory", "multiSelections", "createDirectory"] : ["openDirectory", "createDirectory"],
+                securityScopedBookmarks: true,
             };
 
             const result = await dialog.showOpenDialog(window.win, dialogOptions);
@@ -518,8 +520,8 @@ export class FsSelectDirectoryHandler extends IPCHandler<IPCEventType.fsSelectDi
                 });
             }
 
-            for (const dirPath of result.filePaths) {
-                window.app.storageManager.grantFileSystemAccess(window, dirPath, grantPolicy.mode, grantPolicy.recursive);
+            for (const [index, dirPath] of result.filePaths.entries()) {
+                window.app.storageManager.grantFileSystemAccess(window, dirPath, grantPolicy.mode, grantPolicy.recursive, result.bookmarks?.[index]);
             }
 
             return this.success({

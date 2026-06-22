@@ -4,6 +4,7 @@ import { AppLayout } from "@/lib/components/layout";
 import { getInterface } from "@/lib/app/bridge";
 import {
     PluginPermissionGrantResult,
+    PluginPermissionPersistence,
     PluginPermissionPromptProps,
     PluginPermissionRequest,
 } from "@shared/types/pluginPermissions";
@@ -22,6 +23,10 @@ function describeRequest(request: PluginPermissionRequest): string {
         default:
             return "Plugin permission";
     }
+}
+
+function isPrivilegedRequest(request: PluginPermissionRequest): boolean {
+    return request.kind === "trust" || request.kind === "filesystem" || request.kind === "api";
 }
 
 export function PluginPermissionApp() {
@@ -57,6 +62,7 @@ export function PluginPermissionApp() {
 
     const request = props?.request ?? null;
     const requestTitle = useMemo(() => request ? describeRequest(request) : "Plugin permission", [request]);
+    const showPersistentChoices = Boolean(request && isPrivilegedRequest(request) && request.persistence === "permanent");
 
     const closeWithResult = (result: PluginPermissionGrantResult | null) => {
         getInterface().window.closeWith<WindowAppType.PluginPermissionPrompt>(result);
@@ -76,7 +82,7 @@ export function PluginPermissionApp() {
         });
     };
 
-    const handleApprove = async () => {
+    const handleApprove = async (persistence?: PluginPermissionPersistence) => {
         if (!request || busy) {
             return;
         }
@@ -85,7 +91,7 @@ export function PluginPermissionApp() {
         const result = await getInterface().pluginPermissions.grant(request, {
             requestId: request.requestId,
             approved: true,
-            persistence: request.persistence ?? "temporary",
+            persistence: persistence ?? request.persistence ?? "temporary",
         });
         setBusy(false);
 
@@ -112,9 +118,14 @@ export function PluginPermissionApp() {
                             {request.reason}
                         </div>
                     ) : null}
-                    {request?.kind !== "trust" ? (
-                        <div className="mt-3 rounded border border-yellow-400/30 bg-yellow-400/10 px-3 py-2 text-sm text-yellow-100">
-                            This request type is reserved for the plugin permission model and is not wired yet.
+                    {request?.kind === "filesystem" ? (
+                        <div className="mt-3 rounded border border-white/10 bg-white/[0.04] px-3 py-2 text-sm leading-5 text-gray-300">
+                            {request.recursive ? "Recursive" : "Single path"} {request.mode} permission
+                        </div>
+                    ) : null}
+                    {request?.kind === "api" ? (
+                        <div className="mt-3 rounded border border-white/10 bg-white/[0.04] px-3 py-2 text-sm leading-5 text-gray-300">
+                            {request.capability}
                         </div>
                     ) : null}
                     {error ? (
@@ -124,23 +135,35 @@ export function PluginPermissionApp() {
                     ) : null}
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className={`mt-4 grid gap-3 ${showPersistentChoices ? "grid-cols-3" : "grid-cols-2"}`}>
                     <button
                         type="button"
                         onClick={handleDeny}
+                        autoFocus
                         className="no-drag flex h-10 items-center justify-center gap-2 rounded border border-white/10 bg-white/[0.04] text-sm font-medium text-gray-200 hover:bg-white/[0.08]"
                     >
                         <X size={16} />
-                        Deny
+                        {request?.kind === "install" ? "Don't Allow" : "Deny"}
                     </button>
+                    {showPersistentChoices ? (
+                        <button
+                            type="button"
+                            onClick={() => handleApprove("temporary")}
+                            disabled={!request || busy}
+                            className="no-drag flex h-10 items-center justify-center gap-2 rounded border border-cyan-400/30 bg-cyan-400/10 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            <Check size={16} />
+                            Allow Once
+                        </button>
+                    ) : null}
                     <button
                         type="button"
-                        onClick={handleApprove}
-                        disabled={!request || busy || request.kind !== "trust"}
+                        onClick={() => handleApprove(showPersistentChoices ? "permanent" : undefined)}
+                        disabled={!request || busy}
                         className="no-drag flex h-10 items-center justify-center gap-2 rounded bg-cyan-500 text-sm font-semibold text-[#071216] hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         <Check size={16} />
-                        {busy ? "Granting" : "Allow"}
+                        {busy ? "Granting" : showPersistentChoices ? "Always Allow" : "Allow"}
                     </button>
                 </div>
             </div>
