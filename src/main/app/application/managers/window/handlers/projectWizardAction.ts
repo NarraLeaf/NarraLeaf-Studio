@@ -50,6 +50,7 @@ export class ProjectWizardSelectDirectoryHandler extends IPCHandler<IPCEventType
         const result = await dialog.showOpenDialog(window.win, {
             properties: ['openDirectory', 'createDirectory'],
             title: 'Select Project Directory',
+            securityScopedBookmarks: true,
         });
 
         if (result.canceled || result.filePaths.length === 0) {
@@ -58,7 +59,7 @@ export class ProjectWizardSelectDirectoryHandler extends IPCHandler<IPCEventType
 
         const selectedPath = result.filePaths[0] || null;
         if (selectedPath) {
-            window.app.storageManager.grantFileSystemAccess(window, selectedPath);
+            window.app.storageManager.grantFileSystemAccess(window, selectedPath, "readwrite", true, result.bookmarks?.[0], "session");
         }
 
         return this.success({ dest: selectedPath });

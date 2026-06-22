@@ -3,6 +3,7 @@ export const ApiCapability = {
     PluginTrustGrant: "plugin.trust.grant",
     PluginFileSystemGrant: "plugin.fs.grant",
     PluginInstallApprove: "plugin.install.approve",
+    BashExecute: "bash.execute",
 } as const;
 
 export type ApiCapability = typeof ApiCapability[keyof typeof ApiCapability];
@@ -39,6 +40,7 @@ export type PluginPermissionRequest =
     | (PluginPermissionRequestBase & {
         kind: "install";
         source: string;
+        requestedPermissions?: string[];
         persistence?: PluginPermissionPersistence;
     })
     | (PluginPermissionRequestBase & {
@@ -75,8 +77,30 @@ export interface PluginTrustGrantRecord {
     sourceRequestId: string;
 }
 
+export interface PluginFileSystemGrantRecord {
+    plugin: PluginIdentity;
+    path: string;
+    mode: PluginFileSystemPermissionMode;
+    recursive: boolean;
+    persistence: PluginPermissionPersistence;
+    grantedAt: number;
+    sourceRequestId: string;
+}
+
+export interface PluginApiGrantRecord {
+    plugin: PluginIdentity;
+    capability: string;
+    persistence: PluginPermissionPersistence;
+    grantedAt: number;
+    sourceRequestId: string;
+}
+
 export interface PluginPermissionPromptProps {
     request: PluginPermissionRequest;
+    requester?: {
+        windowType: string;
+        title?: string;
+    };
 }
 
 export type PluginPermissionPromptResult = PluginPermissionGrantResult | null;

@@ -7,10 +7,10 @@ export class RecentlyOpened {
     constructor(private readonly state: GlobalState) {
     }
 
-    public addProject({ name, path, icon }: RecentlyOpenedProject): void {
+    public addProject({ name, path, icon, securityScopedBookmark }: RecentlyOpenedProject): void {
         const items = this.state.getItem(this.key);
         const updated = [
-            { path, name, icon, openedAt: Date.now() },
+            { path, name, icon, openedAt: Date.now(), securityScopedBookmark },
             ...items.filter(i => i.path !== path),
         ].slice(0, 10);
         this.state.setItem(this.key, updated);

@@ -2,6 +2,7 @@ import { useWindowControls } from "@/lib/app/hooks/useWindowControls";
 import { ErrorBoundary } from "@/lib/app/errorHandling/ErrorBoundary";
 import { Minus, Square, X } from "lucide-react";
 import { ReactNode } from "react";
+import type { WindowControlAbility } from "@shared/types/window";
 
 export interface TitleBarProps {
     title: string;
@@ -9,14 +10,15 @@ export interface TitleBarProps {
     className?: string;
     actionBar?: ReactNode;
     controlBar?: ReactNode;
+    initialControlAbility?: WindowControlAbility;
 }
 
 /**
  * Universal window title bar with draggable region and window control buttons
  * Can be reused across different applications
  */
-export function TitleBar({ title, iconSrc, className = "", actionBar, controlBar }: TitleBarProps) {
-    const { isMaximized, ability, minimize, toggleMaximize, close } = useWindowControls();
+export function TitleBar({ title, iconSrc, className = "", actionBar, controlBar, initialControlAbility }: TitleBarProps) {
+    const { isMaximized, ability, minimize, toggleMaximize, close } = useWindowControls(initialControlAbility);
 
     return (
         <div className={`titlebar-drag flex items-center bg-[#0b0d12] border-b border-white/10 ${className}`}>

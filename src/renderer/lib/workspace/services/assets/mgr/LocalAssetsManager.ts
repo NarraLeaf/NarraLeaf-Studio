@@ -1,4 +1,5 @@
 import { getInterface } from "@/lib/app/bridge";
+import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 import { Services, WorkspaceContext } from "../../services";
@@ -110,7 +111,7 @@ export class LocalAssetsManager {
 
         // Delete asset file
         const assetPath = this.getLocalAssetPath(asset.id);
-        const deleteResult = await getInterface().fs.deleteFile(assetPath);
+        const deleteResult = await appPrivilegedFacade.fs.deleteFile(assetPath);
         
         if (!deleteResult.success || !deleteResult.data.ok) {
             // Continue even if file deletion fails (file might not exist)
@@ -166,14 +167,14 @@ export class LocalAssetsManager {
         }
 
         // Copy file
-        const copyResult = await getInterface().fs.copyFile(srcPath, destPath);
+        const copyResult = await appPrivilegedFacade.fs.copyFile(srcPath, destPath);
         if (!copyResult.success || !copyResult.data.ok) {
             const msg = copyResult.error || (copyResult.data as FsRequestResult<void, false>)?.error.message;
             return { success: false, error: `Failed to copy asset file: ${msg}` };
         }
 
         // Compute hash for the duplicated file
-        const hashResult = await getInterface().fs.hash(destPath);
+        const hashResult = await appPrivilegedFacade.fs.hash(destPath);
         const fileHash = hashResult.success && hashResult.data.ok ? hashResult.data.data : asset.hash;
 
         // Create metadata
@@ -224,7 +225,7 @@ export class LocalAssetsManager {
         }
 
         // compute file hash for info only
-        const hashResult = await getInterface().fs.hash(path);
+        const hashResult = await appPrivilegedFacade.fs.hash(path);
         const fileHash = hashResult.success && hashResult.data.ok ? hashResult.data.data : "";
 
         // generate unique id for storage / indexing
@@ -289,7 +290,7 @@ export class LocalAssetsManager {
                 }
             }
 
-            const copyResult = await getInterface().fs.copyFile(path, destPath);
+            const copyResult = await appPrivilegedFacade.fs.copyFile(path, destPath);
             if (!copyResult.success || !copyResult.data.ok) {
                 const message = copyResult.error
                     || (`[${(copyResult.data as FsRequestResult<void, false>)?.error.code}] ${(copyResult.data as FsRequestResult<void, false>)?.error.message}`);

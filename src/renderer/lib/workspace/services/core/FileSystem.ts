@@ -2,21 +2,21 @@ import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat } from "@shared/utils/fs";
 import { IFileSystemService, WorkspaceContext } from "../services";
 import { Service } from "../Service";
-import { getInterface } from "@/lib/app/bridge";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AppHost, AppProtocol } from "@shared/types/constants";
+import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 
 export class BaseFileSystemService {
     public static async stat(path: string): Promise<FsRequestResult<FileStat>> {
-        return this.wrapIPCError(await getInterface().fs.stat(path));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.stat(path));
     }
 
     public static async list(path: string): Promise<FsRequestResult<FileStat[]>> {
-        return this.wrapIPCError(await getInterface().fs.list(path));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.list(path));
     }
 
     public static async details(path: string): Promise<FsRequestResult<FileDetails>> {
-        return this.wrapIPCError(await getInterface().fs.details(path));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.details(path));
     }
 
     public static async read(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
@@ -36,63 +36,63 @@ export class BaseFileSystemService {
     }
 
     public static async ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await getInterface().fs.ensureRegularFile(path, data, encoding));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.ensureRegularFile(path, data, encoding));
     }
 
     public static async writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await getInterface().fs.writeFileNoFollow(path, data, encoding));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.writeFileNoFollow(path, data, encoding));
     }
 
     public static async recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await getInterface().fs.recoverCorruptedJsonFile(path, replacement, encoding));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.recoverCorruptedJsonFile(path, replacement, encoding));
     }
 
     public static async createDir(path: string): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await getInterface().fs.createDir(path));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.createDir(path));
     }
 
     public static async deleteFile(path: string): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await getInterface().fs.deleteFile(path));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.deleteFile(path));
     }
 
     public static async deleteDir(path: string): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await getInterface().fs.deleteDir(path));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.deleteDir(path));
     }
 
     public static async rename(oldPath: string, newPath: string, isDir: boolean): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await getInterface().fs.rename(oldPath, newPath, isDir));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.rename(oldPath, newPath, isDir));
     }
 
     public static async copyFile(src: string, dest: string): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await getInterface().fs.copyFile(src, dest));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.copyFile(src, dest));
     }
 
     public static async copyDir(src: string, dest: string): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await getInterface().fs.copyDir(src, dest));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.copyDir(src, dest));
     }
 
     public static async moveFile(src: string, dest: string): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await getInterface().fs.moveFile(src, dest));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.moveFile(src, dest));
     }
 
     public static async moveDir(src: string, dest: string): Promise<FsRequestResult<void>> {
-        return this.wrapIPCError(await getInterface().fs.moveDir(src, dest));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.moveDir(src, dest));
     }
 
     public static async isFileExists(path: string): Promise<FsRequestResult<boolean>> {
-        return this.wrapIPCError(await getInterface().fs.isFileExists(path));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.isFileExists(path));
     }
 
     public static async isDirExists(path: string): Promise<FsRequestResult<boolean>> {
-        return this.wrapIPCError(await getInterface().fs.isDirExists(path));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.isDirExists(path));
     }
 
     public static async isFile(path: string): Promise<FsRequestResult<boolean>> {
-        return this.wrapIPCError(await getInterface().fs.isFile(path));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.isFile(path));
     }
 
     public static async isDir(path: string): Promise<FsRequestResult<boolean>> {
-        return this.wrapIPCError(await getInterface().fs.isDir(path));
+        return this.wrapIPCError(await appPrivilegedFacade.fs.isDir(path));
     }
 
     public static async readJSON<T>(path: string, encoding: BufferEncoding = "utf-8"): Promise<FsRequestResult<T>> {
@@ -117,7 +117,7 @@ export class BaseFileSystemService {
     }
 
     private static async fetch(path: string, encoding: BufferEncoding): Promise<FsRequestResult<string>> {
-        const requestResult = this.wrapIPCError(await getInterface().fs.requestRead(path, encoding));
+        const requestResult = this.wrapIPCError(await appPrivilegedFacade.fs.requestRead(path, encoding));
         if (!requestResult.ok) {
             return requestResult;
         }
@@ -141,7 +141,7 @@ export class BaseFileSystemService {
     }
 
     private static async fetchRaw(path: string): Promise<FsRequestResult<Uint8Array>> {
-        const requestResult = this.wrapIPCError(await getInterface().fs.requestReadRaw(path));
+        const requestResult = this.wrapIPCError(await appPrivilegedFacade.fs.requestReadRaw(path));
         if (!requestResult.ok) {
             return requestResult;
         }
@@ -165,7 +165,7 @@ export class BaseFileSystemService {
     }
 
     private static async put(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>> {
-        const requestResult = this.wrapIPCError(await getInterface().fs.requestWrite(path, encoding));
+        const requestResult = this.wrapIPCError(await appPrivilegedFacade.fs.requestWrite(path, encoding));
         if (!requestResult.ok) {
             return requestResult;
         }
@@ -192,7 +192,7 @@ export class BaseFileSystemService {
     }
 
     private static async putRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>> {
-        const requestResult = this.wrapIPCError(await getInterface().fs.requestWriteRaw(path));
+        const requestResult = this.wrapIPCError(await appPrivilegedFacade.fs.requestWriteRaw(path));
         if (!requestResult.ok) {
             return requestResult;
         }

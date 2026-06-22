@@ -226,8 +226,10 @@ export class App extends BaseApp {
                 resizable: false,
                 minimizable: false,
                 maximizable: false,
-                width: 440,
-                height: 320,
+                closable: true,
+                fullscreenable: false,
+                width: 520,
+                height: 380,
                 center: true,
                 frame: false,
                 titleBarStyle: "hidden",
@@ -236,7 +238,14 @@ export class App extends BaseApp {
                 ...options,
             },
         };
-        const window = new AppWindow<WindowAppType.PluginPermissionPrompt>(this, config, props);
+        const promptProps: WindowProps[WindowAppType.PluginPermissionPrompt] = {
+            ...props,
+            requester: {
+                windowType: parent.getWindowType(),
+                title: parent.getTitle(),
+            },
+        };
+        const window = new AppWindow<WindowAppType.PluginPermissionPrompt>(this, config, promptProps);
         window.setTitle("Plugin Permission - NarraLeaf Studio");
         this.applyWindowIcon(window);
         window.showWhenReady();

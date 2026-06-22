@@ -4,6 +4,7 @@ import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetSource } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { getInterface } from "@/lib/app/bridge";
+import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { Workspace } from "@/lib/workspace/workspace";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { Services, WorkspaceContext as WorkspaceCtx } from "@/lib/workspace/services/services";
@@ -91,8 +92,6 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         }
 
         const assetsService = context.services.get<AssetsService>(Services.Assets);
-        const iface = getInterface();
-
         const handler = async ({ assetId }: { assetId: string }): Promise<RequestStatus<{ url: string }>> => {
             const asset = assetsService.getAssets()[AssetType.Image]?.[assetId]
                 ?? assetsService.getAssets()[AssetType.Font]?.[assetId];
@@ -118,7 +117,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             }
 
             const assetPath = context.project.resolve(ProjectNameConvention.AssetsDataShard(assetId));
-            const request = await iface.fs.requestReadRaw(assetPath);
+            const request = await appPrivilegedFacade.fs.requestReadRaw(assetPath);
 
             if (!request.success || !request.data?.ok) {
                 return {
@@ -134,7 +133,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             };
         };
 
-        const token = iface.workspace.onResolveImageAssetUrl(handler);
+        const token = getInterface().workspace.onResolveImageAssetUrl(handler);
         return () => {
             token.cancel();
         };
@@ -157,4 +156,3 @@ export function useWorkspace() {
     }
     return ctx;
 }
-
