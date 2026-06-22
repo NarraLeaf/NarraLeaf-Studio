@@ -79,7 +79,6 @@ import {
     BLUEPRINT_NODE_TYPE_STRING_TRIM,
     BLUEPRINT_NODE_TYPE_STRING_TRIM_END,
     BLUEPRINT_NODE_TYPE_STRING_TRIM_START,
-    BLUEPRINT_NODE_TYPE_STATE_GET,
     BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES,
     BLUEPRINT_NODE_TYPE_TEXT_GET_EFFECTS,
     BLUEPRINT_NODE_TYPE_TEXT_GET_FONT,
@@ -950,27 +949,6 @@ function resolveFrameNodeOutput(
     return key ? api.frame.getParam(key) : undefined;
 }
 
-function resolveStateNodeOutput(
-    graph: DataPinGraph,
-    nodeId: string,
-    portId: string,
-    params: Record<string, unknown>,
-    blueprintLocals: Record<string, unknown> | undefined,
-    depth: number,
-    runtime?: DataPinResolveRuntime,
-): unknown {
-    if (portId !== "result") {
-        return undefined;
-    }
-    const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
-    if (!api) {
-        return undefined;
-    }
-    const scope = String(params.scope ?? "surface").trim().toLowerCase() === "global" ? "global" : "surface";
-    const key = toBlueprintString(resolveInput(graph, nodeId, "key", params, blueprintLocals, depth, runtime) ?? params.key).trim();
-    return key ? api.state.get(scope, key) : undefined;
-}
-
 function resolveTextNodeOutput(type: string, portId: string, runtime?: DataPinResolveRuntime): unknown {
     const elementId = runtime?.executionOwner?.elementId;
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
@@ -1149,9 +1127,6 @@ function resolveSelfOutput(
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM) {
         return resolveFrameNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
-    }
-    if (selfNode.type === BLUEPRINT_NODE_TYPE_STATE_GET) {
-        return resolveStateNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
     }
     const textOutput = resolveTextNodeOutput(selfNode.type, portId, runtime);
     if (textOutput !== undefined) {

@@ -6,7 +6,8 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-    BLUEPRINT_NODE_TYPE_STATE_GET,
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
+    BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
 } from "@shared/types/blueprint/graph";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -142,23 +143,27 @@ describe("Blueprint Value evaluator", () => {
         });
     });
 
-    it("can read state and return it", async () => {
+    it("can write and read local variables", async () => {
         const flushGraph: BlueprintGraphIr = {
             nodes: {
                 head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH, params: {} },
-                state: { id: "state", type: BLUEPRINT_NODE_TYPE_STATE_GET, params: { scope: "surface", key: "title" } },
+                input: { id: "input", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: "from-var" } },
+                set: { id: "set", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "title" } },
+                get: { id: "get", type: BLUEPRINT_NODE_TYPE_LOCAL_GET, params: { variableId: "title" } },
                 ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
             },
             edges: [
-                { from: { nodeId: "head", port: "then" }, to: { nodeId: "ret", port: "in" } },
-                { from: { nodeId: "state", port: "result" }, to: { nodeId: "ret", port: "value" } },
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "set", port: "in" } },
+                { from: { nodeId: "input", port: "value" }, to: { nodeId: "set", port: "value" } },
+                { from: { nodeId: "set", port: "next" }, to: { nodeId: "ret", port: "in" } },
+                { from: { nodeId: "get", port: "value" }, to: { nodeId: "ret", port: "value" } },
             ],
         };
         const doc = valueDocument(returnGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, "init"), flushGraph);
 
-        await expect(evalValue(doc, BLUEPRINT_VALUE_EVENT_FLUSH, hostAdapter("from-state"))).resolves.toEqual({
+        await expect(evalValue(doc, BLUEPRINT_VALUE_EVENT_FLUSH)).resolves.toEqual({
             returned: true,
-            value: "from-state",
+            value: "from-var",
         });
     });
 

@@ -4,7 +4,7 @@ This guide explains how Studio blueprint nodes are defined, registered, displaye
 
 ## Current built-in catalog
 
-The current core catalog includes event heads, local and runtime variables, basic flow branching, data/string/math utilities, and documented UI-domain nodes.
+The current core catalog includes event heads, local variables, basic flow branching, data/string/math utilities, and documented UI-domain nodes.
 
 | Node type | Display name | Category | Purpose |
 | --- | --- | --- | --- |
@@ -24,8 +24,6 @@ The current core catalog includes event heads, local and runtime variables, basi
 | `blueprint.data.returnValue` | `Return Value` | `Data` | Exec sink that returns the produced value from a Blueprint Value graph. It is only available on `widgetValue` blueprints. |
 | `blueprint.local.get` | `Get Var` | `Variables` | Pure data node that reads an execution-local blueprint variable. |
 | `blueprint.local.set` | `Set Var` | `Variables` | Exec node that writes an execution-local blueprint variable and continues through `next`. |
-| `blueprint.state.get` | `Get state` | `Variables` | Pure data node that reads a Page/App runtime variable by scope and key. |
-| `blueprint.state.set` | `Set state` | `Variables` | Exec node that writes a Page/App runtime variable and continues through `next`. |
 | `if` | `If` | `Flow` | Exec branch node that routes execution through `true` or `false` based on a boolean condition. |
 | `blueprint.math.*` | Basic math operators | `Math` | Pure arithmetic, increment/decrement, and comparison nodes such as `+`, `−`, `×`, `÷`, `+1`, `−1`, `=`, `≠`, `<`, `≤`, `>`, and `≥`. |
 
@@ -45,7 +43,6 @@ Event-head nodes are surfaced in the canvas add-node palette for the current Blu
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/events/eventHeadNodes.ts` | Built-in event entry-head nodes, including lifecycle, widget input, scroll, broadcast, and Page Event heads. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/frameNodes.ts` | Built-in Page component host nodes for Frame params and child-to-parent Page events. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/localVariableNodes.ts` | Built-in local variable nodes. Currently `Get Var` and `Set Var`. |
-| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/stateNodes.ts` | Built-in Page/App runtime variable nodes. Currently `Get state` and `Set state`, both under `Variables`. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/mathNodes.ts` | Built-in basic math and comparison nodes. |
 | `src/shared/types/blueprint/graph.ts` | Shared graph taxonomy and stable node type constants. Use this for node type ids that are persisted or shared across process boundaries. |
 | `src/shared/types/ui-editor/widgetLogic.ts` | Widget logic capability catalog. Event slots here determine what widget event heads can appear for each widget type. |
@@ -71,11 +68,11 @@ When adding a node, make sure you know which owner kinds and graph kinds it shou
 
 Blueprint Value is a per-property dynamic value provider. A `widgetValue` private owner is keyed as `widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`, and the UI document stores the active binding on the element in `valueBindings`. The current supported targets are `nl.text` -> `props.text`, `nl.button` -> `props.label`, and `nl.frame` -> `props.params`.
 
-Value blueprints are visual graph programs only. They are seeded with one `init` event graph that returns the current literal value through `blueprint.data.returnValue`. `string` values seed a Text literal, while `json` values seed a JSON literal. `Flush` is an available automatic refresh head, but Studio does not create a default `flush` layer. On mount, the value runtime executes `init` and then attempts `flush`; if both return values, `flush` wins. Surface or global state updates queue `flush` automatically. Evaluation is serialized per binding so an in-flight run is followed by the latest pending `flush`.
+Value blueprints are visual graph programs only. They are seeded with one `init` event graph that returns the current literal value through `blueprint.data.returnValue`. `string` values seed a Text literal, while `json` values seed a JSON literal. `Flush` is an available automatic refresh head, but Studio does not create a default `flush` layer. On mount, the value runtime executes `init` and then attempts `flush`; if both return values, `flush` wins. Evaluation is serialized per binding so an in-flight run is followed by the latest pending `flush`.
 
 If a value graph does not execute `returnValue`, the runtime keeps the previous resolved value. If there is no previous resolved value, the widget uses its literal prop from the UI document. String results are coerced to string, and `null` or `undefined` become an empty string. Page `params` expects a JSON object; non-object results fall back to `{}`.
 
-The Blueprint Value palette is intentionally restricted to safe value-producing nodes: event heads, non-latent flow, pure Data/String/Math/JSON nodes, surface/global variable reads, and local variables. Surface/global variable writes, widget mutations, navigation, persistence writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
+The Blueprint Value palette is intentionally restricted to safe value-producing nodes: event heads, non-latent flow, pure Data/String/Math/JSON nodes, and local variables. Surface/global state read/write nodes are not part of the core catalog; widget mutations, navigation, persistence writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
 
 ## Node definition API
 
@@ -139,7 +136,7 @@ Recommended category names:
 | Category | Use for |
 | --- | --- |
 | `Events` | Event entry heads such as `Init`, `Mouse Click`, `Surface Init`, `App Boot`, broadcast receivers, and `Page Event`. |
-| `Variables` | Local variables, blueprint/member variables, and Page/App runtime variables. |
+| `Variables` | Local blueprint variables exposed through `Get Var` and `Set Var`. |
 | `Flow` | Branching, string switching, bounded loops, array iteration, and delay. |
 | `Data` | Literals, objects, arrays, type conversion. |
 | `Math` | Numeric calculation and comparisons. |
