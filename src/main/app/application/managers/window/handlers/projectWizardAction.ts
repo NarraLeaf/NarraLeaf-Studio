@@ -12,7 +12,6 @@ export class ProjectWizardLaunchHandler extends IPCHandler<IPCEventType.projectW
 
     public async handle(window: AppWindow): Promise<RequestStatus<{created: boolean; projectPath: string} | null>> {
         const wizardWindow = await window.getApp().launchProjectWizard(window, {}, {
-            modal: true,
             parent: window.win,
             resizable: false,
             width: 600,

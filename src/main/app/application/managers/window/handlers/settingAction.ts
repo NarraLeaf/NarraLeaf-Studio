@@ -9,7 +9,6 @@ export class AppSettingsWindowLaunchHandler extends IPCHandler<IPCEventType.appL
 
     public async handle(window: AppWindow, { props }: IPCEvents[IPCEventType.appLaunchSettings]["data"]): Promise<RequestStatus<void>> {
         await window.getApp().launchSettings(window, props, {
-            modal: true,
             parent: window.win,
             minWidth: 800,
             minHeight: 500,
