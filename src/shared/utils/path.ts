@@ -257,6 +257,9 @@ class PathPolyfill {
 
         if (path === '') return '.';
 
+        const isAbsolutePath = this.isAbsolute(path);
+        const hasTrailingSeparator = path.length > 1 && path.endsWith(this.sep);
+
         // Handle Windows drive letters
         const isWindowsPath = this.isWindows && /^[A-Za-z]:/.test(path);
 
@@ -272,7 +275,7 @@ class PathPolyfill {
             } else if (segment === '..') {
                 if (result.length > 0 && result[result.length - 1] !== '..') {
                     result.pop();
-                } else if (!isWindowsPath) {
+                } else if (!isAbsolutePath && !isWindowsPath) {
                     result.push(segment);
                 }
             } else {
@@ -288,7 +291,25 @@ class PathPolyfill {
             }
         }
 
-        return result.join(this.sep) || '.';
+        let normalized = result.join(this.sep);
+
+        if (isAbsolutePath) {
+            if (this.isWindows && path.startsWith('\\\\')) {
+                normalized = '\\\\' + normalized;
+            } else if (!this.isWindows) {
+                normalized = this.sep + normalized;
+            }
+        }
+
+        if (!normalized) {
+            return isAbsolutePath ? this.sep : '.';
+        }
+
+        if (hasTrailingSeparator && normalized !== this.sep && !normalized.endsWith(this.sep)) {
+            normalized += this.sep;
+        }
+
+        return normalized;
     }
 
     /**

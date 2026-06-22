@@ -1,7 +1,9 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import { ApiCapability, PluginPermissionPromptResult } from "@shared/types/pluginPermissions";
+import { PrivilegedCapability } from "@shared/types/privileged";
+import { ApiCapability, PluginPermissionPromptResult, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
+import { authorizeActorCapabilityRequest } from "../actorAuthorization";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -13,6 +15,20 @@ export class PluginPermissionPromptLaunchHandler extends IPCHandler<IPCEventType
         window: AppWindow,
         { props }: IPCEvents[IPCEventType.pluginPermissionPromptLaunch]["data"],
     ): Promise<RequestStatus<PluginPermissionPromptResult>> {
+        const authorization = authorizeActorCapabilityRequest(
+            window,
+            { kind: "facade", id: "default" },
+            getRequiredPermissionRequestCapability(props.request),
+        );
+        if (!authorization.allowed) {
+            return this.failed(authorization.reason ?? "Permission request is not allowed");
+        }
+
+        const existingGrant = window.app.pluginPermissionManager.getExistingGrantResult(props.request);
+        if (existingGrant) {
+            return this.success(existingGrant);
+        }
+
         const promptWindow = await window.getApp().launchPluginPermissionPrompt(window, props);
         window.addChild(promptWindow);
 
@@ -22,6 +38,13 @@ export class PluginPermissionPromptLaunchHandler extends IPCHandler<IPCEventType
             });
         });
     }
+}
+
+function getRequiredPermissionRequestCapability(request: PluginPermissionRequest): PrivilegedCapability {
+    if (request.kind === "install") {
+        return PrivilegedCapability.PluginInstall;
+    }
+    return PrivilegedCapability.PluginPermissionRequest;
 }
 
 export class PluginPermissionGrantHandler extends IPCHandler<IPCEventType.pluginPermissionGrant> {
