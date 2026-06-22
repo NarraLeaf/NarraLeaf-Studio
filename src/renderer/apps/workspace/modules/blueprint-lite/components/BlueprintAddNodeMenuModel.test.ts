@@ -138,6 +138,35 @@ describe("BlueprintAddNodeMenuModel", () => {
         ]);
     });
 
+    it("supports fuzzy token and compact type matches", () => {
+        expect(filterBlueprintAddNodeEntries(entries, "all", "str lit").map(item => item.type)).toEqual([
+            "nl.data.string",
+        ]);
+        expect(filterBlueprintAddNodeEntries(entries, "all", "madd").map(item => item.type)).toEqual([
+            "nl.math.add",
+        ]);
+        expect(filterBlueprintAddNodeEntries(entries, "all", "oninit").map(item => item.type)).toEqual([
+            "nl.event.init",
+        ]);
+    });
+
+    it("ranks stronger node name matches before weaker keyword/category matches", () => {
+        const ranked = filterBlueprintAddNodeEntries([
+            ...entries,
+            entry({
+                type: "nl.math.multiply",
+                displayName: "Multiply",
+                category: "Math",
+                keywords: ["additive"],
+                isPure: true,
+                inputs: 2,
+                outputs: 1,
+            }),
+        ], "all", "add");
+
+        expect(ranked.map(item => item.type)).toEqual(["nl.math.add", "nl.math.multiply"]);
+    });
+
     it("applies category and query filters together", () => {
         expect(filterBlueprintAddNodeEntries(entries, "Data", "literal").map(item => item.type)).toEqual([
             "nl.data.string",

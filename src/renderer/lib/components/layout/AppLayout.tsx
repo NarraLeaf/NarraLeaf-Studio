@@ -1,6 +1,6 @@
 import React from "react";
 import { TitleBar } from "./TitleBar";
-import type { WindowControlAbility } from "@shared/types/window";
+import { WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 
 export interface AppLayoutProps {
     title: string;
@@ -8,6 +8,7 @@ export interface AppLayoutProps {
     children: React.ReactNode;
     className?: string;
     initialControlAbility?: WindowControlAbility;
+    windowControlPolicy?: WindowControlPolicy;
 }
 
 /**
@@ -21,13 +22,19 @@ export function AppLayout({
     children,
     className = "",
     initialControlAbility,
+    windowControlPolicy,
 }: AppLayoutProps) {
     return (
         <div className={`h-screen w-screen text-gray-200 bg-[#0f1115] ${className}`}>
             <div className="grid grid-rows-[40px,1fr] h-full">
                 {/* Title Bar */}
                 <div className="col-span-full">
-                    <TitleBar title={title} iconSrc={iconSrc} initialControlAbility={initialControlAbility} />
+                    <TitleBar
+                        title={title}
+                        iconSrc={iconSrc}
+                        initialControlAbility={initialControlAbility}
+                        windowControlPolicy={windowControlPolicy}
+                    />
                 </div>
 
                 {/* Main Content */}
