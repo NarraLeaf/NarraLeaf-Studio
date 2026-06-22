@@ -40,6 +40,7 @@ export type PluginPermissionRequest =
     | (PluginPermissionRequestBase & {
         kind: "install";
         source: string;
+        requestedPermissions?: string[];
         persistence?: PluginPermissionPersistence;
     })
     | (PluginPermissionRequestBase & {
@@ -96,6 +97,10 @@ export interface PluginApiGrantRecord {
 
 export interface PluginPermissionPromptProps {
     request: PluginPermissionRequest;
+    requester?: {
+        windowType: string;
+        title?: string;
+    };
 }
 
 export type PluginPermissionPromptResult = PluginPermissionGrantResult | null;

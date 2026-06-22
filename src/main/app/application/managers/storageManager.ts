@@ -87,6 +87,10 @@ export class StorageManager extends Manager {
         return false;
     }
 
+    public async isPathProtected(fsPath: string): Promise<boolean> {
+        return this.isProtectedStoragePath(await this.resolvePathForAuthorization(fsPath));
+    }
+
     public getSecurityScopedBookmarkForPath(fsPath: string): string | undefined {
         const target = path.resolve(fsPath);
         return this.securityScopedBookmarkGrants

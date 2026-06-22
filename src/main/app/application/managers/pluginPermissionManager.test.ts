@@ -65,6 +65,76 @@ describe("PluginPermissionManager actor grants", () => {
         expect(manager.isPluginFileSystemAllowed("plugin.other", path.join(root, "story.json"), "read")).toBe(false);
     });
 
+    it("returns existing filesystem grants instead of requiring another prompt", () => {
+        const filePath = path.join(tempDir, "Desktop", "narraleaf-plugin-permission-test.txt");
+        manager.grantPermission({
+            kind: "filesystem",
+            requestId: "fs-1",
+            plugin,
+            path: filePath,
+            mode: "readwrite",
+            recursive: false,
+            persistence: "permanent",
+        }, {
+            requestId: "fs-1",
+            approved: true,
+            persistence: "permanent",
+        });
+
+        const existing = manager.getExistingGrantResult({
+            kind: "filesystem",
+            requestId: "fs-2",
+            plugin,
+            path: filePath,
+            mode: "readwrite",
+            recursive: false,
+            persistence: "permanent",
+        });
+
+        expect(existing).toMatchObject({
+            requestId: "fs-2",
+            pluginId: plugin.id,
+            kind: "filesystem",
+            approved: true,
+            persistence: "permanent",
+        });
+    });
+
+    it("returns temporary filesystem grants for repeated allow-once requests in the same session", () => {
+        const filePath = path.join(tempDir, "Desktop", "narraleaf-plugin-permission-test.txt");
+        manager.grantPermission({
+            kind: "filesystem",
+            requestId: "fs-1",
+            plugin,
+            path: filePath,
+            mode: "readwrite",
+            recursive: false,
+            persistence: "permanent",
+        }, {
+            requestId: "fs-1",
+            approved: true,
+            persistence: "temporary",
+        });
+
+        const existing = manager.getExistingGrantResult({
+            kind: "filesystem",
+            requestId: "fs-2",
+            plugin,
+            path: filePath,
+            mode: "readwrite",
+            recursive: false,
+            persistence: "permanent",
+        });
+
+        expect(existing).toMatchObject({
+            requestId: "fs-2",
+            pluginId: plugin.id,
+            kind: "filesystem",
+            approved: true,
+            persistence: "temporary",
+        });
+    });
+
     it("checks api and bash grants by plugin id", () => {
         manager.grantPermission({
             kind: "api",
@@ -102,5 +172,59 @@ describe("PluginPermissionManager actor grants", () => {
             persistence: "temporary",
         });
         expect(manager.isPluginCapabilityAllowed(plugin.id, "plugin.install")).toBe(false);
+    });
+
+    it("revokes all persistent and temporary grants for an uninstalled plugin", () => {
+        const filePath = path.join(tempDir, "Desktop", "narraleaf-plugin-permission-test.txt");
+        manager.grantPermission({
+            kind: "trust",
+            requestId: "trust-1",
+            plugin,
+            persistence: "permanent",
+        }, {
+            requestId: "trust-1",
+            approved: true,
+            persistence: "permanent",
+        });
+        manager.grantPermission({
+            kind: "filesystem",
+            requestId: "fs-1",
+            plugin,
+            path: filePath,
+            mode: "readwrite",
+            recursive: false,
+            persistence: "permanent",
+        }, {
+            requestId: "fs-1",
+            approved: true,
+            persistence: "permanent",
+        });
+        manager.grantPermission({
+            kind: "api",
+            requestId: "api-1",
+            plugin,
+            capability: ApiCapability.BashExecute,
+            persistence: "temporary",
+        }, {
+            requestId: "api-1",
+            approved: true,
+            persistence: "temporary",
+        });
+
+        manager.revokePluginPermissions(plugin.id);
+
+        expect(manager.isPluginTrusted(plugin.id)).toBe(false);
+        expect(manager.isPluginFileSystemAllowed(plugin.id, filePath, "read")).toBe(false);
+        expect(manager.isPluginFileSystemAllowed(plugin.id, filePath, "write")).toBe(false);
+        expect(manager.isPluginCapabilityAllowed(plugin.id, ApiCapability.BashExecute)).toBe(false);
+        expect(manager.getExistingGrantResult({
+            kind: "filesystem",
+            requestId: "fs-2",
+            plugin,
+            path: filePath,
+            mode: "readwrite",
+            recursive: false,
+            persistence: "permanent",
+        })).toBeNull();
     });
 });

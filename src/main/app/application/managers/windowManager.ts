@@ -1,7 +1,7 @@
 import { EventEmitter } from "events";
 import { BaseApp } from "../baseApp";
 import { AppWindow } from "./window/appWindow";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowGetControlHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler } from "./window/handlers/appAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppInfoHandler, AppPlatformInfoHandler, AppTerminateHandler, AppWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowGetControlHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler } from "./window/handlers/appAction";
 import { AppSettingsWindowLaunchHandler } from "./window/handlers/settingAction";
 import {
     FsStatHandler, FsListHandler, FsDetailsHandler, FsRequestReadHandler, FsRequestWriteHandler,
@@ -25,6 +25,7 @@ import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } fro
 import {
     PrivilegedBashExecuteHandler,
     PrivilegedFsCallHandler,
+    PrivilegedPermissionRevokePluginHandler,
     PrivilegedPermissionRequestHandler,
 } from "./window/handlers/privilegedAction";
 
@@ -85,6 +86,7 @@ export class WindowManager {
         win.registerIPCHandler(new AppGlobalStateSetHandler());
         win.registerIPCHandler(new AppGlobalStateGetAllHandler());
         win.registerIPCHandler(new AppAddRecentProjectHandler());
+        win.registerIPCHandler(new AppSystemPathHandler());
 
         win.registerIPCHandler(new AppSettingsWindowLaunchHandler());
 
@@ -113,6 +115,7 @@ export class WindowManager {
         // Register actor-aware privileged facade handlers
         win.registerIPCHandler(new PrivilegedFsCallHandler());
         win.registerIPCHandler(new PrivilegedPermissionRequestHandler());
+        win.registerIPCHandler(new PrivilegedPermissionRevokePluginHandler());
         win.registerIPCHandler(new PrivilegedBashExecuteHandler());
 
         // Register file system handlers

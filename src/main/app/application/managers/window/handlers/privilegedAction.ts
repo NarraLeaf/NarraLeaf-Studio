@@ -5,7 +5,7 @@ import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
 import { PrivilegedCapability, PrivilegedFileSystemCallResult } from "@shared/types/privileged";
-import { PluginPermissionPromptResult } from "@shared/types/pluginPermissions";
+import { PluginPermissionPromptResult, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { FileDetails, FileStat } from "@shared/utils/fs";
 import { Fs } from "@shared/utils/fs";
 import { AppWindow } from "../appWindow";
@@ -274,14 +274,22 @@ export class PrivilegedPermissionRequestHandler extends IPCHandler<IPCEventType.
     ): Promise<RequestStatus<PluginPermissionPromptResult>> {
         const capability = authorizeActorCapabilityRequest(
             window,
-            data.actor,
-            PrivilegedCapability.PluginPermissionRequest,
+            { kind: "facade", id: "default" },
+            getRequiredPermissionRequestCapability(data.request),
         );
         if (!capability.allowed) {
             return this.failed(capability.reason ?? "Permission request is not allowed");
         }
+        if (data.actor.kind === "plugin" && data.request.kind === "install") {
+            return this.failed("Installed plugins cannot request plugin installation");
+        }
         if (data.actor.kind === "plugin" && data.request.plugin.id !== data.actor.pluginId) {
             return this.failed("Plugin permission request actor does not match request plugin");
+        }
+
+        const existingGrant = window.app.pluginPermissionManager.getExistingGrantResult(data.request);
+        if (existingGrant) {
+            return this.success(existingGrant);
         }
 
         const promptWindow = await window.getApp().launchPluginPermissionPrompt(window, { request: data.request });
@@ -293,6 +301,39 @@ export class PrivilegedPermissionRequestHandler extends IPCHandler<IPCEventType.
             });
         });
     }
+}
+
+export class PrivilegedPermissionRevokePluginHandler extends IPCHandler<IPCEventType.privilegedPermissionRevokePlugin> {
+    readonly name = IPCEventType.privilegedPermissionRevokePlugin;
+    readonly type = IPCMessageType.request;
+
+    public handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.privilegedPermissionRevokePlugin]["data"],
+    ): RequestStatus<void> {
+        if (data.actor.kind !== "facade" || data.actor.id !== "default") {
+            return this.failed("Only the default facade can revoke plugin permissions");
+        }
+
+        const authorization = authorizeActorCapabilityRequest(
+            window,
+            data.actor,
+            PrivilegedCapability.PluginInstall,
+        );
+        if (!authorization.allowed) {
+            return this.failed(authorization.reason ?? "Plugin permission revocation is not allowed");
+        }
+
+        window.app.pluginPermissionManager.revokePluginPermissions(data.pluginId);
+        return this.success();
+    }
+}
+
+function getRequiredPermissionRequestCapability(request: PluginPermissionRequest): PrivilegedCapability {
+    if (request.kind === "install") {
+        return PrivilegedCapability.PluginInstall;
+    }
+    return PrivilegedCapability.PluginPermissionRequest;
 }
 
 export class PrivilegedBashExecuteHandler extends IPCHandler<IPCEventType.privilegedBashExecute> {
