@@ -58,6 +58,11 @@ export type PrivilegedPermissionRequestPayload = {
     request: PluginPermissionRequest;
 };
 
+export type PrivilegedPermissionRevokePluginPayload = {
+    actor: PrivilegedActor;
+    pluginId: string;
+};
+
 export type PrivilegedBashExecutePayload = {
     actor: PrivilegedActor;
     command: string;

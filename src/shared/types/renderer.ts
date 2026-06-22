@@ -94,6 +94,7 @@ export interface RendererPreloadedInterface {
             getAllGlobalState(): Promise<RequestStatus<{ settings: Record<string, any> }>>;
         };
         addRecentProject(name: string, path: string): Promise<RequestStatus<void>>;
+        getSystemPath(name: "desktop"): Promise<RequestStatus<{ path: string }>>;
     };
 
     devMode: {
@@ -146,6 +147,7 @@ export interface RendererPreloadedInterface {
         };
         permissions: {
             request(actor: PrivilegedActor, request: PluginPermissionRequest): Promise<RequestStatus<PluginPermissionPromptResult>>;
+            revokePlugin(actor: PrivilegedActor, pluginId: string): Promise<RequestStatus<void>>;
         };
         bash: {
             execute(actor: PrivilegedActor, command: string, cwd?: string): Promise<RequestStatus<PrivilegedBashExecuteResult>>;

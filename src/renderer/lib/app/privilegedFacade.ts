@@ -68,6 +68,8 @@ function createBoundPrivilegedFacade(token: PrivilegedFacadeToken) {
         permissions: {
             request: (request: PluginPermissionRequest): Promise<RequestStatus<PluginPermissionPromptResult>> =>
                 getInterface().privileged.permissions.request(actor(), request),
+            revokePlugin: (pluginId: string): Promise<RequestStatus<void>> =>
+                getInterface().privileged.permissions.revokePlugin(actor(), pluginId),
         },
         bash: {
             execute: (command: string, cwd?: string): Promise<RequestStatus<PrivilegedBashExecuteResult>> =>

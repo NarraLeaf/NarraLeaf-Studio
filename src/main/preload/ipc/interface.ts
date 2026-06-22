@@ -83,6 +83,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         },
         addRecentProject: (name: string, path: string) =>
             ipcClient.invoke(IPCEventType.appAddRecentProject, { name, path }) as Promise<RequestStatus<void>>,
+        getSystemPath: (name: "desktop") =>
+            ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
     },
 
     devMode: {
@@ -165,6 +167,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         permissions: {
             request: (actor: PrivilegedActor, request: PluginPermissionRequest) =>
                 ipcClient.invoke(IPCEventType.privilegedPermissionRequest, { actor, request }),
+            revokePlugin: (actor: PrivilegedActor, pluginId: string) =>
+                ipcClient.invoke(IPCEventType.privilegedPermissionRevokePlugin, { actor, pluginId }),
         },
         bash: {
             execute: (actor: PrivilegedActor, command: string, cwd?: string) =>

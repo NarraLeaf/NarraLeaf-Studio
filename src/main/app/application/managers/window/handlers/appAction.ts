@@ -4,6 +4,7 @@ import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Platform } from "@shared/types/os";
 import { WindowControlAbility } from "@shared/types/window";
+import { app as electronApp } from "electron";
 
 export class AppPlatformInfoHandler extends IPCHandler<IPCEventType.getPlatform> {
     readonly name = IPCEventType.getPlatform;
@@ -158,6 +159,18 @@ export class AppAddRecentProjectHandler extends IPCHandler<IPCEventType.appAddRe
             securityScopedBookmark: window.app.storageManager.getSecurityScopedBookmarkForPath(data.path),
         });
         return this.success(void 0);
+    }
+}
+
+export class AppSystemPathHandler extends IPCHandler<IPCEventType.appSystemPath> {
+    readonly name = IPCEventType.appSystemPath;
+    readonly type = IPCMessageType.request;
+
+    public handle(
+        _window: AppWindow,
+        data: IPCEvents[IPCEventType.appSystemPath]["data"],
+    ): RequestStatus<{ path: string }> {
+        return this.success({ path: electronApp.getPath(data.name) });
     }
 }
 
