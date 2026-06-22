@@ -33,6 +33,12 @@ export type WindowProps = {
 
 export type WindowVisibilityStatus = "minimized" | "maximized" | "normal";
 
+export enum WindowControlPolicy {
+    Standard = "standard",
+    MacNativeOutsideTitleBar = "mac-native-outside-titlebar",
+    None = "none",
+}
+
 export interface WindowControlAbility {
     minimizable: boolean;
     maximizable: boolean;

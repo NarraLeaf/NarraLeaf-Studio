@@ -8,7 +8,7 @@ import {
     PluginPermissionPromptProps,
     PluginPermissionRequest,
 } from "@shared/types/pluginPermissions";
-import { WindowAppType, type WindowControlAbility } from "@shared/types/window";
+import { WindowAppType, WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 
 type PermissionCopy = {
     type: string;
@@ -211,6 +211,7 @@ export function PluginPermissionApp() {
             title="Plugin Permission"
             iconSrc="/favicon.ico"
             initialControlAbility={PLUGIN_PERMISSION_WINDOW_CONTROL_ABILITY}
+            windowControlPolicy={WindowControlPolicy.None}
         >
             <div className="flex h-full min-h-0 flex-col bg-[#0f1115] text-gray-200">
                 {!request && !error ? (

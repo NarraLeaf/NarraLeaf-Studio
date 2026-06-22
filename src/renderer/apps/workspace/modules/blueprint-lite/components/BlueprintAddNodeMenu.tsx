@@ -27,6 +27,8 @@ import {
 const MENU_W = 440;
 const MENU_MAX_H = 520;
 const MENU_CHROME_H = 132;
+const ROW_H = 52;
+const ROW_OVERSCAN = 6;
 
 type PaletteEntry = ReturnType<IBlueprintNodeCatalogService["listPaletteEntries"]>[number];
 
@@ -88,6 +90,8 @@ export function BlueprintAddNodeMenu({
     const [query, setQuery] = useState("");
     const [activeCategoryId, setActiveCategoryId] = useState(BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
     const [activeFlatIndex, setActiveFlatIndex] = useState(-1);
+    const [listScrollTop, setListScrollTop] = useState(0);
+    const [listViewportHeight, setListViewportHeight] = useState(MENU_MAX_H - MENU_CHROME_H);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
     const categoryListRef = useRef<HTMLDivElement>(null);
@@ -98,12 +102,17 @@ export function BlueprintAddNodeMenu({
             setQuery("");
             setActiveCategoryId(BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
             setActiveFlatIndex(-1);
+            setListScrollTop(0);
             requestAnimationFrame(() => inputRef.current?.focus());
         }
     }, [open]);
 
     useEffect(() => {
         setActiveFlatIndex(-1);
+        setListScrollTop(0);
+        if (listRef.current) {
+            listRef.current.scrollTop = 0;
+        }
     }, [activeCategoryId, query]);
 
     const entries = useMemo(
@@ -123,12 +132,30 @@ export function BlueprintAddNodeMenu({
         }
     }, [activeCategoryId, categories]);
 
+    const layout = useMemo(() => {
+        if (typeof window === "undefined") {
+            return { left: anchor.x, top: anchor.y, maxHeight: MENU_MAX_H };
+        }
+        const pad = 8;
+        const maxHeight = Math.min(MENU_MAX_H, Math.max(280, window.innerHeight - pad * 2));
+        const left = Math.max(pad, Math.min(anchor.x, window.innerWidth - MENU_W - pad));
+        const top = Math.max(pad, Math.min(anchor.y, window.innerHeight - maxHeight - pad));
+        return { left, top, maxHeight };
+    }, [anchor.x, anchor.y]);
+
     const filteredEntries = useMemo(
         () => filterBlueprintAddNodeEntries(entries, activeCategoryId, query),
         [activeCategoryId, entries, query],
     );
     const itemCount = filteredEntries.length;
-    const listMaxHeight = Math.max(220, MENU_MAX_H - MENU_CHROME_H);
+    const listMaxHeight = Math.max(120, Math.min(MENU_MAX_H - MENU_CHROME_H, layout.maxHeight - MENU_CHROME_H));
+    const virtualViewportHeight = Math.max(1, listViewportHeight || listMaxHeight);
+    const visibleStartIndex = Math.max(0, Math.floor(listScrollTop / ROW_H) - ROW_OVERSCAN);
+    const visibleEndIndex = Math.min(
+        itemCount,
+        Math.ceil((listScrollTop + virtualViewportHeight) / ROW_H) + ROW_OVERSCAN,
+    );
+    const visibleEntries = filteredEntries.slice(visibleStartIndex, visibleEndIndex);
 
     useEffect(() => {
         navStateRef.current = { activeFlatIndex, itemCount };
@@ -182,9 +209,39 @@ export function BlueprintAddNodeMenu({
         if (!root) {
             return;
         }
-        const el = root.querySelector(`[data-bp-add-node-idx="${activeFlatIndex}"]`);
-        el?.scrollIntoView({ block: "nearest" });
+        const itemTop = activeFlatIndex * ROW_H;
+        const itemBottom = itemTop + ROW_H;
+        const viewportTop = root.scrollTop;
+        const viewportBottom = viewportTop + root.clientHeight;
+        let nextScrollTop = viewportTop;
+        if (itemTop < viewportTop) {
+            nextScrollTop = itemTop;
+        } else if (itemBottom > viewportBottom) {
+            nextScrollTop = itemBottom - root.clientHeight;
+        }
+        if (nextScrollTop !== viewportTop) {
+            root.scrollTop = nextScrollTop;
+            setListScrollTop(nextScrollTop);
+        }
     }, [activeFlatIndex, open]);
+
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+        const root = listRef.current;
+        if (!root) {
+            return;
+        }
+        const measure = () => setListViewportHeight(root.clientHeight || listMaxHeight);
+        measure();
+        if (typeof ResizeObserver === "undefined") {
+            return;
+        }
+        const observer = new ResizeObserver(measure);
+        observer.observe(root);
+        return () => observer.disconnect();
+    }, [listMaxHeight, open]);
 
     useEffect(() => {
         if (!open) {
@@ -255,17 +312,6 @@ export function BlueprintAddNodeMenu({
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
     }, [open, pickEntry, selectRelativeCategory]);
-
-    const layout = useMemo(() => {
-        if (typeof window === "undefined") {
-            return { left: anchor.x, top: anchor.y, maxHeight: MENU_MAX_H };
-        }
-        const pad = 8;
-        const maxHeight = Math.min(MENU_MAX_H, Math.max(280, window.innerHeight - pad * 2));
-        const left = Math.max(pad, Math.min(anchor.x, window.innerWidth - MENU_W - pad));
-        const top = Math.max(pad, Math.min(anchor.y, window.innerHeight - maxHeight - pad));
-        return { left, top, maxHeight };
-    }, [anchor.x, anchor.y]);
 
     if (!open) {
         return null;
@@ -355,24 +401,34 @@ export function BlueprintAddNodeMenu({
                     role="listbox"
                     aria-label="Node types"
                     className="min-h-0 flex-1 overflow-y-auto p-2"
-                    style={{ maxHeight: Math.min(listMaxHeight, layout.maxHeight - MENU_CHROME_H) }}
+                    style={{ maxHeight: listMaxHeight }}
+                    onScroll={event => setListScrollTop(event.currentTarget.scrollTop)}
                 >
                     {filteredEntries.length === 0 ? (
                         <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-slate-500">
-                            No node found.
+                            No nodes found.
                         </div>
                     ) : (
-                        <div className="grid gap-1">
-                            {filteredEntries.map((entry, index) => (
-                                <BlueprintAddNodeRow
-                                    key={entry.type}
-                                    entry={entry}
-                                    active={activeFlatIndex === index}
-                                    flatIndex={index}
-                                    onPick={pickEntry}
-                                    onHover={setActiveFlatIndex}
-                                />
-                            ))}
+                        <div className="relative" style={{ height: itemCount * ROW_H }}>
+                            {visibleEntries.map((entry, offset) => {
+                                const index = visibleStartIndex + offset;
+                                return (
+                                    <div
+                                        key={entry.type}
+                                        className="absolute left-0 right-0"
+                                        style={{ top: index * ROW_H, height: ROW_H }}
+                                    >
+                                        <BlueprintAddNodeRow
+                                            entry={entry}
+                                            active={activeFlatIndex === index}
+                                            flatIndex={index}
+                                            itemCount={itemCount}
+                                            onPick={pickEntry}
+                                            onHover={setActiveFlatIndex}
+                                        />
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -386,6 +442,7 @@ function BlueprintAddNodeRow(props: {
     entry: PaletteEntry;
     active: boolean;
     flatIndex: number;
+    itemCount: number;
     onPick: (entry: PaletteEntry) => void;
     onHover: (flatIndex: number) => void;
 }) {
@@ -395,7 +452,7 @@ function BlueprintAddNodeRow(props: {
     return (
         <div
             className={[
-                "group flex items-center rounded-md transition-colors",
+                "group flex h-full items-center rounded-md transition-colors",
                 props.active ? "bg-white/[0.08]" : "hover:bg-white/[0.06]",
             ].join(" ")}
         >
@@ -404,8 +461,10 @@ function BlueprintAddNodeRow(props: {
                 type="button"
                 role="option"
                 aria-selected={props.active}
+                aria-posinset={props.flatIndex + 1}
+                aria-setsize={props.itemCount}
                 data-bp-add-node-idx={props.flatIndex}
-                className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
                 title={`${props.entry.displayName}\n${props.entry.type}${
                     props.entry.keywords?.length ? `\n${props.entry.keywords.join(", ")}` : ""
                 }`}

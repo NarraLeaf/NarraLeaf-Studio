@@ -1,4 +1,4 @@
-import { WindowAppType, WindowProps } from "@shared/types/window";
+import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
@@ -37,6 +37,7 @@ export class App extends BaseApp {
             isolated: true,
             autoFocus: true,
             preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.MacNativeOutsideTitleBar,
             options: {
                 minWidth: 800,
                 minHeight: 500,
@@ -79,7 +80,6 @@ export class App extends BaseApp {
             autoFocus: true,
             preload: this.getPreloadScript(),
             options: {
-                modal: true,
                 parent: parent.win,
                 frame: false,
                 titleBarStyle: 'hidden',
@@ -141,7 +141,6 @@ export class App extends BaseApp {
             autoFocus: true,
             preload: this.getPreloadScript(),
             options: {
-                modal: true,
                 parent: parent.win,
                 show: false,
                 frame: false,
@@ -220,6 +219,7 @@ export class App extends BaseApp {
             isolated: true,
             autoFocus: true,
             preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.None,
             options: {
                 modal: true,
                 parent: parent.win,
