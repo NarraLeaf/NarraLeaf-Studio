@@ -35,8 +35,12 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON,
     BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
@@ -116,6 +120,7 @@ import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { frameBlueprintNodes } from "./frameNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { resolveDataPinValue } from "./graphParamResolvers";
+import { elementBlueprintNodes } from "./elementNodes";
 import { sliderBlueprintNodes } from "./sliderNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
@@ -132,6 +137,7 @@ describe("built-in blueprint nodes", () => {
             ...frameBlueprintNodes,
             ...controlFlowBlueprintNodes,
             ...dataBlueprintNodes,
+            ...elementBlueprintNodes,
             ...localVariableBlueprintNodes,
             ...booleanCompareBlueprintNodes,
             ...stringBlueprintNodes,
@@ -142,7 +148,6 @@ describe("built-in blueprint nodes", () => {
             expect(types.has(def.type)).toBe(true);
         }
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT)).toBe(true);
-        expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST)).toBe(true);
@@ -223,6 +228,9 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_STRING_TO_STRING)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_GET)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_SET)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_REF)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE)).toBe(true);
@@ -262,6 +270,8 @@ describe("built-in blueprint nodes", () => {
         expect(stringBlueprintNodes.every(def => def.category === "Data")).toBe(true);
         expect(textBlueprintNodes.every(def => def.category === "Text")).toBe(true);
         expect(sliderBlueprintNodes.every(def => def.category === "Slider")).toBe(true);
+        expect(elementBlueprintNodes.some(def => def.category === "Element")).toBe(true);
+        expect(elementBlueprintNodes.some(def => def.category === "Displayable")).toBe(true);
     });
 
     it("keeps structured literal editor metadata locked to fixed schemas", () => {
@@ -813,6 +823,77 @@ describe("built-in blueprint nodes", () => {
         ).toBe(false);
     });
 
+    it("connects generic and typed Element refs while rejecting nonmatching typed refs", () => {
+        registerCoreBlueprintNodes();
+
+        expect(
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                sourcePort: "element",
+                sourceParams: { surfaceId: "surface", elementId: "text", elementType: "nl.text" },
+                targetType: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,
+                targetPort: "element",
+            }),
+        ).toBe(true);
+
+        expect(
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                sourcePort: "element",
+                sourceParams: { surfaceId: "surface", elementId: "slider", elementType: "nl.slider" },
+                targetType: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,
+                targetPort: "element",
+            }),
+        ).toBe(false);
+
+        expect(
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                sourcePort: "element",
+                sourceParams: { surfaceId: "surface", elementId: "text", elementType: "nl.text" },
+                targetType: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE,
+                targetPort: "element",
+            }),
+        ).toBe(true);
+    });
+
+    it("exposes element-derived palette entries only after a bound Element Literal is present", () => {
+        registerCoreBlueprintNodes();
+
+        const baseEntries = blueprintNodeRegistry.listPaletteEntries({
+            graphKind: "event",
+            owner: { kind: "surfaceMain", surfaceId: "surface" },
+            magicElementRefs: [],
+        });
+        expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_REF)).toBe(true);
+        expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT)).toBe(false);
+        expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE)).toBe(false);
+
+        const derivedEntries = blueprintNodeRegistry.listPaletteEntries({
+            graphKind: "event",
+            owner: { kind: "surfaceMain", surfaceId: "surface" },
+            magicElementRefs: [
+                {
+                    sourceNodeId: "element-ref",
+                    sourcePortId: "element",
+                    targetPortId: "element",
+                    surfaceId: "surface",
+                    elementId: "text",
+                    elementType: "nl.text",
+                    label: "Title",
+                },
+            ],
+        });
+        const getTextEntry = derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT);
+        expect(getTextEntry?.magicElementRef).toMatchObject({
+            sourceNodeId: "element-ref",
+            sourcePortId: "element",
+            targetPortId: "element",
+        });
+        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT)).toBe(true);
+        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE)).toBe(true);
+    });
+
     it("resolves completed Math, Boolean, and Compare nodes", () => {
         registerCoreBlueprintNodes();
 
@@ -1260,8 +1341,9 @@ describe("built-in blueprint nodes", () => {
         );
 
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(true);
-        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)).toBe(true);
+        expect(valuePaletteTypes.has("blueprint.event.head.flush")).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_REF)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_BOOLEAN_AND)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_COMPARE_EQUAL)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_COMMENT)).toBe(true);
@@ -1272,7 +1354,7 @@ describe("built-in blueprint nodes", () => {
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOG)).toBe(false);
 
         expect(widgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(true);
-        expect(widgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)).toBe(false);
+        expect(widgetPaletteTypes.has("blueprint.event.head.flush")).toBe(false);
         expect(widgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)).toBe(false);
     });
 
@@ -1286,8 +1368,9 @@ describe("built-in blueprint nodes", () => {
         const byType = new Map(entries.map(entry => [entry.type, entry]));
 
         expect(byType.get(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)?.category).toBe("Events");
-        expect(byType.get(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)?.category).toBe("Events");
+        expect(byType.has("blueprint.event.head.flush")).toBe(false);
         expect(byType.get(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)?.category).toBe("Data");
+        expect(byType.get(BLUEPRINT_NODE_TYPE_ELEMENT_REF)?.category).toBe("Element");
         expect(byType.get(BLUEPRINT_NODE_TYPE_LOCAL_GET)?.category).toBe("Variables");
         expect(byType.get(BLUEPRINT_NODE_TYPE_LOCAL_SET)?.category).toBe("Variables");
         expect(byType.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);

@@ -1,5 +1,6 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { UIGraph, UIGraphEntry, UIGraphId, UIGraphNode } from "@shared/types/ui-editor/graph";
+import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "../runtime/types";
 
 export type BehaviorNodeExecuteResult = {
@@ -17,8 +18,15 @@ export type BehaviorGraphExecutionTrace = {
     emit: (event: BlueprintDebugEvent) => void;
 };
 
+export type BlueprintValueDependency = {
+    surfaceId: string;
+    elementId: string;
+    propPath: string;
+};
+
 export type BehaviorGraphValueExecution = {
     returnValue(value: unknown): void;
+    trackDependency?(dependency: BlueprintValueDependency): void;
 };
 
 export type BehaviorNodeExecutionContext = {
@@ -31,6 +39,8 @@ export type BehaviorNodeExecutionContext = {
     /** Per-event execution locals; initialized from blueprint member variables (M4 simplified editor). */
     blueprintLocals?: Record<string, unknown>;
     eventPayload?: Record<string, unknown>;
+    listItemScope?: UIListItemScope | null;
+    instanceKey?: string;
     executionOwner?: {
         surfaceId?: string;
         elementId?: string;

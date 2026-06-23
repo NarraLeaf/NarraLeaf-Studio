@@ -4,7 +4,8 @@ import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schem
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UISurface } from "@shared/types/ui-editor/document";
 import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
@@ -42,21 +43,27 @@ function literalInitGraph(nodeType: string, value: unknown): BlueprintGraphIr {
     };
 }
 
-function flushGraph(value: string): BlueprintGraphIr {
+function elementTextGraph(): BlueprintGraphIr {
     return {
         nodes: {
-            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH, params: {} },
-            value: { id: "value", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value } },
+            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, params: {} },
+            element: {
+                id: "element",
+                type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                params: { surfaceId: "surface", elementId: "text-b", elementType: "nl.text" },
+            },
+            getText: { id: "getText", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT, params: {} },
             ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
         },
         edges: [
             { from: { nodeId: "head", port: "then" }, to: { nodeId: "ret", port: "in" } },
-            { from: { nodeId: "value", port: "value" }, to: { nodeId: "ret", port: "value" } },
+            { from: { nodeId: "element", port: "element" }, to: { nodeId: "getText", port: "element" } },
+            { from: { nodeId: "getText", port: "text" }, to: { nodeId: "ret", port: "value" } },
         ],
     };
 }
 
-function blueprintDocument(flushValue = "first"): BlueprintDocument {
+function blueprintDocument(graph: BlueprintGraphIr = initGraph()): BlueprintDocument {
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: {
@@ -71,8 +78,7 @@ function blueprintDocument(flushValue = "first"): BlueprintDocument {
                     kind: "graph",
                     graphs: {
                         events: {
-                            init: { id: "init", graph: initGraph() },
-                            flush: { id: "flush", graph: flushGraph(flushValue) },
+                            init: { id: "init", graph },
                         },
                         functions: {},
                     },
@@ -151,7 +157,7 @@ function uiDocument(): { document: UIDocument; surface: UISurface } {
                     id: "root",
                     type: "nl.root",
                     parentId: null,
-                    childrenIds: ["text"],
+                    childrenIds: ["text", "text-b", "other"],
                     layout: { x: 0, y: 0, width: 320, height: 180 },
                 },
                 text: {
@@ -165,9 +171,71 @@ function uiDocument(): { document: UIDocument; surface: UISurface } {
                         text: { kind: "blueprintValue", blueprintId: "bp-value", valueType: "string" },
                     },
                 },
+                "text-b": {
+                    id: "text-b",
+                    type: "nl.text",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 140, y: 0, width: 120, height: 40 },
+                    props: { text: "Source A" },
+                },
+                other: {
+                    id: "other",
+                    type: "nl.text",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 0, y: 60, width: 120, height: 40 },
+                    props: { text: "Other A" },
+                },
             },
         },
     };
+}
+
+function hostAdapterForDocument(document: UIDocument, onReadText?: (elementId: string) => void): UIHostAdapter {
+    return {
+        host: "player",
+        blueprintRuntime: {
+            surfaceId: "surface",
+            runtimeScopeId: "surface",
+            setSurfaceState: () => undefined,
+            getSurfaceState: () => undefined,
+            emitDebug: () => undefined,
+            dispatchElementBlueprintEvent: async () => undefined,
+            hostApi: {
+                widget: {
+                    getTextProperties: (elementId: string) => {
+                        onReadText?.(elementId);
+                        const element = document.elements[elementId];
+                        return {
+                            text: String(element?.props?.text ?? ""),
+                            fontAssetId: null,
+                            fontSize: 16,
+                            fontWeight: "normal",
+                            color: "#ffffff",
+                            textAlign: "left",
+                            textVerticalAlign: "start",
+                            lineHeight: 1.4,
+                            textWrapMode: "word",
+                            effects: {},
+                        };
+                    },
+                    setTextProperties: async () => undefined,
+                    getDisplayableProperties: (elementId: string) => {
+                        const layout = document.elements[elementId]?.layout ?? { x: 0, y: 0, width: 0, height: 0 };
+                        return {
+                            position: { x: layout.x, y: layout.y },
+                            size: { width: layout.width, height: layout.height },
+                            bounds: { x: layout.x, y: layout.y, width: layout.width, height: layout.height },
+                            rotation: layout.rotation ?? 0,
+                            opacity: layout.opacity ?? 1,
+                            visible: layout.visible !== false,
+                        };
+                    },
+                },
+            },
+        },
+    } as unknown as UIHostAdapter;
 }
 
 async function waitFor(assertion: () => void): Promise<void> {
@@ -185,20 +253,14 @@ async function waitFor(assertion: () => void): Promise<void> {
 }
 
 describe("BlueprintValueRuntimeStore", () => {
-    it("runs init then flush and lets queued flush update from document changes", async () => {
+    it("reruns only when a tracked Element Text dependency changes", async () => {
         const { document, surface } = uiDocument();
         let changes = 0;
-        const hostAdapter = {
-            host: "player",
-            blueprintRuntime: {
-                surfaceId: "surface",
-                runtimeScopeId: "surface",
-                setSurfaceState: () => undefined,
-                getSurfaceState: () => undefined,
-                emitDebug: () => undefined,
-                dispatchElementBlueprintEvent: async () => undefined,
-            },
-        } as unknown as UIHostAdapter;
+        const readElementIds: string[] = [];
+        const hostAdapter = hostAdapterForDocument(document, elementId => {
+            readElementIds.push(elementId);
+        });
+        const bpDoc = blueprintDocument(elementTextGraph());
         const store = new BlueprintValueRuntimeStore(() => {
             changes += 1;
         });
@@ -206,31 +268,86 @@ describe("BlueprintValueRuntimeStore", () => {
         store.sync({
             document,
             surface,
-            blueprintDocument: blueprintDocument("first"),
+            blueprintDocument: bpDoc,
             hostAdapter,
         });
 
         await waitFor(() => {
             expect(store.getResolvedValue("surface", "text", "text", "bp-value")).toEqual({
                 hasResolved: true,
-                value: "first",
+                value: "Source A",
             });
         });
+        expect(readElementIds).toEqual(["text-b"]);
+        expect(changes).toBe(1);
+
+        document.elements.other!.props = { text: "Other B" };
+        store.sync({
+            document,
+            surface,
+            blueprintDocument: bpDoc,
+            hostAdapter,
+        });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(store.getResolvedValue("surface", "text", "text", "bp-value")).toEqual({
+            hasResolved: true,
+            value: "Source A",
+        });
+        expect(readElementIds).toEqual(["text-b"]);
+        expect(changes).toBe(1);
+
+        document.elements["text-b"]!.props = { text: "Source B" };
+        store.sync({
+            document,
+            surface,
+            blueprintDocument: bpDoc,
+            hostAdapter,
+        });
+
+        await waitFor(() => {
+            expect(store.getResolvedValue("surface", "text", "text", "bp-value")).toEqual({
+                hasResolved: true,
+                value: "Source B",
+            });
+        });
+        expect(readElementIds).toEqual(["text-b", "text-b"]);
+        expect(changes).toBe(2);
+    });
+
+    it("keeps one pending rerun while evaluation is in flight", async () => {
+        const { document, surface } = uiDocument();
+        let changes = 0;
+        const store = new BlueprintValueRuntimeStore(() => {
+            changes += 1;
+        });
+        const hostAdapter = { host: "player" } as UIHostAdapter;
 
         store.sync({
             document,
             surface,
-            blueprintDocument: blueprintDocument("second"),
+            blueprintDocument: blueprintDocument(literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_STRING, "first")),
+            hostAdapter,
+        });
+        store.sync({
+            document,
+            surface,
+            blueprintDocument: blueprintDocument(literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_STRING, "second")),
+            hostAdapter,
+        });
+        store.sync({
+            document,
+            surface,
+            blueprintDocument: blueprintDocument(literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_STRING, "third")),
             hostAdapter,
         });
 
         await waitFor(() => {
             expect(store.getResolvedValue("surface", "text", "text", "bp-value")).toEqual({
                 hasResolved: true,
-                value: "second",
+                value: "third",
             });
         });
-        expect(changes).toBeGreaterThanOrEqual(2);
+        expect(changes).toBe(2);
     });
 
     it("merges resolved button labels", async () => {

@@ -42,6 +42,7 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
 } from "@shared/types/blueprint/graph";
 import {
+    BLUEPRINT_VALUE_TYPE_ARRAY,
     BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
     BLUEPRINT_VALUE_TYPE_VECTOR2D,
 } from "@shared/types/blueprint/valueTypes";
@@ -269,7 +270,10 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
             const value = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals, 0, {
                 hostAdapter: ctx.hostAdapter,
                 eventPayload: ctx.eventPayload,
+                listItemScope: ctx.listItemScope,
+                instanceKey: ctx.instanceKey,
                 executionOwner: ctx.executionOwner,
+                valueExecution: ctx.valueExecution,
             });
             ctx.valueExecution?.returnValue(value);
             return { nextPort: undefined };
@@ -428,7 +432,7 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY,
         displayName: "Make JSON Array",
         keywords: ["json", "array", "make", "list", "items"],
-        pins: [out("result", "Array", "json")],
+        pins: [out("result", "Array", BLUEPRINT_VALUE_TYPE_ARRAY)],
         dynamicInputPins: {
             storageKey: JSON_ARRAY_INPUT_PINS_KEY,
             fixedDataInputIds: [],
@@ -442,7 +446,10 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH,
         displayName: "JSON Array Length",
         keywords: ["json", "array", "length", "count", "size"],
-        pins: [jsonIn("value", "Array"), out("length", "Length", "integer")],
+        pins: [
+            { id: "value", kind: "input", semantic: "data", valueType: BLUEPRINT_VALUE_TYPE_ARRAY, label: "Array" },
+            out("length", "Length", "integer"),
+        ],
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,

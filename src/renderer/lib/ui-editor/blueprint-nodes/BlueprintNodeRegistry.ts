@@ -5,7 +5,7 @@
 
 import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
@@ -47,6 +47,12 @@ function resolveAllowedWidgetEventHeadTypesForPalette(ctx: BlueprintPaletteConte
             allow.add(t);
         }
     };
+    const finalize = () => {
+        if (!ctx.listItemContextAvailable) {
+            allow.delete(BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH);
+        }
+        return allow;
+    };
 
     if (slots.length === 0) {
         if (catalog && catalog.length > 0) {
@@ -58,18 +64,17 @@ function resolveAllowedWidgetEventHeadTypesForPalette(ctx: BlueprintPaletteConte
                 addSlot(eventId);
             }
         }
-        return allow;
+        return finalize();
     }
     for (const s of slots) {
         addSlot(s);
     }
-    return allow;
+    return finalize();
 }
 
 export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGraphContextDef): boolean {
     if (def.role === "eventHead") {
-        return def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT ||
-            def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH;
+        return def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT;
     }
     if (def.role === "valueReturn" || def.type === BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE) {
         return true;
@@ -86,7 +91,14 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
     if (!def.isPure || def.isLatent) {
         return false;
     }
-    return def.category === "Data" || def.category === "Math";
+    return (
+        def.category === "Data" ||
+        def.category === "List" ||
+        def.category === "Math" ||
+        def.category === "Text" ||
+        def.category === "Displayable" ||
+        def.category === "Element"
+    );
 }
 
 function matchesBlueprintNodeScopeValue(
@@ -248,6 +260,9 @@ class BlueprintNodeDefinitionsRegistry {
     public listPaletteEntries(ctx: BlueprintPaletteContext): BlueprintNodeEditorCatalogEntry[] {
         const out: BlueprintNodeEditorCatalogEntry[] = [];
         for (const def of this.byType.values()) {
+            if (def.magicElementTarget) {
+                continue;
+            }
             if (def.hideInPalette) {
                 continue;
             }
@@ -256,12 +271,47 @@ class BlueprintNodeDefinitionsRegistry {
             }
             out.push(this.toCatalogEntry(def));
         }
+        for (const def of this.byType.values()) {
+            if (!def.magicElementTarget) {
+                continue;
+            }
+            if (def.hideInPalette) {
+                continue;
+            }
+            if (!isBlueprintNodeAllowedInGraphContext(def, ctx)) {
+                continue;
+            }
+            const elementTypes = def.magicElementTarget.elementTypes;
+            for (const ref of ctx.magicElementRefs ?? []) {
+                if (elementTypes && !elementTypes.includes(ref.elementType)) {
+                    continue;
+                }
+                out.push({
+                    ...this.toCatalogEntry(def),
+                    displayName: `${ref.label}: ${def.displayName}`,
+                    keywords: [
+                        ...(def.keywords ?? []),
+                        ref.label,
+                        ref.elementId,
+                        ref.elementType,
+                    ],
+                    magicElementRef: {
+                        ...ref,
+                        targetPortId: def.magicElementTarget.inputPinId,
+                    },
+                });
+            }
+        }
         return out.sort((a, b) => {
             const c = a.category.localeCompare(b.category);
             if (c !== 0) {
                 return c;
             }
-            return a.displayName.localeCompare(b.displayName);
+            const n = a.displayName.localeCompare(b.displayName);
+            if (n !== 0) {
+                return n;
+            }
+            return (a.magicElementRef?.sourceNodeId ?? "").localeCompare(b.magicElementRef?.sourceNodeId ?? "");
         });
     }
 

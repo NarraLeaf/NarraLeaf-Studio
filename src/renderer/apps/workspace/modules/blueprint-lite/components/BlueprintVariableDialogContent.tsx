@@ -15,6 +15,8 @@ export const BLUEPRINT_VARIABLE_TYPE_OPTIONS = [
     { value: "integer", label: "Integer", defaultValue: 0 },
     { value: "float", label: "Float", defaultValue: 0 },
     { value: "boolean", label: "Boolean", defaultValue: false },
+    { value: "json", label: "JSON", defaultValue: {} },
+    { value: "array", label: "Array", defaultValue: [] },
     { value: "any", label: "Any", defaultValue: null },
 ] as const satisfies ReadonlyArray<{
     value: string;

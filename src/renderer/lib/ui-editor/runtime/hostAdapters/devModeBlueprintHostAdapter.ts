@@ -54,7 +54,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         blueprintRuntime,
     };
 
-    blueprintRuntime.dispatchElementBlueprintEvent = async (elementId, eventName, eventPayload) => {
+    blueprintRuntime.dispatchElementBlueprintEvent = async (elementId, eventName, eventPayload, eventOptions) => {
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
@@ -63,6 +63,8 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             elementId,
             eventName,
             eventPayload,
+            listItemScope: eventOptions?.listItemScope,
+            instanceKey: eventOptions?.instanceKey,
             hostAdapter: adapter,
             debug,
             getSurfaceState: key => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key),

@@ -79,6 +79,8 @@ function resolveInput(ctx: BehaviorNodeExecutionContext, pinId: string, fallback
     const value = resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
         hostAdapter: ctx.hostAdapter,
         eventPayload: ctx.eventPayload,
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
         executionOwner: ctx.executionOwner,
     });
     return value === undefined ? fallback : value;

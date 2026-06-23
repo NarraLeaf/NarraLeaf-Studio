@@ -1,6 +1,7 @@
 import type { BlueprintGraphEdge, BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
     BLUEPRINT_NODE_TYPE_LITERAL,
@@ -77,7 +78,8 @@ export function isBlueprintLiteralNodeType(type: string): boolean {
         type === BLUEPRINT_NODE_TYPE_LITERAL_COLOR ||
         type === BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D ||
         type === BLUEPRINT_NODE_TYPE_LITERAL_RECT ||
-        type === BLUEPRINT_NODE_TYPE_LITERAL_JSON
+        type === BLUEPRINT_NODE_TYPE_LITERAL_JSON ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_REF
     );
 }
 
@@ -197,6 +199,8 @@ export function createGraphNodeForPalette(type: string, id: string): BlueprintGr
         base.params = { value: { x: 0, y: 0, width: 0, height: 0 } };
     } else if (type === BLUEPRINT_NODE_TYPE_LITERAL_JSON) {
         base.params = { value: {} };
+    } else if (type === BLUEPRINT_NODE_TYPE_ELEMENT_REF) {
+        base.params = {};
     } else if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT) {
         base.params = {
             __jsonObjectInputPins: ["field_1_name", "field_1_value"],

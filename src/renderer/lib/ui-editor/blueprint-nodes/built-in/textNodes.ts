@@ -175,7 +175,10 @@ function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string)
     return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
         hostAdapter: ctx.hostAdapter,
         eventPayload: ctx.eventPayload,
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
         executionOwner: ctx.executionOwner,
+        valueExecution: ctx.valueExecution,
     });
 }
 

@@ -18,7 +18,10 @@ export type ExecuteGraphOptions = {
     trace?: BehaviorGraphExecutionTrace;
     blueprintLocals?: Record<string, unknown>;
     eventPayload?: Record<string, unknown>;
+    listItemScope?: BehaviorNodeExecutionContext["listItemScope"];
+    instanceKey?: string;
     executionOwner?: BehaviorNodeExecutionContext["executionOwner"];
+    valueExecution?: Pick<NonNullable<BehaviorNodeExecutionContext["valueExecution"]>, "trackDependency">;
 };
 
 export type ExecuteGraphResult = {
@@ -47,6 +50,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             valueResult.returnValueSet = true;
             valueResult.returnValue = value;
         },
+        trackDependency: options.valueExecution?.trackDependency,
     };
     let cursor: string | undefined = entry.start.nodeId;
     const pendingCursors: string[] = [];
@@ -96,6 +100,8 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             trace,
             blueprintLocals,
             eventPayload: options.eventPayload,
+            listItemScope: options.listItemScope,
+            instanceKey: options.instanceKey,
             executionOwner: options.executionOwner,
             valueExecution,
         };

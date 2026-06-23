@@ -6,11 +6,14 @@
 import type { BlueprintNodeDef } from "../types";
 import { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 import { broadcastBlueprintNodes } from "./broadcastNodes";
+import { collectionBlueprintNodes } from "./collectionNodes";
 import { controlFlowBlueprintNodes } from "./controlFlowNodes";
 import { dataBlueprintNodes } from "./dataNodes";
 import { devtoolsBlueprintNodes } from "./devtoolsNodes";
+import { elementBlueprintNodes } from "./elementNodes";
 import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { frameBlueprintNodes } from "./frameNodes";
+import { listBlueprintNodes } from "./listNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
 import { sliderBlueprintNodes } from "./sliderNodes";
@@ -19,11 +22,14 @@ import { textBlueprintNodes } from "./textNodes";
 
 export { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 export { broadcastBlueprintNodes } from "./broadcastNodes";
+export { collectionBlueprintNodes } from "./collectionNodes";
 export { controlFlowBlueprintNodes } from "./controlFlowNodes";
 export { dataBlueprintNodes } from "./dataNodes";
 export { devtoolsBlueprintNodes } from "./devtoolsNodes";
+export { elementBlueprintNodes } from "./elementNodes";
 export { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 export { frameBlueprintNodes } from "./frameNodes";
+export { listBlueprintNodes } from "./listNodes";
 export { localVariableBlueprintNodes } from "./localVariableNodes";
 export { mathBlueprintNodes } from "./mathNodes";
 export { sliderBlueprintNodes } from "./sliderNodes";
@@ -41,6 +47,9 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...frameBlueprintNodes,
     ...controlFlowBlueprintNodes,
     ...dataBlueprintNodes,
+    ...collectionBlueprintNodes,
+    ...listBlueprintNodes,
+    ...elementBlueprintNodes,
     ...localVariableBlueprintNodes,
     ...mathBlueprintNodes,
     ...booleanCompareBlueprintNodes,

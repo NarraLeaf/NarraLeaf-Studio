@@ -61,6 +61,8 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
                 resolveDataPinValue(ctx.graph, ctx.node.id, "event", ctx.params, ctx.blueprintLocals, 0, {
                     hostAdapter: ctx.hostAdapter,
                     eventPayload: ctx.eventPayload,
+                    listItemScope: ctx.listItemScope,
+                    instanceKey: ctx.instanceKey,
                     executionOwner: ctx.executionOwner,
                 }) ?? "",
             ).trim();
@@ -70,6 +72,8 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             const data = resolveDataPinValue(ctx.graph, ctx.node.id, "data", ctx.params, ctx.blueprintLocals, 0, {
                 hostAdapter: ctx.hostAdapter,
                 eventPayload: ctx.eventPayload,
+                listItemScope: ctx.listItemScope,
+                instanceKey: ctx.instanceKey,
                 executionOwner: ctx.executionOwner,
             });
             await api.frame.emit(eventName, data);

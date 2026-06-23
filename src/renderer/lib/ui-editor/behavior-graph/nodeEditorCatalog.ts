@@ -11,6 +11,7 @@ import {
     isValidBlueprintExecConnection as isValidBlueprintPinConnectionInner,
 } from "../blueprint-nodes/connectionPolicy";
 import type {
+    BlueprintMagicElementRefPaletteEntry,
     BlueprintNodeEditorCatalogEntry,
     BlueprintPaletteContext,
     BlueprintPinSemantic,
@@ -41,6 +42,8 @@ export function buildBlueprintPaletteContext(input: {
     hasEventHead?: boolean;
     hasFunctionEntry?: boolean;
     isBlueprintValueGraph?: boolean;
+    listItemContextAvailable?: boolean;
+    magicElementRefs?: readonly BlueprintMagicElementRefPaletteEntry[];
 }): BlueprintPaletteContext {
     const gk: BlueprintGraphKind = input.graphKind;
     return {
@@ -52,6 +55,8 @@ export function buildBlueprintPaletteContext(input: {
         hasEventHead: input.hasEventHead,
         hasFunctionEntry: input.hasFunctionEntry,
         isBlueprintValueGraph: input.isBlueprintValueGraph,
+        listItemContextAvailable: input.listItemContextAvailable,
+        magicElementRefs: input.magicElementRefs,
     };
 }
 

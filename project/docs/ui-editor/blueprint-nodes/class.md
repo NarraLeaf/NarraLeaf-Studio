@@ -36,6 +36,8 @@ Page分类具有：
 
 ## Data
 
+Data 分类同时包含 Collection 节点；Array / JSON / Object 处理都保留在 Data 分类下。
+
 Data分类具有：
 - Data节点
 - JSON节点
@@ -52,6 +54,11 @@ Math分类具有：
 
 Text分类具有：
 - Text节点
+
+## List
+
+List 分类具有：
+- List 节点
 
 ## Slider
 

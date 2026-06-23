@@ -15,8 +15,6 @@ export type BlueprintGraphKind = "event" | "function" | "macro";
 /** Well-known blueprint node type ids (stable contract). */
 /** Entry for widget `init` UI event (surface mount). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT = "blueprint.event.head.init" as const;
-/** Entry for Blueprint Value refresh evaluation. */
-export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH = "blueprint.event.head.flush" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK = "blueprint.event.head.mouseClick" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOUBLE_CLICK = "blueprint.event.head.mouseDoubleClick" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER = "blueprint.event.head.mouseEnter" as const;
@@ -37,6 +35,7 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT = "blueprint.event.head.p
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_RENDER = "blueprint.event.head.itemRender" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK = "blueprint.event.head.itemClick" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER = "blueprint.event.head.itemHover" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH = "blueprint.event.head.listItemRefresh" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED = "blueprint.event.head.selectionChanged" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END = "blueprint.event.head.scrollEnd" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START = "blueprint.event.head.sliderDragStart" as const;
@@ -69,6 +68,7 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_RENDER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
@@ -185,6 +185,7 @@ export const BLUEPRINT_NODE_TYPE_LITERAL_COLOR = "blueprint.data.colorLiteral" a
 export const BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D = "blueprint.data.vector2dLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL_RECT = "blueprint.data.rectLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL_JSON = "blueprint.data.jsonLiteral" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_REF = "blueprint.element.ref" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE = "blueprint.data.returnValue" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT = "blueprint.data.toFloat" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER = "blueprint.data.toInteger" as const;
@@ -210,6 +211,25 @@ export const BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY = "blueprint.data.jsonMake
 export const BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH = "blueprint.data.jsonArrayLength" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT = "blueprint.data.jsonMergeObject" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE = "blueprint.data.jsonClone" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_LENGTH = "blueprint.collection.arrayLength" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_GET = "blueprint.collection.arrayGet" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SET = "blueprint.collection.arraySet" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_PUSH = "blueprint.collection.arrayPush" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_INSERT = "blueprint.collection.arrayInsert" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REMOVE = "blueprint.collection.arrayRemove" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_REMOVE_AT = "blueprint.collection.arrayRemoveAt" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS = "blueprint.collection.arrayContains" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FIND = "blueprint.collection.arrayFind" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_FILTER = "blueprint.collection.arrayFilter" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_MAP = "blueprint.collection.arrayMap" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SORT = "blueprint.collection.arraySort" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_SLICE = "blueprint.collection.arraySlice" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_JOIN = "blueprint.collection.arrayJoin" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_KEYS = "blueprint.collection.objectKeys" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_VALUES = "blueprint.collection.objectValues" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_MERGE = "blueprint.collection.objectMerge" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_SET_FIELD = "blueprint.collection.objectSetField" as const;
+export const BLUEPRINT_NODE_TYPE_COLLECTION_OBJECT_REMOVE_FIELD = "blueprint.collection.objectRemoveField" as const;
 export const BLUEPRINT_NODE_TYPE_FLOW_IF = "if" as const;
 export const BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE = "blueprint.flow.ifElse" as const;
 export const BLUEPRINT_NODE_TYPE_FLOW_NOOP = "blueprint.flow.noop" as const;
@@ -331,11 +351,63 @@ export const BLUEPRINT_NODE_TYPE_TEXT_SET_EFFECTS = "blueprint.text.setEffects" 
 export const BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES = "blueprint.text.getAllProperties" as const;
 export const BLUEPRINT_NODE_TYPE_TEXT_SET_ALL_PROPERTIES = "blueprint.text.setAllProperties" as const;
 
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT = "blueprint.element.text.getText" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT = "blueprint.element.text.setText" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_APPEND_TEXT = "blueprint.element.text.appendText" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_CLEAR_TEXT = "blueprint.element.text.clearText" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_FONT = "blueprint.element.text.getFont" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_FONT = "blueprint.element.text.setFont" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_FONT_SIZE = "blueprint.element.text.getFontSize" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_FONT_SIZE = "blueprint.element.text.setFontSize" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_FONT_WEIGHT = "blueprint.element.text.getFontWeight" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_FONT_WEIGHT = "blueprint.element.text.setFontWeight" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT_COLOR = "blueprint.element.text.getTextColor" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT_COLOR = "blueprint.element.text.setTextColor" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT_ALIGN = "blueprint.element.text.getTextAlign" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT_ALIGN = "blueprint.element.text.setTextAlign" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT_VERTICAL_ALIGN = "blueprint.element.text.getTextVerticalAlign" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT_VERTICAL_ALIGN = "blueprint.element.text.setTextVerticalAlign" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_LINE_HEIGHT = "blueprint.element.text.getLineHeight" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_LINE_HEIGHT = "blueprint.element.text.setLineHeight" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_WRAP_MODE = "blueprint.element.text.getWrapMode" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_WRAP_MODE = "blueprint.element.text.setWrapMode" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_EFFECTS = "blueprint.element.text.getEffects" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_EFFECTS = "blueprint.element.text.setEffects" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_ALL_PROPERTIES = "blueprint.element.text.getAllProperties" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_ALL_PROPERTIES = "blueprint.element.text.setAllProperties" as const;
+
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION = "blueprint.element.displayable.getPosition" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_SIZE = "blueprint.element.displayable.getSize" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS = "blueprint.element.displayable.getBounds" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION = "blueprint.element.displayable.getRotation" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY = "blueprint.element.displayable.getOpacity" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE = "blueprint.element.displayable.getVisible" as const;
+
 export const BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE = "blueprint.slider.getValue" as const;
 export const BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE = "blueprint.slider.getNormalizedValue" as const;
 export const BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE = "blueprint.slider.getRange" as const;
 export const BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE = "blueprint.slider.setValue" as const;
 export const BLUEPRINT_NODE_TYPE_SLIDER_SET_RANGE = "blueprint.slider.setRange" as const;
+
+export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS = "blueprint.list.setItems" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS = "blueprint.list.getItems" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_CLEAR = "blueprint.list.clear" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_APPEND_ITEM = "blueprint.list.appendItem" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_INSERT_ITEM = "blueprint.list.insertItem" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_REMOVE_ITEM = "blueprint.list.removeItem" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_REMOVE_ITEM_AT = "blueprint.list.removeItemAt" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_ITEM = "blueprint.list.getSelectedItem" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_SET_SELECTED_ITEM = "blueprint.list.setSelectedItem" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_INDEX = "blueprint.list.getSelectedIndex" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_SET_SELECTED_INDEX = "blueprint.list.setSelectedIndex" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_REFRESH_ITEMS = "blueprint.list.refreshItems" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_SCROLL_TO_INDEX = "blueprint.list.scrollToIndex" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_SCROLL_TO_TOP = "blueprint.list.scrollToTop" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_SCROLL_TO_BOTTOM = "blueprint.list.scrollToBottom" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS = "blueprint.list.getItemProps" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX = "blueprint.list.getItemIndex" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_COUNT = "blueprint.list.getItemCount" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_KEY = "blueprint.list.getItemKey" as const;
 
 /** IR meta key for graph kind (string value matches BlueprintGraphKind). */
 export const BLUEPRINT_GRAPH_IR_META_KIND = "graphKind" as const;

@@ -5,6 +5,14 @@
 
 export const BLUEPRINT_VALUE_TYPE_VECTOR2D = "Vector2D" as const;
 export const BLUEPRINT_VALUE_TYPE_RGBA_COLOR = "RGBAColor" as const;
+export const BLUEPRINT_VALUE_TYPE_ELEMENT = "element" as const;
+export const BLUEPRINT_VALUE_TYPE_ARRAY = "array" as const;
+
+export type BlueprintElementRef = {
+    surfaceId: string;
+    elementId: string;
+    elementType: string;
+};
 
 export type BlueprintVector2D = {
     x: number;
@@ -17,6 +25,40 @@ export type BlueprintRGBAColor = {
     b: number;
     a: number;
 };
+
+export function blueprintElementValueType(elementType: string | undefined): string {
+    const safe = elementType?.trim();
+    return safe ? `${BLUEPRINT_VALUE_TYPE_ELEMENT}:${safe}` : BLUEPRINT_VALUE_TYPE_ELEMENT;
+}
+
+export function isBlueprintElementValueType(valueType: string | undefined): boolean {
+    return valueType === BLUEPRINT_VALUE_TYPE_ELEMENT || valueType?.startsWith(`${BLUEPRINT_VALUE_TYPE_ELEMENT}:`) === true;
+}
+
+export function blueprintElementTypeFromValueType(valueType: string | undefined): string | undefined {
+    if (!valueType?.startsWith(`${BLUEPRINT_VALUE_TYPE_ELEMENT}:`)) {
+        return undefined;
+    }
+    const elementType = valueType.slice(BLUEPRINT_VALUE_TYPE_ELEMENT.length + 1).trim();
+    return elementType || undefined;
+}
+
+export function areBlueprintElementValueTypesCompatible(
+    sourceType: string | undefined,
+    targetType: string | undefined,
+): boolean {
+    if (!isBlueprintElementValueType(sourceType) || !isBlueprintElementValueType(targetType)) {
+        return false;
+    }
+    if (sourceType === BLUEPRINT_VALUE_TYPE_ELEMENT || targetType === BLUEPRINT_VALUE_TYPE_ELEMENT) {
+        return true;
+    }
+    return sourceType === targetType;
+}
+
+export function isBlueprintArrayValueType(valueType: string | undefined): boolean {
+    return valueType === BLUEPRINT_VALUE_TYPE_ARRAY;
+}
 
 const DEFAULT_VECTOR2D: BlueprintVector2D = { x: 0, y: 0 };
 const DEFAULT_RGBA_COLOR: BlueprintRGBAColor = { r: 255, g: 255, b: 255, a: 1 };

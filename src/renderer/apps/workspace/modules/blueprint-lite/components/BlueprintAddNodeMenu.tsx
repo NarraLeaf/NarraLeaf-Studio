@@ -6,6 +6,7 @@ import {
     Box,
     Bug,
     Database,
+    MousePointer2,
     Map as MapIcon,
     Route,
     Save,
@@ -36,7 +37,7 @@ type Props = {
     anchor: { x: number; y: number };
     flowPosition: { x: number; y: number };
     onClose: () => void;
-    onPickType: (type: string, flowPosition: { x: number; y: number }) => void;
+    onPickEntry: (entry: PaletteEntry, flowPosition: { x: number; y: number }) => void;
 };
 
 type CategoryVisual = {
@@ -58,6 +59,10 @@ function getCategoryVisual(categoryId: string): CategoryVisual {
             return { icon: TypeIcon, color: "#d2a679" };
         case "Text":
             return { icon: TypeIcon, color: "#8fc7b5" };
+        case "Element":
+            return { icon: MousePointer2, color: "#d9b36a" };
+        case "Displayable":
+            return { icon: Box, color: "#b9c47a" };
         case "Navigation":
             return { icon: MapIcon, color: "#7ec7c1" };
         case "Persistence":
@@ -82,7 +87,7 @@ export function BlueprintAddNodeMenu({
     anchor,
     flowPosition,
     onClose,
-    onPickType,
+    onPickEntry,
 }: Props) {
     const [query, setQuery] = useState("");
     const [activeCategoryId, setActiveCategoryId] = useState(BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID);
@@ -161,12 +166,12 @@ export function BlueprintAddNodeMenu({
 
     const filteredEntriesRef = useRef(filteredEntries);
     filteredEntriesRef.current = filteredEntries;
-    const actionsRef = useRef({ onPickType, flowPosition, onClose });
-    actionsRef.current = { onPickType, flowPosition, onClose };
+    const actionsRef = useRef({ onPickEntry, flowPosition, onClose });
+    actionsRef.current = { onPickEntry, flowPosition, onClose };
 
     const pickEntry = useCallback((entry: PaletteEntry) => {
-        const { onPickType: pick, flowPosition: pos, onClose: close } = actionsRef.current;
-        pick(entry.type, pos);
+        const { onPickEntry: pick, flowPosition: pos, onClose: close } = actionsRef.current;
+        pick(entry, pos);
         close();
     }, []);
 
@@ -356,7 +361,7 @@ export function BlueprintAddNodeMenu({
                     ) : (
                         filteredEntries.map((entry, index) => (
                             <BlueprintAddNodeRow
-                                key={entry.type}
+                                key={`${entry.type}:${entry.magicElementRef?.sourceNodeId ?? ""}`}
                                 entry={entry}
                                 active={activeFlatIndex === index}
                                 flatIndex={index}

@@ -3,25 +3,21 @@ import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprin
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
-    BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
 } from "@shared/types/blueprint/graph";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
-import {
-    BLUEPRINT_VALUE_EVENT_FLUSH,
-    BLUEPRINT_VALUE_EVENT_INIT,
-    evaluateBlueprintValue,
-    validateBlueprintValueGraphSafe,
-} from "./BlueprintValueEvaluator";
+import { evaluateBlueprintValue, validateBlueprintValueGraphSafe } from "./BlueprintValueEvaluator";
 
-function returnGraph(headType: string, value: string): BlueprintGraphIr {
+function returnGraph(value: string): BlueprintGraphIr {
     return {
         nodes: {
-            head: { id: "head", type: headType, params: {} },
+            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, params: {} },
             value: { id: "value", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value } },
             ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
         },
@@ -32,14 +28,14 @@ function returnGraph(headType: string, value: string): BlueprintGraphIr {
     };
 }
 
-function valueDocument(initGraph: BlueprintGraphIr, flushGraph?: BlueprintGraphIr): BlueprintDocument {
+function valueDocument(graph: BlueprintGraphIr): BlueprintDocument {
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: {
             "bp-value": {
                 id: "bp-value",
                 name: "Text value",
-                owner: { kind: "widgetValue", surfaceId: "surface", elementId: "text", propPath: "text" },
+                owner: { kind: "widgetValue", surfaceId: "surface", elementId: "text-a", propPath: "text" },
                 frontend: "visual",
                 programKind: "graph",
                 members: { variables: {}, fields: {}, functions: {} },
@@ -47,10 +43,7 @@ function valueDocument(initGraph: BlueprintGraphIr, flushGraph?: BlueprintGraphI
                     kind: "graph",
                     graphs: {
                         events: {
-                            init: { id: "init", name: "Init", graph: initGraph },
-                            ...(flushGraph
-                                ? { flush: { id: "flush", name: "Flush", graph: flushGraph } }
-                                : {}),
+                            init: { id: "init", name: "Init", graph },
                         },
                         functions: {},
                     },
@@ -58,7 +51,7 @@ function valueDocument(initGraph: BlueprintGraphIr, flushGraph?: BlueprintGraphI
             },
         },
         ownerRecords: {
-            "widgetValue:surface:text:text": {
+            "widgetValue:surface:text-a:text": {
                 activeBlueprintId: "bp-value",
                 privateBlueprintIds: ["bp-value"],
                 initializedFrontend: "visual",
@@ -67,7 +60,7 @@ function valueDocument(initGraph: BlueprintGraphIr, flushGraph?: BlueprintGraphI
     };
 }
 
-function hostAdapter(stateValue: unknown = undefined, onSetText?: () => void): UIHostAdapter {
+function hostAdapter(text = "Bound text", onSetText?: () => void): UIHostAdapter {
     return {
         host: "player",
         blueprintRuntime: {
@@ -77,76 +70,59 @@ function hostAdapter(stateValue: unknown = undefined, onSetText?: () => void): U
             emitDebug: () => undefined,
             dispatchElementBlueprintEvent: async () => undefined,
             hostApi: {
-                state: {
-                    get: () => stateValue,
-                    set: () => undefined,
-                },
                 widget: {
+                    getTextProperties: () => ({
+                        text,
+                        fontAssetId: null,
+                        fontSize: 16,
+                        fontWeight: "normal",
+                        color: "#ffffff",
+                        textAlign: "left",
+                        textVerticalAlign: "start",
+                        lineHeight: 1.4,
+                        textWrapMode: "word",
+                        effects: {},
+                    }),
                     setTextProperties: async () => {
                         onSetText?.();
                     },
+                    getDisplayableProperties: () => ({
+                        position: { x: 0, y: 0 },
+                        size: { width: 100, height: 40 },
+                        bounds: { x: 0, y: 0, width: 100, height: 40 },
+                        rotation: 0,
+                        opacity: 1,
+                        visible: true,
+                    }),
                 },
             },
         },
     } as unknown as UIHostAdapter;
 }
 
-async function evalValue(doc: BlueprintDocument, eventName: typeof BLUEPRINT_VALUE_EVENT_INIT | typeof BLUEPRINT_VALUE_EVENT_FLUSH, adapter = hostAdapter()) {
+async function evalValue(doc: BlueprintDocument, adapter = hostAdapter()) {
     return evaluateBlueprintValue({
         blueprintDocument: doc,
         blueprintId: "bp-value",
         surfaceId: "surface",
-        elementId: "text",
-        eventName,
+        elementId: "text-a",
         hostAdapter: adapter,
     });
 }
 
 describe("Blueprint Value evaluator", () => {
-    it("returns the default literal seeded in the init graph and ignores missing flush", async () => {
-        const doc = valueDocument(returnGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, "literal"));
-
-        await expect(evalValue(doc, BLUEPRINT_VALUE_EVENT_INIT)).resolves.toEqual({
+    it("returns the literal seeded in the init graph", async () => {
+        await expect(evalValue(valueDocument(returnGraph("literal")))).resolves.toEqual({
             returned: true,
             value: "literal",
-        });
-        await expect(evalValue(doc, BLUEPRINT_VALUE_EVENT_FLUSH)).resolves.toEqual({
-            returned: false,
-            value: undefined,
+            dependencies: [],
         });
     });
 
-    it("lets flush override init when both return values", async () => {
-        const doc = valueDocument(
-            returnGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, "init"),
-            returnGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH, "flush"),
-        );
-
-        const init = await evalValue(doc, BLUEPRINT_VALUE_EVENT_INIT);
-        const flush = await evalValue(doc, BLUEPRINT_VALUE_EVENT_FLUSH);
-
-        expect(init.value).toBe("init");
-        expect(flush.value).toBe("flush");
-    });
-
-    it("reports no returned value when no return node executes", async () => {
-        const doc = valueDocument(returnGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, "init"), {
+    it("can write and read local variables in the init graph", async () => {
+        const graph: BlueprintGraphIr = {
             nodes: {
-                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH, params: {} },
-            },
-            edges: [],
-        });
-
-        await expect(evalValue(doc, BLUEPRINT_VALUE_EVENT_FLUSH)).resolves.toEqual({
-            returned: false,
-            value: undefined,
-        });
-    });
-
-    it("can write and read local variables", async () => {
-        const flushGraph: BlueprintGraphIr = {
-            nodes: {
-                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH, params: {} },
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, params: {} },
                 input: { id: "input", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: "from-var" } },
                 set: { id: "set", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "title" } },
                 get: { id: "get", type: BLUEPRINT_NODE_TYPE_LOCAL_GET, params: { variableId: "title" } },
@@ -159,27 +135,51 @@ describe("Blueprint Value evaluator", () => {
                 { from: { nodeId: "get", port: "value" }, to: { nodeId: "ret", port: "value" } },
             ],
         };
-        const doc = valueDocument(returnGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, "init"), flushGraph);
 
-        await expect(evalValue(doc, BLUEPRINT_VALUE_EVENT_FLUSH)).resolves.toEqual({
+        await expect(evalValue(valueDocument(graph))).resolves.toMatchObject({
             returned: true,
             value: "from-var",
         });
     });
 
-    it("blocks effectful widget nodes before they can run", async () => {
-        let setTextCalls = 0;
-        const flushGraph: BlueprintGraphIr = {
+    it("tracks Element Text property dependencies while resolving return data pins", async () => {
+        const graph: BlueprintGraphIr = {
             nodes: {
-                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH, params: {} },
-                setText: { id: "setText", type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT, params: { text: "blocked" } },
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, params: {} },
+                element: {
+                    id: "element",
+                    type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                    params: { surfaceId: "surface", elementId: "text-b", elementType: "nl.text" },
+                },
+                getText: { id: "getText", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT, params: {} },
+                ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "ret", port: "in" } },
+                { from: { nodeId: "element", port: "element" }, to: { nodeId: "getText", port: "element" } },
+                { from: { nodeId: "getText", port: "text" }, to: { nodeId: "ret", port: "value" } },
+            ],
+        };
+
+        await expect(evalValue(valueDocument(graph), hostAdapter("From B"))).resolves.toEqual({
+            returned: true,
+            value: "From B",
+            dependencies: [{ surfaceId: "surface", elementId: "text-b", propPath: "props.text" }],
+        });
+    });
+
+    it("blocks effectful element write nodes before they can run", async () => {
+        let setTextCalls = 0;
+        const graph: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, params: {} },
+                setText: { id: "setText", type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT, params: { text: "blocked" } },
             },
             edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "setText", port: "in" } }],
         };
-        const doc = valueDocument(returnGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, "init"), flushGraph);
 
-        expect(validateBlueprintValueGraphSafe(flushGraph)).toHaveLength(1);
-        await expect(evalValue(doc, BLUEPRINT_VALUE_EVENT_FLUSH, hostAdapter(undefined, () => { setTextCalls += 1; }))).rejects.toThrow(
+        expect(validateBlueprintValueGraphSafe(graph)).toHaveLength(1);
+        await expect(evalValue(valueDocument(graph), hostAdapter(undefined, () => { setTextCalls += 1; }))).rejects.toThrow(
             /not allowed in Blueprint Value/,
         );
         expect(setTextCalls).toBe(0);

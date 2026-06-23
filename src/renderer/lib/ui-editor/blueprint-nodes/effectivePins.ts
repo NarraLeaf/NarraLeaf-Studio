@@ -9,6 +9,8 @@ import type {
     BlueprintNodeEditorCatalogEntry,
     BlueprintNodePinDef,
 } from "./types";
+import { BLUEPRINT_NODE_TYPE_ELEMENT_REF } from "@shared/types/blueprint/graph";
+import { blueprintElementValueType } from "@shared/types/blueprint/valueTypes";
 
 export type EffectiveCatalogPin = BlueprintNodeEditorCatalogEntry["pins"][number];
 
@@ -134,6 +136,17 @@ export function resolveEffectiveBlueprintNodePins(
     def: BlueprintNodeDef,
     params?: Record<string, unknown>,
 ): BlueprintNodePinDef[] {
+    if (def.type === BLUEPRINT_NODE_TYPE_ELEMENT_REF) {
+        const elementType = typeof params?.elementType === "string" ? params.elementType : undefined;
+        return def.pins.map(pin =>
+            pin.kind === "output" && pin.semantic === "data" && pin.id === "element"
+                ? {
+                      ...pin,
+                      valueType: blueprintElementValueType(elementType),
+                  }
+                : pin,
+        );
+    }
     const cfg = def.dynamicInputPins;
     if (!cfg || !params) {
         return def.pins;

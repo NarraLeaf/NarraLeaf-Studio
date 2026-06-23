@@ -11,6 +11,7 @@ export type BlueprintAddNodeCategory = {
 const DOCUMENTED_CATEGORY_ORDER = [
     "Events",
     "Flow",
+    "Element",
     "Displayable",
     "Page",
     "Variables",

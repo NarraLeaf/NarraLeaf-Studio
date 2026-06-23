@@ -1,10 +1,9 @@
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
-import {
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
-} from "@shared/types/blueprint/graph";
+import { BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT } from "@shared/types/blueprint/graph";
+import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
+import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { BlueprintGraphExecutionError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import { blueprintNodeRegistry, isBlueprintNodeAllowedInBlueprintValueGraph } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
@@ -12,24 +11,14 @@ import { adaptBlueprintGraphIr } from "./adaptBlueprintGraphIr";
 import { acquireBlueprintExecutionLocals } from "./blueprintWidgetLocals";
 
 export const BLUEPRINT_VALUE_EVENT_INIT = "init" as const;
-export const BLUEPRINT_VALUE_EVENT_FLUSH = "flush" as const;
-
-export type BlueprintValueEventName =
-    | typeof BLUEPRINT_VALUE_EVENT_INIT
-    | typeof BLUEPRINT_VALUE_EVENT_FLUSH;
 
 export type BlueprintValueEvaluationResult = {
     returned: boolean;
     value: unknown;
+    dependencies: BlueprintValueDependency[];
 };
 
 const DEFAULT_VALUE_MAX_STEPS = 512;
-
-function headTypeForValueEvent(eventName: BlueprintValueEventName): string {
-    return eventName === BLUEPRINT_VALUE_EVENT_INIT
-        ? BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT
-        : BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH;
-}
 
 export function validateBlueprintValueGraphSafe(ir: BlueprintGraphIr | undefined): string[] {
     registerCoreBlueprintNodes();
@@ -47,10 +36,9 @@ export function validateBlueprintValueGraphSafe(ir: BlueprintGraphIr | undefined
     return errors;
 }
 
-function collectValueHeadNodeIds(ir: BlueprintGraphIr | undefined, eventName: BlueprintValueEventName): string[] {
-    const headType = headTypeForValueEvent(eventName);
+function collectValueHeadNodeIds(ir: BlueprintGraphIr | undefined): string[] {
     return Object.entries(ir?.nodes ?? {})
-        .filter(([, node]) => node.type === headType)
+        .filter(([, node]) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)
         .map(([id]) => id)
         .sort();
 }
@@ -61,24 +49,25 @@ export async function evaluateBlueprintValue(input: {
     surfaceId: string;
     runtimeScopeId?: string;
     elementId: string;
-    eventName: BlueprintValueEventName;
+    listItemScope?: UIListItemScope | null;
+    instanceKey?: string;
     hostAdapter: UIHostAdapter;
     maxSteps?: number;
 }): Promise<BlueprintValueEvaluationResult> {
     const bp = input.blueprintDocument.blueprints[input.blueprintId];
     if (!bp || bp.owner.kind !== "widgetValue" || bp.program.kind !== "graph") {
-        return { returned: false, value: undefined };
+        return { returned: false, value: undefined, dependencies: [] };
     }
 
     const matching = Object.values(bp.program.graphs.events ?? {})
         .map(eventGraph => {
-            const headIds = collectValueHeadNodeIds(eventGraph.graph, input.eventName);
+            const headIds = collectValueHeadNodeIds(eventGraph.graph);
             return headIds.length > 0 ? { eventGraph, headIds } : null;
         })
         .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
     if (matching.length === 0) {
-        return { returned: false, value: undefined };
+        return { returned: false, value: undefined, dependencies: [] };
     }
 
     const blueprintLocals = acquireBlueprintExecutionLocals({
@@ -87,10 +76,12 @@ export async function evaluateBlueprintValue(input: {
         surfaceId: input.surfaceId,
         runtimeScopeId: input.runtimeScopeId,
         elementId: input.elementId,
+        elementInstanceKey: input.instanceKey,
     });
 
     let returned = false;
     let value: unknown;
+    const dependencies = new Map<string, BlueprintValueDependency>();
     for (const { eventGraph, headIds } of matching) {
         const safetyErrors = validateBlueprintValueGraphSafe(eventGraph.graph);
         if (safetyErrors.length > 0) {
@@ -104,12 +95,22 @@ export async function evaluateBlueprintValue(input: {
                 hostAdapter: input.hostAdapter,
                 blueprintLocals,
                 eventPayload: {},
+                listItemScope: input.listItemScope ?? null,
+                instanceKey: input.instanceKey,
                 executionOwner: {
                     surfaceId: input.surfaceId,
                     elementId: input.elementId,
                     blueprintId: input.blueprintId,
                 },
                 maxSteps: input.maxSteps ?? DEFAULT_VALUE_MAX_STEPS,
+                valueExecution: {
+                    trackDependency: dependency => {
+                        dependencies.set(
+                            `${dependency.surfaceId}\0${dependency.elementId}\0${dependency.propPath}`,
+                            dependency,
+                        );
+                    },
+                },
             });
             if (result.returnValueSet) {
                 returned = true;
@@ -117,5 +118,5 @@ export async function evaluateBlueprintValue(input: {
             }
         }
     }
-    return { returned, value };
+    return { returned, value, dependencies: [...dependencies.values()] };
 }

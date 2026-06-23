@@ -28,6 +28,7 @@
 | On Item Click | `blueprint.event.head.itemClick` | **已实现**。List 或 Repeater 条目被点击时触发。 |
 | On Item Hover | `blueprint.event.head.itemHover` | **已实现**。List 或 Repeater 条目被悬停时触发。 |
 | On Selection Changed | `blueprint.event.head.selectionChanged` | **已实现**。List、选项组或可选择控件的选择项变化时触发。 |
+| List Item Refresh | `blueprint.event.head.listItemRefresh` | **已实现**。List item template 后代元素收到当前 `props` / `item` / `index` / `count` / `key`。 |
 | On Scroll End | `blueprint.event.head.scrollEnd` | **已实现**。列表或滚动容器滚动到末端时触发。 |
 | On Interval | `blueprint.event.head.timer` | 指定计时器触发时执行。 |
 
@@ -171,25 +172,25 @@
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
-| Array Length | `blueprint.collection.arrayLength` | 获取数组长度。 |
-| Array Get | `blueprint.collection.arrayGet` | 读取指定下标的数组项。 |
-| Array Set | `blueprint.collection.arraySet` | 写入指定下标的数组项并输出新数组。 |
-| Array Push | `blueprint.collection.arrayPush` | 在数组末尾追加项。 |
-| Array Insert | `blueprint.collection.arrayInsert` | 在指定下标插入项。 |
-| Array Remove | `blueprint.collection.arrayRemove` | 移除指定值。 |
-| Array Remove At | `blueprint.collection.arrayRemoveAt` | 移除指定下标的项。 |
-| Array Contains | `blueprint.collection.arrayContains` | 判断数组是否包含指定值。 |
-| Array Find | `blueprint.collection.arrayFind` | 查找匹配项。 |
-| Array Filter | `blueprint.collection.arrayFilter` | 过滤数组项。 |
-| Array Map | `blueprint.collection.arrayMap` | 映射数组项。 |
-| Array Sort | `blueprint.collection.arraySort` | 对数组排序。 |
-| Array Slice | `blueprint.collection.arraySlice` | 截取数组片段。 |
-| Array Join | `blueprint.collection.arrayJoin` | 将数组连接为字符串。 |
-| Object Keys | `blueprint.collection.objectKeys` | 获取对象字段名数组。 |
-| Object Values | `blueprint.collection.objectValues` | 获取对象值数组。 |
-| Object Merge | `blueprint.collection.objectMerge` | 合并对象。 |
-| Object Set Field | `blueprint.collection.objectSetField` | 写入对象字段并输出新对象。 |
-| Object Remove Field | `blueprint.collection.objectRemoveField` | 移除对象字段并输出新对象。 |
+| Array Length | `blueprint.collection.arrayLength` | **已实现**。获取数组长度。 |
+| Array Get | `blueprint.collection.arrayGet` | **已实现**。读取指定下标的数组项。 |
+| Array Set | `blueprint.collection.arraySet` | **已实现**。写入指定下标的数组项并输出新数组。 |
+| Array Push | `blueprint.collection.arrayPush` | **已实现**。在数组末尾追加项。 |
+| Array Insert | `blueprint.collection.arrayInsert` | **已实现**。在指定下标插入项。 |
+| Array Remove | `blueprint.collection.arrayRemove` | **已实现**。移除指定值。 |
+| Array Remove At | `blueprint.collection.arrayRemoveAt` | **已实现**。移除指定下标的项。 |
+| Array Contains | `blueprint.collection.arrayContains` | **已实现**。判断数组是否包含指定值。 |
+| Array Find | `blueprint.collection.arrayFind` | **planned/disabled**。保留稳定 ID，回调/谓词图模型后续设计，不注册 palette/runtime。 |
+| Array Filter | `blueprint.collection.arrayFilter` | **planned/disabled**。保留稳定 ID，回调/谓词图模型后续设计，不注册 palette/runtime。 |
+| Array Map | `blueprint.collection.arrayMap` | **planned/disabled**。保留稳定 ID，回调/谓词图模型后续设计，不注册 palette/runtime。 |
+| Array Sort | `blueprint.collection.arraySort` | **planned/disabled**。保留稳定 ID，比较器图模型后续设计，不注册 palette/runtime。 |
+| Array Slice | `blueprint.collection.arraySlice` | **已实现**。截取数组片段。 |
+| Array Join | `blueprint.collection.arrayJoin` | **已实现**。将数组连接为字符串。 |
+| Object Keys | `blueprint.collection.objectKeys` | **已实现**。获取对象字段名数组。 |
+| Object Values | `blueprint.collection.objectValues` | **已实现**。获取对象值数组。 |
+| Object Merge | `blueprint.collection.objectMerge` | **已实现**。合并对象。 |
+| Object Set Field | `blueprint.collection.objectSetField` | **已实现**。写入对象字段并输出新对象。 |
+| Object Remove Field | `blueprint.collection.objectRemoveField` | **已实现**。移除对象字段并输出新对象。 |
 
 ## Displayable / Widget
 
@@ -317,21 +318,25 @@
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
-| Set List Items | `blueprint.list.setItems` | 设置列表数据源。 |
-| Get List Items | `blueprint.list.getItems` | 获取列表数据源。 |
-| Clear List | `blueprint.list.clear` | 清空列表数据。 |
-| Append List Item | `blueprint.list.appendItem` | 在列表末尾追加数据项。 |
-| Insert List Item | `blueprint.list.insertItem` | 在指定下标插入数据项。 |
-| Remove List Item | `blueprint.list.removeItem` | 移除指定数据项。 |
-| Remove List Item At | `blueprint.list.removeItemAt` | 移除指定下标的数据项。 |
-| Get Selected Item | `blueprint.list.getSelectedItem` | 获取当前选中数据项。 |
-| Set Selected Item | `blueprint.list.setSelectedItem` | 设置当前选中数据项。 |
-| Get Selected Index | `blueprint.list.getSelectedIndex` | 获取当前选中下标。 |
-| Set Selected Index | `blueprint.list.setSelectedIndex` | 设置当前选中下标。 |
-| Refresh Items | `blueprint.list.refreshItems` | 刷新列表条目渲染。 |
-| Scroll To Index | `blueprint.list.scrollToIndex` | 滚动到指定条目。 |
-| Scroll To Top | `blueprint.list.scrollToTop` | 滚动到顶部。 |
-| Scroll To Bottom | `blueprint.list.scrollToBottom` | 滚动到底部。 |
+| Set List Content | `blueprint.list.setItems` | **已实现**。设置 List 实例运行时内容；输入为 `array`。 |
+| Get List Content | `blueprint.list.getItems` | **已实现**。获取当前运行时内容，未设置时 fallback 到 `itemsBinding` / 预览数据。 |
+| Clear List | `blueprint.list.clear` | **已实现**。将运行时内容设置为空数组。 |
+| Append List Item | `blueprint.list.appendItem` | **已实现**。在列表末尾追加数据项。 |
+| Insert List Item | `blueprint.list.insertItem` | **已实现**。在指定下标插入数据项。 |
+| Remove List Item | `blueprint.list.removeItem` | **已实现**。移除第一个 JSON 等价数据项。 |
+| Remove List Item At | `blueprint.list.removeItemAt` | **已实现**。移除指定下标的数据项。 |
+| Get Selected Item | `blueprint.list.getSelectedItem` | **已实现**。获取当前选中数据项。 |
+| Set Selected Item | `blueprint.list.setSelectedItem` | **已实现**。按 JSON 等价项设置当前选中数据项。 |
+| Get Selected Index | `blueprint.list.getSelectedIndex` | **已实现**。获取当前选中下标。 |
+| Set Selected Index | `blueprint.list.setSelectedIndex` | **已实现**。设置当前选中下标。 |
+| Refresh Items | `blueprint.list.refreshItems` | **已实现**。重新写入当前运行时内容并触发条目刷新。 |
+| Scroll To Index | `blueprint.list.scrollToIndex` | **已实现**。滚动到指定条目。 |
+| Scroll To Top | `blueprint.list.scrollToTop` | **已实现**。滚动到顶部。 |
+| Scroll To Bottom | `blueprint.list.scrollToBottom` | **已实现**。滚动到底部。 |
+| Get List Item Props | `blueprint.list.getItemProps` | **已实现**。读取当前 List item `props`。 |
+| Get List Item Index | `blueprint.list.getItemIndex` | **已实现**。读取当前 List item 下标。 |
+| Get List Item Count | `blueprint.list.getItemCount` | **已实现**。读取当前 List item 总数。 |
+| Get List Item Key | `blueprint.list.getItemKey` | **已实现**。读取当前 List item key。 |
 
 ## Page
 

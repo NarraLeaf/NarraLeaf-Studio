@@ -4,6 +4,7 @@ import { EditorComponentProps } from "../../types";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import { useKeybindings, whenEditorFocused } from "@/apps/workspace/hooks";
+import { useRegistry } from "@/apps/workspace/registry";
 import type { EditorLayout } from "@/apps/workspace/registry/types";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
@@ -11,11 +12,15 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
+import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import { getUIListChildSlot } from "@shared/types/ui-editor/list";
 import {
+    applyBlueprintIrConnection,
     createGraphNodeForPalette,
     ensureBlueprintGraphIr,
     graphIrHasFunctionEntry,
@@ -39,13 +44,33 @@ import {
     removeBlueprintNodeFromIr,
     type BlueprintFlowViewport,
 } from "../flow/BlueprintFlowCanvas";
+import type { BlueprintFlowNodeData } from "../flow/components/BlueprintFlowNode";
 import { BlueprintGraphToolbar } from "../components/BlueprintGraphToolbar";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
 import { TypeScriptBlueprintEditorPane } from "../ts/TypeScriptBlueprintEditorPane";
 import { BlueprintFrontendBadge } from "../components/BlueprintFrontendBadge";
 import { BlueprintPrivateRevisionBar } from "../components/BlueprintPrivateRevisionBar";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
-import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
+import type {
+    BlueprintInspectorParamSelectOption,
+    BlueprintMagicElementRefPaletteEntry,
+    BlueprintNodeEditorCatalogEntry,
+} from "@/lib/ui-editor/blueprint-nodes/types";
+import { BLUEPRINT_NODE_TYPE_ELEMENT_REF } from "@shared/types/blueprint/graph";
+import {
+    ELEMENT_REF_PARAM_ELEMENT_ID,
+    ELEMENT_REF_PARAM_ELEMENT_TYPE,
+    ELEMENT_REF_PARAM_SURFACE_ID,
+    readBlueprintElementRefParams,
+} from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
+import { UISurfaceEditorTab } from "@/apps/workspace/modules/ui-editor/editors/UISurfaceEditorTab";
+import { PanelsTopLeft } from "lucide-react";
+import {
+    clearElementBindingCompletion,
+    readElementBindingCompletion,
+    startElementBindingSession,
+    subscribeElementBindingSession,
+} from "../elementBindingSession";
 import { buildAccessibleBlueprintVariableOptions } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
 import {
@@ -81,6 +106,22 @@ function isTypingInField(): boolean {
     return isEditableKeyboardTarget(document.activeElement);
 }
 
+function isListItemContextElement(document: UIDocument, element: UIElement | undefined): boolean {
+    let child = element;
+    while (child?.parentId) {
+        const parent = document.elements[child.parentId];
+        if (!parent) {
+            return false;
+        }
+        if (parent.type === "nl.list") {
+            const slot = getUIListChildSlot(child.extra);
+            return slot == null || slot === "itemTemplate";
+        }
+        child = parent;
+    }
+    return false;
+}
+
 type BlueprintEditorMemberPanelState = {
     memberPanelCollapsed: boolean;
     variableGroupOpen: Partial<Record<BlueprintVariableGroupKey, boolean>>;
@@ -93,6 +134,7 @@ type BlueprintEditorViewportPanelState = {
 const BLUEPRINT_EDITOR_MEMBER_PANEL_STATE_ID = "blueprintEditor.memberPanel";
 const BLUEPRINT_EDITOR_FLOW_VIEWPORT_STATE_PREFIX = "blueprintEditor.flowViewport";
 const BLUEPRINT_VARIABLE_GROUP_KEYS: BlueprintVariableGroupKey[] = ["page", "blueprint", "global"];
+const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 
 function normalizeBlueprintFlowViewport(raw: unknown): BlueprintFlowViewport | null {
     if (!raw || typeof raw !== "object") {
@@ -114,6 +156,10 @@ function normalizeBlueprintFlowViewport(raw: unknown): BlueprintFlowViewport | n
 
 function getBlueprintFlowViewportPanelId(tabId: string): string {
     return `${BLUEPRINT_EDITOR_FLOW_VIEWPORT_STATE_PREFIX}:${tabId}`;
+}
+
+function getSurfaceTabId(targetSurfaceId: string): string {
+    return `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
 }
 
 function findEditorGroupIdForTab(layout: Readonly<EditorLayout>, tabId: string): string | null {
@@ -173,8 +219,112 @@ function normalizeBlueprintEditorMemberPanelState(raw: unknown): BlueprintEditor
     };
 }
 
+function collectMagicElementRefs(input: {
+    ir: BlueprintGraphIr | null;
+    document: ReturnType<UIDocumentService["getDocument"]>;
+    surfaceId: string | undefined;
+}): BlueprintMagicElementRefPaletteEntry[] {
+    if (!input.ir || !input.surfaceId) {
+        return [];
+    }
+    const out: BlueprintMagicElementRefPaletteEntry[] = [];
+    for (const node of Object.values(input.ir.nodes ?? {})) {
+        if (node.type !== BLUEPRINT_NODE_TYPE_ELEMENT_REF) {
+            continue;
+        }
+        const ref = readBlueprintElementRefParams(node.params);
+        if (!ref || ref.surfaceId !== input.surfaceId) {
+            continue;
+        }
+        const element = input.document.elements[ref.elementId];
+        if (!element || element.type !== ref.elementType) {
+            continue;
+        }
+        out.push({
+            sourceNodeId: node.id,
+            sourcePortId: "element",
+            targetPortId: "element",
+            surfaceId: ref.surfaceId,
+            elementId: ref.elementId,
+            elementType: ref.elementType,
+            label: element.name?.trim() || `${element.type} (${element.id.slice(0, 8)})`,
+        });
+    }
+    return out.sort((a, b) => a.label.localeCompare(b.label) || a.sourceNodeId.localeCompare(b.sourceNodeId));
+}
+
+const ELEMENT_LITERAL_PREVIEW_WIDTH = 176;
+const ELEMENT_LITERAL_PREVIEW_HEIGHT = 72;
+
+function previewNumber(value: number | undefined, fallback: number): number {
+    return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function ElementLiteralSurfacePreview({
+    runtimeBridge,
+    surface,
+    element,
+}: {
+    runtimeBridge: UIRuntimeBridgeService;
+    surface: UISurface;
+    element: UIElement;
+}) {
+    const width = Math.max(1, previewNumber(element.layout.width, 1));
+    const height = Math.max(1, previewNumber(element.layout.height, 1));
+    const x = previewNumber(element.layout.x, 0);
+    const y = previewNumber(element.layout.y, 0);
+    const scale = Math.max(
+        0.02,
+        Math.min(2.2, ELEMENT_LITERAL_PREVIEW_WIDTH / width, ELEMENT_LITERAL_PREVIEW_HEIGHT / height),
+    );
+    const frameWidth = Math.max(24, Math.min(ELEMENT_LITERAL_PREVIEW_WIDTH, width * scale));
+    const frameHeight = Math.max(18, Math.min(ELEMENT_LITERAL_PREVIEW_HEIGHT, height * scale));
+    const rendered = runtimeBridge.renderSurface({
+        surfaceId: surface.id,
+        hostAdapter: { host: surface.host },
+        className: "pointer-events-none select-none",
+        style: { backgroundColor: surface.settings?.backgroundColor ?? "#ffffff" },
+        editorChrome: false,
+    });
+
+    if (!rendered) {
+        return (
+            <div className="flex h-[72px] w-full items-center justify-center rounded-sm bg-[#0d1117] text-[10px] text-gray-500">
+                Preview unavailable
+            </div>
+        );
+    }
+
+    return (
+        <div className="relative flex h-[72px] w-full items-center justify-center overflow-hidden rounded-sm bg-[#0d1117]">
+            <div
+                className="relative overflow-hidden rounded-[3px] border border-white/10 shadow-sm"
+                style={{
+                    width: frameWidth,
+                    height: frameHeight,
+                    backgroundColor: surface.settings?.backgroundColor ?? "#ffffff",
+                }}
+            >
+                <div
+                    className="absolute"
+                    style={{
+                        left: -x * scale,
+                        top: -y * scale,
+                        transform: `scale(${scale})`,
+                        transformOrigin: "top left",
+                        pointerEvents: "none",
+                    }}
+                >
+                    {rendered}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
+    const { openEditorTab } = useRegistry();
     const revision = useBlueprintDocumentRevision();
 
     if (!isInitialized || !context || !payload?.blueprintId) {
@@ -191,6 +341,8 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const uiService = context.services.get<UIService>(Services.UI);
     const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
+    const runtimeBridge = context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
+    const [uiDocumentRevision, setUiDocumentRevision] = useState(() => uidoc.getRevision());
     const [memberPanelState, setMemberPanelState] = useState<BlueprintEditorMemberPanelState>(() =>
         normalizeBlueprintEditorMemberPanelState(
             panelStateService.getPanelState<Partial<BlueprintEditorMemberPanelState>>(
@@ -198,6 +350,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             ),
         ),
     );
+    useEffect(() => uidoc.onDocumentChanged(() => setUiDocumentRevision(uidoc.getRevision())), [uidoc]);
     const doc = localBp.getBlueprintDocument();
     const bp = doc.blueprints[payload.blueprintId];
     if (!bp) {
@@ -208,10 +361,12 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         );
     }
 
+    const uiDocument = uidoc.getDocument();
     const widgetElement =
         (payload.ownerKind === "widgetMain" || payload.ownerKind === "widgetValue") && payload.elementId
-            ? uidoc.getDocument().elements[payload.elementId]
+            ? uiDocument.elements[payload.elementId]
             : undefined;
+    const listItemContextAvailable = isListItemContextElement(uiDocument, widgetElement);
     const widgetLogicEvents = useMemo(() => {
         const t = widgetElement?.type;
         return t ? widgetModuleRegistry.get(t)?.logicApi?.events : undefined;
@@ -232,6 +387,47 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const focusBlueprintEditor = useCallback(() => {
         uiService.focus.setFocus(FocusArea.Editor, tabId);
     }, [tabId, uiService]);
+
+    useEffect(() => {
+        const handleCompletion = () => {
+            const completion = readElementBindingCompletion();
+            if (!completion || completion.session.blueprintId !== payload.blueprintId) {
+                return;
+            }
+            const { session, target } = completion;
+            const apply = (draft: BlueprintGraphIr) => {
+                const node = draft.nodes?.[session.nodeId];
+                if (!node) {
+                    return;
+                }
+                node.params = {
+                    ...(node.params ?? {}),
+                    [ELEMENT_REF_PARAM_SURFACE_ID]: target.surfaceId,
+                    [ELEMENT_REF_PARAM_ELEMENT_ID]: target.elementId,
+                    [ELEMENT_REF_PARAM_ELEMENT_TYPE]: target.elementType,
+                };
+            };
+            if (session.graphKind === "event") {
+                localBp.updateEventGraphIr(payload.blueprintId, session.graphId, apply);
+            } else if (session.graphKind === "function") {
+                localBp.updateFunctionGraphIr(payload.blueprintId, session.graphId, apply);
+            }
+            clearElementBindingCompletion();
+            openBlueprint({
+                blueprintId: payload.blueprintId,
+                ownerKind: payload.ownerKind,
+                surfaceId: payload.surfaceId,
+                elementId: payload.elementId,
+                propPath: payload.propPath,
+                title: "Blueprint",
+                focusEventId: session.graphKind === "event" ? session.graphId : undefined,
+                focusFunctionId: session.graphKind === "function" ? session.graphId : undefined,
+                focusNodeId: session.nodeId,
+            });
+        };
+        handleCompletion();
+        return subscribeElementBindingSession(handleCompletion);
+    }, [localBp, openBlueprint, payload, tabId]);
 
     const reopenRevision = useCallback(
         (blueprintId: string) => {
@@ -462,17 +658,26 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     }, [editor, persistGraphViewToTabPayload]);
 
     const onAddGraphNodeAtFlowPosition = useCallback(
-        (type: string, flowPosition: { x: number; y: number }): string | undefined => {
+        (entry: BlueprintNodeEditorCatalogEntry, flowPosition: { x: number; y: number }): string | undefined => {
             if (!editor.graphView) {
                 return undefined;
             }
             const id = uuid.generate();
-            const node = createGraphNodeForPalette(type, id);
+            const node = createGraphNodeForPalette(entry.type, id);
             writeNodeEditorLayout(node, flowPosition);
             const mut = (draft: BlueprintGraphIr) => {
                 // Mutate `draft` in place — `ensureBlueprintGraphIr(draft)` returns a new object, so assigning
                 // to that copy would not update the IR reference held by LocalBlueprintService.
                 draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
+                const magic = entry.magicElementRef;
+                if (magic) {
+                    draft.edges = applyBlueprintIrConnection(draft, {
+                        source: magic.sourceNodeId,
+                        target: node.id,
+                        sourceHandle: magic.sourcePortId,
+                        targetHandle: magic.targetPortId,
+                    });
+                }
             };
             if (editor.graphView.kind === "event") {
                 localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
@@ -482,6 +687,37 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             return id;
         },
         [editor.graphView, localBp, payload.blueprintId, uuid],
+    );
+
+    const onBindElementLiteral = useCallback(
+        (nodeId: string) => {
+            if (!editor.graphView || !payload.surfaceId) {
+                return;
+            }
+            const surface = uidoc.getDocument().surfaces.find(item => item.id === payload.surfaceId);
+            if (!surface) {
+                return;
+            }
+            startElementBindingSession({
+                id: uuid.generate(),
+                blueprintId: payload.blueprintId,
+                blueprintTabId: tabId,
+                graphKind: editor.graphView.kind,
+                graphId: editor.graphView.graphId,
+                nodeId,
+                surfaceId: surface.id,
+            });
+            openEditorTab({
+                id: getSurfaceTabId(surface.id),
+                title: surface.name,
+                icon: <PanelsTopLeft className="w-4 h-4" />,
+                component: UISurfaceEditorTab,
+                payload: { surfaceId: surface.id },
+                closable: true,
+                modified: false,
+            });
+        },
+        [editor.graphView, openEditorTab, payload.blueprintId, payload.surfaceId, tabId, uidoc, uuid],
     );
 
     const onAddEvent = useCallback(async () => {
@@ -494,6 +730,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             hasEventHead: false,
             hasFunctionEntry: false,
             isBlueprintValueGraph: bp.owner.kind === "widgetValue",
+            listItemContextAvailable,
         })).filter(entry => entry.role === "eventHead");
         const defaultLayerName = `Layer ${eventIds.length + 1}`;
 
@@ -568,6 +805,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         bp.owner,
         editor,
         eventIds.length,
+        listItemContextAvailable,
         localBp,
         nodeCatalog,
         payload.blueprintId,
@@ -685,6 +923,11 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const paletteContext = useMemo(() => {
         const gk = editor.graphView?.kind ?? "event";
         const activeIr = editor.graphView ? ir : null;
+        const magicElementRefs = collectMagicElementRefs({
+            ir: activeIr,
+            document: uidoc.getDocument(),
+            surfaceId: payload.surfaceId,
+        });
         return buildBlueprintPaletteContext({
             graphKind: gk,
             owner: bp.owner,
@@ -694,8 +937,48 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             hasEventHead: false,
             hasFunctionEntry: gk === "function" && activeIr ? graphIrHasFunctionEntry(activeIr) : false,
             isBlueprintValueGraph: bp.owner.kind === "widgetValue",
+            listItemContextAvailable,
+            magicElementRefs,
         });
-    }, [bp.owner, editor.graphView, ir, widgetElement?.type, widgetEventLayerSlots, widgetLogicEvents]);
+    }, [bp.owner, editor.graphView, ir, listItemContextAvailable, payload.surfaceId, uidoc, widgetElement?.type, widgetEventLayerSlots, widgetLogicEvents]);
+
+    const elementPreviews = useMemo(() => {
+        const activeIr = editor.graphView ? ir : null;
+        if (!activeIr) {
+            return {};
+        }
+        const uiDocument = uidoc.getDocument();
+        const previews: Record<string, NonNullable<BlueprintFlowNodeData["elementPreview"]>> = {};
+        for (const node of Object.values(activeIr.nodes ?? {})) {
+            if (node.type !== BLUEPRINT_NODE_TYPE_ELEMENT_REF) {
+                continue;
+            }
+            const ref = readBlueprintElementRefParams(node.params);
+            const element = ref ? uiDocument.elements[ref.elementId] : undefined;
+            const surface = ref ? uiDocument.surfaces.find(item => item.id === ref.surfaceId) : undefined;
+            if (!ref || !element || !surface) {
+                continue;
+            }
+            previews[node.id] = {
+                name: element.name?.trim() || element.id,
+                type: element.type,
+                text: typeof element.props?.text === "string" ? element.props.text : undefined,
+                layout: {
+                    width: element.layout.width,
+                    height: element.layout.height,
+                },
+                preview: (
+                    <ElementLiteralSurfacePreview
+                        key={`${node.id}:${ref.surfaceId}:${ref.elementId}:${uiDocumentRevision}`}
+                        runtimeBridge={runtimeBridge}
+                        surface={surface}
+                        element={element}
+                    />
+                ),
+            };
+        }
+        return previews;
+    }, [editor.graphView, ir, runtimeBridge, uidoc, uiDocumentRevision]);
 
     const contextTitle = useMemo(
         () =>
@@ -871,6 +1154,8 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                         deleteKeyCode={memberPanelFocusContained ? null : undefined}
                         dynamicSelectOptions={dynamicSelectOptions}
                         diagnostics={diagnostics}
+                        elementPreviews={elementPreviews}
+                        onBindElementLiteral={onBindElementLiteral}
                         initialViewport={initialFlowViewport}
                         onViewportChange={onFlowViewportChange}
                     />

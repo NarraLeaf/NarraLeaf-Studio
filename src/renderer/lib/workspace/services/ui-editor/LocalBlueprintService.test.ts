@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
@@ -205,7 +204,7 @@ describe("LocalBlueprintService history", () => {
         }
         const nodeTypes = Object.values(initGraph.nodes ?? {}).map(node => node.type);
         expect(nodeTypes).toContain(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
-        expect(nodeTypes).not.toContain(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH);
+        expect(nodeTypes).not.toContain("blueprint.event.head.flush");
     });
 
     it("seeds JSON widget value blueprints with a JSON literal", () => {
