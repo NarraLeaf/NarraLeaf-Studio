@@ -78,14 +78,14 @@ Text 节点默认作用于当前 Text 元素。
 `blueprint.text.getTextColor` - 获取文本颜色
 
 获取当前文本颜色。
-- `color` - 文本颜色（传出引脚）
+- `color` - 文本颜色（传出引脚，`RGBAColor`）
 
 ## Set Text Color
 
 `blueprint.text.setTextColor` - 设置文本颜色
 
 设置当前文本颜色。
-- `color` - 文本颜色
+- `color` - 文本颜色（`RGBAColor`）
 
 ## Get Text Align
 
@@ -166,7 +166,7 @@ Text 节点默认作用于当前 Text 元素。
 - `fontAssetId` - 字体资源 ID（传出引脚）
 - `fontSize` - 字号（传出引脚）
 - `fontWeight` - 字重（传出引脚）
-- `color` - 文本颜色（传出引脚）
+- `color` - 文本颜色（传出引脚，`RGBAColor`）
 - `textAlign` - 横向对齐方式（传出引脚）
 - `textVerticalAlign` - 纵向对齐方式（传出引脚）
 - `lineHeight` - 行高（传出引脚）
@@ -182,7 +182,7 @@ Text 节点默认作用于当前 Text 元素。
 - `fontAssetId` - 字体资源 ID
 - `fontSize` - 字号
 - `fontWeight` - 字重
-- `color` - 文本颜色
+- `color` - 文本颜色（`RGBAColor`）
 - `textAlign` - 横向对齐方式
 - `textVerticalAlign` - 纵向对齐方式
 - `lineHeight` - 行高

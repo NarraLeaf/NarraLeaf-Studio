@@ -4,6 +4,13 @@
  */
 
 import {
+    BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY,
+    BLUEPRINT_NODE_TYPE_DATA_IS_BOOLEAN,
+    BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE,
+    BLUEPRINT_NODE_TYPE_DATA_IS_NULL,
+    BLUEPRINT_NODE_TYPE_DATA_IS_NUMBER,
+    BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_IS_STRING,
     BLUEPRINT_NODE_TYPE_DATA_TO_BOOLEAN,
     BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER,
@@ -24,11 +31,20 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+    BLUEPRINT_NODE_TYPE_LITERAL_COLOR,
+    BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
+    BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_NULL,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+    BLUEPRINT_NODE_TYPE_LITERAL_RECT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+    BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
 } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
+    BLUEPRINT_VALUE_TYPE_VECTOR2D,
+} from "@shared/types/blueprint/valueTypes";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { resolveDataPinValue } from "./graphParamResolvers";
@@ -116,14 +132,31 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-        displayName: "Text",
+        displayName: "String",
         keywords: ["literal", "string", "text", "value", "const"],
         role: "dataLiteral",
-        pins: [out("value", "Text", "string")],
-        inspectorParams: [{ key: "value", label: "Text", kind: "string" }],
+        pins: [out("value", "String", "string")],
+        inspectorParams: [{ key: "value", label: "String", kind: "string" }],
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+        displayName: "Number",
+        keywords: ["literal", "number", "float", "value", "const", "legacy"],
+        hideInPalette: true,
+        role: "dataLiteral",
+        pins: [out("value", "Number", "float")],
+        inspectorParams: [{ key: "value", label: "Number", kind: "number" }],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
+        displayName: "Integer",
+        keywords: ["literal", "integer", "int", "number", "value", "const"],
+        role: "dataLiteral",
+        pins: [out("value", "Integer", "integer")],
+        inspectorParams: [{ key: "value", label: "Integer", kind: "number" }],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
         displayName: "Float",
         keywords: ["literal", "number", "float", "value", "const"],
         role: "dataLiteral",
@@ -156,10 +189,65 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         pins: [out("value", "Null", "json")],
     }),
     dataNode({
+        type: BLUEPRINT_NODE_TYPE_LITERAL_COLOR,
+        displayName: "Color",
+        keywords: ["literal", "color", "hex", "rgba", "value", "const"],
+        role: "dataLiteral",
+        pins: [out("value", "Color", BLUEPRINT_VALUE_TYPE_RGBA_COLOR)],
+        inspectorParams: [{ key: "value", label: "Color", kind: "color" }],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
+        displayName: "Vector2D",
+        keywords: ["literal", "vector", "vector2", "vector2d", "position", "point", "value", "const"],
+        role: "dataLiteral",
+        pins: [out("value", "Vector2D", BLUEPRINT_VALUE_TYPE_VECTOR2D)],
+        inspectorParams: [
+            {
+                key: "value",
+                label: "Vector2D",
+                kind: "json",
+                jsonSchema: {
+                    kind: "object",
+                    label: "Vector2D",
+                    allowExtraFields: false,
+                    fields: [
+                        { key: "x", label: "X", kind: "number", required: true },
+                        { key: "y", label: "Y", kind: "number", required: true },
+                    ],
+                },
+            },
+        ],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_LITERAL_RECT,
+        displayName: "Rect",
+        keywords: ["literal", "rect", "rectangle", "bounds", "value", "const"],
+        role: "dataLiteral",
+        pins: [out("value", "Rect", "json")],
+        inspectorParams: [
+            {
+                key: "value",
+                label: "Rect",
+                kind: "json",
+                jsonSchema: {
+                    kind: "object",
+                    label: "Rect",
+                    allowExtraFields: false,
+                    fields: [
+                        { key: "x", label: "X", kind: "number", required: true },
+                        { key: "y", label: "Y", kind: "number", required: true },
+                        { key: "width", label: "Width", kind: "number", required: true },
+                        { key: "height", label: "Height", kind: "number", required: true },
+                    ],
+                },
+            },
+        ],
+    }),
+    dataNode({
         type: BLUEPRINT_NODE_TYPE_LITERAL_JSON,
         displayName: "JSON",
         keywords: ["literal", "json", "object", "array", "value", "const"],
-        category: "JSON",
         role: "dataLiteral",
         pins: [out("value", "JSON", "json")],
         inspectorParams: [{ key: "value", label: "JSON", kind: "json" }],
@@ -209,8 +297,49 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
         displayName: "To JSON",
         keywords: ["convert", "cast", "json", "object", "array"],
-        category: "JSON",
         pins: [anyIn("value", "Value"), out("result", "JSON", "json")],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_IS_STRING,
+        displayName: "Is String",
+        keywords: ["type", "check", "string", "text"],
+        pins: [anyIn("value", "Value"), out("result", "Result", "boolean")],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_IS_NUMBER,
+        displayName: "Is Number",
+        keywords: ["type", "check", "number", "float", "integer"],
+        pins: [anyIn("value", "Value"), out("result", "Result", "boolean")],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_IS_BOOLEAN,
+        displayName: "Is Boolean",
+        keywords: ["type", "check", "boolean", "bool"],
+        pins: [anyIn("value", "Value"), out("result", "Result", "boolean")],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY,
+        displayName: "Is Array",
+        keywords: ["type", "check", "array", "list", "json"],
+        pins: [anyIn("value", "Value"), out("result", "Result", "boolean")],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT,
+        displayName: "Is Object",
+        keywords: ["type", "check", "object", "map", "json"],
+        pins: [anyIn("value", "Value"), out("result", "Result", "boolean")],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_IS_NULL,
+        displayName: "Is Null",
+        keywords: ["type", "check", "null", "none"],
+        pins: [anyIn("value", "Value"), out("result", "Result", "boolean")],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE,
+        displayName: "Is Empty Value",
+        keywords: ["type", "check", "empty", "blank", "null"],
+        pins: [anyIn("value", "Value"), out("result", "Result", "boolean")],
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_PARSE_INT,
@@ -228,21 +357,18 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DATA_PARSE_JSON,
         displayName: "Parse JSON",
         keywords: ["parse", "json", "string", "object", "array"],
-        category: "JSON",
         pins: [stringIn("value", "Text"), out("result", "JSON", "json")],
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON,
         displayName: "Stringify JSON",
         keywords: ["stringify", "json", "serialize", "string"],
-        category: "JSON",
         pins: [jsonIn("value", "JSON"), out("result", "Text", "string")],
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
         displayName: "Get JSON Field",
         keywords: ["json", "field", "path", "dot", "get", "read"],
-        category: "JSON",
         pins: [
             jsonIn("json", "JSON"),
             stringIn("path", "Path"),
@@ -253,7 +379,6 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_HAS,
         displayName: "Has JSON Field",
         keywords: ["json", "field", "path", "dot", "has", "exists"],
-        category: "JSON",
         pins: [
             jsonIn("json", "JSON"),
             stringIn("path", "Path"),
@@ -264,7 +389,6 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
         displayName: "Set JSON Field",
         keywords: ["json", "field", "path", "dot", "set", "write"],
-        category: "JSON",
         pins: [
             jsonIn("json", "JSON"),
             stringIn("path", "Path"),
@@ -276,7 +400,6 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_REMOVE,
         displayName: "Remove JSON Field",
         keywords: ["json", "field", "path", "dot", "remove", "delete"],
-        category: "JSON",
         pins: [
             jsonIn("json", "JSON"),
             stringIn("path", "Path"),
@@ -287,7 +410,6 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
         displayName: "Make JSON Object",
         keywords: ["json", "object", "make", "map", "struct", "field"],
-        category: "JSON",
         pins: [out("result", "Object", "json")],
         dynamicInputPins: {
             storageKey: JSON_OBJECT_INPUT_PINS_KEY,
@@ -306,7 +428,6 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY,
         displayName: "Make JSON Array",
         keywords: ["json", "array", "make", "list", "items"],
-        category: "JSON",
         pins: [out("result", "Array", "json")],
         dynamicInputPins: {
             storageKey: JSON_ARRAY_INPUT_PINS_KEY,
@@ -321,21 +442,18 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH,
         displayName: "JSON Array Length",
         keywords: ["json", "array", "length", "count", "size"],
-        category: "JSON",
         pins: [jsonIn("value", "Array"), out("length", "Length", "integer")],
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,
         displayName: "Merge JSON Object",
         keywords: ["json", "object", "merge", "combine"],
-        category: "JSON",
         pins: [jsonIn("a", "A"), jsonIn("b", "B"), out("result", "Object", "json")],
     }),
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE,
         displayName: "Clone JSON",
         keywords: ["json", "clone", "copy", "deep"],
-        category: "JSON",
         pins: [jsonIn("value", "JSON"), out("result", "JSON", "json")],
     }),
 ];

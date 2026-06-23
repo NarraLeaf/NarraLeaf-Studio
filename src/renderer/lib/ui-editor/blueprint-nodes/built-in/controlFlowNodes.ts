@@ -8,15 +8,22 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
+    BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
     BLUEPRINT_NODE_TYPE_FLOW_NOOP,
+    BLUEPRINT_NODE_TYPE_FLOW_RETURN,
+    BLUEPRINT_NODE_TYPE_FLOW_SEQUENCE,
     BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
     BLUEPRINT_NODE_TYPE_FLOW_WHILE,
 } from "@shared/types/blueprint/graph";
 import type { BehaviorNodeExecutionContext } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { BlueprintNodeDef } from "../types";
+import { readDynamicInputPinIds } from "../effectivePins";
 import { resolveDataPinValue, resolveIfCondition } from "./graphParamResolvers";
 
 const DEFAULT_MAX_ITERATIONS = 1000;
+const IF_ELSE_DYNAMIC_BRANCH_PINS_KEY = "__ifElseBranchPins";
+const IF_ELSE_CONDITION_SUFFIX = "_condition";
+const IF_ELSE_THEN_SUFFIX = "_then";
 
 type LoopState =
     | {
@@ -217,6 +224,55 @@ async function executeDelay(ctx: BehaviorNodeExecutionContext) {
     return { nextPort: "completed" };
 }
 
+function executeBooleanBranch(ctx: BehaviorNodeExecutionContext, truePort: string, falsePort: string) {
+    const conditionValue = resolveIfCondition(ctx.graph, ctx.node, ctx.params, ctx.blueprintLocals, {
+        hostAdapter: ctx.hostAdapter,
+        eventPayload: ctx.eventPayload,
+        executionOwner: ctx.executionOwner,
+    });
+    return { nextPort: Boolean(conditionValue) ? truePort : falsePort };
+}
+
+function thenPortForIfElseConditionPin(conditionPinId: string): string {
+    if (conditionPinId === "condition") {
+        return "then";
+    }
+    if (conditionPinId.endsWith(IF_ELSE_CONDITION_SUFFIX)) {
+        return `${conditionPinId.slice(0, -IF_ELSE_CONDITION_SUFFIX.length)}${IF_ELSE_THEN_SUFFIX}`;
+    }
+    return "then";
+}
+
+function executeIfElse(ctx: BehaviorNodeExecutionContext) {
+    const dynamicConditionPins = readDynamicInputPinIds(ctx.params, IF_ELSE_DYNAMIC_BRANCH_PINS_KEY)
+        .filter(pinId => pinId.endsWith(IF_ELSE_CONDITION_SUFFIX));
+    const conditionPins = ["condition", ...dynamicConditionPins];
+    for (const conditionPinId of conditionPins) {
+        const conditionValue = conditionPinId === "condition"
+            ? resolveIfCondition(ctx.graph, ctx.node, ctx.params, ctx.blueprintLocals, {
+                  hostAdapter: ctx.hostAdapter,
+                  eventPayload: ctx.eventPayload,
+                  executionOwner: ctx.executionOwner,
+              })
+            : resolveInput(ctx, conditionPinId, false);
+        if (toBlueprintBoolean(conditionValue)) {
+            return { nextPort: thenPortForIfElseConditionPin(conditionPinId) };
+        }
+    }
+    return { nextPort: "else" };
+}
+
+function executeSwitchStringLike(ctx: BehaviorNodeExecutionContext) {
+    const value = toBlueprintString(resolveInput(ctx, "value", ""));
+    for (let i = 0; i < 4; i += 1) {
+        const caseValue = resolveInput(ctx, `case${i}Value`);
+        if (caseValue !== undefined && value === toBlueprintString(caseValue)) {
+            return { nextPort: `case${i}` };
+        }
+    }
+    return { nextPort: "default" };
+}
+
 export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_FLOW_IF,
@@ -231,15 +287,48 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
             { id: "false", kind: "output", semantic: "exec", label: "False" },
             { id: "condition", kind: "input", semantic: "data", valueType: "boolean", label: "Condition" },
         ],
-        execute: ctx => {
-            const conditionValue = resolveIfCondition(ctx.graph, ctx.node, ctx.params, ctx.blueprintLocals, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                executionOwner: ctx.executionOwner,
-            });
-            const truthy = Boolean(conditionValue);
-            return { nextPort: truthy ? "true" : "false" };
+        execute: ctx => executeBooleanBranch(ctx, "true", "false"),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
+        displayName: "If Else",
+        category: "Flow",
+        keywords: ["if", "else", "branch", "condition"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        pins: [
+            { id: "in", kind: "input", semantic: "exec", label: "In" },
+            { id: "then", kind: "output", semantic: "exec", label: "Then" },
+            { id: "else", kind: "output", semantic: "exec", label: "Else" },
+            { id: "condition", kind: "input", semantic: "data", valueType: "boolean", label: "Condition" },
+        ],
+        dynamicInputPins: {
+            storageKey: IF_ELSE_DYNAMIC_BRANCH_PINS_KEY,
+            fixedDataInputIds: ["condition"],
+            generatedIdPrefix: "if",
+            valueType: "boolean",
+            allowInlineLiteral: false,
+            labelPrefix: "If",
+            addButtonLabel: "Add If condition",
+            outputInsertBeforePinId: "else",
+            generatedPinTemplates: [
+                {
+                    idSuffix: "condition",
+                    label: "If",
+                    kind: "input",
+                    semantic: "data",
+                    valueType: "boolean",
+                    allowInlineLiteral: false,
+                },
+                {
+                    idSuffix: "then",
+                    label: "Then",
+                    kind: "output",
+                    semantic: "exec",
+                },
+            ],
         },
+        execute: executeIfElse,
     },
     {
         type: BLUEPRINT_NODE_TYPE_FLOW_NOOP,
@@ -253,6 +342,22 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
             { id: "next", kind: "output", semantic: "exec", label: "Next" },
         ],
         execute: () => ({ nextPort: "next" }),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_FLOW_SEQUENCE,
+        displayName: "Sequence",
+        category: "Flow",
+        keywords: ["sequence", "order", "then", "flow"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        pins: [
+            { id: "in", kind: "input", semantic: "exec", label: "In" },
+            { id: "then0", kind: "output", semantic: "exec", label: "Then 1" },
+            { id: "then1", kind: "output", semantic: "exec", label: "Then 2" },
+            { id: "then2", kind: "output", semantic: "exec", label: "Then 3" },
+            { id: "then3", kind: "output", semantic: "exec", label: "Then 4" },
+        ],
+        execute: () => ({ nextPorts: ["then0", "then1", "then2", "then3"] }),
     },
     {
         type: BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
@@ -274,16 +379,7 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
             { id: "case2Value", kind: "input", semantic: "data", valueType: "string", label: "Case 2", allowInlineLiteral: true },
             { id: "case3Value", kind: "input", semantic: "data", valueType: "string", label: "Case 3", allowInlineLiteral: true },
         ],
-        execute: ctx => {
-            const value = toBlueprintString(resolveInput(ctx, "value", ""));
-            for (let i = 0; i < 4; i += 1) {
-                const caseValue = resolveInput(ctx, `case${i}Value`);
-                if (caseValue !== undefined && value === toBlueprintString(caseValue)) {
-                    return { nextPort: `case${i}` };
-                }
-            }
-            return { nextPort: "default" };
-        },
+        execute: executeSwitchStringLike,
     },
     {
         type: BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
@@ -373,5 +469,17 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
             { id: "duration", kind: "input", semantic: "data", valueType: "float", label: "Duration", allowInlineLiteral: true },
         ],
         execute: executeDelay,
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_FLOW_RETURN,
+        displayName: "Early Return",
+        category: "Flow",
+        keywords: ["return", "stop", "end", "early"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        pins: [
+            { id: "in", kind: "input", semantic: "exec", label: "In" },
+        ],
+        execute: () => ({ nextPort: undefined }),
     },
 ];

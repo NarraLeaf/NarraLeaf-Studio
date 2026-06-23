@@ -4,10 +4,15 @@ Data 节点用于创建基础常量值，并在严格类型连接规则下提供
 
 ## 常量
 
-- `blueprint.data.stringLiteral` - 输出 `string`
-- `blueprint.data.numberLiteral` - 输出 `float`
+- `blueprint.data.stringLiteral` - `String` 常量，输出 `string`
+- `blueprint.data.integerLiteral` - 输出 `integer`
+- `blueprint.data.floatLiteral` - 输出 `float`
+- `blueprint.data.numberLiteral` - 输出 `float`；旧版 Number 常量，保留兼容旧图，新建时隐藏
 - `blueprint.data.booleanLiteral` - 输出 `boolean`
 - `blueprint.data.nullLiteral` - 输出 `json`
+- `blueprint.data.colorLiteral` - 输出 `RGBAColor`，节点卡片上使用颜色选择器编辑，并以 8 位 RGBA hex 显示
+- `blueprint.data.vector2dLiteral` - 输出 `Vector2D`，值为固定 `{ x: number, y: number }` schema，JSON Raw 编辑也会校验字段和类型
+- `blueprint.data.rectLiteral` - 输出 `json`，值为固定 `{ x: number, y: number, width: number, height: number }` schema，JSON Raw 编辑也会校验字段和类型
 
 ## Return Value
 
@@ -20,8 +25,19 @@ Data 节点用于创建基础常量值，并在严格类型连接规则下提供
 - `blueprint.data.toFloat` - `any` 转 `float`
 - `blueprint.data.toInteger` - `any` 转 `integer`
 - `blueprint.data.toBoolean` - `any` 转 `boolean`
+- `blueprint.data.toJson` - `any` 转 JSON-safe 值；对象和数组会递归复制，无法序列化的值会变为 `null`
 - `blueprint.data.parseInt` - `string` 解析为 `integer`
 - `blueprint.data.parseFloat` - `string` 解析为 `float`
 
+## 类型判断
 
-`string` 输入允许直接连接 `integer` / `float` 输出，并会在读取输入时自动转换为字符串。
+- `blueprint.data.isString` - 判断 `any` 是否为 `string`
+- `blueprint.data.isNumber` - 判断 `any` 是否为有限数字
+- `blueprint.data.isBoolean` - 判断 `any` 是否为 `boolean`
+- `blueprint.data.isArray` - 判断 `any` 是否为数组
+- `blueprint.data.isObject` - 判断 `any` 是否为非数组对象
+- `blueprint.data.isNull` - 判断 `any` 是否为 `null`
+- `blueprint.data.isEmptyValue` - 判断 `any` 是否为空字符串、空数组、空对象、`null` 或 `undefined`
+
+
+`integer` 输出允许直接连接 `float` 输入。`string` 输入允许直接连接 `integer` / `float` 输出，并会在读取输入时自动转换为字符串。

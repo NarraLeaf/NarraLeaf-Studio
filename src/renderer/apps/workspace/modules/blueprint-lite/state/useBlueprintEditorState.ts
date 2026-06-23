@@ -34,15 +34,6 @@ export type BlueprintEditorState = {
     }) => void;
 };
 
-function payloadHasExplicitFocus(payload: BlueprintEntryTabPayload): boolean {
-    return Boolean(
-        payload.focusFieldId ||
-            payload.focusEventId ||
-            payload.focusFunctionId ||
-            payload.focusNodeId != null,
-    );
-}
-
 export function useBlueprintEditorState(
     payload: BlueprintEntryTabPayload,
     lists: { eventIds: string[]; functionIds: string[] },
@@ -50,10 +41,16 @@ export function useBlueprintEditorState(
     const [graphView, setGraphView] = useState<BlueprintEditorGraphView | null>(null);
     const [memberFocus, setMemberFocus] = useState<BlueprintEditorMemberFocus>({ kind: "none" });
     const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+    const focusEventId =
+        payload.focusEventId && lists.eventIds.includes(payload.focusEventId) ? payload.focusEventId : undefined;
+    const focusFunctionId =
+        payload.focusFunctionId && lists.functionIds.includes(payload.focusFunctionId)
+            ? payload.focusFunctionId
+            : undefined;
 
     const explicitFocus = useMemo(
-        () => payloadHasExplicitFocus(payload),
-        [payload.focusFieldId, payload.focusEventId, payload.focusFunctionId, payload.focusNodeId],
+        () => Boolean(payload.focusFieldId || focusEventId || focusFunctionId),
+        [focusEventId, focusFunctionId, payload.focusFieldId],
     );
 
     const applyPayloadFocus = useCallback(() => {
@@ -62,23 +59,23 @@ export function useBlueprintEditorState(
             setSelectedNodeIds([]);
             return;
         }
-        if (payload.focusFunctionId) {
-            const view: BlueprintEditorGraphView = { kind: "function", graphId: payload.focusFunctionId };
+        if (focusFunctionId) {
+            const view: BlueprintEditorGraphView = { kind: "function", graphId: focusFunctionId };
             setGraphView(view);
             setMemberFocus({ kind: "graph", view });
             setSelectedNodeIds(payload.focusNodeId ? [payload.focusNodeId] : []);
             return;
         }
-        if (payload.focusEventId) {
-            const view: BlueprintEditorGraphView = { kind: "event", graphId: payload.focusEventId };
+        if (focusEventId) {
+            const view: BlueprintEditorGraphView = { kind: "event", graphId: focusEventId };
             setGraphView(view);
             setMemberFocus({ kind: "graph", view });
             setSelectedNodeIds(payload.focusNodeId ? [payload.focusNodeId] : []);
             return;
         }
         setMemberFocus({ kind: "none" });
-        setSelectedNodeIds(payload.focusNodeId ? [payload.focusNodeId] : []);
-    }, [payload.focusFieldId, payload.focusEventId, payload.focusFunctionId, payload.focusNodeId]);
+        setSelectedNodeIds([]);
+    }, [focusEventId, focusFunctionId, payload.focusFieldId, payload.focusNodeId]);
 
     useEffect(() => {
         applyPayloadFocus();

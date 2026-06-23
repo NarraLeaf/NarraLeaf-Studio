@@ -3,6 +3,7 @@ import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+    BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
@@ -216,6 +217,18 @@ describe("blueprint graph editing", () => {
             __jsonObjectInputPins: ["field_1_name", "field_1_value"],
             __inlineLiteralPins: ["field_1_name"],
             field_1_name: "field1",
+        });
+    });
+
+    it("creates Comment with editable note-box defaults", () => {
+        const node = createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_FLOW_COMMENT, "comment");
+
+        expect(node.params).toMatchObject({
+            text: "Comment",
+            color: "amber",
+            background: true,
+            width: 360,
+            height: 180,
         });
     });
 });

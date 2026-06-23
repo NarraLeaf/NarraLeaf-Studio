@@ -4,6 +4,7 @@ import type { UIHostAdapter } from "../runtime/types";
 
 export type BehaviorNodeExecuteResult = {
     nextPort?: string;
+    nextPorts?: string[];
     outputValues?: Record<string, unknown>;
 };
 

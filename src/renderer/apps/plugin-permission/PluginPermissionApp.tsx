@@ -8,6 +8,7 @@ import {
     PluginPermissionPromptProps,
     PluginPermissionRequest,
 } from "@shared/types/pluginPermissions";
+import { describePluginInstallPermissions } from "@shared/utils/pluginInstallPermissions";
 import { WindowAppType, WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 
 type PermissionCopy = {
@@ -61,17 +62,14 @@ function buildPermissionCopy(props: PluginPermissionPromptProps): PermissionCopy
 
     switch (request.kind) {
         case "install": {
-            const permissions = request.requestedPermissions?.length
-                ? request.requestedPermissions
-                : ["No privileged permissions were declared with this install request."];
             return {
                 type: "Plugin Install Request",
                 title: `${requester} requests to install ${plugin}`,
                 body: [
-                    "This plugin declares the following permissions:",
-                    "Allowing installation gives this plugin the ability to request or receive the controls listed here. Only install plugins you trust.",
+                    "Studio identified these privileged controls for this installation:",
+                    "Installation approval does not automatically grant file or API access. Only install plugins you trust.",
                 ],
-                permissions,
+                permissions: describePluginInstallPermissions(request.permissions),
                 detail: `Source: ${request.source}`,
             };
         }

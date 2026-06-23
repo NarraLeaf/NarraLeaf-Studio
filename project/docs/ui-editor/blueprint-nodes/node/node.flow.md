@@ -2,7 +2,7 @@
 
 Flow 节点用于控制事件图或宏图中的执行线路。所有 Flow 节点可用于 `event` 和 `macro` 图，不可用于 `function` 图。
 
-除非额外声明，所有 `in` 参数均为执行入口；`next`、`true`、`false`、`case*`、`default`、`loop`、`completed` 参数均为执行出口；标注（传出引脚）的参数为传出值，其余数据参数为传入引脚值。
+除非额外声明，所有 `in` 参数均为执行入口；`next`、`true`、`false`、`then`、`else`、`then*`、`case*`、`default`、`loop`、`completed` 参数均为执行出口；标注（传出引脚）的参数为传出值，其余数据参数为传入引脚值。
 
 循环节点采用当前运行时的单光标执行模型：`loop` 出口连接循环体，循环体末尾需要连接回同一个循环节点的 `in` 入口；节点再次进入时会推进下一轮循环，直到进入 `completed` 出口。
 
@@ -25,6 +25,31 @@ Flow 节点用于控制事件图或宏图中的执行线路。所有 Flow 节点
 
 - `in` - 执行入口
 - `next` - 执行出口
+
+## If Else
+
+`blueprint.flow.ifElse` - 条件分支
+
+根据布尔条件选择后续执行出口。节点卡片可通过 `Add If condition` 追加 If 条件；运行时按 `condition`、追加条件的顺序依次判断，第一个为真的条件会进入对应 `then` / `if_N_then` 出口，没有任何条件为真时进入固定的 `else` 兜底出口。
+
+- `in` - 执行入口
+- `condition` - 布尔条件
+- `then` - 条件为真时的执行出口
+- `if_N_condition` - 第 N 个追加 If 条件
+- `if_N_then` - 第 N 个追加 If 条件为真时的执行出口
+- `else` - 条件为假时的执行出口
+
+## Sequence
+
+`blueprint.flow.sequence` - 顺序执行
+
+进入节点后按顺序排队执行 `then0` 到 `then3` 已连接的出口。未连接的出口会被跳过；如果后续分支执行到 `Early Return`，剩余队列会被终止。
+
+- `in` - 执行入口
+- `then0` - 第 1 个执行出口
+- `then1` - 第 2 个执行出口
+- `then2` - 第 3 个执行出口
+- `then3` - 第 4 个执行出口
 
 ## Switch String
 
@@ -94,3 +119,11 @@ Flow 节点用于控制事件图或宏图中的执行线路。所有 Flow 节点
 - `in` - 执行入口
 - `duration` - 等待时长，单位为秒
 - `completed` - 等待完成后的执行出口
+
+## Early Return
+
+`blueprint.flow.return` - 提前结束
+
+立即结束当前事件图或宏图的执行链。该节点没有后续执行出口，也会终止 `Sequence` 已排队但尚未执行的后续出口。
+
+- `in` - 执行入口

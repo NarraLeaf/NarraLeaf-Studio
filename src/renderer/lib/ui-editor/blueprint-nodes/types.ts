@@ -40,7 +40,7 @@ export type BlueprintNodePinDef = {
 };
 
 /**
- * Optional variadic data inputs: fixed pins from `pins` stay forever; extra ids are stored in params[storageKey].
+ * Optional variadic pins: fixed pins from `pins` stay forever; extra ids are stored in params[storageKey].
  */
 export type BlueprintNodeDynamicInputPinsConfig = {
     /** Param key on node.params for string[] of additional input pin ids. */
@@ -59,18 +59,44 @@ export type BlueprintNodeDynamicInputPinsConfig = {
         /** Generated ids use `${prefix}_${n}_${idSuffix}`. */
         idSuffix: string;
         label: string;
-        valueType: string;
-        allowInlineLiteral: boolean;
+        kind?: "input" | "output";
+        semantic?: BlueprintPinSemantic;
+        valueType?: string;
+        allowInlineLiteral?: boolean;
     }[];
+    /** When dynamic output pins exist, insert them before this static output pin id. */
+    outputInsertBeforePinId?: string;
     /** Optional display label prefix for generated pins. Defaults to "Input". */
     labelPrefix?: string;
+    /** Optional label for the node-card add button. */
+    addButtonLabel?: string;
     /** Optional param key storing user-visible labels by generated pin id. */
     pinLabelParamKey?: string;
     /** Optional prefix used when initializing labels in pinLabelParamKey. */
     defaultPinLabelPrefix?: string;
 };
 
-export type BlueprintInspectorParamKind = "string" | "number" | "json" | "literal" | "variableRef" | "select";
+export type BlueprintJsonValueSchema = {
+    kind: "object" | "array" | "string" | "number" | "boolean" | "null";
+    label?: string;
+    /** Object fields are fixed schema entries. Unknown fields are rejected unless allowExtraFields is true. */
+    fields?: readonly {
+        key: string;
+        label?: string;
+        kind: "object" | "array" | "string" | "number" | "boolean" | "null";
+        required?: boolean;
+    }[];
+    allowExtraFields?: boolean;
+};
+
+export type BlueprintInspectorParamKind =
+    | "string"
+    | "number"
+    | "json"
+    | "color"
+    | "literal"
+    | "variableRef"
+    | "select";
 
 export type BlueprintInspectorParamSelectOption = {
     value: string;
@@ -81,6 +107,8 @@ export type BlueprintInspectorParamDef = {
     key: string;
     label: string;
     kind: BlueprintInspectorParamKind;
+    /** Optional fixed schema for structured JSON-like values such as Vector2D. */
+    jsonSchema?: BlueprintJsonValueSchema;
     /**
      * For `kind: "select"`: static options rendered as a `<select>` dropdown.
      * When omitted with `kind: "select"`, the node card will look for
@@ -109,7 +137,14 @@ export type BlueprintNodeScope = {
     widgetElementTypes?: string[];
 };
 
-export type BlueprintNodeRole = "normal" | "eventHead" | "functionEntry" | "reroute" | "dataLiteral" | "valueReturn";
+export type BlueprintNodeRole =
+    | "normal"
+    | "eventHead"
+    | "functionEntry"
+    | "reroute"
+    | "dataLiteral"
+    | "valueReturn"
+    | "comment";
 
 export type BlueprintNodeExecuteFn = BehaviorNodeDefinition["execute"];
 
@@ -191,6 +226,8 @@ export type BlueprintNodeEditorCatalogEntry = {
     scope?: BlueprintNodeScope;
     /** When true, node card may offer add-input control (see dynamicInputPins on def). */
     supportsDynamicInputPins?: boolean;
+    /** Label for the node-card add-input control. */
+    dynamicInputPinAddLabel?: string;
     /** Param key storing user-visible labels for dynamic input pins, if editable. */
     dynamicInputPinLabelParamKey?: string;
 };

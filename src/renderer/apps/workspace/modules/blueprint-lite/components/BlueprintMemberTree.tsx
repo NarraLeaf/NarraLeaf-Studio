@@ -26,13 +26,17 @@ type Props = {
     localBp: LocalBlueprintService;
     surfaceId?: string;
     widgetElementType?: string;
+    variableGroupOpenState?: Partial<Record<BlueprintVariableGroupKey, boolean>>;
+    onVariableGroupOpenChange?: (groupKey: BlueprintVariableGroupKey, open: boolean) => void;
     onSelectLayer: (layerId: string) => void;
     onAddLayer: () => void | Promise<void>;
     onDeleteLayer: (layerId: string) => void;
 };
 
+export type BlueprintVariableGroupKey = "page" | "blueprint" | "global";
+
 type VariableGroup = {
-    key: string;
+    key: BlueprintVariableGroupKey;
     label: string;
     scopeLabel: string;
     blueprintId: string;
@@ -66,15 +70,26 @@ function countForGraph(
 function CollapsibleSection({
     title,
     defaultOpen,
+    open,
+    onOpenChange,
     action,
     children,
 }: {
     title: string;
     defaultOpen: boolean;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
     action?: ReactNode;
     children: ReactNode;
 }) {
-    const [open, setOpen] = useState(defaultOpen);
+    const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
+    const actualOpen = open ?? uncontrolledOpen;
+    const setOpen = (next: boolean) => {
+        if (open === undefined) {
+            setUncontrolledOpen(next);
+        }
+        onOpenChange?.(next);
+    };
 
     return (
         <section className="shrink-0">
@@ -82,14 +97,14 @@ function CollapsibleSection({
                 <button
                     type="button"
                     className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-gray-300"
-                    onClick={() => setOpen(value => !value)}
+                    onClick={() => setOpen(!actualOpen)}
                 >
-                    {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                    {actualOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                     <span className="truncate">{title}</span>
                 </button>
                 {action}
             </div>
-            {open ? children : null}
+            {actualOpen ? children : null}
         </section>
     );
 }
@@ -352,6 +367,8 @@ export function BlueprintMemberTree({
     diagnostics,
     localBp,
     surfaceId,
+    variableGroupOpenState,
+    onVariableGroupOpenChange,
     onSelectLayer,
     onAddLayer,
     onDeleteLayer,
@@ -464,8 +481,9 @@ export function BlueprintMemberTree({
                 valueType: selection.valueType,
                 defaultValue: selection.defaultValue,
             });
+            onVariableGroupOpenChange?.(group.key, true);
         },
-        [localBp, promptCreateVariable],
+        [localBp, onVariableGroupOpenChange, promptCreateVariable],
     );
 
     if (blueprint.program.kind !== "graph") {
@@ -624,6 +642,8 @@ export function BlueprintMemberTree({
                             key={`${group.key}:${group.blueprintId}`}
                             title={group.label}
                             defaultOpen={group.defaultOpen}
+                            open={variableGroupOpenState?.[group.key] ?? group.defaultOpen}
+                            onOpenChange={open => onVariableGroupOpenChange?.(group.key, open)}
                             action={
                                 <button
                                     type="button"
