@@ -304,6 +304,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
         readableState: [
             { id: "visible", displayName: "Visible" },
             { id: "enabled", displayName: "Enabled" },
+            { id: "variant", displayName: "Variant" },
             { id: "text", displayName: "Text" },
             { id: "fontAssetId", displayName: "Font asset" },
             { id: "fontSize", displayName: "Font size" },
@@ -316,6 +317,8 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { id: "effects", displayName: "Effects" },
         ],
         writableProps: [
+            { propPath: "variant", displayName: "Variant" },
+            { propPath: "appearance", displayName: "Appearance" },
             { propPath: "text", displayName: "Text" },
             { propPath: "fontAssetId", displayName: "Font asset" },
             { propPath: "fontSize", displayName: "Font size" },
