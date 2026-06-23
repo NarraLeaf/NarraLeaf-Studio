@@ -22,6 +22,12 @@ type BlueprintNodeParamPatch = (
     history?: BlueprintNodeParamHistoryOptions,
 ) => void;
 
+export type BlueprintFlowNodeDiagnostic = {
+    severity: "error" | "warning" | "info";
+    message: string;
+    code?: string;
+};
+
 /**
  * React Flow handles node selection / drag on pointer down. Stopping propagation on click alone is too late;
  * use this on embedded controls so the node stays selected and the pane does not steal the interaction.
@@ -54,6 +60,8 @@ export type BlueprintFlowNodeData = {
      * Populated by the flow projection from workspace context (e.g. available surfaces).
      */
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
+    /** Diagnostics targeted at this node in the active graph. */
+    nodeDiagnostics?: readonly BlueprintFlowNodeDiagnostic[];
 };
 
 const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-white/30 !bg-cyan-500";
@@ -814,6 +822,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         memberVariables,
         wiredInputPortIds,
         dynamicSelectOptions,
+        nodeDiagnostics,
     } = data as BlueprintFlowNodeData;
     const wired = wiredInputPortIds ?? new Set<string>();
     const execIns = catalog.pins.filter(p => p.kind === "input" && p.semantic === "exec");
@@ -822,7 +831,8 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     const dataOuts = catalog.pins.filter(p => p.kind === "output" && p.semantic === "data");
 
     const isEventHead = catalog.role === "eventHead";
-    const isValueReturn = catalog.role === "valueReturn";
+    const isTerminalNode = execIns.length > 0 && execOuts.length === 0;
+    const firstNodeError = nodeDiagnostics?.find(d => d.severity === "error");
     const showAddInputRow =
         Boolean(catalog.supportsDynamicInputPins) && Boolean(onAddDynamicInputPin);
     const inspectorParams = catalog.inspectorParams ?? [];
@@ -862,10 +872,18 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     return (
         <div
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-[#1a1d21] text-xs shadow-md ${
-                selected ? "border-cyan-400/80 ring-1 ring-cyan-500/40" : "border-white/15"
-            } ${isEventHead ? "border-l-2 border-l-cyan-400/70" : ""} ${
-                isValueReturn ? "border-r-2 border-r-cyan-400/70" : ""
+                isEventHead ? "border-l-2" : ""
+            } ${isTerminalNode ? "border-r-2" : ""} ${
+                firstNodeError
+                    ? "border-red-400/85 ring-1 ring-red-500/40"
+                    : selected
+                      ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
+                      : "border-white/15"
+            } ${!firstNodeError && isEventHead ? "border-l-cyan-400/70" : ""} ${
+                !firstNodeError && isTerminalNode ? "border-r-cyan-400/70" : ""
             }`}
+            title={firstNodeError?.message}
+            aria-invalid={Boolean(firstNodeError)}
         >
             <div className="border-b border-white/5 px-2 py-1.5">
                 <div className="text-[10px] uppercase tracking-wide text-gray-500">{catalog.category}</div>

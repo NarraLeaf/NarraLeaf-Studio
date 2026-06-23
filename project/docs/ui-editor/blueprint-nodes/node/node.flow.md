@@ -43,7 +43,7 @@ Flow 节点用于控制事件图或宏图中的执行线路。所有 Flow 节点
 
 `blueprint.flow.sequence` - 顺序执行
 
-进入节点后按顺序排队执行 `then0` 到 `then3` 已连接的出口。未连接的出口会被跳过；如果后续分支执行到 `Early Return`，剩余队列会被终止。
+进入节点后按顺序排队执行 `then0` 到 `then3` 已连接的出口。未连接的出口会被跳过；如果后续分支执行到 `Return`，剩余队列会被终止。
 
 - `in` - 执行入口
 - `then0` - 第 1 个执行出口
@@ -120,7 +120,7 @@ Flow 节点用于控制事件图或宏图中的执行线路。所有 Flow 节点
 - `duration` - 等待时长，单位为秒
 - `completed` - 等待完成后的执行出口
 
-## Early Return
+## Return
 
 `blueprint.flow.return` - 提前结束
 

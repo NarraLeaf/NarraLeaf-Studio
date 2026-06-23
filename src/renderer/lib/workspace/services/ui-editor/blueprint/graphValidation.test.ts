@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
+    BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
@@ -172,5 +173,59 @@ describe("blueprint graph validation", () => {
         });
 
         expect(diagnostics.map(d => d.code)).not.toContain("edge.connection_invalid");
+    });
+
+    it("reports nodes that are disallowed for the current blueprint owner context", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                returnValue: { id: "returnValue", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE },
+            },
+            edges: [],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "init",
+            blueprintOwner: { kind: "widgetMain", surfaceId: "surface", elementId: "text" },
+            widgetElementType: "nl.text",
+            isBlueprintValueGraph: false,
+        });
+
+        const contextError = diagnostics.find(d => d.code === "node.context_invalid");
+        expect(contextError?.message).toContain("Return Value only belongs in Blueprint Value graphs.");
+        expect(contextError?.target).toEqual({
+            kind: "node",
+            graphKind: "event",
+            graphId: "init",
+            nodeId: "returnValue",
+        });
+    });
+
+    it("allows Return Value inside Blueprint Value owner graphs", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                returnValue: { id: "returnValue", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE },
+            },
+            edges: [],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "init",
+            blueprintOwner: {
+                kind: "widgetValue",
+                surfaceId: "surface",
+                elementId: "text",
+                propPath: "props.text",
+            },
+            widgetElementType: "nl.text",
+            isBlueprintValueGraph: true,
+        });
+
+        expect(diagnostics.map(d => d.code)).not.toContain("node.context_invalid");
     });
 });

@@ -26,7 +26,7 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.local.set` | `Set Var` | `Variables` | Exec node that writes an execution-local blueprint variable and continues through `next`. |
 | `if` | `If` | `Flow` | Exec branch node that routes execution through `true` or `false` based on a boolean condition. |
 | `blueprint.flow.ifElse` | `If Else` | `Flow` | Exec branch node with addable `If` conditions, matching `Then` outputs, and a final `Else` fallback output. |
-| `blueprint.flow.*` | Flow utilities | `Flow` | `Noop`, `Sequence`, `Switch String`, bounded loops, `Delay`, and `Early Return`. |
+| `blueprint.flow.*` | Flow utilities | `Flow` | `Noop`, `Sequence`, `Switch String`, bounded loops, `Delay`, and `Return`. |
 | `blueprint.data.*` | Data utilities | `Data` | String, Integer, Float, Boolean, Null, Color, Vector2D, and Rect literals, explicit conversions, JSON helpers, string helpers, parse helpers, and type/empty-value checks. |
 | `blueprint.math.*` | Math utilities | `Math` | Pure arithmetic, modulo, increment/decrement, abs, min/max, rounding, random numbers, boolean logic, strict equality, numeric comparison, and legacy numeric comparison nodes. |
 | `blueprint.boolean.*` | Boolean logic | `Math` | Pure `And`, `Or`, `Not`, and `Xor`; grouped under Math in the palette. |
@@ -132,7 +132,9 @@ export const exampleNode: BlueprintNodeDef = {
 | `dynamicInputPins` | Enables user-added variadic data input pins. |
 | `inspectorParams` | Node-level configuration edited in the inspector/card. |
 | `scope` | Restricts palette availability by owner kind or widget element type. |
-| `role` | Special node role such as `eventHead`, `functionEntry`, `reroute`, or `dataLiteral`. |
+| `role` | Special node role such as `eventHead`, `functionEntry`, `reroute`, `dataLiteral`, `valueReturn`, or `comment`. |
+
+Terminal exec nodes (nodes with an exec input and no exec output, such as `Return Value` and Flow `Return`) use the right-edge terminal card accent in the visual editor.
 
 ## Node categories
 
