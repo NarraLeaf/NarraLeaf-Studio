@@ -472,7 +472,7 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
     },
     {
         type: BLUEPRINT_NODE_TYPE_FLOW_RETURN,
-        displayName: "Early Return",
+        displayName: "Return",
         category: "Flow",
         keywords: ["return", "stop", "end", "early"],
         graphKinds: ["event", "macro"],

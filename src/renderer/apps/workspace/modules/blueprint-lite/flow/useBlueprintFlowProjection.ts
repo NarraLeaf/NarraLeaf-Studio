@@ -5,7 +5,7 @@ import type { BlueprintGraphEdge, BlueprintGraphIr } from "@shared/types/bluepri
 import { readNodeEditorLayout } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
-import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
+import type { BlueprintFlowNodeData, BlueprintFlowNodeDiagnostic } from "./components/BlueprintFlowNode";
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 type BlueprintNodeParamPatch = (
@@ -51,6 +51,7 @@ export function blueprintIrToFlowNodes(
     onAddDynamicInputPin?: (nodeId: string) => void,
     onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void,
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
+    nodeDiagnosticsByNodeId?: ReadonlyMap<string, readonly BlueprintFlowNodeDiagnostic[]>,
 ): Node<BlueprintFlowNodeData>[] {
     const nodes = ir.nodes ?? {};
     const wiredIn = wiredInputPortIdsByNodeId(ir);
@@ -73,6 +74,7 @@ export function blueprintIrToFlowNodes(
                 memberVariables,
                 wiredInputPortIds: wiredIn.get(n.id) ?? new Set(),
                 dynamicSelectOptions,
+                nodeDiagnostics: nodeDiagnosticsByNodeId?.get(n.id) ?? [],
             },
         };
     });
@@ -155,6 +157,7 @@ export function useBlueprintFlowProjection(
     onPatchNodeParam?: BlueprintNodeParamPatch,
     memberVariables?: BlueprintFlowNodeData["memberVariables"],
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
+    nodeDiagnosticsByNodeId?: ReadonlyMap<string, readonly BlueprintFlowNodeDiagnostic[]>,
 ) {
     const selectedKey = blueprintSelectedNodesDependencyKey(selectedNodeIds);
     return useMemo(
@@ -168,12 +171,22 @@ export function useBlueprintFlowProjection(
                     undefined,
                     undefined,
                     dynamicSelectOptions,
+                    nodeDiagnosticsByNodeId,
                 ),
                 selectedNodeIds,
             ),
             edges: blueprintIrToFlowEdges(ir, nodeCatalog),
         }),
-        [ir, selectedKey, nodeCatalog, onPatchNodeParam, memberVariables, selectedNodeIds, dynamicSelectOptions],
+        [
+            ir,
+            selectedKey,
+            nodeCatalog,
+            onPatchNodeParam,
+            memberVariables,
+            selectedNodeIds,
+            dynamicSelectOptions,
+            nodeDiagnosticsByNodeId,
+        ],
     );
 }
 

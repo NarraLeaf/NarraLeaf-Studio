@@ -13,6 +13,6 @@ export function useBlueprintDiagnostics(
 ) {
     return useMemo(
         () => validateBlueprintDocumentGraphs(doc, blueprintId, options),
-        [doc, blueprintId, revision, options?.widgetElement, options?.widgetSurfaceId],
+        [doc, blueprintId, revision, options?.widgetElement, options?.widgetSurfaceId, options?.widgetBlueprintEvents],
     );
 }

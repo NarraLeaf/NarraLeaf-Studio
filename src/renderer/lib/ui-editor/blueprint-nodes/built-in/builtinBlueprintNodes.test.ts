@@ -155,6 +155,7 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_WHILE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_DELAY)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_RETURN)).toBe(true);
+        expect(blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_FLOW_RETURN)?.displayName).toBe("Return");
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_COMMENT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LITERAL_INTEGER)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LITERAL_FLOAT)).toBe(true);

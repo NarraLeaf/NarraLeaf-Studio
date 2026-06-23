@@ -232,6 +232,16 @@ input[type="radio"]:focus {
     background-color: var(--narraleaf-accent-strong) !important;
 }
 
+.narraleaf-blueprint-flow {
+    --xy-selection-background-color: var(--narraleaf-accent-tint);
+    --xy-selection-border: 1px solid var(--narraleaf-accent-strong);
+}
+
+.narraleaf-blueprint-flow .react-flow__selection,
+.narraleaf-blueprint-flow .react-flow__nodesselection-rect {
+    border-radius: 0 !important;
+}
+
 .moveable,
 .moveable * {
     --moveable-color: var(--narraleaf-accent-strong);

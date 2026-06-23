@@ -22,6 +22,11 @@ import {
 } from "./types";
 import { resolveEffectiveBlueprintCatalogEntry } from "./effectivePins";
 
+type BlueprintNodeGraphContextDef = Pick<
+    BlueprintNodeDef,
+    "type" | "category" | "graphKinds" | "isPure" | "isLatent" | "role" | "scope"
+>;
+
 function headTypesForWidgetSlot(
     slotId: string,
     widgetElementType: string | undefined,
@@ -61,7 +66,7 @@ function resolveAllowedWidgetEventHeadTypesForPalette(ctx: BlueprintPaletteConte
     return allow;
 }
 
-export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeDef): boolean {
+export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGraphContextDef): boolean {
     if (def.role === "eventHead") {
         return def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT ||
             def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH;
@@ -82,6 +87,72 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeDe
         return false;
     }
     return def.category === "Data" || def.category === "Math";
+}
+
+function matchesBlueprintNodeScopeValue(
+    scope: NonNullable<BlueprintNodeDef["scope"]>,
+    ctx: BlueprintPaletteContext,
+): boolean {
+    if (scope.anyOf && scope.anyOf.length > 0) {
+        return scope.anyOf.some(item => matchesBlueprintNodeScopeValue(item, ctx));
+    }
+    if (scope.ownerKinds && scope.ownerKinds.length > 0) {
+        if (!scope.ownerKinds.includes(ctx.owner.kind)) {
+            return false;
+        }
+    }
+    if (scope.widgetElementTypes && scope.widgetElementTypes.length > 0) {
+        if (ctx.owner.kind !== "widgetMain") {
+            return false;
+        }
+        const t = ctx.widgetElementType;
+        if (!t || !scope.widgetElementTypes.includes(t)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function matchesBlueprintNodeScope(def: BlueprintNodeGraphContextDef, ctx: BlueprintPaletteContext): boolean {
+    const scope = def.scope;
+    if (!scope) {
+        return true;
+    }
+    return matchesBlueprintNodeScopeValue(scope, ctx);
+}
+
+export function isBlueprintNodeAllowedInGraphContext(
+    def: BlueprintNodeGraphContextDef,
+    ctx: BlueprintPaletteContext,
+): boolean {
+    if (!def.graphKinds.includes(ctx.graphKind)) {
+        return false;
+    }
+    if (!matchesBlueprintNodeScope(def, ctx)) {
+        return false;
+    }
+    if (ctx.isBlueprintValueGraph && !isBlueprintNodeAllowedInBlueprintValueGraph(def)) {
+        return false;
+    }
+    if (ctx.graphKind === "function" && (def.isLatent || !def.isPure)) {
+        return false;
+    }
+    if (ctx.graphKind === "function" && def.role === "eventHead") {
+        return false;
+    }
+    if (ctx.graphKind === "event" && def.role === "functionEntry") {
+        return false;
+    }
+    if (ctx.graphKind === "function" && def.role === "functionEntry" && ctx.hasFunctionEntry) {
+        return false;
+    }
+    if (def.role === "eventHead" && ctx.owner.kind === "widgetMain") {
+        const allowed = resolveAllowedWidgetEventHeadTypesForPalette(ctx);
+        if (!allowed.has(def.type)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 class BlueprintNodeDefinitionsRegistry {
@@ -180,35 +251,8 @@ class BlueprintNodeDefinitionsRegistry {
             if (def.hideInPalette) {
                 continue;
             }
-            if (!def.graphKinds.includes(ctx.graphKind)) {
+            if (!isBlueprintNodeAllowedInGraphContext(def, ctx)) {
                 continue;
-            }
-            if (!this.matchesScope(def, ctx)) {
-                continue;
-            }
-            if (ctx.isBlueprintValueGraph && !isBlueprintNodeAllowedInBlueprintValueGraph(def)) {
-                continue;
-            }
-            if (ctx.graphKind === "function" && (def.isLatent || !def.isPure)) {
-                // Function graphs: only pure, non-latent nodes (framework rule)
-                if (!def.isPure || def.isLatent) {
-                    continue;
-                }
-            }
-            if (ctx.graphKind === "function" && def.role === "eventHead") {
-                continue;
-            }
-            if (ctx.graphKind === "event" && def.role === "functionEntry") {
-                continue;
-            }
-            if (ctx.graphKind === "function" && def.role === "functionEntry" && ctx.hasFunctionEntry) {
-                continue;
-            }
-            if (def.role === "eventHead" && ctx.owner.kind === "widgetMain") {
-                const allowed = resolveAllowedWidgetEventHeadTypesForPalette(ctx);
-                if (!allowed.has(def.type)) {
-                    continue;
-                }
             }
             out.push(this.toCatalogEntry(def));
         }
@@ -219,35 +263,6 @@ class BlueprintNodeDefinitionsRegistry {
             }
             return a.displayName.localeCompare(b.displayName);
         });
-    }
-
-    private matchesScope(def: BlueprintNodeDef, ctx: BlueprintPaletteContext): boolean {
-        const scope = def.scope;
-        if (!scope) {
-            return true;
-        }
-        return this.matchesScopeValue(scope, ctx);
-    }
-
-    private matchesScopeValue(scope: NonNullable<BlueprintNodeDef["scope"]>, ctx: BlueprintPaletteContext): boolean {
-        if (scope.anyOf && scope.anyOf.length > 0) {
-            return scope.anyOf.some(item => this.matchesScopeValue(item, ctx));
-        }
-        if (scope.ownerKinds && scope.ownerKinds.length > 0) {
-            if (!scope.ownerKinds.includes(ctx.owner.kind)) {
-                return false;
-            }
-        }
-        if (scope.widgetElementTypes && scope.widgetElementTypes.length > 0) {
-            if (ctx.owner.kind !== "widgetMain") {
-                return false;
-            }
-            const t = ctx.widgetElementType;
-            if (!t || !scope.widgetElementTypes.includes(t)) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private validatePorts(def: BlueprintNodeDef): void {

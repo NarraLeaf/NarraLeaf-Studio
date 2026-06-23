@@ -3,6 +3,7 @@ import {
     useCallback,
     useEffect,
     useLayoutEffect,
+    useMemo,
     useRef,
     useState,
     type MouseEvent as ReactMouseEvent,
@@ -12,6 +13,7 @@ import {
     Background,
     MiniMap,
     ReactFlowProvider,
+    SelectionMode,
     useEdgesState,
     useNodesState,
     useReactFlow,
@@ -50,6 +52,7 @@ import {
     type BlueprintPaletteContext,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
+import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
 
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
@@ -132,6 +135,8 @@ type BlueprintFlowCanvasInnerProps = {
      * Populated from workspace context and forwarded to node cards.
      */
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
+    /** Active graph diagnostics, used to mark invalid nodes in-place. */
+    diagnostics?: readonly BlueprintGraphEditorDiagnostic[];
     /** Initial React Flow viewport restored from editor-session state. */
     initialViewport?: BlueprintFlowViewport | null;
     /** Called after pan/zoom changes so the owning editor tab can persist the view. */
@@ -143,6 +148,35 @@ export type BlueprintFlowViewport = {
     y: number;
     zoom: number;
 };
+
+function buildNodeDiagnosticsByNodeId(
+    diagnostics: readonly BlueprintGraphEditorDiagnostic[] | undefined,
+    graphKey: string,
+): Map<string, BlueprintGraphEditorDiagnostic[]> {
+    const out = new Map<string, BlueprintGraphEditorDiagnostic[]>();
+    for (const d of diagnostics ?? []) {
+        const target = d.target;
+        if (target?.kind !== "node") {
+            continue;
+        }
+        if (`${target.graphKind}:${target.graphId}` !== graphKey) {
+            continue;
+        }
+        const list = out.get(target.nodeId) ?? [];
+        list.push(d);
+        out.set(target.nodeId, list);
+    }
+    return out;
+}
+
+function nodeDiagnosticsSignature(map: ReadonlyMap<string, readonly BlueprintGraphEditorDiagnostic[]>): string {
+    return [...map.entries()]
+        .map(([nodeId, items]) =>
+            `${nodeId}:${items.map(d => `${d.severity}:${d.code ?? ""}:${d.message}`).sort().join("\x1f")}`,
+        )
+        .sort()
+        .join("\x1e");
+}
 
 function BlueprintFlowCanvasInner({
     nodeCatalog,
@@ -158,12 +192,21 @@ function BlueprintFlowCanvasInner({
     paletteContext,
     deleteKeyCode = ["Backspace", "Delete"],
     dynamicSelectOptions,
+    diagnostics,
     initialViewport,
     onViewportChange,
 }: BlueprintFlowCanvasInnerProps) {
     const { getNodes, screenToFlowPosition, fitView } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+    const nodeDiagnosticsByNodeId = useMemo(
+        () => buildNodeDiagnosticsByNodeId(diagnostics, graphKey),
+        [diagnostics, graphKey],
+    );
+    const nodeDiagnosticsSig = useMemo(
+        () => nodeDiagnosticsSignature(nodeDiagnosticsByNodeId),
+        [nodeDiagnosticsByNodeId],
+    );
     const irRef = useRef(ir);
     irRef.current = ir;
 
@@ -334,7 +377,12 @@ function BlueprintFlowCanvasInner({
      */
     const isNodeDragActiveRef = useRef(false);
 
-    const lastStructuralRef = useRef<{ graphKey: string; revision: number; membersSig: string } | null>(null);
+    const lastStructuralRef = useRef<{
+        graphKey: string;
+        revision: number;
+        membersSig: string;
+        diagnosticsSig: string;
+    } | null>(null);
     const lastNodeCatalogRef = useRef(nodeCatalog);
 
     const [addMenu, setAddMenu] = useState<{
@@ -428,10 +476,16 @@ function BlueprintFlowCanvasInner({
             !prevStruct ||
             prevStruct.graphKey !== graphKey ||
             prevStruct.revision !== revision ||
-            prevStruct.membersSig !== blueprintMembersSig;
+            prevStruct.membersSig !== blueprintMembersSig ||
+            prevStruct.diagnosticsSig !== nodeDiagnosticsSig;
 
         if (structural) {
-            lastStructuralRef.current = { graphKey, revision, membersSig: blueprintMembersSig };
+            lastStructuralRef.current = {
+                graphKey,
+                revision,
+                membersSig: blueprintMembersSig,
+                diagnosticsSig: nodeDiagnosticsSig,
+            };
             setNodes(prevNodes => {
                 const base = blueprintIrToFlowNodes(
                     snap,
@@ -441,6 +495,7 @@ function BlueprintFlowCanvasInner({
                     stableAddDynamicInputPin,
                     stableRemoveDynamicInputPin,
                     dynamicSelectOptions,
+                    nodeDiagnosticsByNodeId,
                 );
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
                 let out = withSel;
@@ -503,6 +558,8 @@ function BlueprintFlowCanvasInner({
         stableAddDynamicInputPin,
         stableRemoveDynamicInputPin,
         dynamicSelectOptions,
+        nodeDiagnosticsByNodeId,
+        nodeDiagnosticsSig,
         setEdges,
         setNodes,
     ]);
@@ -721,13 +778,16 @@ function BlueprintFlowCanvasInner({
                 onPaneClick={onPaneClick}
                 onNodeClick={onPlacementPreviewNodeClick}
                 onSelectionChange={onSelectionChange}
+                selectionOnDrag={!pendingPlacementType}
+                selectionMode={SelectionMode.Partial}
+                panOnDrag={[1]}
                 onMoveEnd={(_, viewport) => onViewportChange?.({
                     x: viewport.x,
                     y: viewport.y,
                     zoom: viewport.zoom,
                 })}
                 defaultViewport={initialViewport ?? undefined}
-                className="bg-[#0f1115]"
+                className="narraleaf-blueprint-flow bg-[#0f1115]"
                 proOptions={{ hideAttribution: true }}
                 deleteKeyCode={deleteKeyCode ?? null}
                 edgesReconnectable={false}
