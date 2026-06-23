@@ -105,7 +105,6 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
         }
         const onStateChanged = () => {
             setBindingTick(tick => tick + 1);
-            valueRuntime.queueFlushAll();
         };
         const disposers = [
             blueprintBindingContext.surfaceState.subscribe(onStateChanged),
@@ -375,7 +374,7 @@ function renderElementTree(
                   listItemScope ?? null,
               )
             : patched;
-    const resolved = mergeElementWithBlueprintValues(bound, surface.id, valueRuntime);
+    const resolved = mergeElementWithBlueprintValues(bound, surface.id, valueRuntime, listItemScope ?? null, instanceKey);
 
     if (resolved.layout.visible === false) {
         return null;

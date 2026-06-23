@@ -49,6 +49,8 @@ export const devtoolsBlueprintNodes: BlueprintNodeDef[] = [
                 {
                     hostAdapter: ctx.hostAdapter,
                     eventPayload: ctx.eventPayload,
+                    listItemScope: ctx.listItemScope,
+                    instanceKey: ctx.instanceKey,
                     executionOwner: ctx.executionOwner,
                 },
             );

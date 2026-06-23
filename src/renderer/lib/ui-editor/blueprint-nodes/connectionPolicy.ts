@@ -8,6 +8,11 @@ import {
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
+import {
+    areBlueprintElementValueTypesCompatible,
+    BLUEPRINT_VALUE_TYPE_ARRAY,
+    isBlueprintElementValueType,
+} from "@shared/types/blueprint/valueTypes";
 import { blueprintNodeRegistry } from "./BlueprintNodeRegistry";
 
 function readParamString(params: Record<string, unknown> | undefined, key: string): string | undefined {
@@ -35,6 +40,12 @@ function areDataValueTypesCompatible(sourceType: string | undefined, targetType:
         return true;
     }
     if (sourceType === targetType) {
+        return true;
+    }
+    if (isBlueprintElementValueType(sourceType) || isBlueprintElementValueType(targetType)) {
+        return areBlueprintElementValueTypesCompatible(sourceType, targetType);
+    }
+    if (sourceType === BLUEPRINT_VALUE_TYPE_ARRAY && targetType === "json") {
         return true;
     }
     if (sourceType === "integer" && targetType === "float") {

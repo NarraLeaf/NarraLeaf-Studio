@@ -211,7 +211,7 @@ export type TypeScriptBlueprintSource = {
 // Binding
 // ---------------------------------------------------------------------------
 
-export type LiteralValue = string | number | boolean | null;
+export type LiteralValue = string | number | boolean | null | LiteralValue[] | { [key: string]: LiteralValue };
 
 /** Persisted binding health; `broken` when source field is missing or invalid. */
 export type BindingDefinitionStatus = "active" | "broken";

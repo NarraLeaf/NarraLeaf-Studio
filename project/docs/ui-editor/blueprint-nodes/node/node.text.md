@@ -4,6 +4,8 @@
 
 Text 节点默认作用于当前 Text 元素。
 
+Element-targeted magic variants use the same property catalog under `blueprint.element.text.*`. They add a separated top `element` input of type `element:nl.text`; read variants are pure and can run in Blueprint Value, while write variants remain available only in event/macro graphs.
+
 ## Get Text
 
 `blueprint.text.getText` - 获取文本内容

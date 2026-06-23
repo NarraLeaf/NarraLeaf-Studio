@@ -56,11 +56,15 @@ JSON 节点用于创建、组合、转换和读取结构化 JSON 值，创建浮
 
 ## Make JSON Array
 
+该节点现在输出独立 `array` 类型。`array` 输出可以连接到 `json` 输入；需要数组操作时优先使用 Data 分类下的 Collection 节点。
+
 `blueprint.data.jsonMakeArray` - 由顺序输入创建 JSON Array
 
 节点使用动态输入引脚，并按引脚顺序生成数组条目。
 
 ## JSON Array Length
+
+该节点的输入为 `array`，保留在 JSON 文档中是为了兼容旧命名；新的数组读写节点见 Data / Collection。
 
 `blueprint.data.jsonArrayLength` - 获取 JSON Array 长度
 

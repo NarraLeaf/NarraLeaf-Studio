@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
 import { Link2, Minus, Plus } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
@@ -62,6 +62,16 @@ export type BlueprintFlowNodeData = {
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
     /** Diagnostics targeted at this node in the active graph. */
     nodeDiagnostics?: readonly BlueprintFlowNodeDiagnostic[];
+    /** Current UIDocument preview for bound Element Literal nodes. */
+    elementPreview?: {
+        name: string;
+        type: string;
+        text?: string;
+        layout?: { width: number; height: number };
+        preview?: ReactNode;
+    };
+    /** Starts the temporary same-Surface element binding flow for Element Literal nodes. */
+    onBindElementLiteral?: (nodeId: string) => void;
 };
 
 const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-white/30 !bg-cyan-500";
@@ -811,6 +821,80 @@ function BlueprintCommentNodeCard({
     );
 }
 
+function BlueprintElementLiteralNodeCard({
+    catalog,
+    nodeId,
+    params,
+    selected,
+    firstNodeError,
+    elementPreview,
+    onBindElementLiteral,
+}: {
+    catalog: BlueprintNodeEditorCatalogEntry;
+    nodeId: string;
+    params: Record<string, unknown>;
+    selected?: boolean;
+    firstNodeError?: BlueprintFlowNodeDiagnostic;
+    elementPreview?: BlueprintFlowNodeData["elementPreview"];
+    onBindElementLiteral?: (nodeId: string) => void;
+}) {
+    const elementId = typeof params.elementId === "string" ? params.elementId : "";
+    const elementType = typeof params.elementType === "string" ? params.elementType : "";
+    const boundLabel = elementPreview?.name || (elementId ? elementId : "Select element");
+    const typeLabel = elementPreview?.type || elementType || "Unbound";
+    const outputPins = catalog.pins.filter(p => p.kind === "output");
+    return (
+        <div
+            className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-[#1a1d21] text-xs shadow-md ${
+                firstNodeError
+                    ? "border-red-400/85 ring-1 ring-red-500/40"
+                    : selected
+                      ? "border-yellow-300/90 ring-1 ring-yellow-500/45 shadow-[0_0_20px_rgba(234,179,8,0.18)]"
+                      : "border-white/15"
+            }`}
+            title={firstNodeError?.message}
+            aria-invalid={Boolean(firstNodeError)}
+        >
+            <div className="border-b border-white/10 px-2 py-1.5">
+                <div className="text-[10px] uppercase text-gray-500">{catalog.category}</div>
+                <div className="font-medium leading-tight text-gray-100">{catalog.displayName}</div>
+                <div className="mt-1 min-w-0 truncate text-[11px] text-gray-300">{boundLabel}</div>
+                <div className="min-w-0 truncate font-mono text-[10px] text-gray-500">{typeLabel}</div>
+            </div>
+            <div className="mx-2 my-1.5">
+                <button
+                    type="button"
+                    className="nodrag block w-full overflow-hidden rounded border border-white/10 bg-black/20 p-1.5 text-left transition-colors hover:border-cyan-300/35 hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
+                    aria-label={elementPreview ? `Select element ${boundLabel}` : "Select element"}
+                    onMouseDown={stopFlowNodePointerBubble}
+                    onPointerDown={stopFlowNodePointerBubble}
+                    onClick={e => {
+                        e.stopPropagation();
+                        onBindElementLiteral?.(nodeId);
+                    }}
+                >
+                    {elementPreview?.preview ? (
+                        elementPreview.preview
+                    ) : (
+                        <div className="flex h-[72px] w-full items-center justify-center rounded-sm border border-dashed border-white/10 bg-[#0d1117] text-[11px] text-gray-400">
+                            Select element
+                        </div>
+                    )}
+                </button>
+            </div>
+            {outputPins.length > 0 ? (
+                <div className="flex justify-end px-1 py-1.5">
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                        {outputPins.map(pin => (
+                            <OutputPinRow key={`out-${pin.id}`} pin={pin} semantic={pin.semantic} />
+                        ))}
+                    </div>
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
 export function BlueprintFlowNode({ data, selected }: NodeProps) {
     const {
         catalog,
@@ -823,6 +907,8 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         wiredInputPortIds,
         dynamicSelectOptions,
         nodeDiagnostics,
+        elementPreview,
+        onBindElementLiteral,
     } = data as BlueprintFlowNodeData;
     const wired = wiredInputPortIds ?? new Set<string>();
     const execIns = catalog.pins.filter(p => p.kind === "input" && p.semantic === "exec");
@@ -865,6 +951,20 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                 params={params}
                 selected={Boolean(selected)}
                 onPatchNodeParam={onPatchNodeParam}
+            />
+        );
+    }
+
+    if (catalog.role === "elementLiteral") {
+        return (
+            <BlueprintElementLiteralNodeCard
+                catalog={catalog}
+                nodeId={nodeId}
+                params={params}
+                selected={Boolean(selected)}
+                firstNodeError={firstNodeError}
+                elementPreview={elementPreview}
+                onBindElementLiteral={onBindElementLiteral}
             />
         );
     }

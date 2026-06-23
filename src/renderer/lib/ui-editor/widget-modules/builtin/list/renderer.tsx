@@ -8,9 +8,14 @@ import { getUIListChildSlot } from "@shared/types/ui-editor/list";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
+import {
+    useWidgetRuntimeElementKey,
+    useWidgetRuntimeSnapshot,
+    useWidgetRuntimeStateStore,
+} from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { composeListHostEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
-import { getListProps } from "./helpers";
+import { getListProps, resolveListItemContentAlignmentStyle } from "./helpers";
 
 type ScrollMetrics = {
     viewport: number;
@@ -36,6 +41,12 @@ function listItemEventPayload(scope: UIListItemScope): ListItemEventPayload {
     };
 }
 
+function listItemProps(item: unknown): Record<string, unknown> {
+    return item && typeof item === "object" && !Array.isArray(item)
+        ? { ...(item as Record<string, unknown>) }
+        : { value: item };
+}
+
 function ListItemRenderEvent(props: {
     runtime: BlueprintRuntime | undefined;
     elementId: string;
@@ -48,6 +59,33 @@ function ListItemRenderEvent(props: {
         }
         void runtime.dispatchElementBlueprintEvent(elementId, "itemRender", listItemEventPayload(scope));
     }, [elementId, runtime, scope.count, scope.index, scope.item, scope.key]);
+
+    return null;
+}
+
+function ListItemRefreshEvent(props: {
+    runtime: BlueprintRuntime | undefined;
+    elementIds: readonly string[];
+    scope: UIListItemScope;
+    instanceKey: string;
+}) {
+    const { runtime, elementIds, scope, instanceKey } = props;
+    const elementKey = elementIds.join("\0");
+    useEffect(() => {
+        if (!runtime) {
+            return;
+        }
+        const payload = {
+            ...listItemEventPayload(scope),
+            props: listItemProps(scope.item),
+        };
+        for (const elementId of elementIds) {
+            void runtime.dispatchElementBlueprintEvent(elementId, "listItemRefresh", payload, {
+                listItemScope: scope,
+                instanceKey,
+            });
+        }
+    }, [elementKey, instanceKey, runtime, scope.count, scope.index, scope.item, scope.key]);
 
     return null;
 }
@@ -159,6 +197,24 @@ function resolveBoundItems(props: ReturnType<typeof getListProps>, runtimeData: 
     return Array.isArray(source) ? source : null;
 }
 
+function collectElementDescendants(document: WidgetRendererProps["document"], rootIds: readonly string[]): string[] {
+    const out: string[] = [];
+    const visit = (id: string) => {
+        const element = document.elements[id];
+        if (!element) {
+            return;
+        }
+        out.push(id);
+        for (const childId of element.childrenIds ?? []) {
+            visit(childId);
+        }
+    };
+    for (const id of rootIds) {
+        visit(id);
+    }
+    return out;
+}
+
 function useScrollMetrics(ref: React.RefObject<HTMLDivElement | null>, horizontal: boolean): ScrollMetrics {
     const [metrics, setMetrics] = useState<ScrollMetrics>({ viewport: 1, content: 1, offset: 0 });
     const update = useCallback(() => {
@@ -227,14 +283,29 @@ export function ListRenderer(props: WidgetRendererProps) {
     const p = getListProps(element);
     const listHostRef = useRef<HTMLDivElement | null>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
+    const widgetRuntimeStore = useWidgetRuntimeStateStore();
+    const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
+    const runtimeSnapshot = useWidgetRuntimeSnapshot();
+    const runtimeListItems = runtimeSnapshot.listItems.get(runtimeElementKey);
+    const runtimeSelectedIndex = runtimeSnapshot.listSelectedIndexes.get(runtimeElementKey);
+    const runtimeScrollRequest = runtimeSnapshot.listScrollRequests.get(runtimeElementKey);
     const suppressContentClickRef = useRef(false);
     const reachedScrollEndRef = useRef(false);
-    const selectedIndexRef = useRef(p.selectedIndex);
+    const selectedIndex = runtimeSelectedIndex ?? p.selectedIndex;
+    const selectedIndexRef = useRef(selectedIndex);
     const horizontalScrollbar = p.scrollbar.side === "top" || p.scrollbar.side === "bottom";
     const metrics = useScrollMetrics(viewportRef, horizontalScrollbar);
     useEffect(() => {
-        selectedIndexRef.current = p.selectedIndex;
-    }, [p.selectedIndex]);
+        selectedIndexRef.current = selectedIndex;
+    }, [selectedIndex]);
+    useEffect(() => {
+        if (!widgetRuntimeStore) {
+            return undefined;
+        }
+        return () => {
+            widgetRuntimeStore.clearListItems(runtimeElementKey);
+        };
+    }, [runtimeElementKey, widgetRuntimeStore]);
     useEffect(() => {
         const runtime = hostAdapter.blueprintRuntime;
         const viewport = viewportRef.current;
@@ -264,14 +335,20 @@ export function ListRenderer(props: WidgetRendererProps) {
         viewport.addEventListener("scroll", dispatchScroll, { passive: true });
         return () => viewport.removeEventListener("scroll", dispatchScroll);
     }, [element.id, horizontalScrollbar, hostAdapter.blueprintRuntime]);
-    const runtimeItems = resolveBoundItems(p, runtimeData);
-    const items = runtimeItems ?? (p.previewItems.length > 0 ? p.previewItems : Array.from({ length: p.previewCount }, (_, i) => ({ index: i })));
-    const count = Math.max(1, Math.min(128, items.length));
+    const boundItems = resolveBoundItems(p, runtimeData);
+    const items = runtimeListItems
+        ? [...runtimeListItems]
+        : boundItems ?? (p.previewItems.length > 0 ? p.previewItems : Array.from({ length: p.previewCount }, (_, i) => ({ index: i })));
+    const count = Math.min(128, items.length);
     const itemTemplateIds = element.childrenIds.filter(childId => {
         const child = document.elements[childId];
         const slot = getUIListChildSlot(child?.extra);
         return slot == null || slot === "itemTemplate";
     });
+    const itemTemplateDescendantIds = useMemo(
+        () => collectElementDescendants(document, itemTemplateIds),
+        [document, itemTemplateIds.join("\0")],
+    );
     const scrollbarTrackElement =
         (p.scrollbar.trackElementId ? document.elements[p.scrollbar.trackElementId] : undefined) ??
         element.childrenIds
@@ -344,8 +421,35 @@ export function ListRenderer(props: WidgetRendererProps) {
     };
 
     const innerDir = p.templateDirection === "horizontal" ? "row" : "column";
+    const listItemContentAlignment = resolveListItemContentAlignmentStyle(
+        !horizontalScrollbar &&
+            p.scrollbar.enabled &&
+            p.scrollbar.visibility !== "hidden" &&
+            p.scrollbar.side === "left",
+        p.templateDirection,
+    );
     const blueprintRuntime = hostAdapter.blueprintRuntime;
     const isRuntime = Boolean(blueprintRuntime);
+    useEffect(() => {
+        const viewport = viewportRef.current;
+        if (!viewport || !runtimeScrollRequest) {
+            return;
+        }
+        if (runtimeScrollRequest.kind === "top") {
+            viewport.scrollTop = 0;
+            viewport.scrollLeft = 0;
+            return;
+        }
+        if (runtimeScrollRequest.kind === "bottom") {
+            viewport.scrollTop = viewport.scrollHeight;
+            viewport.scrollLeft = viewport.scrollWidth;
+            return;
+        }
+        const target = viewport.querySelector<HTMLElement>(
+            `[data-ui-list-item-index="${runtimeScrollRequest.index}"]`,
+        );
+        target?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }, [runtimeScrollRequest?.version]);
     const dispatchListItemEvent = useCallback(
         (eventName: "itemClick" | "itemHover" | "selectionChanged", scope: UIListItemScope, extra?: Record<string, unknown>) => {
             if (!blueprintRuntime) {
@@ -366,9 +470,10 @@ export function ListRenderer(props: WidgetRendererProps) {
                 return;
             }
             selectedIndexRef.current = scope.index;
+            widgetRuntimeStore?.setListSelectedIndex(runtimeElementKey, scope.index);
             dispatchListItemEvent("selectionChanged", scope, { previousIndex });
         },
-        [dispatchListItemEvent],
+        [dispatchListItemEvent, runtimeElementKey, widgetRuntimeStore],
     );
     const handleListItemHover = useCallback(
         (scope: UIListItemScope) => {
@@ -378,26 +483,35 @@ export function ListRenderer(props: WidgetRendererProps) {
     );
     const listBody = items.slice(0, count).map((item, i) => {
         const key = itemKey(item, i, p.itemKeyPath);
+        const instanceKey = `list-${element.id}-${key}`;
         const scope: UIListItemScope = { item, index: i, count, key };
         return (
             <div
                 key={`${element.id}__list__${key}`}
                 data-ui-list-item-key={key}
+                data-ui-list-item-index={i}
                 style={{
                     display: "flex",
                     flexDirection: innerDir,
                     gap: p.templateGap,
                     flexShrink: 0,
                     pointerEvents: isRuntime || i === 0 ? "auto" : "none",
+                    ...listItemContentAlignment,
                 }}
                 onClick={isRuntime ? () => handleListItemClick(scope) : undefined}
                 onPointerEnter={isRuntime ? () => handleListItemHover(scope) : undefined}
             >
                 <ListItemRenderEvent runtime={blueprintRuntime} elementId={element.id} scope={scope} />
+                <ListItemRefreshEvent
+                    runtime={blueprintRuntime}
+                    elementIds={itemTemplateDescendantIds}
+                    scope={scope}
+                    instanceKey={instanceKey}
+                />
                 {renderChildren?.({
                     childrenIds: itemTemplateIds,
                     listItemScope: scope,
-                    instanceKey: `list-${element.id}-${key}`,
+                    instanceKey,
                 })}
             </div>
         );

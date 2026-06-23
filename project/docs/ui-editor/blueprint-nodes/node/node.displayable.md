@@ -4,6 +4,8 @@
 
 Displayable 节点默认读取当前元素。坐标和尺寸均使用当前 Surface 的设计坐标系。
 
+Element-targeted magic variants use `blueprint.element.displayable.*` and add a separated top `element` input. These read nodes can target any Same-Surface Element Literal and are pure, so they are available to Blueprint Value graphs.
+
 ## Get Position
 
 `blueprint.displayable.getPosition` - 获取元素坐标

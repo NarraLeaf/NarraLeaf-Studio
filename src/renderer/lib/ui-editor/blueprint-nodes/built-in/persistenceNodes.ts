@@ -41,6 +41,8 @@ export const persistenceBlueprintNodes: BlueprintNodeDef[] = [
             const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals, 0, {
                 hostAdapter: ctx.hostAdapter,
                 eventPayload: ctx.eventPayload,
+                listItemScope: ctx.listItemScope,
+                instanceKey: ctx.instanceKey,
                 executionOwner: ctx.executionOwner,
             });
             const value = wired !== undefined ? wired : ctx.params.value;

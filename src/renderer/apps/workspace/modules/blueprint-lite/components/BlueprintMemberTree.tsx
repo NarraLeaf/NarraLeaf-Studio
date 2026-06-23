@@ -721,9 +721,35 @@ function normalizeVariableDefault(next: unknown): LiteralValue | undefined {
     if (next === null || typeof next === "string" || typeof next === "number" || typeof next === "boolean") {
         return next;
     }
-    try {
-        return JSON.stringify(next) as unknown as string;
-    } catch {
-        return String(next);
+    if (Array.isArray(next)) {
+        return next.map(item => normalizeVariableJsonValue(item));
     }
+    if (typeof next === "object") {
+        const out: Record<string, LiteralValue> = {};
+        for (const [key, value] of Object.entries(next as Record<string, unknown>)) {
+            out[key] = normalizeVariableJsonValue(value);
+        }
+        return out;
+    }
+    return null;
+}
+
+function normalizeVariableJsonValue(value: unknown): LiteralValue {
+    if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        return value;
+    }
+    if (value === undefined) {
+        return null;
+    }
+    if (Array.isArray(value)) {
+        return value.map(item => normalizeVariableJsonValue(item));
+    }
+    if (typeof value === "object") {
+        const out: Record<string, LiteralValue> = {};
+        for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+            out[key] = normalizeVariableJsonValue(item);
+        }
+        return out;
+    }
+    return null;
 }
