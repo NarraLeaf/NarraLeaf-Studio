@@ -4,7 +4,7 @@ This guide explains how Studio blueprint nodes are defined, registered, displaye
 
 ## Current built-in catalog
 
-The current core catalog includes event heads, local variables, basic flow branching, data/string/math utilities, and documented UI-domain nodes.
+The current core catalog includes event heads, local variables, flow branching and sequencing, Data utilities, Math utilities, Debug nodes, and documented UI-domain nodes.
 
 | Node type | Display name | Category | Purpose |
 | --- | --- | --- | --- |
@@ -25,7 +25,14 @@ The current core catalog includes event heads, local variables, basic flow branc
 | `blueprint.local.get` | `Get Var` | `Variables` | Pure data node that reads an execution-local blueprint variable. |
 | `blueprint.local.set` | `Set Var` | `Variables` | Exec node that writes an execution-local blueprint variable and continues through `next`. |
 | `if` | `If` | `Flow` | Exec branch node that routes execution through `true` or `false` based on a boolean condition. |
-| `blueprint.math.*` | Basic math operators | `Math` | Pure arithmetic, increment/decrement, and comparison nodes such as `+`, `−`, `×`, `÷`, `+1`, `−1`, `=`, `≠`, `<`, `≤`, `>`, and `≥`. |
+| `blueprint.flow.ifElse` | `If Else` | `Flow` | Exec branch node with addable `If` conditions, matching `Then` outputs, and a final `Else` fallback output. |
+| `blueprint.flow.*` | Flow utilities | `Flow` | `Noop`, `Sequence`, `Switch String`, bounded loops, `Delay`, and `Early Return`. |
+| `blueprint.data.*` | Data utilities | `Data` | String, Integer, Float, Boolean, Null, Color, Vector2D, and Rect literals, explicit conversions, JSON helpers, string helpers, parse helpers, and type/empty-value checks. |
+| `blueprint.math.*` | Math utilities | `Math` | Pure arithmetic, modulo, increment/decrement, abs, min/max, rounding, random numbers, boolean logic, strict equality, numeric comparison, and legacy numeric comparison nodes. |
+| `blueprint.boolean.*` | Boolean logic | `Math` | Pure `And`, `Or`, `Not`, and `Xor`; grouped under Math in the palette. |
+| `blueprint.compare.*` | Value comparison | `Math` | Pure strict equality and numeric comparison nodes grouped under Math. `Equal` / `Not Equal` use JavaScript `===` / `!==` semantics. |
+| `blueprint.flow.comment` | `Comment` | `Debug` | Graph-only multi-line comment box with color, background, and size controls. Background-off comments sit behind other nodes for framing. It does not participate in execution. |
+| `blueprint.log` | `Log` | `Debug` | Exec node that writes a string value to DevTools/browser logs and continues through `next`. |
 
 Node categories are still part of the node API and palette model. Do not remove category handling when trimming or adding nodes; categories are how the add-node palette groups nodes.
 
@@ -68,11 +75,11 @@ When adding a node, make sure you know which owner kinds and graph kinds it shou
 
 Blueprint Value is a per-property dynamic value provider. A `widgetValue` private owner is keyed as `widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`, and the UI document stores the active binding on the element in `valueBindings`. The current supported targets are `nl.text` -> `props.text`, `nl.button` -> `props.label`, and `nl.frame` -> `props.params`.
 
-Value blueprints are visual graph programs only. They are seeded with one `init` event graph that returns the current literal value through `blueprint.data.returnValue`. `string` values seed a Text literal, while `json` values seed a JSON literal. `Flush` is an available automatic refresh head, but Studio does not create a default `flush` layer. On mount, the value runtime executes `init` and then attempts `flush`; if both return values, `flush` wins. Evaluation is serialized per binding so an in-flight run is followed by the latest pending `flush`.
+Value blueprints are visual graph programs only. They are seeded with one `init` event graph that returns the current literal value through `blueprint.data.returnValue`. `string` values seed a String literal, while `json` values seed a JSON literal. `Flush` is an available automatic refresh head, but Studio does not create a default `flush` layer. On mount, the value runtime executes `init` and then attempts `flush`; if both return values, `flush` wins. Evaluation is serialized per binding so an in-flight run is followed by the latest pending `flush`.
 
 If a value graph does not execute `returnValue`, the runtime keeps the previous resolved value. If there is no previous resolved value, the widget uses its literal prop from the UI document. String results are coerced to string, and `null` or `undefined` become an empty string. Page `params` expects a JSON object; non-object results fall back to `{}`.
 
-The Blueprint Value palette is intentionally restricted to safe value-producing nodes: event heads, non-latent flow, pure Data/String/Math/JSON nodes, and local variables. Surface/global state read/write nodes are not part of the core catalog; widget mutations, navigation, persistence writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
+The Blueprint Value palette is intentionally restricted to safe value-producing nodes: event heads, non-latent flow, graph comments, pure Data and Math nodes, and local variables. Surface/global state read/write nodes are not part of the core catalog; widget mutations, navigation, persistence writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
 
 ## Node definition API
 
@@ -138,14 +145,13 @@ Recommended category names:
 | `Events` | Event entry heads such as `Init`, `Mouse Click`, `Surface Init`, `App Boot`, broadcast receivers, and `Page Event`. |
 | `Variables` | Local blueprint variables exposed through `Get Var` and `Set Var`. |
 | `Flow` | Branching, string switching, bounded loops, array iteration, and delay. |
-| `Data` | Literals, objects, arrays, type conversion. |
-| `Math` | Numeric calculation and comparisons. |
-| `String` | Text operations and formatting. |
+| `Data` | Literals, objects, arrays, JSON helpers, string helpers, parsing, and type conversion. |
+| `Math` | Numeric calculation, rounding, min/max, random numbers, boolean logic, and comparisons. |
 | `Widget` | UI element mutations and reads. |
 | `Page` | Page component host reads and child-to-parent Page events. |
 | `Navigation` | Page and modal navigation. |
 | `Persistence` | Save/load key-value data. |
-| `Debug` | Logs, assertions, debug overlays. |
+| `Debug` | Logs, graph comments, assertions, and debug overlays. |
 
 ## Pins
 
@@ -171,7 +177,8 @@ Common conventions:
 - Input exec pin: `in`
 - Normal continuation output: `next`
 - Event-head continuation output: `then`
-- Branch outputs: `true`, `false`
+- Branch outputs: `true`, `false`, `then`, `else`
+- Sequence outputs: `then0`, `then1`, `then2`, `then3`
 
 Example:
 
@@ -193,9 +200,11 @@ Common `valueType` strings:
 - `float`
 - `boolean`
 - `json`
+- `Vector2D`
+- `RGBAColor`
 - `any`
 
-Connection compatibility is strict by default. `any` is the wildcard type. `integer` and `float` outputs may connect to `string` inputs and are converted to strings when the input is read. `json` is not a wildcard; use an explicit Data conversion node when a scalar value must feed a JSON input.
+Connection compatibility is strict by default. `any` is the wildcard type. `integer` outputs may connect to `float` inputs. `integer` and `float` outputs may connect to `string` inputs and are converted to strings when the input is read. `json`, `Vector2D`, and `RGBAColor` are not wildcards; use an explicit Data conversion node when a scalar value must feed a JSON input.
 
 Data input pins accept one incoming edge. Exec input pins may accept multiple incoming exec edges, which lets branches merge back into a shared continuation. Most output pins replace their previous outgoing edge when reconnected, but Data literal output pins may fan out to multiple targets.
 
@@ -218,7 +227,7 @@ pins: [
 
 ### Dynamic input pins
 
-Use `dynamicInputPins` for variadic nodes such as `Concat`, `Add`, or `Make array`.
+Use `dynamicInputPins` for variadic nodes such as `Concat`, `Add`, `If Else`, or `Make array`.
 
 ```ts
 dynamicInputPins: {
@@ -235,7 +244,7 @@ dynamicInputPins: {
 
 Dynamic pin ids and optional dynamic pin labels are stored in node `params`, so never treat them as temporary UI-only state. `pinLabelParamKey` is only needed for legacy or custom nodes where the user-visible pin label itself has runtime meaning. Prefer an explicit data input when that value should be connectable.
 
-When one add action must create several related inputs, set `generatedPinTemplates`. The stored dynamic id list still contains concrete pin ids, but each add action generates one base id and expands it into template ids:
+When one add action must create several related pins, set `generatedPinTemplates`. The stored dynamic id list still contains concrete pin ids, but each add action generates one base id and expands it into template ids:
 
 ```ts
 dynamicInputPins: {
@@ -253,6 +262,8 @@ dynamicInputPins: {
 
 `Make JSON Object` uses this grouped form and new nodes start with one `Name` / `Value` field pair. Pressing the node-card add button creates `field_N_name` (`string`) and `field_N_value` (`any`); the runtime reads the field name from the `Name` input, so the name can be typed inline or wired from another string node. Older graphs that stored field names in `__jsonObjectFieldNames` are still resolved for compatibility.
 
+`If Else` uses the same grouped dynamic-pin path for branch authoring. Its fixed first branch uses `condition` -> `then`; each add action creates one additional boolean condition input and one matching exec output, inserted before the fixed `else` fallback output.
+
 ## Inspector params
 
 Inspector params are node configuration values stored on `node.params`.
@@ -263,7 +274,8 @@ Supported kinds:
 | --- | --- |
 | `string` | Plain text config. |
 | `number` | Numeric config. |
-| `json` | Structured JSON config. |
+| `json` | Structured JSON config, optionally with a fixed schema for fields such as `Vector2D.x` / `Vector2D.y` or Rect bounds. |
+| `color` | RGBA color config rendered with the shared Studio color picker. |
 | `literal` | Generic literal editor. |
 | `variableRef` | Select a blueprint member variable. |
 | `select` | Static or dynamic dropdown. |
@@ -317,6 +329,7 @@ return { nextPort: "next" };
 ```
 
 - For exec nodes, return the output exec port to follow.
+- For multi-output exec nodes such as `Sequence`, return `nextPorts` with the output exec ports to enqueue in order.
 - For event heads, return `{ nextPort: "then" }`.
 - Pure nodes usually return `{}` because their values are resolved by data-pin evaluation helpers when consumed.
 - Async nodes may `await` host calls and should set `isLatent: true`.
@@ -461,7 +474,7 @@ Pure data nodes should not perform host mutations or choose an exec output.
 export const stringLengthNode: BlueprintNodeDef = {
     type: "blueprint.string.length",
     displayName: "Length",
-    category: "String",
+    category: "Data",
     graphKinds: ["event", "function", "macro"],
     isPure: true,
     pins: [

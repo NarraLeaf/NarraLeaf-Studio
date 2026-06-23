@@ -68,6 +68,18 @@ function isBlueprintEntryPayload(value: unknown): value is BlueprintEntryTabPayl
     if (o.propPath !== undefined && typeof o.propPath !== "string") {
         return false;
     }
+    if (o.focusEventId !== undefined && typeof o.focusEventId !== "string") {
+        return false;
+    }
+    if (o.focusFunctionId !== undefined && typeof o.focusFunctionId !== "string") {
+        return false;
+    }
+    if (o.focusFieldId !== undefined && typeof o.focusFieldId !== "string") {
+        return false;
+    }
+    if (o.focusNodeId !== undefined && typeof o.focusNodeId !== "string") {
+        return false;
+    }
     return true;
 }
 
@@ -280,6 +292,7 @@ function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): Editor
             blueprintId: p.blueprintId,
             surfaceId: p.surfaceId,
             elementId: p.elementId,
+            propPath: p.propPath,
         });
         return {
             id: tabId,

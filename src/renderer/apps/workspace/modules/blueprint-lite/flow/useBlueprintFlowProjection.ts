@@ -7,6 +7,25 @@ import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/serv
 import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 
+type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
+type BlueprintNodeParamPatch = (
+    nodeId: string,
+    key: string,
+    value: unknown,
+    history?: BlueprintNodeParamHistoryOptions,
+) => void;
+
+function isBackgroundLayerComment(node: Node<BlueprintFlowNodeData>): boolean {
+    return node.data.catalog.role === "comment" && node.data.params.background === false;
+}
+
+function readBlueprintFlowNodeZIndex(node: Node<BlueprintFlowNodeData>): number {
+    if (isBackgroundLayerComment(node)) {
+        return 0;
+    }
+    return node.selected ? 2 : 1;
+}
+
 function wiredInputPortIdsByNodeId(ir: BlueprintGraphIr): Map<string, Set<string>> {
     const m = new Map<string, Set<string>>();
     for (const e of ir.edges ?? []) {
@@ -27,7 +46,7 @@ function wiredInputPortIdsByNodeId(ir: BlueprintGraphIr): Map<string, Set<string
 export function blueprintIrToFlowNodes(
     ir: BlueprintGraphIr,
     nodeCatalog: IBlueprintNodeCatalogService,
-    onPatchNodeParam?: (nodeId: string, key: string, value: unknown) => void,
+    onPatchNodeParam?: BlueprintNodeParamPatch,
     memberVariables?: BlueprintFlowNodeData["memberVariables"],
     onAddDynamicInputPin?: (nodeId: string) => void,
     onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void,
@@ -35,22 +54,28 @@ export function blueprintIrToFlowNodes(
 ): Node<BlueprintFlowNodeData>[] {
     const nodes = ir.nodes ?? {};
     const wiredIn = wiredInputPortIdsByNodeId(ir);
-    return Object.values(nodes).map(n => ({
-        id: n.id,
-        type: "blueprint",
-        position: readNodeEditorLayout(n),
-        data: {
-            catalog: nodeCatalog.resolveCatalogEntryForNode(n.type, n.params ?? {}),
-            nodeId: n.id,
-            params: n.params ?? {},
-            onPatchNodeParam,
-            onAddDynamicInputPin,
-            onRemoveDynamicInputPin,
-            memberVariables,
-            wiredInputPortIds: wiredIn.get(n.id) ?? new Set(),
-            dynamicSelectOptions,
-        },
-    }));
+    return Object.values(nodes).map(n => {
+        const params = n.params ?? {};
+        const catalog = nodeCatalog.resolveCatalogEntryForNode(n.type, params);
+        const backgroundEnabled = params.background !== false;
+        return {
+            id: n.id,
+            type: "blueprint",
+            position: readNodeEditorLayout(n),
+            zIndex: catalog.role === "comment" && !backgroundEnabled ? 0 : 1,
+            data: {
+                catalog,
+                nodeId: n.id,
+                params,
+                onPatchNodeParam,
+                onAddDynamicInputPin,
+                onRemoveDynamicInputPin,
+                memberVariables,
+                wiredInputPortIds: wiredIn.get(n.id) ?? new Set(),
+                dynamicSelectOptions,
+            },
+        };
+    });
 }
 
 /** Stable key for effect deps when the selected id *set* changes (order ignored). */
@@ -67,12 +92,12 @@ export function blueprintSelectionIdsEqual(a: readonly string[], b: readonly str
     return sa.every((id, i) => id === sb[i]!);
 }
 
-export function applyBlueprintFlowNodeSelection<NodeType extends Node<BlueprintFlowNodeData>>(
-    nodes: NodeType[],
+export function applyBlueprintFlowNodeSelection(
+    nodes: Node<BlueprintFlowNodeData>[],
     selectedNodeIds: readonly string[],
-): NodeType[] {
+): Node<BlueprintFlowNodeData>[] {
     const selected = new Set(selectedNodeIds);
-    return applyNodeChanges(
+    const withSelection = applyNodeChanges(
         nodes.map(n => ({
             type: "select" as const,
             id: n.id,
@@ -80,6 +105,7 @@ export function applyBlueprintFlowNodeSelection<NodeType extends Node<BlueprintF
         })),
         nodes,
     );
+    return withSelection.map(n => ({ ...n, zIndex: readBlueprintFlowNodeZIndex(n) }));
 }
 
 function isDataEdge(
@@ -126,7 +152,7 @@ export function useBlueprintFlowProjection(
     ir: BlueprintGraphIr,
     selectedNodeIds: readonly string[],
     nodeCatalog: IBlueprintNodeCatalogService,
-    onPatchNodeParam?: (nodeId: string, key: string, value: unknown) => void,
+    onPatchNodeParam?: BlueprintNodeParamPatch,
     memberVariables?: BlueprintFlowNodeData["memberVariables"],
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
 ) {

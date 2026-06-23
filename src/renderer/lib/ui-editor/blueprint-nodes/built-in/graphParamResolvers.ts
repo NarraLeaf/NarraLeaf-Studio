@@ -5,6 +5,23 @@
 
 import {
     BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT,
+    BLUEPRINT_NODE_TYPE_BOOLEAN_AND,
+    BLUEPRINT_NODE_TYPE_BOOLEAN_NOT,
+    BLUEPRINT_NODE_TYPE_BOOLEAN_OR,
+    BLUEPRINT_NODE_TYPE_BOOLEAN_XOR,
+    BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
+    BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN,
+    BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN_OR_EQUAL,
+    BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN,
+    BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN_OR_EQUAL,
+    BLUEPRINT_NODE_TYPE_COMPARE_NOT_EQUAL,
+    BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY,
+    BLUEPRINT_NODE_TYPE_DATA_IS_BOOLEAN,
+    BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE,
+    BLUEPRINT_NODE_TYPE_DATA_IS_NULL,
+    BLUEPRINT_NODE_TYPE_DATA_IS_NUMBER,
+    BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_IS_STRING,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_JSON_HAS,
@@ -28,23 +45,37 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+    BLUEPRINT_NODE_TYPE_LITERAL_COLOR,
+    BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
+    BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_NULL,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+    BLUEPRINT_NODE_TYPE_LITERAL_RECT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+    BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_MATH_ABS,
     BLUEPRINT_NODE_TYPE_MATH_ADD,
+    BLUEPRINT_NODE_TYPE_MATH_CEIL,
     BLUEPRINT_NODE_TYPE_MATH_DECREMENT,
     BLUEPRINT_NODE_TYPE_MATH_DIVIDE,
     BLUEPRINT_NODE_TYPE_MATH_EQUAL,
+    BLUEPRINT_NODE_TYPE_MATH_FLOOR,
     BLUEPRINT_NODE_TYPE_MATH_GREATER,
     BLUEPRINT_NODE_TYPE_MATH_GREATER_OR_EQUAL,
     BLUEPRINT_NODE_TYPE_MATH_INCREMENT,
     BLUEPRINT_NODE_TYPE_MATH_LESS,
     BLUEPRINT_NODE_TYPE_MATH_LESS_OR_EQUAL,
+    BLUEPRINT_NODE_TYPE_MATH_MAX,
+    BLUEPRINT_NODE_TYPE_MATH_MIN,
+    BLUEPRINT_NODE_TYPE_MATH_MODULO,
     BLUEPRINT_NODE_TYPE_MATH_MULTIPLY,
     BLUEPRINT_NODE_TYPE_MATH_NOT_EQUAL,
+    BLUEPRINT_NODE_TYPE_MATH_RANDOM_FLOAT,
+    BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER,
+    BLUEPRINT_NODE_TYPE_MATH_ROUND,
     BLUEPRINT_NODE_TYPE_MATH_SUBTRACT,
     BLUEPRINT_NODE_TYPE_STRING_CAPITALIZE,
     BLUEPRINT_NODE_TYPE_STRING_CHAR_AT,
@@ -92,6 +123,10 @@ import {
     BLUEPRINT_NODE_TYPE_TEXT_GET_WRAP_MODE,
     isBlueprintEventDispatchHeadType,
 } from "@shared/types/blueprint/graph";
+import {
+    normalizeBlueprintRGBAColor,
+    normalizeBlueprintVector2D,
+} from "@shared/types/blueprint/valueTypes";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
 import {
@@ -108,16 +143,23 @@ const JSON_OBJECT_FIELD_NAMES_KEY = "__jsonObjectFieldNames";
 const JSON_OBJECT_NAME_PIN_SUFFIX = "_name";
 const JSON_OBJECT_VALUE_PIN_SUFFIX = "_value";
 
-const MATH_RESULT_OPS: Record<string, "add" | "subtract" | "multiply" | "divide"> = {
+const MATH_RESULT_OPS: Record<string, "add" | "subtract" | "multiply" | "divide" | "modulo" | "min" | "max"> = {
     [BLUEPRINT_NODE_TYPE_MATH_ADD]: "add",
     [BLUEPRINT_NODE_TYPE_MATH_SUBTRACT]: "subtract",
     [BLUEPRINT_NODE_TYPE_MATH_MULTIPLY]: "multiply",
     [BLUEPRINT_NODE_TYPE_MATH_DIVIDE]: "divide",
+    [BLUEPRINT_NODE_TYPE_MATH_MODULO]: "modulo",
+    [BLUEPRINT_NODE_TYPE_MATH_MIN]: "min",
+    [BLUEPRINT_NODE_TYPE_MATH_MAX]: "max",
 };
 
-const MATH_UNARY_OPS: Record<string, "increment" | "decrement"> = {
+const MATH_UNARY_OPS: Record<string, "increment" | "decrement" | "abs" | "round" | "floor" | "ceil"> = {
     [BLUEPRINT_NODE_TYPE_MATH_INCREMENT]: "increment",
     [BLUEPRINT_NODE_TYPE_MATH_DECREMENT]: "decrement",
+    [BLUEPRINT_NODE_TYPE_MATH_ABS]: "abs",
+    [BLUEPRINT_NODE_TYPE_MATH_ROUND]: "round",
+    [BLUEPRINT_NODE_TYPE_MATH_FLOOR]: "floor",
+    [BLUEPRINT_NODE_TYPE_MATH_CEIL]: "ceil",
 };
 
 const MATH_COMPARE_OPS: Record<string, "eq" | "ne" | "lt" | "lte" | "gt" | "gte"> = {
@@ -127,6 +169,22 @@ const MATH_COMPARE_OPS: Record<string, "eq" | "ne" | "lt" | "lte" | "gt" | "gte"
     [BLUEPRINT_NODE_TYPE_MATH_LESS_OR_EQUAL]: "lte",
     [BLUEPRINT_NODE_TYPE_MATH_GREATER]: "gt",
     [BLUEPRINT_NODE_TYPE_MATH_GREATER_OR_EQUAL]: "gte",
+};
+
+const BOOLEAN_OPS: Record<string, "and" | "or" | "not" | "xor"> = {
+    [BLUEPRINT_NODE_TYPE_BOOLEAN_AND]: "and",
+    [BLUEPRINT_NODE_TYPE_BOOLEAN_OR]: "or",
+    [BLUEPRINT_NODE_TYPE_BOOLEAN_NOT]: "not",
+    [BLUEPRINT_NODE_TYPE_BOOLEAN_XOR]: "xor",
+};
+
+const COMPARE_OPS: Record<string, "eq" | "ne" | "gt" | "gte" | "lt" | "lte"> = {
+    [BLUEPRINT_NODE_TYPE_COMPARE_EQUAL]: "eq",
+    [BLUEPRINT_NODE_TYPE_COMPARE_NOT_EQUAL]: "ne",
+    [BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN]: "gt",
+    [BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN_OR_EQUAL]: "gte",
+    [BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN]: "lt",
+    [BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN_OR_EQUAL]: "lte",
 };
 
 export type DataPinGraph = {
@@ -357,6 +415,32 @@ function resolveInput(
     return resolveDataPinValue(graph, nodeId, portId, params, blueprintLocals, depth + 1, runtime);
 }
 
+function resolveMathVariadicNumbers(
+    graph: DataPinGraph,
+    nodeId: string,
+    nodeType: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): number[] | null {
+    const def = blueprintNodeRegistry.get(nodeType);
+    if (!def) {
+        return null;
+    }
+    const pins = resolveEffectiveBlueprintNodePins(def, params);
+    const dataIn = pins.filter(p => p.kind === "input" && p.semantic === "data");
+    const values: number[] = [];
+    for (const pin of dataIn) {
+        const n = toFiniteNumber(resolveInput(graph, nodeId, pin.id, params, blueprintLocals, depth, runtime));
+        if (Number.isNaN(n)) {
+            return null;
+        }
+        values.push(n);
+    }
+    return values;
+}
+
 function resolveMathAddVariadic(
     graph: DataPinGraph,
     nodeId: string,
@@ -365,27 +449,22 @@ function resolveMathAddVariadic(
     depth: number,
     runtime?: DataPinResolveRuntime,
 ): unknown {
-    const def = blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_MATH_ADD);
-    if (!def) {
-        return NaN;
-    }
-    const pins = resolveEffectiveBlueprintNodePins(def, params);
-    const dataIn = pins.filter(p => p.kind === "input" && p.semantic === "data");
-    let acc: number | null = null;
-    for (const pin of dataIn) {
-        const n = toFiniteNumber(resolveInput(graph, nodeId, pin.id, params, blueprintLocals, depth, runtime));
-        if (Number.isNaN(n)) {
-            return NaN;
-        }
-        acc = acc === null ? n : acc + n;
-    }
-    return acc === null ? NaN : acc;
+    const values = resolveMathVariadicNumbers(
+        graph,
+        nodeId,
+        BLUEPRINT_NODE_TYPE_MATH_ADD,
+        params,
+        blueprintLocals,
+        depth,
+        runtime,
+    );
+    return values && values.length > 0 ? values.reduce((acc, value) => acc + value, 0) : NaN;
 }
 
 function resolveMathNodeResult(
     graph: DataPinGraph,
     nodeId: string,
-    op: "add" | "subtract" | "multiply" | "divide",
+    op: "add" | "subtract" | "multiply" | "divide" | "modulo" | "min" | "max",
     params: Record<string, unknown>,
     blueprintLocals: Record<string, unknown> | undefined,
     depth: number,
@@ -393,6 +472,21 @@ function resolveMathNodeResult(
 ): unknown {
     if (op === "add" && graph.nodes?.[nodeId]?.type === BLUEPRINT_NODE_TYPE_MATH_ADD) {
         return resolveMathAddVariadic(graph, nodeId, params, blueprintLocals, depth, runtime);
+    }
+    if (op === "min" || op === "max") {
+        const values = resolveMathVariadicNumbers(
+            graph,
+            nodeId,
+            graph.nodes?.[nodeId]?.type ?? "",
+            params,
+            blueprintLocals,
+            depth,
+            runtime,
+        );
+        if (!values || values.length === 0) {
+            return NaN;
+        }
+        return op === "min" ? Math.min(...values) : Math.max(...values);
     }
     const a = resolveInput(graph, nodeId, "a", params, blueprintLocals, depth, runtime);
     const b = resolveInput(graph, nodeId, "b", params, blueprintLocals, depth, runtime);
@@ -410,6 +504,8 @@ function resolveMathNodeResult(
             return na * nb;
         case "divide":
             return na / nb;
+        case "modulo":
+            return na % nb;
         default:
             return NaN;
     }
@@ -418,7 +514,7 @@ function resolveMathNodeResult(
 function resolveMathUnaryResult(
     graph: DataPinGraph,
     nodeId: string,
-    op: "increment" | "decrement",
+    op: "increment" | "decrement" | "abs" | "round" | "floor" | "ceil",
     params: Record<string, unknown>,
     blueprintLocals: Record<string, unknown> | undefined,
     depth: number,
@@ -428,7 +524,22 @@ function resolveMathUnaryResult(
     if (Number.isNaN(n)) {
         return NaN;
     }
-    return op === "increment" ? n + 1 : n - 1;
+    switch (op) {
+        case "increment":
+            return n + 1;
+        case "decrement":
+            return n - 1;
+        case "abs":
+            return Math.abs(n);
+        case "round":
+            return Math.round(n);
+        case "floor":
+            return Math.floor(n);
+        case "ceil":
+            return Math.ceil(n);
+        default:
+            return NaN;
+    }
 }
 
 function resolveMathCompareResult(
@@ -460,6 +571,94 @@ function resolveMathCompareResult(
             return na > nb;
         case "gte":
             return na >= nb;
+        default:
+            return false;
+    }
+}
+
+function resolveMathRandomResult(
+    graph: DataPinGraph,
+    nodeId: string,
+    integer: boolean,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    const minRaw = toFiniteNumber(resolveInput(graph, nodeId, "min", params, blueprintLocals, depth, runtime));
+    const maxRaw = toFiniteNumber(resolveInput(graph, nodeId, "max", params, blueprintLocals, depth, runtime));
+    const min = Number.isNaN(minRaw) ? 0 : minRaw;
+    const max = Number.isNaN(maxRaw) ? 1 : maxRaw;
+    const lower = Math.min(min, max);
+    const upper = Math.max(min, max);
+    if (!integer) {
+        return lower + Math.random() * (upper - lower);
+    }
+    const lowerInt = Math.ceil(lower);
+    const upperInt = Math.floor(upper);
+    if (upperInt < lowerInt) {
+        return lowerInt;
+    }
+    return Math.floor(lowerInt + Math.random() * (upperInt - lowerInt + 1));
+}
+
+function resolveBooleanNodeResult(
+    graph: DataPinGraph,
+    nodeId: string,
+    op: "and" | "or" | "not" | "xor",
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    const a = toBlueprintBoolean(resolveInput(graph, nodeId, "a", params, blueprintLocals, depth, runtime));
+    if (op === "not") {
+        return !a;
+    }
+    const b = toBlueprintBoolean(resolveInput(graph, nodeId, "b", params, blueprintLocals, depth, runtime));
+    switch (op) {
+        case "and":
+            return a && b;
+        case "or":
+            return a || b;
+        case "xor":
+            return a !== b;
+        default:
+            return false;
+    }
+}
+
+function resolveCompareNodeResult(
+    graph: DataPinGraph,
+    nodeId: string,
+    op: "eq" | "ne" | "gt" | "gte" | "lt" | "lte",
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    const a = resolveInput(graph, nodeId, "a", params, blueprintLocals, depth, runtime);
+    const b = resolveInput(graph, nodeId, "b", params, blueprintLocals, depth, runtime);
+    if (op === "eq") {
+        return a === b;
+    }
+    if (op === "ne") {
+        return a !== b;
+    }
+    const na = toFiniteNumber(a);
+    const nb = toFiniteNumber(b);
+    if (Number.isNaN(na) || Number.isNaN(nb)) {
+        return false;
+    }
+    switch (op) {
+        case "gt":
+            return na > nb;
+        case "gte":
+            return na >= nb;
+        case "lt":
+            return na < nb;
+        case "lte":
+            return na <= nb;
         default:
             return false;
     }
@@ -554,6 +753,22 @@ function readJsonPath(value: unknown, path: string): { exists: boolean; value: u
 
 function isJsonObjectRecord(value: unknown): value is Record<string, unknown> {
     return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isEmptyBlueprintValue(value: unknown): boolean {
+    if (value == null) {
+        return true;
+    }
+    if (typeof value === "string") {
+        return value.length === 0;
+    }
+    if (Array.isArray(value)) {
+        return value.length === 0;
+    }
+    if (isJsonObjectRecord(value)) {
+        return Object.keys(value).length === 0;
+    }
+    return false;
 }
 
 function isJsonContainer(value: unknown): value is Record<string, unknown> | unknown[] {
@@ -975,7 +1190,7 @@ function resolveTextNodeOutput(type: string, portId: string, runtime?: DataPinRe
         return props.fontWeight;
     }
     if (type === BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_COLOR && portId === "color") {
-        return props.color;
+        return normalizeBlueprintRGBAColor(props.color);
     }
     if (type === BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_ALIGN && portId === "textAlign") {
         return props.textAlign;
@@ -997,6 +1212,9 @@ function resolveTextNodeOutput(type: string, portId: string, runtime?: DataPinRe
             return props.fontAssetId ?? "";
         }
         if (portId in props) {
+            if (portId === "color") {
+                return normalizeBlueprintRGBAColor(props.color);
+            }
             return props[portId as keyof typeof props];
         }
     }
@@ -1045,6 +1263,27 @@ function resolveDataNodeOutput(
     const value = resolveInput(graph, nodeId, "value", params, blueprintLocals, depth, runtime);
     if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE) {
         return toJsonSafeValue(value);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_IS_STRING) {
+        return typeof value === "string";
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_IS_NUMBER) {
+        return typeof value === "number" && Number.isFinite(value);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_IS_BOOLEAN) {
+        return typeof value === "boolean";
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY) {
+        return Array.isArray(value);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT) {
+        return isJsonObjectRecord(value);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_IS_NULL) {
+        return value === null;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE) {
+        return isEmptyBlueprintValue(value);
     }
     if (type === BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT) {
         const n = toFiniteNumber(value);
@@ -1100,6 +1339,39 @@ function resolveSelfOutput(
     if (!selfNode) {
         return undefined;
     }
+    if (portId === "value") {
+        if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL) {
+            return selfNode.params?.value;
+        }
+        if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_STRING) {
+            return String(selfNode.params?.value ?? "");
+        }
+        if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_INTEGER) {
+            return toInteger(selfNode.params?.value, 0);
+        }
+        if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_FLOAT || selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_NUMBER) {
+            const n = Number(selfNode.params?.value ?? 0);
+            return Number.isFinite(n) ? n : 0;
+        }
+        if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN) {
+            return selfNode.params?.value === true || selfNode.params?.value === "true";
+        }
+        if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_NULL) {
+            return null;
+        }
+        if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_COLOR) {
+            return normalizeBlueprintRGBAColor(selfNode.params?.value);
+        }
+        if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D) {
+            return normalizeBlueprintVector2D(selfNode.params?.value);
+        }
+        if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_RECT) {
+            return toJsonSafeValue(selfNode.params?.value ?? { x: 0, y: 0, width: 0, height: 0 });
+        }
+        if (selfNode.type === BLUEPRINT_NODE_TYPE_LITERAL_JSON) {
+            return selfNode.params?.value ?? null;
+        }
+    }
     if (isBlueprintEventDispatchHeadType(selfNode.type) && portId !== "then") {
         return runtime?.eventPayload?.[portId];
     }
@@ -1121,6 +1393,20 @@ function resolveSelfOutput(
     const mathCompare = MATH_COMPARE_OPS[selfNode.type];
     if (mathCompare && portId === "result") {
         return resolveMathCompareResult(graph, nodeId, mathCompare, selfNode.params ?? {}, blueprintLocals, depth, runtime);
+    }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_MATH_RANDOM_FLOAT && portId === "result") {
+        return resolveMathRandomResult(graph, nodeId, false, selfNode.params ?? {}, blueprintLocals, depth, runtime);
+    }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER && portId === "result") {
+        return resolveMathRandomResult(graph, nodeId, true, selfNode.params ?? {}, blueprintLocals, depth, runtime);
+    }
+    const booleanOp = BOOLEAN_OPS[selfNode.type];
+    if (booleanOp && portId === "result") {
+        return resolveBooleanNodeResult(graph, nodeId, booleanOp, selfNode.params ?? {}, blueprintLocals, depth, runtime);
+    }
+    const compareOp = COMPARE_OPS[selfNode.type];
+    if (compareOp && portId === "result") {
+        return resolveCompareNodeResult(graph, nodeId, compareOp, selfNode.params ?? {}, blueprintLocals, depth, runtime);
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT) {
         return resolveBroadcastNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
@@ -1195,6 +1481,11 @@ export function resolveDataPinValue(
         value = src.params?.value;
     } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_STRING && edge.from.port === "value") {
         value = String(src.params?.value ?? "");
+    } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_INTEGER && edge.from.port === "value") {
+        value = toInteger(src.params?.value, 0);
+    } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_FLOAT && edge.from.port === "value") {
+        const n = Number(src.params?.value ?? 0);
+        value = Number.isFinite(n) ? n : 0;
     } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_NUMBER && edge.from.port === "value") {
         const n = Number(src.params?.value ?? 0);
         value = Number.isFinite(n) ? n : 0;
@@ -1202,6 +1493,12 @@ export function resolveDataPinValue(
         value = src.params?.value === true || src.params?.value === "true";
     } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_NULL && edge.from.port === "value") {
         value = null;
+    } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_COLOR && edge.from.port === "value") {
+        value = normalizeBlueprintRGBAColor(src.params?.value);
+    } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D && edge.from.port === "value") {
+        value = normalizeBlueprintVector2D(src.params?.value);
+    } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_RECT && edge.from.port === "value") {
+        value = toJsonSafeValue(src.params?.value ?? { x: 0, y: 0, width: 0, height: 0 });
     } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_JSON && edge.from.port === "value") {
         value = src.params?.value ?? null;
     } else if (src.type === BLUEPRINT_NODE_TYPE_LOCAL_GET && edge.from.port === "value") {

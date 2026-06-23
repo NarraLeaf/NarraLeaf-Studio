@@ -34,13 +34,20 @@ export const desktopFileTestPlugin: LauncherManagedPlugin = {
 };
 
 export async function requestDesktopFileTestPluginInstall(): Promise<PluginPermissionGrantResult> {
+    const desktopPath = await getDesktopPath();
+    const targetPath = joinPath(desktopPath, "narraleaf-plugin-permission-test.txt");
     const request: PluginPermissionRequest = {
         kind: "install",
         requestId: createRequestId("install"),
         plugin: desktopFileTestPlugin.plugin,
         source: desktopFileTestPlugin.source,
-        requestedPermissions: [
-            "Read and write one file on your Desktop: narraleaf-plugin-permission-test.txt",
+        permissions: [
+            {
+                kind: "filesystem",
+                path: targetPath,
+                mode: "readwrite",
+                recursive: false,
+            },
         ],
         reason: "Install the local test plugin used to verify Launcher plugin authorization.",
         requestedAt: Date.now(),

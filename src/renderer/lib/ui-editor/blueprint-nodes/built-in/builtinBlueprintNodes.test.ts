@@ -1,7 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
+    BLUEPRINT_NODE_TYPE_BOOLEAN_AND,
+    BLUEPRINT_NODE_TYPE_BOOLEAN_NOT,
+    BLUEPRINT_NODE_TYPE_BOOLEAN_OR,
+    BLUEPRINT_NODE_TYPE_BOOLEAN_XOR,
     BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT,
     BLUEPRINT_NODE_TYPE_BROADCAST_SEND,
+    BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
+    BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN,
+    BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN_OR_EQUAL,
+    BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN,
+    BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN_OR_EQUAL,
+    BLUEPRINT_NODE_TYPE_COMPARE_NOT_EQUAL,
+    BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY,
+    BLUEPRINT_NODE_TYPE_DATA_IS_BOOLEAN,
+    BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE,
+    BLUEPRINT_NODE_TYPE_DATA_IS_NULL,
+    BLUEPRINT_NODE_TYPE_DATA_IS_NUMBER,
+    BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT,
+    BLUEPRINT_NODE_TYPE_DATA_IS_STRING,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_JSON_HAS,
     BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
@@ -35,22 +52,44 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
+    BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
+    BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
     BLUEPRINT_NODE_TYPE_FLOW_NOOP,
+    BLUEPRINT_NODE_TYPE_FLOW_RETURN,
+    BLUEPRINT_NODE_TYPE_FLOW_SEQUENCE,
     BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
     BLUEPRINT_NODE_TYPE_FLOW_WHILE,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+    BLUEPRINT_NODE_TYPE_LITERAL_COLOR,
+    BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
+    BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+    BLUEPRINT_NODE_TYPE_LITERAL_RECT,
+    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+    BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_LOG,
+    BLUEPRINT_NODE_TYPE_MATH_ABS,
+    BLUEPRINT_NODE_TYPE_MATH_ADD,
+    BLUEPRINT_NODE_TYPE_MATH_CEIL,
+    BLUEPRINT_NODE_TYPE_MATH_FLOOR,
+    BLUEPRINT_NODE_TYPE_MATH_MAX,
+    BLUEPRINT_NODE_TYPE_MATH_MIN,
+    BLUEPRINT_NODE_TYPE_MATH_MODULO,
+    BLUEPRINT_NODE_TYPE_MATH_RANDOM_FLOAT,
+    BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER,
+    BLUEPRINT_NODE_TYPE_MATH_ROUND,
     BLUEPRINT_NODE_TYPE_STRING_LENGTH,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT,
+    BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_COLOR,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
+    BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_COLOR,
     BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
 } from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
@@ -59,6 +98,7 @@ import { isValidBlueprintPinConnection } from "../connectionPolicy";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { executeGraph } from "../../behavior-graph/GraphExecutor";
 import { listBlueprintNodePaletteEntries } from "../../behavior-graph/nodeEditorCatalog";
+import { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 import { broadcastBlueprintNodes } from "./broadcastNodes";
 import { controlFlowBlueprintNodes } from "./controlFlowNodes";
 import { dataBlueprintNodes } from "./dataNodes";
@@ -83,6 +123,7 @@ describe("built-in blueprint nodes", () => {
             ...controlFlowBlueprintNodes,
             ...dataBlueprintNodes,
             ...localVariableBlueprintNodes,
+            ...booleanCompareBlueprintNodes,
             ...stringBlueprintNodes,
             ...textBlueprintNodes,
             ...devtoolsBlueprintNodes,
@@ -105,16 +146,32 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_EMIT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_IF)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_NOOP)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_SEQUENCE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_WHILE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_DELAY)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_RETURN)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_COMMENT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_LITERAL_INTEGER)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_LITERAL_FLOAT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LITERAL_NUMBER)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_LITERAL_COLOR)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_LITERAL_RECT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LITERAL_JSON)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_TO_JSON)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_IS_STRING)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_IS_NUMBER)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_IS_BOOLEAN)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_IS_NULL)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_PARSE_INT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_PARSE_FLOAT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_PARSE_JSON)).toBe(true);
@@ -129,6 +186,25 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_MATH_MODULO)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_MATH_ABS)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_MATH_MIN)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_MATH_MAX)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_MATH_ROUND)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_MATH_FLOOR)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_MATH_CEIL)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_MATH_RANDOM_FLOAT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_BOOLEAN_AND)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_BOOLEAN_OR)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_BOOLEAN_NOT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_BOOLEAN_XOR)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_COMPARE_EQUAL)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_COMPARE_NOT_EQUAL)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN_OR_EQUAL)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN_OR_EQUAL)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_STRING_TO_STRING)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_GET)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_SET)).toBe(true);
@@ -160,25 +236,35 @@ describe("built-in blueprint nodes", () => {
         expect(frameBlueprintNodes.every(def => def.category === "Page")).toBe(true);
         expect(controlFlowBlueprintNodes.every(def => def.category === "Flow")).toBe(true);
         expect(localVariableBlueprintNodes.every(def => def.category === "Variables")).toBe(true);
-        const jsonNodeTypes = new Set<string>([
-            BLUEPRINT_NODE_TYPE_LITERAL_JSON,
-            BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
-            BLUEPRINT_NODE_TYPE_DATA_PARSE_JSON,
-            BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON,
-            BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
-            BLUEPRINT_NODE_TYPE_DATA_JSON_HAS,
-            BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
-            BLUEPRINT_NODE_TYPE_DATA_JSON_REMOVE,
-            BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
-            BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_ARRAY,
-            BLUEPRINT_NODE_TYPE_DATA_JSON_ARRAY_LENGTH,
-            BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,
-            BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE,
-        ]);
-        expect(dataBlueprintNodes.filter(def => !jsonNodeTypes.has(def.type)).every(def => def.category === "Data")).toBe(true);
-        expect(dataBlueprintNodes.filter(def => jsonNodeTypes.has(def.type)).every(def => def.category === "JSON")).toBe(true);
-        expect(stringBlueprintNodes.every(def => def.category === "String")).toBe(true);
+        expect(dataBlueprintNodes.every(def => def.category === "Data")).toBe(true);
+        expect(booleanCompareBlueprintNodes.every(def => def.category === "Math")).toBe(true);
+        expect(devtoolsBlueprintNodes.every(def => def.category === "Debug")).toBe(true);
+        expect(stringBlueprintNodes.every(def => def.category === "Data")).toBe(true);
         expect(textBlueprintNodes.every(def => def.category === "Text")).toBe(true);
+    });
+
+    it("keeps structured literal editor metadata locked to fixed schemas", () => {
+        const stringLiteral = dataBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_LITERAL_STRING);
+        const rectLiteral = dataBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_LITERAL_RECT);
+
+        expect(stringLiteral?.displayName).toBe("String");
+        expect(stringLiteral?.pins.find(pin => pin.id === "value")?.label).toBe("String");
+        expect(stringLiteral?.inspectorParams?.[0]).toMatchObject({ key: "value", label: "String", kind: "string" });
+        expect(rectLiteral?.inspectorParams?.[0]).toMatchObject({
+            key: "value",
+            label: "Rect",
+            kind: "json",
+            jsonSchema: {
+                kind: "object",
+                allowExtraFields: false,
+                fields: [
+                    { key: "x", label: "X", kind: "number", required: true },
+                    { key: "y", label: "Y", kind: "number", required: true },
+                    { key: "width", label: "Width", kind: "number", required: true },
+                    { key: "height", label: "Height", kind: "number", required: true },
+                ],
+            },
+        });
     });
 
     it("resolves Data literals and explicit conversions", () => {
@@ -201,6 +287,96 @@ describe("built-in blueprint nodes", () => {
                 undefined,
             ),
         ).toBe(12.7);
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        value: {
+                            type: BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
+                            params: { value: 12.7 },
+                        },
+                    },
+                    edges: [],
+                },
+                "value",
+                "value",
+                { value: 12.7 },
+                undefined,
+            ),
+        ).toBe(12);
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        value: {
+                            type: BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
+                            params: { value: 12.7 },
+                        },
+                    },
+                    edges: [],
+                },
+                "value",
+                "value",
+                { value: 12.7 },
+                undefined,
+            ),
+        ).toBe(12.7);
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        value: {
+                            type: BLUEPRINT_NODE_TYPE_LITERAL_COLOR,
+                            params: { value: "#ff00aa" },
+                        },
+                    },
+                    edges: [],
+                },
+                "value",
+                "value",
+                { value: "#ff00aa" },
+                undefined,
+            ),
+        ).toEqual({ r: 255, g: 0, b: 170, a: 1 });
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        value: {
+                            type: BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
+                            params: { value: { x: 10, y: 20 } },
+                        },
+                    },
+                    edges: [],
+                },
+                "value",
+                "value",
+                { value: { x: 10, y: 20 } },
+                undefined,
+            ),
+        ).toEqual({ x: 10, y: 20 });
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        value: {
+                            type: BLUEPRINT_NODE_TYPE_LITERAL_RECT,
+                            params: { value: { x: 1, y: 2, width: 3, height: 4 } },
+                        },
+                    },
+                    edges: [],
+                },
+                "value",
+                "value",
+                { value: { x: 1, y: 2, width: 3, height: 4 } },
+                undefined,
+            ),
+        ).toEqual({ x: 1, y: 2, width: 3, height: 4 });
 
         expect(
             resolveDataPinValue(
@@ -273,6 +449,91 @@ describe("built-in blueprint nodes", () => {
                 undefined,
             ),
         ).toBe(12.7);
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: { check: { type: BLUEPRINT_NODE_TYPE_DATA_IS_STRING, params: { value: "Ada" } } },
+                    edges: [],
+                },
+                "check",
+                "result",
+                { value: "Ada" },
+                undefined,
+            ),
+        ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: { check: { type: BLUEPRINT_NODE_TYPE_DATA_IS_NUMBER, params: { value: 42 } } },
+                    edges: [],
+                },
+                "check",
+                "result",
+                { value: 42 },
+                undefined,
+            ),
+        ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: { check: { type: BLUEPRINT_NODE_TYPE_DATA_IS_BOOLEAN, params: { value: false } } },
+                    edges: [],
+                },
+                "check",
+                "result",
+                { value: false },
+                undefined,
+            ),
+        ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: { check: { type: BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY, params: { value: [] } } },
+                    edges: [],
+                },
+                "check",
+                "result",
+                { value: [] },
+                undefined,
+            ),
+        ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: { check: { type: BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT, params: { value: {} } } },
+                    edges: [],
+                },
+                "check",
+                "result",
+                { value: {} },
+                undefined,
+            ),
+        ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: { check: { type: BLUEPRINT_NODE_TYPE_DATA_IS_NULL, params: { value: null } } },
+                    edges: [],
+                },
+                "check",
+                "result",
+                { value: null },
+                undefined,
+            ),
+        ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: { check: { type: BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE, params: { value: {} } } },
+                    edges: [],
+                },
+                "check",
+                "result",
+                { value: {} },
+                undefined,
+            ),
+        ).toBe(true);
     });
 
     it("coerces numeric outputs when consumed by string inputs", () => {
@@ -493,6 +754,118 @@ describe("built-in blueprint nodes", () => {
                 targetPort: "value",
             }),
         ).toBe(true);
+
+        expect(
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_LITERAL_INTEGER,
+                sourcePort: "value",
+                targetType: BLUEPRINT_NODE_TYPE_MATH_ADD,
+                targetPort: "a",
+            }),
+        ).toBe(true);
+
+        expect(
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_LITERAL_COLOR,
+                sourcePort: "value",
+                targetType: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_COLOR,
+                targetPort: "color",
+            }),
+        ).toBe(true);
+
+        expect(
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_LITERAL_COLOR,
+                sourcePort: "value",
+                targetType: BLUEPRINT_NODE_TYPE_STRING_LENGTH,
+                targetPort: "value",
+            }),
+        ).toBe(false);
+
+        expect(
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
+                sourcePort: "value",
+                targetType: BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON,
+                targetPort: "value",
+            }),
+        ).toBe(false);
+    });
+
+    it("resolves completed Math, Boolean, and Compare nodes", () => {
+        registerCoreBlueprintNodes();
+
+        const graph = {
+            nodes: {
+                modulo: { type: BLUEPRINT_NODE_TYPE_MATH_MODULO, params: { a: 10, b: 3 } },
+                abs: { type: BLUEPRINT_NODE_TYPE_MATH_ABS, params: { value: -4 } },
+                min: {
+                    type: BLUEPRINT_NODE_TYPE_MATH_MIN,
+                    params: { a: 5, b: 3, __dynamicInputPinIds: ["in_1"], in_1: 1 },
+                },
+                max: {
+                    type: BLUEPRINT_NODE_TYPE_MATH_MAX,
+                    params: { a: 5, b: 3, __dynamicInputPinIds: ["in_1"], in_1: 9 },
+                },
+                round: { type: BLUEPRINT_NODE_TYPE_MATH_ROUND, params: { value: 2.6 } },
+                floor: { type: BLUEPRINT_NODE_TYPE_MATH_FLOOR, params: { value: 2.6 } },
+                ceil: { type: BLUEPRINT_NODE_TYPE_MATH_CEIL, params: { value: 2.1 } },
+                randomFloat: { type: BLUEPRINT_NODE_TYPE_MATH_RANDOM_FLOAT, params: { min: 2, max: 4 } },
+                randomInteger: { type: BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER, params: { min: 2, max: 4 } },
+                and: { type: BLUEPRINT_NODE_TYPE_BOOLEAN_AND, params: { a: true, b: false } },
+                or: { type: BLUEPRINT_NODE_TYPE_BOOLEAN_OR, params: { a: true, b: false } },
+                not: { type: BLUEPRINT_NODE_TYPE_BOOLEAN_NOT, params: { a: false } },
+                xor: { type: BLUEPRINT_NODE_TYPE_BOOLEAN_XOR, params: { a: true, b: false } },
+                equalStrict: { type: BLUEPRINT_NODE_TYPE_COMPARE_EQUAL, params: { a: 1, b: "1" } },
+                notEqualStrict: { type: BLUEPRINT_NODE_TYPE_COMPARE_NOT_EQUAL, params: { a: 1, b: "1" } },
+                greater: { type: BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN, params: { a: 4, b: 2 } },
+                greaterEqual: { type: BLUEPRINT_NODE_TYPE_COMPARE_GREATER_THAN_OR_EQUAL, params: { a: 2, b: 2 } },
+                less: { type: BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN, params: { a: 1, b: 2 } },
+                lessEqual: { type: BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN_OR_EQUAL, params: { a: 2, b: 2 } },
+            },
+            edges: [],
+        };
+
+        expect(resolveDataPinValue(graph, "modulo", "result", graph.nodes.modulo.params, undefined)).toBe(1);
+        expect(resolveDataPinValue(graph, "abs", "result", graph.nodes.abs.params, undefined)).toBe(4);
+        expect(resolveDataPinValue(graph, "min", "result", graph.nodes.min.params, undefined)).toBe(1);
+        expect(resolveDataPinValue(graph, "max", "result", graph.nodes.max.params, undefined)).toBe(9);
+        expect(resolveDataPinValue(graph, "round", "result", graph.nodes.round.params, undefined)).toBe(3);
+        expect(resolveDataPinValue(graph, "floor", "result", graph.nodes.floor.params, undefined)).toBe(2);
+        expect(resolveDataPinValue(graph, "ceil", "result", graph.nodes.ceil.params, undefined)).toBe(3);
+
+        const randomFloat = resolveDataPinValue(
+            graph,
+            "randomFloat",
+            "result",
+            graph.nodes.randomFloat.params,
+            undefined,
+        );
+        expect(typeof randomFloat).toBe("number");
+        expect(randomFloat as number).toBeGreaterThanOrEqual(2);
+        expect(randomFloat as number).toBeLessThanOrEqual(4);
+
+        const randomInteger = resolveDataPinValue(
+            graph,
+            "randomInteger",
+            "result",
+            graph.nodes.randomInteger.params,
+            undefined,
+        );
+        expect(Number.isInteger(randomInteger)).toBe(true);
+        expect(randomInteger as number).toBeGreaterThanOrEqual(2);
+        expect(randomInteger as number).toBeLessThanOrEqual(4);
+
+        expect(resolveDataPinValue(graph, "and", "result", graph.nodes.and.params, undefined)).toBe(false);
+        expect(resolveDataPinValue(graph, "or", "result", graph.nodes.or.params, undefined)).toBe(true);
+        expect(resolveDataPinValue(graph, "not", "result", graph.nodes.not.params, undefined)).toBe(true);
+        expect(resolveDataPinValue(graph, "xor", "result", graph.nodes.xor.params, undefined)).toBe(true);
+        expect(resolveDataPinValue(graph, "equalStrict", "result", graph.nodes.equalStrict.params, undefined)).toBe(false);
+        expect(resolveDataPinValue(graph, "notEqualStrict", "result", graph.nodes.notEqualStrict.params, undefined)).toBe(true);
+        expect(resolveDataPinValue(graph, "greater", "result", graph.nodes.greater.params, undefined)).toBe(true);
+        expect(resolveDataPinValue(graph, "greaterEqual", "result", graph.nodes.greaterEqual.params, undefined)).toBe(true);
+        expect(resolveDataPinValue(graph, "less", "result", graph.nodes.less.params, undefined)).toBe(true);
+        expect(resolveDataPinValue(graph, "lessEqual", "result", graph.nodes.lessEqual.params, undefined)).toBe(true);
     });
 
     it("exposes and executes the If flow node", () => {
@@ -512,7 +885,9 @@ describe("built-in blueprint nodes", () => {
         );
 
         expect(eventPaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_IF)).toBe(true);
+        expect(eventPaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE)).toBe(true);
         expect(functionPaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_IF)).toBe(false);
+        expect(functionPaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE)).toBe(false);
 
         const ifNode = controlFlowBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FLOW_IF)!;
         expect(
@@ -541,6 +916,74 @@ describe("built-in blueprint nodes", () => {
                 hostAdapter: { host: "player" },
             }),
         ).toEqual({ nextPort: "true" });
+
+        const ifElseNode = controlFlowBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE)!;
+        expect(
+            ifElseNode.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "branch", port: "in" } } },
+                    nodes: {
+                        branch: { id: "branch", type: BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE, params: { condition: false } },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "branch", port: "in" } },
+                node: { id: "branch", type: BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE, params: { condition: false } },
+                params: { condition: false },
+                hostAdapter: { host: "player" },
+            }),
+        ).toEqual({ nextPort: "else" });
+
+        const ifElseCatalog = blueprintNodeRegistry.resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE, {
+            __ifElseBranchPins: ["if_1_condition", "if_1_then"],
+        });
+        expect(ifElseCatalog.dynamicInputPinAddLabel).toBe("Add If condition");
+        expect(ifElseCatalog.pins.map(pin => pin.id)).toEqual(["in", "condition", "if_1_condition", "then", "if_1_then", "else"]);
+
+        expect(
+            ifElseNode.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "branch", port: "in" } } },
+                    nodes: {
+                        firstCondition: {
+                            id: "firstCondition",
+                            type: BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+                            params: { value: "false" },
+                        },
+                        secondCondition: {
+                            id: "secondCondition",
+                            type: BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+                            params: { value: "true" },
+                        },
+                        branch: {
+                            id: "branch",
+                            type: BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
+                            params: { __ifElseBranchPins: ["if_1_condition", "if_1_then"] },
+                        },
+                    },
+                    edges: [
+                        {
+                            from: { nodeId: "firstCondition", port: "value" },
+                            to: { nodeId: "branch", port: "condition" },
+                        },
+                        {
+                            from: { nodeId: "secondCondition", port: "value" },
+                            to: { nodeId: "branch", port: "if_1_condition" },
+                        },
+                    ],
+                },
+                entry: { start: { nodeId: "branch", port: "in" } },
+                node: {
+                    id: "branch",
+                    type: BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
+                    params: { __ifElseBranchPins: ["if_1_condition", "if_1_then"] },
+                },
+                params: { __ifElseBranchPins: ["if_1_condition", "if_1_then"] },
+                hostAdapter: { host: "player" },
+            }),
+        ).toEqual({ nextPort: "if_1_then" });
     });
 
     it("executes string switch, bounded loops, and zero-duration delay flow nodes", async () => {
@@ -571,6 +1014,64 @@ describe("built-in blueprint nodes", () => {
                 hostAdapter: { host: "player" },
             }),
         ).toEqual({ nextPort: "case1" });
+
+        const sequenceEntered: string[] = [];
+        await executeGraph({
+            graph: {
+                id: "sequenceGraph",
+                entries: { main: { start: { nodeId: "sequence", port: "in" } } },
+                nodes: {
+                    sequence: { id: "sequence", type: BLUEPRINT_NODE_TYPE_FLOW_SEQUENCE, params: {} },
+                    first: { id: "first", type: BLUEPRINT_NODE_TYPE_FLOW_NOOP, params: {} },
+                    second: { id: "second", type: BLUEPRINT_NODE_TYPE_FLOW_NOOP, params: {} },
+                },
+                edges: [
+                    { from: { nodeId: "sequence", port: "then0" }, to: { nodeId: "first", port: "in" } },
+                    { from: { nodeId: "sequence", port: "then1" }, to: { nodeId: "second", port: "in" } },
+                ],
+            },
+            entry: { start: { nodeId: "sequence", port: "in" } },
+            hostAdapter: { host: "player" as const },
+            trace: {
+                executionId: "sequence",
+                graphId: "sequenceGraph",
+                emit: event => {
+                    if (event.type === "node.enter") {
+                        sequenceEntered.push(event.nodeId);
+                    }
+                },
+            },
+        });
+        expect(sequenceEntered).toEqual(["sequence", "first", "second"]);
+
+        const returnEntered: string[] = [];
+        await executeGraph({
+            graph: {
+                id: "returnGraph",
+                entries: { main: { start: { nodeId: "sequence", port: "in" } } },
+                nodes: {
+                    sequence: { id: "sequence", type: BLUEPRINT_NODE_TYPE_FLOW_SEQUENCE, params: {} },
+                    stop: { id: "stop", type: BLUEPRINT_NODE_TYPE_FLOW_RETURN, params: {} },
+                    skipped: { id: "skipped", type: BLUEPRINT_NODE_TYPE_FLOW_NOOP, params: {} },
+                },
+                edges: [
+                    { from: { nodeId: "sequence", port: "then0" }, to: { nodeId: "stop", port: "in" } },
+                    { from: { nodeId: "sequence", port: "then1" }, to: { nodeId: "skipped", port: "in" } },
+                ],
+            },
+            entry: { start: { nodeId: "sequence", port: "in" } },
+            hostAdapter: { host: "player" as const },
+            trace: {
+                executionId: "return",
+                graphId: "returnGraph",
+                emit: event => {
+                    if (event.type === "node.enter") {
+                        returnEntered.push(event.nodeId);
+                    }
+                },
+            },
+        });
+        expect(returnEntered).toEqual(["sequence", "stop"]);
 
         const loopLocals: Record<string, unknown> = {};
         await executeGraph({
@@ -740,6 +1241,9 @@ describe("built-in blueprint nodes", () => {
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_BOOLEAN_AND)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_COMPARE_EQUAL)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_COMMENT)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_GET)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_SET)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);
@@ -972,5 +1476,53 @@ describe("built-in blueprint nodes", () => {
                 },
             ),
         ).toBe("After");
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getColor: { type: BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_COLOR },
+                    },
+                    edges: [],
+                },
+                "getColor",
+                "color",
+                {},
+                undefined,
+                0,
+                {
+                    hostAdapter,
+                    executionOwner: { surfaceId: "surface", elementId: "text", blueprintId: "bp" },
+                },
+            ),
+        ).toEqual({ r: 255, g: 255, b: 255, a: 1 });
+
+        const setColorNode = textBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_COLOR)!;
+        await Promise.resolve(
+            setColorNode.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setColor", port: "in" } } },
+                    nodes: {
+                        setColor: {
+                            id: "setColor",
+                            type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_COLOR,
+                            params: { color: { r: 16, g: 32, b: 48, a: 1 } },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "setColor", port: "in" } },
+                node: {
+                    id: "setColor",
+                    type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_COLOR,
+                    params: { color: { r: 16, g: 32, b: 48, a: 1 } },
+                },
+                params: { color: { r: 16, g: 32, b: 48, a: 1 } },
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "text", blueprintId: "bp" },
+            }),
+        );
+        expect(textProps.color).toBe("#102030");
     });
 });

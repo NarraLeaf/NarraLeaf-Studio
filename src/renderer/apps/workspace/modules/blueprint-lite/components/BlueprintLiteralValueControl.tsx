@@ -48,7 +48,7 @@ type Props = {
 };
 
 const MODE_OPTIONS: { id: LiteralEditMode; label: string }[] = [
-    { id: "string", label: "Text" },
+    { id: "string", label: "String" },
     { id: "number", label: "Number" },
     { id: "boolean", label: "Bool" },
     { id: "null", label: "Null" },

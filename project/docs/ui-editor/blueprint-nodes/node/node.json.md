@@ -1,6 +1,6 @@
 # JSON 节点
 
-JSON 节点用于创建、组合、转换和读取结构化 JSON 值。`json` 不是通配类型；需要把 `float`、`string`、`boolean` 等值接入 JSON 输入时，优先使用显式 JSON 节点。
+JSON 节点用于创建、组合、转换和读取结构化 JSON 值，创建浮窗中归入 Data 分类。`json` 不是通配类型；需要把 `float`、`string`、`boolean` 等值接入 JSON 输入时，优先使用显式 JSON 节点。
 
 ## JSON Literal
 

@@ -157,12 +157,17 @@ export function resolveEffectiveBlueprintNodePins(
         }
         dynOrdinal += 1;
         const template = readDynamicPinTemplate(cfg, id);
+        const kind = template?.kind ?? "input";
+        const semantic = template?.semantic ?? "data";
+        const isDataPin = semantic === "data";
         dynamicPins.push({
             id,
-            kind: "input",
-            semantic: "data",
-            valueType: template?.valueType ?? cfg.valueType,
-            allowInlineLiteral: template?.allowInlineLiteral ?? cfg.allowInlineLiteral,
+            kind,
+            semantic,
+            valueType: isDataPin ? template?.valueType ?? cfg.valueType : undefined,
+            allowInlineLiteral: kind === "input" && isDataPin
+                ? template?.allowInlineLiteral ?? cfg.allowInlineLiteral
+                : undefined,
             label:
                 labels[id] ??
                 template?.label ??
@@ -170,7 +175,22 @@ export function resolveEffectiveBlueprintNodePins(
         });
     }
 
-    return [...execInputs, ...fixedDataInputs, ...dynamicPins, ...outputs];
+    const dynamicInputs = dynamicPins.filter(p => p.kind === "input");
+    const dynamicOutputs = dynamicPins.filter(p => p.kind === "output");
+    const insertBefore = cfg.outputInsertBeforePinId
+        ? outputs.findIndex(p => p.id === cfg.outputInsertBeforePinId)
+        : -1;
+    const staticOutputsBeforeDynamic = insertBefore >= 0 ? outputs.slice(0, insertBefore) : outputs;
+    const staticOutputsAfterDynamic = insertBefore >= 0 ? outputs.slice(insertBefore) : [];
+
+    return [
+        ...execInputs,
+        ...fixedDataInputs,
+        ...dynamicInputs,
+        ...staticOutputsBeforeDynamic,
+        ...dynamicOutputs,
+        ...staticOutputsAfterDynamic,
+    ];
 }
 
 function pinDefToCatalogPin(p: BlueprintNodePinDef, removable: boolean): EffectiveCatalogPin {
@@ -204,6 +224,7 @@ export function resolveEffectiveBlueprintCatalogEntry(
         role: def.role,
         scope: def.scope,
         dynamicInputPinLabelParamKey: cfg?.pinLabelParamKey,
+        dynamicInputPinAddLabel: cfg?.addButtonLabel,
     };
 
     const effective = resolveEffectiveBlueprintNodePins(def, params);

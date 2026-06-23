@@ -29,6 +29,10 @@ import {
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_VERTICAL_ALIGN,
     BLUEPRINT_NODE_TYPE_TEXT_SET_WRAP_MODE,
 } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
+    blueprintRGBAColorToCss,
+} from "@shared/types/blueprint/valueTypes";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type {
@@ -68,6 +72,7 @@ const dataIn = (
 });
 const stringIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "string", true);
 const floatIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "float", true);
+const colorIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, BLUEPRINT_VALUE_TYPE_RGBA_COLOR);
 const jsonIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "json");
 const out = (id: string, label: string, valueType: string): BlueprintNodePinDef => ({
     id,
@@ -82,7 +87,7 @@ const textAllPropertyInputs: BlueprintNodePinDef[] = [
     stringIn("fontAssetId", "Font"),
     floatIn("fontSize", "Font Size"),
     stringIn("fontWeight", "Font Weight"),
-    stringIn("color", "Color"),
+    colorIn("color", "Color"),
     stringIn("textAlign", "Text Align"),
     stringIn("textVerticalAlign", "Vertical Align"),
     floatIn("lineHeight", "Line Height"),
@@ -95,7 +100,7 @@ const textAllPropertyOutputs: BlueprintNodePinDef[] = [
     out("fontAssetId", "Font", "string"),
     out("fontSize", "Font Size", "float"),
     out("fontWeight", "Font Weight", "string"),
-    out("color", "Color", "string"),
+    out("color", "Color", BLUEPRINT_VALUE_TYPE_RGBA_COLOR),
     out("textAlign", "Text Align", "string"),
     out("textVerticalAlign", "Vertical Align", "string"),
     out("lineHeight", "Line Height", "float"),
@@ -178,6 +183,10 @@ function toStringValue(raw: unknown, fallback: string): string {
     return raw == null ? fallback : String(raw);
 }
 
+function toCssColorValue(raw: unknown, fallback: string): string {
+    return raw === undefined || raw === null ? fallback : blueprintRGBAColorToCss(raw);
+}
+
 function toFontAssetId(raw: unknown, fallback: string | null): string | null {
     if (raw === undefined) {
         return fallback;
@@ -208,7 +217,7 @@ function buildAllPropertiesPatch(
         fontAssetId: toFontAssetId(readPin(ctx, "fontAssetId"), current.fontAssetId),
         fontSize: Math.max(1, toFiniteNumber(readPin(ctx, "fontSize"), current.fontSize)),
         fontWeight: toEnumValue(readPin(ctx, "fontWeight"), FONT_WEIGHT_VALUES, current.fontWeight),
-        color: toStringValue(readPin(ctx, "color"), current.color).trim() || current.color,
+        color: toCssColorValue(readPin(ctx, "color"), current.color).trim() || current.color,
         textAlign: toEnumValue(readPin(ctx, "textAlign"), TEXT_ALIGN_VALUES, current.textAlign),
         textVerticalAlign: toEnumValue(
             readPin(ctx, "textVerticalAlign"),
@@ -302,16 +311,16 @@ export const textBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_COLOR,
         displayName: "Get Text Color",
         keywords: ["text", "color", "fill"],
-        pins: [out("color", "Color", "string")],
+        pins: [out("color", "Color", BLUEPRINT_VALUE_TYPE_RGBA_COLOR)],
     }),
     writeNode({
         type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_COLOR,
         displayName: "Set Text Color",
         keywords: ["text", "color", "fill"],
-        pins: [stringIn("color", "Color")],
+        pins: [colorIn("color", "Color")],
         execute: ctx => {
             const current = readCurrentText(ctx);
-            const color = toStringValue(readPin(ctx, "color"), current.color).trim() || current.color;
+            const color = toCssColorValue(readPin(ctx, "color"), current.color).trim() || current.color;
             return patchCurrentText(ctx, { color });
         },
     }),

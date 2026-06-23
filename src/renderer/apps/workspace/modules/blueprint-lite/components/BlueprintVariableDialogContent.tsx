@@ -11,7 +11,7 @@ export type BlueprintVariableDialogValue = {
 };
 
 export const BLUEPRINT_VARIABLE_TYPE_OPTIONS = [
-    { value: "string", label: "Text", defaultValue: "" },
+    { value: "string", label: "String", defaultValue: "" },
     { value: "integer", label: "Integer", defaultValue: 0 },
     { value: "float", label: "Float", defaultValue: 0 },
     { value: "boolean", label: "Boolean", defaultValue: false },
