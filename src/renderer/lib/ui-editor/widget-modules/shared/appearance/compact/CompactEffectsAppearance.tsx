@@ -49,9 +49,10 @@ export function CompactEffectsAppearance({
         commitVariant(updateRowValueForModuleEditOrEnsure(variant, moduleKeys, key, editMode, value));
     };
 
-    const values = readElementEffectValuesFromGetter(get);
+    const includeTextShadow = supportedKinds.includes("textShadow");
+    const values = readElementEffectValuesFromGetter(get, { includeTextShadow });
     const onValuesChange = (next: typeof values) => {
-        diffPatchElementEffectValues(values, next, patch);
+        diffPatchElementEffectValues(values, next, patch, { includeTextShadow });
     };
 
     return (
@@ -80,7 +81,7 @@ export function CompactEffectsAppearance({
                 supportedKinds={supportedKinds}
                 draftResetKey={draftResetKey}
                 renderTrailingOnRow={kind =>
-                    motionVisible && kind !== "textShadow" ? (
+                    motionVisible ? (
                         <AppearanceFieldMotionButton
                             variant={variant}
                             setFieldTransition={setFieldTransition}

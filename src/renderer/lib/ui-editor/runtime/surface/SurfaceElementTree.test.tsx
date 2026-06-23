@@ -91,6 +91,94 @@ describe("SurfaceElementTree", () => {
         expect(buttonWrapper?.props.hostAdapter).toBe(hostAdapter);
     });
 
+    it("passes fresh element snapshots to wrappers when the document mutates in place", () => {
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "app",
+                    kind: "appSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "test.container",
+                    parentId: null,
+                    childrenIds: ["stack"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                stack: {
+                    id: "stack",
+                    type: "nl.container",
+                    parentId: "root",
+                    childrenIds: ["a", "b"],
+                    layout: { x: 0, y: 0, width: 200, height: 100 },
+                    props: { layoutKind: "stack" },
+                },
+                a: {
+                    id: "a",
+                    type: "test.item",
+                    parentId: "stack",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 40, height: 20 },
+                },
+                b: {
+                    id: "b",
+                    type: "test.item",
+                    parentId: "stack",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 40, height: 20 },
+                },
+            },
+        };
+        const rendererRegistry = new ElementRendererRegistry([
+            { type: "test.container", render: props => <>{props.children}</> },
+            { type: "nl.container", render: props => <>{props.children}</> },
+            { type: "test.item", render: () => <span /> },
+        ]);
+
+        const firstTree = SurfaceElementTree({
+            document,
+            surface: document.surfaces[0]!,
+            rootElement: document.elements.root!,
+            rendererRegistry,
+            hostAdapter: { host: "app" },
+        });
+        const firstWrappers = flattenNodes(firstTree).filter(
+            (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
+                isValidElement(node) && node.type === EditorNodeWrapper,
+        );
+        const firstStack = firstWrappers.find(node => node.props.element.id === "stack")!;
+        expect(firstStack.props.element).not.toBe(document.elements.stack);
+        expect(firstStack.props.element.childrenIds).toEqual(["a", "b"]);
+
+        document.elements.stack!.childrenIds = ["b"];
+        delete document.elements.a;
+
+        const secondTree = SurfaceElementTree({
+            document,
+            surface: document.surfaces[0]!,
+            rootElement: document.elements.root!,
+            rendererRegistry,
+            hostAdapter: { host: "app" },
+        });
+        const secondWrappers = flattenNodes(secondTree).filter(
+            (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
+                isValidElement(node) && node.type === EditorNodeWrapper,
+        );
+        const secondStack = secondWrappers.find(node => node.props.element.id === "stack")!;
+        expect(secondStack.props.element).not.toBe(document.elements.stack);
+        expect(secondStack.props.element.childrenIds).toEqual(["b"]);
+        expect(secondWrappers.some(node => node.props.element.id === "a")).toBe(false);
+    });
+
     it("lets widget renderers embed a target Page through renderSurface", () => {
         const document: UIDocument = {
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,

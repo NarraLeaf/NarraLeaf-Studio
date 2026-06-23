@@ -6,6 +6,7 @@ import type {
     AppearanceVariant,
     ButtonAppearancePropertyKey,
     ContainerAppearancePropertyKey,
+    TextAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
 
 export const APPEARANCE_TRANSITION_TYPE_OPTIONS = [
@@ -92,6 +93,21 @@ export const BUTTON_ANIMATABLE_KEYS: readonly ButtonAppearancePropertyKey[] = [
     "effectFilter",
 ];
 
+export const TEXT_ANIMATABLE_KEYS: readonly TextAppearancePropertyKey[] = [
+    "fontSize",
+    "color",
+    "lineHeight",
+    "transformOffsetX",
+    "transformOffsetY",
+    "transformScale",
+    "transformRotation",
+    "transformOpacity",
+    "effectBlur",
+    "effectTextShadow",
+    "effectBlend",
+    "effectFilter",
+];
+
 function findPropertyGroup(variant: AppearanceVariant, key: string) {
     return variant.propertyGroups.find(group => group.key === key);
 }
@@ -104,8 +120,16 @@ export function isMotionCapableButtonAppearanceKey(key: string): key is ButtonAp
     return (BUTTON_ANIMATABLE_KEYS as readonly string[]).includes(key);
 }
 
+export function isMotionCapableTextAppearanceKey(key: string): key is TextAppearancePropertyKey {
+    return (TEXT_ANIMATABLE_KEYS as readonly string[]).includes(key);
+}
+
 export function isMotionCapableAppearanceKey(key: string): key is AppearancePropertyKey {
-    return isMotionCapableContainerAppearanceKey(key) || isMotionCapableButtonAppearanceKey(key);
+    return (
+        isMotionCapableContainerAppearanceKey(key) ||
+        isMotionCapableButtonAppearanceKey(key) ||
+        isMotionCapableTextAppearanceKey(key)
+    );
 }
 
 export function listAnimatableKeysForModule(keys: readonly string[]): AppearancePropertyKey[] {
@@ -177,6 +201,14 @@ export function getAppearanceFieldLabel(key: AppearancePropertyKey): string {
             return "Horizontal padding";
         case "paddingY":
             return "Vertical padding";
+        case "fontSize":
+            return "Font size";
+        case "color":
+            return "Text color";
+        case "lineHeight":
+            return "Line height";
+        case "effectTextShadow":
+            return "Text shadow";
         case "transformOffsetX":
             return "Offset X";
         case "transformOffsetY":

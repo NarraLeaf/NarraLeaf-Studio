@@ -165,8 +165,8 @@ export function uiEditorCutSelection(
     if (tops.length === 0) {
         return false;
     }
-    documentService.deleteElements(tops);
     stateService.setSelection({ type: null, data: null });
+    documentService.deleteElements(tops);
     return true;
 }
 
@@ -311,8 +311,8 @@ export function uiEditorDeleteSelection(
     if (tops.length === 0) {
         return false;
     }
-    documentService.deleteElements(tops);
     stateService.setSelection({ type: null, data: null });
+    documentService.deleteElements(tops);
     return true;
 }
 

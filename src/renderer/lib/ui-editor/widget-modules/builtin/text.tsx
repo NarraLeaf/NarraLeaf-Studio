@@ -5,6 +5,7 @@ import { TextRenderer } from "./text/renderer";
 import { createTextInspector } from "./text/inspector";
 import { createTextDockerBarItems } from "./text/dockerBar";
 import { defaultTextWidgetProps } from "./text/types";
+import { createInitialTextAppearance } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 
 export const TextWidgetModule: UIWidgetModule = {
     type: "nl.text",
@@ -23,7 +24,10 @@ export const TextWidgetModule: UIWidgetModule = {
             opacity: 1,
             visible: true,
         },
-        props: { ...defaultTextWidgetProps },
+        props: {
+            ...defaultTextWidgetProps,
+            appearance: createInitialTextAppearance(defaultTextWidgetProps),
+        },
     }),
 
     render: (props: WidgetRendererProps) => <TextRenderer {...props} />,

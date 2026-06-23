@@ -344,6 +344,19 @@ function applyWidgetRuntimePatches(element: UIElement, patches: Record<string, D
     return next;
 }
 
+function cloneElementRenderSnapshot(element: UIElement): UIElement {
+    return {
+        ...element,
+        childrenIds: [...element.childrenIds],
+        layout: { ...element.layout },
+        props: element.props ? { ...element.props } : undefined,
+        style: element.style ? { ...element.style } : undefined,
+        behavior: element.behavior ? { ...element.behavior } : undefined,
+        valueBindings: element.valueBindings ? { ...element.valueBindings } : undefined,
+        extra: element.extra ? { ...element.extra } : undefined,
+    };
+}
+
 function renderElementTree(
     element: UIElement,
     document: UIDocument,
@@ -374,7 +387,9 @@ function renderElementTree(
                   listItemScope ?? null,
               )
             : patched;
-    const resolved = mergeElementWithBlueprintValues(bound, surface.id, valueRuntime, listItemScope ?? null, instanceKey);
+    const resolved = cloneElementRenderSnapshot(
+        mergeElementWithBlueprintValues(bound, surface.id, valueRuntime, listItemScope ?? null, instanceKey)
+    );
 
     if (resolved.layout.visible === false) {
         return null;
