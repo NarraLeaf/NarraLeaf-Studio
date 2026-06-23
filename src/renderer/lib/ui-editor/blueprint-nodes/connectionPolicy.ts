@@ -37,6 +37,9 @@ function areDataValueTypesCompatible(sourceType: string | undefined, targetType:
     if (sourceType === targetType) {
         return true;
     }
+    if (sourceType === "integer" && targetType === "float") {
+        return true;
+    }
     if (targetType === "string" && (sourceType === "integer" || sourceType === "float")) {
         return true;
     }

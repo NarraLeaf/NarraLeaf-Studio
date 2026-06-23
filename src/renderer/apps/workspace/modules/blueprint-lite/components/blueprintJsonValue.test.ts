@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
     addJsonArrayItem,
     addJsonObjectField,
+    coerceJsonValueToSchema,
     moveJsonArrayItem,
     normalizeJsonValue,
     removeJsonArrayItem,
     renameJsonObjectField,
     summarizeJsonValue,
+    validateJsonValueAgainstSchema,
 } from "./blueprintJsonValue";
+import type { BlueprintJsonValueSchema } from "@/lib/ui-editor/blueprint-nodes/types";
 
 describe("blueprintJsonValue helpers", () => {
     it("normalizes values into JSON-safe data", () => {
@@ -64,5 +67,31 @@ describe("blueprintJsonValue helpers", () => {
         expect(summarizeJsonValue("abcdefghijklmnopqrstuvwxyz0123456789")).toBe(
             "\"abcdefghijklmnopqrstuvwxyz0123456...\"",
         );
+    });
+
+    it("validates and coerces fixed object schemas", () => {
+        const vector2dSchema: BlueprintJsonValueSchema = {
+            kind: "object",
+            allowExtraFields: false,
+            fields: [
+                { key: "x", kind: "number", required: true },
+                { key: "y", kind: "number", required: true },
+            ],
+        };
+
+        expect(validateJsonValueAgainstSchema({ x: 1, y: 2 }, vector2dSchema)).toEqual({ ok: true });
+        expect(validateJsonValueAgainstSchema({ x: 1 }, vector2dSchema)).toMatchObject({
+            ok: false,
+            message: "$.y is required",
+        });
+        expect(validateJsonValueAgainstSchema({ x: 1, y: "2" }, vector2dSchema)).toMatchObject({
+            ok: false,
+            message: "$.y must be number",
+        });
+        expect(validateJsonValueAgainstSchema({ x: 1, y: 2, z: 3 }, vector2dSchema)).toMatchObject({
+            ok: false,
+            message: "$.z is not allowed",
+        });
+        expect(coerceJsonValueToSchema({ x: 1, z: 3 }, vector2dSchema)).toEqual({ x: 1, y: 0 });
     });
 });

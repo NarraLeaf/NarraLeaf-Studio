@@ -69,6 +69,9 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeDe
     if (def.role === "valueReturn" || def.type === BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE) {
         return true;
     }
+    if (def.role === "comment") {
+        return true;
+    }
     if (def.type === BLUEPRINT_NODE_TYPE_LOCAL_GET || def.type === BLUEPRINT_NODE_TYPE_LOCAL_SET) {
         return !def.isLatent;
     }
@@ -78,10 +81,7 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeDe
     if (!def.isPure || def.isLatent) {
         return false;
     }
-    return def.category === "Data" ||
-        def.category === "JSON" ||
-        def.category === "String" ||
-        def.category === "Math";
+    return def.category === "Data" || def.category === "Math";
 }
 
 class BlueprintNodeDefinitionsRegistry {
@@ -136,6 +136,7 @@ class BlueprintNodeDefinitionsRegistry {
             role: def.role,
             scope: def.scope,
             supportsDynamicInputPins: Boolean(def.dynamicInputPins),
+            dynamicInputPinAddLabel: def.dynamicInputPins?.addButtonLabel,
             dynamicInputPinLabelParamKey: def.dynamicInputPins?.pinLabelParamKey,
         };
     }
@@ -296,6 +297,14 @@ class BlueprintNodeDefinitionsRegistry {
         if (d.pinLabelParamKey !== undefined && !d.pinLabelParamKey.trim()) {
             throw new Error(`[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.pinLabelParamKey is empty`);
         }
+        if (d.outputInsertBeforePinId !== undefined) {
+            const outputIds = new Set(def.pins.filter(p => p.kind === "output").map(p => p.id));
+            if (!outputIds.has(d.outputInsertBeforePinId)) {
+                throw new Error(
+                    `[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.outputInsertBeforePinId contains unknown output pin: ${d.outputInsertBeforePinId}`,
+                );
+            }
+        }
         const dataInputIds = new Set(
             def.pins.filter(p => p.kind === "input" && p.semantic === "data").map(p => p.id),
         );
@@ -330,6 +339,11 @@ class BlueprintNodeDefinitionsRegistry {
             if (!template.label.trim()) {
                 throw new Error(
                     `[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.generatedPinTemplates label is empty`,
+                );
+            }
+            if (template.kind === "output" && template.allowInlineLiteral) {
+                throw new Error(
+                    `[BlueprintNodeRegistry] Node ${def.type} dynamic output pin template cannot allow inline literals`,
                 );
             }
             if (template.allowInlineLiteral) {

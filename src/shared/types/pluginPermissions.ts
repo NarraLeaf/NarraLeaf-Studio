@@ -11,6 +11,18 @@ export type ApiCapability = typeof ApiCapability[keyof typeof ApiCapability];
 export type PluginPermissionPersistence = "temporary" | "permanent";
 export type PluginFileSystemPermissionMode = "read" | "write" | "readwrite";
 
+export type PluginInstallPermission =
+    | {
+        kind: "filesystem";
+        path: string;
+        mode: PluginFileSystemPermissionMode;
+        recursive: boolean;
+    }
+    | {
+        kind: "api";
+        capability: string;
+    };
+
 export interface PluginIdentity {
     id: string;
     name?: string;
@@ -40,7 +52,7 @@ export type PluginPermissionRequest =
     | (PluginPermissionRequestBase & {
         kind: "install";
         source: string;
-        requestedPermissions?: string[];
+        permissions?: PluginInstallPermission[];
         persistence?: PluginPermissionPersistence;
     })
     | (PluginPermissionRequestBase & {

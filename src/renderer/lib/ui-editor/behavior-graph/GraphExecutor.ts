@@ -1,8 +1,12 @@
 import type { UIHostAdapter } from "../runtime/types";
-import type { UIGraph, UIGraphEntry, UIGraphNode } from "@shared/types/ui-editor/graph";
+import type { UIGraph, UIGraphEntry } from "@shared/types/ui-editor/graph";
 import { registerCoreBlueprintNodes } from "../blueprint-nodes/registerCoreBlueprintNodes";
 import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
-import type { BehaviorGraphExecutionTrace, BehaviorNodeExecutionContext } from "./BehaviorNodeRegistry";
+import type {
+    BehaviorGraphExecutionTrace,
+    BehaviorNodeExecuteResult,
+    BehaviorNodeExecutionContext,
+} from "./BehaviorNodeRegistry";
 import { BlueprintGraphExecutionError } from "./GraphExecutionError";
 import { writeBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
 
@@ -24,6 +28,15 @@ export type ExecuteGraphResult = {
 
 const DEFAULT_MAX_STEPS = 1024;
 
+function resolveNextPorts(result: BehaviorNodeExecuteResult | void): string[] | null {
+    if (result && Object.prototype.hasOwnProperty.call(result, "nextPorts")) {
+        return result.nextPorts ?? [];
+    }
+    const hasNextPort = Boolean(result && Object.prototype.hasOwnProperty.call(result, "nextPort"));
+    const nextPort = hasNextPort ? result?.nextPort : "next";
+    return nextPort == null ? null : [nextPort];
+}
+
 export async function executeGraph(options: ExecuteGraphOptions): Promise<ExecuteGraphResult> {
     registerCoreBlueprintNodes();
     const { entry, graph, hostAdapter } = options;
@@ -35,10 +48,12 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             valueResult.returnValue = value;
         },
     };
-    let cursorNodeId = entry.start.nodeId;
+    let cursor: string | undefined = entry.start.nodeId;
+    const pendingCursors: string[] = [];
     let steps = 0;
 
-    while (true) {
+    while (cursor) {
+        const currentCursor: string = cursor;
         steps += 1;
         if (steps > (options.maxSteps ?? DEFAULT_MAX_STEPS)) {
             const message = `Behavior graph execution exceeded ${options.maxSteps ?? DEFAULT_MAX_STEPS} steps`;
@@ -51,20 +66,20 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
                     blueprintId: trace.blueprintId,
                     eventId: trace.eventId,
                     graphId: trace.graphId,
-                    nodeId: cursorNodeId,
+                    nodeId: currentCursor,
                 });
             }
-            throw new BlueprintGraphExecutionError(message, cursorNodeId);
+            throw new BlueprintGraphExecutionError(message, currentCursor);
         }
 
-        const node = graph.nodes[cursorNodeId];
+        const node = graph.nodes[currentCursor];
         if (!node) {
-            throw new BlueprintGraphExecutionError(`Behavior graph node not found: ${cursorNodeId}`, cursorNodeId);
+            throw new BlueprintGraphExecutionError(`Behavior graph node not found: ${currentCursor}`, currentCursor);
         }
 
         const definition = behaviorNodeRegistry.get(node.type);
         if (!definition) {
-            throw new BlueprintGraphExecutionError(`Behavior node definition missing: ${node.type}`, cursorNodeId);
+            throw new BlueprintGraphExecutionError(`Behavior node definition missing: ${node.type}`, currentCursor);
         }
 
         const trace = options.trace;
@@ -85,7 +100,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             valueExecution,
         };
 
-        let result: Awaited<ReturnType<NonNullable<typeof definition.execute>>>;
+        let result: BehaviorNodeExecuteResult | void;
         try {
             result = await Promise.resolve(definition.execute(context));
         } catch (err) {
@@ -111,19 +126,26 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
         if (result && Object.prototype.hasOwnProperty.call(result, "outputValues")) {
             writeBlueprintNodeOutputValues(blueprintLocals, node.id, result.outputValues ?? {});
         }
-        const hasNextPort = Boolean(result && Object.prototype.hasOwnProperty.call(result, "nextPort"));
-        const nextPort = hasNextPort ? result?.nextPort : "next";
-        if (nextPort == null) {
+        const nextPorts = resolveNextPorts(result);
+        if (nextPorts == null) {
             return valueResult;
         }
 
-        const nextEdge = graph.edges.find(
-            edge => edge.from.nodeId === cursorNodeId && edge.from.port === nextPort
-        );
-        if (!nextEdge) {
-            return valueResult;
+        const nextCursors: string[] = nextPorts
+            .map(port => graph.edges.find(edge => edge.from.nodeId === currentCursor && edge.from.port === port))
+            .filter((edge): edge is NonNullable<typeof edge> => Boolean(edge))
+            .map(edge => edge.to.nodeId);
+
+        if (nextCursors.length === 0) {
+            cursor = pendingCursors.shift();
+            if (!cursor) {
+                return valueResult;
+            }
+            continue;
         }
 
-        cursorNodeId = nextEdge.to.nodeId;
+        pendingCursors.unshift(...nextCursors.slice(1));
+        cursor = nextCursors[0];
     }
+    return valueResult;
 }

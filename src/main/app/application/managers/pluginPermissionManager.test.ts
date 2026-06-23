@@ -159,6 +159,12 @@ describe("PluginPermissionManager actor grants", () => {
             requestId: "install-1",
             plugin,
             source: "local",
+            permissions: [
+                {
+                    kind: "api",
+                    capability: ApiCapability.BashExecute,
+                },
+            ],
         }, {
             requestId: "install-1",
             approved: true,

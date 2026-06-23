@@ -13,6 +13,12 @@ Events分类具有：
 Flow分类具有：
 - Flow节点
 
+## Debug
+
+Debug分类具有：
+- Debug节点
+- 图内注释节点
+
 ## Network
 
 Network分类具有：
@@ -32,16 +38,15 @@ Page分类具有：
 
 Data分类具有：
 - Data节点
-
-## JSON
-
-JSON分类具有：
 - JSON节点
-
-## String
-
-String分类具有：
 - String节点
+
+## Math
+
+Math分类具有：
+- Math节点
+- Boolean节点
+- Compare节点
 
 ## Text
 

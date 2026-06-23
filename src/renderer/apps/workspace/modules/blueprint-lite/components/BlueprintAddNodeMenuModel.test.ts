@@ -59,7 +59,7 @@ describe("BlueprintAddNodeMenuModel", () => {
             entry({
                 type: "blueprint.string.concat",
                 displayName: "Concat",
-                category: "String",
+                category: "Data",
                 keywords: ["string"],
                 isPure: true,
                 inputs: 2,
@@ -68,7 +68,7 @@ describe("BlueprintAddNodeMenuModel", () => {
             entry({
                 type: "blueprint.data.jsonMakeObject",
                 displayName: "Make JSON Object",
-                category: "JSON",
+                category: "Data",
                 keywords: ["json"],
                 isPure: true,
                 inputs: 2,
@@ -110,9 +110,7 @@ describe("BlueprintAddNodeMenuModel", () => {
             "Page",
             "Variables",
             "Data",
-            "JSON",
             "Math",
-            "String",
             "Text",
         ]);
     });

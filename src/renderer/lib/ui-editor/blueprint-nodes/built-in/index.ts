@@ -4,6 +4,7 @@
  */
 
 import type { BlueprintNodeDef } from "../types";
+import { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 import { broadcastBlueprintNodes } from "./broadcastNodes";
 import { controlFlowBlueprintNodes } from "./controlFlowNodes";
 import { dataBlueprintNodes } from "./dataNodes";
@@ -15,6 +16,7 @@ import { mathBlueprintNodes } from "./mathNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
 
+export { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 export { broadcastBlueprintNodes } from "./broadcastNodes";
 export { controlFlowBlueprintNodes } from "./controlFlowNodes";
 export { dataBlueprintNodes } from "./dataNodes";
@@ -39,6 +41,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...dataBlueprintNodes,
     ...localVariableBlueprintNodes,
     ...mathBlueprintNodes,
+    ...booleanCompareBlueprintNodes,
     ...stringBlueprintNodes,
     ...textBlueprintNodes,
     ...devtoolsBlueprintNodes,

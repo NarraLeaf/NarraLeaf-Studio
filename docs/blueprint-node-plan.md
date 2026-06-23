@@ -10,7 +10,6 @@
 | On Surface Init | `blueprint.event.head.surfaceInit` | **已实现**。Page 或 Game UI surface 初始化时触发。 |
 | On Surface Unmount | `blueprint.event.head.surfaceUnmount` | **已实现**。Page 或 Game UI surface 卸载时触发。 |
 | On Init | `blueprint.event.head.init` | **已实现**。当前 widget 初始化时触发。 |
-| On Click | `blueprint.event.head.click` | 当前 widget 被点击时触发。 |
 | Mouse Click | `blueprint.event.head.mouseClick` | **已实现**。鼠标左键点击元素时触发。 |
 | Mouse Double Click | `blueprint.event.head.mouseDoubleClick` | **已实现**。鼠标双击元素时触发。 |
 | Mouse Enter | `blueprint.event.head.mouseEnter` | **已实现**。鼠标进入元素区域时触发。 |
@@ -30,38 +29,22 @@
 | On Item Hover | `blueprint.event.head.itemHover` | **已实现**。List 或 Repeater 条目被悬停时触发。 |
 | On Selection Changed | `blueprint.event.head.selectionChanged` | **已实现**。List、选项组或可选择控件的选择项变化时触发。 |
 | On Scroll End | `blueprint.event.head.scrollEnd` | **已实现**。列表或滚动容器滚动到末端时触发。 |
-| On Load More | `blueprint.event.head.loadMore` | 列表需要加载更多数据时触发。 |
-| On Variable Changed | `blueprint.event.head.variableChanged` | 指定 UI 变量变化时触发。 |
-| On Timer | `blueprint.event.head.timer` | 指定计时器触发时执行。 |
-| On Modal Result | `blueprint.event.head.modalResult` | 弹窗返回结果时触发。 |
+| On Interval | `blueprint.event.head.timer` | 指定计时器触发时执行。 |
 
 ## Flow
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
 | If | `if` | **已实现**。根据布尔条件选择 true 或 false 执行出口。 |
+| If Else | `blueprint.flow.ifElse` | **已实现**。支持像 Concat 一样追加 If 条件；每个追加条件生成对应 Then 出口，最终固定 Else 作为兜底出口。 |
 | Noop | `blueprint.flow.noop` | **已实现**。空操作，直接传递执行流。 |
-| Sequence | `blueprint.flow.sequence` | 按顺序执行多个出口。 |
+| Sequence | `blueprint.flow.sequence` | **已实现**。按顺序排队执行多个出口。 |
 | Switch String | `blueprint.flow.switchString` | **已实现**。根据字符串值进入匹配分支。 |
-| Switch Integer | `blueprint.flow.switchInteger` | 根据整数值进入匹配分支。 |
-| Switch Boolean | `blueprint.flow.switchBoolean` | 根据布尔值进入 true 或 false 分支。 |
-| Branch By Enum | `blueprint.flow.switchEnum` | 根据枚举字符串或枚举值进入匹配分支。 |
 | For Loop | `blueprint.flow.forLoop` | **已实现**。执行有界整数循环。 |
 | For Each | `blueprint.flow.forEach` | **已实现**。遍历 JSON 数组中的每一项。 |
 | While | `blueprint.flow.while` | **已实现**。在条件为真时执行有界循环。 |
 | Delay | `blueprint.flow.delay` | **已实现**。等待指定秒数后继续执行。 |
-| Delay Frames | `blueprint.flow.delayFrames` | 等待指定帧数后继续执行。 |
-| Wait Until | `blueprint.flow.waitUntil` | 等待条件满足后继续执行。 |
-| Do Once | `blueprint.flow.doOnce` | 只允许执行一次，可通过 reset 重新开启。 |
-| Do N Times | `blueprint.flow.doNTimes` | 最多执行指定次数。 |
-| Gate | `blueprint.flow.gate` | 根据打开或关闭状态决定是否允许执行流通过。 |
-| Flip Flop | `blueprint.flow.flipFlop` | 每次进入时在 A/B 两个出口间交替执行。 |
-| Early Return | `blueprint.flow.return` | 提前结束当前函数、宏或事件执行链。 |
-| Reroute | `blueprint.flow.reroute` | 用于整理图连线的中继节点。 |
-| Comment | `blueprint.flow.comment` | 图内说明节点。 |
-| Region | `blueprint.flow.region` | 图内区域分组节点。 |
-| Debounce | `blueprint.flow.debounce` | 在连续触发停止一段时间后只执行最后一次。 |
-| Throttle | `blueprint.flow.throttle` | 限制一段时间内最多执行一次。 |
+| Early Return | `blueprint.flow.return` | **已实现**。提前结束当前函数、宏或事件执行链。 |
 
 ## Variables
 
@@ -69,74 +52,46 @@
 | --- | --- | --- |
 | Get Var | `blueprint.local.get` | **已实现**。读取执行局部变量。 |
 | Set Var | `blueprint.local.set` | **已实现**。写入执行局部变量。 |
-| Get Local Var | `blueprint.variable.getLocal` | 读取图执行局部变量。 |
-| Set Local Var | `blueprint.variable.setLocal` | 写入图执行局部变量。 |
-| Get Blueprint Var | `blueprint.variable.getBlueprint` | 读取当前 blueprint 成员变量。 |
-| Set Blueprint Var | `blueprint.variable.setBlueprint` | 写入当前 blueprint 成员变量。 |
-| Get Surface Var | `blueprint.variable.getSurface` | 读取当前 Page 或 Game UI surface 状态变量。 |
-| Set Surface Var | `blueprint.variable.setSurface` | 写入当前 Page 或 Game UI surface 状态变量。 |
-| Get Global UI Var | `blueprint.variable.getGlobalUi` | 读取 UI runtime 全局变量。 |
-| Set Global UI Var | `blueprint.variable.setGlobalUi` | 写入 UI runtime 全局变量。 |
-| Watch Var Changed | `blueprint.variable.watchChanged` | 监听变量变化并触发后续逻辑。 |
-| Reset Var | `blueprint.variable.reset` | 将变量恢复为默认值。 |
-| Has Var | `blueprint.variable.has` | 判断指定变量是否存在。 |
 
-## Data
+## Data（Palette: Data，包含 String / JSON）
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
 | Boolean Literal | `blueprint.data.booleanLiteral` | **已实现**。输出布尔常量。 |
-| Integer Literal | `blueprint.data.integerLiteral` | 输出整数常量。 |
-| Float Literal | `blueprint.data.floatLiteral` | 输出浮点数常量。 |
+| Integer Literal | `blueprint.data.integerLiteral` | **已实现**。输出整数常量。 |
+| Float Literal | `blueprint.data.floatLiteral` | **已实现**。输出浮点数常量。 |
 | String Literal | `blueprint.data.stringLiteral` | **已实现**。输出字符串常量。 |
-| Color Literal | `blueprint.data.colorLiteral` | 输出颜色常量。 |
-| Vector2 Literal | `blueprint.data.vector2Literal` | 输出二维向量常量。 |
-| Rect Literal | `blueprint.data.rectLiteral` | 输出矩形常量。 |
-| Null | `blueprint.data.null` | 输出 null。 |
-| Undefined / Empty | `blueprint.data.empty` | 输出空值。 |
-| Is String | `blueprint.data.isString` | 判断值是否为字符串。 |
-| Is Number | `blueprint.data.isNumber` | 判断值是否为数字。 |
-| Is Boolean | `blueprint.data.isBoolean` | 判断值是否为布尔值。 |
-| Is Array | `blueprint.data.isArray` | 判断值是否为数组。 |
-| Is Object | `blueprint.data.isObject` | 判断值是否为对象。 |
-| Is Null | `blueprint.data.isNull` | 判断值是否为 null。 |
-| Is Empty Value | `blueprint.data.isEmptyValue` | 判断值是否为空字符串、空数组、空对象、null 或 undefined。 |
+| Color Literal | `blueprint.data.colorLiteral` | **已实现**。输出颜色常量。 |
+| Rect Literal | `blueprint.data.rectLiteral` | **已实现**。输出矩形常量。 |
+| Null | `blueprint.data.nullLiteral` | **已实现**。输出 null。 |
+| Is String | `blueprint.data.isString` | **已实现**。判断值是否为字符串。 |
+| Is Number | `blueprint.data.isNumber` | **已实现**。判断值是否为数字。 |
+| Is Boolean | `blueprint.data.isBoolean` | **已实现**。判断值是否为布尔值。 |
+| Is Array | `blueprint.data.isArray` | **已实现**。判断值是否为数组。 |
+| Is Object | `blueprint.data.isObject` | **已实现**。判断值是否为对象。 |
+| Is Null | `blueprint.data.isNull` | **已实现**。判断值是否为 null。 |
+| Is Empty Value | `blueprint.data.isEmptyValue` | **已实现**。判断值是否为空字符串、空数组、空对象、null 或 undefined。 |
 | To Boolean | `blueprint.data.toBoolean` | **已实现**。将值转换为布尔值。 |
 | To Integer | `blueprint.data.toInteger` | **已实现**。将值转换为整数。 |
 | To Float | `blueprint.data.toFloat` | **已实现**。将值转换为浮点数。 |
-| To String | `blueprint.data.toString` | 将值转换为字符串。 |
-| To Color | `blueprint.data.toColor` | 将值转换为颜色。 |
 | To JSON | `blueprint.data.toJson` | **已实现**。将值转换为 JSON-safe 值。 |
-| Parse Number | `blueprint.data.parseNumber` | 从字符串解析数字。 |
-| Clamp Number | `blueprint.data.clampNumber` | 将数字限制在最小值和最大值之间。 |
-| Map Range | `blueprint.data.mapRange` | 将数字从一个范围映射到另一个范围。 |
-| Select Boolean | `blueprint.data.selectBoolean` | 根据条件在两个布尔值之间选择。 |
-| Select String | `blueprint.data.selectString` | 根据条件在两个字符串之间选择。 |
-| Select Number | `blueprint.data.selectNumber` | 根据条件在两个数字之间选择。 |
-| Select JSON | `blueprint.data.selectJson` | 根据条件在两个 JSON 值之间选择。 |
-| Fallback / Coalesce | `blueprint.data.coalesce` | 当主值为空时返回备用值。 |
 
-## Boolean / Compare
+## Boolean / Compare（Palette: Math）
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
-| And | `blueprint.boolean.and` | 布尔与。 |
-| Or | `blueprint.boolean.or` | 布尔或。 |
-| Not | `blueprint.boolean.not` | 布尔取反。 |
-| Xor | `blueprint.boolean.xor` | 布尔异或。 |
-| Equal | `blueprint.compare.equal` | 判断两个值是否相等。 |
-| Not Equal | `blueprint.compare.notEqual` | 判断两个值是否不相等。 |
-| Greater Than | `blueprint.compare.greaterThan` | 判断 a 是否大于 b。 |
-| Greater Than Or Equal | `blueprint.compare.greaterThanOrEqual` | 判断 a 是否大于等于 b。 |
-| Less Than | `blueprint.compare.lessThan` | 判断 a 是否小于 b。 |
-| Less Than Or Equal | `blueprint.compare.lessThanOrEqual` | 判断 a 是否小于等于 b。 |
-| In Range | `blueprint.compare.inRange` | 判断数字是否位于指定范围内。 |
-| Is Between | `blueprint.compare.isBetween` | 判断数字是否介于两个边界之间。 |
-| Is One Of | `blueprint.compare.isOneOf` | 判断值是否属于候选集合。 |
-| Compare String | `blueprint.compare.string` | 比较两个字符串。 |
-| Compare Number | `blueprint.compare.number` | 比较两个数字并输出比较结果。 |
+| And | `blueprint.boolean.and` | **已实现**。布尔与。 |
+| Or | `blueprint.boolean.or` | **已实现**。布尔或。 |
+| Not | `blueprint.boolean.not` | **已实现**。布尔取反。 |
+| Xor | `blueprint.boolean.xor` | **已实现**。布尔异或。 |
+| Equal | `blueprint.compare.equal` | **已实现**。严格相等，使用 JavaScript `===`。 |
+| Not Equal | `blueprint.compare.notEqual` | **已实现**。严格不相等，使用 JavaScript `!==`。 |
+| Greater Than | `blueprint.compare.greaterThan` | **已实现**。判断 a 是否大于 b。 |
+| Greater Than Or Equal | `blueprint.compare.greaterThanOrEqual` | **已实现**。判断 a 是否大于等于 b。 |
+| Less Than | `blueprint.compare.lessThan` | **已实现**。判断 a 是否小于 b。 |
+| Less Than Or Equal | `blueprint.compare.lessThanOrEqual` | **已实现**。判断 a 是否小于等于 b。 |
 
-## Math
+## Math（Palette: Math）
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
@@ -144,22 +99,19 @@
 | Subtract | `blueprint.math.subtract` | **已实现**。数字相减。 |
 | Multiply | `blueprint.math.multiply` | **已实现**。数字相乘。 |
 | Divide | `blueprint.math.divide` | **已实现**。数字相除。 |
-| Modulo | `blueprint.math.modulo` | 取余。 |
+| Modulo | `blueprint.math.modulo` | **已实现**。取余。 |
 | Increment | `blueprint.math.increment` | **已实现**。数字加 1。 |
 | Decrement | `blueprint.math.decrement` | **已实现**。数字减 1。 |
-| Abs | `blueprint.math.abs` | 绝对值。 |
-| Min | `blueprint.math.min` | 返回较小值。 |
-| Max | `blueprint.math.max` | 返回较大值。 |
-| Clamp | `blueprint.math.clamp` | 限制数值范围。 |
-| Round | `blueprint.math.round` | 四舍五入。 |
-| Floor | `blueprint.math.floor` | 向下取整。 |
-| Ceil | `blueprint.math.ceil` | 向上取整。 |
-| Random Float | `blueprint.math.randomFloat` | 输出指定范围内的随机浮点数。 |
-| Random Integer | `blueprint.math.randomInteger` | 输出指定范围内的随机整数。 |
-| Lerp | `blueprint.math.lerp` | 线性插值。 |
-| Map Range Clamped | `blueprint.math.mapRangeClamped` | 将数值映射到目标范围并限制边界。 |
+| Abs | `blueprint.math.abs` | **已实现**。绝对值。 |
+| Min | `blueprint.math.min` | **已实现**。返回最小值；支持动态输入。 |
+| Max | `blueprint.math.max` | **已实现**。返回最大值；支持动态输入。 |
+| Round | `blueprint.math.round` | **已实现**。四舍五入并输出整数。 |
+| Floor | `blueprint.math.floor` | **已实现**。向下取整并输出整数。 |
+| Ceil | `blueprint.math.ceil` | **已实现**。向上取整并输出整数。 |
+| Random Float | `blueprint.math.randomFloat` | **已实现**。输出指定范围内的随机浮点数。 |
+| Random Integer | `blueprint.math.randomInteger` | **已实现**。输出指定范围内的随机整数。 |
 
-## String
+## String（Palette: Data）
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
@@ -197,7 +149,7 @@
 | Extract Regex | `blueprint.string.extractRegex` | **已实现**。提取正则匹配结果。 |
 | Normalize Line Breaks | `blueprint.string.normalizeLineBreaks` | **已实现**。统一换行符格式。 |
 
-## JSON
+## JSON（Palette: Data）
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
@@ -336,7 +288,6 @@
 | Set Effects | `blueprint.text.setEffects` | **已实现**。设置文本静态效果。 |
 | Get All Properties | `blueprint.text.getAllProperties` | **已实现**。一次性获取文本元素全部属性。 |
 | Set All Properties | `blueprint.text.setAllProperties` | **已实现**。一次性设置文本元素全部属性。 |
-| Typewriter Text | `blueprint.text.typewriter` | 按打字机效果逐步显示文本。 |
 
 ## Image
 
@@ -345,7 +296,6 @@
 | Get Source | `blueprint.image.getSource` | 获取图片来源。 |
 | Set Source | `blueprint.image.setSource` | 设置图片来源。 |
 | Clear Source | `blueprint.image.clearSource` | 清空图片来源。 |
-| Set Sprite / Asset | `blueprint.image.setAsset` | 通过资源 ID 设置图片。 |
 | Set Fit Mode | `blueprint.image.setFitMode` | 设置图片适配模式。 |
 | Set Tint | `blueprint.image.setTint` | 设置图片染色。 |
 | Set Crop Rect | `blueprint.image.setCropRect` | 设置图片裁切矩形。 |
@@ -361,13 +311,9 @@
 | Get Label | `blueprint.button.getLabel` | 获取按钮文本。 |
 | Set Label | `blueprint.button.setLabel` | 设置按钮文本。 |
 | Set Button Variant | `blueprint.button.setVariant` | 设置按钮视觉状态。 |
-| Set Pressed | `blueprint.button.setPressed` | 设置按钮 pressed 状态。 |
-| Set Loading | `blueprint.button.setLoading` | 设置按钮 loading 状态。 |
-| Set Disabled Reason | `blueprint.button.setDisabledReason` | 设置按钮禁用原因文本。 |
 | Click Button | `blueprint.button.click` | 主动触发按钮点击逻辑。 |
-| Focus Button | `blueprint.button.focus` | 将焦点移动到按钮。 |
 
-## List / Repeater
+## List
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
@@ -526,6 +472,8 @@
 
 | 节点 | 类型 ID 建议 | 说明 |
 | --- | --- | --- |
+| Comment | `blueprint.flow.comment` | **已实现**。Debug 分类下的图内注释框；稳定类型 ID 保持不变，支持多行文本、颜色、背景和尺寸编辑，关闭背景后可作为底层框选区域，不参与执行。 |
+| Log | `blueprint.log` | **已实现**。输出字符串调试日志并继续执行。 |
 | Print | `blueprint.debug.print` | 输出调试日志。 |
 | Print Warning | `blueprint.debug.warning` | 输出警告日志。 |
 | Print Error | `blueprint.debug.error` | 输出错误日志。 |

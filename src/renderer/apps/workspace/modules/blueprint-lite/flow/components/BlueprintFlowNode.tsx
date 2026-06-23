@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
 import { Link2, Minus, Plus } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import {
@@ -9,8 +9,18 @@ import {
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BlueprintLiteralValueControl } from "../../components/BlueprintLiteralValueControl";
 import { BlueprintJsonValueControl } from "../../components/BlueprintJsonValueControl";
+import { BlueprintColorValueControl } from "../../components/BlueprintColorValueControl";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
-import { Button, Input } from "@/lib/components/elements";
+import { Button, Input, TextArea } from "@/lib/components/elements";
+import { BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE } from "@shared/types/blueprint/graph";
+
+type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
+type BlueprintNodeParamPatch = (
+    nodeId: string,
+    key: string,
+    value: unknown,
+    history?: BlueprintNodeParamHistoryOptions,
+) => void;
 
 /**
  * React Flow handles node selection / drag on pointer down. Stopping propagation on click alone is too late;
@@ -24,7 +34,7 @@ export type BlueprintFlowNodeData = {
     catalog: BlueprintNodeEditorCatalogEntry;
     nodeId: string;
     params: Record<string, unknown>;
-    onPatchNodeParam?: (nodeId: string, key: string, value: unknown) => void;
+    onPatchNodeParam?: BlueprintNodeParamPatch;
     /** Append a variadic data input pin (IR + params). */
     onAddDynamicInputPin?: (nodeId: string) => void;
     /** Remove a user-added input pin and clean edges / literals. */
@@ -60,6 +70,58 @@ const INPUT_NUMBER_NO_SPINNER =
 
 /** Pin body: fixed min width, cap max — avoid equal flex-1 columns hollowing the middle on inline inputs. */
 const BLUEPRINT_CARD_PIN_BODY_CLASS = "min-w-[200px] max-w-[280px]";
+const COMMENT_DEFAULT_WIDTH = 360;
+const COMMENT_DEFAULT_HEIGHT = 180;
+
+const COMMENT_COLORS: Record<
+    string,
+    {
+        label: string;
+        border: string;
+        selectedBorder: string;
+        background: string;
+        header: string;
+        text: string;
+        swatch: string;
+    }
+> = {
+    amber: {
+        label: "Amber",
+        border: "rgba(245, 158, 11, 0.55)",
+        selectedBorder: "rgba(251, 191, 36, 0.95)",
+        background: "rgba(120, 78, 18, 0.28)",
+        header: "rgba(245, 158, 11, 0.2)",
+        text: "#fde68a",
+        swatch: "#f59e0b",
+    },
+    cyan: {
+        label: "Cyan",
+        border: "rgba(34, 211, 238, 0.55)",
+        selectedBorder: "rgba(103, 232, 249, 0.95)",
+        background: "rgba(8, 85, 102, 0.28)",
+        header: "rgba(34, 211, 238, 0.18)",
+        text: "#a5f3fc",
+        swatch: "#06b6d4",
+    },
+    violet: {
+        label: "Violet",
+        border: "rgba(167, 139, 250, 0.55)",
+        selectedBorder: "rgba(196, 181, 253, 0.95)",
+        background: "rgba(76, 29, 149, 0.26)",
+        header: "rgba(167, 139, 250, 0.18)",
+        text: "#ddd6fe",
+        swatch: "#8b5cf6",
+    },
+    slate: {
+        label: "Slate",
+        border: "rgba(148, 163, 184, 0.5)",
+        selectedBorder: "rgba(203, 213, 225, 0.92)",
+        background: "rgba(51, 65, 85, 0.32)",
+        header: "rgba(148, 163, 184, 0.13)",
+        text: "#e2e8f0",
+        swatch: "#64748b",
+    },
+};
 
 type CatalogPin = BlueprintNodeEditorCatalogEntry["pins"][number] & { removable?: boolean };
 
@@ -543,7 +605,13 @@ function InspectorParamOnCard({
                     onChange={v => onPatchNodeParam(nodeId, spec.key, v)}
                 />
             ) : spec.kind === "json" ? (
-                <BlueprintJsonValueControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
+                <BlueprintJsonValueControl
+                    value={raw}
+                    schema={spec.jsonSchema}
+                    onChange={v => onPatchNodeParam(nodeId, spec.key, v)}
+                />
+            ) : spec.kind === "color" ? (
+                <BlueprintColorValueControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : (
                 <Input
                     className={
@@ -562,6 +630,175 @@ function InspectorParamOnCard({
                     }}
                 />
             )}
+        </div>
+    );
+}
+
+function readPositiveNumberParam(
+    params: Record<string, unknown>,
+    key: string,
+    fallback: number,
+): number {
+    const n = Number(params[key] ?? fallback);
+    if (!Number.isFinite(n) || n <= 0) {
+        return fallback;
+    }
+    return n;
+}
+
+function BlueprintCommentNodeCard({
+    nodeId,
+    displayName,
+    params,
+    selected,
+    onPatchNodeParam,
+}: {
+    nodeId: string;
+    displayName: string;
+    params: Record<string, unknown>;
+    selected?: boolean;
+    onPatchNodeParam?: BlueprintNodeParamPatch;
+}) {
+    const { getZoom } = useReactFlow();
+    const colorKey = typeof params.color === "string" && COMMENT_COLORS[params.color] ? params.color : "amber";
+    const color = COMMENT_COLORS[colorKey] ?? COMMENT_COLORS.amber;
+    const backgroundEnabled = params.background !== false;
+    const width = readPositiveNumberParam(params, "width", COMMENT_DEFAULT_WIDTH);
+    const height = readPositiveNumberParam(params, "height", COMMENT_DEFAULT_HEIGHT);
+    const [draftSize, setDraftSize] = useState({ width, height });
+    const isResizingRef = useRef(false);
+
+    useEffect(() => {
+        if (isResizingRef.current) {
+            return;
+        }
+        setDraftSize({ width, height });
+    }, [width, height]);
+
+    const startResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+        if (!onPatchNodeParam) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        isResizingRef.current = true;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startWidth = draftSize.width;
+        const startHeight = draftSize.height;
+        const zoom = Math.max(getZoom(), 0.01);
+        const history = { mergeKey: `comment-resize:${nodeId}`, mergeWindowMs: 800 };
+
+        const readNextSize = (ev: PointerEvent) => {
+            const nextWidth = Math.max(1, Math.round(startWidth + (ev.clientX - startX) / zoom));
+            const nextHeight = Math.max(1, Math.round(startHeight + (ev.clientY - startY) / zoom));
+            return { width: nextWidth, height: nextHeight };
+        };
+
+        const applyDraftSize = (ev: PointerEvent) => {
+            const { width: nextWidth, height: nextHeight } = readNextSize(ev);
+            setDraftSize({ width: nextWidth, height: nextHeight });
+        };
+
+        const onMove = (ev: PointerEvent) => {
+            applyDraftSize(ev);
+        };
+        const finishResize = (ev: PointerEvent) => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", finishResize);
+            window.removeEventListener("pointercancel", finishResize);
+            const { width: nextWidth, height: nextHeight } = readNextSize(ev);
+            setDraftSize({ width: nextWidth, height: nextHeight });
+            onPatchNodeParam(nodeId, "width", nextWidth, history);
+            onPatchNodeParam(nodeId, "height", nextHeight, history);
+            window.setTimeout(() => {
+                isResizingRef.current = false;
+                setDraftSize({ width: nextWidth, height: nextHeight });
+            }, 0);
+        };
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", finishResize);
+        window.addEventListener("pointercancel", finishResize);
+    };
+
+    return (
+        <div
+            className="group relative flex flex-col overflow-hidden rounded border shadow-lg backdrop-blur-[1px]"
+            style={{
+                width: draftSize.width,
+                height: draftSize.height,
+                borderColor: selected ? color.selectedBorder : color.border,
+                background: color.background,
+                boxShadow: selected ? `0 0 0 1px ${color.selectedBorder}` : undefined,
+            }}
+        >
+            <div
+                className="relative flex shrink-0 items-center border-b px-3 py-2"
+                style={{ borderColor: color.border, background: color.header }}
+            >
+                <div
+                    className="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase"
+                    style={{ color: color.text }}
+                >
+                    {displayName}
+                </div>
+                <div
+                    className="nodrag pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+                    onPointerDown={stopFlowNodePointerBubble}
+                >
+                    {Object.entries(COMMENT_COLORS).map(([key, item]) => (
+                        <button
+                            key={key}
+                            type="button"
+                            className={`h-4 w-4 rounded-full border ${
+                                key === colorKey ? "border-white/85" : "border-white/20"
+                            }`}
+                            style={{ background: item.swatch }}
+                            title={item.label}
+                            aria-label={item.label}
+                            onClick={e => {
+                                e.stopPropagation();
+                                onPatchNodeParam?.(nodeId, "color", key);
+                            }}
+                        />
+                    ))}
+                    <button
+                        type="button"
+                        className={`relative h-4 w-4 rounded-full border border-dashed ${
+                            backgroundEnabled
+                                ? "border-slate-300 bg-slate-400/30"
+                                : "border-slate-500 bg-transparent"
+                        }`}
+                        title={backgroundEnabled ? "Background layer on" : "Background layer off"}
+                        aria-label={backgroundEnabled ? "Send comment behind nodes" : "Restore normal comment layer"}
+                        aria-pressed={backgroundEnabled}
+                        onClick={e => {
+                            e.stopPropagation();
+                            onPatchNodeParam?.(nodeId, "background", !backgroundEnabled);
+                        }}
+                    >
+                        {!backgroundEnabled ? (
+                            <span className="absolute left-1/2 top-1/2 h-[1px] w-5 -translate-x-1/2 -translate-y-1/2 rotate-[-45deg] bg-red-500" />
+                        ) : null}
+                    </button>
+                </div>
+            </div>
+            <TextArea
+                className="nodrag min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-gray-100 placeholder-white/35 focus:border-transparent"
+                value={typeof params.text === "string" ? params.text : ""}
+                rows={4}
+                placeholder={displayName}
+                onMouseDown={stopFlowNodePointerBubble}
+                onPointerDown={stopFlowNodePointerBubble}
+                onChange={e => onPatchNodeParam?.(nodeId, "text", e.target.value)}
+            />
+            <div
+                className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-white/25 bg-black/20"
+                title="Resize comment"
+                onPointerDown={startResize}
+            >
+                <div className="absolute bottom-1 right-1 h-2 w-2 border-b border-r border-white/50" />
+            </div>
         </div>
     );
 }
@@ -608,6 +845,19 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     /** When only one side has pins, that column must span full card width so handles align to the true edge. */
     const onlyRightPins = !hasLeftColumn && rightPins.length > 0;
     const onlyLeftPins = hasLeftColumn && rightPins.length === 0;
+    const offsetRightPinsForIfElse = catalog.type === BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE;
+
+    if (catalog.role === "comment") {
+        return (
+            <BlueprintCommentNodeCard
+                nodeId={nodeId}
+                displayName={catalog.displayName}
+                params={params}
+                selected={Boolean(selected)}
+                onPatchNodeParam={onPatchNodeParam}
+            />
+        );
+    }
 
     return (
         <div
@@ -659,10 +909,11 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                             {showAddInputRow ? (
                                 <Button
                                     type="button"
-                                    title="Add input pin"
+                                    title={catalog.dynamicInputPinAddLabel ?? "Add input pin"}
                                     className="nodrag mt-0.5 flex w-full items-center justify-center rounded border border-dashed border-white/10 !py-0.5 text-gray-500 hover:border-white/20 hover:bg-white/[0.03] hover:text-gray-400"
                                     variant="ghost"
                                     size="sm"
+                                    aria-label={catalog.dynamicInputPinAddLabel ?? "Add input pin"}
                                     onMouseDown={stopFlowNodePointerBubble}
                                     onPointerDown={stopFlowNodePointerBubble}
                                     onClick={e => {
@@ -681,6 +932,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                         <div
                             className={`flex min-w-0 flex-col gap-0.5 ${onlyRightPins ? "w-full min-w-0 flex-1" : "shrink-0"}`}
                         >
+                            {offsetRightPinsForIfElse ? <div className="min-h-[20px]" aria-hidden /> : null}
                             {rightPins.map(({ pin, semantic }) => (
                                 <OutputPinRow key={`out-${pin.id}`} pin={pin} semantic={semantic} />
                             ))}

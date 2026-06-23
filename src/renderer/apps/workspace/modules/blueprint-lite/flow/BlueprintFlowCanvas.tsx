@@ -54,6 +54,8 @@ import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/serv
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
 
+type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
+
 function generateUniqueDynamicPinLabel(existing: Record<string, string>, prefix: string): string {
     const used = new Set(Object.values(existing).map(label => label.trim()).filter(Boolean));
     let n = 1;
@@ -77,6 +79,7 @@ function buildPlacementPreviewFlowNode(
         id: BP_PLACEMENT_PREVIEW_ID,
         type: "blueprint",
         position,
+        zIndex: 2,
         draggable: false,
         selectable: false,
         focusable: false,
@@ -129,6 +132,16 @@ type BlueprintFlowCanvasInnerProps = {
      * Populated from workspace context and forwarded to node cards.
      */
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
+    /** Initial React Flow viewport restored from editor-session state. */
+    initialViewport?: BlueprintFlowViewport | null;
+    /** Called after pan/zoom changes so the owning editor tab can persist the view. */
+    onViewportChange?: (viewport: BlueprintFlowViewport) => void;
+};
+
+export type BlueprintFlowViewport = {
+    x: number;
+    y: number;
+    zoom: number;
 };
 
 function BlueprintFlowCanvasInner({
@@ -145,8 +158,10 @@ function BlueprintFlowCanvasInner({
     paletteContext,
     deleteKeyCode = ["Backspace", "Delete"],
     dynamicSelectOptions,
+    initialViewport,
+    onViewportChange,
 }: BlueprintFlowCanvasInnerProps) {
-    const { getNodes, screenToFlowPosition } = useReactFlow();
+    const { getNodes, screenToFlowPosition, fitView } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     const irRef = useRef(ir);
@@ -161,7 +176,7 @@ function BlueprintFlowCanvasInner({
     );
 
     const patchNodeParam = useCallback(
-        (nodeId: string, key: string, value: unknown) => {
+        (nodeId: string, key: string, value: unknown, history?: BlueprintNodeParamHistoryOptions) => {
             const snap = cloneBlueprintIr(irRef.current);
             const n = snap.nodes?.[nodeId];
             if (!n) {
@@ -185,7 +200,7 @@ function BlueprintFlowCanvasInner({
                 }
             }
             n.params = next;
-            commitBlueprintIr(snap);
+            commitBlueprintIr(snap, history);
         },
         [blueprintMemberVariables, commitBlueprintIr],
     );
@@ -193,9 +208,12 @@ function BlueprintFlowCanvasInner({
     const patchNodeParamRef = useRef(patchNodeParam);
     patchNodeParamRef.current = patchNodeParam;
     /** Stable identity so IR sync effect does not re-run on every parent render (reduces jank). */
-    const stablePatchNodeParam = useCallback((nodeId: string, key: string, value: unknown) => {
-        patchNodeParamRef.current(nodeId, key, value);
-    }, []);
+    const stablePatchNodeParam = useCallback(
+        (nodeId: string, key: string, value: unknown, history?: BlueprintNodeParamHistoryOptions) => {
+            patchNodeParamRef.current(nodeId, key, value, history);
+        },
+        [],
+    );
 
     const nodeCatalogRef = useRef(nodeCatalog);
     nodeCatalogRef.current = nodeCatalog;
@@ -489,6 +507,24 @@ function BlueprintFlowCanvasInner({
         setNodes,
     ]);
 
+    useEffect(() => {
+        if (initialViewport) {
+            return undefined;
+        }
+        let secondFrame = 0;
+        const firstFrame = window.requestAnimationFrame(() => {
+            secondFrame = window.requestAnimationFrame(() => {
+                fitView({ padding: 0.18, duration: 0 });
+            });
+        });
+        return () => {
+            window.cancelAnimationFrame(firstFrame);
+            if (secondFrame) {
+                window.cancelAnimationFrame(secondFrame);
+            }
+        };
+    }, [fitView, graphKey, initialViewport]);
+
     const onSelectionChange = useCallback(
         ({ nodes: sel }: { nodes: Node[] }) => {
             if (suppressSelectionEventsRef.current) {
@@ -668,6 +704,7 @@ function BlueprintFlowCanvasInner({
             style={pendingPlacementType ? { cursor: "crosshair" } : undefined}
         >
             <ReactFlow
+                key={graphKey}
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={blueprintFlowNodeTypes}
@@ -684,7 +721,12 @@ function BlueprintFlowCanvasInner({
                 onPaneClick={onPaneClick}
                 onNodeClick={onPlacementPreviewNodeClick}
                 onSelectionChange={onSelectionChange}
-                fitView
+                onMoveEnd={(_, viewport) => onViewportChange?.({
+                    x: viewport.x,
+                    y: viewport.y,
+                    zoom: viewport.zoom,
+                })}
+                defaultViewport={initialViewport ?? undefined}
                 className="bg-[#0f1115]"
                 proOptions={{ hideAttribution: true }}
                 deleteKeyCode={deleteKeyCode ?? null}
@@ -692,6 +734,7 @@ function BlueprintFlowCanvasInner({
                 edgesFocusable
                 elevateEdgesOnSelect
                 defaultEdgeOptions={{ selectable: true, focusable: true, interactionWidth: 24 }}
+                zIndexMode="manual"
             >
                 <Background color="#334155" gap={20} size={1} />
                 <BlueprintFlowZoomControls />
