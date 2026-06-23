@@ -741,6 +741,7 @@ export function ColorPickerTrigger({
     const panelContent = (
         <div
             ref={panelRef}
+            data-color-picker-panel
             className="nodrag nowheel w-80 rounded-2xl border border-white/10 bg-[#1e1f22] p-4 shadow-2xl"
             style={{
                 position: "fixed",

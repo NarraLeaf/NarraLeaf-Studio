@@ -6,6 +6,7 @@ export type TextVerticalAlign = "start" | "center" | "end";
 /** How lines break inside the text box (maps to white-space / word-break). */
 export type TextWrapMode = "word" | "character" | "nowrap";
 
+import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 
@@ -21,8 +22,18 @@ export type TextWidgetProps = {
     /** Project font asset id when using a custom typeface in the editor; null inherits canvas default */
     fontAssetId: string | null;
     textWrapMode: TextWrapMode;
-    /** Static visual effects (no appearance / motion authoring on text). */
+
+    transformOffsetX: number;
+    transformOffsetY: number;
+    transformScale: number;
+    transformRotation: number;
+    transformOpacity: number;
+
+    /** Static baseline effects; appearance overlays may override per variant / state. */
     effects: ElementEffectValues;
+
+    /** Optional variant + conditional row visuals; when absent, flat props are the sole source. */
+    appearance?: AppearanceModel | null;
 };
 
 export const defaultTextWidgetProps: TextWidgetProps = {
@@ -36,5 +47,10 @@ export const defaultTextWidgetProps: TextWidgetProps = {
     lineHeight: 1.4,
     fontAssetId: null,
     textWrapMode: "word",
+    transformOffsetX: 0,
+    transformOffsetY: 0,
+    transformScale: 1,
+    transformRotation: 0,
+    transformOpacity: 1,
     effects: { ...DEFAULT_ELEMENT_EFFECT_VALUES },
 };

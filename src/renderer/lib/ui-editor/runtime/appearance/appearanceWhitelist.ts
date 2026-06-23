@@ -1,6 +1,7 @@
 import type {
     ButtonAppearancePropertyKey,
     ContainerAppearancePropertyKey,
+    TextAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
 
 export const CONTAINER_APPEARANCE_KEYS = new Set<ContainerAppearancePropertyKey>([
@@ -73,10 +74,32 @@ export const BUTTON_APPEARANCE_KEYS = new Set<ButtonAppearancePropertyKey>([
     "effectFilter",
 ]);
 
+export const TEXT_APPEARANCE_KEYS = new Set<TextAppearancePropertyKey>([
+    "fontAssetId",
+    "fontSize",
+    "fontWeight",
+    "fontStyle",
+    "color",
+    "lineHeight",
+    "transformOffsetX",
+    "transformOffsetY",
+    "transformScale",
+    "transformRotation",
+    "transformOpacity",
+    "effectBlur",
+    "effectTextShadow",
+    "effectBlend",
+    "effectFilter",
+]);
+
 export function isContainerAppearanceKey(k: string): k is ContainerAppearancePropertyKey {
     return CONTAINER_APPEARANCE_KEYS.has(k as ContainerAppearancePropertyKey);
 }
 
 export function isButtonAppearanceKey(k: string): k is ButtonAppearancePropertyKey {
     return BUTTON_APPEARANCE_KEYS.has(k as ButtonAppearancePropertyKey);
+}
+
+export function isTextAppearanceKey(k: string): k is TextAppearancePropertyKey {
+    return TEXT_APPEARANCE_KEYS.has(k as TextAppearancePropertyKey);
 }

@@ -37,6 +37,7 @@ const PANEL_GAP = 8;
 const PANEL_MARGIN = 8;
 /** Above the effects detail panel (`z-[80]`) so narrow numeric input portals remain visible. */
 const EFFECTS_DETAIL_NUMERIC_POPOVER_Z_INDEX = 90;
+const COLOR_PICKER_PANEL_SELECTOR = "[data-color-picker-panel]";
 
 function mergeEffects(prev: ElementEffectValues, patch: Partial<ElementEffectValues>): ElementEffectValues {
     return normalizeElementEffectValues({ ...prev, ...patch });
@@ -423,7 +424,12 @@ function EffectsAnchoredPanel({
             if (!target) {
                 return;
             }
-            if (anchorEl?.contains(target) || panelRef.current?.contains(target)) {
+            const targetElement = target instanceof Element ? target : target.parentElement;
+            if (
+                anchorEl?.contains(target) ||
+                panelRef.current?.contains(target) ||
+                Boolean(targetElement?.closest(COLOR_PICKER_PANEL_SELECTOR))
+            ) {
                 return;
             }
             onClose();
