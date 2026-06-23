@@ -48,6 +48,9 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
@@ -85,6 +88,11 @@ import {
     BLUEPRINT_NODE_TYPE_MATH_RANDOM_FLOAT,
     BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER,
     BLUEPRINT_NODE_TYPE_MATH_ROUND,
+    BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE,
+    BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE,
+    BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_SLIDER_SET_RANGE,
+    BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE,
     BLUEPRINT_NODE_TYPE_STRING_LENGTH,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT,
     BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT_COLOR,
@@ -96,6 +104,7 @@ import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
 import { isValidBlueprintPinConnection } from "../connectionPolicy";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import { resolveSliderRuntimeValue, type UISliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import { executeGraph } from "../../behavior-graph/GraphExecutor";
 import { listBlueprintNodePaletteEntries } from "../../behavior-graph/nodeEditorCatalog";
 import { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
@@ -107,11 +116,12 @@ import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { frameBlueprintNodes } from "./frameNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { resolveDataPinValue } from "./graphParamResolvers";
+import { sliderBlueprintNodes } from "./sliderNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
 
 describe("built-in blueprint nodes", () => {
-    it("registers documented event, broadcast, string, text, and debug nodes", () => {
+    it("registers documented event, broadcast, string, text, slider, and debug nodes", () => {
         registerCoreBlueprintNodes();
 
         const types = new Set(blueprintNodeRegistry.list().map(def => def.type));
@@ -126,6 +136,7 @@ describe("built-in blueprint nodes", () => {
             ...booleanCompareBlueprintNodes,
             ...stringBlueprintNodes,
             ...textBlueprintNodes,
+            ...sliderBlueprintNodes,
             ...devtoolsBlueprintNodes,
         ]) {
             expect(types.has(def.type)).toBe(true);
@@ -141,6 +152,9 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_BROADCAST_SEND)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
@@ -211,6 +225,11 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_SET)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_SLIDER_SET_RANGE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LOG)).toBe(true);
     });
 
@@ -242,6 +261,7 @@ describe("built-in blueprint nodes", () => {
         expect(devtoolsBlueprintNodes.every(def => def.category === "Debug")).toBe(true);
         expect(stringBlueprintNodes.every(def => def.category === "Data")).toBe(true);
         expect(textBlueprintNodes.every(def => def.category === "Text")).toBe(true);
+        expect(sliderBlueprintNodes.every(def => def.category === "Slider")).toBe(true);
     });
 
     it("keeps structured literal editor metadata locked to fixed schemas", () => {
@@ -1318,6 +1338,13 @@ describe("built-in blueprint nodes", () => {
                 widgetElementType: "nl.list",
             }).map(entry => entry.type),
         );
+        const sliderPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetMain", surfaceId: "surface", elementId: "slider" },
+                widgetElementType: "nl.slider",
+            }).map(entry => entry.type),
+        );
         const framePaletteTypes = new Set(
             blueprintNodeRegistry.listPaletteEntries({
                 graphKind: "event",
@@ -1350,6 +1377,12 @@ describe("built-in blueprint nodes", () => {
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START)).toBe(true);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED)).toBe(true);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END)).toBe(true);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL)).toBe(false);
 
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
@@ -1525,5 +1558,182 @@ describe("built-in blueprint nodes", () => {
             }),
         );
         expect(textProps.color).toBe("#102030");
+    });
+
+    it("executes Slider write nodes and resolves Slider read nodes against the current widget owner", async () => {
+        registerCoreBlueprintNodes();
+
+        let sliderProps: UISliderRuntimeValue = resolveSliderRuntimeValue({
+            value: 20,
+            min: 0,
+            max: 100,
+            step: 5,
+        });
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                surfaceId: "surface",
+                setSurfaceState: () => undefined,
+                getSurfaceState: () => undefined,
+                emitDebug: () => undefined,
+                dispatchElementBlueprintEvent: async () => undefined,
+                hostApi: {
+                    widget: {
+                        getSliderProperties: () => sliderProps,
+                        setSliderProperties: async (_elementId: string, patch: Partial<UISliderRuntimeValue>) => {
+                            sliderProps = resolveSliderRuntimeValue({
+                                ...sliderProps,
+                                ...patch,
+                            });
+                        },
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+        const owner = { surfaceId: "surface", elementId: "slider", blueprintId: "bp" };
+
+        const setValueNode = sliderBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE)!;
+        await Promise.resolve(
+            setValueNode.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setValue", port: "in" } } },
+                    nodes: {
+                        setValue: {
+                            id: "setValue",
+                            type: BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE,
+                            params: { value: 88 },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "setValue", port: "in" } },
+                node: {
+                    id: "setValue",
+                    type: BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE,
+                    params: { value: 88 },
+                },
+                params: { value: 88 },
+                hostAdapter,
+                executionOwner: owner,
+            }),
+        );
+
+        expect(sliderProps.value).toBe(90);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getValue: { type: BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE },
+                    },
+                    edges: [],
+                },
+                "getValue",
+                "value",
+                {},
+                undefined,
+                0,
+                { hostAdapter, executionOwner: owner },
+            ),
+        ).toBe(90);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getNormalized: { type: BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE },
+                    },
+                    edges: [],
+                },
+                "getNormalized",
+                "normalizedValue",
+                {},
+                undefined,
+                0,
+                { hostAdapter, executionOwner: owner },
+            ),
+        ).toBe(0.9);
+
+        const setRangeNode = sliderBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_SLIDER_SET_RANGE)!;
+        await Promise.resolve(
+            setRangeNode.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setRange", port: "in" } } },
+                    nodes: {
+                        setRange: {
+                            id: "setRange",
+                            type: BLUEPRINT_NODE_TYPE_SLIDER_SET_RANGE,
+                            params: { min: -50, max: 50, step: 10 },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "setRange", port: "in" } },
+                node: {
+                    id: "setRange",
+                    type: BLUEPRINT_NODE_TYPE_SLIDER_SET_RANGE,
+                    params: { min: -50, max: 50, step: 10 },
+                },
+                params: { min: -50, max: 50, step: 10 },
+                hostAdapter,
+                executionOwner: owner,
+            }),
+        );
+
+        expect(sliderProps).toMatchObject({
+            min: -50,
+            max: 50,
+            step: 10,
+            value: 50,
+            normalizedValue: 1,
+        });
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getRange: { type: BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE },
+                    },
+                    edges: [],
+                },
+                "getRange",
+                "min",
+                {},
+                undefined,
+                0,
+                { hostAdapter, executionOwner: owner },
+            ),
+        ).toBe(-50);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getRange: { type: BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE },
+                    },
+                    edges: [],
+                },
+                "getRange",
+                "max",
+                {},
+                undefined,
+                0,
+                { hostAdapter, executionOwner: owner },
+            ),
+        ).toBe(50);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getRange: { type: BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE },
+                    },
+                    edges: [],
+                },
+                "getRange",
+                "step",
+                {},
+                undefined,
+                0,
+                { hostAdapter, executionOwner: owner },
+            ),
+        ).toBe(10);
     });
 });

@@ -13,12 +13,14 @@ Common 节点组默认具有：
 
 ## Blueprint Value
 
-Blueprint Value 节点组只存在于 `widgetValue` 私有蓝图。当前用于 `nl.text` 的 `props.text`、`nl.button` 的 `props.label` 和 Page 组件 `nl.frame` 的 `props.params` 动态值。
+Blueprint Value 节点组只存在于 `widgetValue` 私有蓝图。当前用于 `nl.text` 的 `props.text`、`nl.button` 的 `props.label`、Page 组件 `nl.frame` 的 `props.params` 和 `nl.slider` 的 `props.value` 动态值。
 
 Blueprint Value 可用节点包括：
 - `blueprint.event.head.init` - 初始求值事件
 - `blueprint.event.head.flush` - 自动刷新求值事件
 - `blueprint.data.returnValue` - 返回当前属性值的无尾执行节点
+
+`nl.slider.props.value` 使用 `float` Blueprint Value，返回值表示映射后的值而不是 0-1 normalized 值；运行时会按该 Slider 的 `min` / `max` / `step` clamp 和 snap。
 
 Blueprint Value 只允许安全的数据生产节点：事件 Head、非 latent Flow、图内注释、纯 Data / Math 和本地变量。当前核心目录不提供 surface/global state 读写节点；Blueprint Value 也不允许 Widget 改写、Navigation、Persistence 写入、Broadcast、latent 节点和 TypeScript revision。
 
@@ -108,6 +110,22 @@ Collection 节点组默认具有：
 - `blueprint.event.head.itemClick` - 列表条目点击事件
 - `blueprint.event.head.itemHover` - 列表条目悬停事件
 - `blueprint.event.head.selectionChanged` - 列表选中项变化事件
+
+## Slider
+
+Slider 节点组用于读取和改写 `nl.slider` 的运行时映射值与范围。`props.value`、Blueprint Value、事件 payload 和 Set/Get Value 节点都表示映射后的值；0-1 normalized 值只通过专用读节点取得。
+
+Slider 节点组默认具有：
+- `blueprint.event.head.sliderDragStart` - 滑块拖拽开始事件，输出映射值 `value`
+- `blueprint.event.head.sliderValueChanged` - 滑块值变化事件，输出映射值 `value` 和 `previousValue`
+- `blueprint.event.head.sliderDragEnd` - 滑块拖拽结束事件，输出映射值 `value`
+- `blueprint.slider.getValue` - 获取映射值
+- `blueprint.slider.getNormalizedValue` - 获取 0-1 normalized 值
+- `blueprint.slider.getRange` - 获取 `min`、`max`、`step`
+- `blueprint.slider.setValue` - 设置映射值，并按范围和步进规范化
+- `blueprint.slider.setRange` - 设置 `min`、`max`、`step`，并重新规范化当前运行时值
+
+`Set Slider Value` 与 `Set Slider Range` 只更新运行时状态，不自动派发 Slider 事件，也不写回 UIDocument。
 
 ## Broadcast
 

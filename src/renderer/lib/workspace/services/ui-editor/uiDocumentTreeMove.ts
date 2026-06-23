@@ -1,5 +1,5 @@
 import type { UIDocument, UIElement, UIElementId, UILayout } from "@shared/types/ui-editor/document";
-import { isUIElementFlowLayoutChild, uiElementTypeAcceptsChildren } from "@shared/types/ui-editor/document";
+import { isUIElementFlowLayoutChild, uiElementTypeAcceptsUserChildren } from "@shared/types/ui-editor/document";
 import { getElementSurfaceTopLeftEx, surfaceRectToParentLocalLayout } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { roundUILayoutGeometryFields } from "@/lib/ui-editor/layout/roundLayoutGeometry";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
@@ -132,7 +132,7 @@ export function planMoveElementsInSurface(
     }
     const allowed = collectSubtreeElementIds(document, effectiveRootId);
     const target = document.elements[targetParentId];
-    if (!target || !allowed.has(targetParentId) || !uiElementTypeAcceptsChildren(target.type)) {
+    if (!target || !allowed.has(targetParentId) || !uiElementTypeAcceptsUserChildren(target.type)) {
         return { ok: false, reason: "invalid_target" };
     }
     if (beforeChildId != null) {

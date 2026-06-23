@@ -11,7 +11,7 @@
 - UI document 由 `UIDocumentService` 负责 `editor/ui/uidoc.json` 的创建、迁移、编辑、保存。
 - UI 管理器边栏按 Page / Game UI 创建和浏览界面；Page 创建时可设置画布尺寸，Game UI 固定使用项目分辨率并选择插槽。
 - 已有 canvas 编辑、outline、inspector、拖拽/缩放、复制粘贴、分组排列、undo/redo、图片拖放、静态诊断、card preview。
-- 已有 widget module registry 和内置 widget 渲染。
+- 已有 widget module registry 和内置 widget 渲染。插入栏主区包含 Container、Text、Image、Button；Slider、List 和 Page 收在 overflow 菜单。
 - 已有 local blueprint document：`UIGraphService` 持久化 `editor/ui/uigraphs.json`，`LocalBlueprintService` 操作 private blueprint。
 - 已有 Blueprint Lite editor，可编辑 Page / Game UI / widget private blueprint 的 event graph、variables、fields、TypeScript module source。
 - 已有 Dev Mode UI runtime，可读取磁盘 bundle、执行最小 blueprint runtime、应用 Host API 变更并展示 debug panel。
@@ -48,15 +48,18 @@
 - Game UI 底层为 `stageSurface`，host 为 `player`，插槽为 `onStage`、`dialog`、`notification`、`choice`。
 - Game UI 不再暴露 link 或 layer 配置；Page 在游戏内作为叠层显示的互通由后续 page/layer API 内部管理。
 - Flow parent 主要包括 `nl.stack`、`nl.scroll`、`nl.listRepeater`。
+- `nl.slider` 是数值映射滑块控件，props 使用 `value` / `min` / `max` / `step` / `orientation`。插入时会创建两个专用 `nl.container` 内部部件：`track` 和 `handle`，并通过 `extra.sliderSlot` 与 `trackElementId` / `handleElementId` 识别。
+- Slider 的 `track` / `handle` 可以双击进入后按普通 Container 编辑外观，但它们不是普通用户子元素；运行时布局由 Slider renderer 拥有，`handle` 位置由当前映射值推导。
 - Editor-only 状态不要写入 UIDocument，例如 viewport、selection、snap、outline collapse、inspector cache。
 
 ## Blueprint 模型
 
 - 当前事件图真相是 `UIGraphDocument.blueprintDocument.blueprints[*].program.graphs`，不是 legacy `graphs` map。
 - Private owner slot 包括 `globalMain`、`surfaceMain:<surfaceId>`、`widgetMain:<surfaceId>:<elementId>`、`widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`。
-- Blueprint Value 是新的单点属性动态数据提供方案，当前覆盖 `nl.text` 的 `props.text`、`nl.button` 的 `props.label`、Page 组件 `nl.frame` 的 `props.params`。Text / Button 检视器不再使用旧 `binding:` 元数据连接内容字段，而是在 `UIElement.valueBindings` 中记录 `{ kind: "blueprintValue", blueprintId, valueType }`。
-- 字面值切换为 Blueprint Value 时，`LocalBlueprintService` 会为该属性创建私有 value blueprint，并用当前字面值种子化默认 `Init` layer：`blueprint.event.head.init` 连接到 `blueprint.data.returnValue`。`string` 值使用 Text literal，`json` 值使用 JSON literal。`Flush` 是运行时自动刷新入口，但不会默认创建同名 layer。
+- Blueprint Value 是新的单点属性动态数据提供方案，当前覆盖 `nl.text` 的 `props.text`、`nl.button` 的 `props.label`、Page 组件 `nl.frame` 的 `props.params`、`nl.slider` 的 `props.value`。Text / Button / Slider 检视器不再使用旧 `binding:` 元数据连接内容字段，而是在 `UIElement.valueBindings` 中记录 `{ kind: "blueprintValue", blueprintId, valueType }`。
+- 字面值切换为 Blueprint Value 时，`LocalBlueprintService` 会为该属性创建私有 value blueprint，并用当前字面值种子化默认 `Init` layer：`blueprint.event.head.init` 连接到 `blueprint.data.returnValue`。`string` 值使用 Text literal，`json` 值使用 JSON literal，`float` 值使用 Float literal。`Flush` 是运行时自动刷新入口，但不会默认创建同名 layer。
 - `nl.list` 私有 Blueprint 具有 Collection Events Head：`scroll`、`scrollEnd`、`itemRender`、`itemClick`、`itemHover`、`selectionChanged`。这些节点会在 List widget 的创建上下文浮窗中出现，并由真实滚动、条目渲染、点击、悬停和选中索引变化触发。
+- `nl.slider` 私有 Blueprint 具有 Slider Events Head：`dragStart`、`valueChanged`、`dragEnd`。事件 payload 默认输出映射后的 `value`；需要 0-1 值时使用 `Get Slider Normalized Value` 节点。
 - `UIBlueprintLifecycleCoordinator` 在 UIDocument mutate 后同步 Page / Game UI / widget private blueprint ownerRecords，并清理已删除对象。
 - `LocalBlueprintService` 不单独落盘，所有 mutation 通过 `UIGraphService.applyGraphMutation()` 进入 `uigraphs.json`。
 - UI history snapshot 同时覆盖 UIDocument 界面子树和相关 private blueprints，但 history 本身不落盘。
@@ -66,6 +69,7 @@
 
 - `UIRuntimeBridgeService.renderSurface()` 用当前内存 UIDocument 渲染 Workspace preview 和 card preview。
 - Workspace preview 不默认执行完整 blueprint runtime，也不等同 player runtime。
+- Workspace preview 中 Slider 只读显示当前字面值或 Blueprint Value 初始值推导出的 handle 位置，不通过指针拖拽改值。Dev Mode / 运行时可通过真实交互或 Slider Host API 更新运行时值。
 - 启动 Dev Mode 前，调用方需要确保 dirty UIDocument/UIGraph 已保存；Dev Mode 主进程从磁盘读取 `uidoc.json` 和 `uigraphs.json`。
 - Dev Mode 的 runtime、Host API trace、binding evaluation、debug event bus 在 `src/renderer/apps/dev-mode/` 与 `src/renderer/lib/ui-editor/blueprint-runtime/`。
 - Blueprint Value runtime 在元素挂载时先执行 `init`，再尝试执行带 `blueprint.event.head.flush` 的刷新入口；两者都有返回值时以 `flush` 为准。surface/global state 更新会自动排队执行 `flush`，用户不需要也不能手动派发该事件。没有返回值时保留上一次解析值，或退回 UIDocument 中的字面 props。
@@ -77,6 +81,7 @@
 - Dev Mode 中每个 Page 组件实例创建独立 `runtimeScopeId`。`surfaceId` 仍用于查找 blueprint owner，`runtimeScopeId` 用于 surface state、widget locals、widget runtime state 和 lifecycle 隔离。
 - 子 Page 在 Frame 实例首次挂载时触发自己的 `surfaceInit`，目标变化或组件卸载时触发 `surfaceUnmount`。同一个目标 Page 被多个 Page 组件引用时，这些 lifecycle 和本地状态互不共享。
 - 子 Page 可通过 Host API `frame.getParam(key)` 读取父级传入参数，并通过 `frame.emit(event, data)` 向父 Page 上的 Page 组件实例发送固定 widget 事件 `pageEvent`；事件 head 输出 `event` 和 `data`。
+- Slider Host API 通过 `widget.getSliderProperties` / `widget.setSliderProperties` 读取和写入运行时值与范围。`Set Slider Value`、`Set Slider Range` 只更新运行时状态，不写回 UIDocument，也不会自动再次派发 Slider 事件。
 
 ## 已知缺口
 

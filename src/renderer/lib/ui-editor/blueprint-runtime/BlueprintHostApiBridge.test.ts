@@ -24,21 +24,39 @@ function createDocument(): UIDocument {
                 id: "root",
                 type: "nl.root",
                 parentId: null,
-                childrenIds: [],
+                childrenIds: ["slider"],
                 layout: { x: 0, y: 0, width: 320, height: 180 },
+            },
+            slider: {
+                id: "slider",
+                type: "nl.slider",
+                parentId: "root",
+                childrenIds: [],
+                layout: { x: 0, y: 0, width: 240, height: 40 },
+                props: {
+                    value: 20,
+                    min: 0,
+                    max: 100,
+                    step: 5,
+                    orientation: "horizontal",
+                    trackElementId: null,
+                    handleElementId: null,
+                },
             },
         },
     };
 }
 
 function createHostApi(options?: {
+    document?: UIDocument;
     scope?: ScopeStoreBridge;
     runtimeScopeId?: string;
     frameParams?: Record<string, unknown>;
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
+    widgetRuntimeStore?: WidgetRuntimeStateStore;
 }) {
     return createDevModeBlueprintHostApi({
-        document: createDocument(),
+        document: options?.document ?? createDocument(),
         scope: options?.scope ?? new ScopeStoreBridge(),
         activeSurfaceId: "page",
         runtimeScopeId: options?.runtimeScopeId,
@@ -48,7 +66,7 @@ function createHostApi(options?: {
         onOpenSurface: () => undefined,
         onCloseLayer: () => undefined,
         onWidgetPatch: () => undefined,
-        widgetRuntimeStore: new WidgetRuntimeStateStore(),
+        widgetRuntimeStore: options?.widgetRuntimeStore ?? new WidgetRuntimeStateStore(),
     });
 }
 
@@ -82,5 +100,36 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(first.state.get("surface", "count")).toBe(1);
         expect(second.state.get("surface", "count")).toBe(2);
         expect(scope.getSurfaceStore("page").get("count")).toBeUndefined();
+    });
+
+    it("stores Slider value and range changes in runtime state without mutating the UI document", async () => {
+        const document = createDocument();
+        const hostApi = createHostApi({ document });
+
+        expect(hostApi.widget.getSliderProperties("slider")).toMatchObject({
+            value: 20,
+            min: 0,
+            max: 100,
+            step: 5,
+            normalizedValue: 0.2,
+        });
+
+        await hostApi.widget.setSliderProperties("slider", { value: 88 });
+
+        expect(hostApi.widget.getSliderProperties("slider")).toMatchObject({
+            value: 90,
+            normalizedValue: 0.9,
+        });
+        expect((document.elements.slider?.props as Record<string, unknown>).value).toBe(20);
+
+        await hostApi.widget.setSliderProperties("slider", { min: -10, max: 10, step: 4 });
+
+        expect(hostApi.widget.getSliderProperties("slider")).toMatchObject({
+            min: -10,
+            max: 10,
+            step: 4,
+            value: 10,
+            normalizedValue: 1,
+        });
     });
 });

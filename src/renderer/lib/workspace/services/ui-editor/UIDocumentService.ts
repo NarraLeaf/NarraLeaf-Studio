@@ -58,6 +58,7 @@ import {
     MAIN_APP_SURFACE_ID,
 } from "@shared/constants/ui-editor";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
+import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
 
 type UIDocumentServiceEvents = {
     documentChanged: UIDocument;
@@ -644,13 +645,16 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (document.schemaVersion === 6) {
             return this.migrateFromV6Document(document);
         }
+        if (document.schemaVersion === 7) {
+            return this.migrateFromV7Document(document);
+        }
         throw new RendererError("UI document migration is not implemented");
     }
 
     private migrateFromLegacyDocument(document: UIDocument): UIDocument {
         const legacy = document as LegacyUIDocument;
         const migratedSurfaces = legacy.surfaces.map(surface => this.migrateLegacySurface(surface));
-        return this.normalizeListSlots({
+        return this.normalizeSpecialChildSlots({
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
             surfaces: migratedSurfaces,
@@ -658,14 +662,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private migrateFromV2Document(document: UIDocument): UIDocument {
-        return this.normalizeListSlots({
+        return this.normalizeSpecialChildSlots({
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
         });
     }
 
     private migrateFromV3Document(document: UIDocument): UIDocument {
-        return this.normalizeListSlots({
+        return this.normalizeSpecialChildSlots({
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
         });
@@ -673,7 +677,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     /** P5 hard cutover marker: documents authored on schema 4 (unified container model) bump to current. */
     private migrateFromV4Document(document: UIDocument): UIDocument {
-        return this.normalizeListSlots({
+        return this.normalizeSpecialChildSlots({
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
         });
@@ -681,7 +685,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     /** P6: list child slots distinguish item template children from authored scrollbar parts. */
     private migrateFromV5Document(document: UIDocument): UIDocument {
-        return this.normalizeListSlots({
+        return this.normalizeSpecialChildSlots({
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
         });
@@ -689,41 +693,73 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     /** P7: per-property Blueprint Value bindings live on UIElement.valueBindings. */
     private migrateFromV6Document(document: UIDocument): UIDocument {
-        return this.normalizeListSlots({
+        return this.normalizeSpecialChildSlots({
             ...document,
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
         });
     }
 
-    private normalizeListSlots(document: UIDocument): UIDocument {
+    /** P8: slider widgets own authored track / handle container parts. */
+    private migrateFromV7Document(document: UIDocument): UIDocument {
+        return this.normalizeSpecialChildSlots({
+            ...document,
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        });
+    }
+
+    private normalizeSpecialChildSlots(document: UIDocument): UIDocument {
         for (const element of Object.values(document.elements)) {
-            if (element.type !== "nl.list") {
+            if (element.type === "nl.list") {
+                const props = (element.props ?? {}) as Record<string, unknown>;
+                const scrollbar = props.scrollbar && typeof props.scrollbar === "object"
+                    ? props.scrollbar as Record<string, unknown>
+                    : {};
+                const trackElementId = typeof scrollbar.trackElementId === "string" ? scrollbar.trackElementId : null;
+                const thumbElementId = typeof scrollbar.thumbElementId === "string" ? scrollbar.thumbElementId : null;
+                for (const childId of element.childrenIds) {
+                    const child = document.elements[childId];
+                    if (!child) {
+                        continue;
+                    }
+                    const slot = child.extra?.listSlot;
+                    if (slot === "itemTemplate" || slot === "scrollbarTrack" || slot === "scrollbarThumb") {
+                        continue;
+                    }
+                    child.extra = {
+                        ...(child.extra ?? {}),
+                        listSlot:
+                            childId === trackElementId
+                                ? "scrollbarTrack"
+                                : childId === thumbElementId
+                                  ? "scrollbarThumb"
+                                  : "itemTemplate",
+                    };
+                }
                 continue;
             }
-            const props = (element.props ?? {}) as Record<string, unknown>;
-            const scrollbar = props.scrollbar && typeof props.scrollbar === "object"
-                ? props.scrollbar as Record<string, unknown>
-                : {};
-            const trackElementId = typeof scrollbar.trackElementId === "string" ? scrollbar.trackElementId : null;
-            const thumbElementId = typeof scrollbar.thumbElementId === "string" ? scrollbar.thumbElementId : null;
-            for (const childId of element.childrenIds) {
-                const child = document.elements[childId];
-                if (!child) {
-                    continue;
+            if (element.type === "nl.slider") {
+                const props = (element.props ?? {}) as Record<string, unknown>;
+                const trackElementId = typeof props.trackElementId === "string" ? props.trackElementId : null;
+                const handleElementId = typeof props.handleElementId === "string" ? props.handleElementId : null;
+                for (const childId of element.childrenIds) {
+                    const child = document.elements[childId];
+                    if (!child || getUISliderChildSlot(child.extra) != null) {
+                        continue;
+                    }
+                    const sliderSlot =
+                        childId === handleElementId
+                            ? "handle"
+                            : childId === trackElementId
+                              ? "track"
+                              : null;
+                    if (!sliderSlot) {
+                        continue;
+                    }
+                    child.extra = {
+                        ...(child.extra ?? {}),
+                        sliderSlot,
+                    };
                 }
-                const slot = child.extra?.listSlot;
-                if (slot === "itemTemplate" || slot === "scrollbarTrack" || slot === "scrollbarThumb") {
-                    continue;
-                }
-                child.extra = {
-                    ...(child.extra ?? {}),
-                    listSlot:
-                        childId === trackElementId
-                            ? "scrollbarTrack"
-                            : childId === thumbElementId
-                              ? "scrollbarThumb"
-                              : "itemTemplate",
-                };
             }
         }
         return document;
@@ -955,11 +991,46 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                           ...(defaultElement.extra ?? {}),
                           listSlot: "itemTemplate",
                       } satisfies UIListElementExtra)
+                    : parent.type === "nl.slider"
+                      ? ({
+                            ...(defaultElement.extra ?? {}),
+                            sliderSlot: getUISliderChildSlot(defaultElement.extra) ?? "track",
+                        } satisfies UISliderElementExtra)
                     : defaultElement.extra,
+        };
+        const defaultChildrenResult = definition.createDefaultChildElements?.({
+            element,
+            generateId: () => uuidService.generate(),
+        });
+        const defaultChildren = defaultChildrenResult?.children ?? [];
+        const elementWithChildren: UIElement = {
+            ...element,
+            ...(defaultChildrenResult?.elementPatch ?? {}),
+            id: element.id,
+            type: element.type,
+            parentId: element.parentId,
+            childrenIds: defaultChildren.length > 0 ? defaultChildren.map(child => child.id) : element.childrenIds,
+            layout: {
+                ...element.layout,
+                ...(defaultChildrenResult?.elementPatch?.layout ?? {}),
+            },
+            props: {
+                ...(element.props ?? {}),
+                ...(defaultChildrenResult?.elementPatch?.props ?? {}),
+            },
+            style: defaultChildrenResult?.elementPatch?.style ?? element.style,
+            behavior: defaultChildrenResult?.elementPatch?.behavior ?? element.behavior,
+            extra: defaultChildrenResult?.elementPatch?.extra ?? element.extra,
         };
 
         this.mutateDocument(documentData => {
-            documentData.elements[elementId] = element;
+            documentData.elements[elementId] = elementWithChildren;
+            for (const child of defaultChildren) {
+                documentData.elements[child.id] = {
+                    ...child,
+                    parentId: elementId,
+                };
+            }
             const parentElement = documentData.elements[parentId];
             if (parentElement) {
                 parentElement.childrenIds = [...parentElement.childrenIds, elementId];
@@ -968,7 +1039,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             history: surfaceId ? { surfaceId } : false,
         });
 
-        return element;
+        return elementWithChildren;
     }
 
     public pasteClipboardPayload(

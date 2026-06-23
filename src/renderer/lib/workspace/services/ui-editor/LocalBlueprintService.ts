@@ -14,6 +14,7 @@ import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
@@ -157,9 +158,15 @@ function createValueGraphIr(input: {
         params: {},
         meta: { editorLayout: { x: 80, y: 120 } },
     };
+    const literalType =
+        input.valueType === "json"
+            ? BLUEPRINT_NODE_TYPE_LITERAL_JSON
+            : input.valueType === "float"
+              ? BLUEPRINT_NODE_TYPE_LITERAL_FLOAT
+              : BLUEPRINT_NODE_TYPE_LITERAL_STRING;
     const literal: BlueprintGraphNode = {
         id: literalId,
-        type: input.valueType === "json" ? BLUEPRINT_NODE_TYPE_LITERAL_JSON : BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+        type: literalType,
         params: { value: normalizeBlueprintValueLiteral(input.literalValue, input.valueType) },
         meta: { editorLayout: { x: 300, y: 40 } },
     };
@@ -192,6 +199,10 @@ function createValueGraphIr(input: {
 function normalizeBlueprintValueLiteral(value: unknown, valueType: UIElementValueBindingValueType): unknown {
     if (valueType === "string") {
         return value == null ? "" : String(value);
+    }
+    if (valueType === "float") {
+        const n = typeof value === "number" ? value : Number(value);
+        return Number.isFinite(n) ? n : 0;
     }
     if (value === undefined) {
         return {};

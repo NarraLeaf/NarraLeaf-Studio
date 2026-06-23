@@ -1,7 +1,8 @@
 import { isContainerFlowLayoutParent } from "./container";
 import { getUIListChildSlot, isUIListScrollbarSlot } from "./list";
+import { getUISliderChildSlot } from "./slider";
 
-export const UI_DOCUMENT_SCHEMA_VERSION = 7 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 8 as const;
 
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;
@@ -73,10 +74,16 @@ export type UISlotDefinition = {
 };
 
 /** Types that may own `childrenIds` (structural parents). Leaf widgets must stay childless. */
-const UI_PARENT_CAPABLE_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.list", "nl.button"]);
+const UI_PARENT_CAPABLE_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.list", "nl.button", "nl.slider"]);
+/** Types that accept ordinary user-inserted children. Structural part parents can be narrower. */
+const UI_USER_CHILD_PARENT_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.list", "nl.button"]);
 
 export function uiElementTypeAcceptsChildren(elementType: string): boolean {
     return UI_PARENT_CAPABLE_ELEMENT_TYPES.has(elementType);
+}
+
+export function uiElementTypeAcceptsUserChildren(elementType: string): boolean {
+    return UI_USER_CHILD_PARENT_ELEMENT_TYPES.has(elementType);
 }
 
 export type UIElement = {
@@ -93,7 +100,7 @@ export type UIElement = {
     extra?: Record<string, unknown>;
 };
 
-export type UIElementValueBindingValueType = "string" | "json";
+export type UIElementValueBindingValueType = "string" | "json" | "float";
 
 export type UIElementValueBinding =
     | {
@@ -150,6 +157,9 @@ export function isUIElementFlowLayoutChild(document: UIDocument, element: UIElem
     }
     const parent = document.elements[element.parentId];
     if (parent?.type === "nl.list" && isUIListScrollbarSlot(getUIListChildSlot(element.extra))) {
+        return false;
+    }
+    if (parent?.type === "nl.slider" && getUISliderChildSlot(element.extra) != null) {
         return false;
     }
     return parent != null && isUIFlowLayoutParentElement(parent);

@@ -52,3 +52,8 @@ Math分类具有：
 
 Text分类具有：
 - Text节点
+
+## Slider
+
+Slider分类具有：
+- Slider节点

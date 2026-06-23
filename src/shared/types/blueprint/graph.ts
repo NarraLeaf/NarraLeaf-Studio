@@ -39,6 +39,9 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK = "blueprint.event.head.i
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER = "blueprint.event.head.itemHover" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED = "blueprint.event.head.selectionChanged" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END = "blueprint.event.head.scrollEnd" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START = "blueprint.event.head.sliderDragStart" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED = "blueprint.event.head.sliderValueChanged" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END = "blueprint.event.head.sliderDragEnd" as const;
 /** Entry for global `appBoot` lifecycle event (application start). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
 /** Entry for surface `surfaceInit` lifecycle event (page entered). */
@@ -68,6 +71,9 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
@@ -324,6 +330,12 @@ export const BLUEPRINT_NODE_TYPE_TEXT_GET_EFFECTS = "blueprint.text.getEffects" 
 export const BLUEPRINT_NODE_TYPE_TEXT_SET_EFFECTS = "blueprint.text.setEffects" as const;
 export const BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES = "blueprint.text.getAllProperties" as const;
 export const BLUEPRINT_NODE_TYPE_TEXT_SET_ALL_PROPERTIES = "blueprint.text.setAllProperties" as const;
+
+export const BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE = "blueprint.slider.getValue" as const;
+export const BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE = "blueprint.slider.getNormalizedValue" as const;
+export const BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE = "blueprint.slider.getRange" as const;
+export const BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE = "blueprint.slider.setValue" as const;
+export const BLUEPRINT_NODE_TYPE_SLIDER_SET_RANGE = "blueprint.slider.setRange" as const;
 
 /** IR meta key for graph kind (string value matches BlueprintGraphKind). */
 export const BLUEPRINT_GRAPH_IR_META_KIND = "graphKind" as const;
