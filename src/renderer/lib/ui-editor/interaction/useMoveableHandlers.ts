@@ -399,6 +399,7 @@ export function useMoveableHandlers({
 
     const finalizeRotate = useCallback(() => {
         const patches: Record<string, Partial<UILayout>> = {};
+        const document = documentService.getDocument();
         selectedTargets.forEach(target => {
             const elementId = target.dataset.uiElementId;
             if (!elementId) {
@@ -407,11 +408,13 @@ export function useMoveableHandlers({
             const rotation = rotateCache.current.get(elementId);
             const layout = layoutCache.current.get(elementId);
             const [translateX, translateY] = dragDeltaCache.current.get(elementId) ?? [0, 0];
+            const element = document.elements[elementId];
+            const isFlowChild = element != null && isUIElementFlowLayoutChild(document, element);
             const patch: Partial<UILayout> = {};
             if (rotation !== undefined) {
                 patch.rotation = rotation;
             }
-            if (layout) {
+            if (!isFlowChild && layout) {
                 patch.x = layout.x + translateX;
                 patch.y = layout.y + translateY;
             }
@@ -905,29 +908,39 @@ export function useMoveableHandlers({
 
     const handleRotate = useCallback(
         (e: OnRotate) => {
-        if (isGroupSelection) {
-            return;
-        }
-        clearSmartSnapGuides();
-        const rotation = Number.isFinite(e.beforeRotation)
-            ? e.beforeRotation
-            : Number.isFinite(e.beforeRotate)
-                ? e.beforeRotate
-                : e.rotate;
-        const elementId = e.target.dataset.uiElementId;
-        const fallbackRotation = Number.isFinite(rotation) ? rotation : 0;
-        if (!elementId) {
-            e.target.style.transform = e.transform;
-            return;
-        }
-        if (Number.isFinite(rotation)) {
-            rotateCache.current.set(elementId, fallbackRotation);
-        }
-        const translateX = e.drag?.beforeTranslate?.[0] ?? 0;
-        const translateY = e.drag?.beforeTranslate?.[1] ?? 0;
-        e.target.style.transform = buildTransform(translateX, translateY, fallbackRotation);
+            if (isGroupSelection) {
+                return;
+            }
+            clearSmartSnapGuides();
+            const rotation = Number.isFinite(e.beforeRotation)
+                ? e.beforeRotation
+                : Number.isFinite(e.beforeRotate)
+                    ? e.beforeRotate
+                    : e.rotate;
+            const elementId = e.target.dataset.uiElementId;
+            const fallbackRotation = Number.isFinite(rotation) ? rotation : 0;
+            if (!elementId) {
+                e.target.style.transform = e.transform;
+                return;
+            }
+            if (Number.isFinite(rotation)) {
+                rotateCache.current.set(elementId, fallbackRotation);
+            }
+            const translateX = e.drag?.beforeTranslate?.[0] ?? 0;
+            const translateY = e.drag?.beforeTranslate?.[1] ?? 0;
+            const isFlowChild = isCurrentFlowLayoutChild(documentService, elementId);
+            e.target.style.transform = buildTransform(
+                isFlowChild ? 0 : translateX,
+                isFlowChild ? 0 : translateY,
+                fallbackRotation,
+            );
+            if (isFlowChild) {
+                dragDeltaCache.current.delete(elementId);
+            } else {
+                dragDeltaCache.current.set(elementId, [translateX, translateY]);
+            }
         },
-        [clearSmartSnapGuides, isGroupSelection],
+        [clearSmartSnapGuides, documentService, isGroupSelection],
     );
 
     const handleRotateEnd = useCallback(
@@ -978,12 +991,21 @@ export function useMoveableHandlers({
                         : event.rotate;
                 const translateX = event.drag?.beforeTranslate?.[0] ?? 0;
                 const translateY = event.drag?.beforeTranslate?.[1] ?? 0;
-                target.style.transform = buildTransform(translateX, translateY, rotation);
+                const isFlowChild = isCurrentFlowLayoutChild(documentService, elementId);
+                target.style.transform = buildTransform(
+                    isFlowChild ? 0 : translateX,
+                    isFlowChild ? 0 : translateY,
+                    rotation,
+                );
                 rotateCache.current.set(elementId, rotation);
-                dragDeltaCache.current.set(elementId, [translateX, translateY]);
+                if (isFlowChild) {
+                    dragDeltaCache.current.delete(elementId);
+                } else {
+                    dragDeltaCache.current.set(elementId, [translateX, translateY]);
+                }
             });
         },
-        [clearSmartSnapGuides, isGroupSelection],
+        [clearSmartSnapGuides, documentService, isGroupSelection],
     );
 
     const handleRotateGroupEnd = useCallback(
