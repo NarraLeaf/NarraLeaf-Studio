@@ -21,6 +21,8 @@
 | Right Click | `blueprint.event.head.rightClick` | **已实现**。鼠标右键点击元素时触发。 |
 | Focus | `blueprint.event.head.focus` | **已实现**。元素获得键盘、鼠标或手柄焦点时触发。 |
 | Blur | `blueprint.event.head.blur` | **已实现**。元素失去焦点时触发。 |
+| On Flush | `blueprint.event.head.flush` | **已实现**。当前元素被蓝图 Host API 显式更改属性并触发重绘后触发，输出对应 Element 引用；CSS 自动样式不触发。 |
+| Element Flush | `blueprint.event.head.elementFlush` | **已实现**。像 Element 节点一样绑定同 Surface 的目标控件，监听该目标控件的 flush 事件并输出目标 Element 引用。 |
 | Scroll | `blueprint.event.head.scroll` | **已实现**。可滚动元素发生滚动时触发。 |
 | On Any Broadcast | `blueprint.event.head.onAnyBroadcast` | **已实现**。当前元素收到任意广播事件时触发。 |
 | On Broadcast | `blueprint.event.head.onBroadcast` | **已实现**。当前元素收到指定广播事件时触发。 |
@@ -53,6 +55,8 @@
 | --- | --- | --- |
 | Get Var | `blueprint.local.get` | **已实现**。读取执行局部变量。 |
 | Set Var | `blueprint.local.set` | **已实现**。写入执行局部变量。 |
+| Get Persistent | `blueprint.persistent.get` | **已实现**。异步读取项目级 Persistent 变量；缺失已保存值时返回变量默认值。 |
+| Set Persistent | `blueprint.persistent.set` | **已实现**。异步写入项目级 Persistent 变量。 |
 
 ## Data（Palette: Data，包含 String / JSON）
 
@@ -289,6 +293,18 @@
 | Set Effects | `blueprint.text.setEffects` | **已实现**。设置文本静态效果。 |
 | Get All Properties | `blueprint.text.getAllProperties` | **已实现**。一次性获取文本元素全部属性。 |
 | Set All Properties | `blueprint.text.setAllProperties` | **已实现**。一次性设置文本元素全部属性。 |
+
+## Slider
+
+| 节点 | 类型 ID 建议 | 说明 |
+| --- | --- | --- |
+| Get Value | `blueprint.slider.getValue` | **已实现**。Slider 分类下读取 `nl.slider` 当前运行时映射值；由绑定 Slider 派生时显示为 `Slider:Get Value`。输出的是 `min` / `max` / `step` 映射后的值，不是 0-1 normalized 值。 |
+| Get Normalized Value | `blueprint.slider.getNormalizedValue` | **已实现**。读取当前运行时 0-1 normalized 值。 |
+| Get Slider Range | `blueprint.slider.getRange` | **已实现**。读取当前运行时 `min`、`max`、`step`。 |
+| Set Slider Value | `blueprint.slider.setValue` | **已实现**。设置运行时映射值，并按范围和步进规范化。 |
+| Set Slider Range | `blueprint.slider.setRange` | **已实现**。设置运行时 `min`、`max`、`step`，并重新规范化当前值。 |
+
+Slider/List 的 Element 派生条目只负责创建菜单分类和标签，不自动连线；放置后需要手动连接 Element Literal 或 Element Flush 的 `element` 输出到目标输入。
 
 ## Image
 

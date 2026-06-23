@@ -1,4 +1,10 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import {
+    normalizeBlueprintImageAssetValue,
+    toBlueprintImageAsset,
+    type BlueprintElementRef,
+    type BlueprintImageAsset,
+} from "@shared/types/blueprint/valueTypes";
 import { truncateDebugEventMessage } from "./DebugBridge";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
@@ -8,6 +14,12 @@ import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
 import { getSliderProps } from "@/lib/ui-editor/widget-modules/builtin/slider/helpers";
 import { getListProps } from "@/lib/ui-editor/widget-modules/builtin/list/helpers";
+import { getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
+import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/helpers";
+import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
+import { getFrameProps } from "@/lib/ui-editor/widget-modules/builtin/frame/helpers";
+import { buildImageFillPropsUpdate } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
+import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type {
     TextAlign,
     TextVerticalAlign,
@@ -20,6 +32,10 @@ import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
 export type DevModeWidgetRuntimePatch = {
     visible?: boolean;
     enabled?: boolean;
+};
+
+export type BlueprintElementFlushPayload = {
+    element: BlueprintElementRef;
 };
 
 export type BlueprintTextProperties = Pick<
@@ -56,6 +72,31 @@ export type BlueprintDisplayableProperties = {
     visible: boolean;
 };
 
+export type BlueprintWidgetCommonProperties = {
+    visible: boolean;
+    enabled: boolean;
+    variantId: string | null;
+};
+
+export type BlueprintButtonProperties = {
+    label: string;
+};
+
+export type BlueprintContainerProperties = {
+    clipContent: boolean;
+};
+
+export type BlueprintImageProperties = {
+    asset: BlueprintImageAsset | null;
+    /** Legacy patch/read alias kept so older saved graph nodes can still run. */
+    assetId: string | null;
+};
+
+export type BlueprintFrameProperties = {
+    targetSurfaceId: string | null;
+    params: Record<string, unknown>;
+};
+
 export type BlueprintHostApiRuntime = {
     navigation: {
         openSurface: (surfaceId: string) => Promise<void>;
@@ -66,8 +107,15 @@ export type BlueprintHostApiRuntime = {
         setEnabled: (elementId: string, enabled: boolean) => Promise<void>;
         /** `null` clears runtime override and restores authored default variant resolution. */
         setVariant: (elementId: string, variantId: string | null) => Promise<void>;
+        getCommonProperties: (elementId: string) => BlueprintWidgetCommonProperties;
         getTextProperties: (elementId: string) => BlueprintTextProperties;
         setTextProperties: (elementId: string, patch: BlueprintTextPropertiesPatch) => Promise<void>;
+        getButtonProperties: (elementId: string) => BlueprintButtonProperties;
+        setButtonProperties: (elementId: string, patch: Partial<BlueprintButtonProperties>) => Promise<void>;
+        getContainerProperties: (elementId: string) => BlueprintContainerProperties;
+        setContainerProperties: (elementId: string, patch: Partial<BlueprintContainerProperties>) => Promise<void>;
+        getImageProperties: (elementId: string) => BlueprintImageProperties;
+        setImageProperties: (elementId: string, patch: Partial<BlueprintImageProperties>) => Promise<void>;
         getSliderProperties: (elementId: string) => BlueprintSliderProperties;
         setSliderProperties: (elementId: string, patch: BlueprintSliderPropertiesPatch) => Promise<void>;
         getListProperties: (elementId: string) => BlueprintListProperties;
@@ -77,6 +125,8 @@ export type BlueprintHostApiRuntime = {
         scrollListToTop: (elementId: string) => Promise<void>;
         scrollListToBottom: (elementId: string) => Promise<void>;
         getDisplayableProperties: (elementId: string) => BlueprintDisplayableProperties;
+        getFrameProperties: (elementId: string) => BlueprintFrameProperties;
+        setFrameProperties: (elementId: string, patch: Partial<BlueprintFrameProperties>) => Promise<void>;
     };
     state: {
         get: (scope: string, key: string) => unknown;
@@ -106,6 +156,7 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onOpenSurface: (surfaceId: string) => void;
     onCloseLayer: () => void;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
+    onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
     widgetRuntimeStore: WidgetRuntimeStateStore;
 };
 
@@ -166,8 +217,60 @@ function assertListElement(document: UIDocument, elementId: string) {
     return el;
 }
 
+function assertButtonElement(document: UIDocument, elementId: string) {
+    const el = document.elements[elementId];
+    if (!el) {
+        throw new Error(`button: element not found: ${elementId}`);
+    }
+    if (el.type !== "nl.button") {
+        throw new Error(`button: element is not a Button widget: ${el.type}`);
+    }
+    return el;
+}
+
+function assertContainerElement(document: UIDocument, elementId: string) {
+    const el = document.elements[elementId];
+    if (!el) {
+        throw new Error(`container: element not found: ${elementId}`);
+    }
+    if (el.type !== "nl.container") {
+        throw new Error(`container: element is not a Container widget: ${el.type}`);
+    }
+    return el;
+}
+
+function assertImageElement(document: UIDocument, elementId: string) {
+    const el = document.elements[elementId];
+    if (!el) {
+        throw new Error(`image: element not found: ${elementId}`);
+    }
+    if (el.type !== "nl.image") {
+        throw new Error(`image: element is not an Image widget: ${el.type}`);
+    }
+    return el;
+}
+
+function assertFrameElement(document: UIDocument, elementId: string) {
+    const el = document.elements[elementId];
+    if (!el) {
+        throw new Error(`frame: element not found: ${elementId}`);
+    }
+    if (el.type !== "nl.frame") {
+        throw new Error(`frame: element is not a Frame widget: ${el.type}`);
+    }
+    return el;
+}
+
 function cloneJson<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function jsonEquals(a: unknown, b: unknown): boolean {
+    try {
+        return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+        return a === b;
+    }
 }
 
 function readTextProperties(document: UIDocument, elementId: string): BlueprintTextProperties {
@@ -263,6 +366,65 @@ function readDisplayableProperties(document: UIDocument, elementId: string): Blu
     };
 }
 
+function readVariantId(document: UIDocument, widgetRuntimeStore: WidgetRuntimeStateStore, scopedKey: string, elementId: string): string | null {
+    const override = widgetRuntimeStore.getVariantOverride(scopedKey);
+    if (override) {
+        return override;
+    }
+    const el = document.elements[elementId];
+    const appearance = (el?.props as Record<string, unknown> | undefined)?.appearance as
+        | { defaultVariantId?: unknown; variants?: Array<{ id?: unknown }> }
+        | undefined;
+    const defaultVariantId = typeof appearance?.defaultVariantId === "string" ? appearance.defaultVariantId.trim() : "";
+    if (defaultVariantId) {
+        return defaultVariantId;
+    }
+    const first = Array.isArray(appearance?.variants) ? appearance.variants[0]?.id : undefined;
+    return typeof first === "string" && first.trim() ? first.trim() : null;
+}
+
+function readCommonProperties(
+    document: UIDocument,
+    widgetRuntimeStore: WidgetRuntimeStateStore,
+    runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
+    scopedKey: string,
+    elementId: string,
+): BlueprintWidgetCommonProperties {
+    const el = document.elements[elementId];
+    if (!el) {
+        throw new Error(`widget: element not found: ${elementId}`);
+    }
+    const patch = runtimePatches.get(elementId);
+    const props = (el.props ?? {}) as Record<string, unknown>;
+    return {
+        visible: patch?.visible ?? el.layout.visible !== false,
+        enabled: patch?.enabled ?? !Boolean(props.interactionDisabled),
+        variantId: readVariantId(document, widgetRuntimeStore, scopedKey, elementId),
+    };
+}
+
+function readButtonProperties(document: UIDocument, elementId: string): BlueprintButtonProperties {
+    return { label: getButtonProps(assertButtonElement(document, elementId)).label };
+}
+
+function readContainerProperties(document: UIDocument, elementId: string): BlueprintContainerProperties {
+    return { clipContent: getContainerProps(assertContainerElement(document, elementId)).clipContent };
+}
+
+function readImageProperties(document: UIDocument, elementId: string): BlueprintImageProperties {
+    const p = getImageWidgetRectangleProps(assertImageElement(document, elementId));
+    const assetId = p.imageFill?.assetId?.trim() || null;
+    return { asset: toBlueprintImageAsset(assetId), assetId };
+}
+
+function readFrameProperties(document: UIDocument, elementId: string): BlueprintFrameProperties {
+    const p = getFrameProps(assertFrameElement(document, elementId));
+    return {
+        targetSurfaceId: p.targetSurfaceId,
+        params: cloneJson(p.params ?? {}),
+    };
+}
+
 function finiteNumber(raw: unknown, fallback: number): number {
     const n = typeof raw === "number" ? raw : Number(raw);
     return Number.isFinite(n) ? n : fallback;
@@ -278,6 +440,20 @@ function normalizeFontAssetId(raw: unknown): string | null {
 
 function normalizeString(raw: unknown, fallback: string): string {
     return raw == null ? fallback : String(raw);
+}
+
+function normalizeNullableString(raw: unknown): string | null {
+    if (raw === null) {
+        return null;
+    }
+    const s = String(raw ?? "").trim();
+    return s.length > 0 ? s : null;
+}
+
+function normalizeRecord(raw: unknown): Record<string, unknown> {
+    return raw && typeof raw === "object" && !Array.isArray(raw)
+        ? cloneJson(raw as Record<string, unknown>)
+        : {};
 }
 
 function normalizeColor(raw: unknown, fallback: string): string {
@@ -346,6 +522,25 @@ function normalizeTextPatch(
     return next;
 }
 
+function textPatchChanges(current: BlueprintTextProperties, patch: BlueprintTextPropertiesPatch): boolean {
+    for (const [key, value] of Object.entries(patch) as Array<[keyof BlueprintTextProperties, unknown]>) {
+        if (!jsonEquals(current[key], value)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function sliderPropertiesEqual(a: BlueprintSliderProperties, b: BlueprintSliderProperties): boolean {
+    return (
+        a.value === b.value &&
+        a.normalizedValue === b.normalizedValue &&
+        a.min === b.min &&
+        a.max === b.max &&
+        a.step === b.step
+    );
+}
+
 function emitHostCall(emit: (event: BlueprintDebugEvent) => void, capabilityId: string, phase: "call" | "return"): void {
     if (phase === "call") {
         emit({ type: "function.call", functionId: capabilityId });
@@ -373,10 +568,47 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onOpenSurface,
         onCloseLayer,
         onWidgetPatch,
+        onElementFlush,
         widgetRuntimeStore,
     } =
         options;
     const stateScopeId = runtimeScopeId ?? activeSurfaceId;
+    const pendingFlushElementIds = new Set<string>();
+    const runtimePatches = new Map<string, DevModeWidgetRuntimePatch>();
+    let flushScheduled = false;
+
+    const scheduleElementFlush = (elementId: string) => {
+        if (!onElementFlush) {
+            return;
+        }
+        const el = document.elements[elementId];
+        if (!el) {
+            return;
+        }
+        pendingFlushElementIds.add(elementId);
+        if (flushScheduled) {
+            return;
+        }
+        flushScheduled = true;
+        queueMicrotask(() => {
+            flushScheduled = false;
+            const elementIds = [...pendingFlushElementIds];
+            pendingFlushElementIds.clear();
+            for (const id of elementIds) {
+                const target = document.elements[id];
+                if (!target) {
+                    continue;
+                }
+                void onElementFlush(id, {
+                    element: {
+                        surfaceId: activeSurfaceId,
+                        elementId: id,
+                        elementType: target.type,
+                    },
+                });
+            }
+        });
+    };
 
     return {
         navigation: {
@@ -407,13 +639,21 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                     throw new Error(`setVisible: element not found: ${elementId}`);
                 }
-                if (isAppearanceCapableElementType(el.type)) {
-                    emitHostCall(emit, cap, "return");
-                    throw new Error(
-                        `setVisible: not supported for ${el.type}; use widget.setVariant to change appearance`,
-                    );
-                }
+                const previous = readCommonProperties(
+                    document,
+                    widgetRuntimeStore,
+                    runtimePatches,
+                    scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                    elementId,
+                ).visible;
+                runtimePatches.set(elementId, {
+                    ...(runtimePatches.get(elementId) ?? {}),
+                    visible,
+                });
                 onWidgetPatch(elementId, { visible });
+                if (previous !== visible) {
+                    scheduleElementFlush(elementId);
+                }
                 emitHostCall(emit, cap, "return");
             },
             setEnabled: async (elementId: string, enabled: boolean) => {
@@ -424,24 +664,49 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                     throw new Error(`setEnabled: element not found: ${elementId}`);
                 }
-                if (isAppearanceCapableElementType(el.type)) {
-                    emitHostCall(emit, cap, "return");
-                    throw new Error(
-                        `setEnabled: not supported for ${el.type}; use widget.setVariant to change appearance`,
-                    );
-                }
+                const previous = readCommonProperties(
+                    document,
+                    widgetRuntimeStore,
+                    runtimePatches,
+                    scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                    elementId,
+                ).enabled;
+                runtimePatches.set(elementId, {
+                    ...(runtimePatches.get(elementId) ?? {}),
+                    enabled,
+                });
                 onWidgetPatch(elementId, { enabled });
+                if (previous !== enabled) {
+                    scheduleElementFlush(elementId);
+                }
                 emitHostCall(emit, cap, "return");
             },
             setVariant: async (elementId: string, variantId: string | null) => {
                 const cap = "widget.setVariant";
                 emitHostCall(emit, cap, "call");
                 assertAppearanceVariantId(document, elementId, variantId);
-                widgetRuntimeStore.setVariantOverride(
-                    scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                    variantId,
-                );
+                const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+                const previous = widgetRuntimeStore.getVariantOverride(scopedKey);
+                widgetRuntimeStore.setVariantOverride(scopedKey, variantId);
+                if (previous !== variantId) {
+                    scheduleElementFlush(elementId);
+                }
                 emitHostCall(emit, cap, "return");
+            },
+            getCommonProperties: (elementId: string) => {
+                const cap = "widget.getCommonProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readCommonProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimePatches,
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        elementId,
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
             },
             getTextProperties: (elementId: string) => {
                 const cap = "widget.getTextProperties";
@@ -458,11 +723,105 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const current = readTextProperties(document, elementId);
                     const el = assertTextElement(document, elementId);
+                    const normalized = normalizeTextPatch(current, patch);
+                    if (!textPatchChanges(current, normalized)) {
+                        return;
+                    }
                     el.props = {
                         ...(el.props ?? {}),
-                        ...normalizeTextPatch(current, patch),
+                        ...normalized,
                     };
                     onWidgetPatch(elementId, {});
+                    scheduleElementFlush(elementId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getButtonProperties: (elementId: string) => {
+                const cap = "widget.getButtonProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readButtonProperties(document, elementId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setButtonProperties: async (elementId: string, patch: Partial<BlueprintButtonProperties>) => {
+                const cap = "widget.setButtonProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const el = assertButtonElement(document, elementId);
+                    const current = readButtonProperties(document, elementId);
+                    const nextLabel = normalizeString(patch.label, current.label);
+                    if (nextLabel === current.label) {
+                        return;
+                    }
+                    el.props = { ...(el.props ?? {}), label: nextLabel };
+                    onWidgetPatch(elementId, {});
+                    scheduleElementFlush(elementId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getContainerProperties: (elementId: string) => {
+                const cap = "widget.getContainerProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readContainerProperties(document, elementId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setContainerProperties: async (elementId: string, patch: Partial<BlueprintContainerProperties>) => {
+                const cap = "widget.setContainerProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const el = assertContainerElement(document, elementId);
+                    const current = readContainerProperties(document, elementId);
+                    const clipContent = patch.clipContent === undefined ? current.clipContent : patch.clipContent === true;
+                    if (clipContent === current.clipContent) {
+                        return;
+                    }
+                    el.props = { ...(el.props ?? {}), clipContent };
+                    onWidgetPatch(elementId, {});
+                    scheduleElementFlush(elementId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getImageProperties: (elementId: string) => {
+                const cap = "widget.getImageProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readImageProperties(document, elementId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setImageProperties: async (elementId: string, patch: Partial<BlueprintImageProperties>) => {
+                const cap = "widget.setImageProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const el = assertImageElement(document, elementId);
+                    const current = readImageProperties(document, elementId);
+                    const hasAssetPatch = Object.prototype.hasOwnProperty.call(patch, "asset");
+                    const assetId = hasAssetPatch
+                        ? normalizeBlueprintImageAssetValue(patch.asset)?.assetId ?? null
+                        : patch.assetId === undefined
+                          ? current.assetId
+                          : normalizeNullableString(patch.assetId);
+                    if (assetId === current.assetId) {
+                        return;
+                    }
+                    const previousFill = getImageWidgetRectangleProps(el).imageFill;
+                    const nextFill: ImageFill = {
+                        ...previousFill,
+                        mode: previousFill?.mode ?? "cover",
+                        assetId,
+                    };
+                    el.props = buildImageFillPropsUpdate(el, nextFill);
+                    onWidgetPatch(elementId, {});
+                    scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -486,12 +845,22 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.setSliderProperties";
                 emitHostCall(emit, cap, "call");
                 try {
+                    const before = readSliderProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
                     const authored = readAuthoredSliderProperties(document, elementId);
-                    widgetRuntimeStore.setSliderProperties(
+                    const after = widgetRuntimeStore.setSliderProperties(
                         scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
                         authored,
                         patch,
                     );
+                    if (!sliderPropertiesEqual(before, after)) {
+                        scheduleElementFlush(elementId);
+                    }
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -522,6 +891,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
                         items,
                     );
+                    scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -531,10 +901,23 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     assertListElement(document, elementId);
+                    const before = readListProperties(
+                        document,
+                        scope,
+                        widgetRuntimeStore,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        stateScopeId,
+                        elementId,
+                    ).selectedIndex;
+                    const next = Math.trunc(index);
                     widgetRuntimeStore.setListSelectedIndex(
                         scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                        Math.trunc(index),
+                        next,
                     );
+                    if (before !== next) {
+                        scheduleElementFlush(elementId);
+                    }
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -582,7 +965,45 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getDisplayableProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    return readDisplayableProperties(document, elementId);
+                    const props = readDisplayableProperties(document, elementId);
+                    const patch = runtimePatches.get(elementId);
+                    return {
+                        ...props,
+                        visible: patch?.visible ?? props.visible,
+                    };
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getFrameProperties: (elementId: string) => {
+                const cap = "widget.getFrameProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readFrameProperties(document, elementId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setFrameProperties: async (elementId: string, patch: Partial<BlueprintFrameProperties>) => {
+                const cap = "widget.setFrameProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const el = assertFrameElement(document, elementId);
+                    const current = readFrameProperties(document, elementId);
+                    const targetSurfaceId = patch.targetSurfaceId === undefined
+                        ? current.targetSurfaceId
+                        : normalizeNullableString(patch.targetSurfaceId);
+                    const params = patch.params === undefined ? current.params : normalizeRecord(patch.params);
+                    if (targetSurfaceId === current.targetSurfaceId && jsonEquals(params, current.params)) {
+                        return;
+                    }
+                    el.props = {
+                        ...(el.props ?? {}),
+                        targetSurfaceId,
+                        params,
+                    };
+                    onWidgetPatch(elementId, {});
+                    scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -616,15 +1037,20 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         persistence: {
             get: async (key: string) => {
                 emitHostCall(emit, "persistence.get", "call");
-                const v = scope.persistenceGet(key);
-                emitHostCall(emit, "persistence.get", "return");
-                return v;
+                try {
+                    return await scope.persistenceGetAsync(key);
+                } finally {
+                    emitHostCall(emit, "persistence.get", "return");
+                }
             },
             set: async (key: string, value: unknown) => {
                 emitHostCall(emit, "persistence.set", "call");
-                scope.persistenceSet(key, value);
-                emit({ type: "state.write", scope: "persistence", key });
-                emitHostCall(emit, "persistence.set", "return");
+                try {
+                    await scope.persistenceSetAsync(key, value);
+                    emit({ type: "state.write", scope: "persistence", key });
+                } finally {
+                    emitHostCall(emit, "persistence.set", "return");
+                }
             },
         },
         frame: {

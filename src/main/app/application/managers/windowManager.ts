@@ -23,6 +23,12 @@ import {
 } from "./window/handlers/devModeAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./window/handlers/pluginPermissionAction";
 import {
+    BlueprintPersistenceGetAllHandler,
+    BlueprintPersistenceGetValueHandler,
+    BlueprintPersistenceRemoveValueHandler,
+    BlueprintPersistenceSetValueHandler,
+} from "./window/handlers/blueprintPersistenceAction";
+import {
     PrivilegedBashExecuteHandler,
     PrivilegedFsCallHandler,
     PrivilegedPermissionRevokePluginHandler,
@@ -107,6 +113,12 @@ export class WindowManager {
         win.registerIPCHandler(new DevModeGetStatusHandler());
         win.registerIPCHandler(new DevModeOpenBlueprintInWorkspaceHandler());
         win.registerIPCHandler(new DevModeResolveImageAssetUrlHandler());
+
+        // Register blueprint persistent variable storage handlers
+        win.registerIPCHandler(new BlueprintPersistenceGetAllHandler());
+        win.registerIPCHandler(new BlueprintPersistenceGetValueHandler());
+        win.registerIPCHandler(new BlueprintPersistenceSetValueHandler());
+        win.registerIPCHandler(new BlueprintPersistenceRemoveValueHandler());
 
         // Register plugin permission handlers
         win.registerIPCHandler(new PluginPermissionPromptLaunchHandler());

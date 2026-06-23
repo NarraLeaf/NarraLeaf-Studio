@@ -16,4 +16,5 @@ export enum UserDataNamespace {
     Logs = "logs",
     Plugins = "plugins",
     Authorization = "authorization",
+    BlueprintPersistence = "blueprint-persistence",
 }

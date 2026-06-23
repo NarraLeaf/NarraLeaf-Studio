@@ -102,6 +102,7 @@ export async function evaluateBlueprintValue(input: {
                     elementId: input.elementId,
                     blueprintId: input.blueprintId,
                 },
+                persistentVariables: input.blueprintDocument.persistentVariables,
                 maxSteps: input.maxSteps ?? DEFAULT_VALUE_MAX_STEPS,
                 valueExecution: {
                     trackDependency: dependency => {

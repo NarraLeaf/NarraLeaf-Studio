@@ -99,6 +99,10 @@ function findSliderPart(element: UIElement, document: WidgetRendererProps["docum
 export function SliderRenderer(props: WidgetRendererProps) {
     const { element, document, hostAdapter, renderChildren } = props;
     const rootRef = useRef<HTMLDivElement | null>(null);
+    const flushFrameRef = useRef<number | null>(null);
+    const valueChangedFrameRef = useRef<number | null>(null);
+    const valueChangedInFlightRef = useRef(false);
+    const valueChangedPendingRef = useRef<{ value: number; previousValue: number } | null>(null);
     const runtimeStore = useWidgetRuntimeStateStore();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
     const snapshot = useWidgetRuntimeSnapshot();
@@ -125,7 +129,82 @@ export function SliderRenderer(props: WidgetRendererProps) {
     );
     const normalizedValue = sliderValueToNormalized(sliderProps.value, sliderProps);
     const blueprintRuntime = hostAdapter.blueprintRuntime;
-    const hostApi = blueprintRuntime?.hostApi;
+    const canRunSliderInteraction = Boolean(blueprintRuntime && runtimeStore);
+
+    useEffect(() => () => {
+        if (flushFrameRef.current !== null) {
+            window.cancelAnimationFrame(flushFrameRef.current);
+            flushFrameRef.current = null;
+        }
+        if (valueChangedFrameRef.current !== null) {
+            window.cancelAnimationFrame(valueChangedFrameRef.current);
+            valueChangedFrameRef.current = null;
+        }
+    }, []);
+
+    const scheduleSliderFlush = useCallback(() => {
+        if (!blueprintRuntime) {
+            return;
+        }
+        if (flushFrameRef.current !== null) {
+            return;
+        }
+        flushFrameRef.current = window.requestAnimationFrame(() => {
+            flushFrameRef.current = null;
+            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, "flush", {
+                element: {
+                    surfaceId: blueprintRuntime.surfaceId,
+                    elementId: element.id,
+                    elementType: element.type,
+                },
+            });
+        });
+    }, [blueprintRuntime, element.id, element.type]);
+
+    const dispatchCoalescedValueChanged = useCallback(() => {
+        if (!blueprintRuntime) {
+            valueChangedPendingRef.current = null;
+            return;
+        }
+        if (valueChangedInFlightRef.current) {
+            return;
+        }
+        const payload = valueChangedPendingRef.current;
+        if (!payload) {
+            return;
+        }
+        valueChangedPendingRef.current = null;
+        valueChangedInFlightRef.current = true;
+        void blueprintRuntime.dispatchElementBlueprintEvent(element.id, "valueChanged", payload).finally(() => {
+            valueChangedInFlightRef.current = false;
+            if (valueChangedPendingRef.current) {
+                scheduleValueChanged();
+            }
+        });
+    }, [blueprintRuntime, element.id]);
+
+    const scheduleValueChanged = useCallback(() => {
+        if (!blueprintRuntime) {
+            valueChangedPendingRef.current = null;
+            return;
+        }
+        if (valueChangedFrameRef.current !== null) {
+            return;
+        }
+        valueChangedFrameRef.current = window.requestAnimationFrame(() => {
+            valueChangedFrameRef.current = null;
+            dispatchCoalescedValueChanged();
+        });
+    }, [blueprintRuntime, dispatchCoalescedValueChanged]);
+
+    const queueValueChanged = useCallback((value: number, previousValue: number) => {
+        const pending = valueChangedPendingRef.current;
+        valueChangedPendingRef.current = {
+            value,
+            previousValue: pending?.previousValue ?? previousValue,
+        };
+        scheduleValueChanged();
+    }, [scheduleValueChanged]);
 
     const valueFromPointer = useCallback(
         (clientX: number, clientY: number, pointerOffsetFromHandleCenter = 0): number => {
@@ -168,27 +247,26 @@ export function SliderRenderer(props: WidgetRendererProps) {
 
     const setRuntimeValue = useCallback(
         async (nextValue: number, dispatchChange: boolean) => {
-            if (!hostApi) {
+            if (!runtimeStore) {
                 return valueRef.current;
             }
             const previousValue = valueRef.current;
-            await hostApi.widget.setSliderProperties(element.id, { value: nextValue });
-            const current = hostApi.widget.getSliderProperties(element.id).value;
+            const current = runtimeStore.setSliderProperties(runtimeElementKey, authoredProps, { value: nextValue }).value;
             valueRef.current = current;
-            if (dispatchChange && current !== previousValue) {
-                await blueprintRuntime?.dispatchElementBlueprintEvent(element.id, "valueChanged", {
-                    value: current,
-                    previousValue,
-                });
+            if (current !== previousValue) {
+                scheduleSliderFlush();
+                if (dispatchChange) {
+                    queueValueChanged(current, previousValue);
+                }
             }
             return current;
         },
-        [blueprintRuntime, element.id, hostApi],
+        [authoredProps, queueValueChanged, runtimeElementKey, runtimeStore, scheduleSliderFlush],
     );
 
     const handlePointerDown = useCallback(
         (event: PointerEvent<HTMLDivElement>) => {
-            if (!hostApi || !blueprintRuntime || event.button !== 0) {
+            if (!canRunSliderInteraction || !blueprintRuntime || event.button !== 0) {
                 return;
             }
             const hitPartId = partIds.size > 0 ? closestUiElementIdInSet(event.target, partIds) : null;
@@ -211,10 +289,7 @@ export function SliderRenderer(props: WidgetRendererProps) {
                 );
                 await blueprintRuntime.dispatchElementBlueprintEvent(element.id, "dragStart", { value: firstValue });
                 if (firstValue !== previousValue) {
-                    await blueprintRuntime.dispatchElementBlueprintEvent(element.id, "valueChanged", {
-                        value: firstValue,
-                        previousValue,
-                    });
+                    queueValueChanged(firstValue, previousValue);
                 }
             })();
 
@@ -239,6 +314,7 @@ export function SliderRenderer(props: WidgetRendererProps) {
                 void blueprintRuntime.dispatchElementBlueprintEvent(element.id, "dragEnd", {
                     value: valueRef.current,
                 });
+                scheduleSliderFlush();
             };
             window.addEventListener("pointermove", onMove, { passive: false });
             window.addEventListener("pointerup", onUp, { once: true });
@@ -246,9 +322,9 @@ export function SliderRenderer(props: WidgetRendererProps) {
         },
         [
             blueprintRuntime,
+            canRunSliderInteraction,
             element.id,
             handleElement?.id,
-            hostApi,
             partIds,
             pointerOffsetFromHandleCenter,
             setRuntimeValue,
@@ -269,7 +345,7 @@ export function SliderRenderer(props: WidgetRendererProps) {
                       ),
                       style: {
                           ...(handleElement.style ?? {}),
-                          cursor: hostApi
+                          cursor: canRunSliderInteraction
                               ? sliderProps.orientation === "horizontal"
                                   ? "ew-resize"
                                   : "ns-resize"

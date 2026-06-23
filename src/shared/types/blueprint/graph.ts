@@ -28,6 +28,8 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK = "blueprint.event.head.
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus" as const;
 /** Entry for widget `blur` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR = "blueprint.event.head.blur" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH = "blueprint.event.head.flush" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH = "blueprint.event.head.elementFlush" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL = "blueprint.event.head.scroll" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST = "blueprint.event.head.onAnyBroadcast" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST = "blueprint.event.head.onBroadcast" as const;
@@ -61,6 +63,8 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
@@ -186,6 +190,7 @@ export const BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D = "blueprint.data.vector2dLite
 export const BLUEPRINT_NODE_TYPE_LITERAL_RECT = "blueprint.data.rectLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL_JSON = "blueprint.data.jsonLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_REF = "blueprint.element.ref" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL = "blueprint.image.assetLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE = "blueprint.data.returnValue" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT = "blueprint.data.toFloat" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER = "blueprint.data.toInteger" as const;
@@ -245,6 +250,10 @@ export const BLUEPRINT_NODE_TYPE_FLOW_COMMENT = "blueprint.flow.comment" as cons
 export const BLUEPRINT_NODE_TYPE_LOCAL_GET = "blueprint.local.get" as const;
 /** Write blueprint execution local variable. */
 export const BLUEPRINT_NODE_TYPE_LOCAL_SET = "blueprint.local.set" as const;
+/** Async read from project-level persistent storage. */
+export const BLUEPRINT_NODE_TYPE_PERSISTENT_GET = "blueprint.persistent.get" as const;
+/** Async write to project-level persistent storage. */
+export const BLUEPRINT_NODE_TYPE_PERSISTENT_SET = "blueprint.persistent.set" as const;
 /** Persisted helper param for variableRef nodes whose pin type follows the selected variable. */
 export const BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE = "__variableValueType" as const;
 /** Console log from wired data pin (Studio / Dev Mode). */
@@ -383,11 +392,23 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION = "blueprint.e
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY = "blueprint.element.displayable.getOpacity" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE = "blueprint.element.displayable.getVisible" as const;
 
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION = "blueprint.displayable.getPosition" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE = "blueprint.displayable.getSize" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS = "blueprint.displayable.getBounds" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION = "blueprint.displayable.getRotation" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY = "blueprint.displayable.getOpacity" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE = "blueprint.displayable.getVisible" as const;
+
 export const BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE = "blueprint.slider.getValue" as const;
 export const BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE = "blueprint.slider.getNormalizedValue" as const;
 export const BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE = "blueprint.slider.getRange" as const;
 export const BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE = "blueprint.slider.setValue" as const;
 export const BLUEPRINT_NODE_TYPE_SLIDER_SET_RANGE = "blueprint.slider.setRange" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE = "blueprint.element.slider.getValue" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE = "blueprint.element.slider.getNormalizedValue" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_RANGE = "blueprint.element.slider.getRange" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_SET_VALUE = "blueprint.element.slider.setValue" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_SET_RANGE = "blueprint.element.slider.setRange" as const;
 
 export const BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS = "blueprint.list.setItems" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS = "blueprint.list.getItems" as const;
@@ -408,6 +429,26 @@ export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS = "blueprint.list.getItemPr
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX = "blueprint.list.getItemIndex" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_COUNT = "blueprint.list.getItemCount" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_KEY = "blueprint.list.getItemKey" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_ITEMS = "blueprint.element.list.setItems" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEMS = "blueprint.element.list.getItems" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_CLEAR = "blueprint.element.list.clear" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_APPEND_ITEM = "blueprint.element.list.appendItem" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_INSERT_ITEM = "blueprint.element.list.insertItem" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_REMOVE_ITEM = "blueprint.element.list.removeItem" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_REMOVE_ITEM_AT = "blueprint.element.list.removeItemAt" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_ITEM = "blueprint.element.list.getSelectedItem" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_SELECTED_ITEM = "blueprint.element.list.setSelectedItem" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_INDEX = "blueprint.element.list.getSelectedIndex" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SET_SELECTED_INDEX = "blueprint.element.list.setSelectedIndex" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_REFRESH_ITEMS = "blueprint.element.list.refreshItems" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SCROLL_TO_INDEX = "blueprint.element.list.scrollToIndex" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SCROLL_TO_TOP = "blueprint.element.list.scrollToTop" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SCROLL_TO_BOTTOM = "blueprint.element.list.scrollToBottom" as const;
+
+export const BLUEPRINT_NODE_TYPE_IMAGE_GET_ASSET = "blueprint.image.getImageAsset" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET = "blueprint.image.setImageAsset" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_ASSET = "blueprint.element.image.getImageAsset" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET = "blueprint.element.image.setImageAsset" as const;
 
 /** IR meta key for graph kind (string value matches BlueprintGraphKind). */
 export const BLUEPRINT_GRAPH_IR_META_KIND = "graphKind" as const;

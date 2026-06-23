@@ -33,6 +33,7 @@ describe("BlueprintDispatcher", () => {
         const blueprintId = "bp-widget";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -113,6 +114,7 @@ describe("BlueprintDispatcher", () => {
         const blueprintId = "bp-container";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -212,6 +214,7 @@ describe("BlueprintDispatcher", () => {
         releaseBlueprintWidgetLocals("surface", "button", blueprintId);
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -325,6 +328,7 @@ describe("BlueprintDispatcher", () => {
         releaseBlueprintWidgetLocals("surface", "list", blueprintId);
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -438,6 +442,7 @@ describe("BlueprintDispatcher", () => {
         const surfaceBlueprintId = "bp-surface";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
             blueprints: {
                 [globalBlueprintId]: {
                     id: globalBlueprintId,
@@ -577,6 +582,7 @@ describe("BlueprintDispatcher", () => {
         releaseBlueprintWidgetLocals("surface", "frame", blueprintId);
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -698,6 +704,7 @@ describe("BlueprintDispatcher", () => {
         releaseBlueprintWidgetLocals("surface", "receiver", blueprintId);
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
             blueprints: {
                 [blueprintId]: {
                     id: blueprintId,
@@ -837,6 +844,7 @@ describe("BlueprintDispatcher", () => {
         const payloadVarId = "payload";
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
             blueprints: {
                 [surfaceBlueprintId]: {
                     id: surfaceBlueprintId,
@@ -970,6 +978,7 @@ describe("BlueprintDispatcher", () => {
         const globalVarRef = createExplicitBlueprintVariableRef(globalBlueprintId, globalVarId);
         const blueprintDocument: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
             blueprints: {
                 [globalBlueprintId]: {
                     id: globalBlueprintId,

@@ -4,6 +4,12 @@
  */
 
 import {
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
@@ -57,6 +63,7 @@ import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
 const WRITE_GRAPH_KINDS = ["event", "macro"] as const;
 const TEXT_ELEMENT_TYPE = "nl.text";
+const DISPLAYABLE_WIDGET_TYPES = ["nl.container", "nl.text", "nl.image", "nl.button", "nl.slider", "nl.list", "nl.frame"];
 const FONT_WEIGHT_VALUES = ["normal", "600", "bold"] as const;
 const TEXT_ALIGN_VALUES = ["left", "center", "right"] as const;
 const TEXT_VERTICAL_ALIGN_VALUES = ["start", "center", "end"] as const;
@@ -143,7 +150,7 @@ function textReadNode(input: {
     return {
         type: input.type,
         displayName: input.displayName,
-        category: "Text",
+        category: "Element",
         keywords: input.keywords,
         graphKinds: [...READ_GRAPH_KINDS],
         isPure: true,
@@ -163,7 +170,7 @@ function textWriteNode(input: {
     return {
         type: input.type,
         displayName: input.displayName,
-        category: "Text",
+        category: "Element",
         keywords: input.keywords,
         graphKinds: [...WRITE_GRAPH_KINDS],
         isPure: false,
@@ -179,16 +186,21 @@ function displayableReadNode(input: {
     displayName: string;
     keywords: string[];
     pins: BlueprintNodePinDef[];
+    target: "self" | "element";
 }): BlueprintNodeDef {
+    const elementTarget = input.target === "element";
     return {
         type: input.type,
         displayName: input.displayName,
-        category: "Displayable",
+        category: elementTarget ? "Element" : "Displayable",
         keywords: input.keywords,
         graphKinds: [...READ_GRAPH_KINDS],
         isPure: true,
-        magicElementTarget: { inputPinId: "element" },
-        pins: [genericElementIn, ...input.pins],
+        magicElementTarget: elementTarget ? { inputPinId: "element" } : undefined,
+        pins: elementTarget ? [genericElementIn, ...input.pins] : input.pins,
+        scope: elementTarget
+            ? undefined
+            : { ownerKinds: ["widgetMain"], widgetElementTypes: DISPLAYABLE_WIDGET_TYPES },
         execute: () => ({}),
     };
 }
@@ -299,40 +311,88 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         execute: () => ({}),
     },
     displayableReadNode({
-        type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
+        type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION,
         displayName: "Get Position",
+        keywords: ["displayable", "position", "layout", "x", "y"],
+        pins: [out("position", "Position", BLUEPRINT_VALUE_TYPE_VECTOR2D)],
+        target: "self",
+    }),
+    displayableReadNode({
+        type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE,
+        displayName: "Get Size",
+        keywords: ["displayable", "size", "layout", "width", "height"],
+        pins: [out("size", "Size", BLUEPRINT_VALUE_TYPE_VECTOR2D)],
+        target: "self",
+    }),
+    displayableReadNode({
+        type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
+        displayName: "Get Bounds",
+        keywords: ["displayable", "bounds", "layout", "rect"],
+        pins: [out("bounds", "Bounds", "json")],
+        target: "self",
+    }),
+    displayableReadNode({
+        type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION,
+        displayName: "Get Rotation",
+        keywords: ["displayable", "rotation", "angle"],
+        pins: [out("rotation", "Rotation", "float")],
+        target: "self",
+    }),
+    displayableReadNode({
+        type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY,
+        displayName: "Get Opacity",
+        keywords: ["displayable", "opacity", "alpha"],
+        pins: [out("opacity", "Opacity", "float")],
+        target: "self",
+    }),
+    displayableReadNode({
+        type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE,
+        displayName: "Get Visible",
+        keywords: ["displayable", "visible", "visibility"],
+        pins: [out("visible", "Visible", "boolean")],
+        target: "self",
+    }),
+    displayableReadNode({
+        type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
+        displayName: "Get Element Position",
         keywords: ["element", "displayable", "position", "layout", "x", "y"],
         pins: [out("position", "Position", BLUEPRINT_VALUE_TYPE_VECTOR2D)],
+        target: "element",
     }),
     displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_SIZE,
-        displayName: "Get Size",
+        displayName: "Get Element Size",
         keywords: ["element", "displayable", "size", "layout", "width", "height"],
         pins: [out("size", "Size", BLUEPRINT_VALUE_TYPE_VECTOR2D)],
+        target: "element",
     }),
     displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS,
-        displayName: "Get Bounds",
+        displayName: "Get Element Bounds",
         keywords: ["element", "displayable", "bounds", "layout", "rect"],
         pins: [out("bounds", "Bounds", "json")],
+        target: "element",
     }),
     displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION,
-        displayName: "Get Rotation",
+        displayName: "Get Element Rotation",
         keywords: ["element", "displayable", "rotation", "angle"],
         pins: [out("rotation", "Rotation", "float")],
+        target: "element",
     }),
     displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY,
-        displayName: "Get Opacity",
+        displayName: "Get Element Opacity",
         keywords: ["element", "displayable", "opacity", "alpha"],
         pins: [out("opacity", "Opacity", "float")],
+        target: "element",
     }),
     displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE,
-        displayName: "Get Visible",
+        displayName: "Get Element Visible",
         keywords: ["element", "displayable", "visible", "visibility"],
         pins: [out("visible", "Visible", "boolean")],
+        target: "element",
     }),
     textReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,

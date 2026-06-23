@@ -157,6 +157,7 @@ export function TextRenderer({ element, surface, document, hostAdapter }: Widget
         boxSizing: "border-box",
         fontSize: p.fontSize,
         fontWeight: p.fontWeight,
+        fontStyle: p.fontStyle,
         color,
         textAlign: p.textAlign,
         lineHeight: p.lineHeight,

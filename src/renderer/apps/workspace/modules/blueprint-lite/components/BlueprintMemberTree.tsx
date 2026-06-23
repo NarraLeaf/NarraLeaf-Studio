@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Blueprint, BlueprintField, BlueprintVariable, LiteralValue } from "@shared/types/blueprint/document";
+import type {
+    Blueprint,
+    BlueprintField,
+    BlueprintPersistentVariable,
+    BlueprintVariable,
+    LiteralValue,
+} from "@shared/types/blueprint/document";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
@@ -33,7 +39,7 @@ type Props = {
     onDeleteLayer: (layerId: string) => void;
 };
 
-export type BlueprintVariableGroupKey = "page" | "blueprint" | "global";
+export type BlueprintVariableGroupKey = "page" | "blueprint" | "global" | "persistent";
 
 type VariableGroup = {
     key: BlueprintVariableGroupKey;
@@ -206,6 +212,103 @@ function BlueprintVariableRow({
     );
 }
 
+function BlueprintPersistentVariableRow({
+    v,
+    historyBlueprintId,
+    localBp,
+    uiService,
+}: {
+    v: BlueprintPersistentVariable;
+    historyBlueprintId: string;
+    localBp: LocalBlueprintService;
+    uiService: UIService | null;
+}) {
+    const [draftName, setDraftName] = useState(v.name);
+
+    useEffect(() => {
+        setDraftName(v.name);
+    }, [v.id, v.name]);
+
+    const commitName = useCallback(() => {
+        const t = draftName.trim();
+        if (!t) {
+            setDraftName(v.name);
+            return;
+        }
+        if (t !== v.name) {
+            localBp.renamePersistentVariable(historyBlueprintId, v.id, t);
+        }
+    }, [draftName, historyBlueprintId, localBp, v.id, v.name]);
+
+    return (
+        <div className="group rounded border border-white/10 bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
+            <div className="flex items-center justify-between gap-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="text-[9px] uppercase text-emerald-200/80">Persistent</span>
+                    {v.valueType ? (
+                        <span className="truncate rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[9px] text-gray-400">
+                            {v.valueType}
+                        </span>
+                    ) : null}
+                </div>
+                <button
+                    type="button"
+                    title={`Delete persistent variable "${v.name}"`}
+                    aria-label={`Delete persistent variable ${v.name}`}
+                    className="-m-0.5 rounded p-1 text-red-400/90 opacity-0 transition-opacity hover:bg-red-500/15 hover:text-red-300 group-hover:opacity-100"
+                    onClick={() => {
+                        if (!uiService) {
+                            return;
+                        }
+                        void (async () => {
+                            const ok = await uiService.showConfirm(
+                                `Delete persistent variable "${v.name}"?`,
+                                "Nodes that referenced this persistent variable will lose their selection. Saved player data for this key is not deleted.",
+                            );
+                            if (ok) {
+                                localBp.deletePersistentVariable(historyBlueprintId, v.id);
+                            }
+                        })();
+                    }}
+                >
+                    <Trash2 className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                </button>
+            </div>
+            <input
+                className={`${FIELD_INPUT} font-mono`}
+                value={draftName}
+                onChange={e => setDraftName(e.target.value)}
+                onBlur={commitName}
+                onKeyDown={e => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                    } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setDraftName(v.name);
+                        e.currentTarget.blur();
+                    }
+                }}
+            />
+            <div>
+                <div className="mb-0.5 text-[9px] text-gray-500">Default</div>
+                <BlueprintLiteralValueControl
+                    variant="inspector"
+                    value={v.defaultValue ?? null}
+                    onChange={next =>
+                        localBp.setPersistentVariableDefault(
+                            historyBlueprintId,
+                            v.id,
+                            normalizeVariableDefault(next),
+                        )
+                    }
+                />
+            </div>
+        </div>
+    );
+}
+
 function FieldRow({
     field,
     blueprintId,
@@ -286,6 +389,10 @@ function FieldRow({
 
 function sortedVariables(blueprint: Blueprint): BlueprintVariable[] {
     return Object.values(blueprint.members?.variables ?? {}).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function sortedPersistentVariables(variables: Record<string, BlueprintPersistentVariable> | undefined): BlueprintPersistentVariable[] {
+    return Object.values(variables ?? {}).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function sortedFields(blueprint: Blueprint): BlueprintField[] {
@@ -470,6 +577,84 @@ export function BlueprintMemberTree({
         [uiService],
     );
 
+    const promptCreatePersistentVariable = useCallback(
+        (existingNames: string[]): Promise<BlueprintVariableDialogValue | null> => {
+            if (!uiService) {
+                return Promise.resolve(null);
+            }
+            return new Promise(resolve => {
+                let dialogId: string | null = null;
+                let settled = false;
+                const selection: BlueprintVariableDialogValue = {
+                    name: "Persistent",
+                    valueType: "string",
+                    defaultValue: "",
+                    valid: true,
+                };
+
+                const safeResolve = (value: BlueprintVariableDialogValue | null) => {
+                    if (settled) {
+                        return;
+                    }
+                    settled = true;
+                    resolve(value);
+                };
+
+                const closeDialog = () => {
+                    if (dialogId) {
+                        uiService.dialogs.close(dialogId);
+                        dialogId = null;
+                    }
+                };
+
+                const handleConfirm = () => {
+                    if (!selection.valid) {
+                        uiService.showNotification("Check the persistent variable name and data type before creating it.", "warning");
+                        return;
+                    }
+                    safeResolve({ ...selection });
+                    closeDialog();
+                };
+
+                const handleCancel = () => {
+                    safeResolve(null);
+                    closeDialog();
+                };
+
+                dialogId = uiService.dialogs.show({
+                    title: "Create Persistent variable",
+                    content: (
+                        <BlueprintVariableDialogContent
+                            defaultName="Persistent"
+                            existingNames={existingNames}
+                            onChange={value => {
+                                selection.name = value.name;
+                                selection.valueType = value.valueType;
+                                selection.defaultValue = value.defaultValue;
+                                selection.valid = value.valid;
+                            }}
+                        />
+                    ),
+                    closable: true,
+                    width: 420,
+                    buttons: [
+                        {
+                            label: "Cancel",
+                            onClick: handleCancel,
+                        },
+                        {
+                            label: "Create",
+                            primary: true,
+                            onClick: handleConfirm,
+                        },
+                    ],
+                    onClose: handleCancel,
+                });
+            });
+        },
+        [uiService],
+    );
+
     const handleCreateVariable = useCallback(
         async (group: VariableGroup) => {
             const selection = await promptCreateVariable(group);
@@ -485,6 +670,20 @@ export function BlueprintMemberTree({
         },
         [localBp, onVariableGroupOpenChange, promptCreateVariable],
     );
+
+    const handleCreatePersistentVariable = useCallback(async () => {
+        const existingNames = sortedPersistentVariables(localBp.getBlueprintDocument().persistentVariables).map(v => v.name);
+        const selection = await promptCreatePersistentVariable(existingNames);
+        if (!selection) {
+            return;
+        }
+        localBp.createPersistentVariable(blueprintId, {
+            name: selection.name,
+            valueType: selection.valueType,
+            defaultValue: selection.defaultValue,
+        });
+        onVariableGroupOpenChange?.("persistent", true);
+    }, [blueprintId, localBp, onVariableGroupOpenChange, promptCreatePersistentVariable]);
 
     if (blueprint.program.kind !== "graph") {
         return <p className="text-xs text-gray-500">Not a graph blueprint.</p>;
@@ -503,6 +702,7 @@ export function BlueprintMemberTree({
 
     const events = blueprint.program.graphs.events ?? {};
     const fields = blueprint.members?.fields ?? {};
+    const persistentVariables = blueprintDocument.persistentVariables ?? {};
 
     const variableGroups = useMemo(
         () =>
@@ -525,6 +725,10 @@ export function BlueprintMemberTree({
         ],
     );
     const sortedFieldList = useMemo(() => sortedFields(blueprint), [fields, blueprintDocumentRevision, blueprint]);
+    const sortedPersistentList = useMemo(
+        () => sortedPersistentVariables(persistentVariables),
+        [persistentVariables, blueprintDocumentRevision],
+    );
 
     const layerActive = (id: string) => graphView?.kind === "event" && graphView.graphId === id;
 
@@ -672,6 +876,36 @@ export function BlueprintMemberTree({
                         </CollapsibleSection>
                     );
                 })}
+
+                <CollapsibleSection
+                    title="Persistent variables"
+                    defaultOpen={false}
+                    open={variableGroupOpenState?.persistent ?? false}
+                    onOpenChange={open => onVariableGroupOpenChange?.("persistent", open)}
+                    action={
+                        <button
+                            type="button"
+                            className="inline-flex items-center gap-1 text-cyan-400/90 hover:text-cyan-300"
+                            onClick={() => void handleCreatePersistentVariable()}
+                        >
+                            <Plus className="h-3 w-3" />
+                            New
+                        </button>
+                    }
+                >
+                    <div className="space-y-2">
+                        {sortedPersistentList.length === 0 ? <p className="text-gray-500">No persistent variables.</p> : null}
+                        {sortedPersistentList.map(v => (
+                            <BlueprintPersistentVariableRow
+                                key={v.id}
+                                v={v}
+                                historyBlueprintId={blueprintId}
+                                localBp={localBp}
+                                uiService={uiService}
+                            />
+                        ))}
+                    </div>
+                </CollapsibleSection>
 
                 {canDefineBindingFields ? (
                     <CollapsibleSection

@@ -5,6 +5,7 @@ import { FixedAspectRatioContainer } from "narraleaf-react";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UISurface, UIDocument } from "@shared/types/ui-editor/document";
 import type { DevModeBundle } from "@shared/types/devMode";
+import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import { DevModeSurfaceRenderer } from "./DevModeSurfaceRenderer";
@@ -16,6 +17,7 @@ import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/W
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { dispatchSurfaceBlueprintEvent, dispatchGlobalBlueprintEvent } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { SurfaceLifecycleManager } from "@/lib/ui-editor/blueprint-runtime/SurfaceLifecycleManager";
+import { getInterface } from "@/lib/app/bridge";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
@@ -80,10 +82,23 @@ export function DevModeContent(props: DevModeContentProps) {
     const [navStack, setNavStack] = useState<string[]>([]);
     const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});
     const widgetPatchesByScopeRef = useRef(widgetPatchesByScope);
+    const hostAdapterRef = useRef<UIHostAdapter | null>(null);
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
     const [blueprintPanelOpen, setBlueprintPanelOpen] = useState(false);
     const devtoolsFabRef = useRef<HTMLButtonElement>(null);
     const devtoolsMenuRef = useRef<HTMLDivElement>(null);
+    const persistenceProjectRef = useMemo<BlueprintPersistenceProjectRef | null>(() => {
+        if (!projectPath) {
+            return null;
+        }
+        const rawIdentifier = bundle?.meta?.projectIdentifier;
+        const projectIdentifier =
+            typeof rawIdentifier === "string" && rawIdentifier.trim() ? rawIdentifier.trim() : undefined;
+        return {
+            projectIdentifier,
+            projectPath,
+        };
+    }, [bundle?.meta?.projectIdentifier, projectPath]);
 
     useEffect(() => {
         if (surface?.id) {
@@ -102,6 +117,48 @@ export function DevModeContent(props: DevModeContentProps) {
             setBlueprintPanelOpen(false);
         }
     }, [bpCore]);
+
+    useEffect(() => {
+        if (!bpCore) {
+            return undefined;
+        }
+        if (!persistenceProjectRef) {
+            bpCore.scopeBridge.setPersistenceAdapter(null);
+            return undefined;
+        }
+        const projectRef = persistenceProjectRef;
+        bpCore.scopeBridge.setPersistenceAdapter({
+            getAll: async () => {
+                const result = await getInterface().blueprintPersistence.getAll(projectRef);
+                if (!result.success) {
+                    throw new Error(result.error ?? "Failed to read Blueprint persistent values");
+                }
+                return result.data.values;
+            },
+            getValue: async (key: string) => {
+                const result = await getInterface().blueprintPersistence.getValue(projectRef, key);
+                if (!result.success) {
+                    throw new Error(result.error ?? `Failed to read Blueprint persistent value "${key}"`);
+                }
+                return result.data.value;
+            },
+            setValue: async (key: string, value: unknown) => {
+                const result = await getInterface().blueprintPersistence.setValue(projectRef, key, value);
+                if (!result.success) {
+                    throw new Error(result.error ?? `Failed to write Blueprint persistent value "${key}"`);
+                }
+            },
+            removeValue: async (key: string) => {
+                const result = await getInterface().blueprintPersistence.removeValue(projectRef, key);
+                if (!result.success) {
+                    throw new Error(result.error ?? `Failed to remove Blueprint persistent value "${key}"`);
+                }
+            },
+        });
+        return () => {
+            bpCore.scopeBridge.setPersistenceAdapter(null);
+        };
+    }, [bpCore, persistenceProjectRef]);
 
     useEffect(() => {
         if (!devtoolsMenuOpen) {
@@ -182,6 +239,13 @@ export function DevModeContent(props: DevModeContentProps) {
                     },
                 }));
             },
+            onElementFlush: (elementId, payload) => {
+                void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
+                    elementId,
+                    "flush",
+                    payload,
+                );
+            },
             widgetRuntimeStore,
         });
     }, [bpCore, uiDocument, activeSurface, widgetRuntimeStore]);
@@ -202,6 +266,10 @@ export function DevModeContent(props: DevModeContentProps) {
             hostApi,
         });
     }, [bundle, activeSurface, bpCore, hostApi]);
+
+    useEffect(() => {
+        hostAdapterRef.current = hostAdapter;
+    }, [hostAdapter]);
 
     const makeStateAccessors = useCallback(
         (sid: string) => {
@@ -310,6 +378,7 @@ export function DevModeContent(props: DevModeContentProps) {
         return {
             createHostAdapter: input => {
                 const runtimeScopeId = input.runtimeScopeId;
+                let nestedHostAdapter: UIHostAdapter | null = null;
                 const hostApi = createDevModeBlueprintHostApi({
                     document: uiDocument,
                     scope: bpCore.scopeBridge,
@@ -342,9 +411,16 @@ export function DevModeContent(props: DevModeContentProps) {
                             },
                         }));
                     },
+                    onElementFlush: (elementId, payload) => {
+                        void nestedHostAdapter?.blueprintRuntime?.dispatchElementBlueprintEvent(
+                            elementId,
+                            "flush",
+                            payload,
+                        );
+                    },
                     widgetRuntimeStore,
                 });
-                return createDevModeBlueprintHostAdapter({
+                nestedHostAdapter = createDevModeBlueprintHostAdapter({
                     bundle,
                     surface: input.targetSurface,
                     runtimeScopeId,
@@ -352,6 +428,7 @@ export function DevModeContent(props: DevModeContentProps) {
                     debug: bpCore.debug,
                     hostApi,
                 });
+                return nestedHostAdapter;
             },
             createBindingContext: input => ({
                 blueprintDocument: bundle.ui.localBlueprints,
