@@ -226,6 +226,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision, {
         widgetElement,
         widgetSurfaceId: payload.surfaceId,
+        widgetBlueprintEvents: widgetLogicEvents,
     });
     const openBlueprint = useOpenBlueprintTarget();
     const focusBlueprintEditor = useCallback(() => {
@@ -869,6 +870,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                         paletteContext={paletteContext}
                         deleteKeyCode={memberPanelFocusContained ? null : undefined}
                         dynamicSelectOptions={dynamicSelectOptions}
+                        diagnostics={diagnostics}
                         initialViewport={initialFlowViewport}
                         onViewportChange={onFlowViewportChange}
                     />
