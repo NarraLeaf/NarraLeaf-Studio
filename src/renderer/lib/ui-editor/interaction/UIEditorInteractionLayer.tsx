@@ -11,6 +11,7 @@ import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocument
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { ActiveSnapGuides } from "@/lib/ui-editor/snapping/types";
 import type { UITool } from "@/lib/ui-editor/editor/types";
+import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { PRIMARY_OUTLINE_STRONG, PRIMARY_OUTLINE_WEAK, SELECTABLE_TARGET } from "./constants";
 import type { InsertPreview, InsertToolDragState } from "./useSurfaceInteractionEvents";
 import { useTransformController } from "./controllers/TransformController";
@@ -33,6 +34,7 @@ import { beginImageCropEdit } from "./imageCropEdit";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { FloatingToolbarItem } from "@/lib/ui-editor/widget-modules/types";
 import { resolveFloatingToolbarPosition } from "./floatingToolbarPosition";
+import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 
 function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
     const x = Math.min(preview.startX, preview.currentX);
@@ -110,6 +112,41 @@ export function UIEditorInteractionLayer({
         return () => unsubscribe();
     }, [stateService]);
 
+    useEffect(() => {
+        if (!isUIElementSelection(selection) || selection.data.surfaceId !== surfaceId) {
+            return;
+        }
+        const document = documentService.getDocument();
+        const rootId = resolveSurfaceRootElementId(document, surfaceId);
+        if (!rootId) {
+            stateService.setSelection({ type: null, data: null });
+            return;
+        }
+        const allowed = collectSubtreeElementIds(document, rootId);
+        const nextIds = selection.data.elementIds.filter(id => allowed.has(id) && document.elements[id] != null);
+        if (nextIds.length === 0) {
+            stateService.setSelection({ type: null, data: null });
+            return;
+        }
+        const currentPrimary =
+            selection.data.primaryId ?? selection.data.elementIds[selection.data.elementIds.length - 1];
+        const nextPrimary =
+            selection.data.primaryId && nextIds.includes(selection.data.primaryId)
+                ? selection.data.primaryId
+                : nextIds[nextIds.length - 1];
+        const sameIds =
+            nextIds.length === selection.data.elementIds.length &&
+            nextIds.every((id, index) => id === selection.data.elementIds[index]);
+        if (sameIds && nextPrimary === currentPrimary) {
+            return;
+        }
+        stateService.setUIElementSelection({
+            editor: "ui",
+            surfaceId,
+            elementIds: nextIds,
+            primaryId: nextPrimary,
+        });
+    }, [documentRevision, documentService, selection, stateService, surfaceId]);
 
     const [tool, setTool] = useState<UITool>(stateService.getTool());
     const [viewport, setViewport] = useState<ViewportTransform>(stateService.getViewportTransform());
