@@ -110,6 +110,9 @@ import {
     BLUEPRINT_NODE_TYPE_STRING_TRIM,
     BLUEPRINT_NODE_TYPE_STRING_TRIM_END,
     BLUEPRINT_NODE_TYPE_STRING_TRIM_START,
+    BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE,
+    BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE,
+    BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE,
     BLUEPRINT_NODE_TYPE_TEXT_GET_ALL_PROPERTIES,
     BLUEPRINT_NODE_TYPE_TEXT_GET_EFFECTS,
     BLUEPRINT_NODE_TYPE_TEXT_GET_FONT,
@@ -1221,6 +1224,39 @@ function resolveTextNodeOutput(type: string, portId: string, runtime?: DataPinRe
     return undefined;
 }
 
+function resolveSliderNodeOutput(type: string, portId: string, runtime?: DataPinResolveRuntime): unknown {
+    const elementId = runtime?.executionOwner?.elementId;
+    const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
+    if (!elementId || !api) {
+        return undefined;
+    }
+    let props: ReturnType<typeof api.widget.getSliderProperties>;
+    try {
+        props = api.widget.getSliderProperties(elementId);
+    } catch {
+        return undefined;
+    }
+
+    if (type === BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE && portId === "value") {
+        return props.value;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE && portId === "normalizedValue") {
+        return props.normalizedValue;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE) {
+        if (portId === "min") {
+            return props.min;
+        }
+        if (portId === "max") {
+            return props.max;
+        }
+        if (portId === "step") {
+            return props.step;
+        }
+    }
+    return undefined;
+}
+
 function resolveDataNodeOutput(
     graph: DataPinGraph,
     nodeId: string,
@@ -1417,6 +1453,10 @@ function resolveSelfOutput(
     const textOutput = resolveTextNodeOutput(selfNode.type, portId, runtime);
     if (textOutput !== undefined) {
         return textOutput;
+    }
+    const sliderOutput = resolveSliderNodeOutput(selfNode.type, portId, runtime);
+    if (sliderOutput !== undefined) {
+        return sliderOutput;
     }
     const dataOutput = resolveDataNodeOutput(
         graph,

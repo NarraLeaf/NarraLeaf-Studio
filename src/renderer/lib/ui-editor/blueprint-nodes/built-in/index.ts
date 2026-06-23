@@ -13,6 +13,7 @@ import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { frameBlueprintNodes } from "./frameNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
+import { sliderBlueprintNodes } from "./sliderNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
 
@@ -25,6 +26,7 @@ export { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 export { frameBlueprintNodes } from "./frameNodes";
 export { localVariableBlueprintNodes } from "./localVariableNodes";
 export { mathBlueprintNodes } from "./mathNodes";
+export { sliderBlueprintNodes } from "./sliderNodes";
 export { navigationBlueprintNodes } from "./navigationNodes";
 export { stringBlueprintNodes } from "./stringNodes";
 export { textBlueprintNodes } from "./textNodes";
@@ -44,5 +46,6 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...booleanCompareBlueprintNodes,
     ...stringBlueprintNodes,
     ...textBlueprintNodes,
+    ...sliderBlueprintNodes,
     ...devtoolsBlueprintNodes,
 ];

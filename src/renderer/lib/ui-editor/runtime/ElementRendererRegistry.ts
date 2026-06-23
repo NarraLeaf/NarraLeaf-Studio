@@ -14,6 +14,7 @@ export type ElementRendererProps = {
         childrenIds?: string[];
         listItemScope?: UIListItemScope | null;
         instanceKey?: string;
+        elementOverrides?: Record<string, UIElement>;
     }) => ReactNode[];
     renderSurface?: (options: {
         targetSurfaceId: string | null;

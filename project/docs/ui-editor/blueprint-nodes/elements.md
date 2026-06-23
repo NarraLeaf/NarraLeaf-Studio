@@ -41,6 +41,14 @@
 - Collection
 - Broadcast
 
+## Slider
+
+- `nl.slider`
+
+`Slider` 元素是一个数值映射滑块。默认拥有以下节点组：
+- Slider
+- Broadcast
+
 ## Page
 
 - `nl.frame`

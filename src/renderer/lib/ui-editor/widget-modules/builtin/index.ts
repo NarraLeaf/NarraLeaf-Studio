@@ -6,6 +6,7 @@ import { ContainerWidgetModule } from "./container";
 import { ButtonWidgetModule } from "./button";
 import { ListWidgetModule } from "./list";
 import { FrameWidgetModule } from "./frame";
+import { SliderWidgetModule } from "./slider";
 
 /**
  * All built-in widget modules registered at startup (includes internal `nl.root`).
@@ -17,6 +18,7 @@ export const BuiltinWidgetModules: UIWidgetModule[] = [
     TextWidgetModule,
     ImageWidgetModule,
     ButtonWidgetModule,
+    SliderWidgetModule,
     ListWidgetModule,
     FrameWidgetModule,
 ];

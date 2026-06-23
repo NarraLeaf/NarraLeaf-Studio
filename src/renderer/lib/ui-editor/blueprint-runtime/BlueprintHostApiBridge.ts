@@ -6,12 +6,15 @@ import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance
 import type { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
+import { getSliderProps } from "@/lib/ui-editor/widget-modules/builtin/slider/helpers";
 import type {
     TextAlign,
     TextVerticalAlign,
     TextWidgetProps,
     TextWrapMode,
 } from "@/lib/ui-editor/widget-modules/builtin/text/types";
+import type { UISliderRuntimeValue, UISliderWidgetProps } from "@shared/types/ui-editor/slider";
+import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
 
 export type DevModeWidgetRuntimePatch = {
     visible?: boolean;
@@ -34,6 +37,10 @@ export type BlueprintTextProperties = Pick<
 
 export type BlueprintTextPropertiesPatch = Partial<BlueprintTextProperties>;
 
+export type BlueprintSliderProperties = UISliderRuntimeValue;
+
+export type BlueprintSliderPropertiesPatch = Partial<Pick<UISliderWidgetProps, "value" | "min" | "max" | "step">>;
+
 export type BlueprintHostApiRuntime = {
     navigation: {
         openSurface: (surfaceId: string) => Promise<void>;
@@ -46,6 +53,8 @@ export type BlueprintHostApiRuntime = {
         setVariant: (elementId: string, variantId: string | null) => Promise<void>;
         getTextProperties: (elementId: string) => BlueprintTextProperties;
         setTextProperties: (elementId: string, patch: BlueprintTextPropertiesPatch) => Promise<void>;
+        getSliderProperties: (elementId: string) => BlueprintSliderProperties;
+        setSliderProperties: (elementId: string, patch: BlueprintSliderPropertiesPatch) => Promise<void>;
     };
     state: {
         get: (scope: string, key: string) => unknown;
@@ -113,6 +122,17 @@ function assertTextElement(document: UIDocument, elementId: string) {
     return el;
 }
 
+function assertSliderElement(document: UIDocument, elementId: string) {
+    const el = document.elements[elementId];
+    if (!el) {
+        throw new Error(`slider: element not found: ${elementId}`);
+    }
+    if (el.type !== "nl.slider") {
+        throw new Error(`slider: element is not a Slider widget: ${el.type}`);
+    }
+    return el;
+}
+
 function cloneJson<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -132,6 +152,23 @@ function readTextProperties(document: UIDocument, elementId: string): BlueprintT
         textWrapMode: p.textWrapMode,
         effects: cloneJson(p.effects),
     };
+}
+
+function readAuthoredSliderProperties(document: UIDocument, elementId: string): UISliderWidgetProps {
+    const el = assertSliderElement(document, elementId);
+    return getSliderProps(el);
+}
+
+function readSliderProperties(
+    document: UIDocument,
+    widgetRuntimeStore: WidgetRuntimeStateStore,
+    runtimeScopeId: string | undefined,
+    activeSurfaceId: string,
+    elementId: string,
+): BlueprintSliderProperties {
+    const authored = readAuthoredSliderProperties(document, elementId);
+    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+    return widgetRuntimeStore.getSliderProperties(scopedKey) ?? resolveSliderRuntimeValue(authored);
 }
 
 function finiteNumber(raw: unknown, fallback: number): number {
@@ -334,6 +371,35 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         ...normalizeTextPatch(current, patch),
                     };
                     onWidgetPatch(elementId, {});
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSliderProperties: (elementId: string) => {
+                const cap = "widget.getSliderProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readSliderProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setSliderProperties: async (elementId: string, patch: BlueprintSliderPropertiesPatch) => {
+                const cap = "widget.setSliderProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const authored = readAuthoredSliderProperties(document, elementId);
+                    widgetRuntimeStore.setSliderProperties(
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        authored,
+                        patch,
+                    );
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

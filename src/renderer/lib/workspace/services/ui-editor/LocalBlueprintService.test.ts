@@ -3,6 +3,7 @@ import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schem
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
 } from "@shared/types/blueprint/graph";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
@@ -232,6 +233,33 @@ describe("LocalBlueprintService history", () => {
         const nodes = Object.values(initGraph.nodes ?? {});
         const literal = nodes.find(node => node.type === BLUEPRINT_NODE_TYPE_LITERAL_JSON);
         expect(literal?.params?.value).toEqual({ title: "Hello" });
+    });
+
+    it("seeds float widget value blueprints with a Float literal", () => {
+        const { service, graphDocument } = createHarness();
+
+        const blueprintId = service.ensureWidgetValueBlueprint({
+            surfaceId: "surface-a",
+            elementId: "button-a",
+            propPath: "value",
+            valueType: "float",
+            displayName: "Slider value",
+            literalValue: 42.5,
+        });
+
+        const bp = graphDocument.blueprintDocument.blueprints[blueprintId];
+        expect(bp.meta?.valueType).toBe("float");
+        expect(bp.program.kind).toBe("graph");
+        if (bp.program.kind !== "graph") {
+            throw new Error("Expected graph blueprint");
+        }
+        const initGraph = bp.program.graphs.events.init?.graph;
+        if (!initGraph) {
+            throw new Error("Expected init graph");
+        }
+        const nodes = Object.values(initGraph.nodes ?? {});
+        const literal = nodes.find(node => node.type === BLUEPRINT_NODE_TYPE_LITERAL_FLOAT);
+        expect(literal?.params?.value).toBe(42.5);
     });
 
     it("undoes and redoes blueprint member edits", () => {

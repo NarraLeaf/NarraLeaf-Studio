@@ -20,6 +20,9 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.event.head.itemClick` | `Item Click` | `Events` | Entry node fired when a rendered List item is clicked. It is available to `nl.list` widget private blueprints. |
 | `blueprint.event.head.itemHover` | `Item Hover` | `Events` | Entry node fired when the pointer enters a rendered List item. It is available to `nl.list` widget private blueprints. |
 | `blueprint.event.head.selectionChanged` | `Selection Changed` | `Events` | Entry node fired when a List item click changes the runtime selected index. It is available to `nl.list` widget private blueprints. |
+| `blueprint.event.head.sliderDragStart` | `Drag Start` | `Events` | Entry node fired when a Slider runtime drag starts. It is available to `nl.slider` widget private blueprints and outputs the mapped `value`. |
+| `blueprint.event.head.sliderValueChanged` | `Value Changed` | `Events` | Entry node fired when a Slider runtime value changes by interaction. It outputs mapped `value` and `previousValue`. |
+| `blueprint.event.head.sliderDragEnd` | `Drag End` | `Events` | Entry node fired when a Slider runtime drag ends. It outputs the mapped `value`. |
 | `blueprint.event.head.pageEvent` | `Page Event` | `Events` | Entry node for Page component child-to-parent events. It is available to `nl.frame` widget private blueprints. |
 | `blueprint.data.returnValue` | `Return Value` | `Data` | Exec sink that returns the produced value from a Blueprint Value graph. It is only available on `widgetValue` blueprints. |
 | `blueprint.local.get` | `Get Var` | `Variables` | Pure data node that reads an execution-local blueprint variable. |
@@ -31,6 +34,7 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.math.*` | Math utilities | `Math` | Pure arithmetic, modulo, increment/decrement, abs, min/max, rounding, random numbers, boolean logic, strict equality, numeric comparison, and legacy numeric comparison nodes. |
 | `blueprint.boolean.*` | Boolean logic | `Math` | Pure `And`, `Or`, `Not`, and `Xor`; grouped under Math in the palette. |
 | `blueprint.compare.*` | Value comparison | `Math` | Pure strict equality and numeric comparison nodes grouped under Math. `Equal` / `Not Equal` use JavaScript `===` / `!==` semantics. |
+| `blueprint.slider.*` | Slider utilities | `Slider` | Slider-only nodes for mapped value, normalized value, range reads, and runtime value/range writes. |
 | `blueprint.flow.comment` | `Comment` | `Debug` | Graph-only multi-line comment box with color, background, and size controls. Background-off comments sit behind other nodes for framing. It does not participate in execution. |
 | `blueprint.log` | `Log` | `Debug` | Exec node that writes a string value to DevTools/browser logs and continues through `next`. |
 
@@ -49,6 +53,7 @@ Event-head nodes are surfaced in the canvas add-node palette for the current Blu
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/index.ts` | Built-in node catalog aggregation. Add a new built-in node here when it should ship in Studio by default. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/events/eventHeadNodes.ts` | Built-in event entry-head nodes, including lifecycle, widget input, scroll, broadcast, and Page Event heads. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/frameNodes.ts` | Built-in Page component host nodes for Frame params and child-to-parent Page events. |
+| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/sliderNodes.ts` | Built-in Slider widget nodes for value/range reads and runtime value/range writes. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/localVariableNodes.ts` | Built-in local variable nodes. Currently `Get Var` and `Set Var`. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/mathNodes.ts` | Built-in basic math and comparison nodes. |
 | `src/shared/types/blueprint/graph.ts` | Shared graph taxonomy and stable node type constants. Use this for node type ids that are persisted or shared across process boundaries. |
@@ -73,11 +78,11 @@ When adding a node, make sure you know which owner kinds and graph kinds it shou
 
 ## Blueprint Value
 
-Blueprint Value is a per-property dynamic value provider. A `widgetValue` private owner is keyed as `widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`, and the UI document stores the active binding on the element in `valueBindings`. The current supported targets are `nl.text` -> `props.text`, `nl.button` -> `props.label`, and `nl.frame` -> `props.params`.
+Blueprint Value is a per-property dynamic value provider. A `widgetValue` private owner is keyed as `widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`, and the UI document stores the active binding on the element in `valueBindings`. The current supported targets are `nl.text` -> `props.text`, `nl.button` -> `props.label`, `nl.frame` -> `props.params`, and `nl.slider` -> `props.value`.
 
-Value blueprints are visual graph programs only. They are seeded with one `init` event graph that returns the current literal value through `blueprint.data.returnValue`. `string` values seed a String literal, while `json` values seed a JSON literal. `Flush` is an available automatic refresh head, but Studio does not create a default `flush` layer. On mount, the value runtime executes `init` and then attempts `flush`; if both return values, `flush` wins. Evaluation is serialized per binding so an in-flight run is followed by the latest pending `flush`.
+Value blueprints are visual graph programs only. They are seeded with one `init` event graph that returns the current literal value through `blueprint.data.returnValue`. `string` values seed a String literal, `json` values seed a JSON literal, and `float` values seed a Float literal. `Flush` is an available automatic refresh head, but Studio does not create a default `flush` layer. On mount, the value runtime executes `init` and then attempts `flush`; if both return values, `flush` wins. Evaluation is serialized per binding so an in-flight run is followed by the latest pending `flush`.
 
-If a value graph does not execute `returnValue`, the runtime keeps the previous resolved value. If there is no previous resolved value, the widget uses its literal prop from the UI document. String results are coerced to string, and `null` or `undefined` become an empty string. Page `params` expects a JSON object; non-object results fall back to `{}`.
+If a value graph does not execute `returnValue`, the runtime keeps the previous resolved value. If there is no previous resolved value, the widget uses its literal prop from the UI document. String results are coerced to string, and `null` or `undefined` become an empty string. Page `params` expects a JSON object; non-object results fall back to `{}`. Slider `value` expects a finite float and is clamped/snapped against the authored `min` / `max` / `step` range.
 
 The Blueprint Value palette is intentionally restricted to safe value-producing nodes: event heads, non-latent flow, graph comments, pure Data and Math nodes, and local variables. Surface/global state read/write nodes are not part of the core catalog; widget mutations, navigation, persistence writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
 
@@ -151,6 +156,7 @@ Recommended category names:
 | `Math` | Numeric calculation, rounding, min/max, random numbers, boolean logic, and comparisons. |
 | `Widget` | UI element mutations and reads. |
 | `Page` | Page component host reads and child-to-parent Page events. |
+| `Slider` | Slider value/range reads and runtime value/range writes for `nl.slider`. |
 | `Navigation` | Page and modal navigation. |
 | `Persistence` | Save/load key-value data. |
 | `Debug` | Logs, graph comments, assertions, and debug overlays. |
@@ -420,6 +426,8 @@ To make a widget expose `Init` and `Mouse Click`, its logic API should include t
 ```
 
 The current built-in widgets expose event heads through capability catalogs rather than aliases. Do not add duplicate node ids for the same user action; add or update the event capability first, then add the matching event-head node definition.
+
+`nl.slider` exposes `Drag Start`, `Value Changed`, and `Drag End` event heads through this catalog. Slider events output the mapped `value`; `Value Changed` also outputs `previousValue`. They do not output normalized 0-1 progress. Use `Get Slider Normalized Value` when a graph needs normalized progress.
 
 ## Adding a new built-in node
 

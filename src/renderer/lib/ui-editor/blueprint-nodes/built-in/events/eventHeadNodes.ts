@@ -27,6 +27,9 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
 } from "@shared/types/blueprint/graph";
@@ -93,6 +96,20 @@ const PIN_ITEM: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "json",
     label: "Item",
+};
+const PIN_VALUE: BlueprintNodePinDef = {
+    id: "value",
+    kind: "output",
+    semantic: "data",
+    valueType: "float",
+    label: "Value",
+};
+const PIN_PREVIOUS_VALUE: BlueprintNodePinDef = {
+    id: "previousValue",
+    kind: "output",
+    semantic: "data",
+    valueType: "float",
+    label: "Previous Value",
 };
 
 function widgetTypesForHead(headType: string): string[] {
@@ -316,6 +333,24 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         displayName: "Selection Changed",
         keywords: ["selection", "selected", "change", "list", "item"],
         pins: [THEN_PIN, PIN_INDEX, PIN_PREVIOUS_INDEX, PIN_COUNT, PIN_KEY, PIN_ITEM],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
+        displayName: "Drag Start",
+        keywords: ["slider", "drag", "start", "value"],
+        pins: [THEN_PIN, PIN_VALUE],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
+        displayName: "Value Changed",
+        keywords: ["slider", "value", "change"],
+        pins: [THEN_PIN, PIN_VALUE, PIN_PREVIOUS_VALUE],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
+        displayName: "Drag End",
+        keywords: ["slider", "drag", "end", "value"],
+        pins: [THEN_PIN, PIN_VALUE],
     }),
     broadcastEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,

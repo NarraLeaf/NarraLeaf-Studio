@@ -6,6 +6,7 @@ import type {
     UIElementValueBindingValueType,
     UISurface,
 } from "@shared/types/ui-editor/document";
+import { clampSliderValue, normalizeSliderProps } from "@shared/types/ui-editor/slider";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import {
     BLUEPRINT_VALUE_EVENT_FLUSH,
@@ -64,6 +65,10 @@ function coerceValue(value: unknown, valueType: ActiveBindingInput["valueType"])
     if (valueType === "string") {
         return value == null ? "" : String(value);
     }
+    if (valueType === "float") {
+        const n = typeof value === "number" ? value : Number(value);
+        return Number.isFinite(n) ? n : undefined;
+    }
     return value;
 }
 
@@ -75,7 +80,7 @@ const SUPPORTED_VALUE_TARGETS: Array<{
     elementType: string;
     propPath: string;
     valueType: UIElementValueBindingValueType;
-    normalize?: (value: unknown) => unknown;
+    normalize?: (value: unknown, element: UIElement) => unknown;
 }> = [
     { elementType: "nl.text", propPath: "text", valueType: "string" },
     { elementType: "nl.button", propPath: "label", valueType: "string" },
@@ -84,6 +89,15 @@ const SUPPORTED_VALUE_TARGETS: Array<{
         propPath: "params",
         valueType: "json",
         normalize: value => (isRecord(value) ? value : {}),
+    },
+    {
+        elementType: "nl.slider",
+        propPath: "value",
+        valueType: "float",
+        normalize: (value, element) => {
+            const props = normalizeSliderProps(element.props);
+            return value === undefined ? props.value : clampSliderValue(value, props);
+        },
     },
 ];
 
@@ -259,7 +273,7 @@ export function mergeElementWithBlueprintValues(
     if (!resolved.hasResolved) {
         return element;
     }
-    const value = target.normalize ? target.normalize(resolved.value) : resolved.value;
+    const value = target.normalize ? target.normalize(resolved.value, element) : resolved.value;
     return {
         ...element,
         props: {

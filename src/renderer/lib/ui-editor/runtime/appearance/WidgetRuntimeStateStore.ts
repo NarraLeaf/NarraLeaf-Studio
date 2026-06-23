@@ -1,4 +1,9 @@
 import type { SystemInteractionSignals } from "./SystemInteractionState";
+import {
+    resolveSliderRuntimeValue,
+    type UISliderRuntimeValue,
+    type UISliderWidgetProps,
+} from "@shared/types/ui-editor/slider";
 
 export type WidgetRuntimeSnapshot = {
     hoverTargetId: string | null;
@@ -6,6 +11,8 @@ export type WidgetRuntimeSnapshot = {
     focusedId: string | null;
     /** Copy for external readers; treat as immutable after getSnapshot. */
     variantOverrides: ReadonlyMap<string, string>;
+    /** Copy for external readers; treat as immutable after getSnapshot. */
+    sliderProperties: ReadonlyMap<string, UISliderRuntimeValue>;
 };
 
 /** Stable snapshot when no provider is mounted (e.g. Dev Mode without store). */
@@ -14,6 +21,7 @@ export const STATIC_WIDGET_RUNTIME_SNAPSHOT: WidgetRuntimeSnapshot = Object.free
     activePointerId: null,
     focusedId: null,
     variantOverrides: new Map<string, string>(),
+    sliderProperties: new Map<string, UISliderRuntimeValue>(),
 });
 
 /**
@@ -25,6 +33,7 @@ export class WidgetRuntimeStateStore {
     private activePointerId: string | null = null;
     private focusedId: string | null = null;
     private readonly variantOverrides = new Map<string, string>();
+    private readonly sliderProperties = new Map<string, UISliderRuntimeValue>();
     private readonly listeners = new Set<() => void>();
     private snapshot: WidgetRuntimeSnapshot;
 
@@ -45,6 +54,7 @@ export class WidgetRuntimeStateStore {
             activePointerId: this.activePointerId,
             focusedId: this.focusedId,
             variantOverrides: new Map(this.variantOverrides),
+            sliderProperties: new Map(this.sliderProperties),
         };
     }
 
@@ -103,6 +113,35 @@ export class WidgetRuntimeStateStore {
 
     getVariantOverride(elementId: string): string | null {
         return this.variantOverrides.get(elementId) ?? null;
+    }
+
+    getSliderProperties(elementId: string): UISliderRuntimeValue | undefined {
+        return this.sliderProperties.get(elementId);
+    }
+
+    setSliderProperties(
+        elementId: string,
+        currentProps: Partial<UISliderWidgetProps>,
+        patch: Partial<UISliderWidgetProps>,
+    ): UISliderRuntimeValue {
+        const current = this.sliderProperties.get(elementId) ?? resolveSliderRuntimeValue(currentProps);
+        const next = resolveSliderRuntimeValue({
+            ...currentProps,
+            ...current,
+            ...patch,
+        });
+        if (
+            current.value === next.value &&
+            current.normalizedValue === next.normalizedValue &&
+            current.min === next.min &&
+            current.max === next.max &&
+            current.step === next.step
+        ) {
+            return current;
+        }
+        this.sliderProperties.set(elementId, next);
+        this.emit();
+        return next;
     }
 
     getSignalsForElement(elementId: string, interactionDisabled: boolean | undefined): SystemInteractionSignals {

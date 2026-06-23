@@ -185,6 +185,29 @@ const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
     ...BROADCAST_EVENTS,
 ];
 
+const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
+    INIT_EVENT,
+    {
+        id: "dragStart",
+        displayName: "Drag start",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.sliderDragStart"],
+    },
+    {
+        id: "valueChanged",
+        displayName: "Value changed",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.sliderValueChanged"],
+    },
+    {
+        id: "dragEnd",
+        displayName: "Drag end",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.sliderDragEnd"],
+    },
+    ...BROADCAST_EVENTS,
+];
+
 const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     ...DISPLAYABLE_EVENTS,
@@ -348,6 +371,33 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { propPath: "itemsBinding", displayName: "Items binding" },
             { propPath: "previewCount", displayName: "Preview count" },
             { propPath: "selectedIndex", displayName: "Selected index" },
+        ],
+    },
+    "nl.slider": {
+        supportsPrivateBlueprint: true,
+        blueprintLabel: "Slider logic",
+        events: SLIDER_EVENTS,
+        commands: [
+            ...baseCommands,
+            {
+                id: "setValue",
+                displayName: "Set value",
+                capabilityId: "widget.setSliderProperties",
+                availability: "available",
+            },
+        ],
+        readableState: [
+            { id: "value", displayName: "Value" },
+            { id: "normalizedValue", displayName: "Normalized value" },
+            { id: "min", displayName: "Min" },
+            { id: "max", displayName: "Max" },
+            { id: "step", displayName: "Step" },
+        ],
+        writableProps: [
+            { propPath: "value", displayName: "Value" },
+            { propPath: "min", displayName: "Min" },
+            { propPath: "max", displayName: "Max" },
+            { propPath: "step", displayName: "Step" },
         ],
     },
     "nl.frame": {
