@@ -8,6 +8,7 @@ import {
     isBlueprintEventDispatchHeadType,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { getWidgetLogicEvent, getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
 import { BlueprintGraphExecutionError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
@@ -125,6 +126,8 @@ export async function dispatchBlueprintUiEvent(options: {
     getSurfaceState: (key: string) => unknown;
     setSurfaceState: (key: string, value: unknown) => void;
     eventPayload?: Record<string, unknown>;
+    listItemScope?: UIListItemScope | null;
+    instanceKey?: string;
     maxSteps?: number;
 }): Promise<void> {
     const {
@@ -139,6 +142,8 @@ export async function dispatchBlueprintUiEvent(options: {
         getSurfaceState,
         setSurfaceState,
         eventPayload,
+        listItemScope,
+        instanceKey,
     } = options;
     const el = document.elements[elementId];
     if (!el) {
@@ -222,6 +227,7 @@ export async function dispatchBlueprintUiEvent(options: {
         surfaceId,
         runtimeScopeId,
         elementId,
+        elementInstanceKey: instanceKey,
     });
 
     try {
@@ -239,6 +245,8 @@ export async function dispatchBlueprintUiEvent(options: {
                     hostAdapter,
                     blueprintLocals,
                     eventPayload,
+                    listItemScope,
+                    instanceKey,
                     executionOwner: { surfaceId, elementId, blueprintId },
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                     trace: {

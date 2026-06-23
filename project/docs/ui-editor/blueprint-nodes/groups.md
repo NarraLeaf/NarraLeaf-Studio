@@ -17,12 +17,13 @@ Blueprint Value 节点组只存在于 `widgetValue` 私有蓝图。当前用于 
 
 Blueprint Value 可用节点包括：
 - `blueprint.event.head.init` - 初始求值事件
-- `blueprint.event.head.flush` - 自动刷新求值事件
 - `blueprint.data.returnValue` - 返回当前属性值的无尾执行节点
+- `blueprint.element.ref` - Same-Surface 元素字面量引用
+- Element-targeted Text / Displayable 纯读取节点 - 读取绑定元素属性并记录隐藏刷新依赖
 
 `nl.slider.props.value` 使用 `float` Blueprint Value，返回值表示映射后的值而不是 0-1 normalized 值；运行时会按该 Slider 的 `min` / `max` / `step` clamp 和 snap。
 
-Blueprint Value 只允许安全的数据生产节点：事件 Head、非 latent Flow、图内注释、纯 Data / Math 和本地变量。当前核心目录不提供 surface/global state 读写节点；Blueprint Value 也不允许 Widget 改写、Navigation、Persistence 写入、Broadcast、latent 节点和 TypeScript revision。
+Blueprint Value 只允许安全的数据生产节点：`Init` Head、非 latent Flow、图内注释、纯 Data / Math、本地变量、Element Literal，以及 Element-targeted Text / Displayable 纯读取节点。当前核心目录不提供 surface/global state 读写节点；Blueprint Value 也不允许 Widget 改写、Navigation、Persistence 写入、Broadcast、latent 节点和 TypeScript revision。
 
 ## Variables
 
@@ -101,7 +102,9 @@ Surface 节点组默认具有：
 - `blueprint.event.head.surfaceUnmount` - 当前 Surface 卸载事件（仅Surface蓝图具有）
 - Broadcast 节点组
 
-## Collection
+## List
+
+List 节点组用于 `nl.list` 的运行时内容、选中项、滚动和条目上下文。Array / JSON / Object 处理不放入 List，统一放在 Data 分类。
 
 Collection 节点组默认具有：
 - `blueprint.event.head.scroll` - 列表滚动事件
@@ -110,6 +113,13 @@ Collection 节点组默认具有：
 - `blueprint.event.head.itemClick` - 列表条目点击事件
 - `blueprint.event.head.itemHover` - 列表条目悬停事件
 - `blueprint.event.head.selectionChanged` - 列表选中项变化事件
+
+- `blueprint.event.head.listItemRefresh` - List item template 后代元素接收条目上下文刷新事件
+- `blueprint.list.setItems` / `blueprint.list.getItems` / `blueprint.list.clear` - 读写运行时内容
+- `blueprint.list.appendItem` / `blueprint.list.insertItem` / `blueprint.list.removeItem` / `blueprint.list.removeItemAt` - 改写运行时内容
+- `blueprint.list.getSelectedItem` / `blueprint.list.setSelectedItem` / `blueprint.list.getSelectedIndex` / `blueprint.list.setSelectedIndex` - 读写运行时选中项
+- `blueprint.list.refreshItems` / `blueprint.list.scrollToIndex` / `blueprint.list.scrollToTop` / `blueprint.list.scrollToBottom` - 刷新与滚动控制
+- `blueprint.list.getItemProps` / `blueprint.list.getItemIndex` / `blueprint.list.getItemCount` / `blueprint.list.getItemKey` - 读取当前条目上下文
 
 ## Slider
 
@@ -216,6 +226,11 @@ Data 节点组默认具有：
 - `blueprint.string.matchesRegex` - 判断是否匹配正则表达式
 - `blueprint.string.extractRegex` - 提取正则匹配内容
 - `blueprint.string.normalizeLineBreaks` - 统一换行符
+
+Data 分类还包含 Collection 节点：
+- `blueprint.collection.arrayLength` / `arrayGet` / `arraySet` / `arrayPush` / `arrayInsert` / `arrayRemove` / `arrayRemoveAt` / `arrayContains` / `arraySlice` / `arrayJoin`
+- `blueprint.collection.objectKeys` / `objectValues` / `objectMerge` / `objectSetField` / `objectRemoveField`
+- `blueprint.collection.arrayFind` / `arrayFilter` / `arrayMap` / `arraySort` 仅保留 planned/disabled 稳定 ID，不注册 palette/runtime
 
 ## Math
 

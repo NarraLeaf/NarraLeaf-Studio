@@ -7,6 +7,7 @@ import type { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
 import { getSliderProps } from "@/lib/ui-editor/widget-modules/builtin/slider/helpers";
+import { getListProps } from "@/lib/ui-editor/widget-modules/builtin/list/helpers";
 import type {
     TextAlign,
     TextVerticalAlign,
@@ -41,6 +42,20 @@ export type BlueprintSliderProperties = UISliderRuntimeValue;
 
 export type BlueprintSliderPropertiesPatch = Partial<Pick<UISliderWidgetProps, "value" | "min" | "max" | "step">>;
 
+export type BlueprintListProperties = {
+    items: unknown[];
+    selectedIndex: number;
+};
+
+export type BlueprintDisplayableProperties = {
+    position: { x: number; y: number };
+    size: { width: number; height: number };
+    bounds: { x: number; y: number; width: number; height: number };
+    rotation: number;
+    opacity: number;
+    visible: boolean;
+};
+
 export type BlueprintHostApiRuntime = {
     navigation: {
         openSurface: (surfaceId: string) => Promise<void>;
@@ -55,6 +70,13 @@ export type BlueprintHostApiRuntime = {
         setTextProperties: (elementId: string, patch: BlueprintTextPropertiesPatch) => Promise<void>;
         getSliderProperties: (elementId: string) => BlueprintSliderProperties;
         setSliderProperties: (elementId: string, patch: BlueprintSliderPropertiesPatch) => Promise<void>;
+        getListProperties: (elementId: string) => BlueprintListProperties;
+        setListItems: (elementId: string, items: readonly unknown[]) => Promise<void>;
+        setListSelectedIndex: (elementId: string, index: number) => Promise<void>;
+        scrollListToIndex: (elementId: string, index: number) => Promise<void>;
+        scrollListToTop: (elementId: string) => Promise<void>;
+        scrollListToBottom: (elementId: string) => Promise<void>;
+        getDisplayableProperties: (elementId: string) => BlueprintDisplayableProperties;
     };
     state: {
         get: (scope: string, key: string) => unknown;
@@ -133,6 +155,17 @@ function assertSliderElement(document: UIDocument, elementId: string) {
     return el;
 }
 
+function assertListElement(document: UIDocument, elementId: string) {
+    const el = document.elements[elementId];
+    if (!el) {
+        throw new Error(`list: element not found: ${elementId}`);
+    }
+    if (el.type !== "nl.list") {
+        throw new Error(`list: element is not a List widget: ${el.type}`);
+    }
+    return el;
+}
+
 function cloneJson<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -159,6 +192,49 @@ function readAuthoredSliderProperties(document: UIDocument, elementId: string): 
     return getSliderProps(el);
 }
 
+function readListItemsFallback(
+    document: UIDocument,
+    scope: ScopeStoreBridge,
+    stateScopeId: string,
+    elementId: string,
+): unknown[] {
+    const el = assertListElement(document, elementId);
+    const props = getListProps(el);
+    const binding = props.itemsBinding;
+    if (binding) {
+        const source =
+            binding.kind === "globalState"
+                ? scope.globalGet(binding.key)
+                : scope.getSurfaceStore(stateScopeId).get(binding.key);
+        if (Array.isArray(source)) {
+            return cloneJson(source);
+        }
+    }
+    if (props.previewItems.length > 0) {
+        return cloneJson(props.previewItems);
+    }
+    return Array.from({ length: props.previewCount }, (_, index) => ({ index }));
+}
+
+function readListProperties(
+    document: UIDocument,
+    scope: ScopeStoreBridge,
+    widgetRuntimeStore: WidgetRuntimeStateStore,
+    runtimeScopeId: string | undefined,
+    activeSurfaceId: string,
+    stateScopeId: string,
+    elementId: string,
+): BlueprintListProperties {
+    assertListElement(document, elementId);
+    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+    const items = widgetRuntimeStore.getListItems(scopedKey) ?? readListItemsFallback(document, scope, stateScopeId, elementId);
+    const selectedIndex = widgetRuntimeStore.getListSelectedIndex(scopedKey) ?? getListProps(document.elements[elementId]!).selectedIndex;
+    return {
+        items,
+        selectedIndex,
+    };
+}
+
 function readSliderProperties(
     document: UIDocument,
     widgetRuntimeStore: WidgetRuntimeStateStore,
@@ -169,6 +245,22 @@ function readSliderProperties(
     const authored = readAuthoredSliderProperties(document, elementId);
     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
     return widgetRuntimeStore.getSliderProperties(scopedKey) ?? resolveSliderRuntimeValue(authored);
+}
+
+function readDisplayableProperties(document: UIDocument, elementId: string): BlueprintDisplayableProperties {
+    const el = document.elements[elementId];
+    if (!el) {
+        throw new Error(`displayable: element not found: ${elementId}`);
+    }
+    const layout = el.layout;
+    return {
+        position: { x: layout.x, y: layout.y },
+        size: { width: layout.width, height: layout.height },
+        bounds: { x: layout.x, y: layout.y, width: layout.width, height: layout.height },
+        rotation: layout.rotation ?? 0,
+        opacity: layout.opacity ?? 1,
+        visible: layout.visible !== false,
+    };
 }
 
 function finiteNumber(raw: unknown, fallback: number): number {
@@ -400,6 +492,97 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         authored,
                         patch,
                     );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getListProperties: (elementId: string) => {
+                const cap = "widget.getListProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readListProperties(
+                        document,
+                        scope,
+                        widgetRuntimeStore,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        stateScopeId,
+                        elementId,
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setListItems: async (elementId: string, items: readonly unknown[]) => {
+                const cap = "widget.setListItems";
+                emitHostCall(emit, cap, "call");
+                try {
+                    assertListElement(document, elementId);
+                    widgetRuntimeStore.setListItems(
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        items,
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setListSelectedIndex: async (elementId: string, index: number) => {
+                const cap = "widget.setListSelectedIndex";
+                emitHostCall(emit, cap, "call");
+                try {
+                    assertListElement(document, elementId);
+                    widgetRuntimeStore.setListSelectedIndex(
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        Math.trunc(index),
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            scrollListToIndex: async (elementId: string, index: number) => {
+                const cap = "widget.scrollListToIndex";
+                emitHostCall(emit, cap, "call");
+                try {
+                    assertListElement(document, elementId);
+                    widgetRuntimeStore.requestListScroll(
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        { kind: "index", index: Math.max(0, Math.trunc(index)) },
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            scrollListToTop: async (elementId: string) => {
+                const cap = "widget.scrollListToTop";
+                emitHostCall(emit, cap, "call");
+                try {
+                    assertListElement(document, elementId);
+                    widgetRuntimeStore.requestListScroll(
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        { kind: "top" },
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            scrollListToBottom: async (elementId: string) => {
+                const cap = "widget.scrollListToBottom";
+                emitHostCall(emit, cap, "call");
+                try {
+                    assertListElement(document, elementId);
+                    widgetRuntimeStore.requestListScroll(
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        { kind: "bottom" },
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getDisplayableProperties: (elementId: string) => {
+                const cap = "widget.getDisplayableProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readDisplayableProperties(document, elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

@@ -14,6 +14,28 @@ Data 节点用于创建基础常量值，并在严格类型连接规则下提供
 - `blueprint.data.vector2dLiteral` - 输出 `Vector2D`，值为固定 `{ x: number, y: number }` schema，JSON Raw 编辑也会校验字段和类型
 - `blueprint.data.rectLiteral` - 输出 `json`，值为固定 `{ x: number, y: number, width: number, height: number }` schema，JSON Raw 编辑也会校验字段和类型
 
+## Collection
+
+Collection 节点归入 Data 分类，用于处理 `array` 与 JSON object。`array` 是独立 pin/变量类型；`array` 输出可以连接到 `json` 输入，Collection 与 List 的数组输入会接受 `array` 或 JSON array，非数组归一为空数组。
+
+- `blueprint.collection.arrayLength` - 输出数组长度
+- `blueprint.collection.arrayGet` - 读取指定下标的数组项；越界输出 `null`
+- `blueprint.collection.arraySet` - 写入指定下标并输出新数组
+- `blueprint.collection.arrayPush` - 在末尾追加项并输出新数组
+- `blueprint.collection.arrayInsert` - 在指定下标插入项并输出新数组
+- `blueprint.collection.arrayRemove` - 移除第一个 JSON 等价的项
+- `blueprint.collection.arrayRemoveAt` - 移除指定下标的项
+- `blueprint.collection.arrayContains` - 判断数组是否包含 JSON 等价项
+- `blueprint.collection.arraySlice` - 截取数组片段
+- `blueprint.collection.arrayJoin` - 将数组项转为字符串并连接
+- `blueprint.collection.objectKeys` - 输出对象字段名数组
+- `blueprint.collection.objectValues` - 输出对象字段值数组
+- `blueprint.collection.objectMerge` - 浅合并两个 object
+- `blueprint.collection.objectSetField` - 写入 object 字段并输出新 object
+- `blueprint.collection.objectRemoveField` - 移除 object 字段并输出新 object
+
+`blueprint.collection.arrayFind`、`arrayFilter`、`arrayMap`、`arraySort` 只保留稳定常量和 planned/disabled 文档；回调/谓词图模型未完成前不注册到 palette/runtime。
+
 ## Return Value
 
 `blueprint.data.returnValue` 只出现在 Blueprint Value 图中，用于把当前执行线路产出的值作为属性动态值返回。它有一个执行入口 `in` 和一个数据入口 `value`，没有后续执行出口。

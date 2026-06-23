@@ -6,12 +6,12 @@
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_RENDER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOUBLE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOWN,
@@ -96,6 +96,13 @@ const PIN_ITEM: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "json",
     label: "Item",
+};
+const PIN_PROPS: BlueprintNodePinDef = {
+    id: "props",
+    kind: "output",
+    semantic: "data",
+    valueType: "json",
+    label: "Props",
 };
 const PIN_VALUE: BlueprintNodePinDef = {
     id: "value",
@@ -212,18 +219,6 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
             ],
         },
     }),
-    {
-        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
-        displayName: "Flush",
-        category: "Events",
-        keywords: ["flush", "refresh", "value", "state", "update"],
-        graphKinds: ["event"],
-        isPure: false,
-        role: "eventHead",
-        scope: { ownerKinds: ["widgetValue"] },
-        pins: [THEN_PIN],
-        execute: eventHeadExecute,
-    },
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
         displayName: "Mouse Click",
@@ -327,6 +322,12 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         displayName: "Item Hover",
         keywords: ["item", "hover", "enter", "list", "row"],
         pins: [THEN_PIN, PIN_INDEX, PIN_COUNT, PIN_KEY, PIN_ITEM],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
+        displayName: "List Item Refresh",
+        keywords: ["list", "item", "refresh", "props", "row", "context"],
+        pins: [THEN_PIN, PIN_PROPS, PIN_ITEM, PIN_INDEX, PIN_COUNT, PIN_KEY],
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,

@@ -159,6 +159,15 @@ const LIST_ITEM_EVENTS: readonly WidgetLogicEventDef[] = [
     },
 ];
 
+const LIST_ITEM_CONTEXT_EVENTS: readonly WidgetLogicEventDef[] = [
+    {
+        id: "listItemRefresh",
+        displayName: "List item refresh",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.listItemRefresh"],
+    },
+];
+
 const BROADCAST_EVENTS: readonly WidgetLogicEventDef[] = [
     {
         id: "onAnyBroadcast",
@@ -210,6 +219,7 @@ const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
 
 const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
+    ...LIST_ITEM_CONTEXT_EVENTS,
     ...DISPLAYABLE_EVENTS,
     ...BROADCAST_EVENTS,
 ];

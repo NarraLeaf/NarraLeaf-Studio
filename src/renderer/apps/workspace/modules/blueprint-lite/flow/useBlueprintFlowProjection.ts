@@ -52,6 +52,8 @@ export function blueprintIrToFlowNodes(
     onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void,
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
     nodeDiagnosticsByNodeId?: ReadonlyMap<string, readonly BlueprintFlowNodeDiagnostic[]>,
+    elementPreviews?: Record<string, BlueprintFlowNodeData["elementPreview"]>,
+    onBindElementLiteral?: (nodeId: string) => void,
 ): Node<BlueprintFlowNodeData>[] {
     const nodes = ir.nodes ?? {};
     const wiredIn = wiredInputPortIdsByNodeId(ir);
@@ -75,6 +77,8 @@ export function blueprintIrToFlowNodes(
                 wiredInputPortIds: wiredIn.get(n.id) ?? new Set(),
                 dynamicSelectOptions,
                 nodeDiagnostics: nodeDiagnosticsByNodeId?.get(n.id) ?? [],
+                elementPreview: elementPreviews?.[n.id],
+                onBindElementLiteral,
             },
         };
     });

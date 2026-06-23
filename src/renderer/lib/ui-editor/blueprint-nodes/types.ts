@@ -143,8 +143,19 @@ export type BlueprintNodeRole =
     | "functionEntry"
     | "reroute"
     | "dataLiteral"
+    | "elementLiteral"
     | "valueReturn"
     | "comment";
+
+export type BlueprintMagicElementRefPaletteEntry = {
+    sourceNodeId: string;
+    sourcePortId: string;
+    targetPortId: string;
+    surfaceId: string;
+    elementId: string;
+    elementType: string;
+    label: string;
+};
 
 export type BlueprintNodeExecuteFn = BehaviorNodeDefinition["execute"];
 
@@ -161,6 +172,11 @@ export type BlueprintNodeDef = {
     graphKinds: BlueprintGraphKind[];
     /** Keep registered for old graphs/runtime, but omit from add-node palette. */
     hideInPalette?: boolean;
+    /** Creates one palette entry per bound Element Literal and auto-wires the listed input. */
+    magicElementTarget?: {
+        inputPinId: string;
+        elementTypes?: readonly string[];
+    };
     /** Pure nodes have no side effects; used for validation hints */
     isPure: boolean;
     /** Latent/async execution (delay, host awaits) — disallowed in function graphs */
@@ -201,6 +217,10 @@ export type BlueprintPaletteContext = {
     hasFunctionEntry?: boolean;
     /** Blueprint Value graphs have a restricted palette and value-return sink. */
     isBlueprintValueGraph?: boolean;
+    /** Current widget owner is rendered inside an nl.list item template. */
+    listItemContextAvailable?: boolean;
+    /** Bound Element Literal nodes in the active graph, same Surface only. */
+    magicElementRefs?: readonly BlueprintMagicElementRefPaletteEntry[];
 };
 
 /** Legacy editor catalog entry shape (kept for incremental UI migration) */
@@ -230,6 +250,8 @@ export type BlueprintNodeEditorCatalogEntry = {
     dynamicInputPinAddLabel?: string;
     /** Param key storing user-visible labels for dynamic input pins, if editable. */
     dynamicInputPinLabelParamKey?: string;
+    /** Present when this palette entry should auto-wire a bound Element Literal into a new node. */
+    magicElementRef?: BlueprintMagicElementRefPaletteEntry;
 };
 
 export type { BehaviorNodeExecutionContext };

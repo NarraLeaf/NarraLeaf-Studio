@@ -9,9 +9,16 @@ function defaultLocalsFromBlueprint(bp: Blueprint): Record<string, unknown> {
     const out: Record<string, unknown> = {};
     for (const v of Object.values(bp.members?.variables ?? {})) {
         const d = v.defaultValue;
-        out[v.id] = d === undefined ? null : d;
+        out[v.id] = d === undefined ? null : cloneJsonValue(d);
     }
     return out;
+}
+
+function cloneJsonValue<T>(value: T): T {
+    if (value === null || typeof value !== "object") {
+        return value;
+    }
+    return JSON.parse(JSON.stringify(value)) as T;
 }
 
 const store = new Map<string, Record<string, unknown>>();
@@ -20,7 +27,11 @@ function widgetVariableStoreKey(runtimeScopeId: string, elementId: string, bluep
     return `widget\0${runtimeScopeId}\0${elementId}\0${blueprintId}`;
 }
 
-function blueprintVariableStoreKey(blueprint: Blueprint, runtimeScopeId?: string): string {
+function instanceElementId(elementId: string, elementInstanceKey?: string): string {
+    return elementInstanceKey ? `${elementId}\0${elementInstanceKey}` : elementId;
+}
+
+function blueprintVariableStoreKey(blueprint: Blueprint, runtimeScopeId?: string, elementInstanceKey?: string): string {
     const owner = blueprint.owner;
     if (owner.kind === "globalMain") {
         return `global\0${blueprint.id}`;
@@ -29,10 +40,10 @@ function blueprintVariableStoreKey(blueprint: Blueprint, runtimeScopeId?: string
         return `surface\0${runtimeScopeId ?? owner.surfaceId}\0${blueprint.id}`;
     }
     if (owner.kind === "widgetMain") {
-        return `widget\0${runtimeScopeId ?? owner.surfaceId}\0${owner.elementId}\0${blueprint.id}`;
+        return `widget\0${runtimeScopeId ?? owner.surfaceId}\0${instanceElementId(owner.elementId, elementInstanceKey)}\0${blueprint.id}`;
     }
     if (owner.kind === "widgetValue") {
-        return `widgetValue\0${runtimeScopeId ?? owner.surfaceId}\0${owner.elementId}\0${owner.propPath}\0${blueprint.id}`;
+        return `widgetValue\0${runtimeScopeId ?? owner.surfaceId}\0${instanceElementId(owner.elementId, elementInstanceKey)}\0${owner.propPath}\0${blueprint.id}`;
     }
     return `asset\0${owner.assetId}\0${blueprint.id}`;
 }
@@ -89,6 +100,7 @@ export function acquireBlueprintExecutionLocals(input: {
     surfaceId?: string;
     runtimeScopeId?: string;
     elementId?: string;
+    elementInstanceKey?: string;
 }): Record<string, unknown> {
     const current = input.blueprintDocument.blueprints[input.currentBlueprintId];
     if (!current) {
@@ -110,7 +122,7 @@ export function acquireBlueprintExecutionLocals(input: {
         }
         let variableStore = storesByBlueprintId.get(option.blueprintId);
         if (!variableStore) {
-            variableStore = acquireVariableStore(blueprintVariableStoreKey(bp, input.runtimeScopeId), bp);
+            variableStore = acquireVariableStore(blueprintVariableStoreKey(bp, input.runtimeScopeId, input.elementInstanceKey), bp);
             storesByBlueprintId.set(option.blueprintId, variableStore);
         }
         const explicitKey = createExplicitBlueprintVariableRef(option.blueprintId, option.variableId);
