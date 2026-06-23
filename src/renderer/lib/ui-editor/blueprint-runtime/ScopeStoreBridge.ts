@@ -2,8 +2,15 @@ import { SurfaceStateStore } from "./SurfaceStateStore";
 
 type ScopeMapListener = () => void;
 
+export type BlueprintPersistentStoreAdapter = {
+    getAll(): Promise<Record<string, unknown>>;
+    getValue(key: string): Promise<unknown>;
+    setValue(key: string, value: unknown): Promise<void>;
+    removeValue?(key: string): Promise<void>;
+};
+
 /**
- * Dev Mode M3-full: surface / global / persistence facades (persistence is in-memory until player integration).
+ * Dev Mode runtime state bridge for surface/global values plus Studio-backed persistent values.
  */
 export class ScopeStoreBridge {
     private readonly surfaceStores = new Map<string, SurfaceStateStore>();
@@ -11,6 +18,8 @@ export class ScopeStoreBridge {
     private readonly persistenceValues = new Map<string, unknown>();
     private readonly globalListeners = new Set<ScopeMapListener>();
     private readonly persistenceListeners = new Set<ScopeMapListener>();
+    private persistenceAdapter: BlueprintPersistentStoreAdapter | null = null;
+    private persistenceAdapterVersion = 0;
 
     public getSurfaceStore(surfaceId: string): SurfaceStateStore {
         let store = this.surfaceStores.get(surfaceId);
@@ -36,6 +45,70 @@ export class ScopeStoreBridge {
 
     public persistenceSet(key: string, value: unknown): void {
         this.persistenceValues.set(key, value);
+        this.notifyPersistence();
+    }
+
+    public setPersistenceAdapter(adapter: BlueprintPersistentStoreAdapter | null): void {
+        this.persistenceAdapter = adapter;
+        this.persistenceAdapterVersion++;
+        if (!adapter) {
+            this.persistenceValues.clear();
+            this.notifyPersistence();
+            return;
+        }
+        void this.reloadPersistenceSnapshot().catch(() => undefined);
+    }
+
+    public async reloadPersistenceSnapshot(): Promise<void> {
+        const adapter = this.persistenceAdapter;
+        const version = this.persistenceAdapterVersion;
+        if (!adapter) {
+            return;
+        }
+        const values = await adapter.getAll();
+        if (this.persistenceAdapter !== adapter || this.persistenceAdapterVersion !== version) {
+            return;
+        }
+        this.persistenceValues.clear();
+        for (const [key, value] of Object.entries(values)) {
+            if (value !== undefined) {
+                this.persistenceValues.set(key, value);
+            }
+        }
+        this.notifyPersistence();
+    }
+
+    public async persistenceGetAsync(key: string): Promise<unknown> {
+        const adapter = this.persistenceAdapter;
+        if (!adapter) {
+            return this.persistenceGet(key);
+        }
+        const value = await adapter.getValue(key);
+        if (this.persistenceAdapter === adapter) {
+            if (value === undefined) {
+                this.persistenceValues.delete(key);
+            } else {
+                this.persistenceValues.set(key, value);
+            }
+            this.notifyPersistence();
+        }
+        return value;
+    }
+
+    public async persistenceSetAsync(key: string, value: unknown): Promise<void> {
+        const adapter = this.persistenceAdapter;
+        if (adapter) {
+            if (value === undefined && adapter.removeValue) {
+                await adapter.removeValue(key);
+            } else {
+                await adapter.setValue(key, value);
+            }
+        }
+        if (value === undefined) {
+            this.persistenceValues.delete(key);
+        } else {
+            this.persistenceValues.set(key, value);
+        }
         this.notifyPersistence();
     }
 

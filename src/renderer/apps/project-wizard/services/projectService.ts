@@ -7,6 +7,7 @@ import { BaseProjectService } from "@/lib/workspace/services/core/ProjectService
 import { join } from "@shared/utils/path";
 import { WindowAppType } from "@shared/types/window";
 import { throwException } from "@shared/utils/error";
+import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import {
     DEFAULT_APP_SURFACE_NAME,
     DEFAULT_UI_DOCUMENT_NAME,
@@ -76,12 +77,11 @@ export class ProjectService {
             throwException(await BaseFileSystemService.write(uiDocumentPath, JSON.stringify(uiDocument, null, 2), "utf-8"));
 
             // Initialize assets metadata files for all asset types
-            const assetTypes = ["image", "audio", "video", "json", "font", "other"];
-            for (const type of assetTypes) {
-                const metadataPath = this.resolve(basePath, ProjectNameConvention.AssetsMetadataShard(type as any));
+            for (const type of Object.values(AssetType)) {
+                const metadataPath = this.resolve(basePath, ProjectNameConvention.AssetsMetadataShard(type));
                 throwException(await BaseFileSystemService.write(metadataPath, JSON.stringify({}), "utf-8"));
-                
-                const groupsPath = this.resolve(basePath, ProjectNameConvention.AssetsGroupsShard(type as any));
+
+                const groupsPath = this.resolve(basePath, ProjectNameConvention.AssetsGroupsShard(type));
                 throwException(await BaseFileSystemService.write(groupsPath, JSON.stringify({}), "utf-8"));
             }
 

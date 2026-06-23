@@ -13,6 +13,8 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.event.head.surfaceUnmount` | `Surface Unmount` | `Events` | Entry node for Page/Game UI surface unmount. It is only available on `surfaceMain` blueprints. |
 | `blueprint.event.head.init` | `Init` | `Events` | Entry node for widget initialization and Blueprint Value initial evaluation. It is available to widgets that expose the `init` lifecycle event and to `widgetValue` blueprints. |
 | `blueprint.event.head.mouseClick` | `Mouse Click` | `Events` | Entry node for widget mouse click interactions. It is available through the widget logic capability catalog. |
+| `blueprint.event.head.flush` | `On Flush` | `Events` | Entry node fired on the current widget after explicit Host API element property changes trigger a redraw. It outputs the flushed Element reference. |
+| `blueprint.event.head.elementFlush` | `Element Flush` | `Events` | Element-bound event head that listens for another same-Surface element's flush event and outputs that Element reference. |
 | `blueprint.event.head.scroll` | `Scroll` | `Events` | Entry node for List scroll interactions. It is available to `nl.list` widget private blueprints. |
 | `blueprint.event.head.scrollEnd` | `Scroll End` | `Events` | Entry node fired when a List runtime scrolls from non-end to the scroll end. It is available to `nl.list` widget private blueprints. |
 | `blueprint.event.head.itemRender` | `Item Render` | `Events` | Entry node fired for each rendered List item scope. It is available to `nl.list` widget private blueprints. |
@@ -30,6 +32,8 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.element.displayable.*` | Displayable element reads | `Displayable` | Element-targeted reads for position, size, bounds, rotation, opacity, and visible. |
 | `blueprint.local.get` | `Get Var` | `Variables` | Pure data node that reads an execution-local blueprint variable. |
 | `blueprint.local.set` | `Set Var` | `Variables` | Exec node that writes an execution-local blueprint variable and continues through `next`. |
+| `blueprint.persistent.get` | `Get Persistent` | `Variables` | Latent exec node that reads a project-level Persistent variable from host-managed storage and outputs the authored default when no saved value exists. |
+| `blueprint.persistent.set` | `Set Persistent` | `Variables` | Latent exec node that writes a project-level Persistent variable through host-managed storage. |
 | `if` | `If` | `Flow` | Exec branch node that routes execution through `true` or `false` based on a boolean condition. |
 | `blueprint.flow.ifElse` | `If Else` | `Flow` | Exec branch node with addable `If` conditions, matching `Then` outputs, and a final `Else` fallback output. |
 | `blueprint.flow.*` | Flow utilities | `Flow` | `Noop`, `Sequence`, `Switch String`, bounded loops, `Delay`, and `Return`. |
@@ -38,8 +42,8 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.math.*` | Math utilities | `Math` | Pure arithmetic, modulo, increment/decrement, abs, min/max, rounding, random numbers, boolean logic, strict equality, numeric comparison, and legacy numeric comparison nodes. |
 | `blueprint.boolean.*` | Boolean logic | `Math` | Pure `And`, `Or`, `Not`, and `Xor`; grouped under Math in the palette. |
 | `blueprint.compare.*` | Value comparison | `Math` | Pure strict equality and numeric comparison nodes grouped under Math. `Equal` / `Not Equal` use JavaScript `===` / `!==` semantics. |
-| `blueprint.slider.*` | Slider utilities | `Slider` | Slider-only nodes for mapped value, normalized value, range reads, and runtime value/range writes. |
-| `blueprint.list.*` | List utilities | `List` | List runtime content, selected index/item, refresh, scroll commands, and current item context reads. |
+| `blueprint.slider.*` | Slider utilities | `Slider` | Element-derived nodes for a bound `nl.slider` Element Literal or Element Flush, including `Get Value` for mapped values; the derived label appears as `Slider:Get Value`. Derived entries do not auto-connect. |
+| `blueprint.list.*` | List utilities | `List` | Element-derived nodes for a bound `nl.list` Element Literal or Element Flush plus item-template context reads. Derived entries do not auto-connect. |
 | `blueprint.flow.comment` | `Comment` | `Debug` | Graph-only multi-line comment box with color, background, and size controls. Background-off comments sit behind other nodes for framing. It does not participate in execution. |
 | `blueprint.log` | `Log` | `Debug` | Exec node that writes a string value to DevTools/browser logs and continues through `next`. |
 
@@ -62,6 +66,7 @@ Event-head nodes are surfaced in the canvas add-node palette for the current Blu
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/frameNodes.ts` | Built-in Page component host nodes for Frame params and child-to-parent Page events. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/sliderNodes.ts` | Built-in Slider widget nodes for value/range reads and runtime value/range writes. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/localVariableNodes.ts` | Built-in local variable nodes. Currently `Get Var` and `Set Var`. |
+| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/persistentVariableNodes.ts` | Built-in Persistent variable nodes. Currently `Get Persistent` and `Set Persistent`. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/mathNodes.ts` | Built-in basic math and comparison nodes. |
 | `src/shared/types/blueprint/graph.ts` | Shared graph taxonomy and stable node type constants. Use this for node type ids that are persisted or shared across process boundaries. |
 | `src/shared/types/ui-editor/widgetLogic.ts` | Widget logic capability catalog. Event slots here determine what widget event heads can appear for each widget type. |
@@ -85,7 +90,7 @@ When adding a node, make sure you know which owner kinds and graph kinds it shou
 
 ## Variables and JSON-safe defaults
 
-`BlueprintVariable.defaultValue` stores JSON-safe recursive values directly. String, numeric, boolean, `null`, JSON object, and Array defaults should be persisted as their real values, not stringified JSON. Execution locals deep-clone default values when a graph dispatch starts so mutating an object or array variable in one dispatch cannot mutate the blueprint member default or another dispatch's locals.
+`BlueprintVariable.defaultValue` and `BlueprintPersistentVariable.defaultValue` store JSON-safe recursive values directly. String, numeric, boolean, `null`, JSON object, and Array defaults should be persisted as their real values, not stringified JSON. Execution locals deep-clone default values when a graph dispatch starts so mutating an object or array variable in one dispatch cannot mutate the blueprint member default or another dispatch's locals. Persistent variable definitions live in the Blueprint document as project-level members; saved values live in host-managed Studio storage under the variable's stable `storageKey`.
 
 The variable creation UI includes `JSON` with default `{}` and `Array` with default `[]`. The `array` variable/pin type can feed `json` inputs because arrays are JSON values.
 
@@ -99,11 +104,11 @@ If a value graph does not execute `returnValue`, the runtime keeps the previous 
 
 When a Blueprint Value belongs to an element repeated by an `nl.list` item template, evaluation receives the current `listItemScope` and an item-specific `instanceKey`. Pure List item context nodes (`Get List Item Props`, `Index`, `Count`, `Key`) read that scope, and each repeated item keeps a separate runtime value even though the source element id is the same.
 
-The Blueprint Value palette is intentionally restricted to safe value-producing nodes: the `Init` event head, non-latent flow, graph comments, pure Data/Math/List nodes, local variables, Element literals, and pure Element-targeted Text/Displayable reads. Surface/global state read/write nodes are not part of the core catalog; widget mutations, navigation, persistence writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
+The Blueprint Value palette is intentionally restricted to safe value-producing nodes: the `Init` event head, non-latent flow, graph comments, pure Data/Math/List nodes, local variables, Element literals, and pure Element-targeted Text/Displayable/Slider reads. Surface/global state read/write nodes are not part of the core catalog; widget mutations, navigation, Persistent variable reads/writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
 
 ## List runtime and item context
 
-`Set List Content` writes an instance-level runtime item array for an `nl.list`. List mutation nodes (`append`, `insert`, `remove`, `clear`, `refresh`) update the same runtime store and cause the List to render from that store. `itemsBinding` is only a fallback when no runtime items have been written. When the List component instance fully unmounts, runtime items, selection, and scroll commands are cleared; authors should persist and restore list content explicitly through variables or state when needed.
+`Set List Content` writes an instance-level runtime item array for an `nl.list`. List mutation nodes (`append`, `insert`, `remove`, `clear`, `refresh`) update the same runtime store and cause the List to render from that store. List control nodes are exposed from bound `nl.list` Element Literals in the active graph rather than globally in every blueprint. `itemsBinding` is only a fallback when no runtime items have been written. When the List component instance fully unmounts, runtime items, selection, and scroll commands are cleared; authors should persist and restore list content explicitly through variables or state when needed.
 
 List item template descendants receive `blueprint.event.head.listItemRefresh` when an item instance refreshes. The event payload provides `props`, `item`, `index`, `count`, and `key`. `props` is the item object when `item` is an object; otherwise it is `{ value: item }`. The same values are available to event graphs and Blueprint Value graphs through pure List context nodes.
 
@@ -173,7 +178,7 @@ Recommended category names:
 | Category | Use for |
 | --- | --- |
 | `Events` | Event entry heads such as `Init`, `Mouse Click`, `Surface Init`, `App Boot`, broadcast receivers, and `Page Event`. |
-| `Variables` | Local blueprint variables exposed through `Get Var` and `Set Var`. |
+| `Variables` | Local blueprint variables and project-level Persistent variables exposed through `Get Var`, `Set Var`, `Get Persistent`, and `Set Persistent`. |
 | `Flow` | Branching, string switching, bounded loops, array iteration, and delay. |
 | `Data` | Literals, objects, arrays, Collection nodes, JSON helpers, string helpers, parsing, and type conversion. |
 | `Math` | Numeric calculation, rounding, min/max, random numbers, boolean logic, and comparisons. |
@@ -185,7 +190,6 @@ Recommended category names:
 | `Slider` | Slider value/range reads and runtime value/range writes for `nl.slider`. |
 | `List` | List runtime content, selection, scroll, and item context nodes for `nl.list`. |
 | `Navigation` | Page and modal navigation. |
-| `Persistence` | Save/load key-value data. |
 | `Debug` | Logs, graph comments, assertions, and debug overlays. |
 
 ## Pins
@@ -457,7 +461,7 @@ To make a widget expose `Init` and `Mouse Click`, its logic API should include t
 
 The current built-in widgets expose event heads through capability catalogs rather than aliases. Do not add duplicate node ids for the same user action; add or update the event capability first, then add the matching event-head node definition.
 
-`nl.slider` exposes `Drag Start`, `Value Changed`, and `Drag End` event heads through this catalog. Slider events output the mapped `value`; `Value Changed` also outputs `previousValue`. They do not output normalized 0-1 progress. Use `Get Slider Normalized Value` when a graph needs normalized progress.
+`nl.slider` exposes `Drag Start`, `Value Changed`, and `Drag End` event heads through this catalog. Slider events output the mapped `value`; `Value Changed` also outputs `previousValue`. They do not output normalized 0-1 progress. Use `Get Normalized Value` when a graph needs normalized progress, and `Get Value` when it needs the mapped value.
 
 ## Adding a new built-in node
 

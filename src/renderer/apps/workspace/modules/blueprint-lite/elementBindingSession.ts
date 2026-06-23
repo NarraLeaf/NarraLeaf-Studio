@@ -59,7 +59,27 @@ export function completeElementBindingSession(target: BlueprintElementBindingTar
     notify();
 }
 
+export function completeElementBindingSessionForSession(
+    session: BlueprintElementBindingSession,
+    target: BlueprintElementBindingTarget,
+): void {
+    if (activeSession && activeSession.id !== session.id) {
+        return;
+    }
+    completion = { session, target };
+    activeSession = activeSession?.id === session.id ? null : activeSession;
+    notify();
+}
+
 export function cancelElementBindingSession(): void {
+    activeSession = null;
+    notify();
+}
+
+export function cancelElementBindingSessionById(sessionId: string): void {
+    if (activeSession?.id !== sessionId) {
+        return;
+    }
     activeSession = null;
     notify();
 }

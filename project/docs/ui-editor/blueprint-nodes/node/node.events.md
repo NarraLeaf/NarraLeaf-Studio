@@ -135,6 +135,24 @@
 当元素失去键盘、鼠标或手柄焦点时触发。
 - `then` - 执行出口
 
+## On Flush
+
+`blueprint.event.head.flush` - 当前元素刷新事件
+
+当当前蓝图所属元素被蓝图 Host API 显式更改属性并触发重绘时触发。CSS 自动状态样式（例如 hover/focus 变体自动计算）不会触发该事件。事件 payload 返回被刷新的元素引用。
+- `then` - 执行出口
+- `element` - 被刷新的元素引用
+
+Flush 是属性提交后的批处理通知。运行时会按帧合并同一元素的 flush；flush 处理器内部再次改写元素属性时，新的 flush 会进入下一帧批次，避免同步重入。
+
+## Element Flush
+
+`blueprint.event.head.elementFlush` - 绑定元素刷新事件
+
+该事件头和 `Element` 节点一样先绑定同 Surface 的目标控件，然后监听该目标控件的 flush 事件。目标控件被蓝图 Host API 显式更改属性并触发重绘后，当前蓝图中的该事件头会执行。它的 `element` 输出也可以手动连接到 Element 派生节点的目标输入。
+- `then` - 执行出口
+- `element` - 被刷新的绑定元素引用
+
 ## Scroll
 
 `blueprint.event.head.scroll` - 列表滚动事件

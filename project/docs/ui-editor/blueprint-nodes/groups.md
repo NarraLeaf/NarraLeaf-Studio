@@ -19,17 +19,27 @@ Blueprint Value 可用节点包括：
 - `blueprint.event.head.init` - 初始求值事件
 - `blueprint.data.returnValue` - 返回当前属性值的无尾执行节点
 - `blueprint.element.ref` - Same-Surface 元素字面量引用
-- Element-targeted Text / Displayable 纯读取节点 - 读取绑定元素属性并记录隐藏刷新依赖
+- Element-targeted Text / Displayable / Slider / List / Widget Property 纯读取节点 - 读取绑定元素属性并记录隐藏刷新依赖
 
 `nl.slider.props.value` 使用 `float` Blueprint Value，返回值表示映射后的值而不是 0-1 normalized 值；运行时会按该 Slider 的 `min` / `max` / `step` clamp 和 snap。
 
-Blueprint Value 只允许安全的数据生产节点：`Init` Head、非 latent Flow、图内注释、纯 Data / Math、本地变量、Element Literal，以及 Element-targeted Text / Displayable 纯读取节点。当前核心目录不提供 surface/global state 读写节点；Blueprint Value 也不允许 Widget 改写、Navigation、Persistence 写入、Broadcast、latent 节点和 TypeScript revision。
+Blueprint Value 只允许安全的数据生产节点：`Init` Head、非 latent Flow、图内注释、纯 Data / Math、本地变量、Element Literal，以及纯读取型 Text / Displayable / Slider / List / Widget Property 节点。当前核心目录不提供 surface/global state 读写节点；Blueprint Value 也不允许 Widget 改写、Navigation、Persistent 变量读写、Broadcast、latent 节点和 TypeScript revision。
+
+## Self 与 Element 方法节点
+
+内建控件方法分为两套节点形态：
+- Self 节点作用于当前私有蓝图所属控件，不带 Element/ref 输入，只在对应控件自己的 `widgetMain` 蓝图中出现，并通过 `executionOwner.elementId` 操作自己。
+- Element 节点作用于显式连入的 Element 引用，带 typed Element 输入，例如 `element:nl.button`、`element:nl.slider`。它们统一显示在 `Element` 分类下。
+- Element 节点只有在当前图里已经存在兼容的 `Element` 或 `Element Flush` 绑定节点时才显示；添加节点不会自动连线，必须手动连接目标输入。
+- 写入节点通过 Host API 修改运行时或元素属性。值确实发生变化并导致重绘时会排队触发 flush；读取节点、CSS 自动样式和滚动请求不触发 flush。
 
 ## Variables
 
-Variables 节点组用于读写当前蓝图可访问的本地变量。当前核心目录只保留：
+Variables 节点组用于读写当前蓝图可访问的本地变量和项目级 Persistent 变量。Persistent 变量定义保存在 Blueprint 文档中，运行时值由 Host 管理并按项目隔离。当前核心目录包含：
 - `blueprint.local.get` - 读取变量
 - `blueprint.local.set` - 写入变量
+- `blueprint.persistent.get` - 异步读取 Persistent 变量；缺失已保存值时返回 authored default
+- `blueprint.persistent.set` - 异步写入 Persistent 变量
 
 ## Flow
 
@@ -55,6 +65,21 @@ Debug 节点组默认具有：
 - `blueprint.flow.comment` - 可调整大小、颜色、背景和多行说明的图内注释框；关闭背景后位于其它节点底层，不参与执行链
 - `blueprint.log` - 输出调试日志并继续执行
 
+## Element
+
+Element 节点组用于显式引用当前 Surface 内的控件，并放置所有带 Element/ref 输入的派生节点。
+
+Element 节点组默认具有：
+- `blueprint.element.ref` - Same-Surface 元素字面量引用，输出 `element` 或 typed `element:<widgetType>`
+- `blueprint.event.head.elementFlush` - 绑定目标控件并监听该控件的 flush 事件
+- `blueprint.element.text.*` - Text Element 读写节点
+- `blueprint.element.displayable.*` - Displayable Element 读取节点
+- `blueprint.element.slider.*` - Slider Element 读写节点
+- `blueprint.element.list.*` - List Element 读写节点
+- `blueprint.element.<widget>.*` - Button / Container / Image / Frame 等 Widget Property Element 节点
+
+Element 派生节点不会按每个绑定控件复制菜单项；每个节点类型在创建浮窗中只出现一次。是否显示由当前图内是否存在兼容 Element 引用决定，目标引用必须由用户手动连线。
+
 ## Displayable
 
 Displayable 节点组默认具有：
@@ -76,6 +101,26 @@ Displayable 节点组默认具有：
 - `blueprint.displayable.getRotation` - 获取元素旋转角度
 - `blueprint.displayable.getOpacity` - 获取元素透明度
 - `blueprint.displayable.getVisible` - 获取元素可见状态
+
+Displayable Self 节点只读取当前控件自己。Element-targeted Displayable 节点使用 `blueprint.element.displayable.*`，带 generic `element` 输入，显示在 `Element` 分类中，并在当前图内存在任意 Same-Surface Element 引用时出现。
+
+## Widget Property
+
+Widget Property 节点用于运行时读写内建控件的通用属性和控件特有属性。
+
+所有内建控件的 Self 版都提供：
+- `blueprint.<widget>.getVisible` / `setVisible`
+- `blueprint.<widget>.getEnabled` / `setEnabled`
+
+Element 版使用 `blueprint.element.<widget>.*`，带 typed Element 输入，统一显示在 `Element` 分类中，并只在当前图里存在兼容 Element 引用时出现。`Set Enabled(false)` 会映射到底层禁用交互机制，用户侧不暴露 `interactionDisabled`。
+
+控件特有方法包括：
+- `nl.button`：`getLabel` / `setLabel`，以及 `getVariant` / `setVariant`
+- `nl.container`：`getClipContent` / `setClipContent`，以及 `getVariant` / `setVariant`
+- `nl.image`：`getImageAsset` / `setImageAsset`
+- `nl.frame`：`getTargetPage` / `setTargetPage`、`getParams` / `setParams`
+
+Page 通信节点 `blueprint.frame.getParam` / `blueprint.frame.emit` 仍属于 Page 节点组，不属于 Frame Widget Property。
 
 ## Page
 
@@ -106,7 +151,9 @@ Surface 节点组默认具有：
 
 List 节点组用于 `nl.list` 的运行时内容、选中项、滚动和条目上下文。Array / JSON / Object 处理不放入 List，统一放在 Data 分类。
 
-Collection 节点组默认具有：
+List Self 节点只在 `nl.list` 自己的私有蓝图中出现，创建浮窗中归入 `List` 分类，且没有 `list` 输入。List Element 节点使用 `blueprint.element.list.*`，带 `element:nl.list` 输入，归入 `Element` 分类；当前图中没有绑定到 `nl.list` 的 Element 或 Element Flush 时不会显示。List item context 读取节点只在 item template 后代元素蓝图中出现。
+
+List 节点组默认具有：
 - `blueprint.event.head.scroll` - 列表滚动事件
 - `blueprint.event.head.scrollEnd` - 列表滚动到末端事件
 - `blueprint.event.head.itemRender` - 列表条目渲染事件
@@ -121,21 +168,38 @@ Collection 节点组默认具有：
 - `blueprint.list.refreshItems` / `blueprint.list.scrollToIndex` / `blueprint.list.scrollToTop` / `blueprint.list.scrollToBottom` - 刷新与滚动控制
 - `blueprint.list.getItemProps` / `blueprint.list.getItemIndex` / `blueprint.list.getItemCount` / `blueprint.list.getItemKey` - 读取当前条目上下文
 
+Element 版对应稳定 ID 使用 `blueprint.element.list.*`，方法目录与 Self 版一致。滚动请求类节点不触发 flush；内容和选中项发生变化时触发 flush。
+
 ## Slider
 
-Slider 节点组用于读取和改写 `nl.slider` 的运行时映射值与范围。`props.value`、Blueprint Value、事件 payload 和 Set/Get Value 节点都表示映射后的值；0-1 normalized 值只通过专用读节点取得。
+Slider 节点组用于读取和改写 `nl.slider` 的运行时映射值与范围。`props.value`、Blueprint Value、事件 payload 和 `Get Value` / Set Value 节点都表示映射后的值；0-1 normalized 值只通过专用读节点取得。
+
+Slider Self 节点只在 `nl.slider` 自己的私有蓝图中出现，创建浮窗中归入 `Slider` 分类，且没有 `slider` 输入。Slider Element 节点使用 `blueprint.element.slider.*`，带 `element:nl.slider` 输入，归入 `Element` 分类；当前图中没有绑定到 `nl.slider` 的 Element 或 Element Flush 时不会显示。
 
 Slider 节点组默认具有：
 - `blueprint.event.head.sliderDragStart` - 滑块拖拽开始事件，输出映射值 `value`
 - `blueprint.event.head.sliderValueChanged` - 滑块值变化事件，输出映射值 `value` 和 `previousValue`
 - `blueprint.event.head.sliderDragEnd` - 滑块拖拽结束事件，输出映射值 `value`
-- `blueprint.slider.getValue` - 获取映射值
+- `blueprint.slider.getValue` / `Get Value` - 获取映射值
 - `blueprint.slider.getNormalizedValue` - 获取 0-1 normalized 值
 - `blueprint.slider.getRange` - 获取 `min`、`max`、`step`
 - `blueprint.slider.setValue` - 设置映射值，并按范围和步进规范化
 - `blueprint.slider.setRange` - 设置 `min`、`max`、`step`，并重新规范化当前运行时值
 
-`Set Slider Value` 与 `Set Slider Range` 只更新运行时状态，不自动派发 Slider 事件，也不写回 UIDocument。
+Element 版对应稳定 ID 使用 `blueprint.element.slider.*`，方法目录与 Self 版一致。`Set Slider Value` 与 `Set Slider Range` 只更新运行时状态，不自动派发 Slider 事件，也不写回 UIDocument；值变化会触发 flush。
+
+## Image
+
+Image 节点组用于读取和改写 `nl.image` 的界面图片资源。它面向应用界面控件，不处理舞台表演图片、角色立绘或剧情演出资源。
+
+Image Self 节点只在 `nl.image` 自己的私有蓝图中出现，创建浮窗中归入 `Image` 分类，且没有 `image` 输入。Image Element 节点使用 `blueprint.element.image.*`，带 `element:nl.image` 输入，归入 `Image` 分类；当前图中没有绑定到 `nl.image` 的 Element 或 Element Flush 时不会显示。
+
+Image 节点组默认具有：
+- `blueprint.image.assetLiteral` - 图片资产字面量卡片，输出 `ImageAsset`
+- `blueprint.image.getImageAsset` - 获取当前图片资源，输出 `ImageAsset|null`
+- `blueprint.image.setImageAsset` - 设置图片资源，输入 `ImageAsset|null`；未接线时可在节点卡片上展开图片选择器
+
+Element 版对应稳定 ID 为 `blueprint.element.image.getImageAsset` 和 `blueprint.element.image.setImageAsset`。`Set Image Asset` 更新 `imageFill.assetId` 并触发 flush。旧图中字符串 `assetId` 连线仍可执行，但新 UI 推荐使用 `ImageAsset`。
 
 ## Broadcast
 

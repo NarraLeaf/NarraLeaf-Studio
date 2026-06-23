@@ -6,6 +6,7 @@ import type {
     BlueprintFieldValueSource,
     BlueprintFrontendKind,
     BlueprintGraphNode,
+    BlueprintPersistentVariable,
     BlueprintPrivateOwnerRecord,
     BlueprintVariable,
     LiteralValue,
@@ -19,6 +20,9 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement, UIElementValueBindingValueType } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
@@ -895,6 +899,62 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return m ? Object.values(m) : [];
     }
 
+    public createPersistentVariable(
+        historyBlueprintId: string,
+        input?: { name?: string; valueType?: string; defaultValue?: LiteralValue },
+    ): BlueprintPersistentVariable {
+        const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
+        const id = uuid.generate();
+        const valueType = input?.valueType?.trim();
+        const v: BlueprintPersistentVariable = {
+            id,
+            storageKey: id,
+            name: input?.name?.trim() || `persist_${id.slice(0, 8)}`,
+            valueType: valueType || undefined,
+            defaultValue: input?.defaultValue,
+        };
+        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
+            doc.persistentVariables = doc.persistentVariables ?? {};
+            doc.persistentVariables[v.id] = v;
+        });
+        return v;
+    }
+
+    public renamePersistentVariable(historyBlueprintId: string, variableId: string, name: string): void {
+        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
+            const v = doc.persistentVariables?.[variableId];
+            if (!v) {
+                return;
+            }
+            const next = name.trim();
+            v.name = next.length > 0 ? next : v.name;
+        }, { mergeKey: `persistent-variable-name:${variableId}` });
+    }
+
+    public setPersistentVariableDefault(
+        historyBlueprintId: string,
+        variableId: string,
+        defaultValue: LiteralValue | undefined,
+    ): void {
+        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
+            const v = doc.persistentVariables?.[variableId];
+            if (!v) {
+                return;
+            }
+            v.defaultValue = defaultValue;
+        }, { mergeKey: `persistent-variable-default:${variableId}` });
+    }
+
+    public deletePersistentVariable(historyBlueprintId: string, variableId: string): void {
+        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
+            if (!doc.persistentVariables?.[variableId]) {
+                return;
+            }
+            this.clearPersistentVariableNodeRefs(doc, variableId);
+            delete doc.persistentVariables[variableId];
+        });
+    }
+
     public createBlueprintVariable(
         blueprintId: string,
         input?: { name?: string; valueType?: string; defaultValue?: LiteralValue },
@@ -968,6 +1028,37 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             }
             delete bp.members.variables[variableId];
         });
+    }
+
+    private clearPersistentVariableNodeRefs(doc: BlueprintDocument, variableId: string): void {
+        for (const bp of Object.values(doc.blueprints)) {
+            if (bp.program.kind !== "graph") {
+                continue;
+            }
+            const slots = [
+                ...Object.values(bp.program.graphs.events ?? {}),
+                ...Object.values(bp.program.graphs.functions ?? {}),
+                ...Object.values(bp.program.graphs.macros ?? {}),
+            ];
+            for (const slot of slots) {
+                if (!slot.graph) {
+                    continue;
+                }
+                const ir = ensureBlueprintGraphIr(slot.graph);
+                for (const node of Object.values(ir.nodes ?? {})) {
+                    if (
+                        (node.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET ||
+                            node.type === BLUEPRINT_NODE_TYPE_PERSISTENT_SET) &&
+                        node.params?.persistentVariableId === variableId
+                    ) {
+                        const next = { ...(node.params ?? {}) };
+                        delete next.persistentVariableId;
+                        delete next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
+                        node.params = next;
+                    }
+                }
+            }
+        }
     }
 
     /**

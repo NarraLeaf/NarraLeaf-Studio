@@ -1,5 +1,6 @@
 import type { Blueprint, BlueprintDocument, BlueprintEventGraph, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
     collectBlueprintEventHeadNodeIdsForDispatch,
@@ -7,6 +8,7 @@ import {
     collectGlobalEventHeadNodeIdsForDispatch,
     isBlueprintEventDispatchHeadType,
 } from "@shared/types/blueprint/graph";
+import type { BlueprintElementRef } from "@shared/types/blueprint/valueTypes";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { getWidgetLogicEvent, getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
@@ -23,6 +25,7 @@ import {
     surfaceMainOwnerKey,
     GLOBAL_MAIN_OWNER_KEY,
 } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
+import { readBlueprintElementRefParams } from "@/lib/ui-editor/blueprint-nodes/built-in/elementRefUtils";
 
 const DEFAULT_MAX_STEPS = 512;
 
@@ -248,6 +251,7 @@ export async function dispatchBlueprintUiEvent(options: {
                     listItemScope,
                     instanceKey,
                     executionOwner: { surfaceId, elementId, blueprintId },
+                    persistentVariables: blueprintDocument.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                     trace: {
                         executionId,
@@ -302,6 +306,173 @@ function collectSurfaceElementIds(document: UIDocument, surfaceId: string): stri
     };
     visit(rootId);
     return out;
+}
+
+function matchesElementFlushTarget(
+    node: { type: string; params?: Record<string, unknown> },
+    target: BlueprintElementRef,
+): boolean {
+    if (node.type !== BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH) {
+        return false;
+    }
+    const ref = readBlueprintElementRefParams(node.params);
+    return Boolean(
+        ref &&
+        ref.surfaceId === target.surfaceId &&
+        ref.elementId === target.elementId &&
+        ref.elementType === target.elementType,
+    );
+}
+
+function collectElementFlushHeadNodeIds(
+    nodes: Record<string, { type: string; params?: Record<string, unknown> }> | undefined,
+    target: BlueprintElementRef,
+): string[] {
+    const n = nodes ?? {};
+    return Object.entries(n)
+        .filter(([, node]) => matchesElementFlushTarget(node, target))
+        .map(([id]) => id)
+        .sort();
+}
+
+function collectElementFlushTargets(input: {
+    document: UIDocument;
+    blueprintDocument: BlueprintDocument;
+    surfaceId: string;
+    target: BlueprintElementRef;
+}): Array<{
+    elementId?: string;
+    blueprintId: string;
+    eventGraph: BlueprintEventGraph;
+    ir: BlueprintGraphIr;
+    headIds: string[];
+}> {
+    const out: Array<{
+        elementId?: string;
+        blueprintId: string;
+        eventGraph: BlueprintEventGraph;
+        ir: BlueprintGraphIr;
+        headIds: string[];
+    }> = [];
+
+    const surfaceOwnerKey = surfaceMainOwnerKey(input.surfaceId);
+    const surfaceBlueprintId = input.blueprintDocument.ownerRecords[surfaceOwnerKey]?.activeBlueprintId;
+    const surfaceBlueprint = surfaceBlueprintId ? input.blueprintDocument.blueprints[surfaceBlueprintId] : undefined;
+    if (surfaceBlueprintId && surfaceBlueprint?.program.kind === "graph") {
+        for (const eventGraph of Object.values(surfaceBlueprint.program.graphs.events ?? {})) {
+            const ir = eventGraph.graph;
+            const headIds = collectElementFlushHeadNodeIds(ir?.nodes, input.target);
+            if (ir && headIds.length > 0) {
+                out.push({ blueprintId: surfaceBlueprintId, eventGraph, ir, headIds });
+            }
+        }
+    }
+
+    for (const elementId of collectSurfaceElementIds(input.document, input.surfaceId)) {
+        const el = input.document.elements[elementId];
+        const widgetLogicApi = getWidgetLogicApi(el?.type);
+        if (!widgetLogicApi?.supportsPrivateBlueprint) {
+            continue;
+        }
+        const ownerKey = widgetMainOwnerKey(input.surfaceId, elementId);
+        const blueprintId = input.blueprintDocument.ownerRecords[ownerKey]?.activeBlueprintId;
+        const bp = blueprintId ? input.blueprintDocument.blueprints[blueprintId] : undefined;
+        if (!blueprintId || !bp || bp.program.kind !== "graph") {
+            continue;
+        }
+        for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
+            const ir = eventGraph.graph;
+            const headIds = collectElementFlushHeadNodeIds(ir?.nodes, input.target);
+            if (ir && headIds.length > 0) {
+                out.push({ elementId, blueprintId, eventGraph, ir, headIds });
+            }
+        }
+    }
+
+    return out;
+}
+
+export async function dispatchBlueprintElementFlushEvent(options: {
+    document: UIDocument;
+    blueprintDocument: BlueprintDocument;
+    surfaceId: string;
+    runtimeScopeId?: string;
+    target: BlueprintElementRef;
+    eventPayload?: Record<string, unknown>;
+    hostAdapter: UIHostAdapter;
+    debug: DebugBridge;
+    getSurfaceState: (key: string) => unknown;
+    setSurfaceState: (key: string, value: unknown) => void;
+    maxSteps?: number;
+}): Promise<void> {
+    const {
+        document,
+        blueprintDocument,
+        surfaceId,
+        runtimeScopeId,
+        target,
+        eventPayload,
+        hostAdapter,
+        debug,
+    } = options;
+    const payload = eventPayload ?? { element: target };
+    const targets = collectElementFlushTargets({ document, blueprintDocument, surfaceId, target });
+
+    for (const listener of targets) {
+        const executionId = newExecutionId();
+        debug.emit({ type: "execution.started", executionId, blueprintId: listener.blueprintId });
+        const blueprintLocals = acquireBlueprintExecutionLocals({
+            blueprintDocument,
+            currentBlueprintId: listener.blueprintId,
+            surfaceId,
+            runtimeScopeId,
+            elementId: listener.elementId,
+        });
+        try {
+            for (const headId of listener.headIds) {
+                const graph = adaptBlueprintGraphIr(
+                    listener.ir,
+                    `elementFlush:${listener.blueprintId}:${listener.eventGraph.id}`,
+                );
+                const startNode = graph.nodes[headId];
+                if (!startNode || !isBlueprintEventDispatchHeadType(startNode.type)) {
+                    continue;
+                }
+                await executeGraph({
+                    graph,
+                    entry: { start: { nodeId: headId, port: "then" as const } },
+                    hostAdapter,
+                    blueprintLocals,
+                    eventPayload: payload,
+                    executionOwner: { surfaceId, elementId: listener.elementId, blueprintId: listener.blueprintId },
+                    persistentVariables: blueprintDocument.persistentVariables,
+                    maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+                    trace: {
+                        executionId,
+                        graphId: graph.id,
+                        blueprintId: listener.blueprintId,
+                        eventId: "elementFlush",
+                        emit: e => debug.emit(e),
+                    },
+                });
+            }
+            debug.emit({ type: "execution.finished", executionId, blueprintId: listener.blueprintId });
+        } catch (err) {
+            if (err instanceof BlueprintGraphExecutionError) {
+                debug.emit({
+                    type: "execution.error",
+                    executionId,
+                    message: err.message,
+                    blueprintId: listener.blueprintId,
+                    eventId: "elementFlush",
+                    nodeId: err.nodeId,
+                });
+                continue;
+            }
+            const message = err instanceof Error ? err.message : String(err);
+            debug.emit({ type: "execution.error", executionId, message, blueprintId: listener.blueprintId, eventId: "elementFlush" });
+        }
+    }
 }
 
 function collectBroadcastHeadNodeIds(
@@ -453,6 +624,7 @@ export async function dispatchBlueprintBroadcastEvent(options: {
                     blueprintLocals,
                     eventPayload,
                     executionOwner: { surfaceId, elementId: target.elementId, blueprintId: target.blueprintId },
+                    persistentVariables: blueprintDocument.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                     trace: {
                         executionId,
@@ -598,6 +770,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
                     blueprintLocals,
                     eventPayload: {},
                     executionOwner: { surfaceId, blueprintId },
+                    persistentVariables: blueprintDocument.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                     trace: {
                         executionId,
@@ -729,6 +902,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
                     blueprintLocals,
                     eventPayload: {},
                     executionOwner: { blueprintId },
+                    persistentVariables: blueprintDocument.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                     trace: {
                         executionId,

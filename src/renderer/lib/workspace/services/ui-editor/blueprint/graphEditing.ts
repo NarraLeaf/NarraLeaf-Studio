@@ -2,8 +2,10 @@ import type { BlueprintGraphEdge, BlueprintGraphIr, BlueprintGraphNode } from "@
 import {
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
+    BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
     BLUEPRINT_NODE_TYPE_LITERAL_COLOR,
@@ -79,8 +81,17 @@ export function isBlueprintLiteralNodeType(type: string): boolean {
         type === BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D ||
         type === BLUEPRINT_NODE_TYPE_LITERAL_RECT ||
         type === BLUEPRINT_NODE_TYPE_LITERAL_JSON ||
-        type === BLUEPRINT_NODE_TYPE_ELEMENT_REF
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_REF ||
+        type === BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL
     );
+}
+
+export function isBlueprintElementBindingNodeType(type: string): boolean {
+    return type === BLUEPRINT_NODE_TYPE_ELEMENT_REF || type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH;
+}
+
+export function isBlueprintElementBindingOutputPin(type: string, port: string): boolean {
+    return port === "element" && isBlueprintElementBindingNodeType(type);
 }
 
 function isBlueprintExecInputPin(
@@ -151,7 +162,10 @@ export function applyBlueprintIrConnection(
     }
 
     const sourceNode = ir.nodes?.[connection.source];
-    const allowSourceFanOut = sourceNode ? isBlueprintLiteralNodeType(sourceNode.type) : false;
+    const allowSourceFanOut = sourceNode
+        ? isBlueprintLiteralNodeType(sourceNode.type) ||
+            isBlueprintElementBindingOutputPin(sourceNode.type, connection.sourceHandle)
+        : false;
     const allowTargetFanIn = isBlueprintExecInputPin(ir, connection.target, connection.targetHandle);
     const withoutReplacedPinEdges = edges.filter(
         e =>
@@ -199,7 +213,9 @@ export function createGraphNodeForPalette(type: string, id: string): BlueprintGr
         base.params = { value: { x: 0, y: 0, width: 0, height: 0 } };
     } else if (type === BLUEPRINT_NODE_TYPE_LITERAL_JSON) {
         base.params = { value: {} };
-    } else if (type === BLUEPRINT_NODE_TYPE_ELEMENT_REF) {
+    } else if (type === BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL) {
+        base.params = { asset: null };
+    } else if (type === BLUEPRINT_NODE_TYPE_ELEMENT_REF || type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH) {
         base.params = {};
     } else if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT) {
         base.params = {

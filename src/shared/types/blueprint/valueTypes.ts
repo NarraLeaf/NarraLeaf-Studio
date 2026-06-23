@@ -7,6 +7,8 @@ export const BLUEPRINT_VALUE_TYPE_VECTOR2D = "Vector2D" as const;
 export const BLUEPRINT_VALUE_TYPE_RGBA_COLOR = "RGBAColor" as const;
 export const BLUEPRINT_VALUE_TYPE_ELEMENT = "element" as const;
 export const BLUEPRINT_VALUE_TYPE_ARRAY = "array" as const;
+export const BLUEPRINT_VALUE_TYPE_IMAGE_ASSET = "ImageAsset" as const;
+export const BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE = "ImageAsset|null" as const;
 
 export type BlueprintElementRef = {
     surfaceId: string;
@@ -24,6 +26,11 @@ export type BlueprintRGBAColor = {
     g: number;
     b: number;
     a: number;
+};
+
+export type BlueprintImageAsset = {
+    kind: "imageAsset";
+    assetId: string;
 };
 
 export function blueprintElementValueType(elementType: string | undefined): string {
@@ -58,6 +65,41 @@ export function areBlueprintElementValueTypesCompatible(
 
 export function isBlueprintArrayValueType(valueType: string | undefined): boolean {
     return valueType === BLUEPRINT_VALUE_TYPE_ARRAY;
+}
+
+export function isBlueprintImageAssetValueType(valueType: string | undefined): boolean {
+    return valueType === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET ||
+        valueType === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE;
+}
+
+export function isBlueprintNullableImageAssetValueType(valueType: string | undefined): boolean {
+    return valueType === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE;
+}
+
+export function toBlueprintImageAsset(assetId: string | null | undefined): BlueprintImageAsset | null {
+    const safe = typeof assetId === "string" ? assetId.trim() : "";
+    return safe ? { kind: "imageAsset", assetId: safe } : null;
+}
+
+export function normalizeBlueprintImageAssetValue(value: unknown): BlueprintImageAsset | null {
+    if (value === null || value === undefined) {
+        return null;
+    }
+    if (typeof value === "string") {
+        return toBlueprintImageAsset(value);
+    }
+    const record = readRecord(value);
+    if (!record) {
+        return null;
+    }
+    if (record.kind !== "imageAsset") {
+        return null;
+    }
+    return toBlueprintImageAsset(typeof record.assetId === "string" ? record.assetId : null);
+}
+
+export function blueprintImageAssetId(value: unknown): string | null {
+    return normalizeBlueprintImageAssetValue(value)?.assetId ?? null;
 }
 
 const DEFAULT_VECTOR2D: BlueprintVector2D = { x: 0, y: 0 };

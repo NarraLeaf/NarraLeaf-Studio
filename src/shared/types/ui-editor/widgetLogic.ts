@@ -126,6 +126,13 @@ const SCROLL_EVENT: WidgetLogicEventDef = {
     headNodeTypes: ["blueprint.event.head.scroll"],
 };
 
+const FLUSH_EVENT: WidgetLogicEventDef = {
+    id: "flush",
+    displayName: "On flush",
+    dispatchKind: "lifecycle",
+    headNodeTypes: ["blueprint.event.head.flush"],
+};
+
 const LIST_ITEM_EVENTS: readonly WidgetLogicEventDef[] = [
     {
         id: "itemRender",
@@ -185,6 +192,7 @@ const BROADCAST_EVENTS: readonly WidgetLogicEventDef[] = [
 
 const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
+    FLUSH_EVENT,
     {
         id: "pageEvent",
         displayName: "Page event",
@@ -196,6 +204,7 @@ const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
 
 const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
+    FLUSH_EVENT,
     {
         id: "dragStart",
         displayName: "Drag start",
@@ -219,6 +228,7 @@ const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
 
 const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
+    FLUSH_EVENT,
     ...LIST_ITEM_CONTEXT_EVENTS,
     ...DISPLAYABLE_EVENTS,
     ...BROADCAST_EVENTS,
@@ -226,6 +236,7 @@ const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
 
 const COLLECTION_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
+    FLUSH_EVENT,
     SCROLL_EVENT,
     ...LIST_ITEM_EVENTS,
     ...BROADCAST_EVENTS,

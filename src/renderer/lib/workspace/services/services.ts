@@ -347,6 +347,21 @@ interface ILocalBlueprintService extends IService {
             defaultValue?: import("@shared/types/blueprint/document").LiteralValue;
         },
     ): import("@shared/types/blueprint/document").BlueprintVariable;
+    createPersistentVariable(
+        historyBlueprintId: string,
+        input?: {
+            name?: string;
+            valueType?: string;
+            defaultValue?: import("@shared/types/blueprint/document").LiteralValue;
+        },
+    ): import("@shared/types/blueprint/document").BlueprintPersistentVariable;
+    renamePersistentVariable(historyBlueprintId: string, variableId: string, name: string): void;
+    setPersistentVariableDefault(
+        historyBlueprintId: string,
+        variableId: string,
+        defaultValue: import("@shared/types/blueprint/document").LiteralValue | undefined,
+    ): void;
+    deletePersistentVariable(historyBlueprintId: string, variableId: string): void;
     renameBlueprintVariable(blueprintId: string, variableId: string, name: string): void;
     setBlueprintVariableDefault(
         blueprintId: string,
@@ -668,4 +683,3 @@ export {
 
 export type { ActiveSnapGuides, SmartSnapDetailSettings };
 export type { StoryPluginActionCreateInput, StoryPluginActionRegistration };
-

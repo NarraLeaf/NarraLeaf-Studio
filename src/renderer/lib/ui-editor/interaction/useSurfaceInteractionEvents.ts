@@ -26,6 +26,9 @@ import {
     DEFAULT_SNAP_THRESHOLD_PX,
 } from "@/lib/ui-editor/snapping";
 
+const WHEEL_ZOOM_SPEED = 0.003;
+const PINCH_ZOOM_SPEED = 0.006;
+
 export type InsertToolDragState = {
     active: boolean;
     nodeType: string;
@@ -392,7 +395,7 @@ export function useSurfaceInteractionEvents({
                 const pointerX = event.clientX - rect.left;
                 const pointerY = event.clientY - rect.top;
                 const currentScale = Math.max(0.0001, viewport.scale);
-                const zoomSpeed = 0.0015;
+                const zoomSpeed = event.ctrlKey ? PINCH_ZOOM_SPEED : WHEEL_ZOOM_SPEED;
                 const scaleDelta = Math.exp(-event.deltaY * zoomSpeed);
                 const nextScale = Math.max(0.1, Math.min(10, currentScale * scaleDelta));
                 if (nextScale === currentScale) {

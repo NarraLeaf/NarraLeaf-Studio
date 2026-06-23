@@ -7,10 +7,14 @@ import {
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
 } from "@shared/types/blueprint/graph";
 import {
     areBlueprintElementValueTypesCompatible,
     BLUEPRINT_VALUE_TYPE_ARRAY,
+    BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
+    BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
     isBlueprintElementValueType,
 } from "@shared/types/blueprint/valueTypes";
 import { blueprintNodeRegistry } from "./BlueprintNodeRegistry";
@@ -28,7 +32,9 @@ function resolvePinValueType(input: {
 }): string | undefined {
     if (
         (input.nodeType === BLUEPRINT_NODE_TYPE_LOCAL_GET && input.portId === "value") ||
-        (input.nodeType === BLUEPRINT_NODE_TYPE_LOCAL_SET && input.portId === "value")
+        (input.nodeType === BLUEPRINT_NODE_TYPE_LOCAL_SET && input.portId === "value") ||
+        (input.nodeType === BLUEPRINT_NODE_TYPE_PERSISTENT_GET && input.portId === "value") ||
+        (input.nodeType === BLUEPRINT_NODE_TYPE_PERSISTENT_SET && input.portId === "value")
     ) {
         return readParamString(input.params, BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE) ?? input.pinValueType;
     }
@@ -46,6 +52,21 @@ function areDataValueTypesCompatible(sourceType: string | undefined, targetType:
         return areBlueprintElementValueTypesCompatible(sourceType, targetType);
     }
     if (sourceType === BLUEPRINT_VALUE_TYPE_ARRAY && targetType === "json") {
+        return true;
+    }
+    if (
+        sourceType === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET &&
+        targetType === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE
+    ) {
+        return true;
+    }
+    if (
+        sourceType === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE &&
+        targetType === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE
+    ) {
+        return true;
+    }
+    if (sourceType === "string" && targetType === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE) {
         return true;
     }
     if (sourceType === "integer" && targetType === "float") {

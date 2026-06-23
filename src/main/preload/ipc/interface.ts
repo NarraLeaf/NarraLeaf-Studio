@@ -1,6 +1,7 @@
 import { RendererInterfaceKey } from "@shared/types/constants";
 import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
+import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
 import type { DevModeEntry, DevModeStatus, DevModeBundle } from "@shared/types/devMode";
@@ -106,6 +107,17 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
         openBlueprintInWorkspace: (payload: PreviewStudioBlueprintOpenPayload & { projectPath: string }) =>
             ipcClient.invoke(IPCEventType.devModeOpenBlueprintInWorkspace, payload) as Promise<RequestStatus<void>>,
+    },
+
+    blueprintPersistence: {
+        getAll: (projectRef: BlueprintPersistenceProjectRef) =>
+            ipcClient.invoke(IPCEventType.blueprintPersistenceGetAll, { projectRef }) as Promise<RequestStatus<{ values: Record<string, unknown> }>>,
+        getValue: (projectRef: BlueprintPersistenceProjectRef, key: string) =>
+            ipcClient.invoke(IPCEventType.blueprintPersistenceGetValue, { projectRef, key }) as Promise<RequestStatus<{ value: unknown }>>,
+        setValue: (projectRef: BlueprintPersistenceProjectRef, key: string, value: unknown) =>
+            ipcClient.invoke(IPCEventType.blueprintPersistenceSetValue, { projectRef, key, value }) as Promise<RequestStatus<void>>,
+        removeValue: (projectRef: BlueprintPersistenceProjectRef, key: string) =>
+            ipcClient.invoke(IPCEventType.blueprintPersistenceRemoveValue, { projectRef, key }) as Promise<RequestStatus<void>>,
     },
 
     pluginPermissions: {
