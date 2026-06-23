@@ -35,6 +35,8 @@ import {
     applyPlannedMove,
     collectSubtreeElementIds,
     layoutPatchForReparent,
+    normalizeFlowChildLayout,
+    normalizeFlowChildLayouts,
     planMoveElementsInSurface,
     type MoveUiElementsResult,
 } from "./uiDocumentTreeMove";
@@ -168,7 +170,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         const migrated = this.migrateIfNeeded(result.data);
         this.document = migrated;
-        const needsSave = this.ensureMainSurface(this.document);
+        const mainSurfaceChanged = this.ensureMainSurface(this.document);
+        const flowLayoutsChanged = normalizeFlowChildLayouts(this.document);
+        const needsSave = mainSurfaceChanged || flowLayoutsChanged;
         if (needsSave) {
             await this.save(this.document);
             this.revision = 0;
@@ -225,7 +229,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         document: UIDocument,
         options: { skipAfterMutateHook?: boolean } = {},
     ): void {
-        this.document = cloneUIHistoryDocument(document);
+        const next = cloneUIHistoryDocument(document);
+        normalizeFlowChildLayouts(next);
+        this.document = next;
         this.revision += 1;
         this.setDirty(true);
         this.scheduleAutoSave();
@@ -278,6 +284,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...element.layout,
                 ...layoutPatch,
             });
+            normalizeFlowChildLayout(document, element);
         }, {
             history: !options.skipHistory && surfaceId
                 ? {
@@ -305,6 +312,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     ...element.layout,
                     ...patch,
                 });
+                normalizeFlowChildLayout(document, element);
             });
         }, {
             history: surfaceId ? { surfaceId } : false,
@@ -322,6 +330,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...(element.props ?? {}),
                 ...propsPatch,
             };
+            normalizeFlowChildLayout(document, element);
+            if (isUIFlowLayoutParentElement(element)) {
+                normalizeFlowChildLayouts(document, element.childrenIds);
+            }
         }, {
             history: surfaceId
                 ? {
@@ -415,6 +427,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...(element.extra ?? {}),
                 ...extraPatch,
             };
+            normalizeFlowChildLayout(document, element);
         }, {
             history: surfaceId
                 ? {
@@ -433,6 +446,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 return;
             }
             parent.childrenIds = [...orderedChildIds];
+            normalizeFlowChildLayouts(document, orderedChildIds);
         }, {
             history: surfaceId ? { surfaceId } : false,
         });
@@ -1035,6 +1049,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (parentElement) {
                 parentElement.childrenIds = [...parentElement.childrenIds, elementId];
             }
+            normalizeFlowChildLayouts(documentData, [
+                elementId,
+                ...defaultChildren.map(child => child.id),
+            ]);
         }, {
             history: surfaceId ? { surfaceId } : false,
         });
@@ -1166,6 +1184,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
             children.splice(insertAt, 0, ...newRootIds);
             parentEl.childrenIds = children;
+            normalizeFlowChildLayouts(doc, Object.values(elementIdMap));
         }, { history: false });
 
         localBp.applyBlueprintMutation(bpDoc => {

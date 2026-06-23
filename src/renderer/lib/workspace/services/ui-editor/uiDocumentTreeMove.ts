@@ -82,6 +82,37 @@ function isDescendantOf(document: UIDocument, maybeDescendant: UIElementId, ance
 }
 
 /**
+ * Flow-layout children are positioned by their parent flex stack/list, so serialized x/y must stay neutral.
+ * Width, height, rotation, visibility, etc. remain authored on the child.
+ */
+export function normalizeFlowChildLayout(document: UIDocument, element: UIElement): boolean {
+    if (!isUIElementFlowLayoutChild(document, element)) {
+        return false;
+    }
+    if (element.layout.x === 0 && element.layout.y === 0) {
+        return false;
+    }
+    element.layout = roundUILayoutGeometryFields({
+        ...element.layout,
+        x: 0,
+        y: 0,
+    });
+    return true;
+}
+
+export function normalizeFlowChildLayouts(document: UIDocument, elementIds?: Iterable<UIElementId>): boolean {
+    let changed = false;
+    const ids = elementIds ?? Object.keys(document.elements);
+    for (const id of ids) {
+        const element = document.elements[id];
+        if (element) {
+            changed = normalizeFlowChildLayout(document, element) || changed;
+        }
+    }
+    return changed;
+}
+
+/**
  * Layout delta when changing `element`'s parent to `newParentId`.
  * Call while `element.parentId` still refers to the **previous** parent (or null).
  * Optional `resolve` merges extra elements (e.g. clipboard payload) for geometry walks.
@@ -219,6 +250,7 @@ export function applyPlannedMove(document: UIDocument, plan: PlannedMove): void 
             if (Object.keys(patch).length > 0) {
                 el.layout = roundUILayoutGeometryFields({ ...el.layout, ...patch });
             }
+            normalizeFlowChildLayout(document, el);
         }
     }
 }
