@@ -35,7 +35,8 @@ export const DEFAULT_INSERT_PALETTE_CONFIG = [
     { type: "nl.text" },
     { type: "nl.image" },
     { type: "nl.button" },
-    { type: "nl.list" },
+    { type: "nl.slider", placement: "overflow" },
+    { type: "nl.list", placement: "overflow" },
     { type: "nl.frame", placement: "overflow", surfaceKinds: ["appSurface"] },
 ] as const satisfies readonly InsertPaletteConfigEntry[];
 ```
@@ -349,6 +350,8 @@ Current built-in providers:
 - `nl.button`: horizontal padding.
 - `nl.list`: item gap and editor preview count.
 - `nl.frame`: user-facing Page component; target Page selector and advanced params live in inspector, insert entry is Page-only overflow.
+
+`nl.slider` currently has no Docker Bar quick controls. Value/range live in the inspector; Track/Handle appearance is edited by entering its internal Container parts.
 
 Shared helper:
 

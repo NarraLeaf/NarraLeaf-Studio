@@ -415,7 +415,7 @@ function renderElementTree(
         .filter((node): node is ReactNode => node !== null);
     };
 
-    const children = resolved.type === "nl.list" ? [] : renderChildren();
+    const children = resolved.type === "nl.list" || resolved.type === "nl.slider" ? [] : renderChildren();
 
     const renderer = rendererRegistry.get(resolved.type);
     const content = renderer

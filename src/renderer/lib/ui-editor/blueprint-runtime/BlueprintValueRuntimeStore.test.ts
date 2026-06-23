@@ -6,6 +6,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
 } from "@shared/types/blueprint/graph";
@@ -92,7 +93,7 @@ function singleValueBlueprintDocument(input: {
     blueprintId: string;
     elementId: string;
     propPath: string;
-    valueType: "string" | "json";
+    valueType: "string" | "json" | "float";
     graph: BlueprintGraphIr;
 }): BlueprintDocument {
     const ownerKey = `widgetValue:surface:${input.elementId}:${input.propPath}`;
@@ -343,5 +344,67 @@ describe("BlueprintValueRuntimeStore", () => {
         });
         const merged = mergeElementWithBlueprintValues(document.elements.frame!, "surface", store);
         expect(merged.props?.params).toEqual({ title: "Dynamic", count: 2 });
+    });
+
+    it("merges resolved Slider values as clamped and snapped floats", async () => {
+        const surface: UISurface = {
+            id: "surface",
+            name: "Surface",
+            host: "app",
+            kind: "appSurface",
+            designSize: { width: 320, height: 180 },
+            rootElementId: "root",
+        };
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [surface],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["slider"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                slider: {
+                    id: "slider",
+                    type: "nl.slider",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 240, height: 40 },
+                    props: {
+                        value: 20,
+                        min: 0,
+                        max: 100,
+                        step: 5,
+                        orientation: "horizontal",
+                    },
+                    valueBindings: {
+                        value: { kind: "blueprintValue", blueprintId: "bp-slider", valueType: "float" },
+                    },
+                },
+            },
+        };
+        const store = new BlueprintValueRuntimeStore(() => undefined);
+        store.sync({
+            document,
+            surface,
+            blueprintDocument: singleValueBlueprintDocument({
+                blueprintId: "bp-slider",
+                elementId: "slider",
+                propPath: "value",
+                valueType: "float",
+                graph: literalInitGraph(BLUEPRINT_NODE_TYPE_LITERAL_FLOAT, 87.5),
+            }),
+            hostAdapter: { host: "app" },
+        });
+
+        await waitFor(() => {
+            expect(store.getResolvedValue("surface", "slider", "value", "bp-slider").hasResolved).toBe(true);
+        });
+        const merged = mergeElementWithBlueprintValues(document.elements.slider!, "surface", store);
+        expect(merged.props?.value).toBe(90);
     });
 });

@@ -7,7 +7,7 @@ import {
     type InsertPaletteConfigEntry,
 } from "./insertPalette";
 
-const DEFAULT_MODULE_TYPES = ["nl.container", "nl.text", "nl.image", "nl.button", "nl.list", "nl.frame"] as const;
+const DEFAULT_MODULE_TYPES = ["nl.container", "nl.text", "nl.image", "nl.button", "nl.slider", "nl.list", "nl.frame"] as const;
 
 function createModule(type: string): UIWidgetModule {
     return {
@@ -37,7 +37,8 @@ describe("insert palette", () => {
             "primary",
             "primary",
             "primary",
-            "primary",
+            "overflow",
+            "overflow",
             "overflow",
         ]);
     });
