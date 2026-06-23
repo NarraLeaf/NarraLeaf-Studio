@@ -118,20 +118,22 @@ export class AssetsMetadataManager {
 
     private async initAssetsMetadata(): Promise<void> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const files = [
-            AssetType.Image,
-            AssetType.Audio,
-            AssetType.Video,
-            AssetType.JSON,
-            AssetType.Blueprint,
-            AssetType.Font,
-            AssetType.Other,
-        ].map(type => this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type)));
+        const files = Object.values(AssetType).map(type => ({
+            type,
+            path: this.getContext().project.resolve(ProjectNameConvention.AssetsMetadataShard(type)),
+        }));
 
-        const tasks = files.map(file => filesystemService.ensureRegularFile(file, JSON.stringify({}), "utf-8"));
+        const tasks = files.map(file => filesystemService.ensureRegularFile(file.path, JSON.stringify({}), "utf-8"));
         const results = await Promise.all(tasks);
-        if (results.some(result => !result.ok)) {
-            throw new RendererError(`Failed to read assets metadata shards`);
+        const failedIndex = results.findIndex(result => !result.ok);
+        if (failedIndex >= 0) {
+            const failed = results[failedIndex];
+            const file = files[failedIndex];
+            if (!failed.ok) {
+                throw new RendererError(
+                    `Failed to initialize assets metadata shard (${file.type}): ${file.path}: ${failed.error.code} ${failed.error.message}`
+                );
+            }
         }
     }
 

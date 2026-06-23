@@ -20,7 +20,6 @@ import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/docume
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIListChildSlot } from "@shared/types/ui-editor/list";
 import {
-    applyBlueprintIrConnection,
     createGraphNodeForPalette,
     ensureBlueprintGraphIr,
     graphIrHasFunctionEntry,
@@ -56,7 +55,11 @@ import type {
     BlueprintMagicElementRefPaletteEntry,
     BlueprintNodeEditorCatalogEntry,
 } from "@/lib/ui-editor/blueprint-nodes/types";
-import { BLUEPRINT_NODE_TYPE_ELEMENT_REF } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "@/lib/ui-editor/blueprint-nodes/types";
+import {
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+} from "@shared/types/blueprint/graph";
 import {
     ELEMENT_REF_PARAM_ELEMENT_ID,
     ELEMENT_REF_PARAM_ELEMENT_TYPE,
@@ -133,7 +136,7 @@ type BlueprintEditorViewportPanelState = {
 
 const BLUEPRINT_EDITOR_MEMBER_PANEL_STATE_ID = "blueprintEditor.memberPanel";
 const BLUEPRINT_EDITOR_FLOW_VIEWPORT_STATE_PREFIX = "blueprintEditor.flowViewport";
-const BLUEPRINT_VARIABLE_GROUP_KEYS: BlueprintVariableGroupKey[] = ["page", "blueprint", "global"];
+const BLUEPRINT_VARIABLE_GROUP_KEYS: BlueprintVariableGroupKey[] = ["page", "blueprint", "global", "persistent"];
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 
 function normalizeBlueprintFlowViewport(raw: unknown): BlueprintFlowViewport | null {
@@ -229,7 +232,7 @@ function collectMagicElementRefs(input: {
     }
     const out: BlueprintMagicElementRefPaletteEntry[] = [];
     for (const node of Object.values(input.ir.nodes ?? {})) {
-        if (node.type !== BLUEPRINT_NODE_TYPE_ELEMENT_REF) {
+        if (!isElementBindingNodeType(node.type)) {
             continue;
         }
         const ref = readBlueprintElementRefParams(node.params);
@@ -255,6 +258,10 @@ function collectMagicElementRefs(input: {
 
 const ELEMENT_LITERAL_PREVIEW_WIDTH = 176;
 const ELEMENT_LITERAL_PREVIEW_HEIGHT = 72;
+
+function isElementBindingNodeType(type: string): boolean {
+    return type === BLUEPRINT_NODE_TYPE_ELEMENT_REF || type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH;
+}
 
 function previewNumber(value: number | undefined, fallback: number): number {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -664,20 +671,17 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             }
             const id = uuid.generate();
             const node = createGraphNodeForPalette(entry.type, id);
+            if (entry.magicElementRef) {
+                node.params = {
+                    ...(node.params ?? {}),
+                    [BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN]: true,
+                };
+            }
             writeNodeEditorLayout(node, flowPosition);
             const mut = (draft: BlueprintGraphIr) => {
                 // Mutate `draft` in place — `ensureBlueprintGraphIr(draft)` returns a new object, so assigning
                 // to that copy would not update the IR reference held by LocalBlueprintService.
                 draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
-                const magic = entry.magicElementRef;
-                if (magic) {
-                    draft.edges = applyBlueprintIrConnection(draft, {
-                        source: magic.sourceNodeId,
-                        target: node.id,
-                        sourceHandle: magic.sourcePortId,
-                        targetHandle: magic.targetPortId,
-                    });
-                }
             };
             if (editor.graphView.kind === "event") {
                 localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
@@ -731,7 +735,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             hasFunctionEntry: false,
             isBlueprintValueGraph: bp.owner.kind === "widgetValue",
             listItemContextAvailable,
-        })).filter(entry => entry.role === "eventHead");
+        })).filter(entry => entry.role === "eventHead" || entry.role === "elementEventHead");
         const defaultLayerName = `Layer ${eventIds.length + 1}`;
 
         let selection: BlueprintEventLayerDialogValue = createDefaultBlueprintEventLayerValue(
@@ -950,7 +954,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         const uiDocument = uidoc.getDocument();
         const previews: Record<string, NonNullable<BlueprintFlowNodeData["elementPreview"]>> = {};
         for (const node of Object.values(activeIr.nodes ?? {})) {
-            if (node.type !== BLUEPRINT_NODE_TYPE_ELEMENT_REF) {
+            if (!isElementBindingNodeType(node.type)) {
                 continue;
             }
             const ref = readBlueprintElementRefParams(node.params);
@@ -1006,9 +1010,28 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         }));
     }, [doc, revision, payload.blueprintId, payload.surfaceId]);
 
+    const blueprintPersistentVariables = useMemo(() => {
+        return Object.values(doc.persistentVariables ?? {})
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map(variable => ({
+                id: variable.id,
+                name: variable.name,
+                value: variable.id,
+                valueType: variable.valueType,
+            }));
+    }, [doc, revision]);
+
     const blueprintMembersSig = useMemo(
-        () => blueprintMemberVariables.map(v => `${v.value}:${v.name}:${v.valueType ?? ""}:${v.disambiguationLabel ?? ""}`).join("|"),
-        [blueprintMemberVariables],
+        () =>
+            [
+                blueprintMemberVariables
+                    .map(v => `${v.value}:${v.name}:${v.valueType ?? ""}:${v.disambiguationLabel ?? ""}`)
+                    .join("|"),
+                blueprintPersistentVariables
+                    .map(v => `${v.value}:${v.name}:${v.valueType ?? ""}`)
+                    .join("|"),
+            ].join("||"),
+        [blueprintMemberVariables, blueprintPersistentVariables],
     );
 
     const dynamicSelectOptions = useMemo<Record<string, BlueprintInspectorParamSelectOption[]>>(() => {
@@ -1146,6 +1169,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                         revision={revision}
                         blueprintMembersSig={blueprintMembersSig}
                         blueprintMemberVariables={blueprintMemberVariables}
+                        blueprintPersistentVariables={blueprintPersistentVariables}
                         selectedNodeIds={editor.selectedNodeIds}
                         onSelectNodeIds={editor.setSelectedNodeIds}
                         onCommitIr={commitIr}

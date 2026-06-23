@@ -6,7 +6,9 @@
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
@@ -33,6 +35,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
 } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_VALUE_TYPE_ELEMENT } from "@shared/types/blueprint/valueTypes";
 import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../../types";
 
@@ -117,6 +120,13 @@ const PIN_PREVIOUS_VALUE: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "float",
     label: "Previous Value",
+};
+const PIN_ELEMENT: BlueprintNodePinDef = {
+    id: "element",
+    kind: "output",
+    semantic: "data",
+    valueType: BLUEPRINT_VALUE_TYPE_ELEMENT,
+    label: "Element",
 };
 
 function widgetTypesForHead(headType: string): string[] {
@@ -283,6 +293,24 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         displayName: "Blur",
         keywords: ["blur", "focus", "keyboard", "gamepad"],
     }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+        displayName: "On Flush",
+        keywords: ["flush", "render", "redraw", "update", "current"],
+        pins: [THEN_PIN, PIN_ELEMENT],
+    }),
+    {
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+        displayName: "Element Flush",
+        category: "Events",
+        keywords: ["element", "flush", "listen", "render", "redraw", "update"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "elementEventHead",
+        scope: { ownerKinds: ["widgetMain", "surfaceMain"] },
+        pins: [THEN_PIN, PIN_ELEMENT],
+        execute: eventHeadExecute,
+    },
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
         displayName: "Scroll",

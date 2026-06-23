@@ -80,6 +80,11 @@ export enum IPCEventType {
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
     devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
 
+    blueprintPersistenceGetAll = "blueprintPersistence.getAll",
+    blueprintPersistenceGetValue = "blueprintPersistence.getValue",
+    blueprintPersistenceSetValue = "blueprintPersistence.setValue",
+    blueprintPersistenceRemoveValue = "blueprintPersistence.removeValue",
+
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
 
@@ -98,6 +103,11 @@ export type RequestStatus<T> = {
     success: false;
     data?: never;
     error?: string;
+};
+
+export type BlueprintPersistenceProjectRef = {
+    projectIdentifier?: string;
+    projectPath: string;
 };
 
 export type IPCEvents = {
@@ -223,7 +233,7 @@ export type IPCEvents = {
             path: string;
         };
     };
-} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPluginPermissionEvents & IPCPrivilegedEvents;
+} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPrivilegedEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -586,6 +596,49 @@ export type IPCDevModeEvents = {
         data: PreviewStudioBlueprintOpenPayload & {
             projectPath: string;
         };
+        response: void;
+    };
+};
+
+export type IPCBlueprintPersistenceEvents = {
+    [IPCEventType.blueprintPersistenceGetAll]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: BlueprintPersistenceProjectRef;
+        },
+        response: {
+            values: Record<string, unknown>;
+        };
+    };
+    [IPCEventType.blueprintPersistenceGetValue]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: BlueprintPersistenceProjectRef;
+            key: string;
+        },
+        response: {
+            value: unknown;
+        };
+    };
+    [IPCEventType.blueprintPersistenceSetValue]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: BlueprintPersistenceProjectRef;
+            key: string;
+            value: unknown;
+        },
+        response: void;
+    };
+    [IPCEventType.blueprintPersistenceRemoveValue]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: BlueprintPersistenceProjectRef;
+            key: string;
+        },
         response: void;
     };
 };

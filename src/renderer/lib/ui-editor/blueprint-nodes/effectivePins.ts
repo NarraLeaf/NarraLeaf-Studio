@@ -9,6 +9,7 @@ import type {
     BlueprintNodeEditorCatalogEntry,
     BlueprintNodePinDef,
 } from "./types";
+import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "./types";
 import { BLUEPRINT_NODE_TYPE_ELEMENT_REF } from "@shared/types/blueprint/graph";
 import { blueprintElementValueType } from "@shared/types/blueprint/valueTypes";
 
@@ -136,9 +137,17 @@ export function resolveEffectiveBlueprintNodePins(
     def: BlueprintNodeDef,
     params?: Record<string, unknown>,
 ): BlueprintNodePinDef[] {
+    const magicInputPinId = def.magicElementTarget?.inputPinId;
+    const showMagicInputPin =
+        Boolean(params?.[BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN]) ||
+        (Boolean(def.magicElementTarget) && !def.scope);
+    const basePins =
+        magicInputPinId && !showMagicInputPin
+            ? def.pins.filter(pin => pin.id !== magicInputPinId)
+            : def.pins;
     if (def.type === BLUEPRINT_NODE_TYPE_ELEMENT_REF) {
         const elementType = typeof params?.elementType === "string" ? params.elementType : undefined;
-        return def.pins.map(pin =>
+        return basePins.map(pin =>
             pin.kind === "output" && pin.semantic === "data" && pin.id === "element"
                 ? {
                       ...pin,
@@ -149,12 +158,12 @@ export function resolveEffectiveBlueprintNodePins(
     }
     const cfg = def.dynamicInputPins;
     if (!cfg || !params) {
-        return def.pins;
+        return basePins;
     }
 
     const extraIds = readDynamicInputPinIds(params, cfg.storageKey);
-    const inputs = def.pins.filter(p => p.kind === "input");
-    const outputs = def.pins.filter(p => p.kind === "output");
+    const inputs = basePins.filter(p => p.kind === "input");
+    const outputs = basePins.filter(p => p.kind === "output");
 
     const execInputs = inputs.filter(p => p.semantic === "exec");
     const fixedDataInputs = inputs.filter(
@@ -165,7 +174,7 @@ export function resolveEffectiveBlueprintNodePins(
     const dynamicPins: BlueprintNodePinDef[] = [];
     let dynOrdinal = 0;
     for (const id of extraIds) {
-        if (def.pins.some(p => p.id === id)) {
+        if (basePins.some(p => p.id === id)) {
             continue;
         }
         dynOrdinal += 1;

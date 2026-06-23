@@ -4,6 +4,7 @@ import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schem
 import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -31,6 +32,7 @@ function returnGraph(value: string): BlueprintGraphIr {
 function valueDocument(graph: BlueprintGraphIr): BlueprintDocument {
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+        persistentVariables: {},
         blueprints: {
             "bp-value": {
                 id: "bp-value",
@@ -60,7 +62,7 @@ function valueDocument(graph: BlueprintGraphIr): BlueprintDocument {
     };
 }
 
-function hostAdapter(text = "Bound text", onSetText?: () => void): UIHostAdapter {
+function hostAdapter(text = "Bound text", onSetText?: () => void, sliderValue = 37): UIHostAdapter {
     return {
         host: "player",
         blueprintRuntime: {
@@ -93,6 +95,13 @@ function hostAdapter(text = "Bound text", onSetText?: () => void): UIHostAdapter
                         rotation: 0,
                         opacity: 1,
                         visible: true,
+                    }),
+                    getSliderProperties: () => ({
+                        value: sliderValue,
+                        normalizedValue: sliderValue / 100,
+                        min: 0,
+                        max: 100,
+                        step: 1,
                     }),
                 },
             },
@@ -165,6 +174,32 @@ describe("Blueprint Value evaluator", () => {
             returned: true,
             value: "From B",
             dependencies: [{ surfaceId: "surface", elementId: "text-b", propPath: "props.text" }],
+        });
+    });
+
+    it("tracks Slider mapped value dependencies while resolving return data pins", async () => {
+        const graph: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, params: {} },
+                element: {
+                    id: "element",
+                    type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                    params: { surfaceId: "surface", elementId: "slider-b", elementType: "nl.slider" },
+                },
+                getValue: { id: "getValue", type: BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE, params: {} },
+                ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "ret", port: "in" } },
+                { from: { nodeId: "element", port: "element" }, to: { nodeId: "getValue", port: "slider" } },
+                { from: { nodeId: "getValue", port: "value" }, to: { nodeId: "ret", port: "value" } },
+            ],
+        };
+
+        await expect(evalValue(valueDocument(graph), hostAdapter("Text", undefined, 42))).resolves.toEqual({
+            returned: true,
+            value: 42,
+            dependencies: [{ surfaceId: "surface", elementId: "slider-b", propPath: "props.value" }],
         });
     });
 

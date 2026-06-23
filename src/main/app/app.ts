@@ -200,11 +200,9 @@ export class App extends BaseApp {
         await window.show();
         window.win.focus();
 
-        if (this.isDevMode()) {
-            window.onKeyUp("F12", () => {
-                window.toggleDevTools();
-            });
-        }
+        window.onKeyUp("F12", () => {
+            window.toggleDevTools();
+        });
 
         return window;
     }

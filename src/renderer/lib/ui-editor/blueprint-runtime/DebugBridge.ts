@@ -29,13 +29,14 @@ export class DebugBridge {
     private readonly listeners = new Set<DebugEventListener>();
     private readonly buffer: BlueprintDebugEvent[] = [];
     private readonly maxBuffer = 200;
+    private notifyScheduled = false;
 
     public emit(event: BlueprintDebugEvent): void {
         this.buffer.push(sanitizeBlueprintDebugEvent(event));
         if (this.buffer.length > this.maxBuffer) {
             this.buffer.splice(0, this.buffer.length - this.maxBuffer);
         }
-        this.notifyListeners();
+        this.scheduleNotifyListeners();
     }
 
     public subscribe(listener: DebugEventListener): () => void {
@@ -51,7 +52,23 @@ export class DebugBridge {
 
     public clear(): void {
         this.buffer.length = 0;
-        this.notifyListeners();
+        this.scheduleNotifyListeners();
+    }
+
+    private scheduleNotifyListeners(): void {
+        if (this.notifyScheduled) {
+            return;
+        }
+        this.notifyScheduled = true;
+        const notify = () => {
+            this.notifyScheduled = false;
+            this.notifyListeners();
+        };
+        if (typeof globalThis.requestAnimationFrame === "function") {
+            globalThis.requestAnimationFrame(notify);
+        } else {
+            queueMicrotask(notify);
+        }
     }
 
     private notifyListeners(): void {

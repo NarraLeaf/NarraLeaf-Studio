@@ -8,13 +8,18 @@ interface SearchBoxProps {
     className?: string;
     variant?: "default" | "minimal";
     onBlur?: () => void;
+    inputRef?: React.Ref<HTMLInputElement>;
+    inputProps?: Omit<
+        React.InputHTMLAttributes<HTMLInputElement>,
+        "value" | "onChange" | "onFocus" | "onBlur" | "onKeyDown" | "placeholder" | "className"
+    >;
 }
 
 /**
  * Search box component for asset panel
  */
 export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
-    ({ value, onChange, placeholder = "Search", className = "", variant = "default", onBlur }, ref) => {
+    ({ value, onChange, placeholder = "Search", className = "", variant = "default", onBlur, inputRef, inputProps }, ref) => {
         const [isFocused, setIsFocused] = useState(false);
 
         const handleClear = useCallback(() => {
@@ -46,7 +51,8 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
         if (variant === "minimal") {
             return (
                 <input
-                    ref={ref as React.Ref<HTMLInputElement>}
+                    {...inputProps}
+                    ref={inputRef ?? ref as React.Ref<HTMLInputElement>}
                     type="text"
                     value={value}
                     onChange={handleInputChange}
@@ -71,6 +77,8 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                 `}>
                     <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
                     <input
+                        {...inputProps}
+                        ref={inputRef}
                         type="text"
                         value={value}
                         onChange={handleInputChange}
@@ -82,9 +90,11 @@ export const SearchBox = forwardRef<HTMLElement, SearchBoxProps>(
                     />
                     {value && (
                         <button
+                            type="button"
                             onClick={handleClear}
                             className="p-0.5 rounded hover:bg-white/10 text-gray-400 hover:text-gray-300 transition-colors"
                             title="Clear search"
+                            aria-label="Clear search"
                         >
                             <X className="w-3 h-3" />
                         </button>

@@ -14,6 +14,7 @@ export type TextWidgetProps = {
     fontSize: number;
     color: string;
     fontWeight: "normal" | "bold" | "600";
+    fontStyle: "normal" | "italic";
     textAlign: TextAlign;
     textVerticalAlign: TextVerticalAlign;
     lineHeight: number;
@@ -29,6 +30,7 @@ export const defaultTextWidgetProps: TextWidgetProps = {
     fontSize: 16,
     color: "#e5e7eb",
     fontWeight: "normal",
+    fontStyle: "normal",
     textAlign: "left",
     textVerticalAlign: "start",
     lineHeight: 1.4,

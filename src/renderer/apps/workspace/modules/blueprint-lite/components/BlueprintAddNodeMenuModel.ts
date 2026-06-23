@@ -15,7 +15,6 @@ const DOCUMENTED_CATEGORY_ORDER = [
     "Displayable",
     "Page",
     "Variables",
-    "Persistence",
     "Data",
     "Math",
     "Text",

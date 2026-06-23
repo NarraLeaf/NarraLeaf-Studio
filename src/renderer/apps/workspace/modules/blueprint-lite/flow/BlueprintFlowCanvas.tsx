@@ -7,11 +7,13 @@ import {
     useRef,
     useState,
     type MouseEvent as ReactMouseEvent,
+    type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
     ReactFlow,
     Background,
     MiniMap,
+    PanOnScrollMode,
     ReactFlowProvider,
     SelectionMode,
     useEdgesState,
@@ -20,6 +22,7 @@ import {
     type Connection,
     type Edge,
     type Node,
+    type Viewport,
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE } from "@shared/types/blueprint/graph";
@@ -73,12 +76,12 @@ function generateUniqueDynamicPinLabel(existing: Record<string, string>, prefix:
 }
 
 function buildPlacementPreviewFlowNode(
-    nodeType: string,
+    entry: BlueprintNodeEditorCatalogEntry,
     position: { x: number; y: number },
-    nodeCatalog: IBlueprintNodeCatalogService,
     memberVariables: BlueprintFlowNodeData["memberVariables"],
+    persistentVariables: BlueprintFlowNodeData["persistentVariables"],
 ): Node<BlueprintFlowNodeData> {
-    const stub = createGraphNodeForPalette(nodeType, BP_PLACEMENT_PREVIEW_ID);
+    const stub = createGraphNodeForPalette(entry.type, BP_PLACEMENT_PREVIEW_ID);
     return {
         id: BP_PLACEMENT_PREVIEW_ID,
         type: "blueprint",
@@ -89,10 +92,11 @@ function buildPlacementPreviewFlowNode(
         focusable: false,
         style: { opacity: 0.92 },
         data: {
-            catalog: nodeCatalog.resolveCatalogEntry(nodeType),
+            catalog: entry,
             nodeId: BP_PLACEMENT_PREVIEW_ID,
             params: stub.params ?? {},
             memberVariables,
+            persistentVariables,
             wiredInputPortIds: new Set(),
         },
     };
@@ -119,6 +123,7 @@ type BlueprintFlowCanvasInnerProps = {
     /** Bumps React Flow sync when blueprint member variables change (node card dropdowns). */
     blueprintMembersSig: string;
     blueprintMemberVariables: NonNullable<BlueprintFlowNodeData["memberVariables"]>;
+    blueprintPersistentVariables: NonNullable<BlueprintFlowNodeData["persistentVariables"]>;
     selectedNodeIds: readonly string[];
     onSelectNodeIds: (ids: string[]) => void;
     onCommitIr: (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => void;
@@ -193,6 +198,7 @@ function BlueprintFlowCanvasInner({
     revision,
     blueprintMembersSig,
     blueprintMemberVariables,
+    blueprintPersistentVariables,
     selectedNodeIds,
     onSelectNodeIds,
     onCommitIr,
@@ -206,7 +212,7 @@ function BlueprintFlowCanvasInner({
     initialViewport,
     onViewportChange,
 }: BlueprintFlowCanvasInnerProps) {
-    const { getNodes, screenToFlowPosition, fitView } = useReactFlow();
+    const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
     const nodeDiagnosticsByNodeId = useMemo(
@@ -251,11 +257,21 @@ function BlueprintFlowCanvasInner({
                 } else {
                     delete next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
                 }
+            } else if (key === "persistentVariableId") {
+                const selectedVariable =
+                    typeof value === "string"
+                        ? blueprintPersistentVariables.find(variable => variable.value === value)
+                        : undefined;
+                if (selectedVariable?.valueType) {
+                    next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE] = selectedVariable.valueType;
+                } else {
+                    delete next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
+                }
             }
             n.params = next;
             commitBlueprintIr(snap, history);
         },
-        [blueprintMemberVariables, commitBlueprintIr],
+        [blueprintMemberVariables, blueprintPersistentVariables, commitBlueprintIr],
     );
 
     const patchNodeParamRef = useRef(patchNodeParam);
@@ -407,6 +423,13 @@ function BlueprintFlowCanvasInner({
     const pendingPlacementPosRef = useRef({ x: 0, y: 0 });
     /** Latest screen pointer; used so preview snaps to cursor when picking a type (menu flow pos is stale). */
     const lastPointerClientRef = useRef({ x: 0, y: 0 });
+    const controlPanStateRef = useRef<{
+        pointerId: number;
+        startClientX: number;
+        startClientY: number;
+        startViewport: Viewport;
+        latestViewport: Viewport;
+    } | null>(null);
 
     useEffect(() => {
         const sync = (e: PointerEvent) => {
@@ -420,18 +443,28 @@ function BlueprintFlowCanvasInner({
         };
     }, []);
 
+    const cancelPendingPlacement = useCallback(() => {
+        pendingPlacementEntryRef.current = null;
+        setPendingPlacementEntry(null);
+        setNodes(nds =>
+            nds.some(n => n.id === BP_PLACEMENT_PREVIEW_ID)
+                ? nds.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID)
+                : nds,
+        );
+    }, [setNodes]);
+
     const commitPendingPlacement = useCallback(() => {
         const entry = pendingPlacementEntryRef.current;
         if (!entry) {
             return;
         }
         const pos = pendingPlacementPosRef.current;
-        setPendingPlacementEntry(null);
+        cancelPendingPlacement();
         const newId = onAddNodeAtFlowPosition?.(entry, pos);
         if (typeof newId === "string" && newId.length > 0) {
             onSelectNodeIds([newId]);
         }
-    }, [onAddNodeAtFlowPosition, onSelectNodeIds]);
+    }, [cancelPendingPlacement, onAddNodeAtFlowPosition, onSelectNodeIds]);
 
     const commitPendingPlacementRef = useRef(commitPendingPlacement);
     commitPendingPlacementRef.current = commitPendingPlacement;
@@ -450,12 +483,14 @@ function BlueprintFlowCanvasInner({
         const onKey = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
                 e.preventDefault();
-                setPendingPlacementEntry(null);
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                cancelPendingPlacement();
             }
         };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [pendingPlacementEntry]);
+        window.addEventListener("keydown", onKey, true);
+        return () => window.removeEventListener("keydown", onKey, true);
+    }, [cancelPendingPlacement, pendingPlacementEntry]);
 
     useEffect(() => {
         if (!pendingPlacementEntry) {
@@ -473,6 +508,45 @@ function BlueprintFlowCanvasInner({
         window.addEventListener("mousemove", onMove);
         return () => window.removeEventListener("mousemove", onMove);
     }, [pendingPlacementEntry, screenToFlowPosition, setNodes]);
+
+    useEffect(() => {
+        const handlePointerMove = (event: PointerEvent) => {
+            const pan = controlPanStateRef.current;
+            if (!pan || event.pointerId !== pan.pointerId) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+
+            const nextViewport = {
+                x: pan.startViewport.x + event.clientX - pan.startClientX,
+                y: pan.startViewport.y + event.clientY - pan.startClientY,
+                zoom: pan.startViewport.zoom,
+            };
+            pan.latestViewport = nextViewport;
+            void setViewport(nextViewport, { duration: 0 });
+        };
+
+        const finishPointerPan = (event: PointerEvent) => {
+            const pan = controlPanStateRef.current;
+            if (!pan || event.pointerId !== pan.pointerId) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            controlPanStateRef.current = null;
+            onViewportChange?.(pan.latestViewport);
+        };
+
+        window.addEventListener("pointermove", handlePointerMove, { passive: false });
+        window.addEventListener("pointerup", finishPointerPan, { passive: false });
+        window.addEventListener("pointercancel", finishPointerPan, { passive: false });
+        return () => {
+            window.removeEventListener("pointermove", handlePointerMove);
+            window.removeEventListener("pointerup", finishPointerPan);
+            window.removeEventListener("pointercancel", finishPointerPan);
+        };
+    }, [onViewportChange, setViewport]);
 
     useEffect(() => {
         const snap = irRef.current;
@@ -502,6 +576,7 @@ function BlueprintFlowCanvasInner({
                     nodeCatalog,
                     stablePatchNodeParam,
                     blueprintMemberVariables,
+                    blueprintPersistentVariables,
                     stableAddDynamicInputPin,
                     stableRemoveDynamicInputPin,
                     dynamicSelectOptions,
@@ -515,10 +590,10 @@ function BlueprintFlowCanvasInner({
                     out = [
                         ...withSel,
                         buildPlacementPreviewFlowNode(
-                            pendingPlacementEntry.type,
+                            pendingPlacementEntry,
                             pendingPlacementPosRef.current,
-                            nodeCatalog,
                             blueprintMemberVariables,
+                            blueprintPersistentVariables,
                         ),
                     ];
                 }
@@ -545,10 +620,10 @@ function BlueprintFlowCanvasInner({
                 return [
                     ...next,
                     buildPlacementPreviewFlowNode(
-                        pendingPlacementEntry.type,
+                        pendingPlacementEntry,
                         pendingPlacementPosRef.current,
-                        nodeCatalog,
                         blueprintMemberVariables,
+                        blueprintPersistentVariables,
                     ),
                 ];
             });
@@ -560,6 +635,7 @@ function BlueprintFlowCanvasInner({
         return () => window.clearTimeout(t);
     }, [
         blueprintMemberVariables,
+        blueprintPersistentVariables,
         blueprintMembersSig,
         graphKey,
         nodeCatalog,
@@ -712,7 +788,7 @@ function BlueprintFlowCanvasInner({
                 return;
             }
             if (deleted.some(n => n.id === BP_PLACEMENT_PREVIEW_ID)) {
-                setPendingPlacementEntry(null);
+                cancelPendingPlacement();
             }
             const real = deleted.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID);
             if (real.length === 0) {
@@ -726,7 +802,7 @@ function BlueprintFlowCanvasInner({
             onSelectNodeIds([]);
             commitBlueprintIr(next);
         },
-        [commitBlueprintIr, onSelectNodeIds],
+        [cancelPendingPlacement, commitBlueprintIr, onSelectNodeIds],
     );
 
     const onPaneClick = useCallback(
@@ -739,6 +815,40 @@ function BlueprintFlowCanvasInner({
         },
         [],
     );
+
+    const onControlPanPointerDownCapture = useCallback(
+        (e: ReactPointerEvent<HTMLDivElement>) => {
+            if (e.button !== 0 || !e.ctrlKey || pendingPlacementEntryRef.current) {
+                return;
+            }
+            const target = e.target instanceof HTMLElement ? e.target : null;
+            if (target?.closest("textarea, input, select, [contenteditable='true']")) {
+                return;
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.setPointerCapture?.(e.pointerId);
+
+            const startViewport = getViewport();
+            controlPanStateRef.current = {
+                pointerId: e.pointerId,
+                startClientX: e.clientX,
+                startClientY: e.clientY,
+                startViewport,
+                latestViewport: startViewport,
+            };
+        },
+        [getViewport],
+    );
+
+    const onControlPanContextMenuCapture = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+        if (!e.ctrlKey) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+    }, []);
 
     const onPlacementPreviewNodeClick = useCallback((_e: ReactMouseEvent, node: Node) => {
         if (node.id !== BP_PLACEMENT_PREVIEW_ID || !pendingPlacementEntryRef.current) {
@@ -753,6 +863,9 @@ function BlueprintFlowCanvasInner({
                 return;
             }
             e.preventDefault();
+            if ("ctrlKey" in e && e.ctrlKey) {
+                return;
+            }
             if (pendingPlacementEntryRef.current) {
                 commitPendingPlacementRef.current();
             }
@@ -773,6 +886,8 @@ function BlueprintFlowCanvasInner({
         <div
             className="relative h-full w-full min-h-0"
             style={pendingPlacementEntry ? { cursor: "crosshair" } : undefined}
+            onPointerDownCapture={onControlPanPointerDownCapture}
+            onContextMenuCapture={onControlPanContextMenuCapture}
         >
             <ReactFlow
                 key={graphKey}
@@ -794,7 +909,13 @@ function BlueprintFlowCanvasInner({
                 onSelectionChange={onSelectionChange}
                 selectionOnDrag={!pendingPlacementEntry}
                 selectionMode={SelectionMode.Partial}
+                multiSelectionKeyCode="Shift"
                 panOnDrag={[1]}
+                panOnScroll
+                panOnScrollMode={PanOnScrollMode.Free}
+                panOnScrollSpeed={1}
+                zoomOnScroll={false}
+                zoomOnPinch
                 onMoveEnd={(_, viewport) => onViewportChange?.({
                     x: viewport.x,
                     y: viewport.y,

@@ -328,26 +328,28 @@ export class GroupAssetsManager {
 
     private async initAssetsGroups(): Promise<void> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const files = [
-            AssetType.Image,
-            AssetType.Audio,
-            AssetType.Video,
-            AssetType.JSON,
-            AssetType.Blueprint,
-            AssetType.Font,
-            AssetType.Other,
-        ].map(type => this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(type)));
+        const files = Object.values(AssetType).map(type => ({
+            type,
+            path: this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(type)),
+        }));
 
         const tasks = files.map(async file => {
-            const existsResult = await filesystemService.isFileExists(file);
+            const existsResult = await filesystemService.isFileExists(file.path);
             if (!existsResult.ok || !existsResult.data) {
-                return filesystemService.write(file, JSON.stringify({}), "utf-8");
+                return filesystemService.write(file.path, JSON.stringify({}), "utf-8");
             }
             return { ok: true, data: void 0 } satisfies FsRequestResult<void, true>;
         });
         const results = await Promise.all(tasks);
-        if (results.some(result => !result.ok)) {
-            throw new RendererError(`Failed to initialize assets groups shards`);
+        const failedIndex = results.findIndex(result => !result.ok);
+        if (failedIndex >= 0) {
+            const failed = results[failedIndex];
+            const file = files[failedIndex];
+            if (!failed.ok) {
+                throw new RendererError(
+                    `Failed to initialize assets groups shard (${file.type}): ${file.path}: ${failed.error.code} ${failed.error.message}`
+                );
+            }
         }
     }
 

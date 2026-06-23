@@ -8,6 +8,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+    BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     resolveBlueprintEventHeadTypesForUiSlot,
@@ -15,7 +16,9 @@ import {
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { behaviorNodeRegistry } from "../behavior-graph/BehaviorNodeRegistry";
 import {
+    BLUEPRINT_PIN_INLINE_LITERAL_CUSTOM_VALUE_TYPES,
     BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES,
+    type BlueprintMagicElementRefPaletteEntry,
     type BlueprintNodeDef,
     type BlueprintNodeEditorCatalogEntry,
     type BlueprintPaletteContext,
@@ -26,6 +29,11 @@ type BlueprintNodeGraphContextDef = Pick<
     BlueprintNodeDef,
     "type" | "category" | "graphKinds" | "isPure" | "isLatent" | "role" | "scope"
 >;
+
+const INLINE_LITERAL_VALUE_TYPES = [
+    ...BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES,
+    ...BLUEPRINT_PIN_INLINE_LITERAL_CUSTOM_VALUE_TYPES,
+];
 
 function headTypesForWidgetSlot(
     slotId: string,
@@ -96,6 +104,7 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
         def.category === "List" ||
         def.category === "Math" ||
         def.category === "Text" ||
+        def.category === "Slider" ||
         def.category === "Displayable" ||
         def.category === "Element"
     );
@@ -131,6 +140,31 @@ function matchesBlueprintNodeScope(def: BlueprintNodeGraphContextDef, ctx: Bluep
         return true;
     }
     return matchesBlueprintNodeScopeValue(scope, ctx);
+}
+
+function listCompatibleMagicElementRefs(
+    def: BlueprintNodeDef,
+    ctx: BlueprintPaletteContext,
+): BlueprintMagicElementRefPaletteEntry[] {
+    const target = def.magicElementTarget;
+    if (!target) {
+        return [];
+    }
+    const refs = ctx.magicElementRefs ?? [];
+    if (refs.length === 0) {
+        return [];
+    }
+    const elementTypes = target.elementTypes;
+    return refs
+        .filter(ref => !elementTypes || elementTypes.includes(ref.elementType))
+        .map(ref => ref.targetPortId === target.inputPinId ? ref : { ...ref, targetPortId: target.inputPinId });
+}
+
+function canUseImageAssetLiteral(ctx: BlueprintPaletteContext): boolean {
+    if (ctx.owner.kind === "widgetMain" && ctx.widgetElementType === "nl.image") {
+        return true;
+    }
+    return (ctx.magicElementRefs ?? []).some(ref => ref.elementType === "nl.image");
 }
 
 export function isBlueprintNodeAllowedInGraphContext(
@@ -200,28 +234,7 @@ class BlueprintNodeDefinitionsRegistry {
     }
 
     public toCatalogEntry(def: BlueprintNodeDef): BlueprintNodeEditorCatalogEntry {
-        return {
-            type: def.type,
-            category: def.category,
-            displayName: def.displayName,
-            keywords: def.keywords,
-            isPure: def.isPure,
-            pins: def.pins.map(p => ({
-                id: p.id,
-                kind: p.kind,
-                semantic: p.semantic,
-                valueType: p.valueType,
-                label: p.label,
-                allowInlineLiteral: p.allowInlineLiteral,
-            })),
-            inspectorParams: def.inspectorParams,
-            graphKinds: def.graphKinds,
-            role: def.role,
-            scope: def.scope,
-            supportsDynamicInputPins: Boolean(def.dynamicInputPins),
-            dynamicInputPinAddLabel: def.dynamicInputPins?.addButtonLabel,
-            dynamicInputPinLabelParamKey: def.dynamicInputPins?.pinLabelParamKey,
-        };
+        return resolveEffectiveBlueprintCatalogEntry(def);
     }
 
     public resolveCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry {
@@ -260,47 +273,32 @@ class BlueprintNodeDefinitionsRegistry {
     public listPaletteEntries(ctx: BlueprintPaletteContext): BlueprintNodeEditorCatalogEntry[] {
         const out: BlueprintNodeEditorCatalogEntry[] = [];
         for (const def of this.byType.values()) {
-            if (def.magicElementTarget) {
+            if (def.hideInPalette) {
                 continue;
             }
-            if (def.hideInPalette) {
+            if (def.type === BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL && !canUseImageAssetLiteral(ctx)) {
+                continue;
+            }
+            if (def.requiresListItemContext && !ctx.listItemContextAvailable) {
+                continue;
+            }
+            if (def.magicElementTarget) {
+                const magicElementRefs = listCompatibleMagicElementRefs(def, ctx);
+                if (magicElementRefs.length === 0) {
+                    continue;
+                }
+                if (!isBlueprintNodeAllowedInGraphContext({ ...def, scope: undefined }, ctx)) {
+                    continue;
+                }
+                for (const magicElementRef of magicElementRefs) {
+                    out.push({ ...this.toCatalogEntry(def), magicElementRef });
+                }
                 continue;
             }
             if (!isBlueprintNodeAllowedInGraphContext(def, ctx)) {
                 continue;
             }
             out.push(this.toCatalogEntry(def));
-        }
-        for (const def of this.byType.values()) {
-            if (!def.magicElementTarget) {
-                continue;
-            }
-            if (def.hideInPalette) {
-                continue;
-            }
-            if (!isBlueprintNodeAllowedInGraphContext(def, ctx)) {
-                continue;
-            }
-            const elementTypes = def.magicElementTarget.elementTypes;
-            for (const ref of ctx.magicElementRefs ?? []) {
-                if (elementTypes && !elementTypes.includes(ref.elementType)) {
-                    continue;
-                }
-                out.push({
-                    ...this.toCatalogEntry(def),
-                    displayName: `${ref.label}: ${def.displayName}`,
-                    keywords: [
-                        ...(def.keywords ?? []),
-                        ref.label,
-                        ref.elementId,
-                        ref.elementType,
-                    ],
-                    magicElementRef: {
-                        ...ref,
-                        targetPortId: def.magicElementTarget.inputPinId,
-                    },
-                });
-            }
         }
         return out.sort((a, b) => {
             const c = a.category.localeCompare(b.category);
@@ -311,13 +309,17 @@ class BlueprintNodeDefinitionsRegistry {
             if (n !== 0) {
                 return n;
             }
-            return (a.magicElementRef?.sourceNodeId ?? "").localeCompare(b.magicElementRef?.sourceNodeId ?? "");
+            const t = a.type.localeCompare(b.type);
+            if (t !== 0) {
+                return t;
+            }
+            return 0;
         });
     }
 
     private validatePorts(def: BlueprintNodeDef): void {
         const ids = new Set<string>();
-        const scalarTypes = new Set<string>(BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES);
+        const scalarTypes = new Set<string>(INLINE_LITERAL_VALUE_TYPES);
         for (const p of def.pins) {
             if (!p.id) {
                 throw new Error(`[BlueprintNodeRegistry] Node ${def.type} has pin without id`);
@@ -335,7 +337,7 @@ class BlueprintNodeDefinitionsRegistry {
                 const vt = p.valueType;
                 if (!vt || !scalarTypes.has(vt)) {
                     throw new Error(
-                        `[BlueprintNodeRegistry] allowInlineLiteral requires valueType string|integer|float: ${def.type}.${p.id}`,
+                        `[BlueprintNodeRegistry] allowInlineLiteral requires a supported inline valueType: ${def.type}.${p.id}`,
                     );
                 }
             }
@@ -381,10 +383,10 @@ class BlueprintNodeDefinitionsRegistry {
             }
         }
         if (d.allowInlineLiteral) {
-            const scalarTypes = new Set<string>(BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES);
+            const scalarTypes = new Set<string>(INLINE_LITERAL_VALUE_TYPES);
             if (!d.valueType || !scalarTypes.has(d.valueType)) {
                 throw new Error(
-                    `[BlueprintNodeRegistry] Node ${def.type} dynamic pins allowInlineLiteral requires valueType string|integer|float`,
+                    `[BlueprintNodeRegistry] Node ${def.type} dynamic pins allowInlineLiteral requires a supported inline valueType`,
                 );
             }
         }
@@ -412,10 +414,10 @@ class BlueprintNodeDefinitionsRegistry {
                 );
             }
             if (template.allowInlineLiteral) {
-                const scalarTypes = new Set<string>(BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES);
+                const scalarTypes = new Set<string>(INLINE_LITERAL_VALUE_TYPES);
                 if (!template.valueType || !scalarTypes.has(template.valueType)) {
                     throw new Error(
-                        `[BlueprintNodeRegistry] Node ${def.type} dynamic pin template allowInlineLiteral requires valueType string|integer|float`,
+                        `[BlueprintNodeRegistry] Node ${def.type} dynamic pin template allowInlineLiteral requires a supported inline valueType`,
                     );
                 }
             }

@@ -61,7 +61,14 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_SIZE,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEMS,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_INDEX,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_ITEM,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_RANGE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_ALL_PROPERTIES,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_EFFECTS,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_FONT,
@@ -73,9 +80,16 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT_COLOR,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT_VERTICAL_ALIGN,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_WRAP_MODE,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
     BLUEPRINT_NODE_TYPE_LITERAL_COLOR,
@@ -96,6 +110,8 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_ITEM,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     BLUEPRINT_NODE_TYPE_MATH_ABS,
     BLUEPRINT_NODE_TYPE_MATH_ADD,
     BLUEPRINT_NODE_TYPE_MATH_CEIL,
@@ -168,6 +184,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import {
     type BlueprintElementRef,
+    normalizeBlueprintImageAssetValue,
     normalizeBlueprintRGBAColor,
     normalizeBlueprintVector2D,
 } from "@shared/types/blueprint/valueTypes";
@@ -254,6 +271,13 @@ export type DataPinResolveRuntime = {
     };
     valueExecution?: BehaviorGraphValueExecution;
 };
+
+function isElementBindingOutput(type: string, portId: string): boolean {
+    return (
+        portId === "element" &&
+        (type === BLUEPRINT_NODE_TYPE_ELEMENT_REF || type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH)
+    );
+}
 
 function toFiniteNumber(v: unknown): number {
     if (typeof v === "number" && Number.isFinite(v)) {
@@ -424,7 +448,9 @@ function resolveNodePinValueType(input: {
     }
     if (
         (node.type === BLUEPRINT_NODE_TYPE_LOCAL_GET && input.portId === "value") ||
-        (node.type === BLUEPRINT_NODE_TYPE_LOCAL_SET && input.portId === "value")
+        (node.type === BLUEPRINT_NODE_TYPE_LOCAL_SET && input.portId === "value") ||
+        (node.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET && input.portId === "value") ||
+        (node.type === BLUEPRINT_NODE_TYPE_PERSISTENT_SET && input.portId === "value")
     ) {
         return readParamString(params, BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE) ?? pin.valueType;
     }
@@ -1301,15 +1327,16 @@ function resolveListElementIdInput(
     blueprintLocals: Record<string, unknown> | undefined,
     depth: number,
     runtime?: DataPinResolveRuntime,
+    target: "self" | "element" = "element",
 ): string | undefined {
+    if (target === "self") {
+        return runtime?.executionOwner?.elementId;
+    }
     const ref = sameSurfaceElementRef(
         normalizeBlueprintElementRefValue(resolveInput(graph, nodeId, "list", params, blueprintLocals, depth, runtime)),
         runtime,
     );
-    if (ref) {
-        return ref.elementType === "nl.list" ? ref.elementId : undefined;
-    }
-    return runtime?.executionOwner?.elementId;
+    return ref?.elementType === "nl.list" ? ref.elementId : undefined;
 }
 
 function resolveElementTextNodeOutput(
@@ -1440,6 +1467,49 @@ function resolveElementDisplayableNodeOutput(
     return undefined;
 }
 
+function resolveSelfDisplayableNodeOutput(type: string, portId: string, runtime?: DataPinResolveRuntime): unknown {
+    const isDisplayableNode =
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE;
+    if (!isDisplayableNode) {
+        return undefined;
+    }
+    const elementId = runtime?.executionOwner?.elementId;
+    const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
+    if (!elementId || !api) {
+        return undefined;
+    }
+    let props: ReturnType<typeof api.widget.getDisplayableProperties>;
+    try {
+        props = api.widget.getDisplayableProperties(elementId);
+    } catch {
+        return undefined;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION && portId === "position") {
+        return props.position;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE && portId === "size") {
+        return props.size;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS && portId === "bounds") {
+        return props.bounds;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION && portId === "rotation") {
+        return props.rotation;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY && portId === "opacity") {
+        return props.opacity;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE && portId === "visible") {
+        return props.visible;
+    }
+    return undefined;
+}
+
 function resolveTextNodeOutput(type: string, portId: string, runtime?: DataPinResolveRuntime): unknown {
     const elementId = runtime?.executionOwner?.elementId;
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
@@ -1497,8 +1567,30 @@ function resolveTextNodeOutput(type: string, portId: string, runtime?: DataPinRe
     return undefined;
 }
 
-function resolveSliderNodeOutput(type: string, portId: string, runtime?: DataPinResolveRuntime): unknown {
-    const elementId = runtime?.executionOwner?.elementId;
+function resolveSliderNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    type: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    const isElementTarget =
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_RANGE;
+    const ref = isElementTarget
+        ? sameSurfaceElementRef(
+            normalizeBlueprintElementRefValue(resolveInput(graph, nodeId, "slider", params, blueprintLocals, depth, runtime)),
+            runtime,
+        )
+        : undefined;
+    if (isElementTarget && ref?.elementType !== "nl.slider") {
+        return undefined;
+    }
+    const elementId = isElementTarget ? ref?.elementId : runtime?.executionOwner?.elementId;
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
         return undefined;
@@ -1510,21 +1602,32 @@ function resolveSliderNodeOutput(type: string, portId: string, runtime?: DataPin
         return undefined;
     }
 
-    if (type === BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE && portId === "value") {
-        return props.value;
+    const read = (propPath: string, value: unknown) => {
+        if (ref) {
+            trackElementDependency(runtime, ref, propPath);
+        }
+        return value;
+    };
+
+    if ((type === BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE || type === BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE) && portId === "value") {
+        return read("props.value", props.value);
     }
-    if (type === BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE && portId === "normalizedValue") {
-        return props.normalizedValue;
+    if (
+        (type === BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE ||
+            type === BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE) &&
+        portId === "normalizedValue"
+    ) {
+        return read("props.value", props.normalizedValue);
     }
-    if (type === BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE) {
+    if (type === BLUEPRINT_NODE_TYPE_SLIDER_GET_RANGE || type === BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_RANGE) {
         if (portId === "min") {
-            return props.min;
+            return read("props.min", props.min);
         }
         if (portId === "max") {
-            return props.max;
+            return read("props.max", props.max);
         }
         if (portId === "step") {
-            return props.step;
+            return read("props.step", props.step);
         }
     }
     return undefined;
@@ -1540,7 +1643,19 @@ function resolveListNodeOutput(
     depth: number,
     runtime?: DataPinResolveRuntime,
 ): unknown {
-    const elementId = resolveListElementIdInput(graph, nodeId, params, blueprintLocals, depth, runtime);
+    const isElementTarget =
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEMS ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_INDEX ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_ITEM;
+    const elementId = resolveListElementIdInput(
+        graph,
+        nodeId,
+        params,
+        blueprintLocals,
+        depth,
+        runtime,
+        isElementTarget ? "element" : "self",
+    );
     const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
     if (!elementId || !api) {
         return undefined;
@@ -1552,16 +1667,124 @@ function resolveListNodeOutput(
         return undefined;
     }
 
-    if (type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS && portId === "items") {
+    if ((type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEMS) && portId === "items") {
         return props.items;
     }
-    if (type === BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_INDEX && portId === "index") {
+    if (
+        (type === BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_INDEX ||
+            type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_INDEX) &&
+        portId === "index"
+    ) {
         return props.selectedIndex;
     }
-    if (type === BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_ITEM && portId === "item") {
+    if (
+        (type === BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_ITEM ||
+            type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_ITEM) &&
+        portId === "item"
+    ) {
         return props.selectedIndex >= 0 && props.selectedIndex < props.items.length
             ? props.items[props.selectedIndex]
             : null;
+    }
+    return undefined;
+}
+
+const WIDGET_PROPERTY_ELEMENT_TYPES: Record<string, string> = {
+    container: "nl.container",
+    text: "nl.text",
+    image: "nl.image",
+    button: "nl.button",
+    slider: "nl.slider",
+    list: "nl.list",
+    frame: "nl.frame",
+    frameWidget: "nl.frame",
+};
+
+function resolveWidgetPropertyNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    type: string,
+    portId: string,
+    params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (!type.startsWith("blueprint.")) {
+        return undefined;
+    }
+    const parts = type.split(".");
+    const elementTarget = parts[1] === "element";
+    const key = elementTarget ? parts[2] : parts[1];
+    const action = elementTarget ? parts[3] : parts[2];
+    if (!key || !action?.startsWith("get")) {
+        return undefined;
+    }
+    const expectedType = WIDGET_PROPERTY_ELEMENT_TYPES[key];
+    if (!expectedType) {
+        return undefined;
+    }
+    const api = runtime?.hostAdapter?.blueprintRuntime?.hostApi;
+    if (!api) {
+        return undefined;
+    }
+
+    let elementId: string | undefined;
+    let ref: BlueprintElementRef | undefined;
+    if (elementTarget) {
+        ref = sameSurfaceElementRef(
+            normalizeBlueprintElementRefValue(resolveInput(graph, nodeId, "element", params, blueprintLocals, depth, runtime)),
+            runtime,
+        );
+        if (ref?.elementType !== expectedType) {
+            return undefined;
+        }
+        elementId = ref.elementId;
+    } else {
+        elementId = runtime?.executionOwner?.elementId;
+    }
+    if (!elementId) {
+        return undefined;
+    }
+
+    const read = (propPath: string, value: unknown) => {
+        if (ref) {
+            trackElementDependency(runtime, ref, propPath);
+        }
+        return value;
+    };
+
+    try {
+        if (action === "getVisible" && portId === "visible") {
+            return read("layout.visible", api.widget.getCommonProperties(elementId).visible);
+        }
+        if (action === "getEnabled" && portId === "enabled") {
+            return read("props.interactionDisabled", api.widget.getCommonProperties(elementId).enabled);
+        }
+        if (action === "getVariant" && portId === "variantId") {
+            return read("props.appearance.defaultVariantId", api.widget.getCommonProperties(elementId).variantId ?? "");
+        }
+        if (key === "button" && action === "getLabel" && portId === "label") {
+            return read("props.label", api.widget.getButtonProperties(elementId).label);
+        }
+        if (key === "container" && action === "getClipContent" && portId === "clipContent") {
+            return read("props.clipContent", api.widget.getContainerProperties(elementId).clipContent);
+        }
+        if (key === "image" && action === "getImageAsset" && portId === "asset") {
+            return read("props.imageFill.assetId", api.widget.getImageProperties(elementId).asset ?? null);
+        }
+        if (key === "image" && action === "getImageAsset" && portId === "assetId") {
+            const asset = api.widget.getImageProperties(elementId).asset;
+            return read("props.imageFill.assetId", asset?.assetId ?? "");
+        }
+        if ((key === "frame" || key === "frameWidget") && action === "getTargetPage" && portId === "targetSurfaceId") {
+            return read("props.targetSurfaceId", api.widget.getFrameProperties(elementId).targetSurfaceId ?? "");
+        }
+        if ((key === "frame" || key === "frameWidget") && action === "getParams" && portId === "params") {
+            return read("props.params", api.widget.getFrameProperties(elementId).params);
+        }
+    } catch {
+        return undefined;
     }
     return undefined;
 }
@@ -1777,8 +2000,11 @@ function resolveSelfOutput(
     if (!selfNode) {
         return undefined;
     }
-    if (selfNode.type === BLUEPRINT_NODE_TYPE_ELEMENT_REF && portId === "element") {
+    if (isElementBindingOutput(selfNode.type, portId)) {
         return readBlueprintElementRefParams(selfNode.params);
+    }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL && portId === "value") {
+        return normalizeBlueprintImageAssetValue(selfNode.params?.asset);
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS && portId === "props") {
         return listItemPropsValue(runtime?.listItemScope?.item);
@@ -1830,8 +2056,9 @@ function resolveSelfOutput(
     }
     if (
         (selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP ||
-            selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH) &&
-        (portId === "index" || portId === "item")
+            selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET) &&
+        (portId === "index" || portId === "item" || portId === "value")
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
@@ -1893,11 +2120,24 @@ function resolveSelfOutput(
     if (elementDisplayableOutput !== undefined) {
         return elementDisplayableOutput;
     }
+    const selfDisplayableOutput = resolveSelfDisplayableNodeOutput(selfNode.type, portId, runtime);
+    if (selfDisplayableOutput !== undefined) {
+        return selfDisplayableOutput;
+    }
     const textOutput = resolveTextNodeOutput(selfNode.type, portId, runtime);
     if (textOutput !== undefined) {
         return textOutput;
     }
-    const sliderOutput = resolveSliderNodeOutput(selfNode.type, portId, runtime);
+    const sliderOutput = resolveSliderNodeOutput(
+        graph,
+        nodeId,
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        blueprintLocals,
+        depth,
+        runtime,
+    );
     if (sliderOutput !== undefined) {
         return sliderOutput;
     }
@@ -1913,6 +2153,19 @@ function resolveSelfOutput(
     );
     if (listOutput !== undefined) {
         return listOutput;
+    }
+    const widgetPropertyOutput = resolveWidgetPropertyNodeOutput(
+        graph,
+        nodeId,
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        blueprintLocals,
+        depth,
+        runtime,
+    );
+    if (widgetPropertyOutput !== undefined) {
+        return widgetPropertyOutput;
     }
     const dataOutput = resolveDataNodeOutput(
         graph,
@@ -1939,6 +2192,25 @@ function resolveSelfOutput(
     );
 }
 
+function isOutputPort(
+    graph: DataPinGraph,
+    nodeId: string,
+    portId: string,
+    params: Record<string, unknown>,
+): boolean {
+    const node = graph.nodes?.[nodeId];
+    if (!node) {
+        return false;
+    }
+    const def = blueprintNodeRegistry.get(node.type);
+    if (!def) {
+        return false;
+    }
+    return resolveEffectiveBlueprintNodePins(def, node.params ?? params).some(
+        pin => pin.kind === "output" && pin.id === portId,
+    );
+}
+
 /**
  * Resolve the value feeding an input data pin, or an output value for pure data nodes.
  */
@@ -1957,9 +2229,19 @@ export function resolveDataPinValue(
 
     const edge = graph.edges?.find(e => e.to.nodeId === consumerNodeId && e.to.port === consumerPortId);
     if (!edge) {
-        const selfOutput = resolveSelfOutput(graph, consumerNodeId, consumerPortId, params, blueprintLocals, depth, runtime);
-        if (selfOutput !== undefined) {
-            return selfOutput;
+        if (isOutputPort(graph, consumerNodeId, consumerPortId, params)) {
+            const selfOutput = resolveSelfOutput(
+                graph,
+                consumerNodeId,
+                consumerPortId,
+                params,
+                blueprintLocals,
+                depth,
+                runtime,
+            );
+            if (selfOutput !== undefined) {
+                return selfOutput;
+            }
         }
         if (consumerPortId === "condition") {
             return false;
@@ -1996,7 +2278,7 @@ export function resolveDataPinValue(
         value = toJsonSafeValue(src.params?.value ?? { x: 0, y: 0, width: 0, height: 0 });
     } else if (src.type === BLUEPRINT_NODE_TYPE_LITERAL_JSON && edge.from.port === "value") {
         value = src.params?.value ?? null;
-    } else if (src.type === BLUEPRINT_NODE_TYPE_ELEMENT_REF && edge.from.port === "element") {
+    } else if (isElementBindingOutput(src.type, edge.from.port)) {
         value = readBlueprintElementRefParams(src.params);
     } else if (src.type === BLUEPRINT_NODE_TYPE_LOCAL_GET && edge.from.port === "value") {
         const vid = String(src.params?.variableId ?? "").trim();

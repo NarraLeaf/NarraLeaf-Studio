@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
-import { Link2, Minus, Plus } from "lucide-react";
+import { Image as ImageIcon, Link2, Minus, Plus, X } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import {
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
@@ -13,6 +13,19 @@ import { BlueprintColorValueControl } from "../../components/BlueprintColorValue
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import { Button, Input, TextArea } from "@/lib/components/elements";
 import { BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
+    BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+    normalizeBlueprintImageAssetValue,
+    type BlueprintImageAsset,
+} from "@shared/types/blueprint/valueTypes";
+import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import type { Asset } from "@/lib/workspace/services/assets/types";
+import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useWorkspace } from "@/apps/workspace/context";
+import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { Services } from "@/lib/workspace/services/services";
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 type BlueprintNodeParamPatch = (
@@ -53,6 +66,13 @@ export type BlueprintFlowNodeData = {
         valueType?: string;
         disambiguationLabel?: string;
     }>;
+    /** Project-level persistent variables for persistentVariableRef inspector controls. */
+    persistentVariables?: Array<{
+        id: string;
+        name: string;
+        value: string;
+        valueType?: string;
+    }>;
     /** Input ports that have an incoming edge (any semantic). */
     wiredInputPortIds?: ReadonlySet<string>;
     /**
@@ -90,6 +110,135 @@ const INPUT_NUMBER_NO_SPINNER =
 const BLUEPRINT_CARD_PIN_BODY_CLASS = "min-w-[200px] max-w-[280px]";
 const COMMENT_DEFAULT_WIDTH = 360;
 const COMMENT_DEFAULT_HEIGHT = 180;
+
+function shortAssetId(assetId: string): string {
+    return assetId.length > 10 ? `${assetId.slice(0, 8)}...` : assetId;
+}
+
+function useImageAssetDisplayName(assetId: string | null): string | null {
+    let context: ReturnType<typeof useWorkspace>["context"] | null = null;
+    try {
+        context = useWorkspace().context;
+    } catch {
+        context = null;
+    }
+    return useMemo(() => {
+        if (!assetId || !context) {
+            return null;
+        }
+        const assetsService = context.services.get<AssetsService>(Services.Assets);
+        return assetsService.getAssets()[AssetType.Image]?.[assetId]?.name ?? null;
+    }, [assetId, context]);
+}
+
+function ImageAssetPickerCard({
+    value,
+    onChange,
+    disabled = false,
+    compact = false,
+}: {
+    value: unknown;
+    onChange?: (value: BlueprintImageAsset | null) => void;
+    disabled?: boolean;
+    compact?: boolean;
+}) {
+    const normalized = normalizeBlueprintImageAssetValue(value);
+    const assetId = normalized?.assetId ?? null;
+    const assetName = useImageAssetDisplayName(assetId);
+    const { url, loading, error } = useAssetObjectUrl(assetId);
+    const [selectorOpen, setSelectorOpen] = useState(false);
+    const anchorRef = useRef<HTMLButtonElement | null>(null);
+    const label = assetId ? assetName ?? shortAssetId(assetId) : "Select image";
+    const detail = assetId ? (error ? "Missing image asset" : "ImageAsset") : "No image asset";
+    const heightClass = compact ? "h-[58px]" : "h-[82px]";
+
+    const handleConfirm = (assets: Asset[]) => {
+        const selected = assets[0];
+        onChange?.(selected ? { kind: "imageAsset", assetId: selected.id } : null);
+        setSelectorOpen(false);
+    };
+
+    return (
+        <div
+            className="nodrag min-w-0"
+            onMouseDown={stopFlowNodePointerBubble}
+            onPointerDown={stopFlowNodePointerBubble}
+        >
+            <div className="relative">
+                <button
+                    ref={anchorRef}
+                    type="button"
+                    disabled={disabled}
+                    className={`group relative flex w-full min-w-0 overflow-hidden rounded border border-white/10 bg-[#0f1115] text-left transition-colors ${
+                        disabled ? "cursor-default opacity-80" : "hover:border-cyan-300/35 hover:bg-white/[0.04]"
+                    } ${heightClass}`}
+                    title={assetId ? `${label} (${assetId})` : "Select image asset"}
+                    onClick={e => {
+                        e.stopPropagation();
+                        if (!disabled) {
+                            setSelectorOpen(true);
+                        }
+                    }}
+                >
+                    <div className="relative h-full w-[74px] shrink-0 overflow-hidden bg-black/25">
+                        {url ? (
+                            <img
+                                src={url}
+                                alt=""
+                                className="absolute inset-0 h-full w-full object-cover"
+                                draggable={false}
+                            />
+                        ) : (
+                            <div className="flex h-full w-full items-center justify-center text-gray-500">
+                                <ImageIcon className="h-5 w-5" aria-hidden />
+                            </div>
+                        )}
+                        {loading ? (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-[9px] text-gray-100">
+                                Loading
+                            </div>
+                        ) : null}
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col justify-center px-2 py-1">
+                        <div className="truncate text-[11px] font-medium text-gray-100">{label}</div>
+                        <div className={`truncate text-[9px] ${error ? "text-amber-300" : "text-gray-500"}`}>
+                            {detail}
+                        </div>
+                    </div>
+                    {!disabled ? (
+                        <div className="pointer-events-none absolute inset-0 bg-cyan-400/0 transition-colors group-hover:bg-cyan-400/[0.04]" />
+                    ) : null}
+                </button>
+                {assetId && !disabled ? (
+                    <button
+                        type="button"
+                        className="absolute right-1 top-1 rounded bg-black/55 p-0.5 text-gray-300 hover:bg-black/80 hover:text-white"
+                        title="Clear image asset"
+                        aria-label="Clear image asset"
+                        onMouseDown={stopFlowNodePointerBubble}
+                        onPointerDown={stopFlowNodePointerBubble}
+                        onClick={e => {
+                            e.stopPropagation();
+                            onChange?.(null);
+                        }}
+                    >
+                        <X className="h-3 w-3" aria-hidden />
+                    </button>
+                ) : null}
+            </div>
+            <AssetSelector
+                visible={selectorOpen}
+                assetType={AssetType.Image}
+                selectedIds={assetId ? [assetId] : []}
+                anchorRef={anchorRef}
+                title="Select Image Asset"
+                multiple={false}
+                onClose={() => setSelectorOpen(false)}
+                onConfirm={handleConfirm}
+            />
+        </div>
+    );
+}
 
 const COMMENT_COLORS: Record<
     string,
@@ -252,6 +401,18 @@ function PinInlineLiteralInput({
     const raw = pin.id in params ? params[pin.id] : undefined;
     const baseClass = className ?? CARD_INPUT;
     const numberClass = `${baseClass} ${INPUT_NUMBER_NO_SPINNER}`.trim();
+
+    if (vt === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET || vt === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE) {
+        return (
+            <div className="min-w-0 flex-1">
+                <ImageAssetPickerCard
+                    value={raw}
+                    compact
+                    onChange={value => onPatchNodeParam(nodeId, pin.id, value)}
+                />
+            </div>
+        );
+    }
 
     if (vt === "string") {
         return (
@@ -549,6 +710,7 @@ function InspectorParamOnCard({
     params,
     onPatchNodeParam,
     memberVariables,
+    persistentVariables,
     dynamicSelectOptions,
 }: {
     spec: BlueprintInspectorParamDef;
@@ -556,12 +718,19 @@ function InspectorParamOnCard({
     params: Record<string, unknown>;
     onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
     memberVariables?: BlueprintFlowNodeData["memberVariables"];
+    persistentVariables?: BlueprintFlowNodeData["persistentVariables"];
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
 }) {
     const raw = spec.key in params ? params[spec.key] : undefined;
     const variableSelectValue =
         spec.kind === "variableRef"
             ? typeof raw === "string" && memberVariables?.some(v => v.value === raw)
+                ? raw
+                : ""
+            : undefined;
+    const persistentVariableSelectValue =
+        spec.kind === "persistentVariableRef"
+            ? typeof raw === "string" && persistentVariables?.some(v => v.value === raw)
                 ? raw
                 : ""
             : undefined;
@@ -579,6 +748,13 @@ function InspectorParamOnCard({
             value: v.value,
             label: v.name,
             secondaryLabel: v.disambiguationLabel,
+        })),
+    ];
+    const persistentVariableComponentOptions: SelectOption[] = [
+        { value: "", label: "-" },
+        ...(persistentVariables ?? []).map(v => ({
+            value: v.value,
+            label: v.name,
         })),
     ];
 
@@ -616,6 +792,19 @@ function InspectorParamOnCard({
                     portalMenu
                     menuPlacement="below"
                 />
+            ) : spec.kind === "persistentVariableRef" ? (
+                <Select
+                    fullWidth
+                    size="sm"
+                    options={persistentVariableComponentOptions}
+                    value={persistentVariableSelectValue}
+                    onChange={value => {
+                        const v = String(value);
+                        onPatchNodeParam(nodeId, spec.key, v.length > 0 ? v : undefined);
+                    }}
+                    portalMenu
+                    menuPlacement="below"
+                />
             ) : spec.kind === "literal" ? (
                 <BlueprintLiteralValueControl
                     variant="nodeCard"
@@ -630,6 +819,8 @@ function InspectorParamOnCard({
                 />
             ) : spec.kind === "color" ? (
                 <BlueprintColorValueControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
+            ) : spec.kind === "imageAsset" ? (
+                <ImageAssetPickerCard value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : (
                 <Input
                     className={
@@ -895,6 +1086,58 @@ function BlueprintElementLiteralNodeCard({
     );
 }
 
+function BlueprintImageAssetLiteralNodeCard({
+    catalog,
+    nodeId,
+    params,
+    selected,
+    firstNodeError,
+    onPatchNodeParam,
+}: {
+    catalog: BlueprintNodeEditorCatalogEntry;
+    nodeId: string;
+    params: Record<string, unknown>;
+    selected?: boolean;
+    firstNodeError?: BlueprintFlowNodeDiagnostic;
+    onPatchNodeParam?: BlueprintNodeParamPatch;
+}) {
+    const outputPins = catalog.pins.filter(p => p.kind === "output");
+    return (
+        <div
+            className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-[#1a1d21] text-xs shadow-md ${
+                firstNodeError
+                    ? "border-red-400/85 ring-1 ring-red-500/40"
+                    : selected
+                      ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
+                      : "border-white/15"
+            }`}
+            title={firstNodeError?.message}
+            aria-invalid={Boolean(firstNodeError)}
+        >
+            <div className="border-b border-white/10 px-2 py-1.5">
+                <div className="text-[10px] uppercase tracking-wide text-gray-500">{catalog.category}</div>
+                <div className="font-medium leading-tight text-gray-100">{catalog.displayName}</div>
+            </div>
+            <div className="mx-2 my-1.5">
+                <ImageAssetPickerCard
+                    value={params.asset}
+                    disabled={!onPatchNodeParam}
+                    onChange={value => onPatchNodeParam?.(nodeId, "asset", value)}
+                />
+            </div>
+            {outputPins.length > 0 ? (
+                <div className="flex justify-end px-1 py-1.5">
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                        {outputPins.map(pin => (
+                            <OutputPinRow key={`out-${pin.id}`} pin={pin} semantic={pin.semantic} />
+                        ))}
+                    </div>
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
 export function BlueprintFlowNode({ data, selected }: NodeProps) {
     const {
         catalog,
@@ -904,6 +1147,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         onAddDynamicInputPin,
         onRemoveDynamicInputPin,
         memberVariables,
+        persistentVariables,
         wiredInputPortIds,
         dynamicSelectOptions,
         nodeDiagnostics,
@@ -955,7 +1199,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         );
     }
 
-    if (catalog.role === "elementLiteral") {
+    if (catalog.role === "elementLiteral" || catalog.role === "elementEventHead") {
         return (
             <BlueprintElementLiteralNodeCard
                 catalog={catalog}
@@ -965,6 +1209,19 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                 firstNodeError={firstNodeError}
                 elementPreview={elementPreview}
                 onBindElementLiteral={onBindElementLiteral}
+            />
+        );
+    }
+
+    if (catalog.role === "imageAssetLiteral") {
+        return (
+            <BlueprintImageAssetLiteralNodeCard
+                catalog={catalog}
+                nodeId={nodeId}
+                params={params}
+                selected={Boolean(selected)}
+                firstNodeError={firstNodeError}
+                onPatchNodeParam={onPatchNodeParam}
             />
         );
     }
@@ -997,6 +1254,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                               params={params}
                               onPatchNodeParam={onPatchNodeParam}
                               memberVariables={memberVariables}
+                              persistentVariables={persistentVariables}
                               dynamicSelectOptions={dynamicSelectOptions}
                           />
                       ))

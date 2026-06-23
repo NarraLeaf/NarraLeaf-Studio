@@ -1,4 +1,5 @@
 import type { UIHostAdapter } from "../runtime/types";
+import type { BlueprintPersistentVariable } from "@shared/types/blueprint/document";
 import type { UIGraph, UIGraphEntry } from "@shared/types/ui-editor/graph";
 import { registerCoreBlueprintNodes } from "../blueprint-nodes/registerCoreBlueprintNodes";
 import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
@@ -21,6 +22,7 @@ export type ExecuteGraphOptions = {
     listItemScope?: BehaviorNodeExecutionContext["listItemScope"];
     instanceKey?: string;
     executionOwner?: BehaviorNodeExecutionContext["executionOwner"];
+    persistentVariables?: Record<string, BlueprintPersistentVariable>;
     valueExecution?: Pick<NonNullable<BehaviorNodeExecutionContext["valueExecution"]>, "trackDependency">;
 };
 
@@ -103,6 +105,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             listItemScope: options.listItemScope,
             instanceKey: options.instanceKey,
             executionOwner: options.executionOwner,
+            persistentVariables: options.persistentVariables,
             valueExecution,
         };
 

@@ -9,8 +9,6 @@ import {
     MousePointer2,
     Map as MapIcon,
     Route,
-    Save,
-    Search,
     Settings2,
     Sigma,
     Type as TypeIcon,
@@ -23,6 +21,7 @@ import {
     buildBlueprintAddNodeCategories,
     filterBlueprintAddNodeEntries,
 } from "./BlueprintAddNodeMenuModel";
+import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox";
 
 const MENU_W = 440;
 const MENU_MAX_H = 520;
@@ -65,8 +64,6 @@ function getCategoryVisual(categoryId: string): CategoryVisual {
             return { icon: Box, color: "#b9c47a" };
         case "Navigation":
             return { icon: MapIcon, color: "#7ec7c1" };
-        case "Persistence":
-            return { icon: Save, color: "#b8aa86" };
         case "Variables":
             return { icon: Variable, color: "#8fb3d9" };
         case "Widget":
@@ -293,22 +290,20 @@ export function BlueprintAddNodeMenu({
                 onContextMenu={e => e.preventDefault()}
             >
                 <div className="border-b border-white/10 bg-[#0f1115] px-3 py-3">
-                    <div className="flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 transition-colors focus-within:border-primary/60 focus-within:bg-primary/5">
-                        <Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-                        <input
-                            ref={inputRef}
-                            type="search"
-                            value={query}
-                            onChange={e => setQuery(e.target.value)}
-                            placeholder="Search nodes"
-                            className="min-w-0 flex-1 bg-transparent text-sm text-slate-200 outline-none placeholder:text-slate-500"
-                            autoComplete="off"
-                            aria-controls="bp-add-node-list"
-                            aria-activedescendant={
-                                activeFlatIndex >= 0 ? `bp-add-node-option-${activeFlatIndex}` : undefined
-                            }
-                        />
-                    </div>
+                    <SearchBox
+                        value={query}
+                        onChange={setQuery}
+                        placeholder="Search nodes"
+                        className="w-full"
+                        inputRef={inputRef}
+                        inputProps={{
+                            autoComplete: "off",
+                            "aria-controls": "bp-add-node-list",
+                            "aria-activedescendant": activeFlatIndex >= 0
+                                ? `bp-add-node-option-${activeFlatIndex}`
+                                : undefined,
+                        }}
+                    />
                     <div
                         ref={categoryListRef}
                         className="mt-3 flex gap-1 overflow-x-auto pb-0.5"
@@ -361,7 +356,7 @@ export function BlueprintAddNodeMenu({
                     ) : (
                         filteredEntries.map((entry, index) => (
                             <BlueprintAddNodeRow
-                                key={`${entry.type}:${entry.magicElementRef?.sourceNodeId ?? ""}`}
+                                key={entry.type}
                                 entry={entry}
                                 active={activeFlatIndex === index}
                                 flatIndex={index}

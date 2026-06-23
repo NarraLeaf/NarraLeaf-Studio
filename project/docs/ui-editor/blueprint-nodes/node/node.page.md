@@ -4,6 +4,8 @@
 
 Page 节点用于 Page 组件和被嵌入 Page 之间的通信。顶层 Page 没有父级 Page 组件时，读取参数会得到空值，发送事件不会触发父级事件。
 
+这些节点不同于 Frame Widget Property。`blueprint.frame.getParam` / `blueprint.frame.emit` 面向被嵌入 Page 的通信上下文；`nl.frame` 组件自己的目标 Page 和 params 读写方法记录在 `node.widget.md`。
+
 ## Get Page Param
 
 `blueprint.frame.getParam` - 读取 Page 参数

@@ -55,7 +55,8 @@ import {
 import { useRegistry } from "@/apps/workspace/registry";
 import {
     cancelElementBindingSession,
-    completeElementBindingSession,
+    cancelElementBindingSessionById,
+    completeElementBindingSessionForSession,
     readElementBindingSession,
     subscribeElementBindingSession,
 } from "@/apps/workspace/modules/blueprint-lite/elementBindingSession";
@@ -106,6 +107,15 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const deferredGraphVersion = useDeferredValue(graphVersion);
     const [bindingSession, setBindingSession] = useState(readElementBindingSession());
     const [selectionVersion, setSelectionVersion] = useState(0);
+    const bindingAutoCancelTimerRef = useRef<number | null>(null);
+
+    const clearPendingBindingAutoCancel = useCallback(() => {
+        if (bindingAutoCancelTimerRef.current == null) {
+            return;
+        }
+        window.clearTimeout(bindingAutoCancelTimerRef.current);
+        bindingAutoCancelTimerRef.current = null;
+    }, []);
 
     useEffect(() => subscribeElementBindingSession(() => setBindingSession(readElementBindingSession())), []);
     useEffect(() => {
@@ -130,6 +140,32 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
 
     const activeBindingSession =
         bindingSession && surface && bindingSession.surfaceId === surface.id ? bindingSession : null;
+
+    const returnToBindingBlueprint = useCallback(
+        (blueprintTabId: string) => {
+            const sourceGroupId = findEditorGroupIdByTabId(editorLayout, blueprintTabId);
+            if (sourceGroupId) {
+                setActiveEditorTab(blueprintTabId, sourceGroupId);
+            }
+        },
+        [editorLayout, setActiveEditorTab],
+    );
+
+    useEffect(() => {
+        clearPendingBindingAutoCancel();
+        if (!activeBindingSession) {
+            return undefined;
+        }
+        const sessionId = activeBindingSession.id;
+        return () => {
+            clearPendingBindingAutoCancel();
+            bindingAutoCancelTimerRef.current = window.setTimeout(() => {
+                bindingAutoCancelTimerRef.current = null;
+                cancelElementBindingSessionById(sessionId);
+            }, 0);
+        };
+    }, [activeBindingSession?.id, clearPendingBindingAutoCancel]);
+
     const bindingSelection = useMemo(() => {
         if (!activeBindingSession || !stateService || !documentService) {
             return null;
@@ -167,16 +203,25 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         if (!element || element.type === "nl.root") {
             return;
         }
-        completeElementBindingSession({
+        clearPendingBindingAutoCancel();
+        completeElementBindingSessionForSession(activeBindingSession, {
             surfaceId: activeBindingSession.surfaceId,
             elementId: element.id,
             elementType: element.type,
         });
-        const sourceGroupId = findEditorGroupIdByTabId(editorLayout, activeBindingSession.blueprintTabId);
-        if (sourceGroupId) {
-            setActiveEditorTab(activeBindingSession.blueprintTabId, sourceGroupId);
+        returnToBindingBlueprint(activeBindingSession.blueprintTabId);
+    }, [activeBindingSession, clearPendingBindingAutoCancel, documentService, returnToBindingBlueprint, stateService]);
+
+    const handleCancelElementBinding = useCallback(() => {
+        clearPendingBindingAutoCancel();
+        if (!activeBindingSession) {
+            cancelElementBindingSession();
+            return;
         }
-    }, [activeBindingSession, documentService, editorLayout, setActiveEditorTab, stateService]);
+        const blueprintTabId = activeBindingSession.blueprintTabId;
+        cancelElementBindingSession();
+        returnToBindingBlueprint(blueprintTabId);
+    }, [activeBindingSession, clearPendingBindingAutoCancel, returnToBindingBlueprint]);
 
     const layoutInteractionHints = useMemo(
         () =>
@@ -536,7 +581,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                             <button
                                 type="button"
                                 className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-gray-300 hover:bg-white/[0.08]"
-                                onClick={cancelElementBindingSession}
+                                onClick={handleCancelElementBinding}
                             >
                                 Cancel
                             </button>

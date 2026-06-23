@@ -66,6 +66,7 @@ function elementTextGraph(): BlueprintGraphIr {
 function blueprintDocument(graph: BlueprintGraphIr = initGraph()): BlueprintDocument {
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+        persistentVariables: {},
         blueprints: {
             "bp-value": {
                 id: "bp-value",
@@ -105,6 +106,7 @@ function singleValueBlueprintDocument(input: {
     const ownerKey = `widgetValue:surface:${input.elementId}:${input.propPath}`;
     return {
         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+        persistentVariables: {},
         blueprints: {
             [input.blueprintId]: {
                 id: input.blueprintId,

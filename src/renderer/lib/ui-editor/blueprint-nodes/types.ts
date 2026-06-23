@@ -5,6 +5,10 @@
 
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
+    BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+} from "@shared/types/blueprint/valueTypes";
 import type { BehaviorNodeDefinition, BehaviorNodeExecutionContext } from "../behavior-graph/BehaviorNodeRegistry";
 
 export type BlueprintPinSemantic = "exec" | "data";
@@ -14,10 +18,16 @@ export type BlueprintPinSemantic = "exec" | "data";
  * Other types (e.g. json, boolean) must not use inline literals.
  */
 export const BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES = ["string", "integer", "float"] as const;
+export const BLUEPRINT_PIN_INLINE_LITERAL_CUSTOM_VALUE_TYPES = [
+    BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
+    BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+] as const;
 export type BlueprintPinInlineLiteralValueType = (typeof BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES)[number];
 
 /** Persisted on node.params: pin ids whose inline literal editor is expanded on the node card. */
 export const BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY = "__inlineLiteralPins" as const;
+/** Persisted on node.params: show the manually wired Element target pin for a derived palette instance. */
+export const BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN = "__showMagicElementTargetPin" as const;
 
 /**
  * Persisted on node.params: ordered list of extra data input pin ids (beyond fixedDataInputIds).
@@ -96,7 +106,9 @@ export type BlueprintInspectorParamKind =
     | "color"
     | "literal"
     | "variableRef"
-    | "select";
+    | "persistentVariableRef"
+    | "select"
+    | "imageAsset";
 
 export type BlueprintInspectorParamSelectOption = {
     value: string;
@@ -144,6 +156,8 @@ export type BlueprintNodeRole =
     | "reroute"
     | "dataLiteral"
     | "elementLiteral"
+    | "elementEventHead"
+    | "imageAssetLiteral"
     | "valueReturn"
     | "comment";
 
@@ -172,13 +186,15 @@ export type BlueprintNodeDef = {
     graphKinds: BlueprintGraphKind[];
     /** Keep registered for old graphs/runtime, but omit from add-node palette. */
     hideInPalette?: boolean;
-    /** Creates one palette entry per bound Element Literal and auto-wires the listed input. */
+    /** Creates palette entries for bound Element outputs that can be manually wired to this input. */
     magicElementTarget?: {
         inputPinId: string;
         elementTypes?: readonly string[];
     };
     /** Pure nodes have no side effects; used for validation hints */
     isPure: boolean;
+    /** Palette-only guard for nodes that read the active List item template scope. */
+    requiresListItemContext?: boolean;
     /** Latent/async execution (delay, host awaits) — disallowed in function graphs */
     isLatent?: boolean;
     pins: BlueprintNodePinDef[];
@@ -250,7 +266,7 @@ export type BlueprintNodeEditorCatalogEntry = {
     dynamicInputPinAddLabel?: string;
     /** Param key storing user-visible labels for dynamic input pins, if editable. */
     dynamicInputPinLabelParamKey?: string;
-    /** Present when this palette entry should auto-wire a bound Element Literal into a new node. */
+    /** Present when this palette entry was derived from a bound Element output. */
     magicElementRef?: BlueprintMagicElementRefPaletteEntry;
 };
 

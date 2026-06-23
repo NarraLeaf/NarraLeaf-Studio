@@ -6,6 +6,7 @@ import {
   AlignVerticalJustifyEnd,
   AlignVerticalJustifyStart,
   Baseline,
+  Italic,
   Type,
 } from "lucide-react";
 import { getSupportedEffectKindsForWidgetType } from "@shared/types/ui-editor/effects";
@@ -74,8 +75,9 @@ export function createTextInspector(ctx: InspectorContext) {
   const { element, documentService } = ctx;
 
   const patchProps = (patch: Partial<TextWidgetProps>) => {
+    const liveElement = documentService.getDocument().elements[element.id] ?? element;
     documentService.updateElementProps(element.id, {
-      ...element.props,
+      ...liveElement.props,
       ...patch,
     });
   };
@@ -178,6 +180,38 @@ export function createTextInspector(ctx: InspectorContext) {
                           leftIcon={<Baseline className="w-4 h-4 text-gray-400" />}
                           title="Line height (unitless)"
                         />
+                      );
+                    },
+                  },
+                  {
+                    id: "text.fontStyle",
+                    className: "shrink-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const current = getTextProps(data.element);
+                      const isItalic = current.fontStyle === "italic";
+                      return (
+                        <button
+                          type="button"
+                          className={[
+                            "flex h-9 min-h-[34px] w-9 items-center justify-center rounded-md border border-white/10 transition",
+                            isItalic
+                              ? "bg-white/10 text-white"
+                              : "bg-[#1e1f22] text-gray-300 hover:bg-white/10 hover:text-white",
+                          ].join(" ")}
+                          aria-label={isItalic ? "Disable italic" : "Enable italic"}
+                          aria-pressed={isItalic}
+                          title="Italic"
+                          onClick={() => {
+                            onSaving(true);
+                            try {
+                              patchProps({ fontStyle: isItalic ? "normal" : "italic" });
+                            } finally {
+                              onSaving(false);
+                            }
+                          }}
+                        >
+                          <Italic className="h-4 w-4" />
+                        </button>
                       );
                     },
                   },

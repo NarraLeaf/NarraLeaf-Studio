@@ -59,7 +59,7 @@
 - Blueprint Value 是新的单点属性动态数据提供方案，当前覆盖 `nl.text` 的 `props.text`、`nl.button` 的 `props.label`、Page 组件 `nl.frame` 的 `props.params`、`nl.slider` 的 `props.value`。Text / Button / Slider 检视器不再使用旧 `binding:` 元数据连接内容字段，而是在 `UIElement.valueBindings` 中记录 `{ kind: "blueprintValue", blueprintId, valueType }`。
 - 字面值切换为 Blueprint Value 时，`LocalBlueprintService` 会为该属性创建私有 value blueprint，并用当前字面值种子化默认 `Init` layer：`blueprint.event.head.init` 连接到 `blueprint.data.returnValue`。`string` 值使用 Text literal，`json` 值使用 JSON literal，`float` 值使用 Float literal。不会创建额外刷新 layer；刷新由 Blueprint Value 内部记录的 Element 属性依赖驱动。
 - `nl.list` 私有 Blueprint 具有 Collection Events Head：`scroll`、`scrollEnd`、`itemRender`、`itemClick`、`itemHover`、`selectionChanged`。这些节点会在 List widget 的创建上下文浮窗中出现，并由真实滚动、条目渲染、点击、悬停和选中索引变化触发。
-- `nl.slider` 私有 Blueprint 具有 Slider Events Head：`dragStart`、`valueChanged`、`dragEnd`。事件 payload 默认输出映射后的 `value`；需要 0-1 值时使用 `Get Slider Normalized Value` 节点。
+- `nl.slider` 私有 Blueprint 具有 Slider Events Head：`dragStart`、`valueChanged`、`dragEnd`。事件 payload 默认输出映射后的 `value`；需要主动读取映射值时使用 Slider 分类下的 `Get Value`，派生显示为 `Slider:Get Value`；需要 0-1 值时使用 `Get Normalized Value`。
 - `UIBlueprintLifecycleCoordinator` 在 UIDocument mutate 后同步 Page / Game UI / widget private blueprint ownerRecords，并清理已删除对象。
 - `LocalBlueprintService` 不单独落盘，所有 mutation 通过 `UIGraphService.applyGraphMutation()` 进入 `uigraphs.json`。
 - UI history snapshot 同时覆盖 UIDocument 界面子树和相关 private blueprints，但 history 本身不落盘。

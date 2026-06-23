@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_STRING_FORMAT,
     BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
 } from "@shared/types/blueprint/graph";
@@ -137,6 +141,29 @@ describe("blueprint graph validation", () => {
         expect(diagnostics.map(d => d.code)).toContain("edge.connection_invalid");
     });
 
+    it("reports invalid persistent variable references", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                persistent: {
+                    id: "persistent",
+                    type: BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+                    params: { persistentVariableId: "missing" },
+                },
+            },
+            edges: [],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "event",
+            validPersistentVariableIds: new Set(["known"]),
+        });
+
+        expect(diagnostics.map(d => d.code)).toContain("node.persistent_variable_id_invalid");
+    });
+
     it("reports float output connected to a json input", () => {
         registerCoreBlueprintNodes();
         const ir: BlueprintGraphIr = {
@@ -226,6 +253,54 @@ describe("blueprint graph validation", () => {
             isBlueprintValueGraph: true,
         });
 
+        expect(diagnostics.map(d => d.code)).not.toContain("node.context_invalid");
+    });
+
+    it("allows element-targeted nodes outside their own widget owner scope without automatic connections", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                getValue: { id: "getValue", type: BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE },
+            },
+            edges: [],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "event",
+            blueprintOwner: { kind: "surfaceMain", surfaceId: "surface" },
+        });
+
+        expect(diagnostics.map(d => d.code)).not.toContain("node.context_invalid");
+    });
+
+    it("allows Element Flush element outputs to feed multiple derived nodes", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                flush: {
+                    id: "flush",
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+                    params: { surfaceId: "surface", elementId: "slider", elementType: "nl.slider" },
+                },
+                getValue: { id: "getValue", type: BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE },
+                getNormalized: { id: "getNormalized", type: BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE },
+            },
+            edges: [
+                { from: { nodeId: "flush", port: "element" }, to: { nodeId: "getValue", port: "slider" } },
+                { from: { nodeId: "flush", port: "element" }, to: { nodeId: "getNormalized", port: "slider" } },
+            ],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "event",
+            blueprintOwner: { kind: "surfaceMain", surfaceId: "surface" },
+        });
+
+        expect(diagnostics.map(d => d.code)).not.toContain("edge.pin_multiple");
         expect(diagnostics.map(d => d.code)).not.toContain("node.context_invalid");
     });
 });

@@ -10,6 +10,8 @@ import {
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     isBlueprintEventDispatchHeadType,
 } from "@shared/types/blueprint/graph";
 import { listUiSlotsWiredToBlueprintLayer } from "@/lib/ui-editor/blueprint-runtime/widgetBlueprintLayerSlots";
@@ -18,7 +20,7 @@ import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBe
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
 import { behaviorNodeRegistry } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { buildAccessibleBlueprintVariableOptions, createExplicitBlueprintVariableRef } from "./blueprintVariableRefs";
-import { isBlueprintLiteralNodeType } from "./graphEditing";
+import { isBlueprintElementBindingOutputPin, isBlueprintLiteralNodeType } from "./graphEditing";
 import {
     isValidBlueprintExecConnection,
     resolveBlueprintNodeEditorCatalogEntryForNode,
@@ -207,6 +209,7 @@ export function validateBlueprintGraphIr(
         graphKind: "event" | "function";
         graphId: string;
         validVariableIds?: ReadonlySet<string>;
+        validPersistentVariableIds?: ReadonlySet<string>;
         /** Widget UI slots referencing this event layer (when known). */
         layerUiSlots?: string[];
         widgetElementType?: string;
@@ -360,7 +363,12 @@ export function validateBlueprintGraphIr(
                 });
             }
         }
-        if (nodeIds.has(edge.from.nodeId) && !isBlueprintLiteralNodeType(nodes[edge.from.nodeId]?.type ?? "")) {
+        const fromNodeType = nodes[edge.from.nodeId]?.type ?? "";
+        if (
+            nodeIds.has(edge.from.nodeId) &&
+            !isBlueprintLiteralNodeType(fromNodeType) &&
+            !isBlueprintElementBindingOutputPin(fromNodeType, edge.from.port)
+        ) {
             reportDuplicatePinConnection(out, seenPins, {
                 key: `out\0${edge.from.nodeId}\0${edge.from.port}`,
                 nodeId: edge.from.nodeId,
@@ -388,7 +396,13 @@ export function validateBlueprintGraphIr(
     const nodeCatalog = BlueprintNodeCatalogService.getInstance();
     for (const [nid, n] of Object.entries(nodes)) {
         const def = nodeCatalog.get(n.type);
-        if (def && nodeValidationContext && !isBlueprintNodeAllowedInGraphContext(def, nodeValidationContext)) {
+        const validationDef = def?.magicElementTarget ? { ...def, scope: undefined } : def;
+        if (
+            def &&
+            validationDef &&
+            nodeValidationContext &&
+            !isBlueprintNodeAllowedInGraphContext(validationDef, nodeValidationContext)
+        ) {
             out.push({
                 severity: "error",
                 code: "node.context_invalid",
@@ -414,6 +428,20 @@ export function validateBlueprintGraphIr(
                     severity: "warning",
                     code: "node.variable_id_invalid",
                     message: `Node "${nid}": pick a variable.`,
+                    target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
+                });
+            }
+        }
+        if (
+            (n.type === BLUEPRINT_NODE_TYPE_PERSISTENT_SET || n.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET) &&
+            ctx.validPersistentVariableIds
+        ) {
+            const vid = String(n.params?.persistentVariableId ?? "").trim();
+            if (!vid || !ctx.validPersistentVariableIds.has(vid)) {
+                out.push({
+                    severity: "warning",
+                    code: "node.persistent_variable_id_invalid",
+                    message: `Node "${nid}": pick a persistent variable.`,
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: nid },
                 });
             }
@@ -480,6 +508,7 @@ export function validateBlueprintDocumentGraphs(
         return [...base, ...wiring];
     }
     const validVariableIds = buildValidVariableRefSet(doc, blueprintId, options?.widgetSurfaceId);
+    const validPersistentVariableIds = new Set(Object.keys(doc.persistentVariables ?? {}));
     const out: BlueprintGraphEditorDiagnostic[] = [];
     for (const [eventId, eg] of Object.entries(bp.program.graphs.events ?? {})) {
         const layerUiSlots =
@@ -492,6 +521,7 @@ export function validateBlueprintDocumentGraphs(
                 graphKind: "event",
                 graphId: eventId,
                 validVariableIds,
+                validPersistentVariableIds,
                 layerUiSlots,
                 widgetElementType: options?.widgetElement?.type,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
@@ -507,6 +537,7 @@ export function validateBlueprintDocumentGraphs(
                 graphKind: "function",
                 graphId: fnId,
                 validVariableIds,
+                validPersistentVariableIds,
                 widgetElementType: options?.widgetElement?.type,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,

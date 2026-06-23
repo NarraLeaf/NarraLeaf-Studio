@@ -1,4 +1,5 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
+import type { BlueprintPersistentVariable } from "@shared/types/blueprint/document";
 import type { UIGraph, UIGraphEntry, UIGraphId, UIGraphNode } from "@shared/types/ui-editor/graph";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "../runtime/types";
@@ -46,6 +47,7 @@ export type BehaviorNodeExecutionContext = {
         elementId?: string;
         blueprintId?: string;
     };
+    persistentVariables?: Record<string, BlueprintPersistentVariable>;
     valueExecution?: BehaviorGraphValueExecution;
 };
 

@@ -6,6 +6,7 @@
 
 `Container` 元素是一个容器，可以包含其他元素。默认拥有以下节点组：
 - Displayable
+- Container
 - Broadcast
 
 ## Text
@@ -14,8 +15,8 @@
 
 `Text` 元素是一个文本，可以显示文本内容。默认拥有以下节点组：
 - Displayable
-- Broadcast
 - Text
+- Broadcast
 
 ## Image
 
@@ -23,6 +24,7 @@
 
 `Image` 元素是一个图片，可以显示图片内容。默认拥有以下节点组：
 - Displayable
+- Image
 - Broadcast
 
 ## Button
@@ -31,6 +33,7 @@
 
 `Button` 元素是一个按钮，可以点击。默认拥有以下节点组：
 - Displayable
+- Button
 - Broadcast
 
 ## List
@@ -38,7 +41,8 @@
 - `nl.list`
 
 `List` 元素是一个列表，可以显示列表内容。默认拥有以下节点组：
-- Collection
+- Displayable
+- List
 - Broadcast
 
 ## Slider
@@ -46,6 +50,7 @@
 - `nl.slider`
 
 `Slider` 元素是一个数值映射滑块。默认拥有以下节点组：
+- Displayable
 - Slider
 - Broadcast
 
@@ -54,6 +59,7 @@
 - `nl.frame`
 
 `Page` 元素用于在当前 Page 中嵌入另一个 Page。默认拥有以下节点组：
+- Displayable
+- Frame
 - Page
 - Broadcast
-
