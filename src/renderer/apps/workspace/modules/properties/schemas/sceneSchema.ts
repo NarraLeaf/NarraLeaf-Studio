@@ -1,3 +1,4 @@
+import { createElement } from "react";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type {
@@ -10,11 +11,15 @@ import { colorValueToCss, parseColorValue } from "../framework/utils/colorUtils"
 import type {
     ColorPickerFieldDefinition,
     CustomFieldDefinition,
+    CustomFieldProps,
     InfoFieldDefinition,
+    SectionFieldDefinition,
     SelectFieldDefinition,
     TextFieldDefinition,
 } from "../framework/types";
 import { SurfaceBlueprintEntrySection } from "../blueprint/SurfaceBlueprintEntrySection";
+import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
+import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 
 export type SceneEditorContext = {
     surface: UISurface;
@@ -47,6 +52,20 @@ const getGameUiSlotLabel = (surface: UISurface): string => {
     }
     return GAME_UI_SLOT_LABELS[surface.mount.slotId] ?? surface.mount.slotId;
 };
+
+function SurfacePageAnimationField({ data }: CustomFieldProps<SceneEditorContext>) {
+    const settings = normalizeUIPageAnimationSettings(data.surface.settings?.pageAnimation);
+    const update = (next: UIPageAnimationSettings) => {
+        data.documentService.updateSurface(data.surface.id, surface => {
+            surface.settings = {
+                ...(surface.settings ?? {}),
+                pageAnimation: next,
+            };
+        });
+    };
+
+    return createElement(PageAnimationEditor, { settings, onChange: update });
+}
 
 export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext>({
     id: "scene-properties",
@@ -111,6 +130,19 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
                     };
                 });
             },
+        }),
+        defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({
+            id: "scene.pageAnimation",
+            type: "section",
+            title: "Animation",
+            fields: [
+                defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
+                    id: "scene.pageAnimation.editor",
+                    type: "custom",
+                    component: SurfacePageAnimationField,
+                }),
+            ],
+            hidden: data => isGameUi(data.surface),
         }),
         defineField<SceneEditorContext, SelectFieldDefinition<SceneEditorContext>>({
             id: "scene.gameUiSlot",

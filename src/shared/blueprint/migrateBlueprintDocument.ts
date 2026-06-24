@@ -73,6 +73,13 @@ export function migrateLegacyDeclarationsToFields(doc: BlueprintDocument): Bluep
     return { ...doc, blueprints };
 }
 
+function ensurePersistentVariables(doc: BlueprintDocument): BlueprintDocument {
+    return {
+        ...doc,
+        persistentVariables: isRecord(doc.persistentVariables) ? doc.persistentVariables : {},
+    };
+}
+
 /**
  * If document is v2/v3/v4, upgrade to latest. Idempotent for current schema.
  */
@@ -82,21 +89,21 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
     }
     const sv = raw.schemaVersion;
     if (sv === BLUEPRINT_DOCUMENT_SCHEMA_VERSION) {
-        return migrateLegacyDeclarationsToFields(raw as BlueprintDocument);
+        return ensurePersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument));
     }
-    if (sv === 5 && isRecord(raw.blueprints)) {
-        const migrated = migrateLegacyDeclarationsToFields(raw as BlueprintDocument);
+    if ((sv === 5 || sv === 6) && isRecord(raw.blueprints)) {
+        const migrated = ensurePersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument));
         return { ...migrated, schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
     }
     if (sv === 4 && isRecord(raw.blueprints)) {
-        const migrated = migrateLegacyDeclarationsToFields(raw as BlueprintDocument);
+        const migrated = ensurePersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument));
         return { ...migrated, schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
     }
     if (sv === 3 && isRecord(raw.blueprints)) {
         let seq = 0;
         const generateId = () => `nl_mig_${++seq}`;
         const withBodies = upgradeBlueprintGraphBodiesToV4(raw as BlueprintDocument, generateId);
-        const migrated = migrateLegacyDeclarationsToFields(withBodies);
+        const migrated = ensurePersistentVariables(migrateLegacyDeclarationsToFields(withBodies));
         return { ...migrated, schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
     }
     if (sv === 2 && isRecord(raw.ownerIndex) && isRecord(raw.blueprints)) {
@@ -120,7 +127,7 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
             ownerRecords,
         } as unknown as BlueprintDocument;
         const upgraded = upgradeBlueprintGraphBodiesToV4(interim, generateId);
-        const migrated = migrateLegacyDeclarationsToFields(upgraded);
+        const migrated = ensurePersistentVariables(migrateLegacyDeclarationsToFields(upgraded));
         return {
             ...migrated,
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,

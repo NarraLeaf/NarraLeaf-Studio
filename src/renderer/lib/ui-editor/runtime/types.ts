@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintHostApiContractVersion } from "@shared/types/blueprint/hostApi";
 import type { UISurfaceId } from "@shared/types/ui-editor/document";
+import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 
@@ -23,6 +24,10 @@ export type UIHostAdapterBlueprintRuntime = {
         elementId: string,
         eventName: string,
         payload?: Record<string, unknown>,
+        options?: {
+            listItemScope?: UIListItemScope | null;
+            instanceKey?: string;
+        },
     ) => Promise<void>;
     dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
     getBroadcastListenerCount?: (eventName: string) => number;
@@ -58,4 +63,5 @@ export type RenderSurfaceOptions = {
     hostAdapter: UIHostAdapter;
     className?: string;
     style?: CSSProperties;
+    editorChrome?: boolean;
 };

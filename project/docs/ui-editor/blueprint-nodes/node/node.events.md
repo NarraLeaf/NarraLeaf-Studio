@@ -2,7 +2,9 @@
 
 除非额外声明，所有参数均为传出引脚值。事件 Head 节点没有执行入口，统一通过 `then` 执行出口继续后续逻辑。
 
-鼠标坐标使用当前元素的本地设计坐标系。Broadcast、Page Event 与鼠标事件的传出值均来自当前运行时事件 payload；没有对应 payload 时传出值为 `undefined`。
+鼠标坐标使用当前元素的本地设计坐标系。Broadcast、Page Event、键盘事件与鼠标事件的传出值均来自当前运行时事件 payload；没有对应 payload 时传出值为 `undefined`。
+
+键盘事件由运行时窗口级监听派发，不依赖元素焦点。Global 蓝图、当前 active Surface 蓝图，以及已挂载控件的私有蓝图都会收到对应键盘事件；如果多处都放置事件 Head，它们会分别执行。控件私有蓝图的键盘监听随控件挂载注册，控件卸载时自动移除。
 
 元素事件只从当前元素自己的可交互区域触发，不会冒泡接管子元素事件；控件处于禁用或文本编辑等不可交互状态时不会派发对应 Events Head。
 
@@ -29,18 +31,67 @@
 当 Page 或 Game UI Surface 离开当前运行时 scope、被替换，或 Page 组件实例卸载时触发。
 - `then` - 执行出口
 
+## On Key Down
+
+`blueprint.event.head.keyDown` - 指定键按下事件
+
+当运行时窗口收到匹配的键盘按下事件时触发。该节点出现在 Global 蓝图、Surface 蓝图和普通控件私有蓝图中；当前 active Surface 和所有已挂载且拥有该事件 Head 的控件都会收到同一次窗口事件。
+
+卡片字段：
+- `Key` - 要匹配的 `KeyboardEvent.key` 名称，大小写不敏感；空值不会触发，任意键请使用 `Any Key Down`
+
+输出：
+- `then` - 执行出口
+- `altKey` - Alt 是否按下
+- `ctrlKey` - Ctrl 是否按下
+- `shiftKey` - Shift 是否按下
+- `metaKey` - Meta / Command / Windows 是否按下
+
+## On Key Up
+
+`blueprint.event.head.keyUp` - 指定键抬起事件
+
+当运行时窗口收到匹配的键盘抬起事件时触发。该节点出现在 Global 蓝图、Surface 蓝图和普通控件私有蓝图中；不要求任何元素处于焦点状态。
+
+卡片字段：
+- `Key` - 要匹配的 `KeyboardEvent.key` 名称，大小写不敏感；空值不会触发，任意键请使用 `Any Key Up`
+
+输出：
+- `then` - 执行出口
+- `altKey` - Alt 是否按下
+- `ctrlKey` - Ctrl 是否按下
+- `shiftKey` - Shift 是否按下
+- `metaKey` - Meta / Command / Windows 是否按下
+
+## Any Key Down
+
+`blueprint.event.head.anyKeyDown` - 任意键按下事件
+
+当运行时窗口收到任意键盘按下事件时触发。该节点出现在 Global 蓝图、Surface 蓝图和普通控件私有蓝图中。
+- `then` - 执行出口
+- `key` - 按键语义值，对应 `KeyboardEvent.key`
+- `altKey` - Alt 是否按下
+- `ctrlKey` - Ctrl 是否按下
+- `shiftKey` - Shift 是否按下
+- `metaKey` - Meta / Command / Windows 是否按下
+
+## Any Key Up
+
+`blueprint.event.head.anyKeyUp` - 任意键抬起事件
+
+当运行时窗口收到任意键盘抬起事件时触发。该节点出现在 Global 蓝图、Surface 蓝图和普通控件私有蓝图中。
+- `then` - 执行出口
+- `key` - 按键语义值，对应 `KeyboardEvent.key`
+- `altKey` - Alt 是否按下
+- `ctrlKey` - Ctrl 是否按下
+- `shiftKey` - Shift 是否按下
+- `metaKey` - Meta / Command / Windows 是否按下
+
 ## Init
 
 `blueprint.event.head.init` - 元素初始化事件
 
-当支持私有蓝图的元素在 Dev Mode runtime 中挂载时触发一次。在 Blueprint Value 中，`init` 也作为初始求值事件，并且总是在 `flush` 之前执行。
-- `then` - 执行出口
-
-## Flush
-
-`blueprint.event.head.flush` - Blueprint Value 刷新事件
-
-该节点只出现在 Blueprint Value 图中。运行时会在初始 `init` 后自动尝试执行 `flush`，并在 surface/global state 更新后自动排队重新执行；默认 Blueprint Value 只创建 `Init` layer，不会额外创建 `Flush` layer。
+当支持私有蓝图的元素在 Dev Mode runtime 中挂载时触发一次。在 Blueprint Value 中，`init` 也作为唯一显式求值入口；后续刷新由隐藏的 Element 属性依赖调度。
 - `then` - 执行出口
 
 ## Mouse Click
@@ -142,6 +193,24 @@
 当元素失去键盘、鼠标或手柄焦点时触发。
 - `then` - 执行出口
 
+## On Flush
+
+`blueprint.event.head.flush` - 当前元素刷新事件
+
+当当前蓝图所属元素被蓝图 Host API 显式更改属性并触发重绘时触发。CSS 自动状态样式（例如 hover/focus 变体自动计算）不会触发该事件。事件 payload 返回被刷新的元素引用。
+- `then` - 执行出口
+- `element` - 被刷新的元素引用
+
+Flush 是属性提交后的批处理通知。运行时会按帧合并同一元素的 flush；flush 处理器内部再次改写元素属性时，新的 flush 会进入下一帧批次，避免同步重入。
+
+## Element Flush
+
+`blueprint.event.head.elementFlush` - 绑定元素刷新事件
+
+该事件头和 `Element` 节点一样先绑定同 Surface 的目标控件，然后监听该目标控件的 flush 事件。目标控件被蓝图 Host API 显式更改属性并触发重绘后，当前蓝图中的该事件头会执行。它的 `element` 输出也可以手动连接到 Element 派生节点的目标输入。
+- `then` - 执行出口
+- `element` - 被刷新的绑定元素引用
+
 ## Scroll
 
 `blueprint.event.head.scroll` - 列表滚动事件
@@ -161,6 +230,18 @@
 - `offset` - 当前滚动位置
 - `maxOffset` - 最大滚动位置
 - `progress` - 滚动进度，范围通常为 `0` 到 `1`
+
+## List Item Refresh
+
+`blueprint.event.head.listItemRefresh` - List 条目上下文刷新事件
+
+当 `nl.list` 渲染或刷新某个条目时，会向 item template 后代元素的私有蓝图派发。该事件用于让模板子元素读取当前条目的 `props`，并且每个重复条目实例使用独立 `instanceKey` / `listItemScope`，不会和相同 element id 的其他条目共享 locals。
+- `then` - 执行出口
+- `props` - 当 `item` 是 object 时为 `item` 本身，否则为 `{ value: item }`
+- `item` - 当前条目数据
+- `index` - 条目索引
+- `count` - 本次渲染条目总数
+- `key` - 条目 key
 
 ## Item Render
 

@@ -32,6 +32,8 @@ export interface SelectProps {
     menuClassName?: string;
     /** Extra data attributes applied to the dropdown menu panel. Useful when a portaled menu belongs to another surface. */
     menuDataAttributes?: Record<`data-${string}`, string | undefined>;
+    /** Optional z-index override for the dropdown menu panel. */
+    menuZIndex?: number;
 }
 
 const sizeStyles = {
@@ -68,6 +70,7 @@ export function Select({
     menuPlacement = "auto",
     menuClassName = "",
     menuDataAttributes,
+    menuZIndex,
 }: SelectProps) {
     const [isOpen, setIsOpen] = useState(false);
     const selectRef = useRef<HTMLDivElement>(null);
@@ -178,7 +181,7 @@ export function Select({
                 width: trigger.width,
                 top,
                 maxHeight,
-                zIndex: 100,
+                zIndex: menuZIndex ?? 100,
             });
         };
 
@@ -195,7 +198,7 @@ export function Select({
             window.removeEventListener("resize", positionPortalMenu);
             window.removeEventListener("scroll", positionPortalMenu, true);
         };
-    }, [isOpen, portalMenu, menuPlacement, options.length, value]);
+    }, [isOpen, portalMenu, menuPlacement, menuZIndex, options.length, value]);
 
     const selectedOption = options.find(option => option.value === value);
 
@@ -217,6 +220,11 @@ export function Select({
             : menuPlacement === "above"
               ? false
               : dropdownDirection === "down";
+    const dropdownPanelStyle = portalMenu
+        ? portalMenuStyle
+        : menuZIndex !== undefined
+          ? { zIndex: menuZIndex }
+          : undefined;
 
     const dropdownPanel = isOpen ? (
         <div
@@ -228,7 +236,7 @@ export function Select({
                           openMenuDown ? "top-full mt-1" : "bottom-full mb-1"
                       } ${menuClassName}`
             }
-            style={portalMenu ? portalMenuStyle : undefined}
+            style={dropdownPanelStyle}
             {...menuDataAttributes}
         >
             {options.map((option) => (

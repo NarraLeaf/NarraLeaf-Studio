@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check } from "lucide-react";
 import { FixedAspectRatioContainer } from "narraleaf-react";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UISurface, UIDocument } from "@shared/types/ui-editor/document";
 import type { DevModeBundle } from "@shared/types/devMode";
+import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import { DevModeSurfaceRenderer } from "./DevModeSurfaceRenderer";
@@ -16,6 +17,13 @@ import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/W
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { dispatchSurfaceBlueprintEvent, dispatchGlobalBlueprintEvent } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { SurfaceLifecycleManager } from "@/lib/ui-editor/blueprint-runtime/SurfaceLifecycleManager";
+import { getInterface } from "@/lib/app/bridge";
+import {
+    getPageAnimationDurationMs,
+    resolvePageAnimationMotion,
+    shouldBlockPageAnimationExit,
+    type PageAnimationNavigationDirection,
+} from "@/lib/ui-editor/runtime/pageAnimation";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
@@ -36,6 +44,32 @@ const staticDevHostAdapter = (surface: UISurface): UIHostAdapter => ({
 const noopHostAdapter: UIHostAdapter = {
     host: "app",
 };
+
+type DevModeNavEntry = {
+    key: string;
+    surfaceId: string;
+    direction: PageAnimationNavigationDirection;
+    waitForExit: boolean;
+};
+
+type DevModeBlueprintRuntimeCore = NonNullable<ReturnType<typeof useDevModeBlueprintRuntime>>;
+
+type SurfaceStateAccessors = {
+    get: (key: string) => unknown;
+    set: (key: string, value: unknown) => void;
+};
+
+function keyboardBlueprintPayload(event: KeyboardEvent): Record<string, unknown> {
+    return {
+        key: event.key,
+        code: event.code,
+        repeat: event.repeat,
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        metaKey: event.metaKey,
+    };
+}
 
 function SessionErrorBanner(props: {
     sessionError: string | null;
@@ -63,6 +97,70 @@ function SessionErrorBanner(props: {
     );
 }
 
+function DevModeSurfaceLifecycleLayer(props: {
+    bpCore: DevModeBlueprintRuntimeCore | null;
+    bundle: DevModeBundle;
+    surface: UISurface;
+    runtimeScopeId: string;
+    hostAdapter: UIHostAdapter;
+    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
+    makeStateAccessors: (surfaceId: string) => SurfaceStateAccessors | null;
+    children: ReactNode;
+}) {
+    const { bpCore, bundle, surface, runtimeScopeId, hostAdapter, lifecycleRef, makeStateAccessors, children } = props;
+
+    useEffect(() => {
+        if (!bpCore || !hostAdapter.blueprintRuntime) {
+            return;
+        }
+        const shouldInit = lifecycleRef.current.onSurfaceEnter(runtimeScopeId);
+        if (!shouldInit) {
+            return;
+        }
+        const acc = makeStateAccessors(runtimeScopeId);
+        if (!acc) {
+            return;
+        }
+        void dispatchSurfaceBlueprintEvent({
+            blueprintDocument: bundle.ui.localBlueprints,
+            surfaceId: surface.id,
+            runtimeScopeId,
+            eventName: "surfaceInit",
+            hostAdapter,
+            debug: bpCore.debug,
+            getSurfaceState: acc.get,
+            setSurfaceState: acc.set,
+        });
+    }, [bpCore, bundle, hostAdapter, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
+
+    useEffect(() => {
+        if (!bpCore || !hostAdapter.blueprintRuntime) {
+            return undefined;
+        }
+        const surfaceToUnmount = surface.id;
+        const scopeToUnmount = runtimeScopeId;
+        return () => {
+            lifecycleRef.current.onSurfaceExit(scopeToUnmount);
+            const acc = makeStateAccessors(scopeToUnmount);
+            if (!acc) {
+                return;
+            }
+            void dispatchSurfaceBlueprintEvent({
+                blueprintDocument: bundle.ui.localBlueprints,
+                surfaceId: surfaceToUnmount,
+                runtimeScopeId: scopeToUnmount,
+                eventName: "surfaceUnmount",
+                hostAdapter,
+                debug: bpCore.debug,
+                getSurfaceState: acc.get,
+                setSurfaceState: acc.set,
+            });
+        };
+    }, [bpCore, bundle, hostAdapter, makeStateAccessors, runtimeScopeId, surface.id]);
+
+    return <>{children}</>;
+}
+
 export function DevModeContent(props: DevModeContentProps) {
     const {
         bundle,
@@ -77,17 +175,48 @@ export function DevModeContent(props: DevModeContentProps) {
     } = props;
     const uiDocument: UIDocument | null = bundle?.ui.uidoc ?? null;
     const bpCore = useDevModeBlueprintRuntime(bundle);
-    const [navStack, setNavStack] = useState<string[]>([]);
+    const prefersReducedMotion = useReducedMotion();
+    const [navStack, setNavStack] = useState<DevModeNavEntry[]>([]);
+    const navEntrySeqRef = useRef(0);
+    const activeNavKeyRef = useRef<string | null>(null);
+    const activeSurfaceRef = useRef<UISurface | null>(null);
+    const transitionWaitRef = useRef<{
+        resolve: (() => void) | null;
+        timeoutId: ReturnType<typeof setTimeout> | null;
+        enterDone: boolean;
+        exitDone: boolean;
+    }>({ resolve: null, timeoutId: null, enterDone: true, exitDone: true });
     const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});
     const widgetPatchesByScopeRef = useRef(widgetPatchesByScope);
+    const hostAdapterRef = useRef<UIHostAdapter | null>(null);
     const [devtoolsMenuOpen, setDevtoolsMenuOpen] = useState(false);
     const [blueprintPanelOpen, setBlueprintPanelOpen] = useState(false);
     const devtoolsFabRef = useRef<HTMLButtonElement>(null);
     const devtoolsMenuRef = useRef<HTMLDivElement>(null);
+    const persistenceProjectRef = useMemo<BlueprintPersistenceProjectRef | null>(() => {
+        if (!projectPath) {
+            return null;
+        }
+        const rawIdentifier = bundle?.meta?.projectIdentifier;
+        const projectIdentifier =
+            typeof rawIdentifier === "string" && rawIdentifier.trim() ? rawIdentifier.trim() : undefined;
+        return {
+            projectIdentifier,
+            projectPath,
+        };
+    }, [bundle?.meta?.projectIdentifier, projectPath]);
 
     useEffect(() => {
         if (surface?.id) {
-            setNavStack([surface.id]);
+            navEntrySeqRef.current += 1;
+            setNavStack([
+                {
+                    key: `${surface.id}:${navEntrySeqRef.current}`,
+                    surfaceId: surface.id,
+                    direction: "forward",
+                    waitForExit: false,
+                },
+            ]);
             setWidgetPatchesByScope({});
         }
     }, [surface?.id, bundle?.revision, bundle?.bundleId]);
@@ -102,6 +231,48 @@ export function DevModeContent(props: DevModeContentProps) {
             setBlueprintPanelOpen(false);
         }
     }, [bpCore]);
+
+    useEffect(() => {
+        if (!bpCore) {
+            return undefined;
+        }
+        if (!persistenceProjectRef) {
+            bpCore.scopeBridge.setPersistenceAdapter(null);
+            return undefined;
+        }
+        const projectRef = persistenceProjectRef;
+        bpCore.scopeBridge.setPersistenceAdapter({
+            getAll: async () => {
+                const result = await getInterface().blueprintPersistence.getAll(projectRef);
+                if (!result.success) {
+                    throw new Error(result.error ?? "Failed to read Blueprint persistent values");
+                }
+                return result.data.values;
+            },
+            getValue: async (key: string) => {
+                const result = await getInterface().blueprintPersistence.getValue(projectRef, key);
+                if (!result.success) {
+                    throw new Error(result.error ?? `Failed to read Blueprint persistent value "${key}"`);
+                }
+                return result.data.value;
+            },
+            setValue: async (key: string, value: unknown) => {
+                const result = await getInterface().blueprintPersistence.setValue(projectRef, key, value);
+                if (!result.success) {
+                    throw new Error(result.error ?? `Failed to write Blueprint persistent value "${key}"`);
+                }
+            },
+            removeValue: async (key: string) => {
+                const result = await getInterface().blueprintPersistence.removeValue(projectRef, key);
+                if (!result.success) {
+                    throw new Error(result.error ?? `Failed to remove Blueprint persistent value "${key}"`);
+                }
+            },
+        });
+        return () => {
+            bpCore.scopeBridge.setPersistenceAdapter(null);
+        };
+    }, [bpCore, persistenceProjectRef]);
 
     useEffect(() => {
         if (!devtoolsMenuOpen) {
@@ -140,36 +311,154 @@ export function DevModeContent(props: DevModeContentProps) {
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [devtoolsMenuOpen, blueprintPanelOpen]);
 
+    const activeEntry = navStack.length > 0 ? navStack[navStack.length - 1]! : null;
     const activeSurface = useMemo((): UISurface | null => {
         if (!bundle || !surface || !uiDocument) {
             return null;
         }
-        const activeSurfaceId = navStack.length > 0 ? navStack[navStack.length - 1]! : surface.id;
-        return uiDocument.surfaces.find(s => s.id === activeSurfaceId) ?? surface;
-    }, [bundle, surface, uiDocument, navStack]);
+        const activeSurfaceId = activeEntry?.surfaceId ?? surface.id;
+            return uiDocument.surfaces.find(s => s.id === activeSurfaceId) ?? surface;
+    }, [activeEntry?.surfaceId, bundle, surface, uiDocument]);
+    const activeRuntimeScopeId = activeEntry?.key ?? activeSurface?.id ?? surface?.id ?? "";
+
+    useEffect(() => {
+        activeNavKeyRef.current = activeEntry?.key ?? null;
+        activeSurfaceRef.current = activeSurface;
+    }, [activeEntry?.key, activeSurface]);
 
     const widgetRuntimeStore = useMemo(
         () => new WidgetRuntimeStateStore(),
-        [activeSurface?.id ?? "", bundle?.revision ?? 0, bundle?.bundleId ?? ""],
+        [activeRuntimeScopeId, bundle?.revision ?? 0, bundle?.bundleId ?? ""],
     );
+
+    const completeTransitionWait = useCallback(() => {
+        const pending = transitionWaitRef.current;
+        if (pending.timeoutId) {
+            clearTimeout(pending.timeoutId);
+        }
+        const resolve = pending.resolve;
+        transitionWaitRef.current = { resolve: null, timeoutId: null, enterDone: true, exitDone: true };
+        resolve?.();
+    }, []);
+
+    const tryCompleteTransitionWait = useCallback(() => {
+        const pending = transitionWaitRef.current;
+        if (pending.resolve && pending.enterDone && pending.exitDone) {
+            completeTransitionWait();
+        }
+    }, [completeTransitionWait]);
+
+    const beginTransitionWait = useCallback(
+        (durationMs: number): Promise<void> => {
+            completeTransitionWait();
+            if (durationMs <= 0) {
+                return Promise.resolve();
+            }
+            return new Promise(resolve => {
+                const timeoutId = setTimeout(() => {
+                    completeTransitionWait();
+                }, durationMs + 120);
+                transitionWaitRef.current = {
+                    resolve,
+                    timeoutId,
+                    enterDone: false,
+                    exitDone: false,
+                };
+            });
+        },
+        [completeTransitionWait],
+    );
+
+    const markActiveEnterComplete = useCallback(
+        (entryKey: string) => {
+            if (entryKey !== activeNavKeyRef.current) {
+                return;
+            }
+            transitionWaitRef.current.enterDone = true;
+            tryCompleteTransitionWait();
+        },
+        [tryCompleteTransitionWait],
+    );
+
+    const markExitComplete = useCallback(() => {
+        transitionWaitRef.current.exitDone = true;
+        tryCompleteTransitionWait();
+    }, [tryCompleteTransitionWait]);
+
+    const estimateTransitionDuration = useCallback(
+        (from: UISurface | null, to: UISurface | null, waitForExit: boolean): number => {
+            const reduced = prefersReducedMotion === true;
+            const exitDurationMs = getPageAnimationDurationMs(from?.settings?.pageAnimation, "exit", reduced);
+            const enterDurationMs = getPageAnimationDurationMs(to?.settings?.pageAnimation, "enter", reduced);
+            return waitForExit ? exitDurationMs + enterDurationMs : Math.max(exitDurationMs, enterDurationMs);
+        },
+        [prefersReducedMotion],
+    );
+
+    const shouldWaitForExit = useCallback((from: UISurface | null): boolean => {
+        return shouldBlockPageAnimationExit(from?.settings?.pageAnimation, prefersReducedMotion === true);
+    }, [prefersReducedMotion]);
+
+    const createNavEntry = useCallback(
+        (surfaceId: string, direction: PageAnimationNavigationDirection, waitForExit: boolean): DevModeNavEntry => {
+            navEntrySeqRef.current += 1;
+            return {
+                key: `${surfaceId}:${navEntrySeqRef.current}`,
+                surfaceId,
+                direction,
+                waitForExit,
+            };
+        },
+        [],
+    );
+
+    const openSurfaceWithTransition = useCallback(
+        (nextSurfaceId: string): Promise<void> => {
+            const from = activeSurfaceRef.current;
+            const target = uiDocument?.surfaces.find(s => s.id === nextSurfaceId) ?? null;
+            const waitForExit = shouldWaitForExit(from);
+            const wait = beginTransitionWait(estimateTransitionDuration(from, target, waitForExit));
+            setNavStack(prev => [...prev, createNavEntry(nextSurfaceId, "forward", waitForExit)]);
+            return wait;
+        },
+        [beginTransitionWait, createNavEntry, estimateTransitionDuration, shouldWaitForExit, uiDocument?.surfaces],
+    );
+
+    const closeLayerWithTransition = useCallback((): Promise<void> => {
+        const currentStack = navStack;
+        if (currentStack.length <= 1) {
+            return Promise.resolve();
+        }
+        const nextEntry = currentStack[currentStack.length - 2]!;
+        const target = uiDocument?.surfaces.find(s => s.id === nextEntry.surfaceId) ?? null;
+        const from = activeSurfaceRef.current;
+        const waitForExit = shouldWaitForExit(from);
+        const wait = beginTransitionWait(estimateTransitionDuration(from, target, waitForExit));
+        setNavStack(prev => {
+            if (prev.length <= 1) {
+                return prev;
+            }
+            const next = prev.slice(0, -1);
+            const top = next[next.length - 1]!;
+            next[next.length - 1] = { ...top, direction: "back", waitForExit };
+            return next;
+        });
+        return wait;
+    }, [beginTransitionWait, estimateTransitionDuration, navStack, shouldWaitForExit, uiDocument?.surfaces]);
 
     const hostApi = useMemo(() => {
         if (!bpCore || !uiDocument || !activeSurface) {
             return null;
         }
-        const runtimeScopeId = activeSurface.id;
+        const runtimeScopeId = activeRuntimeScopeId || activeSurface.id;
         return createDevModeBlueprintHostApi({
             document: uiDocument,
             scope: bpCore.scopeBridge,
             activeSurfaceId: activeSurface.id,
             runtimeScopeId,
             emit: e => bpCore.debug.emit(e),
-            onOpenSurface: id => {
-                setNavStack(prev => [...prev, id]);
-            },
-            onCloseLayer: () => {
-                setNavStack(prev => (prev.length > 1 ? prev.slice(0, -1) : prev));
-            },
+            onOpenSurface: openSurfaceWithTransition,
+            onCloseLayer: closeLayerWithTransition,
             onWidgetPatch: (elementId, patch) => {
                 setWidgetPatchesByScope(prev => ({
                     ...prev,
@@ -182,9 +471,24 @@ export function DevModeContent(props: DevModeContentProps) {
                     },
                 }));
             },
+            onElementFlush: (elementId, payload) => {
+                void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
+                    elementId,
+                    "flush",
+                    payload,
+                );
+            },
             widgetRuntimeStore,
         });
-    }, [bpCore, uiDocument, activeSurface, widgetRuntimeStore]);
+    }, [
+        activeRuntimeScopeId,
+        bpCore,
+        uiDocument,
+        activeSurface,
+        openSurfaceWithTransition,
+        closeLayerWithTransition,
+        widgetRuntimeStore,
+    ]);
 
     const hostAdapter = useMemo((): UIHostAdapter => {
         if (!activeSurface) {
@@ -196,19 +500,23 @@ export function DevModeContent(props: DevModeContentProps) {
         return createDevModeBlueprintHostAdapter({
             bundle,
             surface: activeSurface,
-            runtimeScopeId: activeSurface.id,
+            runtimeScopeId: activeRuntimeScopeId || activeSurface.id,
             scopeBridge: bpCore.scopeBridge,
             debug: bpCore.debug,
             hostApi,
         });
-    }, [bundle, activeSurface, bpCore, hostApi]);
+    }, [activeRuntimeScopeId, bundle, activeSurface, bpCore, hostApi]);
+
+    useEffect(() => {
+        hostAdapterRef.current = hostAdapter;
+    }, [hostAdapter]);
 
     const makeStateAccessors = useCallback(
-        (sid: string) => {
+        (runtimeScopeId: string) => {
             if (!bpCore) {
                 return null;
             }
-            const store = bpCore.scopeBridge.getSurfaceStore(sid);
+            const store = bpCore.scopeBridge.getSurfaceStore(runtimeScopeId);
             return {
                 get: (key: string) => store.get(key),
                 set: (key: string, value: unknown) => store.set(key, value),
@@ -216,6 +524,52 @@ export function DevModeContent(props: DevModeContentProps) {
         },
         [bpCore],
     );
+
+    useEffect(() => {
+        if (!bpCore || !bundle || !activeSurface || !hostAdapter.blueprintRuntime) {
+            return undefined;
+        }
+
+        const dispatchKeyboardEvent = (eventName: "keyDown" | "keyUp", event: KeyboardEvent) => {
+            const runtimeScopeId = activeRuntimeScopeId || activeSurface.id;
+            const acc = makeStateAccessors(runtimeScopeId);
+            if (!acc) {
+                return;
+            }
+            const eventPayload = keyboardBlueprintPayload(event);
+            void (async () => {
+                await dispatchGlobalBlueprintEvent({
+                    blueprintDocument: bundle.ui.localBlueprints,
+                    eventName,
+                    eventPayload,
+                    hostAdapter,
+                    debug: bpCore.debug,
+                    getSurfaceState: acc.get,
+                    setSurfaceState: acc.set,
+                });
+                await dispatchSurfaceBlueprintEvent({
+                    blueprintDocument: bundle.ui.localBlueprints,
+                    surfaceId: activeSurface.id,
+                    runtimeScopeId,
+                    eventName,
+                    eventPayload,
+                    hostAdapter,
+                    debug: bpCore.debug,
+                    getSurfaceState: acc.get,
+                    setSurfaceState: acc.set,
+                });
+            })();
+        };
+
+        const onKeyDown = (event: KeyboardEvent) => dispatchKeyboardEvent("keyDown", event);
+        const onKeyUp = (event: KeyboardEvent) => dispatchKeyboardEvent("keyUp", event);
+        window.addEventListener("keydown", onKeyDown);
+        window.addEventListener("keyup", onKeyUp);
+        return () => {
+            window.removeEventListener("keydown", onKeyDown);
+            window.removeEventListener("keyup", onKeyUp);
+        };
+    }, [activeRuntimeScopeId, activeSurface, bpCore, bundle, hostAdapter, makeStateAccessors]);
 
     const lifecycleRef = useRef<SurfaceLifecycleManager>(new SurfaceLifecycleManager());
     const appBootFiredRef = useRef<string | null>(null);
@@ -236,7 +590,7 @@ export function DevModeContent(props: DevModeContentProps) {
             return;
         }
         appBootFiredRef.current = sig;
-        const acc = makeStateAccessors(surface?.id ?? "");
+        const acc = makeStateAccessors((activeRuntimeScopeId || surface?.id) ?? "");
         if (!acc) {
             return;
         }
@@ -248,56 +602,7 @@ export function DevModeContent(props: DevModeContentProps) {
             getSurfaceState: acc.get,
             setSurfaceState: acc.set,
         });
-    }, [bpCore, bundle, hostAdapter, makeStateAccessors, surface?.id]);
-
-    // Dispatch surfaceMain surfaceInit when the active surface changes (first visit only)
-    useEffect(() => {
-        if (!bpCore || !bundle || !activeSurface || !hostAdapter.blueprintRuntime) {
-            return;
-        }
-        const shouldInit = lifecycleRef.current.onSurfaceEnter(activeSurface.id);
-        if (!shouldInit) {
-            return;
-        }
-        const acc = makeStateAccessors(activeSurface.id);
-        if (!acc) {
-            return;
-        }
-        void dispatchSurfaceBlueprintEvent({
-            blueprintDocument: bundle.ui.localBlueprints,
-            surfaceId: activeSurface.id,
-            runtimeScopeId: activeSurface.id,
-            eventName: "surfaceInit",
-            hostAdapter,
-            debug: bpCore.debug,
-            getSurfaceState: acc.get,
-            setSurfaceState: acc.set,
-        });
-    }, [bpCore, bundle, activeSurface, hostAdapter, makeStateAccessors]);
-
-    // Dispatch surfaceMain surfaceUnmount when a page leaves the active runtime.
-    useEffect(() => {
-        if (!bpCore || !bundle || !activeSurface || !hostAdapter.blueprintRuntime) {
-            return undefined;
-        }
-        const surfaceToUnmount = activeSurface.id;
-        return () => {
-            const acc = makeStateAccessors(surfaceToUnmount);
-            if (!acc) {
-                return;
-            }
-            void dispatchSurfaceBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                surfaceId: surfaceToUnmount,
-                runtimeScopeId: surfaceToUnmount,
-                eventName: "surfaceUnmount",
-                hostAdapter,
-                debug: bpCore.debug,
-                getSurfaceState: acc.get,
-                setSurfaceState: acc.set,
-            });
-        };
-    }, [bpCore, bundle, activeSurface, hostAdapter, makeStateAccessors]);
+    }, [activeRuntimeScopeId, bpCore, bundle, hostAdapter, makeStateAccessors, surface?.id]);
 
     const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
         if (!bpCore || !bundle || !uiDocument) {
@@ -310,6 +615,7 @@ export function DevModeContent(props: DevModeContentProps) {
         return {
             createHostAdapter: input => {
                 const runtimeScopeId = input.runtimeScopeId;
+                let nestedHostAdapter: UIHostAdapter | null = null;
                 const hostApi = createDevModeBlueprintHostApi({
                     document: uiDocument,
                     scope: bpCore.scopeBridge,
@@ -324,12 +630,8 @@ export function DevModeContent(props: DevModeContentProps) {
                         );
                     },
                     emit: e => bpCore.debug.emit(e),
-                    onOpenSurface: id => {
-                        setNavStack(prev => [...prev, id]);
-                    },
-                    onCloseLayer: () => {
-                        setNavStack(prev => (prev.length > 1 ? prev.slice(0, -1) : prev));
-                    },
+                    onOpenSurface: openSurfaceWithTransition,
+                    onCloseLayer: closeLayerWithTransition,
                     onWidgetPatch: (elementId, patch) => {
                         setWidgetPatchesByScope(prev => ({
                             ...prev,
@@ -342,9 +644,16 @@ export function DevModeContent(props: DevModeContentProps) {
                             },
                         }));
                     },
+                    onElementFlush: (elementId, payload) => {
+                        void nestedHostAdapter?.blueprintRuntime?.dispatchElementBlueprintEvent(
+                            elementId,
+                            "flush",
+                            payload,
+                        );
+                    },
                     widgetRuntimeStore,
                 });
-                return createDevModeBlueprintHostAdapter({
+                nestedHostAdapter = createDevModeBlueprintHostAdapter({
                     bundle,
                     surface: input.targetSurface,
                     runtimeScopeId,
@@ -352,6 +661,7 @@ export function DevModeContent(props: DevModeContentProps) {
                     debug: bpCore.debug,
                     hostApi,
                 });
+                return nestedHostAdapter;
             },
             createBindingContext: input => ({
                 blueprintDocument: bundle.ui.localBlueprints,
@@ -378,6 +688,7 @@ export function DevModeContent(props: DevModeContentProps) {
                     });
                 }
                 return () => {
+                    lifecycleRef.current.onSurfaceExit(input.runtimeScopeId);
                     void dispatchSurfaceBlueprintEvent({
                         blueprintDocument: bundle.ui.localBlueprints,
                         surfaceId: input.targetSurface.id,
@@ -392,7 +703,15 @@ export function DevModeContent(props: DevModeContentProps) {
             },
             getWidgetRuntimePatches: input => widgetPatchesByScopeRef.current[input.runtimeScopeId] ?? {},
         };
-    }, [bpCore, bundle, makeStateAccessors, uiDocument, widgetRuntimeStore]);
+    }, [
+        bpCore,
+        bundle,
+        closeLayerWithTransition,
+        makeStateAccessors,
+        openSurfaceWithTransition,
+        uiDocument,
+        widgetRuntimeStore,
+    ]);
 
     if (!bundle) {
         return (
@@ -429,7 +748,6 @@ export function DevModeContent(props: DevModeContentProps) {
 
     const aspectRatio = activeSurface.designSize.width / activeSurface.designSize.height;
     const baseWidth = activeSurface.designSize.width;
-    const baseHeight = activeSurface.designSize.height;
 
     const globalStateReader = bpCore
         ? {
@@ -442,7 +760,7 @@ export function DevModeContent(props: DevModeContentProps) {
         bpCore != null
             ? {
                   blueprintDocument: bundle.ui.localBlueprints,
-                  surfaceState: bpCore.scopeBridge.getSurfaceStore(activeSurface.id),
+                  surfaceState: bpCore.scopeBridge.getSurfaceStore(activeRuntimeScopeId || activeSurface.id),
                   debug: bpCore.debug,
                   coalescer: bpCore.bindingDebugCoalescer,
                   globalState: globalStateReader,
@@ -450,6 +768,31 @@ export function DevModeContent(props: DevModeContentProps) {
             : null;
 
     const uidoc = uiDocument!;
+    const activeDirection = activeEntry?.direction ?? "forward";
+    const activeWaitForExit = activeEntry?.waitForExit === true;
+    const reducedMotion = prefersReducedMotion === true;
+    const activePageMotion = resolvePageAnimationMotion({
+        settings: activeSurface.settings?.pageAnimation,
+        navigationDirection: activeDirection,
+        reducedMotion,
+    });
+    const pageMotionVariants = {
+        initial: (direction: PageAnimationNavigationDirection) =>
+            resolvePageAnimationMotion({
+                settings: activeSurface.settings?.pageAnimation,
+                navigationDirection: direction,
+                reducedMotion,
+            }).initial,
+        animate: activePageMotion.animate,
+        exit: (direction: PageAnimationNavigationDirection) => ({
+            ...resolvePageAnimationMotion({
+                settings: activeSurface.settings?.pageAnimation,
+                navigationDirection: direction,
+                reducedMotion,
+            }).exit,
+            pointerEvents: "none",
+        }),
+    };
 
     return (
         <div className="flex h-full w-full min-h-0 flex-col overflow-hidden">
@@ -463,18 +806,48 @@ export function DevModeContent(props: DevModeContentProps) {
                         debounceMs={0}
                         onUpdate={handleAspectUpdate}
                     >
-                        <WidgetRuntimeStateProvider externalStore={widgetRuntimeStore}>
-                            <DevModeSurfaceRenderer
-                                document={uidoc}
-                                surface={activeSurface}
-                                rendererRegistry={rendererRegistry}
-                                scale={scale}
-                                hostAdapter={hostAdapter}
-                                blueprintBindingContext={bindingContext}
-                                widgetRuntimePatches={widgetPatchesByScope[activeSurface.id] ?? {}}
-                                nestedSurfaceRuntime={nestedSurfaceRuntime}
-                            />
-                        </WidgetRuntimeStateProvider>
+                        <div className="relative h-full w-full overflow-hidden">
+                            <AnimatePresence
+                                custom={activeDirection}
+                                initial={false}
+                                mode={activeWaitForExit ? "wait" : "sync"}
+                                onExitComplete={markExitComplete}
+                            >
+                                <motion.div
+                                    key={activeEntry?.key ?? activeSurface.id}
+                                    custom={activeDirection}
+                                    className="absolute inset-0 flex items-center justify-center"
+                                    variants={pageMotionVariants}
+                                    initial="initial"
+                                    animate="animate"
+                                    exit="exit"
+                                    onAnimationComplete={() => markActiveEnterComplete(activeEntry?.key ?? activeSurface.id)}
+                                >
+                                    <DevModeSurfaceLifecycleLayer
+                                        bpCore={bpCore}
+                                        bundle={bundle}
+                                        surface={activeSurface}
+                                        runtimeScopeId={activeRuntimeScopeId || activeSurface.id}
+                                        hostAdapter={hostAdapter}
+                                        lifecycleRef={lifecycleRef}
+                                        makeStateAccessors={makeStateAccessors}
+                                    >
+                                        <WidgetRuntimeStateProvider externalStore={widgetRuntimeStore}>
+                                            <DevModeSurfaceRenderer
+                                                document={uidoc}
+                                                surface={activeSurface}
+                                                rendererRegistry={rendererRegistry}
+                                                scale={scale}
+                                                hostAdapter={hostAdapter}
+                                                blueprintBindingContext={bindingContext}
+                                                widgetRuntimePatches={widgetPatchesByScope[activeRuntimeScopeId || activeSurface.id] ?? {}}
+                                                nestedSurfaceRuntime={nestedSurfaceRuntime}
+                                            />
+                                        </WidgetRuntimeStateProvider>
+                                    </DevModeSurfaceLifecycleLayer>
+                                </motion.div>
+                            </AnimatePresence>
+                        </div>
                     </FixedAspectRatioContainer>
                 </div>
 

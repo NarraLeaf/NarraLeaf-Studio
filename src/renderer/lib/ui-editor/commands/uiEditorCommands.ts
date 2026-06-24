@@ -15,10 +15,12 @@ import {
     getMoversToGroupIntoLeaderContainer,
     getSelectionLeaderId,
     getSelectionPrimaryId,
+    selectSurfaceForProperties,
 } from "./uiEditorSelection";
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import type { Blueprint } from "@shared/types/blueprint/document";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 
 export type UIEditorPasteTarget = {
     parentId: string;
@@ -155,6 +157,7 @@ export function uiEditorCutSelection(
     stateService: UIEditorStateService,
     surfaceId: string,
     selection: UIElementSelection | null,
+    uiService?: UIService | null,
 ): boolean {
     const ok = uiEditorCopySelection(documentService, localBp, surfaceId, selection);
     if (!ok || !selection || selection.elementIds.length === 0) {
@@ -165,8 +168,8 @@ export function uiEditorCutSelection(
     if (tops.length === 0) {
         return false;
     }
+    selectSurfaceForProperties(stateService, surfaceId, uiService);
     documentService.deleteElements(tops);
-    stateService.setSelection({ type: null, data: null });
     return true;
 }
 
@@ -302,6 +305,7 @@ export function uiEditorDeleteSelection(
     stateService: UIEditorStateService,
     surfaceId: string,
     selection: UIElementSelection | null,
+    uiService?: UIService | null,
 ): boolean {
     if (!selection || selection.surfaceId !== surfaceId || selection.elementIds.length === 0) {
         return false;
@@ -311,8 +315,8 @@ export function uiEditorDeleteSelection(
     if (tops.length === 0) {
         return false;
     }
+    selectSurfaceForProperties(stateService, surfaceId, uiService);
     documentService.deleteElements(tops);
-    stateService.setSelection({ type: null, data: null });
     return true;
 }
 
@@ -347,7 +351,12 @@ export function uiEditorGroupIntoLeaderContainer(
     return true;
 }
 
-export function uiEditorSelectAllInSurface(documentService: UIDocumentService, stateService: UIEditorStateService, surfaceId: string): void {
+export function uiEditorSelectAllInSurface(
+    documentService: UIDocumentService,
+    stateService: UIEditorStateService,
+    surfaceId: string,
+    uiService?: UIService | null,
+): void {
     const doc = documentService.getDocument();
     const effectiveRootId = resolveSurfaceRootElementId(doc, surfaceId);
     if (!effectiveRootId) {
@@ -371,7 +380,7 @@ export function uiEditorSelectAllInSurface(documentService: UIDocumentService, s
     };
     walk(effectiveRootId);
     if (ids.length === 0) {
-        stateService.setSelection({ type: null, data: null });
+        selectSurfaceForProperties(stateService, surfaceId, uiService);
         return;
     }
     stateService.setUIElementSelection({

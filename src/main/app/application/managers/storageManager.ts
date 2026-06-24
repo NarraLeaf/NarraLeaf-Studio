@@ -4,6 +4,7 @@ import {
     StorageNamespaceInfo
 } from "@shared/types/persistentState";
 import crypto from "crypto";
+import { app as electronApp } from "electron";
 import fs from "fs/promises";
 import path from "path";
 import { PersistentState } from "../../../../shared/utils/persistentState";
@@ -21,9 +22,19 @@ export interface FileStorageInfo {
     error?: string;
 }
 
+type SecurityScopedResourceLifetime = "window" | "session";
+type SecurityScopedBookmarkGrant = {
+    path: string;
+    recursive: boolean;
+    bookmark: string;
+};
+
 export class StorageManager extends Manager {
     private storage = new Map<string, FileStorageInfo>();
     private runtimeFileSystemGrants = new Map<number, FileSystemGrant[]>();
+    private runtimeSecurityScopedResourceStops = new Map<number, Array<() => void>>();
+    private sessionSecurityScopedResourceStops: Array<() => void> = [];
+    private securityScopedBookmarkGrants: SecurityScopedBookmarkGrant[] = [];
     private namespaces = new Map<string, StorageNamespaceInfo>();
     
     constructor(app: BaseApp) {
@@ -43,8 +54,17 @@ export class StorageManager extends Manager {
         return hash;
     }
 
-    public grantFileSystemAccess(window: AppWindow, fsPath: string, mode: FileSystemGrantMode = "readwrite", recursive: boolean = true): void {
+    public grantFileSystemAccess(
+        window: AppWindow,
+        fsPath: string,
+        mode: FileSystemGrantMode = "readwrite",
+        recursive: boolean = true,
+        securityScopedBookmark?: string,
+        securityScopedResourceLifetime: SecurityScopedResourceLifetime = "window",
+    ): void {
         const grants = this.runtimeFileSystemGrants.get(this.getWindowStorageKey(window)) ?? [];
+        this.startSecurityScopedResource(window, fsPath, securityScopedBookmark, securityScopedResourceLifetime);
+        this.rememberSecurityScopedBookmark(fsPath, recursive, securityScopedBookmark);
         const modes: FileSystemAccessMode[] = mode === "readwrite" ? ["read", "write"] : [mode];
         for (const grantMode of modes) {
             grants.push({ path: path.resolve(fsPath), recursive, mode: grantMode });
@@ -67,8 +87,23 @@ export class StorageManager extends Manager {
         return false;
     }
 
+    public async isPathProtected(fsPath: string): Promise<boolean> {
+        return this.isProtectedStoragePath(await this.resolvePathForAuthorization(fsPath));
+    }
+
+    public getSecurityScopedBookmarkForPath(fsPath: string): string | undefined {
+        const target = path.resolve(fsPath);
+        return this.securityScopedBookmarkGrants
+            .filter(grant => grant.recursive ? this.isSameOrChild(target, grant.path) : target === grant.path)
+            .sort((a, b) => b.path.length - a.path.length)
+            .at(0)?.bookmark;
+    }
+
     public revokeWindowFileSystemAccess(window: AppWindow): void {
         this.runtimeFileSystemGrants.delete(this.getWindowStorageKey(window));
+        const key = this.getWindowStorageKey(window);
+        this.stopSecurityScopedResources(this.runtimeSecurityScopedResourceStops.get(key) ?? []);
+        this.runtimeSecurityScopedResourceStops.delete(key);
     }
 
     /**
@@ -197,7 +232,65 @@ export class StorageManager extends Manager {
     public cleanupAll(): void {
         this.storage.clear();
         this.runtimeFileSystemGrants.clear();
+        for (const stopAccessingList of this.runtimeSecurityScopedResourceStops.values()) {
+            this.stopSecurityScopedResources(stopAccessingList);
+        }
+        this.runtimeSecurityScopedResourceStops.clear();
+        this.stopSecurityScopedResources(this.sessionSecurityScopedResourceStops);
+        this.sessionSecurityScopedResourceStops = [];
+        this.securityScopedBookmarkGrants = [];
         this.namespaces.clear();
+    }
+
+    private rememberSecurityScopedBookmark(fsPath: string, recursive: boolean, securityScopedBookmark?: string): void {
+        if (!securityScopedBookmark) {
+            return;
+        }
+
+        const bookmarkGrant: SecurityScopedBookmarkGrant = {
+            path: path.resolve(fsPath),
+            recursive,
+            bookmark: securityScopedBookmark,
+        };
+        this.securityScopedBookmarkGrants = [
+            bookmarkGrant,
+            ...this.securityScopedBookmarkGrants.filter(grant => grant.path !== bookmarkGrant.path || grant.bookmark !== bookmarkGrant.bookmark),
+        ];
+    }
+
+    private startSecurityScopedResource(
+        window: AppWindow,
+        fsPath: string,
+        securityScopedBookmark: string | undefined,
+        lifetime: SecurityScopedResourceLifetime,
+    ): void {
+        if (!securityScopedBookmark) {
+            return;
+        }
+
+        try {
+            const stopAccessing = electronApp.startAccessingSecurityScopedResource(securityScopedBookmark);
+            if (lifetime === "session") {
+                this.sessionSecurityScopedResourceStops.push(() => stopAccessing());
+            } else {
+                const key = this.getWindowStorageKey(window);
+                const stops = this.runtimeSecurityScopedResourceStops.get(key) ?? [];
+                stops.push(() => stopAccessing());
+                this.runtimeSecurityScopedResourceStops.set(key, stops);
+            }
+        } catch (error) {
+            this.app.logger.warn(`Failed to start accessing security scoped resource for ${fsPath}:`, error);
+        }
+    }
+
+    private stopSecurityScopedResources(stopAccessingList: Array<() => void>): void {
+        for (const stopAccessing of stopAccessingList) {
+            try {
+                stopAccessing();
+            } catch (error) {
+                this.app.logger.warn("Failed to stop accessing security scoped resource:", error);
+            }
+        }
     }
 
     private getFileSystemGrants(window: AppWindow, mode: FileSystemAccessMode): FileSystemGrant[] {

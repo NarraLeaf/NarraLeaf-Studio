@@ -94,7 +94,7 @@ function stringNode(input: {
     return {
         type: input.type,
         displayName: input.displayName,
-        category: "String",
+        category: "Data",
         keywords: input.keywords,
         graphKinds: [...GRAPH_KINDS],
         isPure: true,

@@ -24,4 +24,12 @@ describe("ProjectNameConvention asset storage ids", () => {
         expect(() => ProjectNameConvention.AssetsDataShard(traversal)).toThrow("Invalid asset storage id");
         expect(() => ProjectNameConvention.EditorRemoteAssetShard("/tmp/asset")).toThrow("Invalid asset storage id");
     });
+
+    it("encodes thumbnail cache ids without applying storage-id validation twice", () => {
+        const shard = ProjectNameConvention.EditorThumbnailCacheShard(uuid);
+
+        expect(shard.slice(0, 3)).toEqual(["editor", "cache", "thumbnail"]);
+        expect(shard.at(-1)).toBe("asset-31323365343536372d653839622d313264332d613435362d343236363134313734303030.png");
+        expect(() => ProjectNameConvention.EditorThumbnailCacheShard("asset-with/slash?")).not.toThrow();
+    });
 });

@@ -10,6 +10,7 @@ describe("blueprintVariableRefs", () => {
     it("lists page, blueprint, and global variables and disambiguates duplicate names", () => {
         const doc: BlueprintDocument = {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
             blueprints: {
                 global: {
                     id: "global",
