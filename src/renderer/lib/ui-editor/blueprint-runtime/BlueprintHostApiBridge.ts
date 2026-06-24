@@ -153,8 +153,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     frameParams?: Record<string, unknown>;
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
-    onOpenSurface: (surfaceId: string) => void;
-    onCloseLayer: () => void;
+    onOpenSurface: (surfaceId: string) => void | Promise<void>;
+    onCloseLayer: () => void | Promise<void>;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
     onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -620,13 +620,13 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                     throw new Error(`openSurface: surface not found: ${surfaceId}`);
                 }
-                onOpenSurface(surfaceId);
+                await onOpenSurface(surfaceId);
                 emitHostCall(emit, cap, "return");
             },
             closeLayer: async () => {
                 const cap = "navigation.closeLayer";
                 emitHostCall(emit, cap, "call");
-                onCloseLayer();
+                await onCloseLayer();
                 emitHostCall(emit, cap, "return");
             },
         },
