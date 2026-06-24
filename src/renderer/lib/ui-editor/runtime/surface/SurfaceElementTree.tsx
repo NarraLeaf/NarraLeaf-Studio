@@ -20,7 +20,7 @@ import { renderUnknownWidgetTypeContent } from "@/lib/ui-editor/runtime/unknownW
 import { BlueprintWidgetInitLifecycle } from "@/lib/ui-editor/runtime/surface/BlueprintWidgetInitLifecycle";
 import { WidgetRuntimeScopeProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { getUIFrameWidgetProps } from "@shared/types/ui-editor/frame";
-import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
+import { resolvePageAnimationMotion, shouldBlockPageAnimationExit } from "@/lib/ui-editor/runtime/pageAnimation";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
@@ -203,6 +203,7 @@ function NestedSurfaceRenderer(props: {
         nestedSurfaceRuntime,
         surfacePath,
     } = props;
+    const prefersReducedMotion = useReducedMotion();
     const surfacePathKey = surfacePath.join("\0");
     const targetSurface = document.surfaces.find(surface => surface.id === targetSurfaceId);
     const invalidLabel = !targetSurfaceId
@@ -262,9 +263,13 @@ function NestedSurfaceRenderer(props: {
     if (!runtimeInput) {
         return <NestedSurfacePlaceholder label="Page preview unavailable" />;
     }
+    const frameAnimation = getUIFrameWidgetProps(frameElement).animation;
+    const animationSettings = frameAnimation ?? targetSurface?.settings?.pageAnimation;
+    const reducedMotion = prefersReducedMotion === true || !parentHostAdapter.blueprintRuntime;
+    const waitForExit = shouldBlockPageAnimationExit(animationSettings, reducedMotion);
 
     return (
-        <AnimatePresence initial={false}>
+        <AnimatePresence initial={false} mode={waitForExit ? "wait" : "sync"}>
             <NestedSurfaceInstance
                 key={runtimeScopeId}
                 runtimeInput={runtimeInput}
@@ -355,7 +360,6 @@ function NestedSurfaceInstance(props: {
             initial={animationMotion.initial}
             animate={animationMotion.animate}
             exit={animationMotion.exit}
-            transition={animationMotion.transition}
             style={surfaceStyle}
         >
             <SurfaceElementTree

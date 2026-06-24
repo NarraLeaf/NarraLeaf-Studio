@@ -61,6 +61,7 @@ import {
 } from "@shared/constants/ui-editor";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
+import { normalizeUIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 
 type UIDocumentServiceEvents = {
     documentChanged: UIDocument;
@@ -87,6 +88,13 @@ type UIDocumentMutationHistoryOptions =
 type UIDocumentMutationOptions = {
     history?: UIDocumentMutationHistoryOptions;
 };
+
+function createDefaultPageSurfaceSettings(settings?: UISurfaceSettings): UISurfaceSettings {
+    return {
+        ...settings,
+        pageAnimation: normalizeUIPageAnimationSettings(settings?.pageAnimation),
+    };
+}
 
 const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = "onStage";
 
@@ -833,6 +841,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 height: designSize.height,
             },
             rootElementId,
+            settings: createDefaultPageSurfaceSettings(),
         };
 
         const doc: UIDocument = {
@@ -893,7 +902,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                       kind,
                       designSize,
                       rootElementId,
-                      settings,
+                      settings: createDefaultPageSurfaceSettings(settings),
                   };
 
         const rootElement = this.createRootElement(rootElementId, designSize);
@@ -1432,6 +1441,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 height: designSize.height,
             },
             rootElementId,
+            settings: createDefaultPageSurfaceSettings(),
         };
 
         document.elements[rootElementId] = this.createRootElement(rootElementId, designSize);

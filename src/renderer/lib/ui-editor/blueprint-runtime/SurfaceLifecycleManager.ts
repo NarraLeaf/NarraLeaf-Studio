@@ -1,12 +1,12 @@
 /**
- * Tracks surface lifecycle state for a single Dev Mode session.
+ * Tracks mounted surface runtime scopes for a single Dev Mode session.
  * Determines when surfaceInit events should fire and manages state reset policy.
  */
 
 export type SurfaceResetPolicy = "preserve" | "reset";
 
 export class SurfaceLifecycleManager {
-    private readonly initializedSurfaces = new Set<string>();
+    private readonly mountedScopes = new Set<string>();
     private readonly resetPolicy: SurfaceResetPolicy;
 
     constructor(resetPolicy: SurfaceResetPolicy = "preserve") {
@@ -14,21 +14,25 @@ export class SurfaceLifecycleManager {
     }
 
     /**
-     * Called when a surface becomes the active surface (enters the top of navStack).
-     * Returns true if this is the first time this surface is entered in the session
-     * (surfaceInit should be dispatched).
+     * Called when a surface runtime scope mounts.
+     * Returns true when this mount should dispatch surfaceInit.
      */
-    public onSurfaceEnter(surfaceId: string): boolean {
-        if (this.initializedSurfaces.has(surfaceId)) {
+    public onSurfaceEnter(runtimeScopeId: string): boolean {
+        if (this.mountedScopes.has(runtimeScopeId)) {
             return false;
         }
-        this.initializedSurfaces.add(surfaceId);
+        this.mountedScopes.add(runtimeScopeId);
         return true;
     }
 
-    /** Whether a surface has been initialized in this session. */
-    public isInitialized(surfaceId: string): boolean {
-        return this.initializedSurfaces.has(surfaceId);
+    /** Called when a surface runtime scope unmounts. */
+    public onSurfaceExit(runtimeScopeId: string): void {
+        this.mountedScopes.delete(runtimeScopeId);
+    }
+
+    /** Whether a surface runtime scope is currently mounted. */
+    public isInitialized(runtimeScopeId: string): boolean {
+        return this.mountedScopes.has(runtimeScopeId);
     }
 
     /** Current state reset policy for re-entered surfaces. */
@@ -38,6 +42,6 @@ export class SurfaceLifecycleManager {
 
     /** Reset all tracking (e.g. on bundle reload). */
     public reset(): void {
-        this.initializedSurfaces.clear();
+        this.mountedScopes.clear();
     }
 }

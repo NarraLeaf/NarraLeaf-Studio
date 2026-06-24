@@ -38,6 +38,7 @@ Displayable分类具有：
 
 Page分类具有：
 - Page节点
+- `Go Page` 页面导航尾节点
 
 ## Data
 
@@ -88,4 +89,4 @@ Image分类具有：
 
 ## Button / Container / Frame
 
-这些控件私有分类具有对应控件自己的属性方法节点，例如 `Set Enabled`、`Set Label`、`Set Target Page`。同类型派生节点不放入这些分类，而是放入 `Element` 分类。
+这些控件私有分类具有对应控件自己的属性方法节点，例如 `Set Enabled`、`Set Label`。`nl.frame` Self 形态的 `Set Frame Page` 属于 `Frame` 分类；派生 Element 形态和其他派生节点一样属于 `Element` 分类。

@@ -10,8 +10,10 @@ import {
     normalizeBlueprintImageAssetValue,
 } from "@shared/types/blueprint/valueTypes";
 import {
+    BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
     BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_ASSET,
     BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET,
+    BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
     BLUEPRINT_NODE_TYPE_IMAGE_GET_ASSET,
     BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
@@ -168,6 +170,7 @@ function writeNode(input: {
     target: WidgetTarget;
     mode: TargetMode;
     category?: string;
+    inspectorParams?: BlueprintNodeDef["inspectorParams"];
     execute: BlueprintNodeDef["execute"];
 }): BlueprintNodeDef {
     const elementTarget = input.mode === "element";
@@ -182,6 +185,7 @@ function writeNode(input: {
         pins: elementTarget
             ? [execIn, execNext, elementIn(input.target), ...(input.pins ?? [])]
             : [execIn, execNext, ...(input.pins ?? [])],
+        inspectorParams: input.inspectorParams,
         magicElementTarget: elementTarget ? { inputPinId: "element", elementTypes: [input.target.elementType] } : undefined,
         scope: elementTarget ? undefined : { ownerKinds: ["widgetMain"], widgetElementTypes: [input.target.elementType] },
         execute: input.execute,
@@ -369,6 +373,8 @@ function imageNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
 function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] {
     const prefix = mode === "element" ? "blueprint.element.frame" : "blueprint.frameWidget";
     const labelPrefix = mode === "element" ? "Frame " : "";
+    const setPageType =
+        mode === "element" ? BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE : BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE;
     return [
         readNode({
             type: `${prefix}.getTargetPage`,
@@ -379,12 +385,19 @@ function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
             mode,
         }),
         writeNode({
-            type: `${prefix}.setTargetPage`,
-            displayName: `Set ${labelPrefix}Target Page`,
-            keywords: ["frame", "page", "surface", "target", "set"],
-            pins: [stringIn("targetSurfaceId", "Page")],
+            type: setPageType,
+            displayName: "Set Frame Page",
+            keywords: ["frame", "page", "surface", "target", "set", "set frame page"],
             target,
             mode,
+            inspectorParams: [
+                {
+                    key: "targetSurfaceId",
+                    label: "Page",
+                    kind: "select",
+                    dynamicOptionsSource: "surfaces",
+                },
+            ],
             execute: async ctx => {
                 await requireHostApi(ctx).widget.setFrameProperties(
                     resolveTargetElementId(ctx, target, mode),

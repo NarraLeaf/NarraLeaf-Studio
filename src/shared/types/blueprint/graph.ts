@@ -385,8 +385,11 @@ export const BLUEPRINT_NODE_TYPE_STRING_NORMALIZE_LINE_BREAKS = "blueprint.strin
 
 export const BLUEPRINT_NODE_TYPE_BROADCAST_SEND = "blueprint.broadcast.send" as const;
 export const BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT = "blueprint.broadcast.getListenerCount" as const;
+export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM = "blueprint.frame.getParam" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_EMIT = "blueprint.frame.emit" as const;
+export const BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE = "blueprint.frameWidget.setTargetPage" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE = "blueprint.element.frame.setTargetPage" as const;
 
 export const BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT = "blueprint.text.getText" as const;
 export const BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT = "blueprint.text.setText" as const;
