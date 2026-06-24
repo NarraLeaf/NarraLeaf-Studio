@@ -23,11 +23,13 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import { createOutlinePanelMenuActions } from "@/lib/ui-editor/interaction/outline/outlinePanelContextActions";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 
 export function useLayerOutlineContextMenus(params: {
     surfaceId: string;
     documentService: UIDocumentService;
     stateService: UIEditorStateService;
+    uiService?: UIService | null;
     localBlueprint: LocalBlueprintService;
     inputDialog: InputDialog | null;
     effectiveRootId: string | null;
@@ -41,6 +43,7 @@ export function useLayerOutlineContextMenus(params: {
         surfaceId,
         documentService,
         stateService,
+        uiService,
         localBlueprint,
         inputDialog,
         effectiveRootId,
@@ -92,6 +95,7 @@ export function useLayerOutlineContextMenus(params: {
             const actions = createOutlinePanelMenuActions({
                 documentService,
                 stateService,
+                uiService,
                 localBlueprint,
                 surfaceId,
                 hideMenu,
@@ -130,6 +134,7 @@ export function useLayerOutlineContextMenus(params: {
             hideMenu,
             inputDialog,
             localBlueprint,
+            uiService,
             showMenu,
             setMenuItems,
             stateService,
@@ -172,6 +177,7 @@ export function useLayerOutlineContextMenus(params: {
             const actions = createOutlinePanelMenuActions({
                 documentService,
                 stateService,
+                uiService,
                 localBlueprint,
                 surfaceId,
                 hideMenu,
@@ -208,6 +214,7 @@ export function useLayerOutlineContextMenus(params: {
             hideMenu,
             inputDialog,
             localBlueprint,
+            uiService,
             showMenu,
             setMenuItems,
             stateService,

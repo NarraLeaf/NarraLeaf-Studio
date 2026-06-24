@@ -16,6 +16,7 @@ import {
 import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 
 const ROOT_WIDGET_TYPE = "nl.root";
 
@@ -24,6 +25,7 @@ export type OutlinePanelMenuActions = BuildOutlineContextMenuInput["actions"];
 export function createOutlinePanelMenuActions(params: {
     documentService: UIDocumentService;
     stateService: UIEditorStateService;
+    uiService?: UIService | null;
     localBlueprint: LocalBlueprintService;
     surfaceId: string;
     hideMenu: () => void;
@@ -42,6 +44,7 @@ export function createOutlinePanelMenuActions(params: {
     const {
         documentService,
         stateService,
+        uiService,
         localBlueprint,
         surfaceId,
         hideMenu,
@@ -82,11 +85,11 @@ export function createOutlinePanelMenuActions(params: {
             uiEditorPasteIntoParent(documentService, localBlueprint, stateService, surfaceId, parentId, null);
         },
         copy: () => uiEditorCopySelection(documentService, localBlueprint, surfaceId, menuSel),
-        cut: () => uiEditorCutSelection(documentService, localBlueprint, stateService, surfaceId, menuSel),
+        cut: () => uiEditorCutSelection(documentService, localBlueprint, stateService, surfaceId, menuSel, uiService),
         duplicate: () =>
             uiEditorDuplicateSelection(documentService, localBlueprint, stateService, surfaceId, menuSel),
-        delete: () => uiEditorDeleteSelection(documentService, stateService, surfaceId, menuSel),
-        selectAll: () => uiEditorSelectAllInSurface(documentService, stateService, surfaceId),
+        delete: () => uiEditorDeleteSelection(documentService, stateService, surfaceId, menuSel, uiService),
+        selectAll: () => uiEditorSelectAllInSurface(documentService, stateService, surfaceId, uiService),
         renamePrimary: () => {
             if (!menuSel || !inputDialog || !canRenamePrimary(menuSel)) {
                 return;

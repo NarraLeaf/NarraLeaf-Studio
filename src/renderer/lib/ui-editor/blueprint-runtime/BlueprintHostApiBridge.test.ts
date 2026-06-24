@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
+import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
+import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
+import { resolveImageRectangleLike } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
+import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { createDevModeBlueprintHostApi } from "./BlueprintHostApiBridge";
 
 function createDocument(): UIDocument {
+    const imageProps = {
+        fillType: "image",
+        imageFill: { mode: "cover" as const, assetId: "old-image" },
+    };
     return {
         schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
         id: "doc",
@@ -24,21 +32,61 @@ function createDocument(): UIDocument {
                 id: "root",
                 type: "nl.root",
                 parentId: null,
-                childrenIds: [],
+                childrenIds: ["slider", "image"],
                 layout: { x: 0, y: 0, width: 320, height: 180 },
+            },
+            slider: {
+                id: "slider",
+                type: "nl.slider",
+                parentId: "root",
+                childrenIds: [],
+                layout: { x: 0, y: 0, width: 240, height: 40 },
+                props: {
+                    value: 20,
+                    min: 0,
+                    max: 100,
+                    step: 5,
+                    orientation: "horizontal",
+                    trackElementId: null,
+                    handleElementId: null,
+                },
+            },
+            image: {
+                id: "image",
+                type: "nl.image",
+                parentId: "root",
+                childrenIds: [],
+                layout: { x: 0, y: 48, width: 120, height: 80 },
+                props: {
+                    ...imageProps,
+                    appearance: createInitialImageAppearanceFromProps(imageProps),
+                },
             },
         },
     };
 }
 
+function resolvedImageAssetId(document: UIDocument): string | null {
+    const image = document.elements.image;
+    if (!image) {
+        return null;
+    }
+    const appearance = (image.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
+    return resolveImageRectangleLike(image, appearance, {
+        signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+    }).imageFill?.assetId ?? null;
+}
+
 function createHostApi(options?: {
+    document?: UIDocument;
     scope?: ScopeStoreBridge;
     runtimeScopeId?: string;
     frameParams?: Record<string, unknown>;
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
+    widgetRuntimeStore?: WidgetRuntimeStateStore;
 }) {
     return createDevModeBlueprintHostApi({
-        document: createDocument(),
+        document: options?.document ?? createDocument(),
         scope: options?.scope ?? new ScopeStoreBridge(),
         activeSurfaceId: "page",
         runtimeScopeId: options?.runtimeScopeId,
@@ -48,7 +96,7 @@ function createHostApi(options?: {
         onOpenSurface: () => undefined,
         onCloseLayer: () => undefined,
         onWidgetPatch: () => undefined,
-        widgetRuntimeStore: new WidgetRuntimeStateStore(),
+        widgetRuntimeStore: options?.widgetRuntimeStore ?? new WidgetRuntimeStateStore(),
     });
 }
 
@@ -82,5 +130,83 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(first.state.get("surface", "count")).toBe(1);
         expect(second.state.get("surface", "count")).toBe(2);
         expect(scope.getSurfaceStore("page").get("count")).toBeUndefined();
+    });
+
+    it("routes persistence get/set through the async store adapter", async () => {
+        const scope = new ScopeStoreBridge();
+        const store: Record<string, unknown> = { theme: "dark" };
+        scope.setPersistenceAdapter({
+            getAll: async () => ({ ...store }),
+            getValue: async key => store[key],
+            setValue: async (key, value) => {
+                store[key] = value;
+            },
+        });
+        const hostApi = createHostApi({ scope });
+
+        expect(await hostApi.persistence.get("theme")).toBe("dark");
+
+        await hostApi.persistence.set("theme", "light");
+
+        expect(store.theme).toBe("light");
+        expect(scope.getPersistenceSnapshot().get("theme")).toBe("light");
+    });
+
+    it("stores Slider value and range changes in runtime state without mutating the UI document", async () => {
+        const document = createDocument();
+        const hostApi = createHostApi({ document });
+
+        expect(hostApi.widget.getSliderProperties("slider")).toMatchObject({
+            value: 20,
+            min: 0,
+            max: 100,
+            step: 5,
+            normalizedValue: 0.2,
+        });
+
+        await hostApi.widget.setSliderProperties("slider", { value: 88 });
+
+        expect(hostApi.widget.getSliderProperties("slider")).toMatchObject({
+            value: 90,
+            normalizedValue: 0.9,
+        });
+        expect((document.elements.slider?.props as Record<string, unknown>).value).toBe(20);
+
+        await hostApi.widget.setSliderProperties("slider", { min: -10, max: 10, step: 4 });
+
+        expect(hostApi.widget.getSliderProperties("slider")).toMatchObject({
+            min: -10,
+            max: 10,
+            step: 4,
+            value: 10,
+            normalizedValue: 1,
+        });
+    });
+
+    it("reads and writes ImageAsset values while accepting legacy assetId patches", async () => {
+        const document = createDocument();
+        const hostApi = createHostApi({ document });
+
+        expect(hostApi.widget.getImageProperties("image").asset).toEqual({
+            kind: "imageAsset",
+            assetId: "old-image",
+        });
+
+        await hostApi.widget.setImageProperties("image", {
+            asset: { kind: "imageAsset", assetId: "new-image" },
+        });
+        expect((document.elements.image?.props?.imageFill as Record<string, unknown>).assetId).toBe("new-image");
+        expect(resolvedImageAssetId(document)).toBe("new-image");
+
+        await hostApi.widget.setImageProperties("image", { asset: null });
+        expect((document.elements.image?.props?.imageFill as Record<string, unknown>).assetId).toBeNull();
+        expect(resolvedImageAssetId(document)).toBeNull();
+
+        await hostApi.widget.setImageProperties("image", { assetId: "legacy-image" });
+        expect(hostApi.widget.getImageProperties("image").asset).toEqual({
+            kind: "imageAsset",
+            assetId: "legacy-image",
+        });
+        expect(resolvedImageAssetId(document)).toBe("legacy-image");
     });
 });

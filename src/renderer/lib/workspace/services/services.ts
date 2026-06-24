@@ -347,6 +347,21 @@ interface ILocalBlueprintService extends IService {
             defaultValue?: import("@shared/types/blueprint/document").LiteralValue;
         },
     ): import("@shared/types/blueprint/document").BlueprintVariable;
+    createPersistentVariable(
+        historyBlueprintId: string,
+        input?: {
+            name?: string;
+            valueType?: string;
+            defaultValue?: import("@shared/types/blueprint/document").LiteralValue;
+        },
+    ): import("@shared/types/blueprint/document").BlueprintPersistentVariable;
+    renamePersistentVariable(historyBlueprintId: string, variableId: string, name: string): void;
+    setPersistentVariableDefault(
+        historyBlueprintId: string,
+        variableId: string,
+        defaultValue: import("@shared/types/blueprint/document").LiteralValue | undefined,
+    ): void;
+    deletePersistentVariable(historyBlueprintId: string, variableId: string): void;
     renameBlueprintVariable(blueprintId: string, variableId: string, name: string): void;
     setBlueprintVariableDefault(
         blueprintId: string,
@@ -429,6 +444,8 @@ interface UIEditorStateEvents {
     appearanceInspectorVariantChanged: { elementId: string };
     /** Outline panel expand/collapse memory (persisted); payload unused. */
     outlineExpansionChanged: null;
+    /** Outline panel chrome collapsed state (persisted). */
+    outlinePanelCollapsedChanged: boolean;
     /** Smart snap / smart guides toggle (persisted in project settings). */
     smartSnapEnabledChanged: boolean;
     /** Per-category snap targets when smart snap is enabled (persisted). */
@@ -478,6 +495,9 @@ interface IUIEditorStateService extends IService {
     /** Outline: branch is collapsed when true (editor-only, project settings). */
     isOutlineBranchCollapsed(elementId: string): boolean;
     setOutlineBranchCollapsed(elementId: string, collapsed: boolean): void;
+    /** Outline panel chrome: collapsed when true (editor-only global settings). */
+    getOutlinePanelCollapsed(): boolean;
+    setOutlinePanelCollapsed(collapsed: boolean): void;
     /** When true, dragging/resizing/inserting snaps to surface and sibling guides (project settings). */
     getSmartSnapEnabled(): boolean;
     setSmartSnapEnabled(enabled: boolean): void;
@@ -663,4 +683,3 @@ export {
 
 export type { ActiveSnapGuides, SmartSnapDetailSettings };
 export type { StoryPluginActionCreateInput, StoryPluginActionRegistration };
-

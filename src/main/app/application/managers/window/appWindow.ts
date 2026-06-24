@@ -9,7 +9,7 @@ import { WindowInstanceConfig, WindowInstance } from "./windowInstance";
 import { WindowIPC } from "./windowIPC";
 import { WindowProxy } from "./windowProxy";
 import { WindowUserHandlers } from "./windowUserHandlers";
-import { WindowProps, WindowAppType, WindowVisibilityStatus, WindowCloseResults } from "@shared/types/window";
+import { WindowProps, WindowAppType, WindowVisibilityStatus, WindowCloseResults, WindowControlPolicy } from "@shared/types/window";
 
 export interface WindowConfig<T extends WindowAppType> {
     windowType: T;
@@ -17,6 +17,7 @@ export interface WindowConfig<T extends WindowAppType> {
     autoFocus: boolean;
     preload: string | null;
     options?: Electron.BrowserWindowConstructorOptions;
+    windowControlPolicy?: WindowControlPolicy;
 }
 
 export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
@@ -299,4 +300,3 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         return this.getApp();
     }
 }
-

@@ -17,6 +17,15 @@ function DialogComponent({ dialog, onClose }: { dialog: Dialog; onClose: () => v
 
     useEffect(() => {
         const frame = window.requestAnimationFrame(() => {
+            const activeElement = document.activeElement;
+            if (
+                activeElement instanceof HTMLElement &&
+                dialogRef.current?.contains(activeElement) &&
+                activeElement !== dialogRef.current
+            ) {
+                return;
+            }
+
             (defaultButtonRef.current ?? dialogRef.current)?.focus();
         });
         return () => window.cancelAnimationFrame(frame);

@@ -4,10 +4,21 @@
  */
 
 import type { BlueprintNodeDef } from "../types";
-import { BLUEPRINT_NODE_TYPE_LOG } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_NODE_TYPE_FLOW_COMMENT, BLUEPRINT_NODE_TYPE_LOG } from "@shared/types/blueprint/graph";
 import { resolveDataPinValue } from "./graphParamResolvers";
 
 export const devtoolsBlueprintNodes: BlueprintNodeDef[] = [
+    {
+        type: BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
+        displayName: "Comment",
+        category: "Debug",
+        keywords: ["comment", "note", "label", "region"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        role: "comment",
+        pins: [],
+        execute: () => ({}),
+    },
     {
         type: BLUEPRINT_NODE_TYPE_LOG,
         displayName: "Log",
@@ -38,6 +49,8 @@ export const devtoolsBlueprintNodes: BlueprintNodeDef[] = [
                 {
                     hostAdapter: ctx.hostAdapter,
                     eventPayload: ctx.eventPayload,
+                    listItemScope: ctx.listItemScope,
+                    instanceKey: ctx.instanceKey,
                     executionOwner: ctx.executionOwner,
                 },
             );

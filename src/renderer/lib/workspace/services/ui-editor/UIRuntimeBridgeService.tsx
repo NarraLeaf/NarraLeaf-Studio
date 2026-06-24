@@ -59,6 +59,7 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
                     rendererRegistry={this.rendererRegistry}
                     hostAdapter={options.hostAdapter}
                     useAppearanceInspectorPreview
+                    editorChrome={options.editorChrome}
                 />
             </div>
         );

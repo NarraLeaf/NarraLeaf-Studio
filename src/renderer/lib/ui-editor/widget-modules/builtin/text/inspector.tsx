@@ -1,4 +1,7 @@
 import {
+  useLayoutEffect,
+} from "react";
+import {
   AlignCenter,
   AlignLeft,
   AlignRight,
@@ -6,43 +9,117 @@ import {
   AlignVerticalJustifyEnd,
   AlignVerticalJustifyStart,
   Baseline,
+  Italic,
   Type,
 } from "lucide-react";
-import { getSupportedEffectKindsForWidgetType } from "@shared/types/ui-editor/effects";
+import type { AppearanceModel, AppearanceRowValue, TextAppearancePropertyKey } from "@shared/types/ui-editor/appearance";
+import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import type {
-  ColorValue,
   CustomFieldProps,
   IconButtonSelection,
   InlineRowItemContext,
 } from "@/apps/workspace/modules/properties/framework/types";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
-import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
+import { AppearanceAuthoringPanel } from "@/lib/ui-editor/widget-modules/shared/appearance/AppearanceAuthoringPanel";
+import {
+  createInitialTextAppearance,
+  ensureTextAppearanceHasAllKeys,
+  isUsableAppearanceModel,
+  patchTextAppearanceDefaultRows,
+} from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
-import { StaticEffectsSection } from "@/lib/ui-editor/widget-modules/shared/effects/StaticEffectsSection";
 import { getTextProps } from "./helpers";
 import type { TextAlign, TextVerticalAlign, TextWidgetProps, TextWrapMode } from "./types";
 
-function TextEffectsField(props: CustomFieldProps<UIInspectorData>) {
-  const el = props.data.element;
-  const live =
-    props.data.documentService.getDocument().elements[el.id] ?? el;
+function textAppearanceRowsForPatch(
+  next: TextWidgetProps,
+  patch: Partial<TextWidgetProps>
+): Partial<Record<TextAppearancePropertyKey, AppearanceRowValue>> {
+  const rows: Partial<Record<TextAppearancePropertyKey, AppearanceRowValue>> = {};
+  if ("fontAssetId" in patch) rows.fontAssetId = next.fontAssetId ?? null;
+  if ("fontSize" in patch) rows.fontSize = next.fontSize;
+  if ("fontWeight" in patch) rows.fontWeight = next.fontWeight;
+  if ("fontStyle" in patch) rows.fontStyle = next.fontStyle;
+  if ("color" in patch) rows.color = next.color;
+  if ("lineHeight" in patch) rows.lineHeight = next.lineHeight;
+  if ("transformOffsetX" in patch) rows.transformOffsetX = next.transformOffsetX;
+  if ("transformOffsetY" in patch) rows.transformOffsetY = next.transformOffsetY;
+  if ("transformScale" in patch) rows.transformScale = next.transformScale;
+  if ("transformRotation" in patch) rows.transformRotation = next.transformRotation;
+  if ("transformOpacity" in patch) rows.transformOpacity = next.transformOpacity;
+  if ("effects" in patch) {
+    rows.effectBlur = next.effects.effectBlur;
+    rows.effectTextShadow = next.effects.effectTextShadow;
+    rows.effectBlend = next.effects.effectBlend;
+    rows.effectFilter = next.effects.effectFilter;
+  }
+  return rows;
+}
+
+function patchTextPropsWithAppearance(data: UIInspectorData, patch: Partial<TextWidgetProps>) {
+  const live = data.documentService.getDocument().elements[data.element.id] ?? data.element;
   const flat = getTextProps(live);
+  const nextFlat: TextWidgetProps = {
+    ...flat,
+    ...patch,
+    effects: patch.effects ?? flat.effects,
+  };
+  const rawAppearance = (live.props as { appearance?: unknown } | undefined)?.appearance;
+  const baseAppearance: AppearanceModel | null = isAppearanceModel(rawAppearance) ? rawAppearance : null;
+  const rows = textAppearanceRowsForPatch(nextFlat, patch);
+  const hasAppearanceRows = Object.keys(rows).length > 0;
+  let nextAppearance: AppearanceModel | null = baseAppearance;
+  if (hasAppearanceRows) {
+    const ensured = isUsableAppearanceModel(baseAppearance)
+      ? ensureTextAppearanceHasAllKeys(baseAppearance, nextFlat)
+      : createInitialTextAppearance(nextFlat);
+    nextAppearance = patchTextAppearanceDefaultRows(ensured, rows);
+  }
+  data.documentService.updateElementProps(live.id, {
+    ...live.props,
+    ...patch,
+    ...(nextAppearance ? { appearance: nextAppearance } : {}),
+  });
+}
+
+function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
+  const flat = getTextProps(props.data.element);
+  const rawAppearance = (props.data.element.props as { appearance?: unknown } | undefined)?.appearance;
+  const appearance: AppearanceModel | null = isAppearanceModel(rawAppearance) ? rawAppearance : null;
+  const { documentService } = props.data;
+  const element = props.data.element;
+
+  useLayoutEffect(() => {
+    const f = getTextProps(element);
+    const next = isUsableAppearanceModel(appearance)
+      ? ensureTextAppearanceHasAllKeys(appearance, f)
+      : createInitialTextAppearance(f);
+    if (next !== appearance) {
+      documentService.updateElementProps(element.id, {
+        ...element.props,
+        appearance: next,
+      });
+    }
+  }, [appearance, documentService, element]);
+
+  const panelAppearance = isUsableAppearanceModel(appearance) ? appearance : createInitialTextAppearance(flat);
+
   return (
-    <StaticEffectsSection
-      effects={flat.effects}
-      onChange={next => {
-        const docEl =
-          props.data.documentService.getDocument().elements[el.id] ?? live;
-        props.data.documentService.updateElementProps(el.id, {
-          ...docEl.props,
-          effects: next,
+    <AppearanceAuthoringPanel
+      key={element.id}
+      kind="text"
+      appearance={panelAppearance}
+      onReplace={next => {
+        documentService.updateElementProps(element.id, {
+          ...element.props,
+          appearance: next,
         });
       }}
-      supportedKinds={getSupportedEffectKindsForWidgetType("nl.text")}
-      draftResetKey={el.id}
+      inspectorData={props.data}
+      draftResetKey={element.id}
     />
   );
 }
@@ -74,10 +151,15 @@ export function createTextInspector(ctx: InspectorContext) {
   const { element, documentService } = ctx;
 
   const patchProps = (patch: Partial<TextWidgetProps>) => {
-    documentService.updateElementProps(element.id, {
-      ...element.props,
-      ...patch,
-    });
+    const liveElement = documentService.getDocument().elements[element.id] ?? element;
+    patchTextPropsWithAppearance(
+      {
+        element: liveElement,
+        elements: Object.values(documentService.getDocument().elements),
+        documentService,
+      },
+      patch
+    );
   };
 
   return createPropertyEditorSchema<D>({
@@ -181,6 +263,38 @@ export function createTextInspector(ctx: InspectorContext) {
                       );
                     },
                   },
+                  {
+                    id: "text.fontStyle",
+                    className: "shrink-0",
+                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
+                      const current = getTextProps(data.element);
+                      const isItalic = current.fontStyle === "italic";
+                      return (
+                        <button
+                          type="button"
+                          className={[
+                            "flex h-9 min-h-[34px] w-9 items-center justify-center rounded-md border border-white/10 transition",
+                            isItalic
+                              ? "bg-white/10 text-white"
+                              : "bg-[#1e1f22] text-gray-300 hover:bg-white/10 hover:text-white",
+                          ].join(" ")}
+                          aria-label={isItalic ? "Disable italic" : "Enable italic"}
+                          aria-pressed={isItalic}
+                          title="Italic"
+                          onClick={() => {
+                            onSaving(true);
+                            try {
+                              patchProps({ fontStyle: isItalic ? "normal" : "italic" });
+                            } finally {
+                              onSaving(false);
+                            }
+                          }}
+                        >
+                          <Italic className="h-4 w-4" />
+                        </button>
+                      );
+                    },
+                  },
                 ],
               }),
               defineField<D, any>({
@@ -250,54 +364,17 @@ export function createTextInspector(ctx: InspectorContext) {
             ],
           }),
           defineField<D, any>({
-            id: "section.color",
+            id: "section.appearanceAuthoring",
             type: "section",
-            title: "Color",
-            fields: [
-              defineField<D, any>({
-                id: "text.colorRow",
-                type: "inlineRow",
-                gap: 8,
-                wrap: false,
-                label: undefined,
-                items: [
-                  {
-                    id: "text.colorPicker",
-                    render: ({ data, onSaving }: InlineRowItemContext<D>) => {
-                      const current = getTextProps(data.element);
-                      const handleChange = (next: ColorValue) => {
-                        onSaving(true);
-                        try {
-                          patchProps({ color: next.hex });
-                        } finally {
-                          onSaving(false);
-                        }
-                      };
-                      return (
-                        <ColorPickerTrigger
-                          value={{ hex: current.color, alpha: 1 }}
-                          displayMode="icon"
-                          allowOpacity={false}
-                          onChange={handleChange}
-                        />
-                      );
-                    },
-                  },
-                ],
-              }),
-            ],
-          }),
-          defineField<D, any>({
-            id: "section.effects",
-            type: "section",
-            title: "Effects",
+            title: "Appearance",
             collapsible: true,
-            defaultCollapsed: true,
+            defaultCollapsed: false,
+            helpText: "Compact modules with per-module state overrides (header menu: add or remove).",
             fields: [
               defineField<D, any>({
-                id: "text.effects.panel",
+                id: "text.appearance.panel",
                 type: "custom",
-                component: TextEffectsField,
+                component: TextAppearanceField,
               }),
             ],
           }),

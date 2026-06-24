@@ -101,7 +101,7 @@ export function shouldPromoteToSurfaceRootChild(
 }
 
 /**
- * True when `hitElementId` is a strict descendant of the single selected `nl.container` that has children.
+ * True when `hitElementId` is a strict descendant of the single selected drillable structural widget.
  * Used to require double-click / selecto double to drill into children instead of a single pointer pick.
  */
 export function isUiContainerDrillLockHit(
@@ -115,7 +115,10 @@ export function isUiContainerDrillLockHit(
     }
     const selectedId = selection.elementIds[0];
     const selectedEl = document.elements[selectedId];
-    if (!selectedEl || selectedEl.type !== "nl.container" || (selectedEl.childrenIds?.length ?? 0) === 0) {
+    const drillable =
+        selectedEl?.type === "nl.container" ||
+        selectedEl?.type === "nl.slider";
+    if (!selectedEl || !drillable || (selectedEl.childrenIds?.length ?? 0) === 0) {
         return false;
     }
     return isStrictDescendantOf(document, hitElementId, selectedId);

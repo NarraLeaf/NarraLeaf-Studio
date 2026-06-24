@@ -169,6 +169,16 @@ export type LayoutSizeFieldContext = {
     primaryId: string;
 };
 
+export type DefaultChildElementContext = {
+    element: UIElement;
+    generateId: () => string;
+};
+
+export type DefaultChildElementResult = {
+    elementPatch?: Partial<UIElement>;
+    children: UIElement[];
+};
+
 // ─── Widget Module ──────────────────────────────────────────────────────────
 
 /**
@@ -199,6 +209,12 @@ export interface UIWidgetModule {
      * The returned object is merged with system defaults (id, parentId, etc.).
      */
     createDefaultElement(): Partial<UIElement>;
+
+    /**
+     * Creates structural child elements that must be present immediately after inserting the widget.
+     * The service applies the returned parent patch and child list in the same UIDocument mutation.
+     */
+    createDefaultChildElements?(context: DefaultChildElementContext): DefaultChildElementResult;
 
     /**
      * Renders the element on the editor canvas.

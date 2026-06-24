@@ -25,6 +25,19 @@ import {
     surfaceThresholdFromViewportPx,
     DEFAULT_SNAP_THRESHOLD_PX,
 } from "@/lib/ui-editor/snapping";
+import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
+import {
+    clampSurfaceWheelDelta,
+    normalizeSurfaceWheelDelta,
+    resolveSurfaceWheelPageDelta,
+    SURFACE_PINCH_ZOOM_DELTA_LIMIT_PX,
+    SURFACE_WHEEL_PAN_DELTA_LIMIT_PX,
+    SURFACE_WHEEL_ZOOM_DELTA_LIMIT_PX,
+} from "./surfaceWheelInput";
+
+const WHEEL_ZOOM_SPEED = 0.003;
+const PINCH_ZOOM_SPEED = 0.006;
 
 export type InsertToolDragState = {
     active: boolean;
@@ -58,6 +71,7 @@ type UseSurfaceInteractionEventsParams = {
     panStateRef: MutableRefObject<PanState>;
     documentService: UIDocumentService;
     stateService: UIEditorStateService;
+    uiService?: UIService | null;
     /** When both return allow snapping, insert drag corners snap to guides. */
     insertSnapEnabled?: () => boolean;
     insertSnapSuspended?: () => boolean;
@@ -84,6 +98,7 @@ export function useSurfaceInteractionEvents({
     panStateRef,
     documentService,
     stateService,
+    uiService,
     insertSnapEnabled,
     insertSnapSuspended,
 }: UseSurfaceInteractionEventsParams) {
@@ -271,7 +286,7 @@ export function useSurfaceInteractionEvents({
                     currentX: surfacePoint.x,
                     currentY: surfacePoint.y,
                 });
-                stateService.setSelection({ type: null, data: null });
+                selectSurfaceForProperties(stateService, surfaceId, uiService);
                 return;
             }
 
@@ -284,7 +299,7 @@ export function useSurfaceInteractionEvents({
                             ? cur.filter(id => id !== elementId)
                             : [...cur, elementId];
                         if (nextIds.length === 0) {
-                            stateService.setSelection({ type: null, data: null });
+                            selectSurfaceForProperties(stateService, surfaceId, uiService);
                         } else {
                             stateService.setUIElementSelection({
                                 editor: "ui",
@@ -344,7 +359,7 @@ export function useSurfaceInteractionEvents({
                 if (isMoveableTarget) {
                     return;
                 }
-                stateService.setSelection({ type: null, data: null });
+                selectSurfaceForProperties(stateService, surfaceId, uiService);
                 containerDrillLastPointerRef.current = null;
             }
         };
@@ -369,6 +384,7 @@ export function useSurfaceInteractionEvents({
         documentService,
         selectionData,
         surface,
+        uiService,
         clientToSurfaceCoords,
         insertPreviewRef,
         insertStateRef,
@@ -384,16 +400,24 @@ export function useSurfaceInteractionEvents({
         }
 
         const handleWheel = (event: WheelEvent) => {
-            const isZoomInteraction = event.ctrlKey || (tool.kind === "pan" && event.deltaY !== 0);
             event.preventDefault();
+            const rect = surfaceElement.getBoundingClientRect();
+            const pageDeltaX = resolveSurfaceWheelPageDelta(rect.width || surfaceElement.clientWidth);
+            const pageDeltaY = resolveSurfaceWheelPageDelta(rect.height || surfaceElement.clientHeight);
+            const normalizedDeltaX = normalizeSurfaceWheelDelta(event.deltaX, event.deltaMode, pageDeltaX);
+            const normalizedDeltaY = normalizeSurfaceWheelDelta(event.deltaY, event.deltaMode, pageDeltaY);
+            const isZoomInteraction = event.ctrlKey || (tool.kind === "pan" && normalizedDeltaY !== 0);
 
             if (isZoomInteraction) {
-                const rect = surfaceElement.getBoundingClientRect();
                 const pointerX = event.clientX - rect.left;
                 const pointerY = event.clientY - rect.top;
                 const currentScale = Math.max(0.0001, viewport.scale);
-                const zoomSpeed = 0.0015;
-                const scaleDelta = Math.exp(-event.deltaY * zoomSpeed);
+                const zoomSpeed = event.ctrlKey ? PINCH_ZOOM_SPEED : WHEEL_ZOOM_SPEED;
+                const zoomDeltaLimit = event.ctrlKey
+                    ? SURFACE_PINCH_ZOOM_DELTA_LIMIT_PX
+                    : SURFACE_WHEEL_ZOOM_DELTA_LIMIT_PX;
+                const zoomDeltaY = clampSurfaceWheelDelta(normalizedDeltaY, zoomDeltaLimit);
+                const scaleDelta = Math.exp(-zoomDeltaY * zoomSpeed);
                 const nextScale = Math.max(0.1, Math.min(10, currentScale * scaleDelta));
                 if (nextScale === currentScale) {
                     return;
@@ -409,8 +433,10 @@ export function useSurfaceInteractionEvents({
                 return;
             }
 
-            const panX = -event.deltaX + (event.shiftKey ? -event.deltaY : 0);
-            const panY = event.shiftKey ? 0 : -event.deltaY;
+            const panDeltaX = clampSurfaceWheelDelta(normalizedDeltaX, SURFACE_WHEEL_PAN_DELTA_LIMIT_PX);
+            const panDeltaY = clampSurfaceWheelDelta(normalizedDeltaY, SURFACE_WHEEL_PAN_DELTA_LIMIT_PX);
+            const panX = -panDeltaX + (event.shiftKey ? -panDeltaY : 0);
+            const panY = event.shiftKey ? 0 : -panDeltaY;
             if (panX === 0 && panY === 0) {
                 return;
             }

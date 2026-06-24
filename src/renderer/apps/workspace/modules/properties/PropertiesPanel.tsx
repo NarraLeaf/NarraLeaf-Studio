@@ -42,7 +42,7 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { getElementInspector } from "../ui-editor/inspector/registry";
 import type { UIInspectorData } from "../ui-editor/inspector/registry";
-import { useDocumentVersion } from "@/lib/ui-editor/hooks/useDocumentVersion";
+import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { pairLayoutDimensionsForLock } from "@/lib/ui-editor/layout/aspectRatioLock";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
@@ -485,7 +485,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         }
         return context.services.get<UIGraphService>(Services.UIGraph);
     }, [context, isInitialized]);
-    const documentVersion = useDocumentVersion(documentService);
+    const documentVersion = useUIDocumentRevision(documentService);
     const [graphVersion, setGraphVersion] = useState(0);
     const deferredUiSelection = useDeferredValue(uiSelection);
     const deferredDocumentVersion = useDeferredValue(documentVersion);
@@ -519,7 +519,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             surface: activeSceneSurface,
             documentService,
         };
-    }, [activeSceneSurface, documentService]);
+    }, [activeSceneSurface, documentService, documentVersion]);
 
     const panelTitle = activeSceneSurface
         ? activeSceneSurface.name

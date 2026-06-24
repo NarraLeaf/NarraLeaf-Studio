@@ -2,7 +2,17 @@
 
 除非额外声明，所有参数均为传入引脚值；标注（传出引脚）的参数为传出值。
 
-Page 节点用于 Page 组件和被嵌入 Page 之间的通信。顶层 Page 没有父级 Page 组件时，读取参数会得到空值，发送事件不会触发父级事件。
+Page 节点用于切换 Page，以及 Page 组件和被嵌入 Page 之间的通信。顶层 Page 没有父级 Page 组件时，读取参数会得到空值，发送事件不会触发父级事件。
+
+`blueprint.page.go` 面向运行时 Page 导航；`blueprint.frame.getParam` / `blueprint.frame.emit` 面向被嵌入 Page 的通信上下文；`nl.frame` 组件自己的目标 Page 和 params 读写方法记录在 `node.widget.md`。
+
+## Go Page
+
+`blueprint.page.go` - 切换到 Page
+
+通过 Host navigation 打开节点参数中选择的目标 Page，使用运行时的页面切换流程。它是执行尾节点，没有后续执行出口。
+- `in` - 执行入口
+- `Page` - 节点参数，目标 Page surface id
 
 ## Get Page Param
 

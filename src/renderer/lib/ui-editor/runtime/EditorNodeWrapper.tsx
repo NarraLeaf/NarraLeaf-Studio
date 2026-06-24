@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
+import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeStateStore,
@@ -20,6 +21,8 @@ type EditorNodeWrapperProps = {
     styleOverrides?: CSSProperties;
     hostAdapter?: UIHostAdapter;
     interactive?: boolean;
+    listItemScope?: UIListItemScope | null;
+    instanceKey?: string;
     children?: React.ReactNode;
 };
 
@@ -47,6 +50,18 @@ function eventTargetNode(target: EventTarget | null, ownerDocument: Document): N
     return null;
 }
 
+function keyboardEventPayload(event: KeyboardEvent): Record<string, unknown> {
+    return {
+        key: event.key,
+        code: event.code,
+        repeat: event.repeat,
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        metaKey: event.metaKey,
+    };
+}
+
 export function EditorNodeWrapper({
     element,
     layout,
@@ -55,11 +70,23 @@ export function EditorNodeWrapper({
     styleOverrides,
     hostAdapter,
     interactive = true,
+    listItemScope,
+    instanceKey,
     children,
 }: EditorNodeWrapperProps) {
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
     const blueprintRuntime = hostAdapter?.blueprintRuntime;
+    const eventOptions = useMemo(
+        () =>
+            listItemScope || instanceKey
+                ? {
+                      listItemScope: listItemScope ?? null,
+                      instanceKey,
+                  }
+                : undefined,
+        [instanceKey, listItemScope],
+    );
 
     const isDirectElementEvent = useCallback(
         (target: EventTarget | null) => shouldHandleBlueprintElementEvent(target, element.id),
@@ -74,11 +101,54 @@ export function EditorNodeWrapper({
             if (!getWidgetLogicEvent(element.type, eventName)) {
                 return false;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName, payload);
+            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName, payload, eventOptions);
             return true;
         },
-        [blueprintRuntime, element.id, element.type, interactive, isDirectElementEvent],
+        [blueprintRuntime, element.id, element.type, eventOptions, interactive, isDirectElementEvent],
     );
+
+    const dispatchMountedWidgetEvent = useCallback(
+        (eventName: string, payload?: Record<string, unknown>) => {
+            if (!interactive || !blueprintRuntime) {
+                return false;
+            }
+            if (!getWidgetLogicEvent(element.type, eventName)) {
+                return false;
+            }
+            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName, payload, eventOptions);
+            return true;
+        },
+        [blueprintRuntime, element.id, element.type, eventOptions, interactive],
+    );
+
+    useEffect(() => {
+        if (!interactive || !blueprintRuntime || typeof window === "undefined") {
+            return undefined;
+        }
+        const canDispatchKeyDown = Boolean(getWidgetLogicEvent(element.type, "keyDown"));
+        const canDispatchKeyUp = Boolean(getWidgetLogicEvent(element.type, "keyUp"));
+        if (!canDispatchKeyDown && !canDispatchKeyUp) {
+            return undefined;
+        }
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (canDispatchKeyDown) {
+                dispatchMountedWidgetEvent("keyDown", keyboardEventPayload(event));
+            }
+        };
+        const onKeyUp = (event: KeyboardEvent) => {
+            if (canDispatchKeyUp) {
+                dispatchMountedWidgetEvent("keyUp", keyboardEventPayload(event));
+            }
+        };
+
+        window.addEventListener("keydown", onKeyDown);
+        window.addEventListener("keyup", onKeyUp);
+        return () => {
+            window.removeEventListener("keydown", onKeyDown);
+            window.removeEventListener("keyup", onKeyUp);
+        };
+    }, [blueprintRuntime, dispatchMountedWidgetEvent, element.type, interactive]);
 
     const localMousePayload = useCallback(
         (

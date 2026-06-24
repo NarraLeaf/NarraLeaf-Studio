@@ -4,6 +4,7 @@ import type {
     AppearanceVariant,
     ButtonAppearancePropertyKey,
     ContainerAppearancePropertyKey,
+    TextAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
 import { addRowToGroup, removeRowFromGroup, updateRowInGroup } from "../appearancePatch";
 import { findPropertyGroup } from "./appearanceCompactHelpers";
@@ -14,6 +15,7 @@ export type SystemStateKey = (typeof SYSTEM_STATE_KEYS)[number];
 
 export type ContainerAppearanceModuleId = "background" | "stroke" | "corners" | "transform" | "effects";
 export type ButtonAppearanceModuleId = "background" | "border" | "spacing" | "transform" | "effects";
+export type TextAppearanceModuleId = "typography" | "transform" | "effects";
 
 export type ModuleEditMode = "default" | SystemStateKey;
 
@@ -101,6 +103,18 @@ export const BUTTON_MODULE_KEYS: Record<ButtonAppearanceModuleId, readonly Butto
         "effectGlow",
         "effectFilter",
     ],
+};
+
+export const TEXT_MODULE_KEYS: Record<TextAppearanceModuleId, readonly TextAppearancePropertyKey[]> = {
+    typography: ["fontAssetId", "fontSize", "fontWeight", "fontStyle", "color", "lineHeight"],
+    transform: [
+        "transformOffsetX",
+        "transformOffsetY",
+        "transformScale",
+        "transformRotation",
+        "transformOpacity",
+    ],
+    effects: ["effectBlur", "effectTextShadow", "effectBlend", "effectFilter"],
 };
 
 export function exclusiveStateCondition(state: SystemStateKey): AppearanceSystemCondition {
