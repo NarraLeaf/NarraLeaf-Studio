@@ -24,6 +24,16 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOWN = "blueprint.event.head.m
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_UP = "blueprint.event.head.mouseUp" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_WHEEL = "blueprint.event.head.mouseWheel" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK = "blueprint.event.head.rightClick" as const;
+/** Entry for owner-level global keyboard down events. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN = "blueprint.event.head.keyDown" as const;
+/** Entry for owner-level global keyboard up events. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP = "blueprint.event.head.keyUp" as const;
+/** Entry for owner-level global keyboard down events without a key filter. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN = "blueprint.event.head.anyKeyDown" as const;
+/** Entry for owner-level global keyboard up events without a key filter. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP = "blueprint.event.head.anyKeyUp" as const;
+/** Persisted on On Key event heads: KeyboardEvent.key name to match, case-insensitive. */
+export const BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME = "key" as const;
 /** Entry for widget `focus` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus" as const;
 /** Entry for widget `blur` UI event. */
@@ -61,6 +71,10 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_WHEEL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
@@ -98,6 +112,42 @@ export function resolveBlueprintEventHeadTypesForUiSlot(slotId: string, widgetEl
     return [...EVENT_DISPATCH_HEAD_TYPES];
 }
 
+function normalizeKeyboardEventKeyName(raw: unknown): string {
+    if (typeof raw !== "string" && typeof raw !== "number") {
+        return "";
+    }
+    const text = String(raw);
+    if (text.length > 0 && text.trim().length === 0) {
+        return "space";
+    }
+    const normalized = text.trim().toLocaleLowerCase();
+    if (normalized === "spacebar") {
+        return "space";
+    }
+    if (normalized === "esc") {
+        return "escape";
+    }
+    return normalized;
+}
+
+function isFilteredKeyboardEventHeadType(nodeType: string): boolean {
+    return nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN || nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP;
+}
+
+function matchesDispatchPayload(
+    node: { type: string; params?: Record<string, unknown> },
+    eventPayload?: Record<string, unknown>,
+): boolean {
+    if (!isFilteredKeyboardEventHeadType(node.type)) {
+        return true;
+    }
+    const expected = normalizeKeyboardEventKeyName(node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME]);
+    if (!expected) {
+        return false;
+    }
+    return expected === normalizeKeyboardEventKeyName(eventPayload?.key);
+}
+
 /** All node type ids that may start an event graph chain (for validation / normalization). */
 export function listBlueprintEventDispatchHeadTypes(): readonly string[] {
     return [...EVENT_DISPATCH_HEAD_TYPES];
@@ -112,9 +162,10 @@ export function isBlueprintEventDispatchHeadType(nodeType: string): boolean {
  * Pick graph node ids that are valid entry heads for a UI dispatch `eventName` (slot id).
  */
 export function collectBlueprintEventHeadNodeIdsForDispatch(
-    nodes: Record<string, { type: string }> | undefined,
+    nodes: Record<string, { type: string; params?: Record<string, unknown> }> | undefined,
     eventName: string,
     widgetElementType?: string,
+    eventPayload?: Record<string, unknown>,
 ): string[] {
     const n = nodes ?? {};
     const allowed = new Set(resolveBlueprintEventHeadTypesForUiSlot(eventName, widgetElementType));
@@ -122,7 +173,7 @@ export function collectBlueprintEventHeadNodeIdsForDispatch(
         return [];
     }
     return Object.entries(n)
-        .filter(([, node]) => allowed.has(node.type))
+        .filter(([, node]) => allowed.has(node.type) && matchesDispatchPayload(node, eventPayload))
         .map(([id]) => id)
         .sort();
 }
@@ -145,8 +196,9 @@ export function resolveGlobalEventHeadTypes(eventName: string): readonly string[
  * Pick graph node ids that are valid entry heads for a surface lifecycle event.
  */
 export function collectSurfaceEventHeadNodeIdsForDispatch(
-    nodes: Record<string, { type: string }> | undefined,
+    nodes: Record<string, { type: string; params?: Record<string, unknown> }> | undefined,
     eventName: string,
+    eventPayload?: Record<string, unknown>,
 ): string[] {
     const n = nodes ?? {};
     const allowed = new Set(resolveSurfaceEventHeadTypes(eventName));
@@ -154,7 +206,7 @@ export function collectSurfaceEventHeadNodeIdsForDispatch(
         return [];
     }
     return Object.entries(n)
-        .filter(([, node]) => allowed.has(node.type))
+        .filter(([, node]) => allowed.has(node.type) && matchesDispatchPayload(node, eventPayload))
         .map(([id]) => id)
         .sort();
 }
@@ -163,8 +215,9 @@ export function collectSurfaceEventHeadNodeIdsForDispatch(
  * Pick graph node ids that are valid entry heads for a global lifecycle event.
  */
 export function collectGlobalEventHeadNodeIdsForDispatch(
-    nodes: Record<string, { type: string }> | undefined,
+    nodes: Record<string, { type: string; params?: Record<string, unknown> }> | undefined,
     eventName: string,
+    eventPayload?: Record<string, unknown>,
 ): string[] {
     const n = nodes ?? {};
     const allowed = new Set(resolveGlobalEventHeadTypes(eventName));
@@ -172,7 +225,7 @@ export function collectGlobalEventHeadNodeIdsForDispatch(
         return [];
     }
     return Object.entries(n)
-        .filter(([, node]) => allowed.has(node.type))
+        .filter(([, node]) => allowed.has(node.type) && matchesDispatchPayload(node, eventPayload))
         .map(([id]) => id)
         .sort();
 }
@@ -464,6 +517,10 @@ export type BlueprintGraphKindRules = {
     entryNodeType?:
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT
         | typeof BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY;

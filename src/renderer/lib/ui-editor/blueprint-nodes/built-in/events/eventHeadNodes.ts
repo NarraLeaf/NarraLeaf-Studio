@@ -4,7 +4,10 @@
  */
 
 import {
+    BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
@@ -13,6 +16,8 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_RENDER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOUBLE_CLICK,
@@ -51,6 +56,41 @@ const PIN_BUTTON: BlueprintNodePinDef = {
     valueType: "integer",
     label: "Button",
 };
+const PIN_KEY: BlueprintNodePinDef = {
+    id: "key",
+    kind: "output",
+    semantic: "data",
+    valueType: "string",
+    label: "Key",
+};
+const PIN_ALT_KEY: BlueprintNodePinDef = {
+    id: "altKey",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Alt",
+};
+const PIN_CTRL_KEY: BlueprintNodePinDef = {
+    id: "ctrlKey",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Ctrl",
+};
+const PIN_SHIFT_KEY: BlueprintNodePinDef = {
+    id: "shiftKey",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Shift",
+};
+const PIN_META_KEY: BlueprintNodePinDef = {
+    id: "metaKey",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Meta",
+};
 const PIN_DELTA_X: BlueprintNodePinDef = {
     id: "deltaX",
     kind: "output",
@@ -85,13 +125,6 @@ const PIN_COUNT: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "integer",
     label: "Count",
-};
-const PIN_KEY: BlueprintNodePinDef = {
-    id: "key",
-    kind: "output",
-    semantic: "data",
-    valueType: "string",
-    label: "Key",
 };
 const PIN_ITEM: BlueprintNodePinDef = {
     id: "item",
@@ -181,6 +214,28 @@ function broadcastEventHead(input: {
     };
 }
 
+function keyboardEventHead(input: {
+    type: string;
+    displayName: string;
+    keywords: string[];
+    pins: BlueprintNodePinDef[];
+    inspectorParams?: BlueprintNodeDef["inspectorParams"];
+}): BlueprintNodeDef {
+    return {
+        type: input.type,
+        displayName: input.displayName,
+        category: "Events",
+        keywords: input.keywords,
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        pins: input.pins,
+        inspectorParams: input.inspectorParams,
+        execute: eventHeadExecute,
+    };
+}
+
 export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
@@ -218,6 +273,32 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         pins: [THEN_PIN],
         execute: eventHeadExecute,
     },
+    keyboardEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
+        displayName: "On Key Down",
+        keywords: ["key", "keyboard", "down", "press", "global", "input"],
+        pins: [THEN_PIN, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
+        inspectorParams: [{ key: BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME, label: "Key", kind: "string" }],
+    }),
+    keyboardEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+        displayName: "On Key Up",
+        keywords: ["key", "keyboard", "up", "release", "global", "input"],
+        pins: [THEN_PIN, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
+        inspectorParams: [{ key: BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME, label: "Key", kind: "string" }],
+    }),
+    keyboardEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
+        displayName: "Any Key Down",
+        keywords: ["any", "key", "keyboard", "down", "press", "global", "input"],
+        pins: [THEN_PIN, PIN_KEY, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
+    }),
+    keyboardEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
+        displayName: "Any Key Up",
+        keywords: ["any", "key", "keyboard", "up", "release", "global", "input"],
+        pins: [THEN_PIN, PIN_KEY, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
+    }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
         displayName: "Init",

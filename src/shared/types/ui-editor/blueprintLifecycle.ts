@@ -1,10 +1,10 @@
 /**
- * Lifecycle event definitions for surface-level and global-level blueprints.
+ * Owner-level event definitions for surface-level and global-level blueprints.
  * Parallel to widgetLogic.ts which defines per-widget-type logic APIs;
  * this module covers surfaceMain and globalMain owner scopes.
  */
 
-export type LifecycleEventDispatchKind = "lifecycle";
+export type LifecycleEventDispatchKind = "lifecycle" | "interaction";
 
 export type LifecycleEventDef = {
     id: string;
@@ -18,6 +18,21 @@ export type OwnerLifecycleApi = {
     events: readonly LifecycleEventDef[];
 };
 
+const KEYBOARD_EVENTS: readonly LifecycleEventDef[] = [
+    {
+        id: "keyDown",
+        displayName: "Key down",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.keyDown", "blueprint.event.head.anyKeyDown"],
+    },
+    {
+        id: "keyUp",
+        displayName: "Key up",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.keyUp", "blueprint.event.head.anyKeyUp"],
+    },
+];
+
 // ---------------------------------------------------------------------------
 // Global (app-level) lifecycle
 // ---------------------------------------------------------------------------
@@ -29,6 +44,7 @@ export const GLOBAL_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
         dispatchKind: "lifecycle",
         headNodeTypes: ["blueprint.event.head.appBoot"],
     },
+    ...KEYBOARD_EVENTS,
 ];
 
 export const GLOBAL_LIFECYCLE_API: OwnerLifecycleApi = {
@@ -52,6 +68,7 @@ export const SURFACE_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
         dispatchKind: "lifecycle",
         headNodeTypes: ["blueprint.event.head.surfaceUnmount"],
     },
+    ...KEYBOARD_EVENTS,
 ];
 
 export const SURFACE_LIFECYCLE_API: OwnerLifecycleApi = {

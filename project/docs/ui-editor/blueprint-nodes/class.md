@@ -10,7 +10,7 @@ Self 节点和 Element 节点使用不同分类：
 ## Events
 
 Events分类具有：
-- Events节点
+- Events节点，包括生命周期、元素交互、列表/滑块事件、Page Event，以及 Global / Surface / 控件的 On Key / Any Key 键盘事件
 - Broadcast节点
 
 ## Flow

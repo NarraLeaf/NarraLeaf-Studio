@@ -39,6 +39,18 @@ const noopHostAdapter: UIHostAdapter = {
     host: "app",
 };
 
+function keyboardBlueprintPayload(event: KeyboardEvent): Record<string, unknown> {
+    return {
+        key: event.key,
+        code: event.code,
+        repeat: event.repeat,
+        altKey: event.altKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        metaKey: event.metaKey,
+    };
+}
+
 function SessionErrorBanner(props: {
     sessionError: string | null;
     onDismissSessionError: () => void;
@@ -284,6 +296,51 @@ export function DevModeContent(props: DevModeContentProps) {
         },
         [bpCore],
     );
+
+    useEffect(() => {
+        if (!bpCore || !bundle || !activeSurface || !hostAdapter.blueprintRuntime) {
+            return undefined;
+        }
+
+        const dispatchKeyboardEvent = (eventName: "keyDown" | "keyUp", event: KeyboardEvent) => {
+            const acc = makeStateAccessors(activeSurface.id);
+            if (!acc) {
+                return;
+            }
+            const eventPayload = keyboardBlueprintPayload(event);
+            void (async () => {
+                await dispatchGlobalBlueprintEvent({
+                    blueprintDocument: bundle.ui.localBlueprints,
+                    eventName,
+                    eventPayload,
+                    hostAdapter,
+                    debug: bpCore.debug,
+                    getSurfaceState: acc.get,
+                    setSurfaceState: acc.set,
+                });
+                await dispatchSurfaceBlueprintEvent({
+                    blueprintDocument: bundle.ui.localBlueprints,
+                    surfaceId: activeSurface.id,
+                    runtimeScopeId: activeSurface.id,
+                    eventName,
+                    eventPayload,
+                    hostAdapter,
+                    debug: bpCore.debug,
+                    getSurfaceState: acc.get,
+                    setSurfaceState: acc.set,
+                });
+            })();
+        };
+
+        const onKeyDown = (event: KeyboardEvent) => dispatchKeyboardEvent("keyDown", event);
+        const onKeyUp = (event: KeyboardEvent) => dispatchKeyboardEvent("keyUp", event);
+        window.addEventListener("keydown", onKeyDown);
+        window.addEventListener("keyup", onKeyUp);
+        return () => {
+            window.removeEventListener("keydown", onKeyDown);
+            window.removeEventListener("keyup", onKeyUp);
+        };
+    }, [activeSurface, bpCore, bundle, hostAdapter, makeStateAccessors]);
 
     const lifecycleRef = useRef<SurfaceLifecycleManager>(new SurfaceLifecycleManager());
     const appBootFiredRef = useRef<string | null>(null);

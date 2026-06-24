@@ -52,6 +52,7 @@ import {
     debugUIDoubleClick,
     describeDoubleClickTarget,
 } from "@/lib/ui-editor/interaction/doubleClickDebug";
+import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { useRegistry } from "@/apps/workspace/registry";
 import {
     cancelElementBindingSession,
@@ -124,6 +125,32 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         }
         return stateService.on("selectionChanged", () => setSelectionVersion(v => v + 1));
     }, [stateService]);
+
+    useEffect(() => {
+        if (!stateService || !surface) {
+            return;
+        }
+        const current = stateService.getSelection();
+        if (isUIElementSelection(current)) {
+            if (current.data.surfaceId === surface.id && current.data.elementIds.length > 0) {
+                return;
+            }
+            selectSurfaceForProperties(stateService, surface.id, uiService);
+            return;
+        }
+        if (current.type === "scene") {
+            const currentSceneId = typeof current.data === "string" ? current.data : current.data?.id ?? null;
+            if (currentSceneId === surface.id) {
+                selectSurfaceForProperties(stateService, surface.id, uiService);
+                return;
+            }
+            selectSurfaceForProperties(stateService, surface.id, uiService);
+            return;
+        }
+        if (current.type === null) {
+            selectSurfaceForProperties(stateService, surface.id, uiService);
+        }
+    }, [stateService, surface, uiService]);
 
     const surfaceDiagnostics = useMemo(() => {
         if (!documentService || !surface) {
@@ -261,6 +288,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         surface,
         documentService,
         stateService,
+        uiService,
         localBlueprint,
         widgetModules,
         inputDialog,
@@ -303,6 +331,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         localBlueprint,
         historyService,
         stateService,
+        uiService,
         requestRenamePrimary,
     });
 
@@ -509,6 +538,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         surfaceId={surface.id}
                         stateService={stateService}
                         documentService={documentService}
+                        uiService={uiService}
                         localBlueprint={localBlueprint}
                         inputDialog={inputDialog}
                     />
@@ -621,6 +651,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                             containerRef={viewportRef}
                             stateService={stateService}
                             documentService={documentService}
+                            uiService={uiService}
                             showOutlines={true}
                             openSurfaceEditor={handleOpenSurfaceEditor}
                         />
