@@ -303,6 +303,8 @@ export const BLUEPRINT_NODE_TYPE_FLOW_COMMENT = "blueprint.flow.comment" as cons
 export const BLUEPRINT_NODE_TYPE_LOCAL_GET = "blueprint.local.get" as const;
 /** Write blueprint execution local variable. */
 export const BLUEPRINT_NODE_TYPE_LOCAL_SET = "blueprint.local.set" as const;
+/** Declare a blueprint-scoped execution local variable from the graph canvas. */
+export const BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR = "blueprint.local.declareVar" as const;
 /** Async read from project-level persistent storage. */
 export const BLUEPRINT_NODE_TYPE_PERSISTENT_GET = "blueprint.persistent.get" as const;
 /** Async write to project-level persistent storage. */

@@ -9,6 +9,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
@@ -148,6 +149,35 @@ describe("Blueprint Value evaluator", () => {
         await expect(evalValue(valueDocument(graph))).resolves.toMatchObject({
             returned: true,
             value: "from-var",
+        });
+    });
+
+    it("initializes local variables from Var declaration nodes", async () => {
+        const graph: BlueprintGraphIr = {
+            nodes: {
+                declare: {
+                    id: "declare",
+                    type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                    params: {
+                        variableId: "title",
+                        name: "Title",
+                        valueType: "string",
+                        defaultValue: "from-default",
+                    },
+                },
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, params: {} },
+                get: { id: "get", type: BLUEPRINT_NODE_TYPE_LOCAL_GET, params: { variableId: "title" } },
+                ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "ret", port: "in" } },
+                { from: { nodeId: "get", port: "value" }, to: { nodeId: "ret", port: "value" } },
+            ],
+        };
+
+        await expect(evalValue(valueDocument(graph))).resolves.toMatchObject({
+            returned: true,
+            value: "from-default",
         });
     });
 

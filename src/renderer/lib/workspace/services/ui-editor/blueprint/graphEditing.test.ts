@@ -5,6 +5,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_STRING_FORMAT,
@@ -210,6 +211,47 @@ describe("blueprint graph editing", () => {
         ).toBe(true);
     });
 
+    it("validates Get Var connections from inferred variable types without mutating params", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                getScore: {
+                    id: "getScore",
+                    type: BLUEPRINT_NODE_TYPE_LOCAL_GET,
+                    params: { variableId: "score" },
+                },
+                format: { id: "format", type: BLUEPRINT_NODE_TYPE_STRING_FORMAT },
+            },
+            edges: [],
+        };
+
+        expect(
+            isValidBlueprintIrExecConnection(
+                ir,
+                {
+                    source: "getScore",
+                    sourceHandle: "value",
+                    target: "format",
+                    targetHandle: "values",
+                },
+                { memberVariables: [{ value: "score", valueType: "float" }] },
+            ),
+        ).toBe(false);
+        expect(
+            isValidBlueprintIrExecConnection(
+                ir,
+                {
+                    source: "getScore",
+                    sourceHandle: "value",
+                    target: "format",
+                    targetHandle: "values",
+                },
+                { memberVariables: [{ value: "score", valueType: "json" }] },
+            ),
+        ).toBe(true);
+        expect(ir.nodes?.getScore?.params).toEqual({ variableId: "score" });
+    });
+
     it("creates Make JSON Object with one editable field pair", () => {
         const node = createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT, "jsonObject");
 
@@ -217,6 +259,17 @@ describe("blueprint graph editing", () => {
             __jsonObjectInputPins: ["field_1_name", "field_1_value"],
             __inlineLiteralPins: ["field_1_name"],
             field_1_name: "field1",
+        });
+    });
+
+    it("creates Var declarations with stable variable defaults", () => {
+        const node = createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR, "varNode");
+
+        expect(node.params).toMatchObject({
+            variableId: "varNode",
+            name: "var_varNode",
+            valueType: "string",
+            defaultValue: "",
         });
     });
 
