@@ -2,12 +2,13 @@ import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/docum
 import {
     buildAccessibleBlueprintVariableOptions,
     createExplicitBlueprintVariableRef,
+    listEffectiveBlueprintVariables,
     parseBlueprintVariableRef,
 } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 
 function defaultLocalsFromBlueprint(bp: Blueprint): Record<string, unknown> {
     const out: Record<string, unknown> = {};
-    for (const v of Object.values(bp.members?.variables ?? {})) {
+    for (const v of listEffectiveBlueprintVariables(bp)) {
         const d = v.defaultValue;
         out[v.id] = d === undefined ? null : cloneJsonValue(d);
     }

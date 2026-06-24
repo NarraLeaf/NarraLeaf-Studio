@@ -1,4 +1,12 @@
-import type { Blueprint, BlueprintDocument, BlueprintVariable } from "@shared/types/blueprint/document";
+import type {
+    Blueprint,
+    BlueprintDocument,
+    BlueprintGraphNode,
+    BlueprintVariable,
+    LiteralValue,
+} from "@shared/types/blueprint/document";
+import { BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR } from "@shared/types/blueprint/graph";
+import { resolveBlueprintVariableDefaultValue } from "@shared/types/blueprint/variableTypes";
 import { GLOBAL_MAIN_OWNER_KEY, surfaceMainOwnerKey } from "./ownerKeys";
 
 const EXPLICIT_BLUEPRINT_VARIABLE_REF_PREFIX = "bp:";
@@ -31,6 +39,104 @@ type VariableGroupInput = {
     scopeLabel: string;
     explicit: boolean;
 };
+
+function readParamString(params: Record<string, unknown> | undefined, key: string): string | undefined {
+    const value = params?.[key];
+    return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function cloneLiteralValue(value: LiteralValue): LiteralValue {
+    if (value === null || typeof value !== "object") {
+        return value;
+    }
+    return JSON.parse(JSON.stringify(value)) as LiteralValue;
+}
+
+function normalizeLiteralValue(value: unknown): LiteralValue | undefined {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (value === null || typeof value === "string" || typeof value === "boolean") {
+        return value;
+    }
+    if (typeof value === "number") {
+        return Number.isFinite(value) ? value : undefined;
+    }
+    try {
+        return JSON.parse(JSON.stringify(value)) as LiteralValue;
+    } catch {
+        return undefined;
+    }
+}
+
+function blueprintSupportsDeclaredVariables(blueprint: Blueprint): boolean {
+    return blueprint.owner.kind !== "globalMain" && blueprint.owner.kind !== "surfaceMain";
+}
+
+function listBlueprintGraphNodes(blueprint: Blueprint): BlueprintGraphNode[] {
+    if (blueprint.program.kind !== "graph") {
+        return [];
+    }
+    const slots = [
+        ...Object.values(blueprint.program.graphs.events ?? {}),
+        ...Object.values(blueprint.program.graphs.functions ?? {}),
+        ...Object.values(blueprint.program.graphs.macros ?? {}),
+    ];
+    return slots.flatMap(slot => Object.values(slot.graph?.nodes ?? {}));
+}
+
+function variableFromDeclareNode(node: BlueprintGraphNode): BlueprintVariable | null {
+    if (node.type !== BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR) {
+        return null;
+    }
+    const params = node.params ?? {};
+    const id = readParamString(params, "variableId") ?? node.id;
+    const name = readParamString(params, "name") ?? `var_${id.slice(0, 8)}`;
+    const valueType = readParamString(params, "valueType");
+    const defaultValue =
+        normalizeLiteralValue(params.defaultValue) ?? resolveBlueprintVariableDefaultValue(valueType);
+    return {
+        id,
+        name,
+        valueType,
+        defaultValue: defaultValue === undefined ? undefined : cloneLiteralValue(defaultValue),
+        meta: { declaredByNodeId: node.id },
+    };
+}
+
+function declaredVariables(blueprint: Blueprint): BlueprintVariable[] {
+    if (!blueprintSupportsDeclaredVariables(blueprint)) {
+        return [];
+    }
+    const out = new Map<string, BlueprintVariable>();
+    for (const node of listBlueprintGraphNodes(blueprint)) {
+        const variable = variableFromDeclareNode(node);
+        if (variable && !out.has(variable.id)) {
+            out.set(variable.id, variable);
+        }
+    }
+    return [...out.values()];
+}
+
+export function listEffectiveBlueprintVariables(blueprint: Blueprint): BlueprintVariable[] {
+    if (!blueprintSupportsDeclaredVariables(blueprint)) {
+        return Object.values(blueprint.members?.variables ?? {});
+    }
+    const byId = new Map<string, BlueprintVariable>();
+    for (const variable of declaredVariables(blueprint)) {
+        byId.set(variable.id, variable);
+    }
+    for (const variable of Object.values(blueprint.members?.variables ?? {})) {
+        if (!byId.has(variable.id)) {
+            byId.set(variable.id, variable);
+        }
+    }
+    return [...byId.values()];
+}
+
+export function getEffectiveBlueprintVariableRecord(blueprint: Blueprint): Record<string, BlueprintVariable> {
+    return Object.fromEntries(listEffectiveBlueprintVariables(blueprint).map(variable => [variable.id, variable]));
+}
 
 function encodePart(value: string): string {
     return encodeURIComponent(value);
@@ -68,8 +174,14 @@ export function parseBlueprintVariableRef(raw: unknown, currentBlueprintId: stri
     };
 }
 
-function sortedVariables(blueprint: Blueprint): BlueprintVariable[] {
-    return Object.values(blueprint.members?.variables ?? {}).sort((a, b) => a.name.localeCompare(b.name));
+function variablesForGroup(group: VariableGroupInput): BlueprintVariable[] {
+    return group.scopeKind === "blueprint"
+        ? listEffectiveBlueprintVariables(group.blueprint)
+        : Object.values(group.blueprint.members?.variables ?? {});
+}
+
+function sortedVariables(group: VariableGroupInput): BlueprintVariable[] {
+    return variablesForGroup(group).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function getSurfaceMainBlueprintId(doc: BlueprintDocument, surfaceId: string | undefined): string | undefined {
@@ -172,7 +284,7 @@ export function buildAccessibleBlueprintVariableOptions(input: {
     const groups = buildVariableGroups(input);
     const options: BlueprintVariableOption[] = [];
     for (const group of groups) {
-        for (const variable of sortedVariables(group.blueprint)) {
+        for (const variable of sortedVariables(group)) {
             options.push({
                 value: group.explicit
                     ? createExplicitBlueprintVariableRef(group.blueprintId, variable.id)
@@ -219,6 +331,7 @@ export function resolveBlueprintVariableRef(input: {
     if (!allowed.has(`${ref.blueprintId}\0${ref.variableId}`)) {
         return null;
     }
-    const variable = input.doc.blueprints[ref.blueprintId]?.members?.variables?.[ref.variableId];
+    const blueprint = input.doc.blueprints[ref.blueprintId];
+    const variable = blueprint ? getEffectiveBlueprintVariableRecord(blueprint)[ref.variableId] : undefined;
     return variable ? { ref, variable } : null;
 }

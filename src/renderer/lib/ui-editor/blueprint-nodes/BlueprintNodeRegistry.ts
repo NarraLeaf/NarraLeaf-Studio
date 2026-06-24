@@ -9,6 +9,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     resolveBlueprintEventHeadTypesForUiSlot,
@@ -90,7 +91,11 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
     if (def.role === "comment") {
         return true;
     }
-    if (def.type === BLUEPRINT_NODE_TYPE_LOCAL_GET || def.type === BLUEPRINT_NODE_TYPE_LOCAL_SET) {
+    if (
+        def.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR ||
+        def.type === BLUEPRINT_NODE_TYPE_LOCAL_GET ||
+        def.type === BLUEPRINT_NODE_TYPE_LOCAL_SET
+    ) {
         return !def.isLatent;
     }
     if (def.category === "Flow") {

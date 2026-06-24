@@ -1,4 +1,5 @@
 import type { BlueprintGraphEdge, BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
+import { BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR } from "@shared/types/blueprint/graph";
 import { readNodeEditorLayout, writeNodeEditorLayout } from "./graphEditing";
 
 export const BLUEPRINT_GRAPH_CLIPBOARD_VERSION = 1 as const;
@@ -144,6 +145,9 @@ export function pasteBlueprintGraphClipboardPayload(input: {
         const newNodeId = resolveUniqueNodeId(input.generateId, usedNodeIds);
         const nextNode = cloneGraphClipboardValue(node);
         nextNode.id = newNodeId;
+        if (nextNode.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR) {
+            nextNode.params = { ...(nextNode.params ?? {}), variableId: newNodeId };
+        }
         const pos = readNodeEditorLayout(nextNode);
         writeNodeEditorLayout(nextNode, { x: pos.x + offset.x, y: pos.y + offset.y });
         next.nodes[newNodeId] = nextNode;

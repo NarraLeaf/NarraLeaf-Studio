@@ -17,7 +17,7 @@ import { UIService } from "@/lib/workspace/services/ui";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { GLOBAL_MAIN_OWNER_KEY } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import { BlueprintVariableDialogContent, type BlueprintVariableDialogValue } from "./BlueprintVariableDialogContent";
-import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Save, Trash2 } from "lucide-react";
 
 const FIELD_INPUT =
     "w-full rounded-md border border-white/20 bg-white/5 px-2 py-1 text-[11px] text-gray-200 outline-none transition-colors focus:border-[#40a8c4] focus:ring-1 focus:ring-[#40a8c4]/30";
@@ -39,7 +39,7 @@ type Props = {
     onDeleteLayer: (layerId: string) => void;
 };
 
-export type BlueprintVariableGroupKey = "page" | "blueprint" | "global" | "persistent";
+export type BlueprintVariableGroupKey = "page" | "global" | "persistent";
 
 type VariableGroup = {
     key: BlueprintVariableGroupKey;
@@ -75,6 +75,7 @@ function countForGraph(
 
 function CollapsibleSection({
     title,
+    titleIcon,
     defaultOpen,
     open,
     onOpenChange,
@@ -82,6 +83,7 @@ function CollapsibleSection({
     children,
 }: {
     title: string;
+    titleIcon?: ReactNode;
     defaultOpen: boolean;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
@@ -106,6 +108,7 @@ function CollapsibleSection({
                     onClick={() => setOpen(!actualOpen)}
                 >
                     {actualOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                    {titleIcon}
                     <span className="truncate">{title}</span>
                 </button>
                 {action}
@@ -400,8 +403,6 @@ function sortedFields(blueprint: Blueprint): BlueprintField[] {
 }
 
 function buildVariableGroups(input: {
-    currentBlueprint: Blueprint;
-    currentBlueprintId: string;
     pageBlueprint?: Blueprint;
     pageBlueprintId?: string;
     globalBlueprint?: Blueprint;
@@ -409,8 +410,6 @@ function buildVariableGroups(input: {
 }): VariableGroup[] {
     const groups: VariableGroup[] = [];
     const used = new Set<string>();
-    const currentIsPage = Boolean(input.pageBlueprintId && input.currentBlueprintId === input.pageBlueprintId);
-    const currentIsGlobal = Boolean(input.globalBlueprintId && input.currentBlueprintId === input.globalBlueprintId);
 
     const addGroup = (group: VariableGroup | null) => {
         if (!group || used.has(group.blueprintId)) {
@@ -434,19 +433,6 @@ function buildVariableGroups(input: {
               }
             : null,
     );
-
-    if (!currentIsPage && !currentIsGlobal) {
-        addGroup({
-            key: "blueprint",
-            label: "Blueprint variables",
-            scopeLabel: "Blueprint",
-            blueprintId: input.currentBlueprintId,
-            blueprint: input.currentBlueprint,
-            defaultOpen: true,
-            accentClass: "text-amber-200/80",
-            emptyText: "No blueprint variables.",
-        });
-    }
 
     addGroup(
         input.globalBlueprint && input.globalBlueprintId
@@ -707,8 +693,6 @@ export function BlueprintMemberTree({
     const variableGroups = useMemo(
         () =>
             buildVariableGroups({
-                currentBlueprint: blueprint,
-                currentBlueprintId: blueprintId,
                 pageBlueprint,
                 pageBlueprintId,
                 globalBlueprint,
@@ -879,6 +863,7 @@ export function BlueprintMemberTree({
 
                 <CollapsibleSection
                     title="Persistent variables"
+                    titleIcon={<Save className="h-3 w-3 shrink-0 text-current" aria-hidden />}
                     defaultOpen={false}
                     open={variableGroupOpenState?.persistent ?? false}
                     onOpenChange={open => onVariableGroupOpenChange?.("persistent", open)}

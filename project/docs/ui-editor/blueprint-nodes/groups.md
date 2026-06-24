@@ -23,7 +23,7 @@ Blueprint Value 可用节点包括：
 
 `nl.slider.props.value` 使用 `float` Blueprint Value，返回值表示映射后的值而不是 0-1 normalized 值；运行时会按该 Slider 的 `min` / `max` / `step` clamp 和 snap。
 
-Blueprint Value 只允许安全的数据生产节点：`Init` Head、非 latent Flow、图内注释、纯 Data / Math、本地变量、Element Literal，以及纯读取型 Text / Displayable / Slider / List / Widget Property 节点。当前核心目录不提供 surface/global state 读写节点；Blueprint Value 也不允许 Widget 改写、Navigation、Persistent 变量读写、Broadcast、latent 节点和 TypeScript revision。
+Blueprint Value 只允许安全的数据生产节点：`Init` Head、非 latent Flow、图内注释、纯 Data / Math、本地变量、`Var` 声明、Element Literal，以及纯读取型 Text / Displayable / Slider / List / Widget Property 节点。当前核心目录不提供 surface/global state 读写节点；Blueprint Value 也不允许 Widget 改写、Navigation、Persistent 变量读写、Broadcast、latent 节点和 TypeScript revision。
 
 ## Self 与 Element 方法节点
 
@@ -35,7 +35,12 @@ Blueprint Value 只允许安全的数据生产节点：`Init` Head、非 latent 
 
 ## Variables
 
-Variables 节点组用于读写当前蓝图可访问的本地变量和项目级 Persistent 变量。Persistent 变量定义保存在 Blueprint 文档中，运行时值由 Host 管理并按项目隔离。当前核心目录包含：
+Variables 节点组用于声明和读写当前蓝图可访问的本地变量，以及读写项目级 Persistent 变量。控件私有蓝图、Blueprint Value 和 shared asset 蓝图使用图内 `Var` 节点声明 blueprint-level 变量；Page / Global 变量仍由左侧成员栏维护。旧版 `members.variables` 中的 blueprint-level 变量不会显示在成员栏中，但仍作为兼容 fallback 供 `Get Var` / `Set Var` 选择和运行。
+
+`Get Var` / `Set Var` 的 `value` 引脚类型由当前选择的变量推断，节点卡、连接预览和 graph validation 使用同一份推断结果。变量类型改变后如果已有连线不再兼容，编辑器保留连线并上报类型不匹配诊断，不自动删除 edge。
+
+Persistent 变量定义保存在 Blueprint 文档中，运行时值由 Host 管理并按项目隔离。当前核心目录包含：
+- `blueprint.local.declareVar` - `Var`，无引脚变量声明节点，卡片上编辑名称、类型和默认值
 - `blueprint.local.get` - 读取变量
 - `blueprint.local.set` - 写入变量
 - `blueprint.persistent.get` - 异步读取 Persistent 变量；缺失已保存值时返回 authored default

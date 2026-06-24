@@ -10,7 +10,14 @@ import type {
     BlueprintNodePinDef,
 } from "./types";
 import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "./types";
-import { BLUEPRINT_NODE_TYPE_ELEMENT_REF } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
+    BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
+} from "@shared/types/blueprint/graph";
 import { blueprintElementValueType } from "@shared/types/blueprint/valueTypes";
 
 export type EffectiveCatalogPin = BlueprintNodeEditorCatalogEntry["pins"][number];
@@ -84,6 +91,34 @@ function readDynamicPinTemplate(
     return undefined;
 }
 
+function readParamString(params: Record<string, unknown> | undefined, key: string): string | undefined {
+    const value = params?.[key];
+    return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function isVariableValuePin(def: BlueprintNodeDef, pin: BlueprintNodePinDef): boolean {
+    if (pin.id !== "value" || pin.semantic !== "data") {
+        return false;
+    }
+    return (
+        def.type === BLUEPRINT_NODE_TYPE_LOCAL_GET ||
+        def.type === BLUEPRINT_NODE_TYPE_LOCAL_SET ||
+        def.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET ||
+        def.type === BLUEPRINT_NODE_TYPE_PERSISTENT_SET
+    );
+}
+
+function resolveStaticPinValueType(
+    def: BlueprintNodeDef,
+    pin: BlueprintNodePinDef,
+    params: Record<string, unknown> | undefined,
+): string | undefined {
+    if (isVariableValuePin(def, pin)) {
+        return readParamString(params, BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE) ?? pin.valueType;
+    }
+    return pin.valueType;
+}
+
 /** Next unused id set, avoiding static pins and existing dynamic ids. */
 export function generateNextDynamicInputPinIds(def: BlueprintNodeDef, params: Record<string, unknown>): string[] {
     const cfg = def.dynamicInputPins;
@@ -145,9 +180,13 @@ export function resolveEffectiveBlueprintNodePins(
         magicInputPinId && !showMagicInputPin
             ? def.pins.filter(pin => pin.id !== magicInputPinId)
             : def.pins;
+    const typedBasePins = basePins.map(pin => {
+        const valueType = resolveStaticPinValueType(def, pin, params);
+        return valueType === pin.valueType ? pin : { ...pin, valueType };
+    });
     if (def.type === BLUEPRINT_NODE_TYPE_ELEMENT_REF) {
         const elementType = typeof params?.elementType === "string" ? params.elementType : undefined;
-        return basePins.map(pin =>
+        return typedBasePins.map(pin =>
             pin.kind === "output" && pin.semantic === "data" && pin.id === "element"
                 ? {
                       ...pin,
@@ -158,12 +197,12 @@ export function resolveEffectiveBlueprintNodePins(
     }
     const cfg = def.dynamicInputPins;
     if (!cfg || !params) {
-        return basePins;
+        return typedBasePins;
     }
 
     const extraIds = readDynamicInputPinIds(params, cfg.storageKey);
-    const inputs = basePins.filter(p => p.kind === "input");
-    const outputs = basePins.filter(p => p.kind === "output");
+    const inputs = typedBasePins.filter(p => p.kind === "input");
+    const outputs = typedBasePins.filter(p => p.kind === "output");
 
     const execInputs = inputs.filter(p => p.semantic === "exec");
     const fixedDataInputs = inputs.filter(
@@ -174,7 +213,7 @@ export function resolveEffectiveBlueprintNodePins(
     const dynamicPins: BlueprintNodePinDef[] = [];
     let dynOrdinal = 0;
     for (const id of extraIds) {
-        if (basePins.some(p => p.id === id)) {
+        if (typedBasePins.some(p => p.id === id)) {
             continue;
         }
         dynOrdinal += 1;

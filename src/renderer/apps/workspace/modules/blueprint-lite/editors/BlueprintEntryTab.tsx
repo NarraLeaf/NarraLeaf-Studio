@@ -136,7 +136,7 @@ type BlueprintEditorViewportPanelState = {
 
 const BLUEPRINT_EDITOR_MEMBER_PANEL_STATE_ID = "blueprintEditor.memberPanel";
 const BLUEPRINT_EDITOR_FLOW_VIEWPORT_STATE_PREFIX = "blueprintEditor.flowViewport";
-const BLUEPRINT_VARIABLE_GROUP_KEYS: BlueprintVariableGroupKey[] = ["page", "blueprint", "global", "persistent"];
+const BLUEPRINT_VARIABLE_GROUP_KEYS: BlueprintVariableGroupKey[] = ["page", "global", "persistent"];
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 
 function normalizeBlueprintFlowViewport(raw: unknown): BlueprintFlowViewport | null {
