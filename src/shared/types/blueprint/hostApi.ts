@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 5 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 6 as const;
 
 export type BlueprintHostApiContractVersion = typeof BLUEPRINT_HOST_API_CONTRACT_VERSION;
 
@@ -38,6 +38,7 @@ export type BlueprintHostApiContract = {
     state: BlueprintHostApiFamily;
     persistence: BlueprintHostApiFamily;
     frame: BlueprintHostApiFamily;
+    game: BlueprintHostApiFamily;
     devtools: BlueprintHostApiFamily;
 };
 
@@ -172,6 +173,16 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { event: "", data: undefined },
+            output: undefined,
+        },
+    },
+    game: {
+        startStory: {
+            capabilityId: "game.startStory",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { storyId: "", sceneId: "" },
             output: undefined,
         },
     },

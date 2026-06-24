@@ -179,7 +179,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 delete index.defaultStoryId;
             }
         });
-        const dir = this.getContext().project.resolve(ProjectNameConvention.EditorStory, "stories", storyId, "/");
+        const dir = this.getStoryDocumentDir(storyId);
         void this.getFileSystem().deleteDir(dir).catch(err => {
             console.warn("[StoryService] failed to delete story directory", err);
         });
@@ -228,6 +228,14 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.writeLibraryIndex();
         this.lastSavedRevision = this.revision;
         this.setDirty(false);
+    }
+
+    public async flushPendingChanges(): Promise<void> {
+        if (this.autoSaveTimer) {
+            clearTimeout(this.autoSaveTimer);
+            this.autoSaveTimer = null;
+        }
+        await this.flush();
     }
 
     public async reloadStory(storyId: StoryId): Promise<StoryDocument> {
@@ -800,7 +808,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const fs = this.getFileSystem();
         const dirs = [
             this.getContext().project.resolve(ProjectNameConvention.EditorStory),
-            this.getContext().project.resolve(ProjectNameConvention.EditorStory, "stories/"),
+            this.getContext().project.resolve(ProjectNameConvention.EditorStoryStories),
         ];
         for (const dir of dirs) {
             const exists = await fs.isDirExists(dir);
@@ -817,8 +825,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private async ensureStoryDocumentDir(storyId: StoryId): Promise<void> {
+        await this.ensureStoryDirs();
         const fs = this.getFileSystem();
-        const dir = this.getContext().project.resolve(ProjectNameConvention.EditorStory, "stories", storyId, "/");
+        const dir = this.getStoryDocumentDir(storyId);
         const exists = await fs.isDirExists(dir);
         if (!exists.ok) {
             throw new RendererError(exists.error.message || "Failed to access story document directory");
@@ -829,5 +838,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
                 throw new RendererError(created.error.message || "Failed to create story document directory");
             }
         }
+    }
+
+    private getStoryDocumentDir(storyId: StoryId): string {
+        return this.getContext().project.resolve(ProjectNameConvention.EditorStoryStories, `${storyId}/`);
     }
 }

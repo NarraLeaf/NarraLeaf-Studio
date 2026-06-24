@@ -8,6 +8,7 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import { useDocumentVersion } from "@/lib/ui-editor/hooks/useDocumentVersion";
 import type { ReadonlyBlueprintWidgetSummary } from "@/lib/workspace/services/ui-editor/blueprint/readonlyBlueprintSummary";
 import { emptyReadonlyBlueprintWidgetSummary } from "@/lib/workspace/services/ui-editor/blueprint/readonlyBlueprintSummary";
+import { parseComponentEditorSurfaceId } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 
 /**
  * Subscribes to uidoc + uigraphs changes and returns a Blueprint M2 read-only summary for the selected widget.
@@ -39,6 +40,10 @@ export function useReadonlyBlueprintSummary(
             return emptyReadonlyBlueprintWidgetSummary();
         }
         const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const componentId = parseComponentEditorSurfaceId(surfaceId);
+        if (componentId) {
+            return localBp.getReadonlyComponentWidgetMainSummary(componentId, element);
+        }
         return localBp.getReadonlyWidgetMainSummary(surfaceId, element);
     }, [context, isInitialized, surfaceId, element, docVersion, graphTick]);
 }

@@ -35,6 +35,7 @@ import {
     SURFACE_WHEEL_PAN_DELTA_LIMIT_PX,
     SURFACE_WHEEL_ZOOM_DELTA_LIMIT_PX,
 } from "./surfaceWheelInput";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 const WHEEL_ZOOM_SPEED = 0.003;
 const PINCH_ZOOM_SPEED = 0.006;
@@ -42,6 +43,7 @@ const PINCH_ZOOM_SPEED = 0.006;
 export type InsertToolDragState = {
     active: boolean;
     nodeType: string;
+    componentId?: string;
     startClientX: number;
     startClientY: number;
     startSurfaceX: number;
@@ -161,7 +163,9 @@ export function useSurfaceInteractionEvents({
                 width,
                 height,
             });
-            const element = documentService.createElement(target.parentId, state.nodeType, layoutPatch);
+            const element = state.componentId
+                ? documentService.createComponentInstance(target.parentId, state.componentId, layoutPatch)
+                : documentService.createElement(target.parentId, state.nodeType, layoutPatch);
 
             stateService.setUIElementSelection({
                 editor: "ui",
@@ -274,6 +278,7 @@ export function useSurfaceInteractionEvents({
                 insertStateRef.current = {
                     active: true,
                     nodeType: tool.nodeType,
+                    componentId: tool.componentId,
                     startClientX: event.clientX,
                     startClientY: event.clientY,
                     startSurfaceX: surfacePoint.x,
@@ -293,6 +298,13 @@ export function useSurfaceInteractionEvents({
             if (tool.kind === "select" && event.button === 0 && isElementNode) {
                 const elementId = elementNode?.dataset.uiElementId;
                 if (elementId) {
+                    const doc = documentService.getDocument();
+                    const hitElement = doc.elements[elementId];
+                    if (!hitElement || hitElement.type === "nl.root" || isComponentEditorRootElement(hitElement)) {
+                        selectSurfaceForProperties(stateService, surfaceId, uiService);
+                        containerDrillLastPointerRef.current = null;
+                        return;
+                    }
                     if ((event.metaKey || event.ctrlKey) && selectionData && selectionData.surfaceId === surfaceId) {
                         const cur = selectionData.elementIds;
                         const nextIds = cur.includes(elementId)
@@ -319,7 +331,6 @@ export function useSurfaceInteractionEvents({
                             primaryId: elementId,
                         });
                     } else {
-                        const doc = documentService.getDocument();
                         const hitId = elementId;
                         const drillLock = isUiContainerDrillLockHit(doc, surfaceId, selectionData, hitId);
                         const pickId = !drillLock && shouldPromoteToSurfaceRootChild(doc, selectionData, surfaceId, hitId)

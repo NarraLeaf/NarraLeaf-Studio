@@ -13,6 +13,7 @@ import { devtoolsBlueprintNodes } from "./devtoolsNodes";
 import { elementBlueprintNodes } from "./elementNodes";
 import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { frameBlueprintNodes } from "./frameNodes";
+import { gameBlueprintNodes } from "./gameNodes";
 import { listBlueprintNodes } from "./listNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
@@ -31,6 +32,7 @@ export { devtoolsBlueprintNodes } from "./devtoolsNodes";
 export { elementBlueprintNodes } from "./elementNodes";
 export { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 export { frameBlueprintNodes } from "./frameNodes";
+export { gameBlueprintNodes } from "./gameNodes";
 export { listBlueprintNodes } from "./listNodes";
 export { localVariableBlueprintNodes } from "./localVariableNodes";
 export { mathBlueprintNodes } from "./mathNodes";
@@ -48,6 +50,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...eventHeadBlueprintNodes,
     ...broadcastBlueprintNodes,
     ...frameBlueprintNodes,
+    ...gameBlueprintNodes,
     ...controlFlowBlueprintNodes,
     ...dataBlueprintNodes,
     ...collectionBlueprintNodes,

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check } from "lucide-react";
-import { FixedAspectRatioContainer } from "narraleaf-react";
+import { FixedAspectRatioContainer, Game } from "narraleaf-react";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UISurface, UIDocument } from "@shared/types/ui-editor/document";
-import type { DevModeBundle } from "@shared/types/devMode";
+import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
@@ -24,6 +24,8 @@ import {
     shouldBlockPageAnimationExit,
     type PageAnimationNavigationDirection,
 } from "@/lib/ui-editor/runtime/pageAnimation";
+import { NlrStageLayer, type NlrStageSession } from "../nlr/NlrStageLayer";
+import { compileStudioStoryToNlr } from "../nlr/storyCompiler";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
@@ -69,6 +71,10 @@ function keyboardBlueprintPayload(event: KeyboardEvent): Record<string, unknown>
         shiftKey: event.shiftKey,
         metaKey: event.metaKey,
     };
+}
+
+function waitForAnimationFrame(): Promise<void> {
+    return new Promise(resolve => requestAnimationFrame(() => resolve()));
 }
 
 function SessionErrorBanner(props: {
@@ -193,6 +199,13 @@ export function DevModeContent(props: DevModeContentProps) {
     const [blueprintPanelOpen, setBlueprintPanelOpen] = useState(false);
     const devtoolsFabRef = useRef<HTMLButtonElement>(null);
     const devtoolsMenuRef = useRef<HTMLDivElement>(null);
+    const [nlrSession, setNlrSession] = useState<NlrStageSession | null>(null);
+    const [gameStageVisible, setGameStageVisible] = useState(false);
+    const [studioPageHiddenForGame, setStudioPageHiddenForGame] = useState(false);
+    const nlrSessionSeqRef = useRef(0);
+    const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
+    const activeStoryRevisionRef = useRef<number | null>(null);
+    const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const persistenceProjectRef = useMemo<BlueprintPersistenceProjectRef | null>(() => {
         if (!projectPath) {
             return null;
@@ -446,6 +459,123 @@ export function DevModeContent(props: DevModeContentProps) {
         return wait;
     }, [beginTransitionWait, estimateTransitionDuration, navStack, shouldWaitForExit, uiDocument?.surfaces]);
 
+    const rejectPendingGameStarts = useCallback((error: Error) => {
+        pendingGameStartsRef.current.forEach(pending => pending.reject(error));
+        pendingGameStartsRef.current.clear();
+    }, []);
+
+    const startStoryInGame = useCallback(async (request: DevModeStartStoryRequest): Promise<void> => {
+        if (!bundle?.storyLibrary) {
+            throw new Error("Start Game: story library is not available in Dev Mode bundle");
+        }
+        if (!activeSurface) {
+            throw new Error("Start Game: active page is not available");
+        }
+        const storyId = String(request.storyId ?? "").trim();
+        const sceneId = String(request.sceneId ?? "").trim();
+        if (!storyId) {
+            throw new Error("Start Game: storyId is required");
+        }
+        if (!sceneId) {
+            throw new Error("Start Game: sceneId is required");
+        }
+        const storyDocument =
+            bundle.storyLibrary.documents[storyId] ??
+            Object.values(bundle.storyLibrary.documents).find(document => document.id === storyId);
+        if (!storyDocument) {
+            const indexedStoryIds = bundle.storyLibrary.index.stories.map(story => story.id).join(", ") || "(none)";
+            const documentStoryIds = Object.values(bundle.storyLibrary.documents).map(document => document.id).join(", ") || "(none)";
+            throw new Error(
+                `Start Game: story not found: ${storyId}. ` +
+                `Bundle index story ids: ${indexedStoryIds}. Bundle document ids: ${documentStoryIds}.`,
+            );
+        }
+        if (!storyDocument.scenes[sceneId]) {
+            throw new Error(`Start Game: scene not found: ${sceneId}`);
+        }
+
+        rejectPendingGameStarts(new Error("Start Game superseded by a newer session"));
+        activeStoryRequestRef.current = { storyId, sceneId };
+        activeStoryRevisionRef.current = bundle.revision;
+
+        const compiled = compileStudioStoryToNlr({
+            document: storyDocument,
+            sceneId,
+            characters: bundle.storyLibrary.characters,
+        });
+        if (compiled.diagnostics.length > 0) {
+            console.warn("[DevMode][NLR] Story compile diagnostics", compiled.diagnostics);
+        }
+
+        nlrSessionSeqRef.current += 1;
+        const sessionId = `${bundle.bundleId}:${bundle.revision}:${nlrSessionSeqRef.current}`;
+        const { width, height } = activeSurface.designSize;
+        const game = new Game({
+            app: { debug: true },
+            width,
+            height,
+            minWidth: width,
+            minHeight: height,
+            aspectRatio: width / height,
+            contentContainerId: `__nlr_dev_stage_${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
+        });
+
+        const ready = new Promise<void>((resolve, reject) => {
+            pendingGameStartsRef.current.set(sessionId, { resolve, reject });
+        });
+
+        setGameStageVisible(false);
+        setStudioPageHiddenForGame(false);
+        setNlrSession({
+            id: sessionId,
+            game,
+            compiled,
+            width,
+            height,
+        });
+
+        await ready;
+        await waitForAnimationFrame();
+        setGameStageVisible(true);
+        setStudioPageHiddenForGame(true);
+    }, [activeSurface, bundle, rejectPendingGameStarts]);
+
+    const handleNlrPreloadedReady = useCallback((sessionId: string) => {
+        const pending = pendingGameStartsRef.current.get(sessionId);
+        if (!pending) {
+            return;
+        }
+        pendingGameStartsRef.current.delete(sessionId);
+        pending.resolve();
+    }, []);
+
+    const handleNlrStageError = useCallback((error: Error) => {
+        rejectPendingGameStarts(error);
+        console.error("[DevMode][NLR] Player error", error);
+    }, [rejectPendingGameStarts]);
+
+    useEffect(() => {
+        if (!bundle || !activeStoryRequestRef.current) {
+            return;
+        }
+        if (activeStoryRevisionRef.current === bundle.revision) {
+            return;
+        }
+        const request = activeStoryRequestRef.current;
+        void startStoryInGame(request).catch(error => {
+            console.error("[DevMode][NLR] Hot reload restart failed", error);
+        });
+    }, [bundle, startStoryInGame]);
+
+    useEffect(() => {
+        activeStoryRequestRef.current = null;
+        activeStoryRevisionRef.current = null;
+        rejectPendingGameStarts(new Error("Dev Mode session changed"));
+        setNlrSession(null);
+        setGameStageVisible(false);
+        setStudioPageHiddenForGame(false);
+    }, [bundle?.bundleId, rejectPendingGameStarts, surface?.id]);
+
     const hostApi = useMemo(() => {
         if (!bpCore || !uiDocument || !activeSurface) {
             return null;
@@ -459,6 +589,7 @@ export function DevModeContent(props: DevModeContentProps) {
             emit: e => bpCore.debug.emit(e),
             onOpenSurface: openSurfaceWithTransition,
             onCloseLayer: closeLayerWithTransition,
+            onStartStory: startStoryInGame,
             onWidgetPatch: (elementId, patch) => {
                 setWidgetPatchesByScope(prev => ({
                     ...prev,
@@ -487,6 +618,7 @@ export function DevModeContent(props: DevModeContentProps) {
         activeSurface,
         openSurfaceWithTransition,
         closeLayerWithTransition,
+        startStoryInGame,
         widgetRuntimeStore,
     ]);
 
@@ -632,6 +764,7 @@ export function DevModeContent(props: DevModeContentProps) {
                     emit: e => bpCore.debug.emit(e),
                     onOpenSurface: openSurfaceWithTransition,
                     onCloseLayer: closeLayerWithTransition,
+                    onStartStory: startStoryInGame,
                     onWidgetPatch: (elementId, patch) => {
                         setWidgetPatchesByScope(prev => ({
                             ...prev,
@@ -709,6 +842,7 @@ export function DevModeContent(props: DevModeContentProps) {
         closeLayerWithTransition,
         makeStateAccessors,
         openSurfaceWithTransition,
+        startStoryInGame,
         uiDocument,
         widgetRuntimeStore,
     ]);
@@ -807,45 +941,53 @@ export function DevModeContent(props: DevModeContentProps) {
                         onUpdate={handleAspectUpdate}
                     >
                         <div className="relative h-full w-full overflow-hidden">
+                            <NlrStageLayer
+                                session={nlrSession}
+                                visible={gameStageVisible}
+                                onPreloadedReady={handleNlrPreloadedReady}
+                                onError={handleNlrStageError}
+                            />
                             <AnimatePresence
                                 custom={activeDirection}
                                 initial={false}
-                                mode={activeWaitForExit ? "wait" : "sync"}
+                                mode={studioPageHiddenForGame ? "sync" : activeWaitForExit ? "wait" : "sync"}
                                 onExitComplete={markExitComplete}
                             >
-                                <motion.div
-                                    key={activeEntry?.key ?? activeSurface.id}
-                                    custom={activeDirection}
-                                    className="absolute inset-0 flex items-center justify-center"
-                                    variants={pageMotionVariants}
-                                    initial="initial"
-                                    animate="animate"
-                                    exit="exit"
-                                    onAnimationComplete={() => markActiveEnterComplete(activeEntry?.key ?? activeSurface.id)}
-                                >
-                                    <DevModeSurfaceLifecycleLayer
-                                        bpCore={bpCore}
-                                        bundle={bundle}
-                                        surface={activeSurface}
-                                        runtimeScopeId={activeRuntimeScopeId || activeSurface.id}
-                                        hostAdapter={hostAdapter}
-                                        lifecycleRef={lifecycleRef}
-                                        makeStateAccessors={makeStateAccessors}
+                                {!studioPageHiddenForGame ? (
+                                    <motion.div
+                                        key={activeEntry?.key ?? activeSurface.id}
+                                        custom={activeDirection}
+                                        className="absolute inset-0 z-10 flex items-center justify-center"
+                                        variants={pageMotionVariants}
+                                        initial="initial"
+                                        animate="animate"
+                                        exit="exit"
+                                        onAnimationComplete={() => markActiveEnterComplete(activeEntry?.key ?? activeSurface.id)}
                                     >
-                                        <WidgetRuntimeStateProvider externalStore={widgetRuntimeStore}>
-                                            <DevModeSurfaceRenderer
-                                                document={uidoc}
-                                                surface={activeSurface}
-                                                rendererRegistry={rendererRegistry}
-                                                scale={scale}
-                                                hostAdapter={hostAdapter}
-                                                blueprintBindingContext={bindingContext}
-                                                widgetRuntimePatches={widgetPatchesByScope[activeRuntimeScopeId || activeSurface.id] ?? {}}
-                                                nestedSurfaceRuntime={nestedSurfaceRuntime}
-                                            />
-                                        </WidgetRuntimeStateProvider>
-                                    </DevModeSurfaceLifecycleLayer>
-                                </motion.div>
+                                        <DevModeSurfaceLifecycleLayer
+                                            bpCore={bpCore}
+                                            bundle={bundle}
+                                            surface={activeSurface}
+                                            runtimeScopeId={activeRuntimeScopeId || activeSurface.id}
+                                            hostAdapter={hostAdapter}
+                                            lifecycleRef={lifecycleRef}
+                                            makeStateAccessors={makeStateAccessors}
+                                        >
+                                            <WidgetRuntimeStateProvider externalStore={widgetRuntimeStore}>
+                                                <DevModeSurfaceRenderer
+                                                    document={uidoc}
+                                                    surface={activeSurface}
+                                                    rendererRegistry={rendererRegistry}
+                                                    scale={scale}
+                                                    hostAdapter={hostAdapter}
+                                                    blueprintBindingContext={bindingContext}
+                                                    widgetRuntimePatches={widgetPatchesByScope[activeRuntimeScopeId || activeSurface.id] ?? {}}
+                                                    nestedSurfaceRuntime={nestedSurfaceRuntime}
+                                                />
+                                            </WidgetRuntimeStateProvider>
+                                        </DevModeSurfaceLifecycleLayer>
+                                    </motion.div>
+                                ) : null}
                             </AnimatePresence>
                         </div>
                     </FixedAspectRatioContainer>

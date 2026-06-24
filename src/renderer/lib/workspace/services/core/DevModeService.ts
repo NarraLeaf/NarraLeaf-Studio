@@ -1,8 +1,12 @@
 import { Service } from "../Service";
-import type { WorkspaceContext } from "../services";
+import { Services, type WorkspaceContext } from "../services";
 import { getInterface } from "@/lib/app/bridge";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import { EventEmitter } from "../ui/EventEmitter";
+import { CharacterService } from "./CharacterService";
+import { StoryService } from "../story/StoryService";
+import { UIDocumentService } from "../ui-editor/UIDocumentService";
+import { UIGraphService } from "../ui-editor/UIGraphService";
 
 type DevModeServiceEvents = {
     statusChanged: DevModeStatus;
@@ -52,6 +56,13 @@ export class DevModeService extends Service<DevModeService> {
     }
 
     public async launch(entry: DevModeEntry, projectPath?: string): Promise<DevModeStatus> {
+        try {
+            await this.prepareProjectForPreview();
+        } catch (error) {
+            console.error("[DevMode] failed to prepare project before launch", error);
+            this.updateStatus("error");
+            return this.status;
+        }
         const path = projectPath ?? this.getContext().project.getConfig().projectPath;
         const result = await getInterface().devMode.launch(path, entry);
         if (result.success) {
@@ -60,6 +71,23 @@ export class DevModeService extends Service<DevModeService> {
             this.updateStatus("error");
         }
         return this.status;
+    }
+
+    private async prepareProjectForPreview(): Promise<void> {
+        const services = this.getContext().services;
+        const uid = services.get<UIDocumentService>(Services.UIDocument);
+        const graph = services.get<UIGraphService>(Services.UIGraph);
+        const story = services.get<StoryService>(Services.Story);
+        const character = services.get<CharacterService>(Services.Character);
+
+        if (uid.isDirty()) {
+            await uid.save(uid.getDocument());
+        }
+        if (graph.isDirty()) {
+            await graph.save(graph.getDocument());
+        }
+        await story.flushPendingChanges();
+        await character.flushPendingChanges();
     }
 
     public async stop(): Promise<DevModeStatus> {

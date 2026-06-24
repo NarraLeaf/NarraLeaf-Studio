@@ -33,7 +33,7 @@ import {
     type SceneEditorContext,
 } from "./schemas";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import { getUIComponentLink, isLinkedUIComponentElement, type UIElement } from "@shared/types/ui-editor/document";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import { createPropertyEditorSchema, defineField } from "./framework";
@@ -46,13 +46,19 @@ import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevisi
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { pairLayoutDimensionsForLock } from "@/lib/ui-editor/layout/aspectRatioLock";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import {
+    createComponentDocumentServiceAdapter,
+    parseComponentEditorSurfaceId,
+} from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 
 function createLayoutInspectorSchema(
     elements: UIElement[],
     documentService: UIDocumentService,
     surfaceId?: string,
+    options: { linkedOnly?: boolean } = {},
 ): PropertyEditorSchema<UIInspectorData> {
     const primaryId = elements.map(element => element.id).join("-");
+    const linkedOnly = options.linkedOnly === true;
     const applyLayoutPatch = (patch: Partial<UIElement["layout"]>) => {
         elements.forEach(element => {
             documentService.updateElementLayout(element.id, patch);
@@ -77,112 +83,119 @@ function createLayoutInspectorSchema(
 
     const getPrimaryLayout = (data: UIInspectorData) => data.elements[0]?.layout;
 
-    const createDefaultSizeField = (): FieldDefinition<UIInspectorData> =>
-        defineField<UIInspectorData, any>({
+    const createDefaultSizeField = (): FieldDefinition<UIInspectorData> => {
+        const items = [
+            {
+                id: "layout.width",
+                className: "min-w-0 flex-1 basis-0",
+                render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                    const w = getPrimaryLayout(data)?.width ?? 0;
+                    return (
+                        <NumericDraftEnhancedInput
+                            committedDisplay={String(w)}
+                            draftResetKey={`${primaryId}-w`}
+                            onFiniteNumber={value => {
+                                onSaving(true);
+                                try {
+                                    updateDimension("width", value);
+                                } finally {
+                                    onSaving(false);
+                                }
+                            }}
+                            inputMode="numeric"
+                            type="number"
+                            precision={2}
+                            unit="px"
+                            leftIcon={<ArrowLeftRight className="w-4 h-4 text-gray-400" />}
+                            className="w-full min-w-0"
+                            selectAllOnFocus
+                            aria-label="Width"
+                        />
+                    );
+                },
+            },
+            {
+                id: "layout.height",
+                className: "min-w-0 flex-1 basis-0",
+                render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                    const h = getPrimaryLayout(data)?.height ?? 0;
+                    return (
+                        <NumericDraftEnhancedInput
+                            committedDisplay={String(h)}
+                            draftResetKey={`${primaryId}-h`}
+                            onFiniteNumber={value => {
+                                onSaving(true);
+                                try {
+                                    updateDimension("height", value);
+                                } finally {
+                                    onSaving(false);
+                                }
+                            }}
+                            inputMode="numeric"
+                            type="number"
+                            precision={2}
+                            unit="px"
+                            leftIcon={<ArrowUpDown className="w-4 h-4 text-gray-400" />}
+                            className="w-full min-w-0"
+                            selectAllOnFocus
+                            aria-label="Height"
+                        />
+                    );
+                },
+            },
+        ];
+        if (!linkedOnly) {
+            items.push({
+                id: "layout.aspectLock",
+                className: "flex-shrink-0",
+                render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                    // Multi-select: all on when not every element is locked; all off when every element is locked.
+                    const allLocked = elements.every(el => el.layout.lockAspectRatio === true);
+                    const primaryLocked = getPrimaryLayout(data)?.lockAspectRatio === true;
+                    const pressed = elements.length === 1 ? primaryLocked : allLocked;
+                    const toggle = () => {
+                        const nextLocked = !allLocked;
+                        onSaving(true);
+                        try {
+                            elements.forEach(el => {
+                                documentService.updateElementLayout(el.id, {
+                                    lockAspectRatio: nextLocked,
+                                });
+                            });
+                        } finally {
+                            onSaving(false);
+                        }
+                    };
+                    return (
+                        <button
+                            type="button"
+                            onClick={toggle}
+                            aria-pressed={pressed}
+                            aria-label={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                            title={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                            className={controlButtonClass(pressed)}
+                        >
+                            <Link className="w-4 h-4" />
+                        </button>
+                    );
+                },
+            });
+        }
+        return defineField<UIInspectorData, any>({
             id: "layout.size",
             type: "inlineRow",
             label: "Size",
             gap: 8,
             wrap: false,
-            items: [
-                {
-                    id: "layout.width",
-                    className: "min-w-0 flex-1 basis-0",
-                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                        const w = getPrimaryLayout(data)?.width ?? 0;
-                        return (
-                            <NumericDraftEnhancedInput
-                                committedDisplay={String(w)}
-                                draftResetKey={`${primaryId}-w`}
-                                onFiniteNumber={value => {
-                                    onSaving(true);
-                                    try {
-                                        updateDimension("width", value);
-                                    } finally {
-                                        onSaving(false);
-                                    }
-                                }}
-                                inputMode="numeric"
-                                type="number"
-                                precision={2}
-                                unit="px"
-                                leftIcon={<ArrowLeftRight className="w-4 h-4 text-gray-400" />}
-                                className="w-full min-w-0"
-                                selectAllOnFocus
-                                aria-label="Width"
-                            />
-                        );
-                    },
-                },
-                {
-                    id: "layout.height",
-                    className: "min-w-0 flex-1 basis-0",
-                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                        const h = getPrimaryLayout(data)?.height ?? 0;
-                        return (
-                            <NumericDraftEnhancedInput
-                                committedDisplay={String(h)}
-                                draftResetKey={`${primaryId}-h`}
-                                onFiniteNumber={value => {
-                                    onSaving(true);
-                                    try {
-                                        updateDimension("height", value);
-                                    } finally {
-                                        onSaving(false);
-                                    }
-                                }}
-                                inputMode="numeric"
-                                type="number"
-                                precision={2}
-                                unit="px"
-                                leftIcon={<ArrowUpDown className="w-4 h-4 text-gray-400" />}
-                                className="w-full min-w-0"
-                                selectAllOnFocus
-                                aria-label="Height"
-                            />
-                        );
-                    },
-                },
-                {
-                    id: "layout.aspectLock",
-                    className: "flex-shrink-0",
-                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                        // Multi-select: all on when not every element is locked; all off when every element is locked.
-                        const allLocked = elements.every(el => el.layout.lockAspectRatio === true);
-                        const primaryLocked = getPrimaryLayout(data)?.lockAspectRatio === true;
-                        const pressed = elements.length === 1 ? primaryLocked : allLocked;
-                        const toggle = () => {
-                            const nextLocked = !allLocked;
-                            onSaving(true);
-                            try {
-                                elements.forEach(el => {
-                                    documentService.updateElementLayout(el.id, {
-                                        lockAspectRatio: nextLocked,
-                                    });
-                                });
-                            } finally {
-                                onSaving(false);
-                            }
-                        };
-                        return (
-                            <button
-                                type="button"
-                                onClick={toggle}
-                                aria-pressed={pressed}
-                                aria-label={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
-                                title={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
-                                className={controlButtonClass(pressed)}
-                            >
-                                <Link className="w-4 h-4" />
-                            </button>
-                        );
-                    },
-                },
-            ],
+            items,
             order: 1,
         });
+    };
 
     const createSizeField = (): FieldDefinition<UIInspectorData> | null => {
+        if (linkedOnly) {
+            return createDefaultSizeField();
+        }
         if (elements.length !== 1) {
             return createDefaultSizeField();
         }
@@ -311,7 +324,10 @@ function createLayoutInspectorSchema(
             ],
             order: 2,
         }),
-        defineField<UIInspectorData, any>({
+    ];
+
+    if (!linkedOnly) {
+        fields.push(defineField<UIInspectorData, any>({
             id: "layout.visibility",
             type: "inlineRow",
             label: "Appearance",
@@ -389,8 +405,8 @@ function createLayoutInspectorSchema(
                 },
             ],
             order: 3,
-        }),
-    ];
+        }));
+    }
     if (sizeField) {
         fields.splice(1, 0, sizeField);
     }
@@ -441,6 +457,41 @@ function mergeInspectorWithLayoutSchema(
         fields: [...layoutFields, ...(inspectorSchema.fields ?? [])],
         onFieldChange: inspectorSchema.onFieldChange,
         showSavingIndicator: inspectorSchema.showSavingIndicator,
+    });
+}
+
+function LinkedComponentInfoField({ data }: { data: UIInspectorData }) {
+    const link = getUIComponentLink(data.element);
+    const component = link ? data.documentService.getComponent(link.componentId) : null;
+    if (!link) {
+        return null;
+    }
+    return (
+        <div className="rounded-md border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-50">
+            <div className="font-medium">{component?.name ?? "Missing component"}</div>
+            <div className="mt-1 text-[11px] leading-snug text-cyan-100/70">
+                Linked instance. Only position, size, and rotation can be changed before unlinking.
+            </div>
+        </div>
+    );
+}
+
+function createLinkedComponentInspectorSchema(
+    layoutSchema: PropertyEditorSchema<UIInspectorData>,
+    element: UIElement,
+): PropertyEditorSchema<UIInspectorData> {
+    return createPropertyEditorSchema<UIInspectorData>({
+        id: `ui-linked-component:${element.id}`,
+        title: element.name ?? "Linked Component",
+        fields: [
+            ...(layoutSchema.fields ?? []),
+            defineField<UIInspectorData, any>({
+                id: "component.linkInfo",
+                type: "custom",
+                component: LinkedComponentInfoField,
+                order: 99,
+            }),
+        ],
     });
 }
 
@@ -569,7 +620,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         if (!deferredUiSelection || !documentService) {
             return null;
         }
-        const document = documentService.getDocument();
+        const componentId = parseComponentEditorSurfaceId(deferredUiSelection.surfaceId);
+        const inspectorDocumentService = componentId
+            ? createComponentDocumentServiceAdapter(documentService, componentId)
+            : documentService;
+        const document = inspectorDocumentService.getDocument();
         const elements = deferredUiSelection.elementIds
             .map(id => document.elements[id])
             .filter((element): element is UIElement => Boolean(element));
@@ -577,17 +632,31 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return null;
         }
 
-        const layoutSchema = createLayoutInspectorSchema(elements, documentService, deferredUiSelection.surfaceId);
+        const linkedLayoutOnly = elements.some(element => isLinkedUIComponentElement(element));
+        const layoutSchema = createLayoutInspectorSchema(
+            elements,
+            inspectorDocumentService,
+            deferredUiSelection.surfaceId,
+            { linkedOnly: linkedLayoutOnly },
+        );
         if (elements.length === 1) {
             const element = elements[0];
-            const inspectorSchema = getElementInspector(element, documentService);
+            if (isLinkedUIComponentElement(element)) {
+                return (
+                    <PropertyEditor
+                        schema={createLinkedComponentInspectorSchema(layoutSchema, element)}
+                        data={{ element, elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId }}
+                    />
+                );
+            }
+            const inspectorSchema = getElementInspector(element, inspectorDocumentService);
             const combinedSchema = inspectorSchema
                 ? mergeInspectorWithLayoutSchema(layoutSchema, inspectorSchema, element)
                 : layoutSchema;
             return (
                 <PropertyEditor
                     schema={combinedSchema}
-                    data={{ element, elements, documentService, surfaceId: deferredUiSelection.surfaceId }}
+                    data={{ element, elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId }}
                 />
             );
         }
@@ -595,7 +664,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return (
             <PropertyEditor
                 schema={layoutSchema}
-                data={{ element: elements[0], elements, documentService, surfaceId: deferredUiSelection.surfaceId }}
+                data={{ element: elements[0], elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId }}
             />
         );
     }, [deferredUiSelection, documentService, deferredDocumentVersion, documentVersion]);
@@ -618,7 +687,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return null;
         }
         const bp = graphService?.getDocument().blueprintDocument;
-        const all = collectSurfaceDiagnostics(documentService.getDocument(), deferredUiSelection.surfaceId, {
+        const componentId = parseComponentEditorSurfaceId(deferredUiSelection.surfaceId);
+        const diagnosticDocumentService = componentId
+            ? createComponentDocumentServiceAdapter(documentService, componentId)
+            : documentService;
+        const all = collectSurfaceDiagnostics(diagnosticDocumentService.getDocument(), deferredUiSelection.surfaceId, {
             blueprintDocument: bp,
         });
         const idSet = new Set(deferredUiSelection.elementIds);

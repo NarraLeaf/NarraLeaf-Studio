@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState, useR
 import { flushSync } from "react-dom";
 import Selecto from "react-selecto";
 import Moveable, { type OnClick, type OnClickGroup } from "react-moveable";
+import { Share2, Unlink } from "lucide-react";
 import { ViewportTransform, clientToSurface, Rect2D } from "../geometry";
 import { isHTMLElement } from "./utils";
 import { useSurfaceInteractionEvents } from "./useSurfaceInteractionEvents";
 import { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
-import type { UISurface } from "@shared/types/ui-editor/document";
+import { getUIComponentLink, type UISurface } from "@shared/types/ui-editor/document";
 import type { ActiveSnapGuides } from "@/lib/ui-editor/snapping/types";
 import type { UITool } from "@/lib/ui-editor/editor/types";
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
@@ -37,6 +38,7 @@ import { resolveFloatingToolbarPosition } from "./floatingToolbarPosition";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
     const x = Math.min(preview.startX, preview.currentX);
@@ -78,6 +80,7 @@ type Props = {
     uiService?: UIService | null;
     showOutlines?: boolean;
     openSurfaceEditor?: (surfaceId: string) => void;
+    openComponentEditor?: (componentId: string) => void;
 };
 export function UIEditorInteractionLayer({
     surfaceId,
@@ -88,6 +91,7 @@ export function UIEditorInteractionLayer({
     uiService,
     showOutlines = true,
     openSurfaceEditor,
+    openComponentEditor,
 }: Props) {
     const [selection, setSelection] = useState(stateService.getSelection());
     const previousSelectedTargets = useRef<HTMLElement[]>([]);
@@ -127,7 +131,10 @@ export function UIEditorInteractionLayer({
             return;
         }
         const allowed = collectSubtreeElementIds(document, rootId);
-        const nextIds = selection.data.elementIds.filter(id => allowed.has(id) && document.elements[id] != null);
+        const nextIds = selection.data.elementIds.filter(id => {
+            const element = document.elements[id];
+            return allowed.has(id) && element != null && !isComponentEditorRootElement(element);
+        });
         if (nextIds.length === 0) {
             selectSurfaceForProperties(stateService, surfaceId, uiService);
             return;
@@ -312,19 +319,56 @@ export function UIEditorInteractionLayer({
     const selectedSingleElement = selectedSingleElementId
         ? documentService.getDocument().elements[selectedSingleElementId]
         : null;
-    const isInlineTextEditableSelection = isInlineTextEditableElement(selectedSingleElement);
+    const effectiveSelectedSingleElement = isComponentEditorRootElement(selectedSingleElement)
+        ? null
+        : selectedSingleElement;
+    const isInlineTextEditableSelection = isInlineTextEditableElement(effectiveSelectedSingleElement);
     const floatingToolbarItems = useMemo<FloatingToolbarItem[]>(() => {
-        if (!selectedSingleElement) {
+        if (!effectiveSelectedSingleElement) {
             return [];
         }
-        const module = widgetModuleRegistry.get(selectedSingleElement.type);
+        const componentLink = getUIComponentLink(effectiveSelectedSingleElement);
+        if (componentLink) {
+            const component = documentService.getComponent(componentLink.componentId);
+            return [
+                {
+                    kind: "button",
+                    id: "open-linked-component",
+                    icon: Share2,
+                    tooltip: component ? `Open ${component.name}` : "Open component",
+                    disabled: !component || !openComponentEditor,
+                    onClick: () => {
+                        if (component) {
+                            openComponentEditor?.(component.id);
+                        }
+                    },
+                },
+                {
+                    kind: "button",
+                    id: "unlink-component",
+                    icon: Unlink,
+                    tooltip: "Unlink component",
+                    onClick: () => {
+                        const ids = documentService.unlinkComponentInstance(effectiveSelectedSingleElement.id);
+                        const primary = ids[0] ?? effectiveSelectedSingleElement.id;
+                        stateService.setUIElementSelection({
+                            editor: "ui",
+                            surfaceId,
+                            elementIds: [primary],
+                            primaryId: primary,
+                        });
+                    },
+                },
+            ];
+        }
+        const module = widgetModuleRegistry.get(effectiveSelectedSingleElement.type);
         return module?.createFloatingToolbarItems?.({
-            element: selectedSingleElement,
+            element: effectiveSelectedSingleElement,
             documentService,
             surfaceId,
             openSurfaceEditor,
         }) ?? [];
-    }, [documentRevision, documentService, openSurfaceEditor, selectedSingleElement, surfaceId]);
+    }, [documentRevision, documentService, effectiveSelectedSingleElement, openComponentEditor, openSurfaceEditor, stateService, surfaceId]);
     const hasFloatingToolbar = floatingToolbarItems.length > 0;
     const [floatingToolbarPosition, setFloatingToolbarPosition] = useState<{ left: number; top: number } | null>(null);
 
@@ -448,16 +492,22 @@ export function UIEditorInteractionLayer({
                 return;
             }
             const targets = e.selected as HTMLElement[];
+            const doc = documentService.getDocument();
             const targetIds = targets
                 .map(target => target.dataset.uiElementId)
-                .filter(Boolean) as string[];
+                .filter((id): id is string => {
+                    if (!id) {
+                        return false;
+                    }
+                    return !isComponentEditorRootElement(doc.elements[id]);
+                });
             if (targetIds.length === 0) {
+                selectSurfaceForProperties(stateService, surfaceId, uiService);
                 return;
             }
 
             const input = e.inputEvent as MouseEvent | PointerEvent | undefined;
             const multiIntent = Boolean(input?.shiftKey || input?.metaKey || input?.ctrlKey);
-            const doc = documentService.getDocument();
             const prev = stateService.getSelection();
 
             let elementIds = targetIds;
@@ -503,7 +553,7 @@ export function UIEditorInteractionLayer({
                 primaryId,
             });
         },
-        [documentService, stateService, surfaceElement, surfaceId],
+        [documentService, stateService, surfaceElement, surfaceId, uiService],
     );
 
     const isMoveableControlTarget = useCallback((target: Element | null | undefined) => {

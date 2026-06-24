@@ -142,7 +142,11 @@ export class UIEditorStateService extends Service<UIEditorStateService> implemen
     public setTool(tool: UITool): void {
         if (this.tool.kind === tool.kind) {
             if (tool.kind === "insert") {
-                if (this.tool.kind === "insert" && this.tool.nodeType === tool.nodeType) {
+                if (
+                    this.tool.kind === "insert" &&
+                    this.tool.nodeType === tool.nodeType &&
+                    this.tool.componentId === tool.componentId
+                ) {
                     return;
                 }
             } else {
