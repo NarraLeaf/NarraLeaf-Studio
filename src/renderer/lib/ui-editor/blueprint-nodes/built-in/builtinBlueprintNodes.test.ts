@@ -36,6 +36,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON,
     BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+    BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
@@ -64,6 +65,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
+    BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
@@ -104,6 +106,7 @@ import {
     BLUEPRINT_NODE_TYPE_MATH_RANDOM_FLOAT,
     BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER,
     BLUEPRINT_NODE_TYPE_MATH_ROUND,
+    BLUEPRINT_NODE_TYPE_PAGE_GO,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE,
@@ -187,8 +190,63 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
     };
 }
 
+function createPageNavigationHostAdapter(
+    openedSurfaceIds: string[],
+    frameTargets: Record<string, string | null> = {},
+    framePatches: Array<{ elementId: string; targetSurfaceId: string | null }> = [],
+): UIHostAdapter {
+    return {
+        host: "player",
+        blueprintRuntime: {
+            surfaceId: "surface",
+            setSurfaceState: () => undefined,
+            getSurfaceState: () => undefined,
+            emitDebug: () => undefined,
+            dispatchElementBlueprintEvent: async () => undefined,
+            hostApi: {
+                navigation: {
+                    openSurface: async (surfaceId: string) => {
+                        openedSurfaceIds.push(surfaceId);
+                    },
+                    closeLayer: async () => undefined,
+                },
+                widget: {
+                    getFrameProperties: (elementId: string) => ({
+                        targetSurfaceId: frameTargets[elementId] ?? null,
+                        params: {},
+                    }),
+                    setFrameProperties: async (
+                        elementId: string,
+                        patch: { targetSurfaceId?: string | null },
+                    ) => {
+                        if (patch.targetSurfaceId !== undefined) {
+                            frameTargets[elementId] = patch.targetSurfaceId;
+                            framePatches.push({ elementId, targetSurfaceId: patch.targetSurfaceId });
+                        }
+                    },
+                } as any,
+                state: {
+                    get: () => undefined,
+                    set: () => undefined,
+                },
+                persistence: {
+                    get: async () => undefined,
+                    set: async () => undefined,
+                },
+                frame: {
+                    getParam: () => undefined,
+                    emit: async () => undefined,
+                },
+                devtools: {
+                    log: () => undefined,
+                },
+            },
+        },
+    };
+}
+
 describe("built-in blueprint nodes", () => {
-    it("registers documented event, broadcast, string, text, slider, and debug nodes", () => {
+    it("registers documented event, page, broadcast, string, text, slider, and debug nodes", () => {
         registerCoreBlueprintNodes();
 
         const types = new Set(blueprintNodeRegistry.list().map(def => def.type));
@@ -230,8 +288,11 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_BROADCAST_SEND)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_EMIT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_IF)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_NOOP)).toBe(true);
@@ -471,12 +532,74 @@ describe("built-in blueprint nodes", () => {
         expect(store["settings.volume"]).toBe(11);
     });
 
+    it("executes Page navigation and Frame page switching through host APIs", async () => {
+        registerCoreBlueprintNodes();
+
+        const openedSurfaceIds: string[] = [];
+        const localsAfterGoPage: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "goPage",
+                entries: { main: { start: { nodeId: "go", port: "in" } } },
+                nodes: {
+                    go: {
+                        id: "go",
+                        type: BLUEPRINT_NODE_TYPE_PAGE_GO,
+                        params: { surfaceId: "target-page" },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterGoPage" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "go", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "go", port: "in" } },
+            hostAdapter: createPageNavigationHostAdapter(openedSurfaceIds),
+            blueprintLocals: localsAfterGoPage,
+        });
+        expect(openedSurfaceIds).toEqual(["target-page"]);
+        expect(localsAfterGoPage).not.toHaveProperty("afterGoPage");
+
+        const framePatches: Array<{ elementId: string; targetSurfaceId: string | null }> = [];
+        await executeGraph({
+            graph: {
+                id: "setPage",
+                entries: { main: { start: { nodeId: "set", port: "in" } } },
+                nodes: {
+                    set: {
+                        id: "set",
+                        type: BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
+                        params: { targetSurfaceId: "embedded-page" },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "set", port: "in" } },
+            hostAdapter: createPageNavigationHostAdapter([], {}, framePatches),
+            executionOwner: { surfaceId: "surface", elementId: "frame" },
+        });
+        expect(framePatches).toEqual([{ elementId: "frame", targetSurfaceId: "embedded-page" }]);
+    });
+
     it("uses class.md palette categories for the new node groups", () => {
         registerCoreBlueprintNodes();
 
         expect(eventHeadBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(broadcastBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(frameBlueprintNodes.every(def => def.category === "Page")).toBe(true);
+        expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+        ]);
         expect(controlFlowBlueprintNodes.every(def => def.category === "Flow")).toBe(true);
         expect(localVariableBlueprintNodes.every(def => def.category === "Variables")).toBe(true);
         expect(persistentVariableBlueprintNodes.every(def => def.category === "Variables")).toBe(true);
@@ -489,6 +612,23 @@ describe("built-in blueprint nodes", () => {
         expect(sliderBlueprintNodes.some(def => def.category === "Element")).toBe(true);
         expect(imageAssetBlueprintNodes.every(def => def.category === "Image")).toBe(true);
         expect(widgetPropertyBlueprintNodes.some(def => def.category === "Image")).toBe(true);
+        const frameSetPage = widgetPropertyBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE);
+        const elementFrameSetPage = widgetPropertyBlueprintNodes.find(
+            def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
+        );
+        expect(frameSetPage?.category).toBe("Frame");
+        expect(elementFrameSetPage?.category).toBe("Element");
+        expect(frameSetPage?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
+        expect(elementFrameSetPage?.pins.map(pin => pin.id)).toEqual(["in", "next", "element"]);
+        expect(frameSetPage?.inspectorParams).toEqual([
+            {
+                key: "targetSurfaceId",
+                label: "Page",
+                kind: "select",
+                dynamicOptionsSource: "surfaces",
+            },
+        ]);
+        expect(elementFrameSetPage?.inspectorParams).toEqual(frameSetPage?.inspectorParams);
         expect(elementBlueprintNodes.some(def => def.category === "Element")).toBe(true);
         expect(elementBlueprintNodes.some(def => def.category === "Displayable")).toBe(true);
     });
@@ -1111,6 +1251,52 @@ describe("built-in blueprint nodes", () => {
         });
         expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT)).toBe(true);
         expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE)).toBe(true);
+    });
+
+    it("exposes Set Frame Page as an Element-category derived element entry", () => {
+        registerCoreBlueprintNodes();
+
+        const baseEntries = blueprintNodeRegistry.listPaletteEntries({
+            graphKind: "event",
+            owner: { kind: "surfaceMain", surfaceId: "surface" },
+            magicElementRefs: [],
+        });
+        expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE)).toBe(false);
+
+        const derivedEntries = blueprintNodeRegistry.listPaletteEntries({
+            graphKind: "event",
+            owner: { kind: "surfaceMain", surfaceId: "surface" },
+            magicElementRefs: [
+                {
+                    sourceNodeId: "frame-ref",
+                    sourcePortId: "element",
+                    targetPortId: "element",
+                    surfaceId: "surface",
+                    elementId: "frame",
+                    elementType: "nl.frame",
+                    label: "Dialog Frame",
+                },
+            ],
+        });
+        const setPage = derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE);
+        expect(setPage).toMatchObject({
+            category: "Element",
+            displayName: "Set Frame Page",
+        });
+        expect(setPage?.pins.map(pin => pin.id)).toEqual(["in", "next", "element"]);
+        expect(setPage?.inspectorParams).toEqual([
+            {
+                key: "targetSurfaceId",
+                label: "Page",
+                kind: "select",
+                dynamicOptionsSource: "surfaces",
+            },
+        ]);
+        expect(setPage?.magicElementRef).toMatchObject({
+            sourceNodeId: "frame-ref",
+            sourcePortId: "element",
+            targetPortId: "element",
+        });
     });
 
     it("scopes ImageAsset nodes to Image owners or bound Image elements", () => {
@@ -1774,6 +1960,7 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(false);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
 
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN)).toBe(true);
@@ -1784,6 +1971,7 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(false);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
 
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS)).toBe(true);
@@ -1822,6 +2010,19 @@ describe("built-in blueprint nodes", () => {
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
+        const frameSetPageEntry = blueprintNodeRegistry
+            .listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetMain", surfaceId: "surface", elementId: "frame" },
+                widgetElementType: "nl.frame",
+            })
+            .find(entry => entry.type === BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE);
+        expect(frameSetPageEntry).toMatchObject({
+            category: "Frame",
+            displayName: "Set Frame Page",
+        });
     });
 
     it("filters widget event heads by the active event layer slot when provided", () => {

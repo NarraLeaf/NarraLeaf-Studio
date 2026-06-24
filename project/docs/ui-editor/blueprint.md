@@ -30,6 +30,9 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.event.head.sliderValueChanged` | `Value Changed` | `Events` | Entry node fired when a Slider runtime value changes by interaction. It outputs mapped `value` and `previousValue`. |
 | `blueprint.event.head.sliderDragEnd` | `Drag End` | `Events` | Entry node fired when a Slider runtime drag ends. It outputs the mapped `value`. |
 | `blueprint.event.head.pageEvent` | `Page Event` | `Events` | Entry node for Page component child-to-parent events. It is available to `nl.frame` widget private blueprints. |
+| `blueprint.page.go` | `Go Page` | `Page` | Terminal exec node that opens a selected Page through the host navigation path. |
+| `blueprint.frameWidget.setTargetPage` | `Set Frame Page` | `Frame` | Exec node that switches the current `nl.frame` Page control to the selected Page. It is available in `nl.frame` private blueprints. |
+| `blueprint.element.frame.setTargetPage` | `Set Frame Page` | `Element` | Exec node that switches a bound `nl.frame` Element reference to the selected Page. It can be derived from a bound Frame Element reference. |
 | `blueprint.data.returnValue` | `Return Value` | `Data` | Exec sink that returns the produced value from a Blueprint Value graph. It is only available on `widgetValue` blueprints. |
 | `blueprint.element.ref` | `Element` | `Element` | Same-Surface magic element literal. It stores `{ surfaceId, elementId, elementType }`, outputs `element` or `element:<widgetType>`, and can fan out like other literals. |
 | `blueprint.element.text.*` | Text element nodes | `Text` | Element-targeted Text nodes with a separated top `element:nl.text` input. Read nodes are pure; write nodes remain event/macro only. |
@@ -67,7 +70,7 @@ Event-head nodes are surfaced in the canvas add-node palette for the current Blu
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/events/eventHeadNodes.ts` | Built-in event entry-head nodes, including lifecycle, widget input, scroll, broadcast, and Page Event heads. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/collectionNodes.ts` | Built-in Data / Collection array and object pure nodes. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/listNodes.ts` | Built-in List runtime nodes for content, selection, scrolling, and item context reads. |
-| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/frameNodes.ts` | Built-in Page component host nodes for Frame params and child-to-parent Page events. |
+| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/frameNodes.ts` | Built-in Page navigation plus Page component host nodes for Frame params and child-to-parent Page events. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/sliderNodes.ts` | Built-in Slider widget nodes for value/range reads and runtime value/range writes. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/localVariableNodes.ts` | Built-in local variable nodes. Currently `Get Var` and `Set Var`. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/persistentVariableNodes.ts` | Built-in Persistent variable nodes. Currently `Get Persistent` and `Set Persistent`. |
@@ -171,7 +174,7 @@ export const exampleNode: BlueprintNodeDef = {
 | `scope` | Restricts palette availability by owner kind or widget element type. |
 | `role` | Special node role such as `eventHead`, `functionEntry`, `reroute`, `dataLiteral`, `valueReturn`, or `comment`. |
 
-Terminal exec nodes (nodes with an exec input and no exec output, such as `Return Value` and Flow `Return`) use the right-edge terminal card accent in the visual editor.
+Terminal exec nodes (nodes with an exec input and no exec output, such as `Go Page`, `Return Value`, and Flow `Return`) use the right-edge terminal card accent in the visual editor.
 
 ## Node categories
 
@@ -190,7 +193,7 @@ Recommended category names:
 | `Displayable` | Element-targeted layout, visibility, opacity, and rotation reads. |
 | `Text` | Text property reads/writes for the current Text owner or explicit Text element references. |
 | `Widget` | UI element mutations and reads. |
-| `Page` | Page component host reads and child-to-parent Page events. |
+| `Page` | Page navigation, Page component host reads, and child-to-parent Page events. |
 | `Slider` | Slider value/range reads and runtime value/range writes for `nl.slider`. |
 | `List` | List runtime content, selection, scroll, and item context nodes for `nl.list`. |
 | `Navigation` | Page and modal navigation. |

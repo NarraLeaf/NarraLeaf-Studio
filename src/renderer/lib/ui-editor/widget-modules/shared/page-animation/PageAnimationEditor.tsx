@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Compass, Play } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Play, RotateCw } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { Select } from "@/lib/components/elements/Select";
 import { Switch } from "@/lib/components/elements/Switch";
+import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { IconButtonSegGroup } from "@/apps/workspace/modules/properties/framework/fields/IconButtonSegGroup";
 import type { IconButtonSelection } from "@/apps/workspace/modules/properties/framework/types";
 import {
@@ -10,7 +11,6 @@ import {
     type UIPageAnimationDirection,
     type UIPageAnimationPreset,
     type UIPageAnimationSettings,
-    type UIPageAnimationSpeed,
 } from "@shared/types/ui-editor/pageAnimation";
 import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 
@@ -24,19 +24,18 @@ const PRESET_OPTIONS: { value: UIPageAnimationPreset; label: string }[] = [
     { value: "blur", label: "Blur" },
 ];
 
-const SPEED_OPTIONS: { value: UIPageAnimationSpeed; label: string }[] = [
-    { value: "fast", label: "Fast" },
-    { value: "normal", label: "Normal" },
-    { value: "slow", label: "Slow" },
-];
-
 const DIRECTION_OPTIONS = [
-    { id: "auto", label: "Auto", icon: <Compass className="h-4 w-4" /> },
     { id: "left", label: "Left", icon: <ArrowLeft className="h-4 w-4" /> },
     { id: "right", label: "Right", icon: <ArrowRight className="h-4 w-4" /> },
     { id: "up", label: "Up", icon: <ArrowUp className="h-4 w-4" /> },
     { id: "down", label: "Down", icon: <ArrowDown className="h-4 w-4" /> },
+    { id: "angle", label: "Angle", icon: <RotateCw className="h-4 w-4" /> },
 ];
+
+const MIN_DURATION_SECONDS = 0;
+const MAX_DURATION_SECONDS = 10;
+const DURATION_STEP_SECONDS = 0.05;
+const ANGLE_STEP_DEGREES = 15;
 
 type PageAnimationEditorProps = {
     settings: UIPageAnimationSettings | null | undefined;
@@ -47,14 +46,37 @@ type PageAnimationEditorProps = {
     onInheritedChange?: (inherited: boolean, seed: UIPageAnimationSettings) => void;
 };
 
-function PreviewButton({ label, onClick }: { label: string; onClick: () => void }) {
+function normalizeDurationInput(value: number): number {
+    return Math.round(Math.min(MAX_DURATION_SECONDS, Math.max(MIN_DURATION_SECONDS, value)) * 100) / 100;
+}
+
+function formatDurationSeconds(value: number): string {
+    return normalizeDurationInput(value).toFixed(2);
+}
+
+function normalizeAngleInput(value: number): number {
+    return Math.round((((value % 360) + 360) % 360) * 100) / 100;
+}
+
+function formatAngleDegrees(value: number): string {
+    return String(normalizeAngleInput(value));
+}
+
+function visibleDirection(
+    direction: UIPageAnimationDirection,
+    fallback: Exclude<UIPageAnimationDirection, "auto">,
+): Exclude<UIPageAnimationDirection, "auto"> {
+    return direction === "auto" ? fallback : direction;
+}
+
+function PreviewButton({ label, ariaLabel, onClick }: { label: string; ariaLabel: string; onClick: () => void }) {
     return (
         <button
             type="button"
-            className="inline-flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-2 text-xs text-gray-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            className="inline-flex h-7 min-w-0 items-center justify-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-2 text-[11px] text-gray-300 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
             onClick={onClick}
-            title={label}
-            aria-label={label}
+            title={ariaLabel}
+            aria-label={ariaLabel}
         >
             <Play className="h-3.5 w-3.5" />
             <span className="truncate">{label}</span>
@@ -80,16 +102,135 @@ function PageAnimationPreview({
     const animate = phase === "enter" ? motionProps.animate : motionProps.exit;
 
     return (
-        <div className="relative h-20 overflow-hidden rounded-md border border-white/10 bg-[#080a0d]">
+        <div className="relative h-[68px] overflow-hidden rounded-md border border-white/10 bg-[#080a0d]">
             <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:16px_16px]" />
             <div className="absolute inset-0 flex items-center justify-center">
                 <motion.div
-                    key={`${phase}:${tick}:${settings.enter}:${settings.exit}:${settings.direction}:${settings.speed}`}
-                    className="h-10 w-16 rounded border border-cyan-300/40 bg-cyan-400/20 shadow-[0_0_24px_rgba(34,211,238,0.18)]"
+                    key={[
+                        phase,
+                        tick,
+                        settings.enter,
+                        settings.exit,
+                        settings.enterDirection,
+                        settings.exitDirection,
+                        settings.enterAngleDegrees,
+                        settings.exitAngleDegrees,
+                        settings.enterDurationSeconds,
+                        settings.exitDurationSeconds,
+                        settings.exitBlocking,
+                    ].join(":")}
+                    className="h-9 w-14 rounded border border-cyan-300/40 bg-cyan-400/20 shadow-[0_0_24px_rgba(34,211,238,0.18)]"
                     initial={initial}
                     animate={animate}
-                    transition={motionProps.transition}
                 />
+            </div>
+        </div>
+    );
+}
+
+function AnimationPhaseBlock({
+    label,
+    preset,
+    direction,
+    autoFallbackDirection,
+    angleDegrees,
+    durationSeconds,
+    exitBlocking,
+    showExitBlocking = false,
+    onPresetChange,
+    onDirectionChange,
+    onAngleChange,
+    onDurationChange,
+    onExitBlockingChange,
+}: {
+    label: string;
+    preset: UIPageAnimationPreset;
+    direction: UIPageAnimationDirection;
+    autoFallbackDirection: Exclude<UIPageAnimationDirection, "auto">;
+    angleDegrees: number;
+    durationSeconds: number;
+    exitBlocking?: boolean;
+    showExitBlocking?: boolean;
+    onPresetChange: (next: UIPageAnimationPreset) => void;
+    onDirectionChange: (next: UIPageAnimationDirection) => void;
+    onAngleChange: (next: number) => void;
+    onDurationChange: (next: number) => void;
+    onExitBlockingChange?: (next: boolean) => void;
+}) {
+    const shownDirection = visibleDirection(direction, autoFallbackDirection);
+    const isAngle = shownDirection === "angle";
+
+    return (
+        <div className="space-y-2 rounded-md border border-white/10 bg-white/[0.025] p-2">
+            <div className="flex min-h-7 items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{label}</span>
+                {showExitBlocking ? (
+                    <label className="flex min-w-0 items-center gap-2 text-[11px] text-gray-400">
+                        <span>Wait</span>
+                        <Switch
+                            checked={exitBlocking === true}
+                            size="sm"
+                            onCheckedChange={checked => onExitBlockingChange?.(checked)}
+                        />
+                    </label>
+                ) : null}
+            </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
+                <label className="min-w-0 space-y-1">
+                    <span className="block text-[10px] font-medium uppercase tracking-wide text-gray-500">Preset</span>
+                    <Select
+                        fullWidth
+                        options={PRESET_OPTIONS}
+                        value={preset}
+                        onChange={value => onPresetChange(value as UIPageAnimationPreset)}
+                        portalMenu
+                    />
+                </label>
+                <label className="min-w-0 space-y-1">
+                    <span className="block text-[10px] font-medium uppercase tracking-wide text-gray-500">Seconds</span>
+                    <NumericDraftEnhancedInput
+                        committedDisplay={formatDurationSeconds(durationSeconds)}
+                        onFiniteNumber={value => onDurationChange(normalizeDurationInput(value))}
+                        inputMode="decimal"
+                        type="number"
+                        min={MIN_DURATION_SECONDS}
+                        max={MAX_DURATION_SECONDS}
+                        step={DURATION_STEP_SECONDS}
+                        unit="s"
+                        className="w-full min-w-0"
+                        popoverThreshold={128}
+                    />
+                </label>
+            </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_76px] gap-2">
+                <div className="min-w-0 space-y-1">
+                    <span className="block text-[10px] font-medium uppercase tracking-wide text-gray-500">Direction</span>
+                    <IconButtonSegGroup
+                        options={DIRECTION_OPTIONS}
+                        mode="single"
+                        value={shownDirection as IconButtonSelection}
+                        onChange={value => onDirectionChange(String(value) as UIPageAnimationDirection)}
+                        showLabels={false}
+                        density="compact"
+                        className="h-9"
+                    />
+                </div>
+                <label className="min-w-0 space-y-1">
+                    <span className="block text-[10px] font-medium uppercase tracking-wide text-gray-500">Angle</span>
+                    <NumericDraftEnhancedInput
+                        committedDisplay={formatAngleDegrees(angleDegrees)}
+                        onFiniteNumber={value => onAngleChange(normalizeAngleInput(value))}
+                        inputMode="decimal"
+                        type="number"
+                        min={0}
+                        max={359}
+                        step={ANGLE_STEP_DEGREES}
+                        unit="deg"
+                        disabled={!isAngle}
+                        className={`w-full min-w-0 ${isAngle ? "" : "opacity-55"}`}
+                        popoverThreshold={112}
+                    />
+                </label>
             </div>
         </div>
     );
@@ -109,14 +250,20 @@ export function PageAnimationEditor({
         : ownSettings;
     const [preview, setPreview] = useState<{ phase: "enter" | "exit"; tick: number }>({ phase: "enter", tick: 0 });
 
+    const materializedOwnSettings = {
+        ...ownSettings,
+        enterDirection: visibleDirection(ownSettings.enterDirection, "right"),
+        exitDirection: visibleDirection(ownSettings.exitDirection, "left"),
+    };
+
     const patch = (partial: Partial<UIPageAnimationSettings>) => {
-        onChange({ ...ownSettings, ...partial });
+        onChange(normalizeUIPageAnimationSettings({ ...materializedOwnSettings, ...partial }));
     };
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
             {onInheritedChange ? (
-                <div className="flex items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2">
+                <div className="flex min-h-9 items-center justify-between gap-3 rounded-md border border-white/10 bg-white/[0.03] px-3 py-1.5">
                     <span className="min-w-0 text-xs font-medium text-gray-300">{inheritLabel}</span>
                     <Switch
                         checked={inherited}
@@ -130,67 +277,50 @@ export function PageAnimationEditor({
 
             {!inherited ? (
                 <>
-                    <div className="grid grid-cols-2 gap-2">
-                        <label className="min-w-0 space-y-1">
-                            <span className="block text-xs font-medium text-gray-400">Enter</span>
-                            <Select
-                                fullWidth
-                                size="sm"
-                                options={PRESET_OPTIONS}
-                                value={ownSettings.enter}
-                                onChange={value => patch({ enter: value as UIPageAnimationPreset })}
-                                portalMenu
-                            />
-                        </label>
-                        <label className="min-w-0 space-y-1">
-                            <span className="block text-xs font-medium text-gray-400">Exit</span>
-                            <Select
-                                fullWidth
-                                size="sm"
-                                options={PRESET_OPTIONS}
-                                value={ownSettings.exit}
-                                onChange={value => patch({ exit: value as UIPageAnimationPreset })}
-                                portalMenu
-                            />
-                        </label>
-                    </div>
-
-                    <div className="space-y-1">
-                        <span className="block text-xs font-medium text-gray-400">Direction</span>
-                        <IconButtonSegGroup
-                            options={DIRECTION_OPTIONS}
-                            mode="single"
-                            value={ownSettings.direction as IconButtonSelection}
-                            onChange={value => patch({ direction: String(value) as UIPageAnimationDirection })}
-                            showLabels={false}
-                            density="compact"
-                        />
-                    </div>
-
-                    <label className="block space-y-1">
-                        <span className="block text-xs font-medium text-gray-400">Speed</span>
-                        <Select
-                            fullWidth
-                            size="sm"
-                            options={SPEED_OPTIONS}
-                            value={ownSettings.speed}
-                            onChange={value => patch({ speed: value as UIPageAnimationSpeed })}
-                            portalMenu
-                        />
-                    </label>
+                    <AnimationPhaseBlock
+                        label="Enter"
+                        preset={ownSettings.enter}
+                        direction={ownSettings.enterDirection}
+                        autoFallbackDirection="right"
+                        angleDegrees={ownSettings.enterAngleDegrees}
+                        durationSeconds={ownSettings.enterDurationSeconds}
+                        onPresetChange={value => patch({ enter: value })}
+                        onDirectionChange={value => patch({ enterDirection: value })}
+                        onAngleChange={value => patch({ enterAngleDegrees: value })}
+                        onDurationChange={value => patch({ enterDurationSeconds: value })}
+                    />
+                    <AnimationPhaseBlock
+                        label="Exit"
+                        preset={ownSettings.exit}
+                        direction={ownSettings.exitDirection}
+                        autoFallbackDirection="left"
+                        angleDegrees={ownSettings.exitAngleDegrees}
+                        durationSeconds={ownSettings.exitDurationSeconds}
+                        exitBlocking={ownSettings.exitBlocking}
+                        showExitBlocking
+                        onPresetChange={value => patch({ exit: value })}
+                        onDirectionChange={value => patch({ exitDirection: value })}
+                        onAngleChange={value => patch({ exitAngleDegrees: value })}
+                        onDurationChange={value => patch({ exitDurationSeconds: value })}
+                        onExitBlockingChange={value => patch({ exitBlocking: value })}
+                    />
                 </>
             ) : null}
 
-            <PageAnimationPreview settings={effectiveSettings} phase={preview.phase} tick={preview.tick} />
-            <div className="flex min-w-0 gap-2">
-                <PreviewButton
-                    label="Preview enter"
-                    onClick={() => setPreview(prev => ({ phase: "enter", tick: prev.tick + 1 }))}
-                />
-                <PreviewButton
-                    label="Preview exit"
-                    onClick={() => setPreview(prev => ({ phase: "exit", tick: prev.tick + 1 }))}
-                />
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_72px] gap-2">
+                <PageAnimationPreview settings={effectiveSettings} phase={preview.phase} tick={preview.tick} />
+                <div className="flex min-w-0 flex-col justify-center gap-2">
+                    <PreviewButton
+                        label="Enter"
+                        ariaLabel="Preview enter"
+                        onClick={() => setPreview(prev => ({ phase: "enter", tick: prev.tick + 1 }))}
+                    />
+                    <PreviewButton
+                        label="Exit"
+                        ariaLabel="Preview exit"
+                        onClick={() => setPreview(prev => ({ phase: "exit", tick: prev.tick + 1 }))}
+                    />
+                </div>
             </div>
         </div>
     );
