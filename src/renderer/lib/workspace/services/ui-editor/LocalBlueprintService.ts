@@ -52,7 +52,13 @@ import {
     buildReadonlyWidgetMainSummary,
     type ReadonlyBlueprintWidgetSummary,
 } from "./blueprint/readonlyBlueprintSummary";
-import { ownerRefToIndexKey, surfaceMainOwnerKey, widgetMainOwnerKey, widgetValueOwnerKey } from "./blueprint/ownerKeys";
+import {
+    componentWidgetMainOwnerKey,
+    ownerRefToIndexKey,
+    surfaceMainOwnerKey,
+    widgetMainOwnerKey,
+    widgetValueOwnerKey,
+} from "./blueprint/ownerKeys";
 import {
     buildReadonlySurfaceMainSummary,
     type ReadonlyBlueprintSurfaceSummary,
@@ -449,6 +455,56 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
 
     public getWidgetMainBlueprintId(surfaceId: string, elementId: string): string | undefined {
         const key = widgetMainOwnerKey(surfaceId, elementId);
+        return getActiveBlueprintId(this.getBlueprintDocument(), key);
+    }
+
+    public ensureComponentWidgetMain(
+        componentId: string,
+        elementId: string,
+        displayName?: string,
+        widgetType?: string,
+    ): string {
+        const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
+        const key = componentWidgetMainOwnerKey(componentId, elementId);
+        let outId = "";
+        this.applyBlueprintMutation(doc => {
+            const active = getActiveBlueprintId(doc, key);
+            if (active && doc.blueprints[active]) {
+                outId = active;
+                if (displayName !== undefined) {
+                    doc.blueprints[active].name = displayName || doc.blueprints[active].name;
+                }
+                return;
+            }
+            const id = uuid.generate();
+            const blueprint = createMainBlueprint({
+                id,
+                name: displayName ?? "Component Widget",
+                owner: { kind: "componentWidgetMain", componentId, elementId },
+            });
+            doc.blueprints[id] = blueprint;
+            registerPrivateBlueprintAsActive(doc, key, id, "visual");
+            outId = id;
+        });
+        return outId;
+    }
+
+    public removeComponentWidgetMain(componentId: string, elementId: string): void {
+        const key = componentWidgetMainOwnerKey(componentId, elementId);
+        this.applyBlueprintMutation(doc => {
+            const rec = doc.ownerRecords[key];
+            if (!rec) {
+                return;
+            }
+            for (const bid of rec.privateBlueprintIds) {
+                delete doc.blueprints[bid];
+            }
+            delete doc.ownerRecords[key];
+        });
+    }
+
+    public getComponentWidgetMainBlueprintId(componentId: string, elementId: string): string | undefined {
+        const key = componentWidgetMainOwnerKey(componentId, elementId);
         return getActiveBlueprintId(this.getBlueprintDocument(), key);
     }
 
@@ -1251,6 +1307,15 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
 
     public getReadonlyWidgetMainSummary(surfaceId: string, element: UIElement): ReadonlyBlueprintWidgetSummary {
         return buildReadonlyWidgetMainSummary(this.getBlueprintDocument(), surfaceId, element);
+    }
+
+    public getReadonlyComponentWidgetMainSummary(
+        componentId: string,
+        element: UIElement,
+    ): ReadonlyBlueprintWidgetSummary {
+        return buildReadonlyWidgetMainSummary(this.getBlueprintDocument(), `component:${componentId}`, element, {
+            componentId,
+        });
     }
 
     /** Rules-only remap plan for duplicating a widget subtree (no UI). */

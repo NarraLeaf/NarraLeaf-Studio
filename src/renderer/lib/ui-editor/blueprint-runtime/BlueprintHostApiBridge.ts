@@ -28,6 +28,7 @@ import type {
 } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import type { UISliderRuntimeValue, UISliderWidgetProps } from "@shared/types/ui-editor/slider";
 import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
+import type { DevModeStartStoryRequest } from "@shared/types/devMode";
 
 export type DevModeWidgetRuntimePatch = {
     visible?: boolean;
@@ -140,6 +141,9 @@ export type BlueprintHostApiRuntime = {
         getParam: (key: string) => unknown;
         emit: (eventName: string, data: unknown) => Promise<void>;
     };
+    game: {
+        startStory: (request: DevModeStartStoryRequest) => Promise<void>;
+    };
     devtools: {
         log: (level: string, message: string) => void;
     };
@@ -152,12 +156,15 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     runtimeScopeId?: string;
     frameParams?: Record<string, unknown>;
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
+    onStartStory?: (request: DevModeStartStoryRequest) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
     onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
     widgetRuntimeStore: WidgetRuntimeStateStore;
+    /** Component definition graphs should pass a component-scoped document so Element Host API stays local. */
+    componentDefinitionMode?: boolean;
 };
 
 function assertAppearanceVariantId(document: UIDocument, elementId: string, variantId: string | null): void {
@@ -564,6 +571,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         runtimeScopeId,
         frameParams,
         onFrameEmit,
+        onStartStory,
         emit,
         onOpenSurface,
         onCloseLayer,
@@ -1068,6 +1076,28 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     await onFrameEmit(safeEventName, data);
                 }
                 emitHostCall(emit, cap, "return");
+            },
+        },
+        game: {
+            startStory: async (request: DevModeStartStoryRequest) => {
+                const cap = "game.startStory";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const storyId = String(request?.storyId ?? "").trim();
+                    const sceneId = String(request?.sceneId ?? "").trim();
+                    if (!storyId) {
+                        throw new Error("startStory: storyId is required");
+                    }
+                    if (!sceneId) {
+                        throw new Error("startStory: sceneId is required");
+                    }
+                    if (!onStartStory) {
+                        throw new Error("startStory: game runtime is not available");
+                    }
+                    await onStartStory({ storyId, sceneId });
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
             },
         },
         devtools: {

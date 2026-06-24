@@ -1,6 +1,7 @@
 import type { UIDocument, UIElement, UILayout } from "@shared/types/ui-editor/document";
 import { getElementSurfaceTopLeftEx } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import type { AxisAlignedRect } from "./types";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 const ROOT_WIDGET_TYPE = "nl.root";
 
@@ -86,7 +87,7 @@ export function getSurfaceAxisAlignedBoundsForLayout(
 /** Bounds from persisted document layout (no override). */
 export function getSurfaceAxisAlignedBoundsFromDocument(document: UIDocument, elementId: string): AxisAlignedRect | null {
     const el = document.elements[elementId];
-    if (!el || el.type === ROOT_WIDGET_TYPE) {
+    if (!el || el.type === ROOT_WIDGET_TYPE || isComponentEditorRootElement(el)) {
         return null;
     }
     return getSurfaceAxisAlignedBoundsForLayout(document, elementId, el.layout);

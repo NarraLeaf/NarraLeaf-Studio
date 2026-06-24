@@ -17,6 +17,7 @@ import type {
     UIStageSurfaceMount,
     UILayout,
     UIElement,
+    UIComponentDefinition,
     UIElementValueBindingValueType,
 } from "@shared/types/ui-editor/document";
 import type {
@@ -39,7 +40,7 @@ import type { UIGraph, UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import type { ReactElement } from "react";
 import type { ElementRendererDefinition } from "../../ui-editor/runtime/ElementRendererRegistry";
-import type { RenderSurfaceOptions } from "../../ui-editor/runtime/types";
+import type { RenderComponentOptions, RenderDocumentSurfaceOptions, RenderSurfaceOptions } from "../../ui-editor/runtime/types";
 import type { ViewportTransform } from "../../ui-editor/geometry/types";
 import type { UITool } from "../../ui-editor/editor/types";
 import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/snapping/types";
@@ -212,6 +213,49 @@ interface IUIDocumentService extends IService {
     }): UISurface;
     deleteSurface(surfaceId: string): void;
     updateSurface(surfaceId: string, updater: (surface: UISurface) => void): void;
+    getComponent(componentId: string): UIComponentDefinition | undefined;
+    getComponentUsageCount(componentId: string): number;
+    createEmptyComponent(name?: string): UIComponentDefinition;
+    createComponentFromElements(surfaceId: string, elementIds: string[], name?: string): UIComponentDefinition | null;
+    renameComponent(componentId: string, name: string): void;
+    deleteComponents(componentIds: string[]): void;
+    duplicateComponent(componentId: string): UIComponentDefinition | null;
+    updateComponentElementLayout(componentId: string, elementId: string, layoutPatch: Partial<UILayout>): void;
+    updateComponentElementProps(componentId: string, elementId: string, propsPatch: Record<string, unknown>): void;
+    updateComponentElementExtra(componentId: string, elementId: string, extraPatch: Record<string, unknown>): void;
+    setComponentElementBlueprintEvent(
+        componentId: string,
+        elementId: string,
+        eventName: string,
+        ref: { blueprintId: string; eventId: string },
+    ): void;
+    clearComponentElementBlueprintEvent(componentId: string, elementId: string, eventName: string): void;
+    stripComponentBlueprintLayerBindings(componentId: string, blueprintId: string, layerEventId: string): void;
+    renameComponentElement(componentId: string, elementId: string, name: string): void;
+    reorderComponentChildren(componentId: string, parentId: string, orderedChildIds: string[]): void;
+    deleteComponentElements(componentId: string, elementIds: string[]): void;
+    moveComponentElements(
+        componentId: string,
+        elementIds: string[],
+        targetParentId: string,
+        beforeChildId: string | null,
+    ): MoveUiElementsResult;
+    createComponentElement(
+        componentId: string,
+        parentId: string,
+        type: string,
+        layoutPatch?: Partial<UILayout>,
+    ): UIElement | null;
+    pasteComponentClipboardPayload(
+        componentId: string,
+        targetParentId: string,
+        beforeChildId: string | null,
+        payload: import("@/lib/ui-editor/commands/uiEditorClipboard").UIEditorClipboardPayload,
+    ):
+        | { ok: true; newRootIds: string[] }
+        | { ok: false; reason: "invalid_clipboard" | "invalid_target" };
+    createComponentInstance(parentId: string, componentId: string, layoutPatch?: Partial<UILayout>): UIElement;
+    unlinkComponentInstance(elementId: string): string[];
     createElement(parentId: string, type: string, layoutPatch?: Partial<UILayout>): UIElement;
     deleteElements(elementIds: string[]): void;
     /**
@@ -300,6 +344,9 @@ interface ILocalBlueprintService extends IService {
     ensureWidgetMain(surfaceId: string, elementId: string, displayName?: string, widgetType?: string): string;
     removeWidgetMain(surfaceId: string, elementId: string): void;
     getWidgetMainBlueprintId(surfaceId: string, elementId: string): string | undefined;
+    ensureComponentWidgetMain(componentId: string, elementId: string, displayName?: string, widgetType?: string): string;
+    removeComponentWidgetMain(componentId: string, elementId: string): void;
+    getComponentWidgetMainBlueprintId(componentId: string, elementId: string): string | undefined;
     ensureWidgetValueBlueprint(input: {
         surfaceId: string;
         elementId: string;
@@ -312,6 +359,7 @@ interface ILocalBlueprintService extends IService {
     getWidgetValueBlueprintId(surfaceId: string, elementId: string, propPath: string): string | undefined;
     getSurfaceMainBlueprintId(surfaceId: string): string | undefined;
     getReadonlySurfaceMainSummary(surfaceId: string): ReadonlyBlueprintSurfaceSummary;
+    getReadonlyComponentWidgetMainSummary(componentId: string, element: UIElement): ReadonlyBlueprintWidgetSummary;
     createField(
         blueprintId: string,
         input: { name: string; kind?: BlueprintField["kind"]; valueSource?: BlueprintFieldValueSource },
@@ -414,6 +462,8 @@ interface IUIBlueprintLifecycleCoordinator extends IService {
 
 interface IUIRuntimeBridgeService extends IService {
     renderSurface(options: RenderSurfaceOptions): ReactElement | null;
+    renderDocumentSurface(options: RenderDocumentSurfaceOptions): ReactElement | null;
+    renderComponent(options: RenderComponentOptions): ReactElement | null;
     registerElementRenderer(definition: ElementRendererDefinition): void;
 }
 
@@ -554,6 +604,7 @@ interface IStoryService extends IService {
     loadStory(storyId: StoryId): Promise<StoryDocument>;
     getStoryDocument(storyId: StoryId): StoryDocument;
     saveStory(storyId: StoryId): Promise<void>;
+    flushPendingChanges(): Promise<void>;
     reloadStory(storyId: StoryId): Promise<StoryDocument>;
     onDocumentChanged(handler: (event: { storyId: StoryId; document: StoryDocument }) => void): () => void;
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
@@ -622,6 +673,8 @@ interface ICharacterService extends IService {
     deleteGroup(id: string): boolean;
     assignCharacterToGroup(characterId: string, groupId?: string): boolean;
     listCharactersByGroup(groupId?: string): Character[];
+    isDirty(): boolean;
+    flushPendingChanges(): Promise<void>;
 }
 
 // Asset Services

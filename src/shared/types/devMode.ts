@@ -2,7 +2,7 @@ import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/docume
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
-import type { StoryDocument } from "./story";
+import type { StoryDocument, StoryId, StoryLibraryIndex } from "./story";
 
 export type DevModeEntry =
     | {
@@ -31,6 +31,22 @@ export type DevModeStatus =
     | "error"
     | "stopping";
 
+export type DevModeCharacterSummary = {
+    id: string;
+    name: string;
+};
+
+export type DevModeStoryLibrary = {
+    index: StoryLibraryIndex;
+    documents: Record<StoryId, StoryDocument>;
+    characters: DevModeCharacterSummary[];
+};
+
+export type DevModeStartStoryRequest = {
+    storyId: StoryId;
+    sceneId: string;
+};
+
 export type DevModeBundle = {
     bundleId: string;
     revision: number;
@@ -45,6 +61,7 @@ export type DevModeBundle = {
         sharedBlueprints: SharedBlueprintAsset[];
     };
     story?: StoryDocument;
+    storyLibrary?: DevModeStoryLibrary;
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;

@@ -113,6 +113,7 @@ export type BlueprintInspectorParamKind =
 export type BlueprintInspectorParamSelectOption = {
     value: string;
     label: string;
+    meta?: Record<string, string>;
 };
 
 export type BlueprintInspectorParamDef = {
@@ -133,6 +134,14 @@ export type BlueprintInspectorParamDef = {
      * Known sources: `"surfaces"` (available App Surfaces).
      */
     dynamicOptionsSource?: string;
+    /**
+     * Filter dynamic select options by comparing another param value with option metadata.
+     * Used for dependent dropdowns such as Story -> Scene.
+     */
+    dynamicOptionsFilter?: {
+        paramKey: string;
+        optionMetaKey: string;
+    };
 };
 
 /** Owner kinds that can appear on Blueprint.owner */
@@ -237,6 +246,8 @@ export type BlueprintPaletteContext = {
     listItemContextAvailable?: boolean;
     /** Bound Element Literal nodes in the active graph, same Surface only. */
     magicElementRefs?: readonly BlueprintMagicElementRefPaletteEntry[];
+    /** Component definition graphs run inside a virtual component canvas; Element refs are scoped to that canvas. */
+    isComponentDefinitionGraph?: boolean;
 };
 
 /** Legacy editor catalog entry shape (kept for incremental UI migration) */

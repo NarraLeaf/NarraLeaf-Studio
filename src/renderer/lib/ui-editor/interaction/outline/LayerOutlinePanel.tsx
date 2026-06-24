@@ -32,6 +32,7 @@ import {
 import { useLayerOutlineContextMenus } from "@/lib/ui-editor/interaction/outline/useLayerOutlineContextMenus";
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 export type UILayersPanelProps = {
     surfaceId: string;
@@ -40,6 +41,7 @@ export type UILayersPanelProps = {
     uiService?: UIService | null;
     localBlueprint: LocalBlueprintService;
     inputDialog: InputDialog | null;
+    allowAddSelectionToComponentLibrary?: boolean;
 };
 
 function collisionHasOutlineGapData(collision: Collision): boolean {
@@ -130,6 +132,7 @@ export function UILayersPanel({
     uiService,
     localBlueprint,
     inputDialog,
+    allowAddSelectionToComponentLibrary = true,
 }: UILayersPanelProps) {
     const [docVersion, setDocVersion] = useState(0);
     const [selection, setSelection] = useState(stateService.getSelection());
@@ -168,6 +171,19 @@ export function UILayersPanel({
     const surface = document.surfaces.find(surf => surf.id === surfaceId);
     const effectiveRootId = surface ? resolveSurfaceRootElementId(document, surfaceId) : null;
     const root = effectiveRootId ? document.elements[effectiveRootId] : undefined;
+    const outlineRoot = useMemo(() => {
+        if (!root) {
+            return undefined;
+        }
+        if (root.type === OUTLINE_ROOT_WIDGET_TYPE && root.childrenIds.length === 1) {
+            const child = document.elements[root.childrenIds[0]];
+            if (isComponentEditorRootElement(child)) {
+                return child;
+            }
+        }
+        return root;
+    }, [document.elements, root]);
+    const outlineEffectiveRootId = outlineRoot?.id ?? effectiveRootId;
 
     const isLinkedTree =
         surface != null && effectiveRootId != null && effectiveRootId !== surface.rootElementId;
@@ -230,7 +246,7 @@ export function UILayersPanel({
     const onToggleVisible = useCallback(
         (element: UIElement, event: MouseEvent) => {
             event.stopPropagation();
-            if (element.type === OUTLINE_ROOT_WIDGET_TYPE) {
+            if (element.type === OUTLINE_ROOT_WIDGET_TYPE || isComponentEditorRootElement(element)) {
                 return;
             }
             const isHidden = element.layout.visible === false;
@@ -241,7 +257,7 @@ export function UILayersPanel({
 
     const onStartRename = useCallback(
         (element: UIElement) => {
-            if (!inputDialog || element.type === OUTLINE_ROOT_WIDGET_TYPE) {
+            if (!inputDialog || element.type === OUTLINE_ROOT_WIDGET_TYPE || isComponentEditorRootElement(element)) {
                 return;
             }
             void inputDialog
@@ -281,12 +297,13 @@ export function UILayersPanel({
         uiService,
         localBlueprint,
         inputDialog,
-        effectiveRootId,
+        effectiveRootId: outlineEffectiveRootId,
         document,
         collectBranchIdsWithChildren,
         showMenu,
         hideMenu,
         setMenuItems,
+        allowAddSelectionToComponentLibrary,
     });
 
     const sensors = useSensors(
@@ -405,7 +422,7 @@ export function UILayersPanel({
         ]
     );
 
-    if (!surface || !root || !effectiveRootId) {
+    if (!surface || !root || !outlineRoot || !outlineEffectiveRootId) {
         return <div className="p-4 text-xs text-gray-500">No surface available</div>;
     }
 
@@ -444,7 +461,7 @@ export function UILayersPanel({
                 onDragCancel={handleDragCancel}
                 onDragEnd={handleDragEnd}
             >
-                <OutlineSubtree parentId={root.id} depth={0} {...rowBase} />
+                <OutlineSubtree parentId={outlineRoot.id} depth={0} {...rowBase} />
             </DndContext>
             {dragPreview}
             <ContextMenu items={menuItems} position={menuState.position} visible={menuState.visible} onClose={hideMenu} />

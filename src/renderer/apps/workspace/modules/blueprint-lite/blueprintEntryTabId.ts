@@ -1,12 +1,18 @@
 import type { UIElementId, UISurfaceId } from "@shared/types/ui-editor/document";
 
-export type BlueprintEntryOwnerKind = "surfaceMain" | "widgetMain" | "widgetValue";
+export type BlueprintEntryOwnerKind =
+    | "globalMain"
+    | "surfaceMain"
+    | "widgetMain"
+    | "widgetValue"
+    | "componentWidgetMain";
 
 /** Payload for blueprint entry tab (M4-lite → M4-full); extended with editor focus fields. */
 export type BlueprintEntryTabPayload = {
     blueprintId: string;
     ownerKind: BlueprintEntryOwnerKind;
     surfaceId: UISurfaceId;
+    componentId?: string;
     elementId?: UIElementId;
     propPath?: string;
     focusEventId?: string;

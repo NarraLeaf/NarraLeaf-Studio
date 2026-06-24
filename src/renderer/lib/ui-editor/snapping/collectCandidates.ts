@@ -4,6 +4,7 @@ import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurf
 import { getSurfaceAxisAlignedBoundsFromDocument } from "./surfaceRect";
 import type { SmartSnapDetailSettings, SnapGuideLine } from "./types";
 import { DEFAULT_SMART_SNAP_DETAIL_SETTINGS } from "./types";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 const ROOT_WIDGET_TYPE = "nl.root";
 
@@ -58,7 +59,7 @@ export function collectSnapGuideLines(
             continue;
         }
         const el = document.elements[id];
-        if (!el || el.type === ROOT_WIDGET_TYPE) {
+        if (!el || el.type === ROOT_WIDGET_TYPE || isComponentEditorRootElement(el)) {
             continue;
         }
         const b = getSurfaceAxisAlignedBoundsFromDocument(document, id);

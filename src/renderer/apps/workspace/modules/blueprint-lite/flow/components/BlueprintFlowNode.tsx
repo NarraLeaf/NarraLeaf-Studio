@@ -750,10 +750,16 @@ function InspectorParamOnCard({
                 : ""
             : undefined;
 
-    const selectOptions: BlueprintInspectorParamSelectOption[] | undefined =
+    const rawSelectOptions: BlueprintInspectorParamSelectOption[] | undefined =
         spec.kind === "select"
             ? spec.options ?? (spec.dynamicOptionsSource ? dynamicSelectOptions?.[spec.dynamicOptionsSource] : undefined)
             : undefined;
+    const selectOptions =
+        rawSelectOptions && spec.dynamicOptionsFilter
+            ? rawSelectOptions.filter(option => (
+                  option.meta?.[spec.dynamicOptionsFilter!.optionMetaKey] === String(params[spec.dynamicOptionsFilter!.paramKey] ?? "")
+              ))
+            : rawSelectOptions;
     const selectComponentOptions: SelectOption[] | undefined = selectOptions
         ? [{ value: "", label: "-" }, ...selectOptions.map(opt => ({ value: opt.value, label: opt.label }))]
         : undefined;

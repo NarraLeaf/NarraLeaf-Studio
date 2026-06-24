@@ -2,7 +2,8 @@ import path from "path";
 import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBlueprintDocument";
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type { SharedBlueprintAsset } from "@shared/types/blueprint/document";
-import type { DevModeBundle } from "@shared/types/devMode";
+import type { DevModeBundle, DevModeCharacterSummary, DevModeStoryLibrary } from "@shared/types/devMode";
+import type { StoryDocument, StoryLibraryIndex } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
@@ -25,6 +26,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const localBlueprints = uigraphs.blueprintDocument;
     const sharedBlueprints = await loadSharedBlueprints(context.projectPath);
     const projectIdentifier = await readProjectIdentifier(context.projectPath);
+    const storyLibrary = await loadStoryLibrary(context.projectPath);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
@@ -35,12 +37,26 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
             localBlueprints,
             sharedBlueprints,
         },
+        storyLibrary,
         compiled: context.compiled,
         blueprintCompiledScripts: context.blueprintCompiledScripts,
         blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
         blueprintScriptsCompileErrors: context.blueprintScriptsCompileErrors,
         meta: projectIdentifier ? { projectIdentifier } : undefined,
     };
+}
+
+async function readOptionalJsonFile<T>(filePath: string): Promise<T | undefined> {
+    const result = await Fs.read(filePath, "utf-8");
+    if (!result.ok) {
+        return undefined;
+    }
+    try {
+        return JSON.parse(result.data) as T;
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new Error(`Invalid JSON in ${filePath}: ${msg}`);
+    }
 }
 
 async function readJsonFile<T>(filePath: string): Promise<T> {
@@ -90,6 +106,52 @@ async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprin
     return out;
 }
 
+async function loadStoryLibrary(projectPath: string): Promise<DevModeStoryLibrary | undefined> {
+    const indexPath = path.join(projectPath, "editor", "story", "index.json");
+    const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath);
+    if (!index) {
+        return undefined;
+    }
+    const documents: Record<string, StoryDocument> = {};
+    for (const entry of index.stories ?? []) {
+        const documentPath = entry.documentPath?.trim()
+            ? resolveProjectFilePath(projectPath, entry.documentPath)
+            : path.join(projectPath, "editor", "story", "stories", entry.id, "storydoc.json");
+        const document = await readJsonFile<StoryDocument>(documentPath);
+        documents[entry.id] = document;
+        if (document.id && document.id !== entry.id) {
+            documents[document.id] = document;
+        }
+    }
+    return {
+        index,
+        documents,
+        characters: await loadCharacterSummaries(projectPath),
+    };
+}
+
+async function loadCharacterSummaries(projectPath: string): Promise<DevModeCharacterSummary[]> {
+    const storePath = path.join(projectPath, "editor", "services", "character.json");
+    const store = await readOptionalJsonFile<{ characters?: unknown[] }>(storePath);
+    const characters = Array.isArray(store?.characters) ? store.characters : [];
+    return characters.flatMap((entry): DevModeCharacterSummary[] => {
+        if (!entry || typeof entry !== "object") {
+            return [];
+        }
+        const profile = (entry as { profile?: unknown }).profile;
+        if (!profile || typeof profile !== "object") {
+            return [];
+        }
+        const raw = profile as { id?: unknown; name?: unknown };
+        const id = typeof raw.id === "string" ? raw.id.trim() : "";
+        if (!id) {
+            return [];
+        }
+        const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : id;
+        return [{ id, name }];
+    });
+}
+
 async function readProjectIdentifier(projectPath: string): Promise<string | undefined> {
     try {
         const entriesResult = await Fs.dirEntries(projectPath);
@@ -128,6 +190,10 @@ function resolveAssetContentPath(projectPath: string, assetId: string): string |
     } catch {
         return null;
     }
+}
+
+function resolveProjectFilePath(projectPath: string, filePath: string): string {
+    return path.isAbsolute(filePath) ? filePath : path.join(projectPath, filePath);
 }
 
 /** Default bundle source: project files on disk. */

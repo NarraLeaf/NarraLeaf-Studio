@@ -16,6 +16,7 @@ export function createBlueprintEntryEditorTab(
         blueprintId: target.blueprintId,
         ownerKind: target.ownerKind,
         surfaceId: target.surfaceId,
+        componentId: target.componentId,
         elementId: target.elementId,
         propPath: target.propPath,
         focusEventId: target.focusEventId,

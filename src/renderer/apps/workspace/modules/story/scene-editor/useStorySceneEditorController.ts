@@ -235,8 +235,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         uiService?.focus.setFocus(FocusArea.Editor, tabId);
     }, [tabId, uiService]);
 
-    const focusRoot = useCallback(() => {
+    const focusRoot = useCallback((event?: MouseEvent<HTMLElement>) => {
         focusWorkspace();
+        if (event && isInteractiveTarget(event.target)) {
+            return;
+        }
         if (uiService?.dialogs.getActive()) {
             return;
         }

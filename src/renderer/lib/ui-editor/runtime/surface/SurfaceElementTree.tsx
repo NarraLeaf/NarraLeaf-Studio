@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
-import { type UIDocument, type UISurface, type UIElement, isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
+import {
+    type UIDocument,
+    type UISurface,
+    type UIElement,
+    getUIComponentLink,
+    isUIElementFlowLayoutChild,
+} from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -151,6 +157,7 @@ function renderSurfaceElementTreeWithValueRuntime(
         props.surfacePath ?? [surface.id],
         editorChrome,
         valueRuntime,
+        [],
     );
 
     return (
@@ -411,6 +418,110 @@ function cloneElementRenderSnapshot(element: UIElement): UIElement {
     };
 }
 
+function ComponentInstancePlaceholder({ label }: { label: string }) {
+    return (
+        <div className="flex h-full w-full items-center justify-center border border-dashed border-white/20 bg-black/20 px-3 text-center text-xs text-gray-400">
+            {label}
+        </div>
+    );
+}
+
+function renderLinkedComponentInstanceContent(input: {
+    instanceElement: UIElement;
+    document: UIDocument;
+    hostAdapter: UIHostAdapter;
+    rendererRegistry: ElementRendererRegistry;
+    useAppearanceInspectorPreview: boolean;
+    componentPath: string[];
+    valueRuntime: BlueprintValueRuntimeStore | null;
+}): ReactNode | null {
+    const link = getUIComponentLink(input.instanceElement);
+    if (!link) {
+        return null;
+    }
+    const component = input.document.components?.find(item => item.id === link.componentId);
+    if (!component) {
+        return <ComponentInstancePlaceholder label="Missing component" />;
+    }
+    if (input.componentPath.includes(component.id)) {
+        return <ComponentInstancePlaceholder label="Component loop blocked" />;
+    }
+    const root = component.elements[component.rootElementId];
+    if (!root) {
+        return <ComponentInstancePlaceholder label="Component root missing" />;
+    }
+
+    const rootWidth = Math.max(1, Math.abs(root.layout.width));
+    const rootHeight = Math.max(1, Math.abs(root.layout.height));
+    const instanceWidth = Math.max(1, Math.abs(input.instanceElement.layout.width));
+    const instanceHeight = Math.max(1, Math.abs(input.instanceElement.layout.height));
+    const virtualSurface: UISurface = {
+        id: `component:${component.id}`,
+        name: component.name,
+        host: "app",
+        kind: "appSurface",
+        designSize: { width: rootWidth, height: rootHeight },
+        rootElementId: root.id,
+    };
+    const rootSnapshot: UIElement = {
+        ...cloneElementRenderSnapshot(root),
+        parentId: null,
+        layout: {
+            ...root.layout,
+            x: 0,
+            y: 0,
+        },
+    };
+    const virtualDocument: UIDocument = {
+        ...input.document,
+        surfaces: [virtualSurface],
+        elements: {
+            ...input.document.elements,
+            ...component.elements,
+            [root.id]: rootSnapshot,
+        },
+    };
+    const viewportStyle: CSSProperties = {
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        overflow: "hidden",
+    };
+    const contentStyle: CSSProperties = {
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: rootWidth,
+        height: rootHeight,
+        transform: `scale(${instanceWidth / rootWidth}, ${instanceHeight / rootHeight})`,
+        transformOrigin: "top left",
+        pointerEvents: "none",
+    };
+    return (
+        <div style={viewportStyle}>
+            <div style={contentStyle}>
+                {renderElementTree(
+                    rootSnapshot,
+                    virtualDocument,
+                    virtualSurface,
+                    input.hostAdapter,
+                    input.rendererRegistry,
+                    input.useAppearanceInspectorPreview,
+                    null,
+                    undefined,
+                    null,
+                    "",
+                    undefined,
+                    [virtualSurface.id],
+                    false,
+                    input.valueRuntime,
+                    [...input.componentPath, component.id],
+                )}
+            </div>
+        </div>
+    );
+}
+
 function renderElementTree(
     element: UIElement,
     document: UIDocument,
@@ -426,6 +537,7 @@ function renderElementTree(
     surfacePath: string[] = [surface.id],
     editorChrome = true,
     valueRuntime: BlueprintValueRuntimeStore | null = null,
+    componentPath: string[] = [],
 ): ReactNode {
     const patched = applyWidgetRuntimePatches(element, widgetRuntimePatches ?? {});
     const bound =
@@ -478,6 +590,7 @@ function renderElementTree(
                 surfacePath,
                 editorChrome,
                 valueRuntime,
+                componentPath,
             );
         })
         .filter((node): node is ReactNode => node !== null);
@@ -486,7 +599,16 @@ function renderElementTree(
     const children = resolved.type === "nl.list" || resolved.type === "nl.slider" ? [] : renderChildren();
 
     const renderer = rendererRegistry.get(resolved.type);
-    const content = renderer
+    const linkedComponentContent = renderLinkedComponentInstanceContent({
+        instanceElement: resolved,
+        document,
+        hostAdapter,
+        rendererRegistry,
+        useAppearanceInspectorPreview,
+        componentPath,
+        valueRuntime,
+    });
+    const content = linkedComponentContent ?? (renderer
         ? renderer.render({
               element: resolved,
               document,
@@ -518,7 +640,7 @@ function renderElementTree(
                   : undefined,
               useAppearanceInspectorPreview,
           })
-        : renderUnknownWidgetTypeContent(resolved, children);
+        : renderUnknownWidgetTypeContent(resolved, children));
 
     const styleOverrides = extractStyleOverrides(resolved);
     const layoutMode =

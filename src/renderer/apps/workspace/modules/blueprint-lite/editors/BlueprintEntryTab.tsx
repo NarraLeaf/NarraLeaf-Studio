@@ -13,10 +13,12 @@ import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
+import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { StoryDocument } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIListChildSlot } from "@shared/types/ui-editor/list";
 import {
@@ -74,6 +76,10 @@ import {
     startElementBindingSession,
     subscribeElementBindingSession,
 } from "../elementBindingSession";
+import {
+    createComponentDocumentServiceAdapter,
+    getComponentTabId,
+} from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 import { buildAccessibleBlueprintVariableOptions } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
 import {
@@ -345,11 +351,22 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
     const uuid = context.services.get<UuidService>(Services.Uuid);
     const uidoc = context.services.get<UIDocumentService>(Services.UIDocument);
+    const isComponentDefinitionGraph = payload.ownerKind === "componentWidgetMain";
+    const blueprintDocumentService = useMemo(
+        () =>
+            isComponentDefinitionGraph && payload.componentId
+                ? createComponentDocumentServiceAdapter(uidoc, payload.componentId)
+                : uidoc,
+        [isComponentDefinitionGraph, payload.componentId, uidoc],
+    );
     const uiService = context.services.get<UIService>(Services.UI);
     const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const runtimeBridge = context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
+    const storyService = context.services.get<StoryService>(Services.Story);
     const [uiDocumentRevision, setUiDocumentRevision] = useState(() => uidoc.getRevision());
+    const [storyDocumentsById, setStoryDocumentsById] = useState<Record<string, StoryDocument>>({});
+    const [storyLibraryRevision, setStoryLibraryRevision] = useState(0);
     const [memberPanelState, setMemberPanelState] = useState<BlueprintEditorMemberPanelState>(() =>
         normalizeBlueprintEditorMemberPanelState(
             panelStateService.getPanelState<Partial<BlueprintEditorMemberPanelState>>(
@@ -358,6 +375,43 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         ),
     );
     useEffect(() => uidoc.onDocumentChanged(() => setUiDocumentRevision(uidoc.getRevision())), [uidoc]);
+    useEffect(() => {
+        let disposed = false;
+        const refreshLibrary = () => {
+            setStoryLibraryRevision(value => value + 1);
+            const entries = storyService.listStories();
+            void Promise.all(
+                entries.map(entry => (
+                    storyService.loadStory(entry.id)
+                        .then(document => [entry.id, document] as const)
+                        .catch(() => null)
+                )),
+            ).then(results => {
+                if (disposed) {
+                    return;
+                }
+                const next: Record<string, StoryDocument> = {};
+                for (const result of results) {
+                    if (result) {
+                        next[result[0]] = result[1];
+                    }
+                }
+                setStoryDocumentsById(next);
+            });
+        };
+
+        refreshLibrary();
+        const offLibrary = storyService.onLibraryChanged(refreshLibrary);
+        const offDocument = storyService.onDocumentChanged(({ storyId, document }) => {
+            setStoryDocumentsById(prev => ({ ...prev, [storyId]: document }));
+            setStoryLibraryRevision(value => value + 1);
+        });
+        return () => {
+            disposed = true;
+            offLibrary();
+            offDocument();
+        };
+    }, [storyService]);
     const doc = localBp.getBlueprintDocument();
     const bp = doc.blueprints[payload.blueprintId];
     if (!bp) {
@@ -368,9 +422,12 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         );
     }
 
-    const uiDocument = uidoc.getDocument();
+    const uiDocument = blueprintDocumentService.getDocument();
     const widgetElement =
-        (payload.ownerKind === "widgetMain" || payload.ownerKind === "widgetValue") && payload.elementId
+        (payload.ownerKind === "widgetMain" ||
+            payload.ownerKind === "widgetValue" ||
+            payload.ownerKind === "componentWidgetMain") &&
+        payload.elementId
             ? uiDocument.elements[payload.elementId]
             : undefined;
     const listItemContextAvailable = isListItemContextElement(uiDocument, widgetElement);
@@ -389,6 +446,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         widgetElement,
         widgetSurfaceId: payload.surfaceId,
         widgetBlueprintEvents: widgetLogicEvents,
+        isComponentDefinitionGraph,
     });
     const openBlueprint = useOpenBlueprintTarget();
     const focusBlueprintEditor = useCallback(() => {
@@ -424,6 +482,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 blueprintId: payload.blueprintId,
                 ownerKind: payload.ownerKind,
                 surfaceId: payload.surfaceId,
+                componentId: payload.componentId,
                 elementId: payload.elementId,
                 propPath: payload.propPath,
                 title: "Blueprint",
@@ -442,6 +501,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 blueprintId,
                 ownerKind: payload.ownerKind,
                 surfaceId: payload.surfaceId,
+                componentId: payload.componentId,
                 elementId: payload.elementId,
                 propPath: payload.propPath,
                 title: "Blueprint",
@@ -698,7 +758,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             if (!editor.graphView || !payload.surfaceId) {
                 return;
             }
-            const surface = uidoc.getDocument().surfaces.find(item => item.id === payload.surfaceId);
+            const surface = blueprintDocumentService.getDocument().surfaces.find(item => item.id === payload.surfaceId);
             if (!surface) {
                 return;
             }
@@ -711,17 +771,30 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 nodeId,
                 surfaceId: surface.id,
             });
+            const tabPayload = isComponentDefinitionGraph && payload.componentId
+                ? { componentId: payload.componentId }
+                : { surfaceId: surface.id };
             openEditorTab({
-                id: getSurfaceTabId(surface.id),
+                id: isComponentDefinitionGraph && payload.componentId ? getComponentTabId(payload.componentId) : getSurfaceTabId(surface.id),
                 title: surface.name,
                 icon: <PanelsTopLeft className="w-4 h-4" />,
                 component: UISurfaceEditorTab,
-                payload: { surfaceId: surface.id },
+                payload: tabPayload,
                 closable: true,
                 modified: false,
             });
         },
-        [editor.graphView, openEditorTab, payload.blueprintId, payload.surfaceId, tabId, uidoc, uuid],
+        [
+            blueprintDocumentService,
+            editor.graphView,
+            isComponentDefinitionGraph,
+            openEditorTab,
+            payload.blueprintId,
+            payload.componentId,
+            payload.surfaceId,
+            tabId,
+            uuid,
+        ],
     );
 
     const onAddEvent = useCallback(async () => {
@@ -730,11 +803,15 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             owner: bp.owner,
             widgetElementType: widgetElement?.type,
             widgetBlueprintEvents: widgetLogicEvents,
-            widgetEventLayerSlots: payload.ownerKind === "widgetMain" && widgetElement ? [] : undefined,
+            widgetEventLayerSlots:
+                (payload.ownerKind === "widgetMain" || payload.ownerKind === "componentWidgetMain") && widgetElement
+                    ? []
+                    : undefined,
             hasEventHead: false,
             hasFunctionEntry: false,
             isBlueprintValueGraph: bp.owner.kind === "widgetValue",
             listItemContextAvailable,
+            isComponentDefinitionGraph,
         })).filter(entry => entry.role === "eventHead" || entry.role === "elementEventHead");
         const defaultLayerName = `Layer ${eventIds.length + 1}`;
 
@@ -813,6 +890,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         localBp,
         nodeCatalog,
         payload.blueprintId,
+        isComponentDefinitionGraph,
         payload.ownerKind,
         selectEventGraph,
         uiService,
@@ -825,7 +903,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         (layerId: string) => {
             const wasActive = editor.graphView?.kind === "event" && editor.graphView.graphId === layerId;
             localBp.runBlueprintHistoryTransaction(payload.blueprintId, () => {
-                uidoc.stripBlueprintLayerBindings(payload.surfaceId, payload.blueprintId, layerId);
+                blueprintDocumentService.stripBlueprintLayerBindings(payload.surfaceId, payload.blueprintId, layerId);
                 localBp.removeEventGraph(payload.blueprintId, layerId);
             });
             if (wasActive) {
@@ -837,7 +915,15 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 }
             }
         },
-        [clearGraphView, editor.graphView, localBp, payload.blueprintId, payload.surfaceId, selectEventGraph, uidoc],
+        [
+            blueprintDocumentService,
+            clearGraphView,
+            editor.graphView,
+            localBp,
+            payload.blueprintId,
+            payload.surfaceId,
+            selectEventGraph,
+        ],
     );
 
     const onDeleteSelectedNode = useCallback(() => {
@@ -929,7 +1015,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         const activeIr = editor.graphView ? ir : null;
         const magicElementRefs = collectMagicElementRefs({
             ir: activeIr,
-            document: uidoc.getDocument(),
+            document: blueprintDocumentService.getDocument(),
             surfaceId: payload.surfaceId,
         });
         return buildBlueprintPaletteContext({
@@ -943,15 +1029,27 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             isBlueprintValueGraph: bp.owner.kind === "widgetValue",
             listItemContextAvailable,
             magicElementRefs,
+            isComponentDefinitionGraph,
         });
-    }, [bp.owner, editor.graphView, ir, listItemContextAvailable, payload.surfaceId, uidoc, widgetElement?.type, widgetEventLayerSlots, widgetLogicEvents]);
+    }, [
+        blueprintDocumentService,
+        bp.owner,
+        editor.graphView,
+        ir,
+        isComponentDefinitionGraph,
+        listItemContextAvailable,
+        payload.surfaceId,
+        widgetElement?.type,
+        widgetEventLayerSlots,
+        widgetLogicEvents,
+    ]);
 
     const elementPreviews = useMemo(() => {
         const activeIr = editor.graphView ? ir : null;
         if (!activeIr) {
             return {};
         }
-        const uiDocument = uidoc.getDocument();
+        const uiDocument = blueprintDocumentService.getDocument();
         const previews: Record<string, NonNullable<BlueprintFlowNodeData["elementPreview"]>> = {};
         for (const node of Object.values(activeIr.nodes ?? {})) {
             if (!isElementBindingNodeType(node.type)) {
@@ -982,7 +1080,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             };
         }
         return previews;
-    }, [editor.graphView, ir, runtimeBridge, uidoc, uiDocumentRevision]);
+    }, [blueprintDocumentService, editor.graphView, ir, runtimeBridge, uiDocumentRevision]);
 
     const contextTitle = useMemo(
         () =>
@@ -1035,20 +1133,66 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     );
 
     const dynamicSelectOptions = useMemo<Record<string, BlueprintInspectorParamSelectOption[]>>(() => {
-        const doc = uidoc.getDocument();
-        const surfaceOptions: BlueprintInspectorParamSelectOption[] = doc.surfaces
+        const uiDocument = blueprintDocumentService.getDocument();
+        const surfaceOptions: BlueprintInspectorParamSelectOption[] = uiDocument.surfaces
             .filter(s => s.kind === "appSurface")
             .map(s => ({ value: s.id, label: s.name || s.id }));
-        const opts: Record<string, BlueprintInspectorParamSelectOption[]> = { surfaces: surfaceOptions };
-        if (payload.ownerKind === "widgetMain" && payload.surfaceId) {
-            const surface = doc.surfaces.find(s => s.id === payload.surfaceId);
+        const storyEntries = storyService.listStories();
+        const storyOptions: BlueprintInspectorParamSelectOption[] = storyEntries
+            .map(story => ({ value: story.id, label: story.name || story.id }));
+        const storySceneOptions: BlueprintInspectorParamSelectOption[] = [];
+        for (const story of storyEntries) {
+            const storyDocument = storyDocumentsById[story.id];
+            if (!storyDocument) {
+                continue;
+            }
+            const orderedSceneIds: string[] = [];
+            const seenSceneIds = new Set<string>();
+            for (const chapter of storyDocument.chapters) {
+                for (const sceneId of chapter.sceneIds) {
+                    if (!seenSceneIds.has(sceneId) && storyDocument.scenes[sceneId]) {
+                        seenSceneIds.add(sceneId);
+                        orderedSceneIds.push(sceneId);
+                    }
+                }
+            }
+            for (const sceneId of Object.keys(storyDocument.scenes).sort()) {
+                if (!seenSceneIds.has(sceneId)) {
+                    seenSceneIds.add(sceneId);
+                    orderedSceneIds.push(sceneId);
+                }
+            }
+            for (const sceneId of orderedSceneIds) {
+                const scene = storyDocument.scenes[sceneId];
+                if (!scene) {
+                    continue;
+                }
+                storySceneOptions.push({
+                    value: scene.id,
+                    label: scene.name || scene.runtimeName || scene.id,
+                    meta: { storyId: story.id },
+                });
+            }
+        }
+        const opts: Record<string, BlueprintInspectorParamSelectOption[]> = {
+            surfaces: surfaceOptions,
+            stories: storyOptions,
+            storyScenes: storySceneOptions,
+        };
+        if (
+            (payload.ownerKind === "widgetMain" || payload.ownerKind === "componentWidgetMain") &&
+            payload.surfaceId
+        ) {
+            const surface = uiDocument.surfaces.find(s => s.id === payload.surfaceId);
             if (surface) {
                 const collectElements = (rootId: string): BlueprintInspectorParamSelectOption[] => {
                     const result: BlueprintInspectorParamSelectOption[] = [];
                     const visit = (id: string) => {
-                        const el = doc.elements[id];
+                        const el = uiDocument.elements[id];
                         if (!el) return;
-                        result.push({ value: el.id, label: el.name || `${el.type} (${el.id.slice(0, 8)})` });
+                        if (el.type !== "nl.root") {
+                            result.push({ value: el.id, label: el.name || `${el.type} (${el.id.slice(0, 8)})` });
+                        }
                         for (const cid of el.childrenIds) visit(cid);
                     };
                     visit(rootId);
@@ -1058,7 +1202,15 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             }
         }
         return opts;
-    }, [uidoc, revision, payload.ownerKind, payload.surfaceId]);
+    }, [
+        blueprintDocumentService,
+        revision,
+        payload.ownerKind,
+        payload.surfaceId,
+        storyService,
+        storyDocumentsById,
+        storyLibraryRevision,
+    ]);
 
     const [memberPanelFocusContained, setMemberPanelFocusContained] = useState(false);
 

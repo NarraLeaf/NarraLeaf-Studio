@@ -17,6 +17,7 @@ import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateServ
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 const ROOT_WIDGET_TYPE = "nl.root";
 
@@ -99,7 +100,7 @@ export function createOutlinePanelMenuActions(params: {
                 return;
             }
             const el = doc.elements[pid];
-            if (!el || el.type === ROOT_WIDGET_TYPE) {
+            if (!el || el.type === ROOT_WIDGET_TYPE || isComponentEditorRootElement(el)) {
                 return;
             }
             void inputDialog.showRenameDialog(el.name ?? el.type ?? "Layer", "layer").then(name => {
@@ -114,13 +115,28 @@ export function createOutlinePanelMenuActions(params: {
             }
             for (const id of menuSel.elementIds) {
                 const el = doc.elements[id];
-                if (el && el.type !== ROOT_WIDGET_TYPE) {
+                if (el && el.type !== ROOT_WIDGET_TYPE && !isComponentEditorRootElement(el)) {
                     documentService.updateElementLayout(id, { visible });
                 }
             }
         },
         addSelectionToLeaderGroup: () => {
             uiEditorGroupIntoLeaderContainer(documentService, stateService, surfaceId, menuSel);
+        },
+        addSelectionToComponentLibrary: () => {
+            if (!menuSel || menuSel.elementIds.length === 0) {
+                return;
+            }
+            const primaryId = menuSel.primaryId ?? menuSel.elementIds[0];
+            const primary = primaryId ? doc.elements[primaryId] : null;
+            const fallbackName =
+                menuSel.elementIds.length === 1
+                    ? primary?.name ?? primary?.type ?? "Component"
+                    : "Component";
+            const component = documentService.createComponentFromElements(surfaceId, menuSel.elementIds, fallbackName);
+            if (component) {
+                uiService?.showNotification(`Added "${component.name}" to Component Library`, "success");
+            }
         },
         expandAllBranches: () => {
             for (const id of collectBranchIdsWithChildren(effectiveRootId)) {

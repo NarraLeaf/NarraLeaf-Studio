@@ -28,7 +28,15 @@ import { resolveEffectiveBlueprintCatalogEntry } from "./effectivePins";
 
 type BlueprintNodeGraphContextDef = Pick<
     BlueprintNodeDef,
-    "type" | "category" | "graphKinds" | "isPure" | "isLatent" | "role" | "scope"
+    | "type"
+    | "category"
+    | "graphKinds"
+    | "isPure"
+    | "isLatent"
+    | "role"
+    | "scope"
+    | "magicElementTarget"
+    | "inspectorParams"
 >;
 
 const INLINE_LITERAL_VALUE_TYPES = [
@@ -128,7 +136,7 @@ function matchesBlueprintNodeScopeValue(
         }
     }
     if (scope.widgetElementTypes && scope.widgetElementTypes.length > 0) {
-        if (ctx.owner.kind !== "widgetMain") {
+        if (ctx.owner.kind !== "widgetMain" && ctx.owner.kind !== "componentWidgetMain") {
             return false;
         }
         const t = ctx.widgetElementType;
@@ -166,7 +174,10 @@ function listCompatibleMagicElementRefs(
 }
 
 function canUseImageAssetLiteral(ctx: BlueprintPaletteContext): boolean {
-    if (ctx.owner.kind === "widgetMain" && ctx.widgetElementType === "nl.image") {
+    if (
+        (ctx.owner.kind === "widgetMain" || ctx.owner.kind === "componentWidgetMain") &&
+        ctx.widgetElementType === "nl.image"
+    ) {
         return true;
     }
     return (ctx.magicElementRefs ?? []).some(ref => ref.elementType === "nl.image");
@@ -197,7 +208,7 @@ export function isBlueprintNodeAllowedInGraphContext(
     if (ctx.graphKind === "function" && def.role === "functionEntry" && ctx.hasFunctionEntry) {
         return false;
     }
-    if (def.role === "eventHead" && ctx.owner.kind === "widgetMain") {
+    if (def.role === "eventHead" && (ctx.owner.kind === "widgetMain" || ctx.owner.kind === "componentWidgetMain")) {
         const allowed = resolveAllowedWidgetEventHeadTypesForPalette(ctx);
         if (!allowed.has(def.type)) {
             return false;

@@ -55,6 +55,12 @@ import {
 import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { useRegistry } from "@/apps/workspace/registry";
 import {
+    createComponentDocumentServiceAdapter,
+    getComponentEditorSurfaceId,
+    getComponentTabId,
+} from "./componentEditorAdapter";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import {
     cancelElementBindingSession,
     cancelElementBindingSessionById,
     completeElementBindingSessionForSession,
@@ -73,9 +79,18 @@ function findEditorGroupIdByTabId(layout: EditorLayout, tabId: string): string |
     return findEditorGroupIdByTabId(layout.first, tabId) ?? findEditorGroupIdByTabId(layout.second, tabId);
 }
 
-export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ surfaceId: string }>) {
-    const surfaceId = payload?.surfaceId;
-    const { runtimeBridge, stateService, documentService, uiService } = useUISurfaceEditorServices();
+export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ surfaceId?: string; componentId?: string }>) {
+    const componentId = payload?.componentId;
+    const isComponentEdit = Boolean(componentId);
+    const baseSurfaceId = payload?.surfaceId;
+    const { runtimeBridge, stateService, documentService: baseDocumentService, uiService } = useUISurfaceEditorServices();
+    const documentService = useMemo(() => {
+        if (!baseDocumentService || !componentId) {
+            return baseDocumentService;
+        }
+        return createComponentDocumentServiceAdapter(baseDocumentService, componentId);
+    }, [baseDocumentService, componentId]);
+    const surfaceId = componentId ? getComponentEditorSurfaceId(componentId) : baseSurfaceId;
     const { context, workspace } = useWorkspace();
     const { editorLayout, openEditorTab, setActiveEditorTab } = useRegistry();
     const localBlueprint = useMemo(
@@ -166,7 +181,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     );
 
     const activeBindingSession =
-        bindingSession && surface && bindingSession.surfaceId === surface.id ? bindingSession : null;
+        !isComponentEdit && bindingSession && surface && bindingSession.surfaceId === surface.id ? bindingSession : null;
 
     const returnToBindingBlueprint = useCallback(
         (blueprintTabId: string) => {
@@ -207,7 +222,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         }
         const elementId = data.primaryId ?? data.elementIds[0];
         const element = documentService.getDocument().elements[elementId];
-        if (!element || element.type === "nl.root") {
+        if (!element || element.type === "nl.root" || isComponentEditorRootElement(element)) {
             return null;
         }
         return { elementId: element.id, elementType: element.type, label: element.name || element.type };
@@ -227,7 +242,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         }
         const elementId = data.primaryId ?? data.elementIds[0];
         const element = documentService.getDocument().elements[elementId];
-        if (!element || element.type === "nl.root") {
+        if (!element || element.type === "nl.root" || isComponentEditorRootElement(element)) {
             return;
         }
         clearPendingBindingAutoCancel();
@@ -293,6 +308,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         widgetModules,
         inputDialog,
         createElementAtClientPoint,
+        allowAddSelectionToComponentLibrary: !isComponentEdit,
         showMenu,
         hideMenu,
     });
@@ -311,7 +327,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         }
         const pid = data.primaryId ?? data.elementIds[0];
         const el = documentService.getDocument().elements[pid];
-        if (!el || el.type === "nl.root") {
+        if (!el || el.type === "nl.root" || isComponentEditorRootElement(el)) {
             return;
         }
         void inputDialog.showRenameDialog(el.name ?? el.type ?? "Layer", "layer").then(name => {
@@ -343,15 +359,23 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     }, [stateService, surface?.host]);
 
     const surfaceContent = useMemo(() => {
-        if (!surfaceId || !runtimeBridge) {
+        if (!surfaceId || !runtimeBridge || !documentService) {
             return null;
+        }
+        if (isComponentEdit) {
+            return runtimeBridge.renderDocumentSurface({
+                document: documentService.getDocument(),
+                surfaceId,
+                hostAdapter,
+                className: "relative",
+            });
         }
         return runtimeBridge.renderSurface({
             surfaceId,
             hostAdapter,
             className: "relative",
         });
-    }, [runtimeBridge, surfaceId, hostAdapter, documentVersion]);
+    }, [documentService, isComponentEdit, runtimeBridge, surfaceId, hostAdapter, documentVersion]);
 
     const applyTool = useCallback(
         (nextTool: UITool) => {
@@ -376,7 +400,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         return context.services.get<DevModeService>(Services.DevMode);
     }, [context]);
     const handleStartCurrentSurface = useCallback(() => {
-        if (!surfaceId || !devModeService || !workspace) {
+        if (isComponentEdit || !surfaceId || !devModeService || !workspace) {
             return;
         }
         void (async () => {
@@ -390,11 +414,11 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                 surfaceId,
             });
         })();
-    }, [devModeService, surfaceId, workspace]);
+    }, [devModeService, isComponentEdit, surfaceId, workspace]);
 
     const handleOpenSurfaceEditor = useCallback(
         (targetSurfaceId: string) => {
-            const targetSurface = documentService?.getDocument().surfaces.find(next => next.id === targetSurfaceId);
+            const targetSurface = baseDocumentService?.getDocument().surfaces.find(next => next.id === targetSurfaceId);
             if (!targetSurface) {
                 return;
             }
@@ -408,7 +432,26 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                 modified: false,
             });
         },
-        [documentService, openEditorTab],
+        [baseDocumentService, openEditorTab],
+    );
+
+    const handleOpenComponentEditor = useCallback(
+        (targetComponentId: string) => {
+            const component = baseDocumentService?.getComponent(targetComponentId);
+            if (!component) {
+                return;
+            }
+            openEditorTab({
+                id: getComponentTabId(component.id),
+                title: component.name,
+                icon: <PanelsTopLeft className="w-4 h-4" />,
+                component: UISurfaceEditorTab,
+                payload: { componentId: component.id },
+                closable: true,
+                modified: false,
+            });
+        },
+        [baseDocumentService, openEditorTab],
     );
 
     const toolButtonClass = (active: boolean) =>
@@ -514,7 +557,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     if (!surface) {
         return (
             <div className="h-full flex items-center justify-center text-sm text-gray-500">
-                Interface not found
+                {isComponentEdit ? "Component not found" : "Interface not found"}
             </div>
         );
     }
@@ -541,6 +584,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         uiService={uiService}
                         localBlueprint={localBlueprint}
                         inputDialog={inputDialog}
+                        allowAddSelectionToComponentLibrary={!isComponentEdit}
                     />
 
                     {/* Top toolbar */}
@@ -585,8 +629,8 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                             type="button"
                             className={toolButtonClass(false)}
                             onClick={handleStartCurrentSurface}
-                            title="Open this interface in Dev Mode"
-                            disabled={!surfaceId}
+                            title={isComponentEdit ? "Components are edited as definitions" : "Open this interface in Dev Mode"}
+                            disabled={!surfaceId || isComponentEdit}
                         >
                             <Play className="w-4 h-4" />
                         </button>
@@ -654,6 +698,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                             uiService={uiService}
                             showOutlines={true}
                             openSurfaceEditor={handleOpenSurfaceEditor}
+                            openComponentEditor={handleOpenComponentEditor}
                         />
                     ) : null}
 
@@ -663,6 +708,8 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                             surfaceId={surface.id}
                             stateService={stateService}
                             documentService={documentService}
+                            runtimeBridge={runtimeBridge}
+                            enableComponents={!isComponentEdit}
                         />
                     )}
 

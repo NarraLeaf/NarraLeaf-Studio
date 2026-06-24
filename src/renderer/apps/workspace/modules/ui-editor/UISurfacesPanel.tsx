@@ -10,6 +10,7 @@ import {
     UISurface,
     UISurfaceKind,
     UISurfaceDesignSize,
+    UIComponentDefinition,
 } from "@shared/types/ui-editor/document";
 import { useRegistry } from "../../registry";
 import { UISurfaceEditorTab } from "./editors/UISurfaceEditorTab";
@@ -20,7 +21,19 @@ import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_SURFACE_SIZE, MAIN_APP_SURFACE_ID 
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { SurfaceActions } from "./panel/SurfaceActions";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
-import { SurfaceList } from "./panel/SurfaceList";
+import { SurfaceList, type SurfaceListGlobalBlueprintCard } from "./panel/SurfaceList";
+import { ComponentLibraryPanel } from "./panel/ComponentLibraryPanel";
+import { getComponentTabId } from "./editors/componentEditorAdapter";
+import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
+import { useBlueprintDocumentRevision } from "../blueprint-lite/hooks/useBlueprintDocumentRevision";
+import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
+import { GLOBAL_MAIN_OWNER_KEY } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
+import {
+    BlueprintLayerPreview,
+    resolveFirstBlueprintLayerPreview,
+} from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintLayerPreview";
+import { getOwnerLabel } from "@shared/types/ui-editor/ownerLabels";
 import {
     CreateSurfaceDialogContent,
     CreateSurfaceDialogValue,
@@ -29,6 +42,7 @@ import { DEFAULT_STAGE_SLOT_ID, STAGE_SLOT_LABELS, SURFACE_KIND_OPTIONS } from "
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const getSurfaceTabId = (surfaceId: string) => `${SURFACE_TAB_PREFIX}${surfaceId}`;
+const globalOwnerLabel = getOwnerLabel("globalMain");
 
 export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { context } = useWorkspace();
@@ -38,6 +52,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const [hasEnsuredAppSurface, setHasEnsuredAppSurface] = useState(false);
+    const blueprintRevision = useBlueprintDocumentRevision();
 
     const documentService = useMemo<UIDocumentService | null>(() => {
         if (!context) return null;
@@ -50,6 +65,14 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const runtimeBridge = useMemo<UIRuntimeBridgeService | null>(() => {
         if (!context) return null;
         return context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
+    }, [context]);
+    const localBlueprintService = useMemo<LocalBlueprintService | null>(() => {
+        if (!context) return null;
+        return context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+    }, [context]);
+    const nodeCatalog = useMemo<BlueprintNodeCatalogService | null>(() => {
+        if (!context) return null;
+        return context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     }, [context]);
 
     useEffect(() => {
@@ -75,6 +98,14 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const defaultDesignSize = useMemo<UISurfaceDesignSize>(() => {
         return surfaces[0]?.designSize ?? DEFAULT_UI_SURFACE_SIZE;
     }, [surfaces]);
+    const globalBlueprintId = useMemo(() => {
+        const blueprintDocument = localBlueprintService?.getBlueprintDocument();
+        return blueprintDocument?.ownerRecords[GLOBAL_MAIN_OWNER_KEY]?.activeBlueprintId;
+    }, [blueprintRevision, localBlueprintService]);
+    const globalBlueprintPreviewModel = useMemo(
+        () => resolveFirstBlueprintLayerPreview(localBlueprintService, nodeCatalog, globalBlueprintId),
+        [blueprintRevision, globalBlueprintId, localBlueprintService, nodeCatalog],
+    );
 
     const handleOpenSurface = useCallback((surface: UISurface) => {
         const tabId = getSurfaceTabId(surface.id);
@@ -84,6 +115,30 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             icon: <PanelsTopLeft className="w-4 h-4" />,
             component: UISurfaceEditorTab,
             payload: { surfaceId: surface.id },
+            closable: true,
+            modified: false,
+        });
+    }, [openEditorTab]);
+
+    const handleOpenGlobalBlueprint = useCallback(() => {
+        if (!globalBlueprintId) {
+            return;
+        }
+        openEditorTab(createBlueprintEntryEditorTab({
+            blueprintId: globalBlueprintId,
+            ownerKind: "globalMain",
+            surfaceId: GLOBAL_MAIN_OWNER_KEY,
+            title: globalOwnerLabel.titlePrefix,
+        }));
+    }, [globalBlueprintId, openEditorTab]);
+
+    const handleOpenComponent = useCallback((component: UIComponentDefinition) => {
+        openEditorTab({
+            id: getComponentTabId(component.id),
+            title: component.name,
+            icon: <PanelsTopLeft className="w-4 h-4" />,
+            component: UISurfaceEditorTab,
+            payload: { componentId: component.id },
             closable: true,
             modified: false,
         });
@@ -307,6 +362,20 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         promptCreateSurface,
     ]);
 
+    const globalBlueprintCard = useMemo<SurfaceListGlobalBlueprintCard | undefined>(() => {
+        if (kind !== "appSurface") {
+            return undefined;
+        }
+        return {
+            title: globalOwnerLabel.label,
+            subtitle: "Global",
+            typeLabel: "Blueprint",
+            preview: <BlueprintLayerPreview model={globalBlueprintPreviewModel} heightClassName="h-24" />,
+            canOpen: Boolean(globalBlueprintId),
+            onClick: handleOpenGlobalBlueprint,
+        };
+    }, [globalBlueprintId, globalBlueprintPreviewModel, handleOpenGlobalBlueprint, kind]);
+
     return (
         <div className="h-full flex flex-col">
             <SurfaceFilters
@@ -321,9 +390,16 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             <SurfaceList
                 surfaces={filteredSurfaces}
                 surfaceKind={kind}
+                globalBlueprintCard={globalBlueprintCard}
                 renderSurfacePreview={renderSurfacePreview}
                 onSurfaceClick={handleSurfaceClick}
                 onOpenMenu={handleOpenMenu}
+            />
+            <ComponentLibraryPanel
+                documentService={documentService}
+                runtimeBridge={runtimeBridge}
+                uiService={uiService}
+                onOpenComponent={handleOpenComponent}
             />
             <ContextMenu
                 items={menuItems}
