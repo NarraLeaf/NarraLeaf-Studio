@@ -25,6 +25,8 @@ import {
     surfaceThresholdFromViewportPx,
     DEFAULT_SNAP_THRESHOLD_PX,
 } from "@/lib/ui-editor/snapping";
+import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 
 const WHEEL_ZOOM_SPEED = 0.003;
 const PINCH_ZOOM_SPEED = 0.006;
@@ -61,6 +63,7 @@ type UseSurfaceInteractionEventsParams = {
     panStateRef: MutableRefObject<PanState>;
     documentService: UIDocumentService;
     stateService: UIEditorStateService;
+    uiService?: UIService | null;
     /** When both return allow snapping, insert drag corners snap to guides. */
     insertSnapEnabled?: () => boolean;
     insertSnapSuspended?: () => boolean;
@@ -87,6 +90,7 @@ export function useSurfaceInteractionEvents({
     panStateRef,
     documentService,
     stateService,
+    uiService,
     insertSnapEnabled,
     insertSnapSuspended,
 }: UseSurfaceInteractionEventsParams) {
@@ -274,7 +278,7 @@ export function useSurfaceInteractionEvents({
                     currentX: surfacePoint.x,
                     currentY: surfacePoint.y,
                 });
-                stateService.setSelection({ type: null, data: null });
+                selectSurfaceForProperties(stateService, surfaceId, uiService);
                 return;
             }
 
@@ -287,7 +291,7 @@ export function useSurfaceInteractionEvents({
                             ? cur.filter(id => id !== elementId)
                             : [...cur, elementId];
                         if (nextIds.length === 0) {
-                            stateService.setSelection({ type: null, data: null });
+                            selectSurfaceForProperties(stateService, surfaceId, uiService);
                         } else {
                             stateService.setUIElementSelection({
                                 editor: "ui",
@@ -347,7 +351,7 @@ export function useSurfaceInteractionEvents({
                 if (isMoveableTarget) {
                     return;
                 }
-                stateService.setSelection({ type: null, data: null });
+                selectSurfaceForProperties(stateService, surfaceId, uiService);
                 containerDrillLastPointerRef.current = null;
             }
         };
@@ -372,6 +376,7 @@ export function useSurfaceInteractionEvents({
         documentService,
         selectionData,
         surface,
+        uiService,
         clientToSurfaceCoords,
         insertPreviewRef,
         insertStateRef,

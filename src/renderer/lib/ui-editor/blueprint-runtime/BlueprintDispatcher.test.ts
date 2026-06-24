@@ -4,8 +4,12 @@ import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-ed
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
+    BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
@@ -323,6 +327,128 @@ describe("BlueprintDispatcher", () => {
         releaseBlueprintWidgetLocals("surface", "button", blueprintId);
     });
 
+    it("dispatches mounted widget keyboard event payload outputs", async () => {
+        const blueprintId = "bp-button-keyboard-payload";
+        releaseBlueprintWidgetLocals("surface", "button", blueprintId);
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [blueprintId]: {
+                    id: blueprintId,
+                    name: "Button Keyboard Logic",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: {
+                        variables: {
+                            keyName: { id: "keyName", name: "keyName", valueType: "string", defaultValue: "" },
+                        },
+                        fields: {},
+                        functions: {},
+                    },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                keyDown: {
+                                    id: "keyDown",
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN },
+                                            setKey: {
+                                                id: "setKey",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "keyName" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
+                                            { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                "widgetMain:surface:button": {
+                    activeBlueprintId: blueprintId,
+                    privateBlueprintIds: [blueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["button"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                button: {
+                    id: "button",
+                    type: "nl.button",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 100, height: 32 },
+                },
+            },
+        };
+        const debug = new DebugBridge();
+        const hostAdapter: UIHostAdapter = { host: "player" };
+
+        await dispatchBlueprintUiEvent({
+            document,
+            blueprintDocument,
+            surfaceId: "surface",
+            elementId: "button",
+            eventName: "keyDown",
+            eventPayload: {
+                key: "Enter",
+                code: "Enter",
+                repeat: false,
+                altKey: false,
+                ctrlKey: false,
+                shiftKey: false,
+                metaKey: false,
+            },
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+
+        const locals = acquireBlueprintWidgetLocals(
+            "surface",
+            "button",
+            blueprintId,
+            blueprintDocument.blueprints[blueprintId]!,
+        );
+        expect(locals.keyName).toBe("Enter");
+        releaseBlueprintWidgetLocals("surface", "button", blueprintId);
+    });
+
     it("passes list item event payload outputs into data-pin consumers", async () => {
         const blueprintId = "bp-list-item-payload";
         releaseBlueprintWidgetLocals("surface", "list", blueprintId);
@@ -575,6 +701,273 @@ describe("BlueprintDispatcher", () => {
                 surfaceId: "surface",
             }).initialized,
         ).toBe("yes");
+    });
+
+    it("dispatches global and surface any-key event payloads", async () => {
+        const globalBlueprintId = "bp-global-keyboard";
+        const surfaceBlueprintId = "bp-surface-keyboard";
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [globalBlueprintId]: {
+                    id: globalBlueprintId,
+                    name: "Global Keyboard",
+                    owner: { kind: "globalMain" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: {
+                        variables: {
+                            lastKey: { id: "lastKey", name: "lastKey", valueType: "string", defaultValue: "" },
+                        },
+                        fields: {},
+                        functions: {},
+                    },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                keyDown: {
+                                    id: "keyDown",
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN },
+                                            setKey: {
+                                                id: "setKey",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "lastKey" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
+                                            { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+                [surfaceBlueprintId]: {
+                    id: surfaceBlueprintId,
+                    name: "Surface Keyboard",
+                    owner: { kind: "surfaceMain", surfaceId: "surface" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: {
+                        variables: {
+                            lastKey: { id: "lastKey", name: "lastKey", valueType: "string", defaultValue: "" },
+                        },
+                        fields: {},
+                        functions: {},
+                    },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                keyUp: {
+                                    id: "keyUp",
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP },
+                                            setKey: {
+                                                id: "setKey",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "lastKey" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
+                                            { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                globalMain: {
+                    activeBlueprintId: globalBlueprintId,
+                    privateBlueprintIds: [globalBlueprintId],
+                    initializedFrontend: "visual",
+                },
+                "surfaceMain:surface": {
+                    activeBlueprintId: surfaceBlueprintId,
+                    privateBlueprintIds: [surfaceBlueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const debug = new DebugBridge();
+        const hostAdapter: UIHostAdapter = { host: "player" };
+
+        await dispatchGlobalBlueprintEvent({
+            blueprintDocument,
+            eventName: "keyDown",
+            eventPayload: {
+                key: "Escape",
+                code: "Escape",
+                repeat: false,
+                altKey: false,
+                ctrlKey: false,
+                shiftKey: false,
+                metaKey: false,
+            },
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+        await dispatchSurfaceBlueprintEvent({
+            blueprintDocument,
+            surfaceId: "surface",
+            eventName: "keyUp",
+            eventPayload: {
+                key: " ",
+                code: "Space",
+                repeat: false,
+                altKey: false,
+                ctrlKey: false,
+                shiftKey: false,
+                metaKey: false,
+            },
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+
+        expect(
+            acquireBlueprintExecutionLocals({
+                blueprintDocument,
+                currentBlueprintId: globalBlueprintId,
+            }).lastKey,
+        ).toBe("Escape");
+        expect(
+            acquireBlueprintExecutionLocals({
+                blueprintDocument,
+                currentBlueprintId: surfaceBlueprintId,
+                surfaceId: "surface",
+            }).lastKey,
+        ).toBe(" ");
+    });
+
+    it("filters On Key event heads case-insensitively", async () => {
+        const blueprintId = "bp-global-on-key-filter";
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [blueprintId]: {
+                    id: blueprintId,
+                    name: "Global On Key",
+                    owner: { kind: "globalMain" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: {
+                        variables: {
+                            ctrlHeld: { id: "ctrlHeld", name: "ctrlHeld", valueType: "boolean", defaultValue: false },
+                            emptyMatched: {
+                                id: "emptyMatched",
+                                name: "emptyMatched",
+                                valueType: "boolean",
+                                defaultValue: false,
+                            },
+                        },
+                        fields: {},
+                        functions: {},
+                    },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                escapeDown: {
+                                    id: "escapeDown",
+                                    graph: {
+                                        nodes: {
+                                            head: {
+                                                id: "head",
+                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
+                                                params: { [BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME]: "escape" },
+                                            },
+                                            setCtrl: {
+                                                id: "setCtrl",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "ctrlHeld" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setCtrl", port: "in" } },
+                                            { from: { nodeId: "head", port: "ctrlKey" }, to: { nodeId: "setCtrl", port: "value" } },
+                                        ],
+                                    },
+                                },
+                                emptyKeyDown: {
+                                    id: "emptyKeyDown",
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN },
+                                            setEmpty: {
+                                                id: "setEmpty",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "emptyMatched" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setEmpty", port: "in" } },
+                                            { from: { nodeId: "head", port: "ctrlKey" }, to: { nodeId: "setEmpty", port: "value" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                globalMain: {
+                    activeBlueprintId: blueprintId,
+                    privateBlueprintIds: [blueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const debug = new DebugBridge();
+        const hostAdapter: UIHostAdapter = { host: "player" };
+
+        await dispatchGlobalBlueprintEvent({
+            blueprintDocument,
+            eventName: "keyDown",
+            eventPayload: { key: "Enter", ctrlKey: true },
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+        let locals = acquireBlueprintExecutionLocals({ blueprintDocument, currentBlueprintId: blueprintId });
+        expect(locals.ctrlHeld).toBe(false);
+        expect(locals.emptyMatched).toBe(false);
+
+        await dispatchGlobalBlueprintEvent({
+            blueprintDocument,
+            eventName: "keyDown",
+            eventPayload: { key: "ESCAPE", ctrlKey: true },
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+        locals = acquireBlueprintExecutionLocals({ blueprintDocument, currentBlueprintId: blueprintId });
+        expect(locals.ctrlHeld).toBe(true);
+        expect(locals.emptyMatched).toBe(false);
     });
 
     it("dispatches Page Event payloads to frame widget blueprints", async () => {

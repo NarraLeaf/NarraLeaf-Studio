@@ -50,6 +50,21 @@ const INIT_EVENT: WidgetLogicEventDef = {
     headNodeTypes: ["blueprint.event.head.init"],
 };
 
+const KEYBOARD_EVENTS: readonly WidgetLogicEventDef[] = [
+    {
+        id: "keyDown",
+        displayName: "Key down",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.keyDown", "blueprint.event.head.anyKeyDown"],
+    },
+    {
+        id: "keyUp",
+        displayName: "Key up",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.keyUp", "blueprint.event.head.anyKeyUp"],
+    },
+];
+
 const DISPLAYABLE_EVENTS: readonly WidgetLogicEventDef[] = [
     {
         id: "mouseClick",
@@ -105,6 +120,7 @@ const DISPLAYABLE_EVENTS: readonly WidgetLogicEventDef[] = [
         dispatchKind: "interaction",
         headNodeTypes: ["blueprint.event.head.rightClick"],
     },
+    ...KEYBOARD_EVENTS,
     {
         id: "focus",
         displayName: "Focus",
@@ -199,6 +215,7 @@ const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
         dispatchKind: "interaction",
         headNodeTypes: ["blueprint.event.head.pageEvent"],
     },
+    ...KEYBOARD_EVENTS,
     ...BROADCAST_EVENTS,
 ];
 
@@ -223,6 +240,7 @@ const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
         dispatchKind: "interaction",
         headNodeTypes: ["blueprint.event.head.sliderDragEnd"],
     },
+    ...KEYBOARD_EVENTS,
     ...BROADCAST_EVENTS,
 ];
 
@@ -239,6 +257,7 @@ const COLLECTION_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     FLUSH_EVENT,
     SCROLL_EVENT,
     ...LIST_ITEM_EVENTS,
+    ...KEYBOARD_EVENTS,
     ...BROADCAST_EVENTS,
 ];
 

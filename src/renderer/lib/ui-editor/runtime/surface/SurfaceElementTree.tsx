@@ -483,6 +483,8 @@ function renderElementTree(
             styleOverrides={styleOverrides}
             hostAdapter={hostAdapter}
             interactive={editorChrome}
+            listItemScope={listItemScope ?? null}
+            instanceKey={instanceKey}
         >
             {editorChrome && hostAdapter.blueprintRuntime ? (
                 <BlueprintWidgetInitLifecycle

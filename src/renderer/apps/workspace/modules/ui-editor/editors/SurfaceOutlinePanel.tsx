@@ -5,11 +5,13 @@ import type { InputDialog } from "@/lib/components/dialogs";
 import type { UIEditorStateService } from "@services/ui-editor/UIEditorStateService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 
 export type SurfaceOutlinePanelProps = {
     surfaceId: string;
     stateService: UIEditorStateService | null;
     documentService: UIDocumentService | null;
+    uiService: UIService | null;
     localBlueprint: LocalBlueprintService | null;
     inputDialog: InputDialog | null;
 };
@@ -18,6 +20,7 @@ export function SurfaceOutlinePanel({
     surfaceId,
     stateService,
     documentService,
+    uiService,
     localBlueprint,
     inputDialog,
 }: SurfaceOutlinePanelProps) {
@@ -74,6 +77,7 @@ export function SurfaceOutlinePanel({
                                 surfaceId={surfaceId}
                                 stateService={stateService!}
                                 documentService={documentService!}
+                                uiService={uiService}
                                 localBlueprint={localBlueprint!}
                                 inputDialog={inputDialog}
                             />
