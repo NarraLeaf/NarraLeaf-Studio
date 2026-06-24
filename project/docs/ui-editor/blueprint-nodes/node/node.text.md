@@ -4,6 +4,12 @@
 
 Text 节点默认作用于当前 Text 元素。
 
+Text Self 节点只在 `nl.text` 自己的私有蓝图中出现，创建浮窗中归入 `Text` 分类，且没有 Element 输入。
+
+Text Element 节点使用同一属性目录下的 `blueprint.element.text.*`，带顶部 `element:nl.text` 输入，创建浮窗中归入 `Element` 分类。它们只有在当前图中已有绑定到 `nl.text` 的 Element Literal 或 Element Flush 时才会显示；放置后不会自动连线，必须手动连接 `element` 输入。读取节点是 pure，可用于 Blueprint Value；写入节点只用于 event/macro。
+
+下文列出的 `blueprint.text.*` 均有对应 `blueprint.element.text.*` Element 版。
+
 ## Get Text
 
 `blueprint.text.getText` - 获取文本内容
@@ -78,14 +84,14 @@ Text 节点默认作用于当前 Text 元素。
 `blueprint.text.getTextColor` - 获取文本颜色
 
 获取当前文本颜色。
-- `color` - 文本颜色（传出引脚）
+- `color` - 文本颜色（传出引脚，`RGBAColor`）
 
 ## Set Text Color
 
 `blueprint.text.setTextColor` - 设置文本颜色
 
 设置当前文本颜色。
-- `color` - 文本颜色
+- `color` - 文本颜色（`RGBAColor`）
 
 ## Get Text Align
 
@@ -166,7 +172,7 @@ Text 节点默认作用于当前 Text 元素。
 - `fontAssetId` - 字体资源 ID（传出引脚）
 - `fontSize` - 字号（传出引脚）
 - `fontWeight` - 字重（传出引脚）
-- `color` - 文本颜色（传出引脚）
+- `color` - 文本颜色（传出引脚，`RGBAColor`）
 - `textAlign` - 横向对齐方式（传出引脚）
 - `textVerticalAlign` - 纵向对齐方式（传出引脚）
 - `lineHeight` - 行高（传出引脚）
@@ -182,7 +188,7 @@ Text 节点默认作用于当前 Text 元素。
 - `fontAssetId` - 字体资源 ID
 - `fontSize` - 字号
 - `fontWeight` - 字重
-- `color` - 文本颜色
+- `color` - 文本颜色（`RGBAColor`）
 - `textAlign` - 横向对齐方式
 - `textVerticalAlign` - 纵向对齐方式
 - `lineHeight` - 行高

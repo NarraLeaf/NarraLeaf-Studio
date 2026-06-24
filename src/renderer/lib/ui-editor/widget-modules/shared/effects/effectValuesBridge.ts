@@ -5,7 +5,8 @@ import {
 } from "@shared/types/ui-editor/effects";
 
 export function readElementEffectValuesFromGetter(
-    get: (key: AppearancePropertyKey) => unknown
+    get: (key: AppearancePropertyKey) => unknown,
+    options: { includeTextShadow?: boolean } = {}
 ): ElementEffectValues {
     return normalizeElementEffectValues({
         effectBlur: get("effectBlur"),
@@ -15,11 +16,10 @@ export function readElementEffectValuesFromGetter(
         effectBlend: get("effectBlend"),
         effectGlow: get("effectGlow"),
         effectFilter: get("effectFilter"),
-        effectTextShadow: null,
+        effectTextShadow: options.includeTextShadow ? get("effectTextShadow") : null,
     });
 }
 
-/** Appearance rows never author `effectTextShadow` (text-only static field). */
 const APPEARANCE_PATCHABLE_EFFECT_KEYS = [
     "effectBlur",
     "effectBackgroundBlur",
@@ -30,6 +30,11 @@ const APPEARANCE_PATCHABLE_EFFECT_KEYS = [
     "effectFilter",
 ] as const satisfies readonly AppearancePropertyKey[];
 
+const APPEARANCE_PATCHABLE_TEXT_EFFECT_KEYS = [
+    ...APPEARANCE_PATCHABLE_EFFECT_KEYS,
+    "effectTextShadow",
+] as const satisfies readonly AppearancePropertyKey[];
+
 function fieldEqual(a: unknown, b: unknown): boolean {
     return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -38,9 +43,11 @@ function fieldEqual(a: unknown, b: unknown): boolean {
 export function diffPatchElementEffectValues(
     prev: ElementEffectValues,
     next: ElementEffectValues,
-    patch: (key: AppearancePropertyKey, value: AppearanceRowValue) => void
+    patch: (key: AppearancePropertyKey, value: AppearanceRowValue) => void,
+    options: { includeTextShadow?: boolean } = {}
 ): void {
-    for (const k of APPEARANCE_PATCHABLE_EFFECT_KEYS) {
+    const keys = options.includeTextShadow ? APPEARANCE_PATCHABLE_TEXT_EFFECT_KEYS : APPEARANCE_PATCHABLE_EFFECT_KEYS;
+    for (const k of keys) {
         if (!fieldEqual(prev[k], next[k])) {
             patch(k, next[k] as AppearanceRowValue);
         }

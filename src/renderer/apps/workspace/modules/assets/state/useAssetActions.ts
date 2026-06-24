@@ -435,110 +435,112 @@ export function useAssetActions({
 
     const handleDelete = useCallback(async () => {
         notifyLoading(true);
-        const ctx = contextRef.current;
-        if (!ctx) { notifyLoading(false); return; }
-        const uiService = ctx.services.get<UIService>(Services.UI);
-        const assetsService = ctx.services.get<AssetsService>(Services.Assets);
-        
-        // Determine targets in priority order: selection > context menu target > focused item
-        let targets: { isGroup: boolean; type: AssetType; item: Asset | AssetGroup }[] = [];
+        try {
+            const ctx = contextRef.current;
+            if (!ctx) return;
+            const uiService = ctx.services.get<UIService>(Services.UI);
+            const assetsService = ctx.services.get<AssetsService>(Services.Assets);
+            
+            // Determine targets in priority order: selection > context menu target > focused item
+            let targets: { isGroup: boolean; type: AssetType; item: Asset | AssetGroup }[] = [];
 
-        if (selectedItems.size > 0) {
-            const assetIds = Array.from(selectedItems).filter(id => id.startsWith('asset:')).map(id => id.replace('asset:', ''));
-            const groupIds = Array.from(selectedItems).filter(id => id.startsWith('group:')).map(id => id.replace('group:', ''));
+            if (selectedItems.size > 0) {
+                const assetIds = Array.from(selectedItems).filter(id => id.startsWith('asset:')).map(id => id.replace('asset:', ''));
+                const groupIds = Array.from(selectedItems).filter(id => id.startsWith('group:')).map(id => id.replace('group:', ''));
 
-            // Add assets
-            Object.values(assets).flat().forEach(a => {
-                if (assetIds.includes(a.id)) {
-                    targets.push({ isGroup: false, type: a.type, item: a });
-                }
-            });
-
-            // Add groups
-            for (const [type, groupList] of Object.entries(groups)) {
-                groupList.forEach(g => {
-                    if (groupIds.includes(g.id)) {
-                        targets.push({ isGroup: true, type: type as AssetType, item: g });
+                // Add assets
+                Object.values(assets).flat().forEach(a => {
+                    if (assetIds.includes(a.id)) {
+                        targets.push({ isGroup: false, type: a.type, item: a });
                     }
                 });
-            }
-        } else if (contextMenuTarget?.item) {
-            targets = [{
-                isGroup: contextMenuTarget.isGroup,
-                type: contextMenuTarget.type,
-                item: contextMenuTarget.item,
-            }];
-        }
 
-        if (targets.length === 0) return;
-        // Fallback: if still no targets, try using focused item
-        if (targets.length === 0 && focusedItemId) {
-            if (focusedItemId.startsWith('asset:')) {
-                const id = focusedItemId.replace('asset:', '');
-                const asset = Object.values(assets).flat().find(a => a.id === id);
-                if (asset) targets.push({ isGroup: false, type: asset.type, item: asset });
-            } else if (focusedItemId.startsWith('group:')) {
-                const id = focusedItemId.replace('group:', '');
+                // Add groups
                 for (const [type, groupList] of Object.entries(groups)) {
-                    const g = groupList.find(gr => gr.id === id);
-                    if (g) {
-                        targets.push({ isGroup: true, type: type as AssetType, item: g });
-                        break;
+                    groupList.forEach(g => {
+                        if (groupIds.includes(g.id)) {
+                            targets.push({ isGroup: true, type: type as AssetType, item: g });
+                        }
+                    });
+                }
+            } else if (contextMenuTarget?.item) {
+                targets = [{
+                    isGroup: contextMenuTarget.isGroup,
+                    type: contextMenuTarget.type,
+                    item: contextMenuTarget.item,
+                }];
+            }
+
+            // Fallback: if still no targets, try using focused item
+            if (targets.length === 0 && focusedItemId) {
+                if (focusedItemId.startsWith('asset:')) {
+                    const id = focusedItemId.replace('asset:', '');
+                    const asset = Object.values(assets).flat().find(a => a.id === id);
+                    if (asset) targets.push({ isGroup: false, type: asset.type, item: asset });
+                } else if (focusedItemId.startsWith('group:')) {
+                    const id = focusedItemId.replace('group:', '');
+                    for (const [type, groupList] of Object.entries(groups)) {
+                        const g = groupList.find(gr => gr.id === id);
+                        if (g) {
+                            targets.push({ isGroup: true, type: type as AssetType, item: g });
+                            break;
+                        }
                     }
                 }
             }
-        }
 
-        if (targets.length === 0) return;
+            if (targets.length === 0) return;
 
-        // Check for locked assets
-        const lockedAssets: { asset: Asset; reasons: string[] }[] = [];
-        for (const target of targets) {
-            if (!target.isGroup) {
-                const asset = target.item as Asset;
-                if (assetsService.isAssetLocked(asset.id)) {
-                    const reasons = assetsService.getAssetLocks(asset.id);
-                    lockedAssets.push({ asset, reasons });
+            // Check for locked assets
+            const lockedAssets: { asset: Asset; reasons: string[] }[] = [];
+            for (const target of targets) {
+                if (!target.isGroup) {
+                    const asset = target.item as Asset;
+                    if (assetsService.isAssetLocked(asset.id)) {
+                        const reasons = assetsService.getAssetLocks(asset.id);
+                        lockedAssets.push({ asset, reasons });
+                    }
                 }
             }
-        }
 
-        // If there are locked assets, show warning
-        if (lockedAssets.length > 0) {
-            const lockMessages = lockedAssets.map(({ asset, reasons }) => 
-                `- ${asset.name}:\n  ${reasons.join('\n  ')}`
-            ).join('\n');
-            
-            const message = `${lockMessages}`;
-            const forceConfirmed = await uiService.showConfirm('Assets are in use', message);
-            if (!forceConfirmed) {
-                notifyLoading(false);
+            // If there are locked assets, show warning
+            if (lockedAssets.length > 0) {
+                const lockMessages = lockedAssets.map(({ asset, reasons }) => 
+                    `- ${asset.name}:\n  ${reasons.join('\n  ')}`
+                ).join('\n');
+                
+                const message = `${lockMessages}`;
+                const forceConfirmed = await uiService.showConfirm('Assets are in use', message);
+                if (!forceConfirmed) {
+                    return;
+                }
+            }
+
+            const confirmed = await uiService.showConfirm(`Delete ${targets.length} items?`, 'All assets in the group will be deleted. This action cannot be undone.');
+            if (!confirmed) {
                 return;
             }
-        }
 
-        const confirmed = await uiService.showConfirm(`Delete ${targets.length} items?`, 'All assets in the group will be deleted. This action cannot be undone.');
-        if (!confirmed) {
-            notifyLoading(false);
-            return;
-        }
+            // Remove duplicate targets by id to avoid double deletion
+            const uniqueTargets = Array.from(new Map(targets.map(t => [t.item.id, t])).values());
 
-        // Remove duplicate targets by id to avoid double deletion
-        const uniqueTargets = Array.from(new Map(targets.map(t => [t.item.id, t])).values());
-
-        await withAssetsService(async (assetsService) => {
-            await assetsService.transaction(async (svc) => {
-                await Promise.all(uniqueTargets.map(async (t) => {
-                    if (t.isGroup) {
-                        await svc.deleteGroup(t.type, (t.item as AssetGroup).id, true);
-                    } else {
-                        await svc.deleteAsset(t.item as Asset);
-                    }
-                }));
+            await withAssetsService(async (assetsService) => {
+                await assetsService.transaction(async (svc) => {
+                    await Promise.all(uniqueTargets.map(async (t) => {
+                        if (t.isGroup) {
+                            await svc.deleteGroup(t.type, (t.item as AssetGroup).id, true);
+                        } else {
+                            await svc.deleteAsset(t.item as Asset);
+                        }
+                    }));
+                });
             });
-        });
-        onActionComplete();
-        notifyLoading(false);
+            onActionComplete();
+        } catch (error) {
+            console.error("Failed to delete asset", error);
+        } finally {
+            notifyLoading(false);
+        }
     }, [selectedItems, assets, groups, contextMenuTarget, onActionComplete, withAssetsService, focusedItemId, notifyLoading]);
 
 

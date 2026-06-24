@@ -4,14 +4,21 @@
  */
 
 import {
+    BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_RENDER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOUBLE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOWN,
@@ -27,9 +34,13 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
 } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_VALUE_TYPE_ELEMENT } from "@shared/types/blueprint/valueTypes";
 import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../../types";
 
@@ -44,6 +55,41 @@ const PIN_BUTTON: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "integer",
     label: "Button",
+};
+const PIN_KEY: BlueprintNodePinDef = {
+    id: "key",
+    kind: "output",
+    semantic: "data",
+    valueType: "string",
+    label: "Key",
+};
+const PIN_ALT_KEY: BlueprintNodePinDef = {
+    id: "altKey",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Alt",
+};
+const PIN_CTRL_KEY: BlueprintNodePinDef = {
+    id: "ctrlKey",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Ctrl",
+};
+const PIN_SHIFT_KEY: BlueprintNodePinDef = {
+    id: "shiftKey",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Shift",
+};
+const PIN_META_KEY: BlueprintNodePinDef = {
+    id: "metaKey",
+    kind: "output",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Meta",
 };
 const PIN_DELTA_X: BlueprintNodePinDef = {
     id: "deltaX",
@@ -80,19 +126,40 @@ const PIN_COUNT: BlueprintNodePinDef = {
     valueType: "integer",
     label: "Count",
 };
-const PIN_KEY: BlueprintNodePinDef = {
-    id: "key",
-    kind: "output",
-    semantic: "data",
-    valueType: "string",
-    label: "Key",
-};
 const PIN_ITEM: BlueprintNodePinDef = {
     id: "item",
     kind: "output",
     semantic: "data",
     valueType: "json",
     label: "Item",
+};
+const PIN_PROPS: BlueprintNodePinDef = {
+    id: "props",
+    kind: "output",
+    semantic: "data",
+    valueType: "json",
+    label: "Props",
+};
+const PIN_VALUE: BlueprintNodePinDef = {
+    id: "value",
+    kind: "output",
+    semantic: "data",
+    valueType: "float",
+    label: "Value",
+};
+const PIN_PREVIOUS_VALUE: BlueprintNodePinDef = {
+    id: "previousValue",
+    kind: "output",
+    semantic: "data",
+    valueType: "float",
+    label: "Previous Value",
+};
+const PIN_ELEMENT: BlueprintNodePinDef = {
+    id: "element",
+    kind: "output",
+    semantic: "data",
+    valueType: BLUEPRINT_VALUE_TYPE_ELEMENT,
+    label: "Element",
 };
 
 function widgetTypesForHead(headType: string): string[] {
@@ -147,6 +214,28 @@ function broadcastEventHead(input: {
     };
 }
 
+function keyboardEventHead(input: {
+    type: string;
+    displayName: string;
+    keywords: string[];
+    pins: BlueprintNodePinDef[];
+    inspectorParams?: BlueprintNodeDef["inspectorParams"];
+}): BlueprintNodeDef {
+    return {
+        type: input.type,
+        displayName: input.displayName,
+        category: "Events",
+        keywords: input.keywords,
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        pins: input.pins,
+        inspectorParams: input.inspectorParams,
+        execute: eventHeadExecute,
+    };
+}
+
 export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     {
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
@@ -184,6 +273,32 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         pins: [THEN_PIN],
         execute: eventHeadExecute,
     },
+    keyboardEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
+        displayName: "On Key Down",
+        keywords: ["key", "keyboard", "down", "press", "global", "input"],
+        pins: [THEN_PIN, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
+        inspectorParams: [{ key: BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME, label: "Key", kind: "string" }],
+    }),
+    keyboardEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+        displayName: "On Key Up",
+        keywords: ["key", "keyboard", "up", "release", "global", "input"],
+        pins: [THEN_PIN, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
+        inspectorParams: [{ key: BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME, label: "Key", kind: "string" }],
+    }),
+    keyboardEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
+        displayName: "Any Key Down",
+        keywords: ["any", "key", "keyboard", "down", "press", "global", "input"],
+        pins: [THEN_PIN, PIN_KEY, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
+    }),
+    keyboardEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
+        displayName: "Any Key Up",
+        keywords: ["any", "key", "keyboard", "up", "release", "global", "input"],
+        pins: [THEN_PIN, PIN_KEY, PIN_ALT_KEY, PIN_CTRL_KEY, PIN_SHIFT_KEY, PIN_META_KEY],
+    }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
         displayName: "Init",
@@ -195,18 +310,6 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
             ],
         },
     }),
-    {
-        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
-        displayName: "Flush",
-        category: "Events",
-        keywords: ["flush", "refresh", "value", "state", "update"],
-        graphKinds: ["event"],
-        isPure: false,
-        role: "eventHead",
-        scope: { ownerKinds: ["widgetValue"] },
-        pins: [THEN_PIN],
-        execute: eventHeadExecute,
-    },
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
         displayName: "Mouse Click",
@@ -272,6 +375,24 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["blur", "focus", "keyboard", "gamepad"],
     }),
     widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+        displayName: "On Flush",
+        keywords: ["flush", "render", "redraw", "update", "current"],
+        pins: [THEN_PIN, PIN_ELEMENT],
+    }),
+    {
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+        displayName: "Element Flush",
+        category: "Events",
+        keywords: ["element", "flush", "listen", "render", "redraw", "update"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "elementEventHead",
+        scope: { ownerKinds: ["widgetMain", "surfaceMain"] },
+        pins: [THEN_PIN, PIN_ELEMENT],
+        execute: eventHeadExecute,
+    },
+    widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
         displayName: "Scroll",
         keywords: ["scroll", "list", "offset", "progress"],
@@ -312,10 +433,34 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         pins: [THEN_PIN, PIN_INDEX, PIN_COUNT, PIN_KEY, PIN_ITEM],
     }),
     widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
+        displayName: "List Item Refresh",
+        keywords: ["list", "item", "refresh", "props", "row", "context"],
+        pins: [THEN_PIN, PIN_PROPS, PIN_ITEM, PIN_INDEX, PIN_COUNT, PIN_KEY],
+    }),
+    widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
         displayName: "Selection Changed",
         keywords: ["selection", "selected", "change", "list", "item"],
         pins: [THEN_PIN, PIN_INDEX, PIN_PREVIOUS_INDEX, PIN_COUNT, PIN_KEY, PIN_ITEM],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
+        displayName: "Drag Start",
+        keywords: ["slider", "drag", "start", "value"],
+        pins: [THEN_PIN, PIN_VALUE],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
+        displayName: "Value Changed",
+        keywords: ["slider", "value", "change"],
+        pins: [THEN_PIN, PIN_VALUE, PIN_PREVIOUS_VALUE],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
+        displayName: "Drag End",
+        keywords: ["slider", "drag", "end", "value"],
+        pins: [THEN_PIN, PIN_VALUE],
     }),
     broadcastEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,

@@ -7,6 +7,7 @@ import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { Fs } from "@shared/utils/fs";
+import { decodeProjectConfig, findProjectConfigFileName } from "@shared/utils/nlproj";
 import type { DevModeBundleLoadContext, DevModeBundleSource } from "./types";
 
 /**
@@ -23,6 +24,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     };
     const localBlueprints = uigraphs.blueprintDocument;
     const sharedBlueprints = await loadSharedBlueprints(context.projectPath);
+    const projectIdentifier = await readProjectIdentifier(context.projectPath);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
@@ -37,6 +39,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         blueprintCompiledScripts: context.blueprintCompiledScripts,
         blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
         blueprintScriptsCompileErrors: context.blueprintScriptsCompileErrors,
+        meta: projectIdentifier ? { projectIdentifier } : undefined,
     };
 }
 
@@ -85,6 +88,37 @@ async function loadSharedBlueprints(projectPath: string): Promise<SharedBlueprin
         }
     }
     return out;
+}
+
+async function readProjectIdentifier(projectPath: string): Promise<string | undefined> {
+    try {
+        const entriesResult = await Fs.dirEntries(projectPath);
+        if (!entriesResult.ok) {
+            return undefined;
+        }
+        const configFileName = findProjectConfigFileName(entriesResult.data.map(entry => ({
+            name: path.parse(entry.name).name,
+            ext: path.extname(entry.name) || null,
+            type: entry.isFile() ? "file" : entry.isDirectory() ? "directory" : "other",
+        })));
+        if (!configFileName) {
+            return undefined;
+        }
+        const configPath = path.join(projectPath, configFileName);
+        if (configFileName.endsWith(".nlproj")) {
+            const result = await Fs.readRaw(configPath);
+            if (!result.ok) {
+                return undefined;
+            }
+            const id = decodeProjectConfig(result.data).identifier;
+            return typeof id === "string" && id.trim() ? id.trim() : undefined;
+        }
+        const config = await readJsonFile<Record<string, unknown>>(configPath);
+        const id = config.identifier;
+        return typeof id === "string" && id.trim() ? id.trim() : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 function resolveAssetContentPath(projectPath: string, assetId: string): string | null {

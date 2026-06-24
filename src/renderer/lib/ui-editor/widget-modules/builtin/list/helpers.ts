@@ -9,8 +9,26 @@ import {
     defaultListScrollbarPartStyle,
     defaultListScrollbarProps,
     defaultListWidgetProps,
+    type ListDirection,
     type ListWidgetProps,
 } from "./types";
+
+export type ListItemContentAlignmentStyle = {
+    justifyContent?: "flex-end";
+    alignItems?: "flex-end";
+};
+
+export function resolveListItemContentAlignmentStyle(
+    scrollbarOnLeft: boolean,
+    templateDirection: ListDirection,
+): ListItemContentAlignmentStyle {
+    if (!scrollbarOnLeft) {
+        return {};
+    }
+    return templateDirection === "horizontal"
+        ? { justifyContent: "flex-end" }
+        : { alignItems: "flex-end" };
+}
 
 function finiteNumber(value: unknown, fallback: number): number {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;

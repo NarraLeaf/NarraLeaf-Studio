@@ -124,4 +124,71 @@ describe("UI Frame target validation", () => {
             }),
         ).toBe("cycle");
     });
+
+    it("normalizes optional Page component animation settings", () => {
+        expect(normalizeUIFrameWidgetProps({ targetSurfaceId: "page-b" }).animation).toBeUndefined();
+        expect(
+            normalizeUIFrameWidgetProps({
+                targetSurfaceId: "page-b",
+                animation: {
+                    enter: "fade",
+                    exit: "slide",
+                    enterDirection: "up",
+                    exitDirection: "angle",
+                    exitAngleDegrees: 225,
+                    enterDurationSeconds: 0.35,
+                    exitDurationSeconds: 0.75,
+                    exitBlocking: true,
+                },
+            }).animation,
+        ).toEqual({
+            enter: "fade",
+            exit: "slide",
+            enterDirection: "up",
+            exitDirection: "angle",
+            enterAngleDegrees: 0,
+            exitAngleDegrees: 225,
+            enterDurationSeconds: 0.35,
+            exitDurationSeconds: 0.75,
+            exitBlocking: true,
+        });
+        expect(
+            normalizeUIFrameWidgetProps({
+                animation: {
+                    enter: "spin",
+                    exit: "explode",
+                },
+            }).animation,
+        ).toEqual({
+            enter: "none",
+            exit: "none",
+            enterDirection: "auto",
+            exitDirection: "auto",
+            enterAngleDegrees: 0,
+            exitAngleDegrees: 180,
+            enterDurationSeconds: 0.26,
+            exitDurationSeconds: 0.26,
+            exitBlocking: false,
+        });
+        expect(
+            normalizeUIFrameWidgetProps({
+                animation: {
+                    enter: "fade",
+                    exit: "slide",
+                    direction: "right",
+                    speed: "fast",
+                },
+            }).animation,
+        ).toEqual({
+            enter: "fade",
+            exit: "slide",
+            enterDirection: "right",
+            exitDirection: "right",
+            enterAngleDegrees: 0,
+            exitAngleDegrees: 180,
+            enterDurationSeconds: 0.16,
+            exitDurationSeconds: 0.16,
+            exitBlocking: false,
+        });
+    });
 });

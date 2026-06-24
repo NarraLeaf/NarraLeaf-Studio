@@ -7,6 +7,7 @@
 - `Services.Plugin` 仍是注释状态，`ServiceRegistry` 没有注册 `PluginService`。
 - `IPluginService` 只是空接口，没有对应 service class。
 - Launcher 的 Plugins tab 是 placeholder。
+- 安装授权窗口只展示 Studio 从结构化 install 权限项合成的权限文案；插件或 manifest 不能直接提供可显示的权限字符串。
 - `ProjectNameConvention.Plugins` 预留了 `.nlstudio/plugins/`。
 - `BlueprintNodeCatalogService` 注释和 API 支持 extension registration，但当前主要注册 built-in nodes。
 - `StoryService` 已有 plugin action registry：`registerPluginAction()`、`unregisterPluginAction()`、`listPluginActions()`、`onPluginActionsChanged()`。

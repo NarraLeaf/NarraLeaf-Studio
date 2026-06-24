@@ -11,6 +11,7 @@ import type {
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import { defaultContainerWidgetProps } from "@shared/types/ui-editor/container";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
+import { Button } from "@/lib/components/elements/Button";
 import { Select } from "@/lib/components/elements/Select";
 import type { UIInspectorData, InspectorContext } from "@/lib/ui-editor/widget-modules/types";
 import { getListProps } from "./helpers";
@@ -462,14 +463,17 @@ function ScrollbarCustomizeField(props: CustomFieldProps<UIInspectorData>) {
 
     return (
         <div className="space-y-2">
-            <button
+            <Button
                 type="button"
-                className="rounded border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-gray-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                variant="secondary"
+                size="md"
+                fullWidth
+                className="h-9 min-h-[34px] px-3 text-xs"
                 disabled={hasAuthoredParts}
                 onClick={createParts}
             >
                 {hasAuthoredParts ? "Scrollbar parts created" : "Customize scrollbar"}
-            </button>
+            </Button>
             {hasAuthoredParts ? (
                 <p className="text-[10px] leading-snug text-gray-500">
                     Track and thumb are authored elements in the list outline. Select them to edit their appearance.
@@ -814,31 +818,6 @@ export function createListInspector(ctx: InspectorContext) {
                                         },
                                     },
                                 ],
-                            }),
-                            defineField<D, any>({
-                                id: "list.itemKeyPath",
-                                type: "text",
-                                label: "Item key path",
-                                placeholder: "id",
-                                getValue: (d: D) => getLiveListProps(d).itemKeyPath ?? "id",
-                                setValue: (_d: D, v: string) => patch({ itemKeyPath: v }),
-                            }),
-                            defineField<D, any>({
-                                id: "list.previewItems",
-                                type: "textarea",
-                                rows: 5,
-                                label: "Sample items JSON",
-                                getValue: (d: D) => JSON.stringify(getLiveListProps(d).previewItems ?? [], null, 2),
-                                setValue: (_d: D, v: string) => {
-                                    try {
-                                        const parsed = JSON.parse(v);
-                                        if (Array.isArray(parsed)) {
-                                            patch({ previewItems: parsed });
-                                        }
-                                    } catch {
-                                        // Keep the last valid preview data while the user is typing.
-                                    }
-                                },
                             }),
                         ],
                     }),

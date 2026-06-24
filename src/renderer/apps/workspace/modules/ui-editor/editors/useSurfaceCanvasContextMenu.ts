@@ -22,12 +22,17 @@ import type { InputDialog } from "@/lib/components/dialogs";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import type { UISurface } from "@shared/types/ui-editor/document";
-import type { EditorDocumentService, EditorStateService } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
+import type {
+    EditorDocumentService,
+    EditorStateService,
+    EditorUIService,
+} from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
 
 export function useSurfaceCanvasContextMenu(params: {
     surface: UISurface | null | undefined;
     documentService: EditorDocumentService;
     stateService: EditorStateService;
+    uiService: EditorUIService;
     localBlueprint: LocalBlueprintService | null;
     widgetModules: UIWidgetModule[];
     inputDialog: InputDialog | null;
@@ -39,6 +44,7 @@ export function useSurfaceCanvasContextMenu(params: {
         surface,
         documentService,
         stateService,
+        uiService,
         localBlueprint,
         widgetModules,
         inputDialog,
@@ -113,16 +119,16 @@ export function useSurfaceCanvasContextMenu(params: {
                         uiEditorCopySelection(documentService, localBlueprint, surface.id, menuSel);
                     },
                     cut: () => {
-                        uiEditorCutSelection(documentService, localBlueprint, stateService, surface.id, menuSel);
+                        uiEditorCutSelection(documentService, localBlueprint, stateService, surface.id, menuSel, uiService);
                     },
                     duplicate: () => {
                         uiEditorDuplicateSelection(documentService, localBlueprint, stateService, surface.id, menuSel);
                     },
                     delete: () => {
-                        uiEditorDeleteSelection(documentService, stateService, surface.id, menuSel);
+                        uiEditorDeleteSelection(documentService, stateService, surface.id, menuSel, uiService);
                     },
                     selectAll: () => {
-                        uiEditorSelectAllInSurface(documentService, stateService, surface.id);
+                        uiEditorSelectAllInSurface(documentService, stateService, surface.id, uiService);
                     },
                     renamePrimary: () => {
                         if (!menuSel || menuSel.elementIds.length !== 1 || !inputDialog) {
@@ -166,6 +172,7 @@ export function useSurfaceCanvasContextMenu(params: {
             documentService,
             stateService,
             localBlueprint,
+            uiService,
             widgetModules,
             showMenu,
             hideMenu,

@@ -3,7 +3,7 @@
  * Blueprint policy: only explicit variant switching is allowed for these types;
  * widgetProp merge and setVisible/setEnabled Host API calls are blocked until product relaxes this.
  */
-export const UI_APPEARANCE_CAPABLE_ELEMENT_TYPES = ["nl.container", "nl.button"] as const;
+export const UI_APPEARANCE_CAPABLE_ELEMENT_TYPES = ["nl.container", "nl.button", "nl.text"] as const;
 
 export type UIAppearanceCapableElementType = (typeof UI_APPEARANCE_CAPABLE_ELEMENT_TYPES)[number];
 

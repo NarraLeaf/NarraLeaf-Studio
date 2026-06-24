@@ -7,6 +7,8 @@ type Props = {
     memberTree: ReactNode;
     canvas: ReactNode;
     diagnostics: ReactNode;
+    memberPanelCollapsed?: boolean;
+    onMemberPanelCollapsedChange?: (collapsed: boolean) => void;
     /** True while focus is inside the left member panel (disables graph delete-key shortcuts). */
     onMemberPanelFocusContainedChange?: (contained: boolean) => void;
 };
@@ -16,10 +18,20 @@ export function BlueprintEditorLayout({
     memberTree,
     canvas,
     diagnostics,
+    memberPanelCollapsed,
+    onMemberPanelCollapsedChange,
     onMemberPanelFocusContainedChange,
 }: Props) {
-    const [isLeftCollapsed, setLeftCollapsed] = useState(false);
+    const [uncontrolledLeftCollapsed, setUncontrolledLeftCollapsed] = useState(false);
     const memberPanelScrollRef = useRef<HTMLDivElement>(null);
+    const isLeftCollapsed = memberPanelCollapsed ?? uncontrolledLeftCollapsed;
+
+    const setLeftCollapsed = (collapsed: boolean) => {
+        if (memberPanelCollapsed === undefined) {
+            setUncontrolledLeftCollapsed(collapsed);
+        }
+        onMemberPanelCollapsedChange?.(collapsed);
+    };
 
     useLayoutEffect(() => {
         const root = memberPanelScrollRef.current;
@@ -60,7 +72,7 @@ export function BlueprintEditorLayout({
                         <button
                             type="button"
                             className="text-gray-400 transition-colors hover:text-white"
-                            onClick={() => setLeftCollapsed(v => !v)}
+                            onClick={() => setLeftCollapsed(!isLeftCollapsed)}
                             title={isLeftCollapsed ? "Expand side panel" : "Collapse side panel"}
                         >
                             {isLeftCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}

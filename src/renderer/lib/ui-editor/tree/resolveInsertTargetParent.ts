@@ -1,5 +1,5 @@
 import type { UIDocument, UIElement, UIElementId, UILayout } from "@shared/types/ui-editor/document";
-import { isUIFlowLayoutParentElement, uiElementTypeAcceptsChildren } from "@shared/types/ui-editor/document";
+import { isUIFlowLayoutParentElement, uiElementTypeAcceptsUserChildren } from "@shared/types/ui-editor/document";
 import { getElementSurfaceTopLeft, surfaceRectToParentLocalLayout } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
@@ -12,7 +12,7 @@ export type InsertTargetResolution = {
 };
 
 export function isValidUIInsertParent(element: UIElement | undefined): boolean {
-    return element != null && uiElementTypeAcceptsChildren(element.type);
+    return element != null && uiElementTypeAcceptsUserChildren(element.type);
 }
 
 /**

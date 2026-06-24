@@ -4,4 +4,5 @@ export type RecentlyOpenedProject = {
     path: string;
     icon?: string;
     openedAt: number;
+    securityScopedBookmark?: string;
 };

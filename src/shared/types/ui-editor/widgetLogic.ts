@@ -50,6 +50,21 @@ const INIT_EVENT: WidgetLogicEventDef = {
     headNodeTypes: ["blueprint.event.head.init"],
 };
 
+const KEYBOARD_EVENTS: readonly WidgetLogicEventDef[] = [
+    {
+        id: "keyDown",
+        displayName: "Key down",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.keyDown", "blueprint.event.head.anyKeyDown"],
+    },
+    {
+        id: "keyUp",
+        displayName: "Key up",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.keyUp", "blueprint.event.head.anyKeyUp"],
+    },
+];
+
 const DISPLAYABLE_EVENTS: readonly WidgetLogicEventDef[] = [
     {
         id: "mouseClick",
@@ -105,6 +120,7 @@ const DISPLAYABLE_EVENTS: readonly WidgetLogicEventDef[] = [
         dispatchKind: "interaction",
         headNodeTypes: ["blueprint.event.head.rightClick"],
     },
+    ...KEYBOARD_EVENTS,
     {
         id: "focus",
         displayName: "Focus",
@@ -124,6 +140,13 @@ const SCROLL_EVENT: WidgetLogicEventDef = {
     displayName: "Scroll",
     dispatchKind: "interaction",
     headNodeTypes: ["blueprint.event.head.scroll"],
+};
+
+const FLUSH_EVENT: WidgetLogicEventDef = {
+    id: "flush",
+    displayName: "On flush",
+    dispatchKind: "lifecycle",
+    headNodeTypes: ["blueprint.event.head.flush"],
 };
 
 const LIST_ITEM_EVENTS: readonly WidgetLogicEventDef[] = [
@@ -159,6 +182,15 @@ const LIST_ITEM_EVENTS: readonly WidgetLogicEventDef[] = [
     },
 ];
 
+const LIST_ITEM_CONTEXT_EVENTS: readonly WidgetLogicEventDef[] = [
+    {
+        id: "listItemRefresh",
+        displayName: "List item refresh",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.listItemRefresh"],
+    },
+];
+
 const BROADCAST_EVENTS: readonly WidgetLogicEventDef[] = [
     {
         id: "onAnyBroadcast",
@@ -176,25 +208,56 @@ const BROADCAST_EVENTS: readonly WidgetLogicEventDef[] = [
 
 const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
+    FLUSH_EVENT,
     {
         id: "pageEvent",
         displayName: "Page event",
         dispatchKind: "interaction",
         headNodeTypes: ["blueprint.event.head.pageEvent"],
     },
+    ...KEYBOARD_EVENTS,
+    ...BROADCAST_EVENTS,
+];
+
+const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
+    INIT_EVENT,
+    FLUSH_EVENT,
+    {
+        id: "dragStart",
+        displayName: "Drag start",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.sliderDragStart"],
+    },
+    {
+        id: "valueChanged",
+        displayName: "Value changed",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.sliderValueChanged"],
+    },
+    {
+        id: "dragEnd",
+        displayName: "Drag end",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.sliderDragEnd"],
+    },
+    ...KEYBOARD_EVENTS,
     ...BROADCAST_EVENTS,
 ];
 
 const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
+    FLUSH_EVENT,
+    ...LIST_ITEM_CONTEXT_EVENTS,
     ...DISPLAYABLE_EVENTS,
     ...BROADCAST_EVENTS,
 ];
 
 const COLLECTION_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
+    FLUSH_EVENT,
     SCROLL_EVENT,
     ...LIST_ITEM_EVENTS,
+    ...KEYBOARD_EVENTS,
     ...BROADCAST_EVENTS,
 ];
 
@@ -260,6 +323,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
         readableState: [
             { id: "visible", displayName: "Visible" },
             { id: "enabled", displayName: "Enabled" },
+            { id: "variant", displayName: "Variant" },
             { id: "text", displayName: "Text" },
             { id: "fontAssetId", displayName: "Font asset" },
             { id: "fontSize", displayName: "Font size" },
@@ -272,6 +336,8 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { id: "effects", displayName: "Effects" },
         ],
         writableProps: [
+            { propPath: "variant", displayName: "Variant" },
+            { propPath: "appearance", displayName: "Appearance" },
             { propPath: "text", displayName: "Text" },
             { propPath: "fontAssetId", displayName: "Font asset" },
             { propPath: "fontSize", displayName: "Font size" },
@@ -348,6 +414,33 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { propPath: "itemsBinding", displayName: "Items binding" },
             { propPath: "previewCount", displayName: "Preview count" },
             { propPath: "selectedIndex", displayName: "Selected index" },
+        ],
+    },
+    "nl.slider": {
+        supportsPrivateBlueprint: true,
+        blueprintLabel: "Slider logic",
+        events: SLIDER_EVENTS,
+        commands: [
+            ...baseCommands,
+            {
+                id: "setValue",
+                displayName: "Set value",
+                capabilityId: "widget.setSliderProperties",
+                availability: "available",
+            },
+        ],
+        readableState: [
+            { id: "value", displayName: "Value" },
+            { id: "normalizedValue", displayName: "Normalized value" },
+            { id: "min", displayName: "Min" },
+            { id: "max", displayName: "Max" },
+            { id: "step", displayName: "Step" },
+        ],
+        writableProps: [
+            { propPath: "value", displayName: "Value" },
+            { propPath: "min", displayName: "Min" },
+            { propPath: "max", displayName: "Max" },
+            { propPath: "step", displayName: "Step" },
         ],
     },
     "nl.frame": {

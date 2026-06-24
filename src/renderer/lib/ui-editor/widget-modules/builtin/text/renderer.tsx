@@ -10,6 +10,9 @@ import {
     type KeyboardEvent,
     type MouseEvent,
 } from "react";
+import { motion } from "motion/react";
+import type { AppearanceFieldTransition } from "@shared/types/ui-editor/appearance";
+import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
@@ -24,6 +27,16 @@ import {
     lineWrapCss,
     textVerticalAlignToJustifyContent,
 } from "@/lib/ui-editor/widget-modules/shared/text/textLayoutCss";
+import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
+import {
+    resolveTextAppearanceTransitions,
+    resolveTextVisualProps,
+} from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
+import {
+    useWidgetRuntimeElementState,
+} from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
+import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { composeTextEffectStyle } from "@/lib/ui-editor/widget-modules/shared/effects/effectStyleComposer";
 import { getTextProps } from "./helpers";
 import {
@@ -33,7 +46,24 @@ import {
 
 const OPENING_BLUR_GRACE_MS = 300;
 
-export function TextRenderer({ element, surface, document, hostAdapter }: WidgetRendererProps) {
+function assignMotionTransition(
+    target: Record<string, unknown>,
+    property: string,
+    transition: AppearanceFieldTransition | null
+) {
+    if (!transition) {
+        return;
+    }
+    target[property] = toRuntimeMotionTransition(transition);
+}
+
+export function TextRenderer({
+    element,
+    surface,
+    document,
+    hostAdapter,
+    useAppearanceInspectorPreview,
+}: WidgetRendererProps) {
     const stateService = hostAdapter.editorStateService ?? UIEditorStateService.getInstance();
     const documentService = UIDocumentService.getInstance();
     useUIDocumentRevision(documentService);
@@ -142,7 +172,19 @@ export function TextRenderer({ element, surface, document, hostAdapter }: Widget
     }, [isEditing, documentService, element.id]);
 
     const liveElement = isEditing ? document.elements[element.id] ?? element : element;
-    const p = getTextProps(liveElement);
+    const flatProps = getTextProps(liveElement);
+    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const runtimeState = useWidgetRuntimeElementState(element.id);
+    const listScopedVariantId =
+        typeof (liveElement.extra as UIListElementExtra | undefined)?.runtimeVariantOverrideId === "string"
+            ? (liveElement.extra as UIListElementExtra).runtimeVariantOverrideId
+            : null;
+    const resolveCtx = {
+        variantOverrideId: listScopedVariantId ?? runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
+        signals: runtimeState.signals,
+    };
+    const p = resolveTextVisualProps(liveElement, flatProps.appearance ?? undefined, resolveCtx);
+    const appearanceTransitions = resolveTextAppearanceTransitions(flatProps.appearance ?? undefined, resolveCtx);
     const color = colorValueToCss({ hex: p.color, alpha: 1 });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
 
@@ -157,6 +199,7 @@ export function TextRenderer({ element, surface, document, hostAdapter }: Widget
         boxSizing: "border-box",
         fontSize: p.fontSize,
         fontWeight: p.fontWeight,
+        fontStyle: p.fontStyle,
         color,
         textAlign: p.textAlign,
         lineHeight: p.lineHeight,
@@ -182,6 +225,76 @@ export function TextRenderer({ element, surface, document, hostAdapter }: Widget
           }
         : {};
 
+    const tx = Number.isFinite(p.transformOffsetX) ? p.transformOffsetX : 0;
+    const ty = Number.isFinite(p.transformOffsetY) ? p.transformOffsetY : 0;
+    const ts = Number.isFinite(p.transformScale) && p.transformScale > 0 ? p.transformScale : 1;
+    const tr = Number.isFinite(p.transformRotation) ? p.transformRotation : 0;
+    const tOp = Math.max(0, Math.min(1, Number.isFinite(p.transformOpacity) ? p.transformOpacity : 1));
+    const transformCss = `translate(${tx}px, ${ty}px) scale(${ts}) rotate(${tr}deg)`;
+
+    const rootAnimate: Record<string, string | number> = {
+        x: tx,
+        y: ty,
+        scale: ts,
+        rotate: tr,
+        opacity: tOp,
+    };
+    const rootTransition: Record<string, unknown> = {};
+    assignMotionTransition(
+        rootTransition,
+        "x",
+        firstTransitionForKeys(appearanceTransitions, ["transformOffsetX"])
+    );
+    assignMotionTransition(
+        rootTransition,
+        "y",
+        firstTransitionForKeys(appearanceTransitions, ["transformOffsetY"])
+    );
+    assignMotionTransition(
+        rootTransition,
+        "scale",
+        firstTransitionForKeys(appearanceTransitions, ["transformScale"])
+    );
+    assignMotionTransition(
+        rootTransition,
+        "rotate",
+        firstTransitionForKeys(appearanceTransitions, ["transformRotation"])
+    );
+    assignMotionTransition(
+        rootTransition,
+        "opacity",
+        firstTransitionForKeys(appearanceTransitions, ["transformOpacity"])
+    );
+    const rootMotionActive = Object.keys(rootTransition).length > 0;
+
+    const textAnimate: Record<string, string | number> = {
+        fontSize: p.fontSize,
+        color,
+        lineHeight: p.lineHeight,
+    };
+    const textTransition: Record<string, unknown> = {};
+    assignMotionTransition(textTransition, "fontSize", firstTransitionForKeys(appearanceTransitions, ["fontSize"]));
+    assignMotionTransition(textTransition, "color", firstTransitionForKeys(appearanceTransitions, ["color"]));
+    assignMotionTransition(textTransition, "lineHeight", firstTransitionForKeys(appearanceTransitions, ["lineHeight"]));
+    const textShadowTransition = firstTransitionForKeys(appearanceTransitions, ["effectTextShadow"]);
+    if (textShadowTransition) {
+        textAnimate.textShadow = effectTextStyle.textShadow ?? "none";
+        assignMotionTransition(textTransition, "textShadow", textShadowTransition);
+    }
+
+    const shellAnimate: Record<string, string> = {};
+    const shellTransition: Record<string, unknown> = {};
+    const filterTransition = firstTransitionForKeys(appearanceTransitions, ["effectBlur", "effectFilter"]);
+    if (useEffectShell && filterTransition) {
+        shellAnimate.filter = effectTextStyle.filter ?? "none";
+        assignMotionTransition(shellTransition, "filter", filterTransition);
+    } else if (!useEffectShell && filterTransition) {
+        textAnimate.filter = effectTextStyle.filter ?? "none";
+        assignMotionTransition(textTransition, "filter", filterTransition);
+    }
+    const shellMotionActive = Object.keys(shellTransition).length > 0;
+    const textMotionActive = Object.keys(textTransition).length > 0;
+
     const outerStyle: CSSProperties = {
         width: "100%",
         height: "100%",
@@ -191,6 +304,11 @@ export function TextRenderer({ element, surface, document, hostAdapter }: Widget
         flexDirection: "column",
         justifyContent: textVerticalAlignToJustifyContent(p.textVerticalAlign),
         alignItems: "stretch",
+    };
+    const outerStaticStyle: CSSProperties = {
+        ...outerStyle,
+        transform: transformCss,
+        opacity: tOp,
     };
 
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -308,46 +426,81 @@ export function TextRenderer({ element, surface, document, hostAdapter }: Widget
             ...(p.textWrapMode === "nowrap" ? { overflowX: "auto", overflowY: "hidden" } : {}),
             ...(!editorFontFamily ? { fontFamily: "inherit" } : {}),
         };
+        const textarea = (
+            <textarea
+                ref={textareaRef}
+                defaultValue={p.text}
+                style={textareaStyle}
+                onInput={handleTextareaInput}
+                onBlur={handleTextareaBlur}
+                onKeyDown={handleTextareaKeyDown}
+                onClick={e => e.stopPropagation()}
+                onMouseDown={e => e.stopPropagation()}
+            />
+        );
+        const editingInner = useEffectShell ? (
+            shellMotionActive ? (
+                <motion.div style={effectShellStyle} initial={false} animate={shellAnimate} transition={shellTransition}>
+                    {textarea}
+                </motion.div>
+            ) : (
+                <div style={effectShellStyle}>{textarea}</div>
+            )
+        ) : (
+            textarea
+        );
+        const editingContent = rootMotionActive ? (
+            <motion.div style={outerStyle} initial={false} animate={rootAnimate} transition={rootTransition}>
+                {editingInner}
+            </motion.div>
+        ) : (
+            <div style={outerStaticStyle}>{editingInner}</div>
+        );
         return (
-            <div style={outerStyle}>
-                {useEffectShell ? (
-                    <div style={effectShellStyle}>
-                        <textarea
-                            ref={textareaRef}
-                            defaultValue={p.text}
-                            style={textareaStyle}
-                            onInput={handleTextareaInput}
-                            onBlur={handleTextareaBlur}
-                            onKeyDown={handleTextareaKeyDown}
-                            onClick={e => e.stopPropagation()}
-                            onMouseDown={e => e.stopPropagation()}
-                        />
-                    </div>
-                ) : (
-                    <textarea
-                        ref={textareaRef}
-                        defaultValue={p.text}
-                        style={textareaStyle}
-                        onInput={handleTextareaInput}
-                        onBlur={handleTextareaBlur}
-                        onKeyDown={handleTextareaKeyDown}
-                        onClick={e => e.stopPropagation()}
-                        onMouseDown={e => e.stopPropagation()}
-                    />
-                )}
-            </div>
+            editingContent
         );
     }
 
+    const textNode = textMotionActive ? (
+        <motion.p
+            style={{ ...textBodyStyle, flexShrink: 0 }}
+            initial={false}
+            animate={textAnimate}
+            transition={textTransition}
+        >
+            {p.text}
+        </motion.p>
+    ) : (
+        <p style={{ ...textBodyStyle, flexShrink: 0 }}>{p.text}</p>
+    );
+
+    const effectNode = useEffectShell ? (
+        shellMotionActive ? (
+            <motion.div style={effectShellStyle} initial={false} animate={shellAnimate} transition={shellTransition}>
+                {textNode}
+            </motion.div>
+        ) : (
+            <div style={effectShellStyle}>{textNode}</div>
+        )
+    ) : (
+        textNode
+    );
+
     return (
-        <div style={outerStyle} onDoubleClick={handleStartInlineTextEdit}>
-            {useEffectShell ? (
-                <div style={effectShellStyle}>
-                    <p style={{ ...textBodyStyle, flexShrink: 0 }}>{p.text}</p>
-                </div>
-            ) : (
-                <p style={{ ...textBodyStyle, flexShrink: 0 }}>{p.text}</p>
-            )}
-        </div>
+        rootMotionActive ? (
+            <motion.div
+                style={outerStyle}
+                initial={false}
+                animate={rootAnimate}
+                transition={rootTransition}
+                onDoubleClick={handleStartInlineTextEdit}
+            >
+                {effectNode}
+            </motion.div>
+        ) : (
+            <div style={outerStaticStyle} onDoubleClick={handleStartInlineTextEdit}>
+                {effectNode}
+            </div>
+        )
     );
 }

@@ -1,4 +1,4 @@
-import { WindowAppType, WindowProps } from "@shared/types/window";
+import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
@@ -37,6 +37,7 @@ export class App extends BaseApp {
             isolated: true,
             autoFocus: true,
             preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.MacNativeOutsideTitleBar,
             options: {
                 minWidth: 800,
                 minHeight: 500,
@@ -79,7 +80,6 @@ export class App extends BaseApp {
             autoFocus: true,
             preload: this.getPreloadScript(),
             options: {
-                modal: true,
                 parent: parent.win,
                 frame: false,
                 titleBarStyle: 'hidden',
@@ -141,7 +141,6 @@ export class App extends BaseApp {
             autoFocus: true,
             preload: this.getPreloadScript(),
             options: {
-                modal: true,
                 parent: parent.win,
                 show: false,
                 frame: false,
@@ -201,11 +200,9 @@ export class App extends BaseApp {
         await window.show();
         window.win.focus();
 
-        if (this.isDevMode()) {
-            window.onKeyUp("F12", () => {
-                window.toggleDevTools();
-            });
-        }
+        window.onKeyUp("F12", () => {
+            window.toggleDevTools();
+        });
 
         return window;
     }
@@ -220,14 +217,17 @@ export class App extends BaseApp {
             isolated: true,
             autoFocus: true,
             preload: this.getPreloadScript(),
+            windowControlPolicy: WindowControlPolicy.None,
             options: {
                 modal: true,
                 parent: parent.win,
                 resizable: false,
                 minimizable: false,
                 maximizable: false,
-                width: 440,
-                height: 320,
+                closable: true,
+                fullscreenable: false,
+                width: 520,
+                height: 380,
                 center: true,
                 frame: false,
                 titleBarStyle: "hidden",
@@ -236,7 +236,14 @@ export class App extends BaseApp {
                 ...options,
             },
         };
-        const window = new AppWindow<WindowAppType.PluginPermissionPrompt>(this, config, props);
+        const promptProps: WindowProps[WindowAppType.PluginPermissionPrompt] = {
+            ...props,
+            requester: {
+                windowType: parent.getWindowType(),
+                title: parent.getTitle(),
+            },
+        };
+        const window = new AppWindow<WindowAppType.PluginPermissionPrompt>(this, config, promptProps);
         window.setTitle("Plugin Permission - NarraLeaf Studio");
         this.applyWindowIcon(window);
         window.showWhenReady();

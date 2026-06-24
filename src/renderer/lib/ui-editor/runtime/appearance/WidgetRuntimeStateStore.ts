@@ -1,4 +1,19 @@
 import type { SystemInteractionSignals } from "./SystemInteractionState";
+import {
+    resolveSliderRuntimeValue,
+    type UISliderRuntimeValue,
+    type UISliderWidgetProps,
+} from "@shared/types/ui-editor/slider";
+
+export type UIListRuntimeScrollRequest =
+    | { version: number; kind: "index"; index: number }
+    | { version: number; kind: "top" }
+    | { version: number; kind: "bottom" };
+type UIListRuntimeScrollRequestInput = UIListRuntimeScrollRequest extends infer Request
+    ? Request extends { version: number }
+        ? Omit<Request, "version">
+        : never
+    : never;
 
 export type WidgetRuntimeSnapshot = {
     hoverTargetId: string | null;
@@ -6,6 +21,12 @@ export type WidgetRuntimeSnapshot = {
     focusedId: string | null;
     /** Copy for external readers; treat as immutable after getSnapshot. */
     variantOverrides: ReadonlyMap<string, string>;
+    /** Copy for external readers; treat as immutable after getSnapshot. */
+    sliderProperties: ReadonlyMap<string, UISliderRuntimeValue>;
+    /** Runtime List content overrides keyed by runtime-scope element key. */
+    listItems: ReadonlyMap<string, readonly unknown[]>;
+    listSelectedIndexes: ReadonlyMap<string, number>;
+    listScrollRequests: ReadonlyMap<string, UIListRuntimeScrollRequest>;
 };
 
 /** Stable snapshot when no provider is mounted (e.g. Dev Mode without store). */
@@ -14,6 +35,10 @@ export const STATIC_WIDGET_RUNTIME_SNAPSHOT: WidgetRuntimeSnapshot = Object.free
     activePointerId: null,
     focusedId: null,
     variantOverrides: new Map<string, string>(),
+    sliderProperties: new Map<string, UISliderRuntimeValue>(),
+    listItems: new Map<string, readonly unknown[]>(),
+    listSelectedIndexes: new Map<string, number>(),
+    listScrollRequests: new Map<string, UIListRuntimeScrollRequest>(),
 });
 
 /**
@@ -25,8 +50,13 @@ export class WidgetRuntimeStateStore {
     private activePointerId: string | null = null;
     private focusedId: string | null = null;
     private readonly variantOverrides = new Map<string, string>();
+    private readonly sliderProperties = new Map<string, UISliderRuntimeValue>();
+    private readonly listItems = new Map<string, unknown[]>();
+    private readonly listSelectedIndexes = new Map<string, number>();
+    private readonly listScrollRequests = new Map<string, UIListRuntimeScrollRequest>();
     private readonly listeners = new Set<() => void>();
     private snapshot: WidgetRuntimeSnapshot;
+    private listScrollRequestVersion = 0;
 
     constructor() {
         this.snapshot = this.rebuildSnapshot();
@@ -45,6 +75,10 @@ export class WidgetRuntimeStateStore {
             activePointerId: this.activePointerId,
             focusedId: this.focusedId,
             variantOverrides: new Map(this.variantOverrides),
+            sliderProperties: new Map(this.sliderProperties),
+            listItems: new Map(this.listItems),
+            listSelectedIndexes: new Map(this.listSelectedIndexes),
+            listScrollRequests: new Map(this.listScrollRequests),
         };
     }
 
@@ -105,6 +139,75 @@ export class WidgetRuntimeStateStore {
         return this.variantOverrides.get(elementId) ?? null;
     }
 
+    getSliderProperties(elementId: string): UISliderRuntimeValue | undefined {
+        return this.sliderProperties.get(elementId);
+    }
+
+    setSliderProperties(
+        elementId: string,
+        currentProps: Partial<UISliderWidgetProps>,
+        patch: Partial<UISliderWidgetProps>,
+    ): UISliderRuntimeValue {
+        const current = this.sliderProperties.get(elementId) ?? resolveSliderRuntimeValue(currentProps);
+        const next = resolveSliderRuntimeValue({
+            ...currentProps,
+            ...current,
+            ...patch,
+        });
+        if (
+            current.value === next.value &&
+            current.normalizedValue === next.normalizedValue &&
+            current.min === next.min &&
+            current.max === next.max &&
+            current.step === next.step
+        ) {
+            return current;
+        }
+        this.sliderProperties.set(elementId, next);
+        this.emit();
+        return next;
+    }
+
+    getListItems(elementId: string): unknown[] | undefined {
+        const items = this.listItems.get(elementId);
+        return items ? cloneJson(items) : undefined;
+    }
+
+    setListItems(elementId: string, items: readonly unknown[]): void {
+        this.listItems.set(elementId, cloneJson([...items]));
+        this.emit();
+    }
+
+    clearListItems(elementId: string): void {
+        const hadItems = this.listItems.delete(elementId);
+        const hadSelected = this.listSelectedIndexes.delete(elementId);
+        const hadScroll = this.listScrollRequests.delete(elementId);
+        if (hadItems || hadSelected || hadScroll) {
+            this.emit();
+        }
+    }
+
+    getListSelectedIndex(elementId: string): number | undefined {
+        return this.listSelectedIndexes.get(elementId);
+    }
+
+    setListSelectedIndex(elementId: string, index: number): void {
+        if (this.listSelectedIndexes.get(elementId) === index) {
+            return;
+        }
+        this.listSelectedIndexes.set(elementId, index);
+        this.emit();
+    }
+
+    requestListScroll(elementId: string, request: UIListRuntimeScrollRequestInput): void {
+        this.listScrollRequestVersion += 1;
+        this.listScrollRequests.set(elementId, {
+            ...request,
+            version: this.listScrollRequestVersion,
+        } as UIListRuntimeScrollRequest);
+        this.emit();
+    }
+
     getSignalsForElement(elementId: string, interactionDisabled: boolean | undefined): SystemInteractionSignals {
         return {
             hovered: this.hoverTargetId === elementId,
@@ -113,4 +216,8 @@ export class WidgetRuntimeStateStore {
             disabled: Boolean(interactionDisabled),
         };
     }
+}
+
+function cloneJson<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
 }

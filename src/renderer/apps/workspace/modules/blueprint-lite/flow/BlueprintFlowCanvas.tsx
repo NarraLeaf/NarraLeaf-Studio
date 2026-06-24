@@ -3,21 +3,26 @@ import {
     useCallback,
     useEffect,
     useLayoutEffect,
+    useMemo,
     useRef,
     useState,
     type MouseEvent as ReactMouseEvent,
+    type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
     ReactFlow,
     Background,
     MiniMap,
+    PanOnScrollMode,
     ReactFlowProvider,
+    SelectionMode,
     useEdgesState,
     useNodesState,
     useReactFlow,
     type Connection,
     type Edge,
     type Node,
+    type Viewport,
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import { BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE } from "@shared/types/blueprint/graph";
@@ -47,12 +52,16 @@ import {
 import {
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
     type BlueprintInspectorParamSelectOption,
+    type BlueprintNodeEditorCatalogEntry,
     type BlueprintPaletteContext,
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
+import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
 
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
+
+type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 
 function generateUniqueDynamicPinLabel(existing: Record<string, string>, prefix: string): string {
     const used = new Set(Object.values(existing).map(label => label.trim()).filter(Boolean));
@@ -67,25 +76,27 @@ function generateUniqueDynamicPinLabel(existing: Record<string, string>, prefix:
 }
 
 function buildPlacementPreviewFlowNode(
-    nodeType: string,
+    entry: BlueprintNodeEditorCatalogEntry,
     position: { x: number; y: number },
-    nodeCatalog: IBlueprintNodeCatalogService,
     memberVariables: BlueprintFlowNodeData["memberVariables"],
+    persistentVariables: BlueprintFlowNodeData["persistentVariables"],
 ): Node<BlueprintFlowNodeData> {
-    const stub = createGraphNodeForPalette(nodeType, BP_PLACEMENT_PREVIEW_ID);
+    const stub = createGraphNodeForPalette(entry.type, BP_PLACEMENT_PREVIEW_ID);
     return {
         id: BP_PLACEMENT_PREVIEW_ID,
         type: "blueprint",
         position,
+        zIndex: 2,
         draggable: false,
         selectable: false,
         focusable: false,
         style: { opacity: 0.92 },
         data: {
-            catalog: nodeCatalog.resolveCatalogEntry(nodeType),
+            catalog: entry,
             nodeId: BP_PLACEMENT_PREVIEW_ID,
             params: stub.params ?? {},
             memberVariables,
+            persistentVariables,
             wiredInputPortIds: new Set(),
         },
     };
@@ -112,6 +123,7 @@ type BlueprintFlowCanvasInnerProps = {
     /** Bumps React Flow sync when blueprint member variables change (node card dropdowns). */
     blueprintMembersSig: string;
     blueprintMemberVariables: NonNullable<BlueprintFlowNodeData["memberVariables"]>;
+    blueprintPersistentVariables: NonNullable<BlueprintFlowNodeData["persistentVariables"]>;
     selectedNodeIds: readonly string[];
     onSelectNodeIds: (ids: string[]) => void;
     onCommitIr: (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => void;
@@ -120,7 +132,10 @@ type BlueprintFlowCanvasInnerProps = {
      * the cursor until click; this callback runs on confirm with the final flow position. Return the new id
      * to select the node.
      */
-    onAddNodeAtFlowPosition?: (type: string, flowPosition: { x: number; y: number }) => string | undefined;
+    onAddNodeAtFlowPosition?: (
+        entry: BlueprintNodeEditorCatalogEntry,
+        flowPosition: { x: number; y: number },
+    ) => string | undefined;
     paletteContext: BlueprintPaletteContext;
     /** When null, Delete/Backspace do not remove nodes (e.g. while typing in the sidebar). */
     deleteKeyCode?: string[] | null;
@@ -129,7 +144,52 @@ type BlueprintFlowCanvasInnerProps = {
      * Populated from workspace context and forwarded to node cards.
      */
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
+    /** Active graph diagnostics, used to mark invalid nodes in-place. */
+    diagnostics?: readonly BlueprintGraphEditorDiagnostic[];
+    /** Preview data for bound Element Literal nodes by node id. */
+    elementPreviews?: Record<string, BlueprintFlowNodeData["elementPreview"]>;
+    /** Starts Element Literal binding flow from a node card click. */
+    onBindElementLiteral?: (nodeId: string) => void;
+    /** Initial React Flow viewport restored from editor-session state. */
+    initialViewport?: BlueprintFlowViewport | null;
+    /** Called after pan/zoom changes so the owning editor tab can persist the view. */
+    onViewportChange?: (viewport: BlueprintFlowViewport) => void;
 };
+
+export type BlueprintFlowViewport = {
+    x: number;
+    y: number;
+    zoom: number;
+};
+
+function buildNodeDiagnosticsByNodeId(
+    diagnostics: readonly BlueprintGraphEditorDiagnostic[] | undefined,
+    graphKey: string,
+): Map<string, BlueprintGraphEditorDiagnostic[]> {
+    const out = new Map<string, BlueprintGraphEditorDiagnostic[]>();
+    for (const d of diagnostics ?? []) {
+        const target = d.target;
+        if (target?.kind !== "node") {
+            continue;
+        }
+        if (`${target.graphKind}:${target.graphId}` !== graphKey) {
+            continue;
+        }
+        const list = out.get(target.nodeId) ?? [];
+        list.push(d);
+        out.set(target.nodeId, list);
+    }
+    return out;
+}
+
+function nodeDiagnosticsSignature(map: ReadonlyMap<string, readonly BlueprintGraphEditorDiagnostic[]>): string {
+    return [...map.entries()]
+        .map(([nodeId, items]) =>
+            `${nodeId}:${items.map(d => `${d.severity}:${d.code ?? ""}:${d.message}`).sort().join("\x1f")}`,
+        )
+        .sort()
+        .join("\x1e");
+}
 
 function BlueprintFlowCanvasInner({
     nodeCatalog,
@@ -138,6 +198,7 @@ function BlueprintFlowCanvasInner({
     revision,
     blueprintMembersSig,
     blueprintMemberVariables,
+    blueprintPersistentVariables,
     selectedNodeIds,
     onSelectNodeIds,
     onCommitIr,
@@ -145,10 +206,23 @@ function BlueprintFlowCanvasInner({
     paletteContext,
     deleteKeyCode = ["Backspace", "Delete"],
     dynamicSelectOptions,
+    diagnostics,
+    elementPreviews,
+    onBindElementLiteral,
+    initialViewport,
+    onViewportChange,
 }: BlueprintFlowCanvasInnerProps) {
-    const { getNodes, screenToFlowPosition } = useReactFlow();
+    const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+    const nodeDiagnosticsByNodeId = useMemo(
+        () => buildNodeDiagnosticsByNodeId(diagnostics, graphKey),
+        [diagnostics, graphKey],
+    );
+    const nodeDiagnosticsSig = useMemo(
+        () => nodeDiagnosticsSignature(nodeDiagnosticsByNodeId),
+        [nodeDiagnosticsByNodeId],
+    );
     const irRef = useRef(ir);
     irRef.current = ir;
 
@@ -161,7 +235,7 @@ function BlueprintFlowCanvasInner({
     );
 
     const patchNodeParam = useCallback(
-        (nodeId: string, key: string, value: unknown) => {
+        (nodeId: string, key: string, value: unknown, history?: BlueprintNodeParamHistoryOptions) => {
             const snap = cloneBlueprintIr(irRef.current);
             const n = snap.nodes?.[nodeId];
             if (!n) {
@@ -183,19 +257,32 @@ function BlueprintFlowCanvasInner({
                 } else {
                     delete next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
                 }
+            } else if (key === "persistentVariableId") {
+                const selectedVariable =
+                    typeof value === "string"
+                        ? blueprintPersistentVariables.find(variable => variable.value === value)
+                        : undefined;
+                if (selectedVariable?.valueType) {
+                    next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE] = selectedVariable.valueType;
+                } else {
+                    delete next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
+                }
             }
             n.params = next;
-            commitBlueprintIr(snap);
+            commitBlueprintIr(snap, history);
         },
-        [blueprintMemberVariables, commitBlueprintIr],
+        [blueprintMemberVariables, blueprintPersistentVariables, commitBlueprintIr],
     );
 
     const patchNodeParamRef = useRef(patchNodeParam);
     patchNodeParamRef.current = patchNodeParam;
     /** Stable identity so IR sync effect does not re-run on every parent render (reduces jank). */
-    const stablePatchNodeParam = useCallback((nodeId: string, key: string, value: unknown) => {
-        patchNodeParamRef.current(nodeId, key, value);
-    }, []);
+    const stablePatchNodeParam = useCallback(
+        (nodeId: string, key: string, value: unknown, history?: BlueprintNodeParamHistoryOptions) => {
+            patchNodeParamRef.current(nodeId, key, value, history);
+        },
+        [],
+    );
 
     const nodeCatalogRef = useRef(nodeCatalog);
     nodeCatalogRef.current = nodeCatalog;
@@ -316,7 +403,12 @@ function BlueprintFlowCanvasInner({
      */
     const isNodeDragActiveRef = useRef(false);
 
-    const lastStructuralRef = useRef<{ graphKey: string; revision: number; membersSig: string } | null>(null);
+    const lastStructuralRef = useRef<{
+        graphKey: string;
+        revision: number;
+        membersSig: string;
+        diagnosticsSig: string;
+    } | null>(null);
     const lastNodeCatalogRef = useRef(nodeCatalog);
 
     const [addMenu, setAddMenu] = useState<{
@@ -325,12 +417,19 @@ function BlueprintFlowCanvasInner({
         flow: { x: number; y: number };
     } | null>(null);
 
-    const [pendingPlacementType, setPendingPlacementType] = useState<string | null>(null);
-    const pendingPlacementTypeRef = useRef<string | null>(null);
-    pendingPlacementTypeRef.current = pendingPlacementType;
+    const [pendingPlacementEntry, setPendingPlacementEntry] = useState<BlueprintNodeEditorCatalogEntry | null>(null);
+    const pendingPlacementEntryRef = useRef<BlueprintNodeEditorCatalogEntry | null>(null);
+    pendingPlacementEntryRef.current = pendingPlacementEntry;
     const pendingPlacementPosRef = useRef({ x: 0, y: 0 });
     /** Latest screen pointer; used so preview snaps to cursor when picking a type (menu flow pos is stale). */
     const lastPointerClientRef = useRef({ x: 0, y: 0 });
+    const controlPanStateRef = useRef<{
+        pointerId: number;
+        startClientX: number;
+        startClientY: number;
+        startViewport: Viewport;
+        latestViewport: Viewport;
+    } | null>(null);
 
     useEffect(() => {
         const sync = (e: PointerEvent) => {
@@ -344,45 +443,57 @@ function BlueprintFlowCanvasInner({
         };
     }, []);
 
+    const cancelPendingPlacement = useCallback(() => {
+        pendingPlacementEntryRef.current = null;
+        setPendingPlacementEntry(null);
+        setNodes(nds =>
+            nds.some(n => n.id === BP_PLACEMENT_PREVIEW_ID)
+                ? nds.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID)
+                : nds,
+        );
+    }, [setNodes]);
+
     const commitPendingPlacement = useCallback(() => {
-        const nodeType = pendingPlacementTypeRef.current;
-        if (!nodeType) {
+        const entry = pendingPlacementEntryRef.current;
+        if (!entry) {
             return;
         }
         const pos = pendingPlacementPosRef.current;
-        setPendingPlacementType(null);
-        const newId = onAddNodeAtFlowPosition?.(nodeType, pos);
+        cancelPendingPlacement();
+        const newId = onAddNodeAtFlowPosition?.(entry, pos);
         if (typeof newId === "string" && newId.length > 0) {
             onSelectNodeIds([newId]);
         }
-    }, [onAddNodeAtFlowPosition, onSelectNodeIds]);
+    }, [cancelPendingPlacement, onAddNodeAtFlowPosition, onSelectNodeIds]);
 
     const commitPendingPlacementRef = useRef(commitPendingPlacement);
     commitPendingPlacementRef.current = commitPendingPlacement;
 
     useLayoutEffect(() => {
-        if (!pendingPlacementType) {
+        if (!pendingPlacementEntry) {
             return;
         }
         pendingPlacementPosRef.current = screenToFlowPosition(lastPointerClientRef.current);
-    }, [pendingPlacementType, screenToFlowPosition]);
+    }, [pendingPlacementEntry, screenToFlowPosition]);
 
     useEffect(() => {
-        if (!pendingPlacementType) {
+        if (!pendingPlacementEntry) {
             return;
         }
         const onKey = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
                 e.preventDefault();
-                setPendingPlacementType(null);
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                cancelPendingPlacement();
             }
         };
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [pendingPlacementType]);
+        window.addEventListener("keydown", onKey, true);
+        return () => window.removeEventListener("keydown", onKey, true);
+    }, [cancelPendingPlacement, pendingPlacementEntry]);
 
     useEffect(() => {
-        if (!pendingPlacementType) {
+        if (!pendingPlacementEntry) {
             return;
         }
         const onMove = (e: MouseEvent) => {
@@ -396,7 +507,46 @@ function BlueprintFlowCanvasInner({
         };
         window.addEventListener("mousemove", onMove);
         return () => window.removeEventListener("mousemove", onMove);
-    }, [pendingPlacementType, screenToFlowPosition, setNodes]);
+    }, [pendingPlacementEntry, screenToFlowPosition, setNodes]);
+
+    useEffect(() => {
+        const handlePointerMove = (event: PointerEvent) => {
+            const pan = controlPanStateRef.current;
+            if (!pan || event.pointerId !== pan.pointerId) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+
+            const nextViewport = {
+                x: pan.startViewport.x + event.clientX - pan.startClientX,
+                y: pan.startViewport.y + event.clientY - pan.startClientY,
+                zoom: pan.startViewport.zoom,
+            };
+            pan.latestViewport = nextViewport;
+            void setViewport(nextViewport, { duration: 0 });
+        };
+
+        const finishPointerPan = (event: PointerEvent) => {
+            const pan = controlPanStateRef.current;
+            if (!pan || event.pointerId !== pan.pointerId) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            controlPanStateRef.current = null;
+            onViewportChange?.(pan.latestViewport);
+        };
+
+        window.addEventListener("pointermove", handlePointerMove, { passive: false });
+        window.addEventListener("pointerup", finishPointerPan, { passive: false });
+        window.addEventListener("pointercancel", finishPointerPan, { passive: false });
+        return () => {
+            window.removeEventListener("pointermove", handlePointerMove);
+            window.removeEventListener("pointerup", finishPointerPan);
+            window.removeEventListener("pointercancel", finishPointerPan);
+        };
+    }, [onViewportChange, setViewport]);
 
     useEffect(() => {
         const snap = irRef.current;
@@ -410,30 +560,40 @@ function BlueprintFlowCanvasInner({
             !prevStruct ||
             prevStruct.graphKey !== graphKey ||
             prevStruct.revision !== revision ||
-            prevStruct.membersSig !== blueprintMembersSig;
+            prevStruct.membersSig !== blueprintMembersSig ||
+            prevStruct.diagnosticsSig !== nodeDiagnosticsSig;
 
         if (structural) {
-            lastStructuralRef.current = { graphKey, revision, membersSig: blueprintMembersSig };
+            lastStructuralRef.current = {
+                graphKey,
+                revision,
+                membersSig: blueprintMembersSig,
+                diagnosticsSig: nodeDiagnosticsSig,
+            };
             setNodes(prevNodes => {
                 const base = blueprintIrToFlowNodes(
                     snap,
                     nodeCatalog,
                     stablePatchNodeParam,
                     blueprintMemberVariables,
+                    blueprintPersistentVariables,
                     stableAddDynamicInputPin,
                     stableRemoveDynamicInputPin,
                     dynamicSelectOptions,
+                    nodeDiagnosticsByNodeId,
+                    elementPreviews,
+                    onBindElementLiteral,
                 );
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
                 let out = withSel;
-                if (pendingPlacementType) {
+                if (pendingPlacementEntry) {
                     out = [
                         ...withSel,
                         buildPlacementPreviewFlowNode(
-                            pendingPlacementType,
+                            pendingPlacementEntry,
                             pendingPlacementPosRef.current,
-                            nodeCatalog,
                             blueprintMemberVariables,
+                            blueprintPersistentVariables,
                         ),
                     ];
                 }
@@ -450,20 +610,20 @@ function BlueprintFlowCanvasInner({
         } else {
             setNodes(nds => {
                 const withoutPreview = nds.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID);
-                if (withoutPreview.length === 0 && !pendingPlacementType) {
+                if (withoutPreview.length === 0 && !pendingPlacementEntry) {
                     return nds;
                 }
                 const next = applyBlueprintFlowNodeSelection(withoutPreview, selectedNodeIdsRef.current);
-                if (!pendingPlacementType) {
+                if (!pendingPlacementEntry) {
                     return next;
                 }
                 return [
                     ...next,
                     buildPlacementPreviewFlowNode(
-                        pendingPlacementType,
+                        pendingPlacementEntry,
                         pendingPlacementPosRef.current,
-                        nodeCatalog,
                         blueprintMemberVariables,
+                        blueprintPersistentVariables,
                     ),
                 ];
             });
@@ -475,19 +635,42 @@ function BlueprintFlowCanvasInner({
         return () => window.clearTimeout(t);
     }, [
         blueprintMemberVariables,
+        blueprintPersistentVariables,
         blueprintMembersSig,
         graphKey,
         nodeCatalog,
         revision,
         blueprintSelectedNodesDependencyKey(selectedNodeIds),
-        pendingPlacementType,
+        pendingPlacementEntry,
         stablePatchNodeParam,
         stableAddDynamicInputPin,
         stableRemoveDynamicInputPin,
         dynamicSelectOptions,
+        nodeDiagnosticsByNodeId,
+        nodeDiagnosticsSig,
+        elementPreviews,
+        onBindElementLiteral,
         setEdges,
         setNodes,
     ]);
+
+    useEffect(() => {
+        if (initialViewport) {
+            return undefined;
+        }
+        let secondFrame = 0;
+        const firstFrame = window.requestAnimationFrame(() => {
+            secondFrame = window.requestAnimationFrame(() => {
+                fitView({ padding: 0.18, duration: 0 });
+            });
+        });
+        return () => {
+            window.cancelAnimationFrame(firstFrame);
+            if (secondFrame) {
+                window.cancelAnimationFrame(secondFrame);
+            }
+        };
+    }, [fitView, graphKey, initialViewport]);
 
     const onSelectionChange = useCallback(
         ({ nodes: sel }: { nodes: Node[] }) => {
@@ -605,7 +788,7 @@ function BlueprintFlowCanvasInner({
                 return;
             }
             if (deleted.some(n => n.id === BP_PLACEMENT_PREVIEW_ID)) {
-                setPendingPlacementType(null);
+                cancelPendingPlacement();
             }
             const real = deleted.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID);
             if (real.length === 0) {
@@ -619,12 +802,12 @@ function BlueprintFlowCanvasInner({
             onSelectNodeIds([]);
             commitBlueprintIr(next);
         },
-        [commitBlueprintIr, onSelectNodeIds],
+        [cancelPendingPlacement, commitBlueprintIr, onSelectNodeIds],
     );
 
     const onPaneClick = useCallback(
         (e: ReactMouseEvent) => {
-            if (e.button !== 0 || !pendingPlacementTypeRef.current) {
+            if (e.button !== 0 || !pendingPlacementEntryRef.current) {
                 return;
             }
             e.preventDefault();
@@ -633,8 +816,42 @@ function BlueprintFlowCanvasInner({
         [],
     );
 
+    const onControlPanPointerDownCapture = useCallback(
+        (e: ReactPointerEvent<HTMLDivElement>) => {
+            if (e.button !== 0 || !e.ctrlKey || pendingPlacementEntryRef.current) {
+                return;
+            }
+            const target = e.target instanceof HTMLElement ? e.target : null;
+            if (target?.closest("textarea, input, select, [contenteditable='true']")) {
+                return;
+            }
+
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.setPointerCapture?.(e.pointerId);
+
+            const startViewport = getViewport();
+            controlPanStateRef.current = {
+                pointerId: e.pointerId,
+                startClientX: e.clientX,
+                startClientY: e.clientY,
+                startViewport,
+                latestViewport: startViewport,
+            };
+        },
+        [getViewport],
+    );
+
+    const onControlPanContextMenuCapture = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+        if (!e.ctrlKey) {
+            return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+    }, []);
+
     const onPlacementPreviewNodeClick = useCallback((_e: ReactMouseEvent, node: Node) => {
-        if (node.id !== BP_PLACEMENT_PREVIEW_ID || !pendingPlacementTypeRef.current) {
+        if (node.id !== BP_PLACEMENT_PREVIEW_ID || !pendingPlacementEntryRef.current) {
             return;
         }
         commitPendingPlacementRef.current();
@@ -646,7 +863,10 @@ function BlueprintFlowCanvasInner({
                 return;
             }
             e.preventDefault();
-            if (pendingPlacementTypeRef.current) {
+            if ("ctrlKey" in e && e.ctrlKey) {
+                return;
+            }
+            if (pendingPlacementEntryRef.current) {
                 commitPendingPlacementRef.current();
             }
             const clientX = "clientX" in e ? e.clientX : 0;
@@ -665,9 +885,12 @@ function BlueprintFlowCanvasInner({
     return (
         <div
             className="relative h-full w-full min-h-0"
-            style={pendingPlacementType ? { cursor: "crosshair" } : undefined}
+            style={pendingPlacementEntry ? { cursor: "crosshair" } : undefined}
+            onPointerDownCapture={onControlPanPointerDownCapture}
+            onContextMenuCapture={onControlPanContextMenuCapture}
         >
             <ReactFlow
+                key={graphKey}
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={blueprintFlowNodeTypes}
@@ -684,14 +907,29 @@ function BlueprintFlowCanvasInner({
                 onPaneClick={onPaneClick}
                 onNodeClick={onPlacementPreviewNodeClick}
                 onSelectionChange={onSelectionChange}
-                fitView
-                className="bg-[#0f1115]"
+                selectionOnDrag={!pendingPlacementEntry}
+                selectionMode={SelectionMode.Partial}
+                multiSelectionKeyCode="Shift"
+                panOnDrag={[1]}
+                panOnScroll
+                panOnScrollMode={PanOnScrollMode.Free}
+                panOnScrollSpeed={1}
+                zoomOnScroll={false}
+                zoomOnPinch
+                onMoveEnd={(_, viewport) => onViewportChange?.({
+                    x: viewport.x,
+                    y: viewport.y,
+                    zoom: viewport.zoom,
+                })}
+                defaultViewport={initialViewport ?? undefined}
+                className="narraleaf-blueprint-flow bg-[#0f1115]"
                 proOptions={{ hideAttribution: true }}
                 deleteKeyCode={deleteKeyCode ?? null}
                 edgesReconnectable={false}
                 edgesFocusable
                 elevateEdgesOnSelect
                 defaultEdgeOptions={{ selectable: true, focusable: true, interactionWidth: 24 }}
+                zIndexMode="manual"
             >
                 <Background color="#334155" gap={20} size={1} />
                 <BlueprintFlowZoomControls />
@@ -709,8 +947,8 @@ function BlueprintFlowCanvasInner({
                     anchor={{ x: addMenu.clientX, y: addMenu.clientY }}
                     flowPosition={addMenu.flow}
                     onClose={() => setAddMenu(null)}
-                    onPickType={type => {
-                        setPendingPlacementType(type);
+                    onPickEntry={entry => {
+                        setPendingPlacementEntry(entry);
                     }}
                 />
             ) : null}

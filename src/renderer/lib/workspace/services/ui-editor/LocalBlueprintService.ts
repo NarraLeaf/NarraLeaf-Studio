@@ -6,6 +6,7 @@ import type {
     BlueprintFieldValueSource,
     BlueprintFrontendKind,
     BlueprintGraphNode,
+    BlueprintPersistentVariable,
     BlueprintPrivateOwnerRecord,
     BlueprintVariable,
     LiteralValue,
@@ -14,10 +15,14 @@ import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement, UIElementValueBindingValueType } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
@@ -157,9 +162,15 @@ function createValueGraphIr(input: {
         params: {},
         meta: { editorLayout: { x: 80, y: 120 } },
     };
+    const literalType =
+        input.valueType === "json"
+            ? BLUEPRINT_NODE_TYPE_LITERAL_JSON
+            : input.valueType === "float"
+              ? BLUEPRINT_NODE_TYPE_LITERAL_FLOAT
+              : BLUEPRINT_NODE_TYPE_LITERAL_STRING;
     const literal: BlueprintGraphNode = {
         id: literalId,
-        type: input.valueType === "json" ? BLUEPRINT_NODE_TYPE_LITERAL_JSON : BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+        type: literalType,
         params: { value: normalizeBlueprintValueLiteral(input.literalValue, input.valueType) },
         meta: { editorLayout: { x: 300, y: 40 } },
     };
@@ -192,6 +203,10 @@ function createValueGraphIr(input: {
 function normalizeBlueprintValueLiteral(value: unknown, valueType: UIElementValueBindingValueType): unknown {
     if (valueType === "string") {
         return value == null ? "" : String(value);
+    }
+    if (valueType === "float") {
+        const n = typeof value === "number" ? value : Number(value);
+        return Number.isFinite(n) ? n : 0;
     }
     if (value === undefined) {
         return {};
@@ -884,6 +899,62 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         return m ? Object.values(m) : [];
     }
 
+    public createPersistentVariable(
+        historyBlueprintId: string,
+        input?: { name?: string; valueType?: string; defaultValue?: LiteralValue },
+    ): BlueprintPersistentVariable {
+        const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
+        const id = uuid.generate();
+        const valueType = input?.valueType?.trim();
+        const v: BlueprintPersistentVariable = {
+            id,
+            storageKey: id,
+            name: input?.name?.trim() || `persist_${id.slice(0, 8)}`,
+            valueType: valueType || undefined,
+            defaultValue: input?.defaultValue,
+        };
+        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
+            doc.persistentVariables = doc.persistentVariables ?? {};
+            doc.persistentVariables[v.id] = v;
+        });
+        return v;
+    }
+
+    public renamePersistentVariable(historyBlueprintId: string, variableId: string, name: string): void {
+        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
+            const v = doc.persistentVariables?.[variableId];
+            if (!v) {
+                return;
+            }
+            const next = name.trim();
+            v.name = next.length > 0 ? next : v.name;
+        }, { mergeKey: `persistent-variable-name:${variableId}` });
+    }
+
+    public setPersistentVariableDefault(
+        historyBlueprintId: string,
+        variableId: string,
+        defaultValue: LiteralValue | undefined,
+    ): void {
+        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
+            const v = doc.persistentVariables?.[variableId];
+            if (!v) {
+                return;
+            }
+            v.defaultValue = defaultValue;
+        }, { mergeKey: `persistent-variable-default:${variableId}` });
+    }
+
+    public deletePersistentVariable(historyBlueprintId: string, variableId: string): void {
+        this.applyBlueprintEdit({ blueprintId: historyBlueprintId }, doc => {
+            if (!doc.persistentVariables?.[variableId]) {
+                return;
+            }
+            this.clearPersistentVariableNodeRefs(doc, variableId);
+            delete doc.persistentVariables[variableId];
+        });
+    }
+
     public createBlueprintVariable(
         blueprintId: string,
         input?: { name?: string; valueType?: string; defaultValue?: LiteralValue },
@@ -957,6 +1028,37 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             }
             delete bp.members.variables[variableId];
         });
+    }
+
+    private clearPersistentVariableNodeRefs(doc: BlueprintDocument, variableId: string): void {
+        for (const bp of Object.values(doc.blueprints)) {
+            if (bp.program.kind !== "graph") {
+                continue;
+            }
+            const slots = [
+                ...Object.values(bp.program.graphs.events ?? {}),
+                ...Object.values(bp.program.graphs.functions ?? {}),
+                ...Object.values(bp.program.graphs.macros ?? {}),
+            ];
+            for (const slot of slots) {
+                if (!slot.graph) {
+                    continue;
+                }
+                const ir = ensureBlueprintGraphIr(slot.graph);
+                for (const node of Object.values(ir.nodes ?? {})) {
+                    if (
+                        (node.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET ||
+                            node.type === BLUEPRINT_NODE_TYPE_PERSISTENT_SET) &&
+                        node.params?.persistentVariableId === variableId
+                    ) {
+                        const next = { ...(node.params ?? {}) };
+                        delete next.persistentVariableId;
+                        delete next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
+                        node.params = next;
+                    }
+                }
+            }
+        }
     }
 
     /**

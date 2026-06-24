@@ -30,11 +30,14 @@ import {
     OutlineSubtree,
 } from "@/lib/ui-editor/interaction/outline/LayerOutlineRows";
 import { useLayerOutlineContextMenus } from "@/lib/ui-editor/interaction/outline/useLayerOutlineContextMenus";
+import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 
 export type UILayersPanelProps = {
     surfaceId: string;
     stateService: UIEditorStateService;
     documentService: UIDocumentService;
+    uiService?: UIService | null;
     localBlueprint: LocalBlueprintService;
     inputDialog: InputDialog | null;
 };
@@ -124,6 +127,7 @@ export function UILayersPanel({
     surfaceId,
     stateService,
     documentService,
+    uiService,
     localBlueprint,
     inputDialog,
 }: UILayersPanelProps) {
@@ -190,7 +194,7 @@ export function UILayersPanel({
                     nextIds = [...selectedIds, id];
                 }
                 if (nextIds.length === 0) {
-                    stateService.setSelection({ type: null, data: null });
+                    selectSurfaceForProperties(stateService, surfaceId, uiService);
                     return;
                 }
             } else {
@@ -274,6 +278,7 @@ export function UILayersPanel({
         surfaceId,
         documentService,
         stateService,
+        uiService,
         localBlueprint,
         inputDialog,
         effectiveRootId,

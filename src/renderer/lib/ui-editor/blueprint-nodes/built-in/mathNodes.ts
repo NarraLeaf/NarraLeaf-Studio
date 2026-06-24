@@ -5,17 +5,26 @@
  */
 
 import {
+    BLUEPRINT_NODE_TYPE_MATH_ABS,
     BLUEPRINT_NODE_TYPE_MATH_ADD,
+    BLUEPRINT_NODE_TYPE_MATH_CEIL,
     BLUEPRINT_NODE_TYPE_MATH_DECREMENT,
     BLUEPRINT_NODE_TYPE_MATH_DIVIDE,
     BLUEPRINT_NODE_TYPE_MATH_EQUAL,
+    BLUEPRINT_NODE_TYPE_MATH_FLOOR,
     BLUEPRINT_NODE_TYPE_MATH_GREATER,
     BLUEPRINT_NODE_TYPE_MATH_GREATER_OR_EQUAL,
     BLUEPRINT_NODE_TYPE_MATH_INCREMENT,
     BLUEPRINT_NODE_TYPE_MATH_LESS,
     BLUEPRINT_NODE_TYPE_MATH_LESS_OR_EQUAL,
+    BLUEPRINT_NODE_TYPE_MATH_MAX,
+    BLUEPRINT_NODE_TYPE_MATH_MIN,
+    BLUEPRINT_NODE_TYPE_MATH_MODULO,
     BLUEPRINT_NODE_TYPE_MATH_MULTIPLY,
     BLUEPRINT_NODE_TYPE_MATH_NOT_EQUAL,
+    BLUEPRINT_NODE_TYPE_MATH_RANDOM_FLOAT,
+    BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER,
+    BLUEPRINT_NODE_TYPE_MATH_ROUND,
     BLUEPRINT_NODE_TYPE_MATH_SUBTRACT,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_NODE_PARAMS_DYNAMIC_INPUT_PIN_IDS_KEY, type BlueprintNodeDef } from "../types";
@@ -41,6 +50,13 @@ const MATH_PIN_RESULT_FLOAT = {
     kind: "output" as const,
     semantic: "data" as const,
     valueType: "float" as const,
+    label: "Result",
+};
+const MATH_PIN_RESULT_INTEGER = {
+    id: "result",
+    kind: "output" as const,
+    semantic: "data" as const,
+    valueType: "integer" as const,
     label: "Result",
 };
 const MATH_PIN_RESULT_BOOL = {
@@ -82,6 +98,11 @@ const ARITH_NODES: Array<Pick<BlueprintNodeDef, "type" | "displayName" | "keywor
         displayName: "÷",
         keywords: ["divide", "division", "/"],
     },
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_MODULO,
+        displayName: "Modulo",
+        keywords: ["modulo", "remainder", "%"],
+    },
 ];
 
 const UNARY_NODES: Array<Pick<BlueprintNodeDef, "type" | "displayName" | "keywords">> = [
@@ -94,6 +115,39 @@ const UNARY_NODES: Array<Pick<BlueprintNodeDef, "type" | "displayName" | "keywor
         type: BLUEPRINT_NODE_TYPE_MATH_DECREMENT,
         displayName: "−1",
         keywords: ["-1", "subtract one", "minus one", "decrement"],
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_ABS,
+        displayName: "Abs",
+        keywords: ["abs", "absolute", "magnitude"],
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_ROUND,
+        displayName: "Round",
+        keywords: ["round", "nearest", "integer"],
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_FLOOR,
+        displayName: "Floor",
+        keywords: ["floor", "down", "integer"],
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_CEIL,
+        displayName: "Ceil",
+        keywords: ["ceil", "ceiling", "up", "integer"],
+    },
+];
+
+const MIN_MAX_NODES: Array<Pick<BlueprintNodeDef, "type" | "displayName" | "keywords">> = [
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_MIN,
+        displayName: "Min",
+        keywords: ["min", "minimum", "smaller"],
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_MAX,
+        displayName: "Max",
+        keywords: ["max", "maximum", "larger"],
     },
 ];
 
@@ -130,6 +184,12 @@ const COMPARE_NODES: Array<Pick<BlueprintNodeDef, "type" | "displayName" | "keyw
     },
 ];
 
+const INTEGER_RESULT_UNARY_NODE_TYPES = new Set<string>([
+    BLUEPRINT_NODE_TYPE_MATH_ROUND,
+    BLUEPRINT_NODE_TYPE_MATH_FLOOR,
+    BLUEPRINT_NODE_TYPE_MATH_CEIL,
+]);
+
 export const mathBlueprintNodes: BlueprintNodeDef[] = [
     ...ARITH_NODES.map(def => ({
         ...def,
@@ -155,9 +215,55 @@ export const mathBlueprintNodes: BlueprintNodeDef[] = [
         category: "Math",
         graphKinds: [...GRAPH_KINDS],
         isPure: true,
-        pins: [MATH_UNARY_NUMBER_IN, MATH_PIN_RESULT_FLOAT],
+        pins: [
+            MATH_UNARY_NUMBER_IN,
+            INTEGER_RESULT_UNARY_NODE_TYPES.has(def.type) ? MATH_PIN_RESULT_INTEGER : MATH_PIN_RESULT_FLOAT,
+        ],
         execute: () => ({}),
     })),
+    ...MIN_MAX_NODES.map(def => ({
+        ...def,
+        category: "Math",
+        graphKinds: [...GRAPH_KINDS],
+        isPure: true,
+        pins: [MATH_PIN_A, MATH_PIN_B, MATH_PIN_RESULT_FLOAT],
+        dynamicInputPins: {
+            storageKey: BLUEPRINT_NODE_PARAMS_DYNAMIC_INPUT_PIN_IDS_KEY,
+            fixedDataInputIds: ["a", "b"],
+            generatedIdPrefix: "in",
+            valueType: "float",
+            allowInlineLiteral: true,
+        },
+        execute: () => ({}),
+    })),
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_RANDOM_FLOAT,
+        displayName: "Random Float",
+        category: "Math",
+        keywords: ["random", "float", "range"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: true,
+        pins: [
+            { ...MATH_PIN_A, id: "min", label: "Min" },
+            { ...MATH_PIN_B, id: "max", label: "Max" },
+            MATH_PIN_RESULT_FLOAT,
+        ],
+        execute: () => ({}),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER,
+        displayName: "Random Integer",
+        category: "Math",
+        keywords: ["random", "integer", "int", "range"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: true,
+        pins: [
+            { ...MATH_PIN_A, id: "min", label: "Min", valueType: "integer" },
+            { ...MATH_PIN_B, id: "max", label: "Max", valueType: "integer" },
+            MATH_PIN_RESULT_INTEGER,
+        ],
+        execute: () => ({}),
+    },
     ...COMPARE_NODES.map(def => ({
         ...def,
         category: "Math",

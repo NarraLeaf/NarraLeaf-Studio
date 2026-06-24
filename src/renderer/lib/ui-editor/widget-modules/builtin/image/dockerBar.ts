@@ -1,9 +1,12 @@
 import type { DockerBarContext, DockerBarItem } from "@/lib/ui-editor/widget-modules/types";
 import type { ImageFill, ImageFillMode } from "@shared/types/ui-editor/imageFill";
+import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { createRectangleDockerBarItems } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleDockerBar";
 import { normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
-import { syncImageAppearanceImageFillFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
+import { buildImageFillPropsUpdate } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
+import { resolveImageRectangleLike } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
+import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import { getImageWidgetRectangleProps } from "./helpers";
 
 const FIT_OPTIONS: { value: ImageFillMode; label: string }[] = [
@@ -13,6 +16,11 @@ const FIT_OPTIONS: { value: ImageFillMode; label: string }[] = [
     { value: "crop", label: "Crop" },
     { value: "tile", label: "Tile" },
 ];
+
+const DEFAULT_APPEARANCE_RESOLVE_CONTEXT = {
+    variantOverrideId: null,
+    signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+};
 
 export function createImageDockerBarItems(ctx: DockerBarContext): DockerBarItem[] {
     const { element, documentService } = ctx;
@@ -31,25 +39,24 @@ export function createImageDockerBarItems(ctx: DockerBarContext): DockerBarItem[
             options: FIT_OPTIONS,
             onChange: (value: string | number) => {
                 const nextMode = String(value) as ImageFillMode;
-                const currentFill = normalizeImageFill(getImageWidgetRectangleProps(element));
+                const liveElement = documentService.getDocument().elements[element.id] ?? element;
+                const rawAppearance = (liveElement.props as { appearance?: unknown } | undefined)?.appearance;
+                const appearance: AppearanceModel | undefined =
+                    isAppearanceModel(rawAppearance) ? rawAppearance : undefined;
+                const currentProps = resolveImageRectangleLike(
+                    liveElement,
+                    appearance,
+                    DEFAULT_APPEARANCE_RESOLVE_CONTEXT
+                );
+                const currentFill = normalizeImageFill(currentProps);
                 const nextImageFill: ImageFill = {
                     ...currentFill,
                     mode: nextMode,
                     assetId: currentFill?.assetId ?? null,
                     cropPlacement: currentFill?.cropPlacement,
                 };
-                const rawAppearance = (element.props as { appearance?: unknown } | undefined)?.appearance;
-                const nextAppearance =
-                    isAppearanceModel(rawAppearance) ?
-                        syncImageAppearanceImageFillFromProps(rawAppearance, nextImageFill)
-                    :   rawAppearance;
 
-                documentService.updateElementProps(element.id, {
-                    ...element.props,
-                    fillType: "image",
-                    imageFill: nextImageFill,
-                    ...(nextAppearance !== rawAppearance ? { appearance: nextAppearance } : {}),
-                });
+                documentService.updateElementProps(liveElement.id, buildImageFillPropsUpdate(liveElement, nextImageFill));
             },
         },
         {

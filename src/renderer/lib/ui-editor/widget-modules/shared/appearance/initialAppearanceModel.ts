@@ -5,6 +5,7 @@ import type {
     AppearanceValueRow,
     ButtonAppearancePropertyKey,
     ContainerAppearancePropertyKey,
+    TextAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { UIElement } from "@shared/types/ui-editor/document";
@@ -12,6 +13,7 @@ import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 import type { ContainerWidgetProps } from "@shared/types/ui-editor/container";
 import type { ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
+import type { TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import { buttonPropsToImageFillBaseline } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
@@ -88,6 +90,25 @@ export const BUTTON_KEY_ORDER: ButtonAppearancePropertyKey[] = [
     "effectInnerShadow",
     "effectBlend",
     "effectGlow",
+    "effectFilter",
+];
+
+/** Stable key order for text appearance groups. */
+export const TEXT_KEY_ORDER: TextAppearancePropertyKey[] = [
+    "fontAssetId",
+    "fontSize",
+    "fontWeight",
+    "fontStyle",
+    "color",
+    "lineHeight",
+    "transformOffsetX",
+    "transformOffsetY",
+    "transformScale",
+    "transformRotation",
+    "transformOpacity",
+    "effectBlur",
+    "effectTextShadow",
+    "effectBlend",
     "effectFilter",
 ];
 
@@ -329,6 +350,46 @@ function buttonRowValue(props: ButtonWidgetProps, key: ButtonAppearancePropertyK
     return { conditions: null, value };
 }
 
+function textRowValue(props: TextWidgetProps, key: TextAppearancePropertyKey): AppearanceValueRow {
+    const value = (() => {
+        switch (key) {
+            case "fontAssetId":
+                return props.fontAssetId ?? null;
+            case "fontSize":
+                return props.fontSize;
+            case "fontWeight":
+                return props.fontWeight;
+            case "fontStyle":
+                return props.fontStyle;
+            case "color":
+                return props.color;
+            case "lineHeight":
+                return props.lineHeight;
+            case "transformOffsetX":
+                return props.transformOffsetX;
+            case "transformOffsetY":
+                return props.transformOffsetY;
+            case "transformScale":
+                return props.transformScale;
+            case "transformRotation":
+                return props.transformRotation;
+            case "transformOpacity":
+                return props.transformOpacity;
+            case "effectBlur":
+                return props.effects.effectBlur;
+            case "effectTextShadow":
+                return props.effects.effectTextShadow;
+            case "effectBlend":
+                return props.effects.effectBlend;
+            case "effectFilter":
+                return props.effects.effectFilter;
+            default:
+                return null;
+        }
+    })();
+    return { conditions: null, value };
+}
+
 export function createInitialContainerAppearance(props: ContainerWidgetProps): AppearanceModel {
     const propertyGroups: AppearancePropertyGroup[] = CONTAINER_KEY_ORDER.map(key => ({
         key,
@@ -350,6 +411,23 @@ export function createInitialButtonAppearance(props: ButtonWidgetProps): Appeara
     const propertyGroups: AppearancePropertyGroup[] = BUTTON_KEY_ORDER.map(key => ({
         key,
         rows: [buttonRowValue(props, key)],
+    }));
+    return {
+        defaultVariantId: DEFAULT_APPEARANCE_VARIANT_ID,
+        variants: [
+            {
+                id: DEFAULT_APPEARANCE_VARIANT_ID,
+                name: "Default",
+                propertyGroups,
+            },
+        ],
+    };
+}
+
+export function createInitialTextAppearance(props: TextWidgetProps): AppearanceModel {
+    const propertyGroups: AppearancePropertyGroup[] = TEXT_KEY_ORDER.map(key => ({
+        key,
+        rows: [textRowValue(props, key)],
     }));
     return {
         defaultVariantId: DEFAULT_APPEARANCE_VARIANT_ID,
@@ -419,6 +497,60 @@ export function ensureContainerAppearanceHasAllKeys(model: AppearanceModel, flat
             rows: [containerRowValue(flat, key)],
         }));
         return { ...v, propertyGroups: [...v.propertyGroups, ...extra] };
+    });
+    return changed ? { ...model, variants } : model;
+}
+
+/**
+ * Append missing property groups for older saved text elements.
+ */
+export function ensureTextAppearanceHasAllKeys(model: AppearanceModel, flat: TextWidgetProps): AppearanceModel {
+    let changed = false;
+    const variants = model.variants.map(v => {
+        const have = new Set(v.propertyGroups.map(g => g.key));
+        const missing = TEXT_KEY_ORDER.filter(k => !have.has(k));
+        if (missing.length === 0) {
+            return v;
+        }
+        changed = true;
+        const extra: AppearancePropertyGroup[] = missing.map(key => ({
+            key,
+            rows: [textRowValue(flat, key)],
+        }));
+        return { ...v, propertyGroups: [...v.propertyGroups, ...extra] };
+    });
+    return changed ? { ...model, variants } : model;
+}
+
+export function patchTextAppearanceDefaultRows(
+    model: AppearanceModel,
+    updates: Partial<Record<TextAppearancePropertyKey, AppearanceValueRow["value"]>>
+): AppearanceModel {
+    let changed = false;
+    const variants = model.variants.map(v => {
+        if (v.id !== model.defaultVariantId) {
+            return v;
+        }
+        const propertyGroups = v.propertyGroups.map(g => {
+            const key = g.key as TextAppearancePropertyKey;
+            if (!(key in updates)) {
+                return g;
+            }
+            const row = g.rows[0];
+            if (!row) {
+                return g;
+            }
+            const value = updates[key] ?? null;
+            if (JSON.stringify(row.value) === JSON.stringify(value)) {
+                return g;
+            }
+            changed = true;
+            return {
+                ...g,
+                rows: [{ ...row, value }, ...g.rows.slice(1)],
+            };
+        });
+        return { ...v, propertyGroups };
     });
     return changed ? { ...model, variants } : model;
 }

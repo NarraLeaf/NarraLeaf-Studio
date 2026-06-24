@@ -6,10 +6,10 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
  * Prefer this over {@link useDocumentVersion} when the subscriber must re-render in the same frame
  * as the mutation (e.g. resolving DOM nodes for the current selection).
  */
-export function useUIDocumentRevision(documentService: UIDocumentService): number {
+export function useUIDocumentRevision(documentService: UIDocumentService | null): number {
     return useSyncExternalStore(
-        onStoreChange => documentService.onDocumentChanged(() => onStoreChange()),
-        () => documentService.getRevision(),
-        () => documentService.getRevision(),
+        onStoreChange => documentService?.onDocumentChanged(() => onStoreChange()) ?? (() => undefined),
+        () => documentService?.getRevision() ?? 0,
+        () => 0,
     );
 }

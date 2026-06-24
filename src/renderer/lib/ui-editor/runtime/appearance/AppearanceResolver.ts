@@ -4,6 +4,7 @@ import type {
     AppearanceValueRow,
     ButtonAppearancePropertyKey,
     ContainerAppearancePropertyKey,
+    TextAppearancePropertyKey,
 } from "@shared/types/ui-editor/appearance";
 import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
 import { DEFAULT_ELEMENT_EFFECT_VALUES, normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
@@ -17,14 +18,17 @@ import {
     getButtonProps,
 } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
 import { conditionMatches, type SystemInteractionSignals } from "./SystemInteractionState";
-import { isButtonAppearanceKey, isContainerAppearanceKey } from "./appearanceWhitelist";
+import { isButtonAppearanceKey, isContainerAppearanceKey, isTextAppearanceKey } from "./appearanceWhitelist";
 import type { ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
+import type { TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/helpers";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import {
     isMotionCapableButtonAppearanceKey,
     isMotionCapableContainerAppearanceKey,
+    isMotionCapableTextAppearanceKey,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
+import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
 
 /** Flat button props plus border chrome fields resolved from appearance (not stored on element.props). */
 export type ButtonResolvedVisualProps = Pick<
@@ -61,6 +65,8 @@ export type AppearanceResolveContext = {
     variantOverrideId?: string | null;
     signals: SystemInteractionSignals;
 };
+
+export type TextResolvedVisualProps = Omit<TextWidgetProps, "appearance">;
 
 function pickLastMatchingRowValue(rows: AppearanceValueRow[], signals: SystemInteractionSignals): unknown {
     let picked: unknown = undefined;
@@ -615,6 +621,119 @@ function applyButtonKey(target: ButtonResolvedVisualProps, key: ButtonAppearance
     }
 }
 
+function applyTextKey(target: TextResolvedVisualProps, key: TextAppearancePropertyKey, raw: unknown): void {
+    switch (key) {
+        case "fontAssetId": {
+            if (raw == null || raw === "") {
+                target.fontAssetId = null;
+            } else {
+                target.fontAssetId = String(raw);
+            }
+            break;
+        }
+        case "fontSize": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.fontSize = Math.min(256, Math.max(1, n));
+            }
+            break;
+        }
+        case "fontWeight": {
+            const s = coerceString(raw);
+            if (s === "normal" || s === "bold" || s === "600") {
+                target.fontWeight = s;
+            }
+            break;
+        }
+        case "fontStyle": {
+            const s = coerceString(raw);
+            if (s === "normal" || s === "italic") {
+                target.fontStyle = s;
+            }
+            break;
+        }
+        case "color": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.color = s;
+            }
+            break;
+        }
+        case "lineHeight": {
+            const n = coerceNumber(raw);
+            if (n !== undefined && n > 0) {
+                target.lineHeight = n;
+            }
+            break;
+        }
+        case "transformOffsetX": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.transformOffsetX = n;
+            }
+            break;
+        }
+        case "transformOffsetY": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.transformOffsetY = n;
+            }
+            break;
+        }
+        case "transformScale": {
+            const n = coerceNumber(raw);
+            if (n !== undefined && n > 0) {
+                target.transformScale = n;
+            }
+            break;
+        }
+        case "transformRotation": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.transformRotation = n;
+            }
+            break;
+        }
+        case "transformOpacity": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.transformOpacity = Math.max(0, Math.min(1, n));
+            }
+            break;
+        }
+        case "effectBlur": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.effects = { ...target.effects, effectBlur: Math.max(0, n) };
+            }
+            break;
+        }
+        case "effectTextShadow": {
+            target.effects = {
+                ...target.effects,
+                effectTextShadow: normalizeElementEffectValues({ effectTextShadow: raw }).effectTextShadow,
+            };
+            break;
+        }
+        case "effectBlend": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.effects = { ...target.effects, effectBlend: s };
+            }
+            break;
+        }
+        case "effectFilter": {
+            target.effects = {
+                ...target.effects,
+                effectFilter: normalizeElementEffectValues({ effectFilter: raw }).effectFilter,
+            };
+            break;
+        }
+        default:
+            break;
+    }
+}
+
 function isUsableAppearance(appearance: AppearanceModel | null | undefined): appearance is AppearanceModel {
     return Boolean(appearance && appearance.variants.length > 0);
 }
@@ -765,6 +884,44 @@ export function resolveButtonAppearanceTransitions(
     ctx: AppearanceResolveContext
 ): Partial<Record<ButtonAppearancePropertyKey, AppearanceFieldTransition>> {
     return collectActiveVariantTransitions(appearance, ctx, isMotionCapableButtonAppearanceKey);
+}
+
+export function resolveTextVisualProps(
+    element: UIElement,
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext
+): TextResolvedVisualProps {
+    const baseline = getTextProps(element) as TextResolvedVisualProps;
+    if (!isUsableAppearance(appearance)) {
+        return baseline;
+    }
+    const variant = resolveActiveVariant(appearance, ctx.variantOverrideId);
+    if (!variant) {
+        return baseline;
+    }
+    const next: TextResolvedVisualProps = {
+        ...baseline,
+        effects: { ...baseline.effects },
+    };
+    for (const group of variant.propertyGroups) {
+        const key = group.key;
+        if (!isTextAppearanceKey(key)) {
+            continue;
+        }
+        const raw = pickLastMatchingRowValue(group.rows, ctx.signals);
+        if (raw === undefined) {
+            continue;
+        }
+        applyTextKey(next, key, raw);
+    }
+    return next;
+}
+
+export function resolveTextAppearanceTransitions(
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext
+): Partial<Record<TextAppearancePropertyKey, AppearanceFieldTransition>> {
+    return collectActiveVariantTransitions(appearance, ctx, isMotionCapableTextAppearanceKey);
 }
 
 /** Map resolved button visuals to rectangle chrome for `RectangleChromeRenderer` and image-fill diagnostics. */

@@ -7,6 +7,14 @@ import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import { DevModeBundle, DevModeEntry, DevModeStatus } from "./devMode";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type { PluginPermissionGrantPayload, PluginPermissionGrantResult, PluginPermissionPromptResult } from "./pluginPermissions";
+import type {
+    PrivilegedBashExecutePayload,
+    PrivilegedBashExecuteResult,
+    PrivilegedFileSystemCallPayload,
+    PrivilegedFileSystemCallResult,
+    PrivilegedPermissionRevokePluginPayload,
+    PrivilegedPermissionRequestPayload,
+} from "./privileged";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -24,6 +32,7 @@ export enum IPCEventType {
     appGlobalStateSet = "app.globalState.set",
     appGlobalStateGetAll = "app.globalState.getAll",
     appAddRecentProject = "app.addRecentProject",
+    appSystemPath = "app.systemPath",
 
     fsStat = "fs.stat",
     fsList = "fs.list",
@@ -71,8 +80,18 @@ export enum IPCEventType {
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
     devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
 
+    blueprintPersistenceGetAll = "blueprintPersistence.getAll",
+    blueprintPersistenceGetValue = "blueprintPersistence.getValue",
+    blueprintPersistenceSetValue = "blueprintPersistence.setValue",
+    blueprintPersistenceRemoveValue = "blueprintPersistence.removeValue",
+
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
+
+    privilegedFsCall = "privileged.fs.call",
+    privilegedPermissionRequest = "privileged.permission.request",
+    privilegedPermissionRevokePlugin = "privileged.permission.revokePlugin",
+    privilegedBashExecute = "privileged.bash.execute",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -84,6 +103,11 @@ export type RequestStatus<T> = {
     success: false;
     data?: never;
     error?: string;
+};
+
+export type BlueprintPersistenceProjectRef = {
+    projectIdentifier?: string;
+    projectPath: string;
 };
 
 export type IPCEvents = {
@@ -199,7 +223,17 @@ export type IPCEvents = {
         },
         response: void;
     };
-} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPluginPermissionEvents;
+    [IPCEventType.appSystemPath]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            name: "desktop";
+        },
+        response: {
+            path: string;
+        };
+    };
+} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPrivilegedEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -566,6 +600,49 @@ export type IPCDevModeEvents = {
     };
 };
 
+export type IPCBlueprintPersistenceEvents = {
+    [IPCEventType.blueprintPersistenceGetAll]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: BlueprintPersistenceProjectRef;
+        },
+        response: {
+            values: Record<string, unknown>;
+        };
+    };
+    [IPCEventType.blueprintPersistenceGetValue]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: BlueprintPersistenceProjectRef;
+            key: string;
+        },
+        response: {
+            value: unknown;
+        };
+    };
+    [IPCEventType.blueprintPersistenceSetValue]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: BlueprintPersistenceProjectRef;
+            key: string;
+            value: unknown;
+        },
+        response: void;
+    };
+    [IPCEventType.blueprintPersistenceRemoveValue]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: BlueprintPersistenceProjectRef;
+            key: string;
+        },
+        response: void;
+    };
+};
+
 export type IPCPluginPermissionEvents = {
     [IPCEventType.pluginPermissionPromptLaunch]: {
         type: IPCMessageType.request,
@@ -580,5 +657,32 @@ export type IPCPluginPermissionEvents = {
         consumer: IPCType.Host,
         data: PluginPermissionGrantPayload,
         response: PluginPermissionGrantResult;
+    };
+};
+
+export type IPCPrivilegedEvents = {
+    [IPCEventType.privilegedFsCall]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: PrivilegedFileSystemCallPayload,
+        response: PrivilegedFileSystemCallResult;
+    };
+    [IPCEventType.privilegedPermissionRequest]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: PrivilegedPermissionRequestPayload,
+        response: PluginPermissionPromptResult;
+    };
+    [IPCEventType.privilegedPermissionRevokePlugin]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: PrivilegedPermissionRevokePluginPayload,
+        response: void;
+    };
+    [IPCEventType.privilegedBashExecute]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: PrivilegedBashExecutePayload,
+        response: PrivilegedBashExecuteResult;
     };
 };

@@ -24,9 +24,19 @@ import { isUsableAppearanceModel } from "./initialAppearanceModel";
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { CompactContainerAppearance } from "./compact/CompactContainerAppearance";
 import { CompactButtonAppearance } from "./compact/CompactButtonAppearance";
+import { CompactTextAppearance } from "./compact/CompactTextAppearance";
 import { moduleHasAnyAppearanceTransitionInModel } from "./appearanceMotion";
-import { BUTTON_MODULE_KEYS as BUTTON_KEYS, CONTAINER_MODULE_KEYS as CONTAINER_KEYS } from "./compact/appearanceModuleState";
-import type { ButtonAppearanceModuleId, ContainerAppearanceModuleId, ModuleEditMode } from "./compact/appearanceModuleState";
+import {
+    BUTTON_MODULE_KEYS as BUTTON_KEYS,
+    CONTAINER_MODULE_KEYS as CONTAINER_KEYS,
+    TEXT_MODULE_KEYS as TEXT_KEYS,
+} from "./compact/appearanceModuleState";
+import type {
+    ButtonAppearanceModuleId,
+    ContainerAppearanceModuleId,
+    ModuleEditMode,
+    TextAppearanceModuleId,
+} from "./compact/appearanceModuleState";
 
 const DEFAULT_CONTAINER_MODULE_MODES: Record<ContainerAppearanceModuleId, ModuleEditMode> = {
     background: "default",
@@ -44,6 +54,12 @@ const DEFAULT_BUTTON_MODULE_MODES: Record<ButtonAppearanceModuleId, ModuleEditMo
     effects: "default",
 };
 
+const DEFAULT_TEXT_MODULE_MODES: Record<TextAppearanceModuleId, ModuleEditMode> = {
+    typography: "default",
+    transform: "default",
+    effects: "default",
+};
+
 const DEFAULT_CONTAINER_MOTION_VISIBILITY: Record<ContainerAppearanceModuleId, boolean> = {
     background: false,
     stroke: false,
@@ -56,6 +72,12 @@ const DEFAULT_BUTTON_MOTION_VISIBILITY: Record<ButtonAppearanceModuleId, boolean
     background: false,
     border: false,
     spacing: false,
+    transform: false,
+    effects: false,
+};
+
+const DEFAULT_TEXT_MOTION_VISIBILITY: Record<TextAppearanceModuleId, boolean> = {
+    typography: false,
     transform: false,
     effects: false,
 };
@@ -80,8 +102,16 @@ function deriveButtonMotionVisibility(model: AppearanceModel): Record<ButtonAppe
     };
 }
 
+function deriveTextMotionVisibility(model: AppearanceModel): Record<TextAppearanceModuleId, boolean> {
+    return {
+        typography: moduleHasAnyAppearanceTransitionInModel(model, TEXT_KEYS.typography),
+        transform: moduleHasAnyAppearanceTransitionInModel(model, TEXT_KEYS.transform),
+        effects: moduleHasAnyAppearanceTransitionInModel(model, TEXT_KEYS.effects),
+    };
+}
+
 export type AppearanceAuthoringPanelProps = {
-    kind: "container" | "button" | "image";
+    kind: "container" | "button" | "image" | "text";
     appearance: AppearanceModel | null | undefined;
     onReplace: (next: AppearanceModel) => void;
     inspectorData: UIInspectorData;
@@ -117,8 +147,10 @@ export function AppearanceAuthoringPanel({
 
     const [containerModuleModes, setContainerModuleModes] = useState(DEFAULT_CONTAINER_MODULE_MODES);
     const [buttonModuleModes, setButtonModuleModes] = useState(DEFAULT_BUTTON_MODULE_MODES);
+    const [textModuleModes, setTextModuleModes] = useState(DEFAULT_TEXT_MODULE_MODES);
     const [containerMotionVisibility, setContainerMotionVisibility] = useState(DEFAULT_CONTAINER_MOTION_VISIBILITY);
     const [buttonMotionVisibility, setButtonMotionVisibility] = useState(DEFAULT_BUTTON_MOTION_VISIBILITY);
+    const [textMotionVisibility, setTextMotionVisibility] = useState(DEFAULT_TEXT_MOTION_VISIBILITY);
 
     const setContainerModuleMode = useCallback((module: ContainerAppearanceModuleId, mode: ModuleEditMode) => {
         setContainerModuleModes(prev => ({ ...prev, [module]: mode }));
@@ -126,6 +158,10 @@ export function AppearanceAuthoringPanel({
 
     const setButtonModuleMode = useCallback((module: ButtonAppearanceModuleId, mode: ModuleEditMode) => {
         setButtonModuleModes(prev => ({ ...prev, [module]: mode }));
+    }, []);
+
+    const setTextModuleMode = useCallback((module: TextAppearanceModuleId, mode: ModuleEditMode) => {
+        setTextModuleModes(prev => ({ ...prev, [module]: mode }));
     }, []);
 
     const setContainerMotionVisible = useCallback((module: ContainerAppearanceModuleId, visible: boolean) => {
@@ -136,9 +172,14 @@ export function AppearanceAuthoringPanel({
         setButtonMotionVisibility(prev => ({ ...prev, [module]: visible }));
     }, []);
 
+    const setTextMotionVisible = useCallback((module: TextAppearanceModuleId, visible: boolean) => {
+        setTextMotionVisibility(prev => ({ ...prev, [module]: visible }));
+    }, []);
+
     useEffect(() => {
         setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
         setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
+        setTextModuleModes(DEFAULT_TEXT_MODULE_MODES);
     }, [draftResetKey, selectedVariantId]);
 
     useEffect(() => {
@@ -189,12 +230,20 @@ export function AppearanceAuthoringPanel({
         return deriveButtonMotionVisibility(model);
     }, [model]);
 
+    const textMotionFieldsConfigured = useMemo(() => {
+        if (!isUsableAppearanceModel(model)) {
+            return DEFAULT_TEXT_MOTION_VISIBILITY;
+        }
+        return deriveTextMotionVisibility(model);
+    }, [model]);
+
     useEffect(() => {
         if (!isUsableAppearanceModel(model)) {
             return;
         }
         setContainerMotionVisibility(deriveContainerMotionVisibility(model));
         setButtonMotionVisibility(deriveButtonMotionVisibility(model));
+        setTextMotionVisibility(deriveTextMotionVisibility(model));
         // Intentionally omit `model` from deps: avoid resetting per-module "Animated fields" toggles on every
         // appearance edit; menu `hasConfiguredFields` still tracks the live model via `motionFieldsConfigured`.
     }, [draftResetKey, selectedVariantId]);
@@ -215,8 +264,11 @@ export function AppearanceAuthoringPanel({
         if (kind === "button") {
             return `${draftResetKey}${variantSeg}|b:${buttonModuleModes.background}|${buttonModuleModes.border}|${buttonModuleModes.spacing}|${buttonModuleModes.transform}|${buttonModuleModes.effects}`;
         }
+        if (kind === "text") {
+            return `${draftResetKey}${variantSeg}|t:${textModuleModes.typography}|${textModuleModes.transform}|${textModuleModes.effects}`;
+        }
         return `${draftResetKey}${variantSeg}|c:${containerModuleModes.background}|${containerModuleModes.stroke}|${containerModuleModes.corners}|${containerModuleModes.transform}|${containerModuleModes.effects}`;
-    }, [draftResetKey, kind, selectedVariantId, containerModuleModes, buttonModuleModes]);
+    }, [draftResetKey, kind, selectedVariantId, containerModuleModes, buttonModuleModes, textModuleModes]);
 
     const setFieldTransition = useCallback(
         (groupKey: AppearancePropertyKey, transition: AppearanceFieldTransition | null) => {
@@ -251,6 +303,7 @@ export function AppearanceAuthoringPanel({
         setSelectedVariantId(id);
         setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
         setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
+        setTextModuleModes(DEFAULT_TEXT_MODULE_MODES);
     };
 
     const handleRemoveVariant = () => {
@@ -263,6 +316,7 @@ export function AppearanceAuthoringPanel({
         setSelectedVariantId(nextModel.defaultVariantId);
         setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
         setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
+        setTextModuleModes(DEFAULT_TEXT_MODULE_MODES);
     };
 
     const handleSetDefault = () => {
@@ -292,6 +346,7 @@ export function AppearanceAuthoringPanel({
                             setSelectedVariantId(id);
                             setContainerModuleModes(DEFAULT_CONTAINER_MODULE_MODES);
                             setButtonModuleModes(DEFAULT_BUTTON_MODULE_MODES);
+                            setTextModuleModes(DEFAULT_TEXT_MODULE_MODES);
                         }}
                     />
                 </div>
@@ -348,6 +403,20 @@ export function AppearanceAuthoringPanel({
                             buttonMotionVisibility={buttonMotionVisibility}
                             setButtonMotionVisible={setButtonMotionVisible}
                             motionFieldsConfigured={buttonMotionFieldsConfigured}
+                        />
+                    ) : kind === "text" ? (
+                        <CompactTextAppearance
+                            variant={selectedVariant}
+                            commitVariant={commitVariant}
+                            setFieldTransition={setFieldTransition}
+                            draftResetKey={appearanceDraftResetKey}
+                            inspectorData={inspectorData}
+                            onSaving={() => {}}
+                            textModuleModes={textModuleModes}
+                            setTextModuleMode={setTextModuleMode}
+                            textMotionVisibility={textMotionVisibility}
+                            setTextMotionVisible={setTextMotionVisible}
+                            motionFieldsConfigured={textMotionFieldsConfigured}
                         />
                     ) : (
                         <CompactContainerAppearance

@@ -39,6 +39,8 @@ export type BlueprintDocument = {
     schemaVersion: BlueprintDocumentSchemaVersion;
     blueprints: Record<string, Blueprint>;
     ownerRecords: Record<string, BlueprintPrivateOwnerRecord>;
+    /** Project-level persistent variables; definitions are authored assets, values live in host-managed storage. */
+    persistentVariables: Record<string, BlueprintPersistentVariable>;
     meta?: {
         createdAt?: string;
         updatedAt?: string;
@@ -82,6 +84,11 @@ export type BlueprintVariable = {
     valueType?: string;
     defaultValue?: LiteralValue;
     meta?: Record<string, unknown>;
+};
+
+export type BlueprintPersistentVariable = BlueprintVariable & {
+    /** Stable storage key used for host persistence. Defaults to id and is not changed by rename. */
+    storageKey: string;
 };
 
 /**
@@ -211,7 +218,7 @@ export type TypeScriptBlueprintSource = {
 // Binding
 // ---------------------------------------------------------------------------
 
-export type LiteralValue = string | number | boolean | null;
+export type LiteralValue = string | number | boolean | null | LiteralValue[] | { [key: string]: LiteralValue };
 
 /** Persisted binding health; `broken` when source field is missing or invalid. */
 export type BindingDefinitionStatus = "active" | "broken";

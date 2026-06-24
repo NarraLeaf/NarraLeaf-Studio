@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 4 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 5 as const;
 
 export type BlueprintHostApiContractVersion = typeof BLUEPRINT_HOST_API_CONTRACT_VERSION;
 
@@ -98,6 +98,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
         },
         setTextProperties: {
             capabilityId: "widget.setTextProperties",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { elementId: "", patch: {} },
+            output: undefined,
+        },
+        getSliderProperties: {
+            capabilityId: "widget.getSliderProperties",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { elementId: "" },
+            output: {},
+        },
+        setSliderProperties: {
+            capabilityId: "widget.setSliderProperties",
             purity: "effectful",
             callableFromBinding: false,
             async: true,

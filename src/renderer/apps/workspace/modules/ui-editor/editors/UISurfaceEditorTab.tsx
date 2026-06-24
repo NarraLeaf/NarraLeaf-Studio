@@ -52,16 +52,32 @@ import {
     debugUIDoubleClick,
     describeDoubleClickTarget,
 } from "@/lib/ui-editor/interaction/doubleClickDebug";
+import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { useRegistry } from "@/apps/workspace/registry";
+import {
+    cancelElementBindingSession,
+    cancelElementBindingSessionById,
+    completeElementBindingSessionForSession,
+    readElementBindingSession,
+    subscribeElementBindingSession,
+} from "@/apps/workspace/modules/blueprint-lite/elementBindingSession";
+import type { EditorLayout } from "@/apps/workspace/registry/types";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const getSurfaceTabId = (targetSurfaceId: string) => `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
+
+function findEditorGroupIdByTabId(layout: EditorLayout, tabId: string): string | null {
+    if ("tabs" in layout) {
+        return layout.tabs.some(tab => tab.id === tabId) ? layout.id : null;
+    }
+    return findEditorGroupIdByTabId(layout.first, tabId) ?? findEditorGroupIdByTabId(layout.second, tabId);
+}
 
 export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ surfaceId: string }>) {
     const surfaceId = payload?.surfaceId;
     const { runtimeBridge, stateService, documentService, uiService } = useUISurfaceEditorServices();
     const { context, workspace } = useWorkspace();
-    const { openEditorTab } = useRegistry();
+    const { editorLayout, openEditorTab, setActiveEditorTab } = useRegistry();
     const localBlueprint = useMemo(
         () => context?.services.get<LocalBlueprintService>(Services.LocalBlueprint) ?? null,
         [context],
@@ -90,6 +106,51 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const widgetModules = useMemo(() => listInsertPaletteModules(surface?.kind), [surface?.kind]);
     const deferredDocumentVersion = useDeferredValue(documentVersion);
     const deferredGraphVersion = useDeferredValue(graphVersion);
+    const [bindingSession, setBindingSession] = useState(readElementBindingSession());
+    const [selectionVersion, setSelectionVersion] = useState(0);
+    const bindingAutoCancelTimerRef = useRef<number | null>(null);
+
+    const clearPendingBindingAutoCancel = useCallback(() => {
+        if (bindingAutoCancelTimerRef.current == null) {
+            return;
+        }
+        window.clearTimeout(bindingAutoCancelTimerRef.current);
+        bindingAutoCancelTimerRef.current = null;
+    }, []);
+
+    useEffect(() => subscribeElementBindingSession(() => setBindingSession(readElementBindingSession())), []);
+    useEffect(() => {
+        if (!stateService) {
+            return undefined;
+        }
+        return stateService.on("selectionChanged", () => setSelectionVersion(v => v + 1));
+    }, [stateService]);
+
+    useEffect(() => {
+        if (!stateService || !surface) {
+            return;
+        }
+        const current = stateService.getSelection();
+        if (isUIElementSelection(current)) {
+            if (current.data.surfaceId === surface.id && current.data.elementIds.length > 0) {
+                return;
+            }
+            selectSurfaceForProperties(stateService, surface.id, uiService);
+            return;
+        }
+        if (current.type === "scene") {
+            const currentSceneId = typeof current.data === "string" ? current.data : current.data?.id ?? null;
+            if (currentSceneId === surface.id) {
+                selectSurfaceForProperties(stateService, surface.id, uiService);
+                return;
+            }
+            selectSurfaceForProperties(stateService, surface.id, uiService);
+            return;
+        }
+        if (current.type === null) {
+            selectSurfaceForProperties(stateService, surface.id, uiService);
+        }
+    }, [stateService, surface, uiService]);
 
     const surfaceDiagnostics = useMemo(() => {
         if (!documentService || !surface) {
@@ -103,6 +164,91 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         () => surfaceDiagnostics.filter(d => !d.elementId).map(d => d.message),
         [surfaceDiagnostics],
     );
+
+    const activeBindingSession =
+        bindingSession && surface && bindingSession.surfaceId === surface.id ? bindingSession : null;
+
+    const returnToBindingBlueprint = useCallback(
+        (blueprintTabId: string) => {
+            const sourceGroupId = findEditorGroupIdByTabId(editorLayout, blueprintTabId);
+            if (sourceGroupId) {
+                setActiveEditorTab(blueprintTabId, sourceGroupId);
+            }
+        },
+        [editorLayout, setActiveEditorTab],
+    );
+
+    useEffect(() => {
+        clearPendingBindingAutoCancel();
+        if (!activeBindingSession) {
+            return undefined;
+        }
+        const sessionId = activeBindingSession.id;
+        return () => {
+            clearPendingBindingAutoCancel();
+            bindingAutoCancelTimerRef.current = window.setTimeout(() => {
+                bindingAutoCancelTimerRef.current = null;
+                cancelElementBindingSessionById(sessionId);
+            }, 0);
+        };
+    }, [activeBindingSession?.id, clearPendingBindingAutoCancel]);
+
+    const bindingSelection = useMemo(() => {
+        if (!activeBindingSession || !stateService || !documentService) {
+            return null;
+        }
+        const sel = stateService.getSelection();
+        if (!isUIElementSelection(sel)) {
+            return null;
+        }
+        const data = sel.data as UIElementSelection;
+        if (data.surfaceId !== activeBindingSession.surfaceId || data.elementIds.length !== 1) {
+            return null;
+        }
+        const elementId = data.primaryId ?? data.elementIds[0];
+        const element = documentService.getDocument().elements[elementId];
+        if (!element || element.type === "nl.root") {
+            return null;
+        }
+        return { elementId: element.id, elementType: element.type, label: element.name || element.type };
+    }, [activeBindingSession, documentService, selectionVersion, stateService]);
+
+    const handleConfirmElementBinding = useCallback(() => {
+        if (!activeBindingSession || !stateService || !documentService) {
+            return;
+        }
+        const sel = stateService.getSelection();
+        if (!isUIElementSelection(sel)) {
+            return;
+        }
+        const data = sel.data as UIElementSelection;
+        if (data.surfaceId !== activeBindingSession.surfaceId || data.elementIds.length !== 1) {
+            return;
+        }
+        const elementId = data.primaryId ?? data.elementIds[0];
+        const element = documentService.getDocument().elements[elementId];
+        if (!element || element.type === "nl.root") {
+            return;
+        }
+        clearPendingBindingAutoCancel();
+        completeElementBindingSessionForSession(activeBindingSession, {
+            surfaceId: activeBindingSession.surfaceId,
+            elementId: element.id,
+            elementType: element.type,
+        });
+        returnToBindingBlueprint(activeBindingSession.blueprintTabId);
+    }, [activeBindingSession, clearPendingBindingAutoCancel, documentService, returnToBindingBlueprint, stateService]);
+
+    const handleCancelElementBinding = useCallback(() => {
+        clearPendingBindingAutoCancel();
+        if (!activeBindingSession) {
+            cancelElementBindingSession();
+            return;
+        }
+        const blueprintTabId = activeBindingSession.blueprintTabId;
+        cancelElementBindingSession();
+        returnToBindingBlueprint(blueprintTabId);
+    }, [activeBindingSession, clearPendingBindingAutoCancel, returnToBindingBlueprint]);
 
     const layoutInteractionHints = useMemo(
         () =>
@@ -142,6 +288,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         surface,
         documentService,
         stateService,
+        uiService,
         localBlueprint,
         widgetModules,
         inputDialog,
@@ -184,6 +331,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         localBlueprint,
         historyService,
         stateService,
+        uiService,
         requestRenamePrimary,
     });
 
@@ -390,6 +538,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         surfaceId={surface.id}
                         stateService={stateService}
                         documentService={documentService}
+                        uiService={uiService}
                         localBlueprint={localBlueprint}
                         inputDialog={inputDialog}
                     />
@@ -443,6 +592,32 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                         </button>
                     </div>
 
+                    {activeBindingSession ? (
+                        <div className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-2 rounded-md border border-cyan-400/30 bg-[#111820]/95 px-3 py-2 text-xs text-gray-100 shadow-lg">
+                            <div className="min-w-[220px]">
+                                <div className="font-medium text-cyan-100">Bind Element</div>
+                                <div className="max-w-[300px] truncate text-[11px] text-gray-400">
+                                    {bindingSelection ? bindingSelection.label : "Select one element on this Surface"}
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                className="rounded border border-cyan-300/35 bg-cyan-300/15 px-2.5 py-1 text-[11px] font-medium text-cyan-50 hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-45"
+                                disabled={!bindingSelection}
+                                onClick={handleConfirmElementBinding}
+                            >
+                                Confirm
+                            </button>
+                            <button
+                                type="button"
+                                className="rounded border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-gray-300 hover:bg-white/[0.08]"
+                                onClick={handleCancelElementBinding}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    ) : null}
+
                     {/* Viewport / Canvas */}
                     <div
                         ref={viewportRef}
@@ -476,6 +651,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
                             containerRef={viewportRef}
                             stateService={stateService}
                             documentService={documentService}
+                            uiService={uiService}
                             showOutlines={true}
                             openSurfaceEditor={handleOpenSurfaceEditor}
                         />

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
-    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+    BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
 } from "@shared/types/blueprint/graph";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
@@ -56,6 +59,7 @@ function blueprintDocument(): BlueprintDocument {
         blueprints: {
             [bp.id]: bp,
         },
+        persistentVariables: {},
         ownerRecords: {
             "surfaceMain:surface-a": {
                 activeBlueprintId: bp.id,
@@ -204,7 +208,7 @@ describe("LocalBlueprintService history", () => {
         }
         const nodeTypes = Object.values(initGraph.nodes ?? {}).map(node => node.type);
         expect(nodeTypes).toContain(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT);
-        expect(nodeTypes).not.toContain(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH);
+        expect(nodeTypes).not.toContain("blueprint.event.head.flush");
     });
 
     it("seeds JSON widget value blueprints with a JSON literal", () => {
@@ -234,6 +238,33 @@ describe("LocalBlueprintService history", () => {
         expect(literal?.params?.value).toEqual({ title: "Hello" });
     });
 
+    it("seeds float widget value blueprints with a Float literal", () => {
+        const { service, graphDocument } = createHarness();
+
+        const blueprintId = service.ensureWidgetValueBlueprint({
+            surfaceId: "surface-a",
+            elementId: "button-a",
+            propPath: "value",
+            valueType: "float",
+            displayName: "Slider value",
+            literalValue: 42.5,
+        });
+
+        const bp = graphDocument.blueprintDocument.blueprints[blueprintId];
+        expect(bp.meta?.valueType).toBe("float");
+        expect(bp.program.kind).toBe("graph");
+        if (bp.program.kind !== "graph") {
+            throw new Error("Expected graph blueprint");
+        }
+        const initGraph = bp.program.graphs.events.init?.graph;
+        if (!initGraph) {
+            throw new Error("Expected init graph");
+        }
+        const nodes = Object.values(initGraph.nodes ?? {});
+        const literal = nodes.find(node => node.type === BLUEPRINT_NODE_TYPE_LITERAL_FLOAT);
+        expect(literal?.params?.value).toBe(42.5);
+    });
+
     it("undoes and redoes blueprint member edits", () => {
         const { service, graphDocument } = createHarness();
 
@@ -247,6 +278,97 @@ describe("LocalBlueprintService history", () => {
         expect(service.redoBlueprint("bp-main")).toBe(true);
         expect(graphDocument.blueprintDocument.blueprints["bp-main"].members?.variables[created.id]?.name).toBe("health");
         expect(graphDocument.blueprintDocument.blueprints["bp-main"].members?.variables[created.id]?.valueType).toBe("integer");
+    });
+
+    it("creates persistent variables and clears persistent node refs on delete", () => {
+        const { service, graphDocument } = createHarness();
+
+        const created = service.createPersistentVariable("bp-main", {
+            name: "volume",
+            valueType: "number",
+            defaultValue: 0.5,
+        });
+        expect(graphDocument.blueprintDocument.persistentVariables[created.id]).toMatchObject({
+            id: created.id,
+            name: "volume",
+            valueType: "number",
+            defaultValue: 0.5,
+            storageKey: created.id,
+        });
+
+        service.renamePersistentVariable("bp-main", created.id, "masterVolume");
+        service.setPersistentVariableDefault("bp-main", created.id, 0.75);
+        expect(graphDocument.blueprintDocument.persistentVariables[created.id]?.name).toBe("masterVolume");
+        expect(graphDocument.blueprintDocument.persistentVariables[created.id]?.storageKey).toBe(created.id);
+        expect(graphDocument.blueprintDocument.persistentVariables[created.id]?.defaultValue).toBe(0.75);
+
+        const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
+        if (bp.program.kind !== "graph") {
+            throw new Error("Expected graph blueprint");
+        }
+        bp.program.graphs.events.mouseClick = {
+            id: "mouseClick",
+            graph: {
+                nodes: {
+                    getPersistent: {
+                        id: "getPersistent",
+                        type: BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+                        params: {
+                            persistentVariableId: created.id,
+                            [BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]: "number",
+                        },
+                    },
+                },
+                edges: [],
+            },
+        };
+        bp.program.graphs.functions.readVolume = {
+            id: "readVolume",
+            graph: {
+                nodes: {
+                    setPersistent: {
+                        id: "setPersistent",
+                        type: BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
+                        params: {
+                            persistentVariableId: created.id,
+                            [BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]: "number",
+                        },
+                    },
+                },
+                edges: [],
+            },
+        };
+        bp.program.graphs.macros = {
+            rememberVolume: {
+                id: "rememberVolume",
+                graph: {
+                    nodes: {
+                        getPersistent: {
+                            id: "getPersistent",
+                            type: BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
+                            params: {
+                                persistentVariableId: created.id,
+                                [BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]: "number",
+                            },
+                        },
+                    },
+                    edges: [],
+                },
+            },
+        };
+
+        service.deletePersistentVariable("bp-main", created.id);
+
+        expect(graphDocument.blueprintDocument.persistentVariables[created.id]).toBeUndefined();
+        const nodes = [
+            bp.program.graphs.events.mouseClick?.graph?.nodes?.getPersistent,
+            bp.program.graphs.functions.readVolume?.graph?.nodes?.setPersistent,
+            bp.program.graphs.macros.rememberVolume?.graph?.nodes?.getPersistent,
+        ];
+        for (const node of nodes) {
+            expect(node?.params?.persistentVariableId).toBeUndefined();
+            expect(node?.params?.[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]).toBeUndefined();
+        }
     });
 
     it("clears redo after a new edit following undo", () => {

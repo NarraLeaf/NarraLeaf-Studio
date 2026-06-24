@@ -59,7 +59,7 @@ describe("BlueprintAddNodeMenuModel", () => {
             entry({
                 type: "blueprint.string.concat",
                 displayName: "Concat",
-                category: "String",
+                category: "Data",
                 keywords: ["string"],
                 isPure: true,
                 inputs: 2,
@@ -68,7 +68,7 @@ describe("BlueprintAddNodeMenuModel", () => {
             entry({
                 type: "blueprint.data.jsonMakeObject",
                 displayName: "Make JSON Object",
-                category: "JSON",
+                category: "Data",
                 keywords: ["json"],
                 isPure: true,
                 inputs: 2,
@@ -93,10 +93,10 @@ describe("BlueprintAddNodeMenuModel", () => {
                 outputs: 1,
             }),
             entry({
-                type: "blueprint.state.get",
-                displayName: "Get state",
+                type: "blueprint.local.get",
+                displayName: "Get Var",
                 category: "Variables",
-                keywords: ["state", "variable"],
+                keywords: ["get", "local", "variable"],
                 isPure: true,
                 inputs: 0,
                 outputs: 1,
@@ -110,9 +110,7 @@ describe("BlueprintAddNodeMenuModel", () => {
             "Page",
             "Variables",
             "Data",
-            "JSON",
             "Math",
-            "String",
             "Text",
         ]);
     });
@@ -136,6 +134,35 @@ describe("BlueprintAddNodeMenuModel", () => {
         expect(filterBlueprintAddNodeEntries(entries, "all", "startup").map(item => item.type)).toEqual([
             "nl.event.init",
         ]);
+    });
+
+    it("supports fuzzy token and compact type matches", () => {
+        expect(filterBlueprintAddNodeEntries(entries, "all", "str lit").map(item => item.type)).toEqual([
+            "nl.data.string",
+        ]);
+        expect(filterBlueprintAddNodeEntries(entries, "all", "madd").map(item => item.type)).toEqual([
+            "nl.math.add",
+        ]);
+        expect(filterBlueprintAddNodeEntries(entries, "all", "oninit").map(item => item.type)).toEqual([
+            "nl.event.init",
+        ]);
+    });
+
+    it("ranks stronger node name matches before weaker keyword/category matches", () => {
+        const ranked = filterBlueprintAddNodeEntries([
+            ...entries,
+            entry({
+                type: "nl.math.multiply",
+                displayName: "Multiply",
+                category: "Math",
+                keywords: ["additive"],
+                isPure: true,
+                inputs: 2,
+                outputs: 1,
+            }),
+        ], "all", "add");
+
+        expect(ranked.map(item => item.type)).toEqual(["nl.math.add", "nl.math.multiply"]);
     });
 
     it("applies category and query filters together", () => {

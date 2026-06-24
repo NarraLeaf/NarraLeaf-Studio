@@ -6,16 +6,18 @@ import { WindowVisibilityStatus, WindowControlAbility } from "@shared/types/wind
  * Manage window control actions and window state.
  * Encapsulates preloaded interface calls and exposes simple helpers.
  */
-export function useWindowControls() {
+const DEFAULT_WINDOW_CONTROL_ABILITY: WindowControlAbility = {
+    minimizable: true,
+    maximizable: true,
+    closable: true,
+    resizable: true,
+    movable: true,
+    fullscreenable: true,
+};
+
+export function useWindowControls(initialAbility: WindowControlAbility = DEFAULT_WINDOW_CONTROL_ABILITY) {
     const [status, setStatus] = useState<WindowVisibilityStatus>("normal");
-    const [ability, setAbility] = useState<WindowControlAbility>({
-        minimizable: true,
-        maximizable: true,
-        closable: true,
-        resizable: true,
-        movable: true,
-        fullscreenable: true,
-    });
+    const [ability, setAbility] = useState<WindowControlAbility>(initialAbility);
 
     const refreshStatus = useCallback(async () => {
         const res = await getInterface().window.control.status();
@@ -77,5 +79,4 @@ export function useWindowControls() {
         close,
     };
 }
-
 

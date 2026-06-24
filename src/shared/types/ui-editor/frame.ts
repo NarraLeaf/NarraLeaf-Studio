@@ -1,4 +1,5 @@
 import type { UIDocument, UIElement, UIElementId, UISurface, UISurfaceId } from "./document";
+import { normalizeOptionalUIPageAnimationSettings, type UIPageAnimationSettings } from "./pageAnimation";
 
 export const UI_FRAME_ELEMENT_TYPE = "nl.frame" as const;
 
@@ -8,10 +9,8 @@ export type UIFrameWidgetProps = {
     targetSurfaceId: UISurfaceId | null;
     params: Record<string, unknown>;
     navigationMode: UIFrameNavigationMode;
-    animation?: {
-        enter?: string;
-        exit?: string;
-    };
+    /** Undefined means this Page component inherits the target Page animation settings. */
+    animation?: UIPageAnimationSettings;
 };
 
 export type UIFrameTargetInvalidReason = "missing" | "not_page" | "self" | "cycle";
@@ -33,12 +32,7 @@ export function normalizeUIFrameWidgetProps(raw: unknown): UIFrameWidgetProps {
             ? input.targetSurfaceId.trim()
             : null;
     const params = isRecord(input.params) ? input.params : {};
-    const animation = isRecord(input.animation)
-        ? {
-              enter: typeof input.animation.enter === "string" ? input.animation.enter : undefined,
-              exit: typeof input.animation.exit === "string" ? input.animation.exit : undefined,
-          }
-        : undefined;
+    const animation = normalizeOptionalUIPageAnimationSettings(input.animation);
     return {
         targetSurfaceId: target,
         params,

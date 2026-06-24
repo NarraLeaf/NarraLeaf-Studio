@@ -126,7 +126,28 @@ export type ButtonAppearancePropertyKey =
     | "effectGlow"
     | "effectFilter";
 
-export type AppearancePropertyKey = ContainerAppearancePropertyKey | ButtonAppearancePropertyKey;
+/** Whitelisted visual keys for `nl.text`. Text content and layout stay on flat props / Blueprint Value. */
+export type TextAppearancePropertyKey =
+    | "fontAssetId"
+    | "fontSize"
+    | "fontWeight"
+    | "fontStyle"
+    | "color"
+    | "lineHeight"
+    | "transformOffsetX"
+    | "transformOffsetY"
+    | "transformScale"
+    | "transformRotation"
+    | "transformOpacity"
+    | "effectBlur"
+    | "effectTextShadow"
+    | "effectBlend"
+    | "effectFilter";
+
+export type AppearancePropertyKey =
+    | ContainerAppearancePropertyKey
+    | ButtonAppearancePropertyKey
+    | TextAppearancePropertyKey;
 
 export type AppearancePropertyGroup =
     | {
@@ -136,6 +157,11 @@ export type AppearancePropertyGroup =
       }
     | {
           key: ButtonAppearancePropertyKey;
+          rows: AppearanceValueRow[];
+          transition?: AppearanceFieldTransition | null;
+      }
+    | {
+          key: TextAppearancePropertyKey;
           rows: AppearanceValueRow[];
           transition?: AppearanceFieldTransition | null;
       };

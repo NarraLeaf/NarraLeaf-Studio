@@ -29,9 +29,11 @@ import { Select, type SelectOption, type SelectProps } from "@/lib/components/el
 import {
     addJsonArrayItem,
     addJsonObjectField,
+    coerceJsonValueToSchema,
     createJsonValueForKind,
     getJsonValueAtPath,
     getJsonValueKind,
+    getJsonSchemaAtPath,
     isJsonObject,
     moveJsonArrayItem,
     normalizeJsonValue,
@@ -40,20 +42,23 @@ import {
     renameJsonObjectField,
     setJsonValueAtPath,
     summarizeJsonValue,
+    validateJsonValueAgainstSchema,
     type JsonPath,
     type JsonValue,
     type JsonValueKind,
 } from "./blueprintJsonValue";
+import type { BlueprintJsonValueSchema } from "@/lib/ui-editor/blueprint-nodes/types";
 
 type Props = {
     value: unknown;
     onChange: (next: JsonValue) => void;
+    schema?: BlueprintJsonValueSchema;
 };
 
 const KIND_OPTIONS: SelectOption[] = [
     { value: "object", label: "Object" },
     { value: "array", label: "Array" },
-    { value: "string", label: "Text" },
+    { value: "string", label: "String" },
     { value: "number", label: "Number" },
     { value: "boolean", label: "Boolean" },
     { value: "null", label: "Null" },
@@ -70,6 +75,8 @@ const INPUT_CLASS = "h-6 rounded border-white/15 bg-[#111418] px-1.5 py-0.5 font
 const RAW_TEXTAREA_CLASS =
     "min-h-[300px] resize-none rounded border-white/15 bg-[#0d1014] px-2 py-1.5 font-mono text-[11px] leading-relaxed";
 const JSON_EDITOR_SCOPE_ATTRIBUTE = "data-blueprint-json-editor-scope";
+const JSON_EDITOR_PANEL_Z_INDEX = 10000;
+const JSON_EDITOR_MENU_Z_INDEX = JSON_EDITOR_PANEL_Z_INDEX + 1;
 
 const JsonEditorScopeContext = createContext<string | null>(null);
 
@@ -115,6 +122,7 @@ function JsonEditorSelect(props: SelectProps) {
     return (
         <Select
             {...props}
+            menuZIndex={props.menuZIndex ?? JSON_EDITOR_MENU_Z_INDEX}
             menuDataAttributes={{
                 ...props.menuDataAttributes,
                 ...scopedMenuAttributes,
@@ -241,6 +249,7 @@ function PrimitiveValueEditor({
 function JsonTreeRow({
     root,
     path,
+    schema,
     label,
     depth,
     expanded,
@@ -252,6 +261,7 @@ function JsonTreeRow({
 }: {
     root: JsonValue;
     path: JsonPath;
+    schema?: BlueprintJsonValueSchema;
     label: ReactNode;
     depth: number;
     expanded: Set<string>;
@@ -264,8 +274,38 @@ function JsonTreeRow({
     const value = getJsonValueAtPath(root, path) ?? null;
     const kind = getJsonValueKind(value);
     const expandable = kind === "object" || kind === "array";
+    const schemaAtPath = getJsonSchemaAtPath(schema, path);
+    const lockedKind = schemaAtPath?.kind;
     const key = pathKey(path);
     const isExpanded = expanded.has(key);
+    const canAddChild =
+        expandable &&
+        (!schemaAtPath ||
+            schemaAtPath.kind === "array" ||
+            (schemaAtPath.kind === "object" && schemaAtPath.allowExtraFields === true));
+    const objectFieldSchemas =
+        schemaAtPath?.kind === "object" && schemaAtPath.fields ? schemaAtPath.fields : undefined;
+    const objectFieldSchemaByKey = useMemo(() => {
+        const out = new Map<string, NonNullable<BlueprintJsonValueSchema["fields"]>[number]>();
+        for (const field of objectFieldSchemas ?? []) {
+            out.set(field.key, field);
+        }
+        return out;
+    }, [objectFieldSchemas]);
+    const objectFieldKeys = useMemo(() => {
+        if (!isJsonObject(value)) {
+            return [];
+        }
+        if (!objectFieldSchemas || objectFieldSchemas.length === 0) {
+            return Object.keys(value);
+        }
+        const ordered = objectFieldSchemas.map(field => field.key);
+        if (schemaAtPath?.allowExtraFields === true) {
+            const known = new Set(ordered);
+            return [...ordered, ...Object.keys(value).filter(fieldKey => !known.has(fieldKey))];
+        }
+        return ordered;
+    }, [objectFieldSchemas, schemaAtPath?.allowExtraFields, value]);
 
     const commitAtPath = useCallback(
         (targetPath: JsonPath, next: JsonValue) => {
@@ -333,15 +373,24 @@ function JsonTreeRow({
                             {label}
                         </span>
                     )}
-                    <JsonEditorSelect
-                        options={KIND_OPTIONS}
-                        value={kind}
-                        size="sm"
-                        onChange={next => changeKind(String(next) as JsonValueKind)}
-                        portalMenu
-                        menuPlacement="below"
-                        className="w-[6.25rem] shrink-0"
-                    />
+                    {lockedKind ? (
+                        <span
+                            className="w-[6.25rem] shrink-0 rounded border border-white/10 bg-[#0d1014] px-1.5 py-1 text-[10px] uppercase tracking-wide text-gray-500"
+                            title="Schema field type"
+                        >
+                            {lockedKind}
+                        </span>
+                    ) : (
+                        <JsonEditorSelect
+                            options={KIND_OPTIONS}
+                            value={kind}
+                            size="sm"
+                            onChange={next => changeKind(String(next) as JsonValueKind)}
+                            portalMenu
+                            menuPlacement="below"
+                            className="w-[6.25rem] shrink-0"
+                        />
+                    )}
                     {expandable ? (
                         <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-gray-500">
                             {summarizeJsonValue(value)}
@@ -351,7 +400,7 @@ function JsonTreeRow({
                     )}
                 </div>
                 {arrayActions}
-                {expandable ? (
+                {canAddChild ? (
                     <Button
                         type="button"
                         title="Add item"
@@ -389,27 +438,35 @@ function JsonTreeRow({
                 ) : null}
             </div>
             {isExpanded && isJsonObject(value)
-                ? Object.entries(value).map(([fieldKey], index) => {
+                ? objectFieldKeys.map((fieldKey, index) => {
                       const childPath = [...path, fieldKey];
+                      const fieldSchema = objectFieldSchemaByKey.get(fieldKey);
                       return (
                           <JsonTreeRow
                               key={`${pathKey(path)}:${index}`}
                               root={root}
                               path={childPath}
-                              label={fieldKey}
+                              schema={schema}
+                              label={fieldSchema?.label ?? fieldKey}
                               depth={depth + 1}
                               expanded={expanded}
                               setExpanded={setExpanded}
                               commitRoot={commitRoot}
                               objectKeyEditor={
-                                  <JsonObjectKeyInput
-                                      objectValue={value}
-                                      objectPath={path}
-                                      fieldKey={fieldKey}
-                                      commitAtPath={commitAtPath}
-                                  />
+                                  fieldSchema ? undefined : (
+                                      <JsonObjectKeyInput
+                                          objectValue={value}
+                                          objectPath={path}
+                                          fieldKey={fieldKey}
+                                          commitAtPath={commitAtPath}
+                                      />
+                                  )
                               }
-                              onRemove={() => commitAtPath(path, removeJsonObjectField(value, fieldKey))}
+                              onRemove={
+                                  fieldSchema?.required
+                                      ? undefined
+                                      : () => commitAtPath(path, removeJsonObjectField(value, fieldKey))
+                              }
                           />
                       );
                   })
@@ -422,6 +479,7 @@ function JsonTreeRow({
                               key={`${pathKey(path)}:${index}`}
                               root={root}
                               path={childPath}
+                              schema={schema}
                               label={index}
                               depth={depth + 1}
                               expanded={expanded}
@@ -494,7 +552,7 @@ function usePortalPanelStyle(open: boolean, triggerRef: RefObject<HTMLElement | 
                 left,
                 top: Math.max(12, top),
                 width,
-                zIndex: 10000,
+                zIndex: JSON_EDITOR_PANEL_Z_INDEX,
             });
         };
         update();
@@ -513,13 +571,23 @@ function formatRawJson(value: JsonValue): string {
     return JSON.stringify(value, null, 2);
 }
 
-function parseRawJsonDraft(draft: string): { ok: true; value: JsonValue } | { ok: false; message: string } {
+function parseRawJsonDraft(
+    draft: string,
+    schema?: BlueprintJsonValueSchema,
+): { ok: true; value: JsonValue } | { ok: false; message: string } {
     const trimmed = draft.trim();
     if (!trimmed) {
-        return { ok: true, value: null };
+        const value = coerceJsonValueToSchema(null, schema);
+        const validation = validateJsonValueAgainstSchema(value, schema);
+        return validation.ok ? { ok: true, value } : { ok: false, message: validation.message };
     }
     try {
-        return { ok: true, value: normalizeJsonValue(JSON.parse(trimmed) as unknown) };
+        const parsed = normalizeJsonValue(JSON.parse(trimmed) as unknown);
+        const validation = validateJsonValueAgainstSchema(parsed, schema);
+        if (!validation.ok) {
+            return validation;
+        }
+        return { ok: true, value: coerceJsonValueToSchema(parsed, schema) };
     } catch (error) {
         return {
             ok: false,
@@ -530,11 +598,13 @@ function parseRawJsonDraft(draft: string): { ok: true; value: JsonValue } | { ok
 
 function JsonEditorPortal({
     root,
+    schema,
     triggerRef,
     onChange,
     onClose,
 }: {
     root: JsonValue;
+    schema?: BlueprintJsonValueSchema;
     triggerRef: RefObject<HTMLElement | null>;
     onChange: (next: JsonValue) => void;
     onClose: () => void;
@@ -562,7 +632,7 @@ function JsonEditorPortal({
         if (mode !== "raw") {
             return true;
         }
-        const parsed = parseRawJsonDraft(rawDraft);
+        const parsed = parseRawJsonDraft(rawDraft, schema);
         if (!parsed.ok) {
             setRawError(parsed.message);
             return false;
@@ -570,7 +640,7 @@ function JsonEditorPortal({
         setRawError(null);
         onChange(parsed.value);
         return true;
-    }, [mode, onChange, rawDraft]);
+    }, [mode, onChange, rawDraft, schema]);
 
     const closeFromExternalInteraction = useCallback(() => {
         if (!commitRawDraft()) {
@@ -673,11 +743,12 @@ function JsonEditorPortal({
                         <JsonTreeRow
                             root={root}
                             path={[]}
+                            schema={schema}
                             label="Root"
                             depth={0}
                             expanded={expanded}
                             setExpanded={setExpanded}
-                            commitRoot={onChange}
+                            commitRoot={next => onChange(coerceJsonValueToSchema(next, schema))}
                         />
                     </div>
                 )}
@@ -687,8 +758,8 @@ function JsonEditorPortal({
     );
 }
 
-export function BlueprintJsonValueControl({ value, onChange }: Props) {
-    const root = useMemo(() => normalizeJsonValue(value), [value]);
+export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
+    const root = useMemo(() => coerceJsonValueToSchema(value, schema), [schema, value]);
     const [open, setOpen] = useState(false);
     const triggerRef = useRef<HTMLDivElement | null>(null);
     const kind = getJsonValueKind(root);
@@ -725,8 +796,9 @@ export function BlueprintJsonValueControl({ value, onChange }: Props) {
             {open ? (
                 <JsonEditorPortal
                     root={root}
+                    schema={schema}
                     triggerRef={triggerRef}
-                    onChange={onChange}
+                    onChange={next => onChange(coerceJsonValueToSchema(next, schema))}
                     onClose={() => setOpen(false)}
                 />
             ) : null}

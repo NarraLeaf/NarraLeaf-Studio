@@ -1,3 +1,5 @@
+import type { BlueprintJsonValueSchema } from "@/lib/ui-editor/blueprint-nodes/types";
+
 export type JsonValue = null | string | number | boolean | JsonArray | JsonObject;
 export type JsonArray = JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
@@ -85,6 +87,136 @@ export function createJsonValueForKind(kind: JsonValueKind): JsonValue {
         default:
             return null;
     }
+}
+
+function defaultJsonValueForSchemaKind(kind: JsonValueKind): JsonValue {
+    return createJsonValueForKind(kind);
+}
+
+function schemaFieldToValueSchema(
+    field: NonNullable<BlueprintJsonValueSchema["fields"]>[number],
+): BlueprintJsonValueSchema {
+    return {
+        kind: field.kind,
+        label: field.label,
+    };
+}
+
+function findSchemaField(schema: BlueprintJsonValueSchema | undefined, key: string) {
+    return schema?.kind === "object" ? schema.fields?.find(field => field.key === key) : undefined;
+}
+
+export function getJsonSchemaAtPath(
+    schema: BlueprintJsonValueSchema | undefined,
+    path: JsonPath,
+): BlueprintJsonValueSchema | undefined {
+    if (!schema) {
+        return undefined;
+    }
+    let current: BlueprintJsonValueSchema | undefined = schema;
+    for (const segment of path) {
+        if (!current) {
+            return undefined;
+        }
+        if (current.kind === "object" && typeof segment === "string") {
+            const field = findSchemaField(current, segment);
+            current = field ? schemaFieldToValueSchema(field) : undefined;
+            continue;
+        }
+        return undefined;
+    }
+    return current;
+}
+
+export function validateJsonValueAgainstSchema(
+    input: unknown,
+    schema: BlueprintJsonValueSchema | undefined,
+    path = "$",
+): { ok: true } | { ok: false; message: string } {
+    if (!schema) {
+        return { ok: true };
+    }
+    const value = normalizeJsonValue(input);
+    const actualKind = getJsonValueKind(value);
+    if (actualKind !== schema.kind) {
+        return { ok: false, message: `${path} must be ${schema.kind}` };
+    }
+    if (schema.kind === "number" && (typeof value !== "number" || !Number.isFinite(value))) {
+        return { ok: false, message: `${path} must be a finite number` };
+    }
+    if (schema.kind !== "object") {
+        return { ok: true };
+    }
+    if (!isJsonObject(value)) {
+        return { ok: false, message: `${path} must be object` };
+    }
+    const fields = schema.fields ?? [];
+    for (const field of fields) {
+        const hasField = Object.prototype.hasOwnProperty.call(value, field.key);
+        if (!hasField) {
+            if (field.required) {
+                return { ok: false, message: `${path}.${field.key} is required` };
+            }
+            continue;
+        }
+        const childSchema = schemaFieldToValueSchema(field);
+        const result = validateJsonValueAgainstSchema(value[field.key], childSchema, `${path}.${field.key}`);
+        if (!result.ok) {
+            return result;
+        }
+    }
+    if (schema.allowExtraFields !== true) {
+        const known = new Set(fields.map(field => field.key));
+        const extra = Object.keys(value).find(key => !known.has(key));
+        if (extra) {
+            return { ok: false, message: `${path}.${extra} is not allowed` };
+        }
+    }
+    return { ok: true };
+}
+
+export function coerceJsonValueToSchema(
+    input: unknown,
+    schema: BlueprintJsonValueSchema | undefined,
+): JsonValue {
+    const value = normalizeJsonValue(input);
+    if (!schema) {
+        return value;
+    }
+    if (schema.kind === "object") {
+        const object = isJsonObject(value) ? value : {};
+        const out: JsonObject = {};
+        const fields = schema.fields ?? [];
+        for (const field of fields) {
+            const childSchema = schemaFieldToValueSchema(field);
+            out[field.key] = coerceJsonValueToSchema(object[field.key], childSchema);
+        }
+        if (schema.allowExtraFields === true) {
+            const known = new Set(fields.map(field => field.key));
+            for (const [key, child] of Object.entries(object)) {
+                if (!known.has(key)) {
+                    out[key] = normalizeJsonValue(child);
+                }
+            }
+        }
+        return out;
+    }
+    if (schema.kind === "array") {
+        return Array.isArray(value) ? value : [];
+    }
+    if (schema.kind === "string") {
+        return typeof value === "string" ? value : "";
+    }
+    if (schema.kind === "number") {
+        return typeof value === "number" && Number.isFinite(value) ? value : 0;
+    }
+    if (schema.kind === "boolean") {
+        return typeof value === "boolean" ? value : false;
+    }
+    if (schema.kind === "null") {
+        return null;
+    }
+    return defaultJsonValueForSchemaKind(schema.kind);
 }
 
 function truncateText(value: string, max: number): string {

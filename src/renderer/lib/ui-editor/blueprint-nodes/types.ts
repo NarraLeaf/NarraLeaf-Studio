@@ -5,6 +5,10 @@
 
 import type { BlueprintGraphKind } from "@shared/types/blueprint/graph";
 import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
+    BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+} from "@shared/types/blueprint/valueTypes";
 import type { BehaviorNodeDefinition, BehaviorNodeExecutionContext } from "../behavior-graph/BehaviorNodeRegistry";
 
 export type BlueprintPinSemantic = "exec" | "data";
@@ -14,10 +18,16 @@ export type BlueprintPinSemantic = "exec" | "data";
  * Other types (e.g. json, boolean) must not use inline literals.
  */
 export const BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES = ["string", "integer", "float"] as const;
+export const BLUEPRINT_PIN_INLINE_LITERAL_CUSTOM_VALUE_TYPES = [
+    BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
+    BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+] as const;
 export type BlueprintPinInlineLiteralValueType = (typeof BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES)[number];
 
 /** Persisted on node.params: pin ids whose inline literal editor is expanded on the node card. */
 export const BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY = "__inlineLiteralPins" as const;
+/** Persisted on node.params: show the manually wired Element target pin for a derived palette instance. */
+export const BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN = "__showMagicElementTargetPin" as const;
 
 /**
  * Persisted on node.params: ordered list of extra data input pin ids (beyond fixedDataInputIds).
@@ -40,7 +50,7 @@ export type BlueprintNodePinDef = {
 };
 
 /**
- * Optional variadic data inputs: fixed pins from `pins` stay forever; extra ids are stored in params[storageKey].
+ * Optional variadic pins: fixed pins from `pins` stay forever; extra ids are stored in params[storageKey].
  */
 export type BlueprintNodeDynamicInputPinsConfig = {
     /** Param key on node.params for string[] of additional input pin ids. */
@@ -59,18 +69,46 @@ export type BlueprintNodeDynamicInputPinsConfig = {
         /** Generated ids use `${prefix}_${n}_${idSuffix}`. */
         idSuffix: string;
         label: string;
-        valueType: string;
-        allowInlineLiteral: boolean;
+        kind?: "input" | "output";
+        semantic?: BlueprintPinSemantic;
+        valueType?: string;
+        allowInlineLiteral?: boolean;
     }[];
+    /** When dynamic output pins exist, insert them before this static output pin id. */
+    outputInsertBeforePinId?: string;
     /** Optional display label prefix for generated pins. Defaults to "Input". */
     labelPrefix?: string;
+    /** Optional label for the node-card add button. */
+    addButtonLabel?: string;
     /** Optional param key storing user-visible labels by generated pin id. */
     pinLabelParamKey?: string;
     /** Optional prefix used when initializing labels in pinLabelParamKey. */
     defaultPinLabelPrefix?: string;
 };
 
-export type BlueprintInspectorParamKind = "string" | "number" | "json" | "literal" | "variableRef" | "select";
+export type BlueprintJsonValueSchema = {
+    kind: "object" | "array" | "string" | "number" | "boolean" | "null";
+    label?: string;
+    /** Object fields are fixed schema entries. Unknown fields are rejected unless allowExtraFields is true. */
+    fields?: readonly {
+        key: string;
+        label?: string;
+        kind: "object" | "array" | "string" | "number" | "boolean" | "null";
+        required?: boolean;
+    }[];
+    allowExtraFields?: boolean;
+};
+
+export type BlueprintInspectorParamKind =
+    | "string"
+    | "number"
+    | "json"
+    | "color"
+    | "literal"
+    | "variableRef"
+    | "persistentVariableRef"
+    | "select"
+    | "imageAsset";
 
 export type BlueprintInspectorParamSelectOption = {
     value: string;
@@ -81,6 +119,8 @@ export type BlueprintInspectorParamDef = {
     key: string;
     label: string;
     kind: BlueprintInspectorParamKind;
+    /** Optional fixed schema for structured JSON-like values such as Vector2D. */
+    jsonSchema?: BlueprintJsonValueSchema;
     /**
      * For `kind: "select"`: static options rendered as a `<select>` dropdown.
      * When omitted with `kind: "select"`, the node card will look for
@@ -109,7 +149,27 @@ export type BlueprintNodeScope = {
     widgetElementTypes?: string[];
 };
 
-export type BlueprintNodeRole = "normal" | "eventHead" | "functionEntry" | "reroute" | "dataLiteral" | "valueReturn";
+export type BlueprintNodeRole =
+    | "normal"
+    | "eventHead"
+    | "functionEntry"
+    | "reroute"
+    | "dataLiteral"
+    | "elementLiteral"
+    | "elementEventHead"
+    | "imageAssetLiteral"
+    | "valueReturn"
+    | "comment";
+
+export type BlueprintMagicElementRefPaletteEntry = {
+    sourceNodeId: string;
+    sourcePortId: string;
+    targetPortId: string;
+    surfaceId: string;
+    elementId: string;
+    elementType: string;
+    label: string;
+};
 
 export type BlueprintNodeExecuteFn = BehaviorNodeDefinition["execute"];
 
@@ -126,8 +186,15 @@ export type BlueprintNodeDef = {
     graphKinds: BlueprintGraphKind[];
     /** Keep registered for old graphs/runtime, but omit from add-node palette. */
     hideInPalette?: boolean;
+    /** Creates palette entries for bound Element outputs that can be manually wired to this input. */
+    magicElementTarget?: {
+        inputPinId: string;
+        elementTypes?: readonly string[];
+    };
     /** Pure nodes have no side effects; used for validation hints */
     isPure: boolean;
+    /** Palette-only guard for nodes that read the active List item template scope. */
+    requiresListItemContext?: boolean;
     /** Latent/async execution (delay, host awaits) — disallowed in function graphs */
     isLatent?: boolean;
     pins: BlueprintNodePinDef[];
@@ -166,6 +233,10 @@ export type BlueprintPaletteContext = {
     hasFunctionEntry?: boolean;
     /** Blueprint Value graphs have a restricted palette and value-return sink. */
     isBlueprintValueGraph?: boolean;
+    /** Current widget owner is rendered inside an nl.list item template. */
+    listItemContextAvailable?: boolean;
+    /** Bound Element Literal nodes in the active graph, same Surface only. */
+    magicElementRefs?: readonly BlueprintMagicElementRefPaletteEntry[];
 };
 
 /** Legacy editor catalog entry shape (kept for incremental UI migration) */
@@ -191,8 +262,12 @@ export type BlueprintNodeEditorCatalogEntry = {
     scope?: BlueprintNodeScope;
     /** When true, node card may offer add-input control (see dynamicInputPins on def). */
     supportsDynamicInputPins?: boolean;
+    /** Label for the node-card add-input control. */
+    dynamicInputPinAddLabel?: string;
     /** Param key storing user-visible labels for dynamic input pins, if editable. */
     dynamicInputPinLabelParamKey?: string;
+    /** Present when this palette entry was derived from a bound Element output. */
+    magicElementRef?: BlueprintMagicElementRefPaletteEntry;
 };
 
 export type { BehaviorNodeExecutionContext };

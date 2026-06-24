@@ -37,6 +37,7 @@ const HUE_GRADIENT_STOPS = [
 ];
 const PANEL_SPACING = 6;
 const PANEL_EDGE_PADDING = 8;
+const COLOR_PICKER_PANEL_Z_INDEX = 10000;
 /** Ignore stale `value` from async setValue briefly after map drag (ms). */
 const MAP_PUSH_STALE_MS = 180;
 
@@ -220,6 +221,10 @@ function deriveColorState(value: ColorValue): ColorState {
 /** HSL has no unique hue for grays / white / black; rgbToHsl reports h=0. */
 function isAchromaticHsl(s: number, l: number): boolean {
     return s < 0.01 || l < 0.01 || l > 99.99;
+}
+
+function stopPickerPointerBubble(event: { stopPropagation: () => void }) {
+    event.stopPropagation();
 }
 
 export function ColorPickerTrigger({
@@ -557,19 +562,22 @@ export function ColorPickerTrigger({
 
     useEffect(() => {
         if (!isDragging) return;
-        const handleMouseMove = (event: MouseEvent) => {
+        const handlePointerMove = (event: PointerEvent) => {
+            event.preventDefault();
             handleMapInteraction(event.clientX, event.clientY);
         };
-        const handleMouseUp = () => {
+        const handlePointerUp = () => {
             flushPendingMapDragNotify();
             isDraggingMapRef.current = false;
             setIsDragging(false);
         };
-        window.addEventListener("mousemove", handleMouseMove);
-        window.addEventListener("mouseup", handleMouseUp);
+        window.addEventListener("pointermove", handlePointerMove, { passive: false });
+        window.addEventListener("pointerup", handlePointerUp);
+        window.addEventListener("pointercancel", handlePointerUp);
         return () => {
-            window.removeEventListener("mousemove", handleMouseMove);
-            window.removeEventListener("mouseup", handleMouseUp);
+            window.removeEventListener("pointermove", handlePointerMove);
+            window.removeEventListener("pointerup", handlePointerUp);
+            window.removeEventListener("pointercancel", handlePointerUp);
         };
     }, [isDragging, handleMapInteraction, flushPendingMapDragNotify]);
 
@@ -603,6 +611,13 @@ export function ColorPickerTrigger({
         const b = Math.round(currentRgb.b);
         return `linear-gradient(90deg, rgba(${r}, ${g}, ${b}, 0) 0%, rgba(${r}, ${g}, ${b}, 1) 100%)`;
     }, [currentRgb]);
+    const mapThumbPosition = useMemo(
+        () => ({
+            left: clamp(mapCoordinates.saturation, 3, 97),
+            top: clamp(100 - mapCoordinates.value, 3, 97),
+        }),
+        [mapCoordinates],
+    );
 
     const handleHexChange = useCallback(
         (next: string) => {
@@ -726,21 +741,27 @@ export function ColorPickerTrigger({
     const panelContent = (
         <div
             ref={panelRef}
-            className="w-80 rounded-2xl border border-white/10 bg-[#1e1f22] p-4 shadow-2xl"
+            data-color-picker-panel
+            className="nodrag nowheel w-80 rounded-2xl border border-white/10 bg-[#1e1f22] p-4 shadow-2xl"
             style={{
                 position: "fixed",
-                // Above inspector anchored panels (e.g. Effects z-[80]), below modal menus (z-[100]+).
-                zIndex: 90,
+                zIndex: COLOR_PICKER_PANEL_Z_INDEX,
                 left: adjustedPanelPosition.left,
                 top: adjustedPanelPosition.top,
                 maxHeight: `calc(100vh - ${PANEL_EDGE_PADDING * 2}px)`,
                 overflowY: "auto",
             }}
+            onMouseDown={stopPickerPointerBubble}
+            onPointerDown={stopPickerPointerBubble}
+            onWheel={stopPickerPointerBubble}
         >
             <div
                 className="relative h-32 rounded-xl border border-white/10 overflow-hidden cursor-crosshair"
                 data-color-map
-                onMouseDown={(event) => {
+                onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    event.currentTarget.setPointerCapture(event.pointerId);
                     isDraggingMapRef.current = true;
                     setIsDragging(true);
                     handleMapInteraction(event.clientX, event.clientY);
@@ -763,11 +784,11 @@ export function ColorPickerTrigger({
                     }}
                 />
                 <span
-                    className="absolute w-3 h-3 border border-white/80 rounded-full -translate-x-1/2 -translate-y-1/2"
+                    className="pointer-events-none absolute w-3 h-3 border border-white/90 rounded-full -translate-x-1/2 -translate-y-1/2"
                     style={{
-                        left: `${mapCoordinates.saturation}%`,
-                        top: `${100 - mapCoordinates.value}%`,
-                        boxShadow: "0 0 0 2px rgba(255,255,255,0.9)",
+                        left: `${mapThumbPosition.left}%`,
+                        top: `${mapThumbPosition.top}%`,
+                        boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 0 0 3px rgba(0,0,0,0.45)",
                     }}
                 />
             </div>
@@ -839,10 +860,12 @@ export function ColorPickerTrigger({
             onClick={isOpen ? closePicker : openPicker}
             disabled={disabled || readOnly}
             className={`
-                flex items-center rounded-md border border-white/20 bg-[#17181a] px-3 py-2 text-sm
+                nodrag nowheel flex items-center rounded-md border border-white/20 bg-[#17181a] px-3 py-2 text-sm
                 text-gray-200 transition focus:outline-none focus:ring-2 focus:ring-primary/50
                 ${displayMode === "icon" ? "gap-2" : "gap-3"}
             `}
+            onMouseDown={stopPickerPointerBubble}
+            onPointerDown={stopPickerPointerBubble}
         >
             <span
                 className="h-5 w-5 rounded-full border border-white/30"
