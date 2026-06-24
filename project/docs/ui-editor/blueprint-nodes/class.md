@@ -49,6 +49,13 @@ Data分类具有：
 - JSON节点
 - String节点
 
+## Variables
+
+Variables 分类具有：
+- `Var` 图内变量声明节点
+- `Get Var` / `Set Var` 本地变量读写节点
+- `Get Persistent` / `Set Persistent` 项目级持久变量读写节点
+
 ## Math
 
 Math分类具有：

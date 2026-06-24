@@ -17,12 +17,18 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_RECT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
 } from "@shared/types/blueprint/graph";
+import { resolveBlueprintVariableDefaultValue } from "@shared/types/blueprint/variableTypes";
 import {
     isValidBlueprintExecConnection,
     resolveBlueprintNodeEditorCatalogEntryForNode,
 } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY } from "@/lib/ui-editor/blueprint-nodes/types";
+import {
+    withInferredBlueprintVariableValueTypeParam,
+    type BlueprintGraphVariableTypeInferenceContext,
+} from "./graphVariableTypeInference";
 
 export {
     ensureBlueprintEventGraphIrStructure,
@@ -118,6 +124,7 @@ export function isValidBlueprintIrExecConnection(
         sourceHandle: string | null | undefined;
         targetHandle: string | null | undefined;
     },
+    variableTypeContext?: BlueprintGraphVariableTypeInferenceContext,
 ): boolean {
     if (p.source === p.target) {
         return false;
@@ -127,13 +134,23 @@ export function isValidBlueprintIrExecConnection(
     if (!srcNode || !tgtNode || !p.sourceHandle || !p.targetHandle) {
         return false;
     }
+    const sourceParams = withInferredBlueprintVariableValueTypeParam(
+        srcNode.type,
+        srcNode.params,
+        variableTypeContext,
+    );
+    const targetParams = withInferredBlueprintVariableValueTypeParam(
+        tgtNode.type,
+        tgtNode.params,
+        variableTypeContext,
+    );
     return isValidBlueprintExecConnection({
         sourceType: srcNode.type,
         sourcePort: p.sourceHandle,
         targetType: tgtNode.type,
         targetPort: p.targetHandle,
-        sourceParams: srcNode.params,
-        targetParams: tgtNode.params,
+        sourceParams,
+        targetParams,
     });
 }
 
@@ -215,6 +232,13 @@ export function createGraphNodeForPalette(type: string, id: string): BlueprintGr
         base.params = { value: {} };
     } else if (type === BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL) {
         base.params = { asset: null };
+    } else if (type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR) {
+        base.params = {
+            variableId: id,
+            name: `var_${id.slice(0, 8)}`,
+            valueType: "string",
+            defaultValue: resolveBlueprintVariableDefaultValue("string"),
+        };
     } else if (type === BLUEPRINT_NODE_TYPE_ELEMENT_REF || type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH) {
         base.params = {};
     } else if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT) {

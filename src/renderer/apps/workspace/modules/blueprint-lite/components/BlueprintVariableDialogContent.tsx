@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { LiteralValue } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_VARIABLE_TYPE_OPTIONS,
+    resolveBlueprintVariableDefaultValue,
+} from "@shared/types/blueprint/variableTypes";
 import { Input, InputGroup } from "@/lib/components/elements/Input";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
 
@@ -9,20 +13,6 @@ export type BlueprintVariableDialogValue = {
     defaultValue: LiteralValue | undefined;
     valid: boolean;
 };
-
-export const BLUEPRINT_VARIABLE_TYPE_OPTIONS = [
-    { value: "string", label: "String", defaultValue: "" },
-    { value: "integer", label: "Integer", defaultValue: 0 },
-    { value: "float", label: "Float", defaultValue: 0 },
-    { value: "boolean", label: "Boolean", defaultValue: false },
-    { value: "json", label: "JSON", defaultValue: {} },
-    { value: "array", label: "Array", defaultValue: [] },
-    { value: "any", label: "Any", defaultValue: null },
-] as const satisfies ReadonlyArray<{
-    value: string;
-    label: string;
-    defaultValue: LiteralValue;
-}>;
 
 const BLUEPRINT_VARIABLE_SELECT_OPTIONS: SelectOption[] = BLUEPRINT_VARIABLE_TYPE_OPTIONS.map(option => ({
     value: option.value,
@@ -35,10 +25,6 @@ type Props = {
     existingNames?: readonly string[];
     onChange: (value: BlueprintVariableDialogValue) => void;
 };
-
-function resolveDefaultValue(valueType: string): LiteralValue | undefined {
-    return BLUEPRINT_VARIABLE_TYPE_OPTIONS.find(option => option.value === valueType)?.defaultValue;
-}
 
 export function BlueprintVariableDialogContent({
     defaultName,
@@ -67,7 +53,7 @@ export function BlueprintVariableDialogContent({
         onChange({
             name: trimmedName,
             valueType,
-            defaultValue: resolveDefaultValue(valueType),
+            defaultValue: resolveBlueprintVariableDefaultValue(valueType),
             valid,
         });
     }, [onChange, trimmedName, valid, valueType]);

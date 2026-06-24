@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_BOOLEAN_AND,
     BLUEPRINT_NODE_TYPE_BOOLEAN_NOT,
     BLUEPRINT_NODE_TYPE_BOOLEAN_OR,
@@ -93,6 +94,7 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS,
     BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_LOG,
@@ -355,6 +357,7 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN_OR_EQUAL)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_STRING_TO_STRING)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_GET)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_SET)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)).toBe(true);
@@ -424,11 +427,71 @@ describe("built-in blueprint nodes", () => {
             .sort();
 
         expect(variableTypes).toEqual([
+            BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
             BLUEPRINT_NODE_TYPE_LOCAL_GET,
             BLUEPRINT_NODE_TYPE_LOCAL_SET,
             BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
             BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
         ].sort());
+    });
+
+    it("registers Var as a pinless blueprint-scope declaration node", () => {
+        registerCoreBlueprintNodes();
+
+        const def = blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR);
+        expect(def).toMatchObject({
+            displayName: "Var",
+            category: "Variables",
+            isPure: true,
+            pins: [],
+        });
+        expect(def?.inspectorParams?.map(param => param.key)).toEqual(["name", "valueType", "defaultValue"]);
+
+        const widgetPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
+                widgetElementType: "nl.button",
+            }).map(entry => entry.type),
+        );
+        const globalPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "globalMain" },
+            }).map(entry => entry.type),
+        );
+        const valuePaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: {
+                    kind: "widgetValue",
+                    surfaceId: "surface",
+                    elementId: "text",
+                    propPath: "props.text",
+                },
+                isBlueprintValueGraph: true,
+            }).map(entry => entry.type),
+        );
+
+        expect(widgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
+        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(false);
+    });
+
+    it("projects Get Var and Set Var value pins from the selected variable type", () => {
+        registerCoreBlueprintNodes();
+
+        const getEntry = blueprintNodeRegistry.resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_LOCAL_GET, {
+            variableId: "score",
+            [BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]: "integer",
+        });
+        const setEntry = blueprintNodeRegistry.resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_LOCAL_SET, {
+            variableId: "score",
+            [BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]: "integer",
+        });
+
+        expect(getEntry.pins.find(pin => pin.id === "value")?.valueType).toBe("integer");
+        expect(setEntry.pins.find(pin => pin.id === "value")?.valueType).toBe("integer");
     });
 
     it("executes persistent variable get/set through the host store", async () => {
@@ -1852,6 +1915,7 @@ describe("built-in blueprint nodes", () => {
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_BOOLEAN_AND)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_COMPARE_EQUAL)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_COMMENT)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_GET)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_SET)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)).toBe(false);
@@ -1877,6 +1941,7 @@ describe("built-in blueprint nodes", () => {
         expect(byType.has("blueprint.event.head.flush")).toBe(false);
         expect(byType.get(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)?.category).toBe("Data");
         expect(byType.get(BLUEPRINT_NODE_TYPE_ELEMENT_REF)?.category).toBe("Element");
+        expect(byType.get(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)?.category).toBe("Variables");
         expect(byType.get(BLUEPRINT_NODE_TYPE_LOCAL_GET)?.category).toBe("Variables");
         expect(byType.get(BLUEPRINT_NODE_TYPE_LOCAL_SET)?.category).toBe("Variables");
         expect(byType.has(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)).toBe(false);

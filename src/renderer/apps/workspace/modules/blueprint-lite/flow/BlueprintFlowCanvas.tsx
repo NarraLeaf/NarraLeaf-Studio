@@ -25,7 +25,13 @@ import {
     type Viewport,
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
-import { BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
+    BLUEPRINT_NODE_TYPE_LOCAL_SET,
+} from "@shared/types/blueprint/graph";
+import { resolveBlueprintVariableDefaultValue } from "@shared/types/blueprint/variableTypes";
 import {
     applyBlueprintIrConnection,
     createGraphNodeForPalette,
@@ -57,6 +63,7 @@ import {
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
+import type { BlueprintGraphVariableTypeInferenceContext } from "@/lib/workspace/services/ui-editor/blueprint/graphVariableTypeInference";
 
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
@@ -223,6 +230,15 @@ function BlueprintFlowCanvasInner({
         () => nodeDiagnosticsSignature(nodeDiagnosticsByNodeId),
         [nodeDiagnosticsByNodeId],
     );
+    const variableTypeContext = useMemo<BlueprintGraphVariableTypeInferenceContext>(
+        () => ({
+            memberVariables: blueprintMemberVariables,
+            persistentVariables: blueprintPersistentVariables,
+        }),
+        [blueprintMemberVariables, blueprintPersistentVariables],
+    );
+    const variableTypeContextRef = useRef(variableTypeContext);
+    variableTypeContextRef.current = variableTypeContext;
     const irRef = useRef(ir);
     irRef.current = ir;
 
@@ -246,6 +262,25 @@ function BlueprintFlowCanvasInner({
                 delete next[key];
             } else {
                 next[key] = value;
+            }
+            if (n.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR && key === "valueType") {
+                next.defaultValue = resolveBlueprintVariableDefaultValue(typeof value === "string" ? value : undefined);
+                const variableId = typeof next.variableId === "string" ? next.variableId : undefined;
+                for (const other of Object.values(snap.nodes ?? {})) {
+                    if (
+                        variableId &&
+                        (other.type === BLUEPRINT_NODE_TYPE_LOCAL_GET || other.type === BLUEPRINT_NODE_TYPE_LOCAL_SET) &&
+                        other.params?.variableId === variableId
+                    ) {
+                        const otherParams = { ...(other.params ?? {}) };
+                        if (typeof value === "string") {
+                            otherParams[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE] = value;
+                        } else {
+                            delete otherParams[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
+                        }
+                        other.params = otherParams;
+                    }
+                }
             }
             if (key === "variableId") {
                 const selectedVariable =
@@ -606,7 +641,7 @@ function BlueprintFlowCanvasInner({
                     return live ? { ...n, position: live.position } : n;
                 });
             });
-            setEdges(blueprintIrToFlowEdges(snap, nodeCatalog));
+            setEdges(blueprintIrToFlowEdges(snap, nodeCatalog, variableTypeContext));
         } else {
             setNodes(nds => {
                 const withoutPreview = nds.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID);
@@ -637,6 +672,7 @@ function BlueprintFlowCanvasInner({
         blueprintMemberVariables,
         blueprintPersistentVariables,
         blueprintMembersSig,
+        variableTypeContext,
         graphKey,
         nodeCatalog,
         revision,
@@ -710,13 +746,13 @@ function BlueprintFlowCanvasInner({
             sourceHandle: connection.sourceHandle ?? null,
             targetHandle: connection.targetHandle ?? null,
         };
-        return isValidBlueprintIrExecConnection(irRef.current, conn);
+        return isValidBlueprintIrExecConnection(irRef.current, conn, variableTypeContextRef.current);
     }, []);
 
     const onConnect = useCallback(
         (connection: Connection) => {
             const snap = irRef.current;
-            if (!isValidBlueprintIrExecConnection(snap, connection)) {
+            if (!isValidBlueprintIrExecConnection(snap, connection, variableTypeContextRef.current)) {
                 return;
             }
             if (!connection.sourceHandle || !connection.targetHandle) {

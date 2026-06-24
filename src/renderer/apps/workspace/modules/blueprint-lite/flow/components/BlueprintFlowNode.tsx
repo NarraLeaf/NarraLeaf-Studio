@@ -7,12 +7,12 @@ import {
     type BlueprintInspectorParamDef,
     type BlueprintInspectorParamSelectOption,
 } from "@/lib/ui-editor/blueprint-nodes/types";
-import { BlueprintLiteralValueControl } from "../../components/BlueprintLiteralValueControl";
+import { BlueprintLiteralValueControl, type LiteralEditMode } from "../../components/BlueprintLiteralValueControl";
 import { BlueprintJsonValueControl } from "../../components/BlueprintJsonValueControl";
 import { BlueprintColorValueControl } from "../../components/BlueprintColorValueControl";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import { Button, Input, TextArea } from "@/lib/components/elements";
-import { BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE, BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR } from "@shared/types/blueprint/graph";
 import {
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
@@ -704,8 +704,22 @@ function OutputPinRow({ pin, semantic }: { pin: CatalogPin; semantic: "exec" | "
     );
 }
 
+function variableValueTypeToLiteralMode(valueType: unknown): LiteralEditMode {
+    if (valueType === "integer" || valueType === "float") {
+        return "number";
+    }
+    if (valueType === "boolean") {
+        return "boolean";
+    }
+    if (valueType === "json" || valueType === "array" || valueType === "any") {
+        return "json";
+    }
+    return "string";
+}
+
 function InspectorParamOnCard({
     spec,
+    nodeType,
     nodeId,
     params,
     onPatchNodeParam,
@@ -714,6 +728,7 @@ function InspectorParamOnCard({
     dynamicSelectOptions,
 }: {
     spec: BlueprintInspectorParamDef;
+    nodeType: string;
     nodeId: string;
     params: Record<string, unknown>;
     onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
@@ -757,6 +772,10 @@ function InspectorParamOnCard({
             label: v.name,
         })),
     ];
+    const fixedLiteralMode =
+        spec.kind === "literal" && spec.key === "defaultValue" && nodeType === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR
+            ? variableValueTypeToLiteralMode(params.valueType)
+            : undefined;
 
     return (
         <div
@@ -808,7 +827,8 @@ function InspectorParamOnCard({
             ) : spec.kind === "literal" ? (
                 <BlueprintLiteralValueControl
                     variant="nodeCard"
-                    value={raw ?? ""}
+                    value={fixedLiteralMode ? raw : raw ?? ""}
+                    fixedMode={fixedLiteralMode}
                     onChange={v => onPatchNodeParam(nodeId, spec.key, v)}
                 />
             ) : spec.kind === "json" ? (
@@ -1161,6 +1181,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     const dataOuts = catalog.pins.filter(p => p.kind === "output" && p.semantic === "data");
 
     const isEventHead = catalog.role === "eventHead";
+    const isVarDeclare = catalog.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR;
     const isTerminalNode = execIns.length > 0 && execOuts.length === 0;
     const firstNodeError = nodeDiagnostics?.find(d => d.severity === "error");
     const showAddInputRow =
@@ -1229,7 +1250,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     return (
         <div
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-[#1a1d21] text-xs shadow-md ${
-                isEventHead ? "border-l-2" : ""
+                isEventHead || isVarDeclare ? "border-l-2" : ""
             } ${isTerminalNode ? "border-r-2" : ""} ${
                 firstNodeError
                     ? "border-red-400/85 ring-1 ring-red-500/40"
@@ -1237,6 +1258,8 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                       ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
                       : "border-white/15"
             } ${!firstNodeError && isEventHead ? "border-l-cyan-400/70" : ""} ${
+                !firstNodeError && isVarDeclare ? "border-l-amber-500/80" : ""
+            } ${
                 !firstNodeError && isTerminalNode ? "border-r-cyan-400/70" : ""
             }`}
             title={firstNodeError?.message}
@@ -1250,6 +1273,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                           <InspectorParamOnCard
                               key={spec.key}
                               spec={spec}
+                              nodeType={catalog.type}
                               nodeId={nodeId}
                               params={params}
                               onPatchNodeParam={onPatchNodeParam}
