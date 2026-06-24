@@ -1,5 +1,6 @@
 import { isContainerFlowLayoutParent } from "./container";
 import { getUIListChildSlot, isUIListScrollbarSlot } from "./list";
+import type { UIPageAnimationSettings } from "./pageAnimation";
 import { getUISliderChildSlot } from "./slider";
 
 export const UI_DOCUMENT_SCHEMA_VERSION = 8 as const;
@@ -65,6 +66,7 @@ export type UISurfaceDesignSize = {
 
 export type UISurfaceSettings = {
     backgroundColor?: string;
+    pageAnimation?: UIPageAnimationSettings;
 };
 
 export type UISlotDefinition = {
@@ -164,4 +166,3 @@ export function isUIElementFlowLayoutChild(document: UIDocument, element: UIElem
     }
     return parent != null && isUIFlowLayoutParentElement(parent);
 }
-
