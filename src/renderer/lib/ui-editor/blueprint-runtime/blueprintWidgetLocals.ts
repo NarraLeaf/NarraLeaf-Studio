@@ -46,6 +46,9 @@ function blueprintVariableStoreKey(blueprint: Blueprint, runtimeScopeId?: string
     if (owner.kind === "widgetValue") {
         return `widgetValue\0${runtimeScopeId ?? owner.surfaceId}\0${instanceElementId(owner.elementId, elementInstanceKey)}\0${owner.propPath}\0${blueprint.id}`;
     }
+    if (owner.kind === "componentWidgetMain") {
+        return `componentWidget\0${owner.componentId}\0${instanceElementId(owner.elementId, elementInstanceKey)}\0${blueprint.id}`;
+    }
     return `asset\0${owner.assetId}\0${blueprint.id}`;
 }
 

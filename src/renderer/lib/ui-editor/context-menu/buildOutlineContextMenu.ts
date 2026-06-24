@@ -2,6 +2,7 @@ import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
 import type { BuildOutlineContextMenuInput } from "./types";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 const ROOT = "nl.root";
 
@@ -85,7 +86,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         return items;
     }
 
-    const isRoot = rowElement.type === ROOT;
+    const isRoot = rowElement.type === ROOT || isComponentEditorRootElement(rowElement);
 
     if (insertParentIdForRow) {
         const insertSubmenu = widgetModules.map(mod => ({
@@ -106,7 +107,7 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
 
     const editableIds = (menuSelection?.elementIds ?? []).filter(id => {
         const el = input.document.elements[id];
-        return el && el.type !== ROOT;
+        return el && el.type !== ROOT && !isComponentEditorRootElement(el);
     });
     const hasEditable = editableIds.length > 0;
 
@@ -197,6 +198,18 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         );
     }
 
+    if (input.allowAddToComponentLibrary !== false) {
+        items.push({
+            id: "add-to-component-library",
+            label: "Add to Component Library",
+            disabled: !hasEditable,
+            onClick: () => {
+                actions.hideMenu();
+                actions.addSelectionToComponentLibrary();
+            },
+        });
+    }
+
     items.push({
         id: "delete",
         label: "Delete",
@@ -207,20 +220,19 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
         },
     });
 
-    if (canAddToGroup) {
-        items.push({
-            id: "add-to-group",
-            label: "Add to group",
-            onClick: () => {
-                actions.hideMenu();
-                actions.addSelectionToLeaderGroup();
-            },
-        });
-    }
+    items.push({
+        id: "add-to-group",
+        label: "Add to group",
+        disabled: !canAddToGroup,
+        onClick: () => {
+            actions.hideMenu();
+            actions.addSelectionToLeaderGroup();
+        },
+    });
 
     if (menuSelection?.elementIds.length === 1) {
         const el = input.document.elements[menuSelection.elementIds[0]];
-        if (el && el.type !== ROOT) {
+        if (el && el.type !== ROOT && !isComponentEditorRootElement(el)) {
             const mod = widgetModuleRegistry.get(el.type);
             const extra = mod?.createContextMenuItems?.({
                 element: el,

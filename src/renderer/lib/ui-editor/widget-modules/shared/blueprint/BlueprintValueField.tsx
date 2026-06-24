@@ -8,6 +8,7 @@ import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/
 import { Services } from "@/lib/workspace/services/services";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
+import { parseComponentEditorSurfaceId } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 
 export type BlueprintValueFieldConfig = {
     propPath: string;
@@ -30,6 +31,7 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
         const openBlueprint = useOpenBlueprintTarget();
         const blueprintRevision = useBlueprintDocumentRevision();
         const surfaceId = props.data.surfaceId;
+        const isComponentEditorSurface = Boolean(parseComponentEditorSurfaceId(surfaceId));
         const live =
             props.data.documentService.getDocument().elements[props.data.element.id] ??
             props.data.element;
@@ -133,8 +135,9 @@ export function createBlueprintValueField(config: BlueprintValueFieldConfig) {
                 <button
                     type="button"
                     className="inline-flex items-center gap-1.5 rounded border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-xs text-cyan-100 hover:bg-cyan-500/20 disabled:cursor-default disabled:opacity-40"
-                    disabled={!surfaceId}
+                    disabled={!surfaceId || isComponentEditorSurface}
                     onClick={createBinding}
+                    title={isComponentEditorSurface ? "Blueprint Value for components is not available yet" : undefined}
                 >
                     <GitBranch className="h-3.5 w-3.5" />
                     {config.createLabel ?? "Blueprint Value"}

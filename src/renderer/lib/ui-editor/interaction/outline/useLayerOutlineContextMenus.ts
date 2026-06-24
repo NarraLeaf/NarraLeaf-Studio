@@ -38,6 +38,7 @@ export function useLayerOutlineContextMenus(params: {
     showMenu: (event: MouseEvent<HTMLElement>) => void;
     hideMenu: () => void;
     setMenuItems: (items: ContextMenuDef) => void;
+    allowAddSelectionToComponentLibrary?: boolean;
 }) {
     const {
         surfaceId,
@@ -52,6 +53,7 @@ export function useLayerOutlineContextMenus(params: {
         showMenu,
         hideMenu,
         setMenuItems,
+        allowAddSelectionToComponentLibrary = true,
     } = params;
 
     const openRowContextMenu = useCallback(
@@ -121,6 +123,7 @@ export function useLayerOutlineContextMenus(params: {
                 documentService,
                 insertParentIdForRow: insertParentId,
                 canAddToGroup: canGroup,
+                allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions,
             });
             setMenuItems(items);
@@ -139,6 +142,7 @@ export function useLayerOutlineContextMenus(params: {
             setMenuItems,
             stateService,
             surfaceId,
+            allowAddSelectionToComponentLibrary,
         ]
     );
 
@@ -202,6 +206,7 @@ export function useLayerOutlineContextMenus(params: {
                 documentService,
                 insertParentIdForRow: null,
                 canAddToGroup: canGroup,
+                allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions,
             });
             setMenuItems(items);
@@ -219,6 +224,7 @@ export function useLayerOutlineContextMenus(params: {
             setMenuItems,
             stateService,
             surfaceId,
+            allowAddSelectionToComponentLibrary,
         ]
     );
 

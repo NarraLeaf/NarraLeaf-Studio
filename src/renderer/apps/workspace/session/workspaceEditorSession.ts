@@ -34,6 +34,13 @@ const CHARACTER_TAB_PREFIX = "narraleaf-studio:character-editor-";
 const IMAGE_PREVIEW_PREFIX = "narraleaf-studio:assets:image-preview-";
 const AUDIO_PREVIEW_PREFIX = "narraleaf-studio:assets:audio-preview-";
 const STORY_SCENE_TAB_PREFIX = "story:scene:";
+const BLUEPRINT_ENTRY_OWNER_KINDS = new Set([
+    "globalMain",
+    "surfaceMain",
+    "widgetMain",
+    "widgetValue",
+    "componentWidgetMain",
+]);
 
 export type SerializedTab =
     | { kind: "welcome" }
@@ -59,7 +66,10 @@ function isBlueprintEntryPayload(value: unknown): value is BlueprintEntryTabPayl
     if (typeof o.blueprintId !== "string" || typeof o.surfaceId !== "string") {
         return false;
     }
-    if (o.ownerKind !== "surfaceMain" && o.ownerKind !== "widgetMain" && o.ownerKind !== "widgetValue") {
+    if (typeof o.ownerKind !== "string" || !BLUEPRINT_ENTRY_OWNER_KINDS.has(o.ownerKind)) {
+        return false;
+    }
+    if (o.componentId !== undefined && typeof o.componentId !== "string") {
         return false;
     }
     if (o.elementId !== undefined && typeof o.elementId !== "string") {

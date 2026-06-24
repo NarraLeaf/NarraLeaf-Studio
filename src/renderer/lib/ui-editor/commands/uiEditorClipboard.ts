@@ -2,6 +2,7 @@ import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIDocument, UIElement, UIElementId } from "@shared/types/ui-editor/document";
 import { collectSubtreeElementIds, filterToTopLevelMovers } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 export const UI_EDITOR_CLIPBOARD_VERSION = 1 as const;
 
@@ -71,7 +72,10 @@ export function buildUiEditorClipboardPayload(input: {
     if (!effectiveRootId) {
         return null;
     }
-    const topLevel = filterToTopLevelMovers(document, selectedElementIds);
+    const topLevel = filterToTopLevelMovers(document, selectedElementIds).filter(id => {
+        const el = document.elements[id];
+        return el && el.type !== "nl.root" && !isComponentEditorRootElement(el);
+    });
     if (topLevel.length === 0) {
         return null;
     }
@@ -82,7 +86,7 @@ export function buildUiEditorClipboardPayload(input: {
 
     for (const id of subtree) {
         const el = document.elements[id];
-        if (!el || el.type === "nl.root") {
+        if (!el || el.type === "nl.root" || isComponentEditorRootElement(el)) {
             continue;
         }
         elements[id] = JSON.parse(JSON.stringify(el)) as UIElement;

@@ -14,6 +14,7 @@ export type SurfaceOutlinePanelProps = {
     uiService: UIService | null;
     localBlueprint: LocalBlueprintService | null;
     inputDialog: InputDialog | null;
+    allowAddSelectionToComponentLibrary?: boolean;
 };
 
 export function SurfaceOutlinePanel({
@@ -23,6 +24,7 @@ export function SurfaceOutlinePanel({
     uiService,
     localBlueprint,
     inputDialog,
+    allowAddSelectionToComponentLibrary = true,
 }: SurfaceOutlinePanelProps) {
     const [isCollapsed, setCollapsedState] = useState(() => stateService?.getOutlinePanelCollapsed() ?? false);
 
@@ -80,6 +82,7 @@ export function SurfaceOutlinePanel({
                                 uiService={uiService}
                                 localBlueprint={localBlueprint!}
                                 inputDialog={inputDialog}
+                                allowAddSelectionToComponentLibrary={allowAddSelectionToComponentLibrary}
                             />
                         ) : (
                             <div className="p-4 text-xs text-gray-500">Loading editor services…</div>

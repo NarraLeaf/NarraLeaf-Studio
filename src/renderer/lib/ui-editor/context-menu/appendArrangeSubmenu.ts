@@ -5,6 +5,7 @@ import {
     getUiEditorArrangeAvailability,
     type UiEditorArrangeOp,
 } from "@/lib/ui-editor/commands/uiEditorArrange";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 const ROOT = "nl.root";
 
@@ -14,12 +15,17 @@ function hasEditableArrangeTarget(document: UIDocument, menuSelection: UIElement
     }
     return menuSelection.elementIds.some(id => {
         const el = document.elements[id];
-        return el != null && el.type !== ROOT;
+        return el != null && el.type !== ROOT && !isComponentEditorRootElement(el);
     });
 }
 
+function hasAnySelection(menuSelection: UIElementSelection | null): boolean {
+    return Boolean(menuSelection && menuSelection.elementIds.length > 0);
+}
+
 /**
- * Appends a separator and the Arrange submenu when the selection includes at least one non-root element.
+ * Appends a separator and the Arrange submenu when there is a selection.
+ * Root-only selections keep the submenu visible with all operations disabled.
  */
 export function appendArrangeSubmenu(
     items: ContextMenuDef,
@@ -32,10 +38,18 @@ export function appendArrangeSubmenu(
     },
 ): void {
     const { document, surfaceId, menuSelection, hideMenu, arrange } = input;
-    if (!hasEditableArrangeTarget(document, menuSelection)) {
+    if (!hasAnySelection(menuSelection)) {
         return;
     }
-    const av = getUiEditorArrangeAvailability(document, surfaceId, menuSelection);
+    const hasEditable = hasEditableArrangeTarget(document, menuSelection);
+    const av = hasEditable
+        ? getUiEditorArrangeAvailability(document, surfaceId, menuSelection)
+        : {
+              bringToFront: false,
+              sendToBack: false,
+              bringForward: false,
+              sendBackward: false,
+          };
     items.push({ separator: true, id: "sep-arrange" });
     items.push({
         id: "arrange",

@@ -49,6 +49,7 @@ function createScriptExecutionContext(input: {
             host: {
                 navigation: api.navigation,
                 widget: api.widget,
+                game: api.game,
                 frame: api.frame,
                 persistence: api.persistence,
                 devtools: {
@@ -89,6 +90,12 @@ function createScriptExecutionContext(input: {
                 openSurface: async (_surfaceId: string) => {
                     input.debug.emit({ type: "function.call", functionId: "navigation.openSurface" });
                     input.debug.emit({ type: "function.return", functionId: "navigation.openSurface" });
+                },
+            },
+            game: {
+                startStory: async (_request: { storyId: string; sceneId: string }) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.startStory" });
+                    input.debug.emit({ type: "function.return", functionId: "game.startStory" });
                 },
             },
         },

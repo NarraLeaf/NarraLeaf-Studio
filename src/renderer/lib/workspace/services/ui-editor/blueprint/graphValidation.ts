@@ -57,6 +57,8 @@ export type ValidateBlueprintDocumentGraphsOptions = {
     widgetSurfaceId?: string;
     /** Runtime widget event catalog used to validate scoped event-head nodes. */
     widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
+    /** Component definition graphs use Element references scoped to the component editor surface. */
+    isComponentDefinitionGraph?: boolean;
 };
 
 type BlueprintEventHook = {
@@ -127,6 +129,7 @@ function buildNodeValidationPaletteContext(ctx: {
     widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
     layerUiSlots?: string[];
     isBlueprintValueGraph?: boolean;
+    isComponentDefinitionGraph?: boolean;
 }): BlueprintPaletteContext | null {
     if (!ctx.blueprintOwner) {
         return null;
@@ -138,6 +141,7 @@ function buildNodeValidationPaletteContext(ctx: {
         widgetBlueprintEvents: ctx.widgetBlueprintEvents,
         widgetEventLayerSlots: ctx.layerUiSlots,
         isBlueprintValueGraph: ctx.isBlueprintValueGraph ?? ctx.blueprintOwner.kind === "widgetValue",
+        isComponentDefinitionGraph: ctx.isComponentDefinitionGraph,
         hasEventHead: false,
         hasFunctionEntry: false,
     };
@@ -222,6 +226,7 @@ export function validateBlueprintGraphIr(
         widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
         blueprintOwner?: BlueprintOwnerRef;
         isBlueprintValueGraph?: boolean;
+        isComponentDefinitionGraph?: boolean;
     },
 ): BlueprintGraphEditorDiagnostic[] {
     const out: BlueprintGraphEditorDiagnostic[] = [];
@@ -566,6 +571,7 @@ export function validateBlueprintDocumentGraphs(
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
                 isBlueprintValueGraph: bp.owner.kind === "widgetValue",
+                isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
             }),
         );
     }
@@ -583,6 +589,7 @@ export function validateBlueprintDocumentGraphs(
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
                 isBlueprintValueGraph: bp.owner.kind === "widgetValue",
+                isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
             }),
         );
     }

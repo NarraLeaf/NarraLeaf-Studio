@@ -159,6 +159,18 @@ export class CharacterService extends Service<CharacterService> implements IChar
         return this.listCharacter().filter(character => character.profile.getGroupId() === groupId);
     }
 
+    public isDirty(): boolean {
+        return this.dirty;
+    }
+
+    public async flushPendingChanges(): Promise<void> {
+        if (this.saveTimer) {
+            clearTimeout(this.saveTimer);
+            this.saveTimer = null;
+        }
+        await this.flush();
+    }
+
     private async loadCharacters(): Promise<void> {
         const store = await this.getServiceAssetsService().readStore<CharacterStore>(CharacterService.Namespace);
         if (!store.ok) {
@@ -218,7 +230,6 @@ export class CharacterService extends Service<CharacterService> implements IChar
 
     private async flush(): Promise<void> {
         if (!this.dirty) return;
-        this.dirty = false;
         const payload: CharacterStore = {
             characters: this.characterOrder
                 .map(id => this.characters[id])
@@ -230,7 +241,9 @@ export class CharacterService extends Service<CharacterService> implements IChar
         if (!result.ok) {
             const uiService = this.getContext().services.get<UIService>(Services.UI);
             uiService.showError("Failed to persist characters: " + result.error);
+            return;
         }
+        this.dirty = false;
     }
 
     private getServiceAssetsService(): ServiceAssetsService {

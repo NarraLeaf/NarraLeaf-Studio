@@ -206,11 +206,13 @@ export class DevModeManager {
         }
         const uidocPath = path.join(session.projectPath, "editor", "ui", "uidoc.json");
         const uigraphsPath = path.join(session.projectPath, "editor", "ui", "uigraphs.json");
+        const storyRoot = path.join(session.projectPath, "editor", "story");
+        const characterStorePath = path.join(session.projectPath, "editor", "services", "character.json");
         const assetsRoot = path.join(session.projectPath, "assets");
         const blueprintMetaPath = path.join(assetsRoot, "assets.metadata.blueprint.json");
         const assetsContentRoot = path.join(assetsRoot, "content");
         session.watcher = chokidar.watch(
-            [uidocPath, uigraphsPath, blueprintMetaPath, assetsContentRoot],
+            [uidocPath, uigraphsPath, storyRoot, characterStorePath, blueprintMetaPath, assetsContentRoot],
             { ignoreInitial: true },
         );
         session.watcher.on("add", () => this.scheduleReload(session));

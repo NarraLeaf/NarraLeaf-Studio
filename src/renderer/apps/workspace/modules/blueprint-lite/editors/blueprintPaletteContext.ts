@@ -10,7 +10,11 @@ export function resolveWidgetEventLayerSlotsForPalette(input: {
     blueprintId: string;
     widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
 }): string[] | undefined {
-    if (input.ownerKind !== "widgetMain" || !input.widgetElement || input.graphView?.kind !== "event") {
+    if (
+        (input.ownerKind !== "widgetMain" && input.ownerKind !== "componentWidgetMain") ||
+        !input.widgetElement ||
+        input.graphView?.kind !== "event"
+    ) {
         return undefined;
     }
 

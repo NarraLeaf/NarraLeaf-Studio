@@ -2,6 +2,7 @@ import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { appendArrangeSubmenu } from "./appendArrangeSubmenu";
 import type { BuildCanvasContextMenuInput } from "./types";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 const ROOT = "nl.root";
 
@@ -53,7 +54,7 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
 
     const editableIds = menuSelection.elementIds.filter(id => {
         const el = input.document.elements[id];
-        return el && el.type !== ROOT;
+        return el && el.type !== ROOT && !isComponentEditorRootElement(el);
     });
     const hasEditable = editableIds.length > 0;
 
@@ -107,10 +108,11 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
     if (menuSelection.elementIds.length === 1) {
         const only = menuSelection.elementIds[0];
         const el = input.document.elements[only];
-        if (el && el.type !== ROOT) {
+        if (el) {
             items.push({
                 id: "rename",
                 label: "Rename…",
+                disabled: el.type === ROOT || isComponentEditorRootElement(el),
                 onClick: () => {
                     actions.hideMenu();
                     actions.renamePrimary();
@@ -119,38 +121,49 @@ export function buildCanvasContextMenu(input: BuildCanvasContextMenuInput): Cont
         }
     }
 
-    if (hasEditable) {
-        items.push(
-            { separator: true, id: "sep-vis" },
-            {
-                id: "show-selected",
-                label: "Show",
-                onClick: () => {
-                    actions.hideMenu();
-                    actions.setSelectedVisible(true);
-                },
-            },
-            {
-                id: "hide-selected",
-                label: "Hide",
-                onClick: () => {
-                    actions.hideMenu();
-                    actions.setSelectedVisible(false);
-                },
-            },
-        );
-    }
-
-    if (canAddToGroup) {
+    if (input.allowAddToComponentLibrary !== false) {
         items.push({
-            id: "add-to-group",
-            label: "Add to group",
+            id: "add-to-component-library",
+            label: "Add to Component Library",
+            disabled: !hasEditable,
             onClick: () => {
                 actions.hideMenu();
-                actions.addSelectionToLeaderGroup();
+                actions.addSelectionToComponentLibrary();
             },
         });
     }
+
+    items.push(
+        { separator: true, id: "sep-vis" },
+        {
+            id: "show-selected",
+            label: "Show",
+            disabled: !hasEditable,
+            onClick: () => {
+                actions.hideMenu();
+                actions.setSelectedVisible(true);
+            },
+        },
+        {
+            id: "hide-selected",
+            label: "Hide",
+            disabled: !hasEditable,
+            onClick: () => {
+                actions.hideMenu();
+                actions.setSelectedVisible(false);
+            },
+        },
+    );
+
+    items.push({
+        id: "add-to-group",
+        label: "Add to group",
+        disabled: !canAddToGroup,
+        onClick: () => {
+            actions.hideMenu();
+            actions.addSelectionToLeaderGroup();
+        },
+    });
 
     if (menuSelection.elementIds.length === 1) {
         const el = input.document.elements[menuSelection.elementIds[0]];

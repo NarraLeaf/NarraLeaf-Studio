@@ -67,6 +67,7 @@ import {
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
+    BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
@@ -138,6 +139,7 @@ import { dataBlueprintNodes } from "./dataNodes";
 import { devtoolsBlueprintNodes } from "./devtoolsNodes";
 import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { frameBlueprintNodes } from "./frameNodes";
+import { gameBlueprintNodes } from "./gameNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { resolveDataPinValue } from "./graphParamResolvers";
@@ -184,6 +186,9 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getParam: () => undefined,
                     emit: async () => undefined,
                 },
+                game: {
+                    startStory: async () => undefined,
+                },
                 devtools: {
                     log: () => undefined,
                 },
@@ -196,6 +201,7 @@ function createPageNavigationHostAdapter(
     openedSurfaceIds: string[],
     frameTargets: Record<string, string | null> = {},
     framePatches: Array<{ elementId: string; targetSurfaceId: string | null }> = [],
+    startedStories: Array<{ storyId: string; sceneId: string }> = [],
 ): UIHostAdapter {
     return {
         host: "player",
@@ -239,6 +245,11 @@ function createPageNavigationHostAdapter(
                     getParam: () => undefined,
                     emit: async () => undefined,
                 },
+                game: {
+                    startStory: async request => {
+                        startedStories.push(request);
+                    },
+                },
                 devtools: {
                     log: () => undefined,
                 },
@@ -257,6 +268,7 @@ describe("built-in blueprint nodes", () => {
             ...eventHeadBlueprintNodes,
             ...broadcastBlueprintNodes,
             ...frameBlueprintNodes,
+            ...gameBlueprintNodes,
             ...controlFlowBlueprintNodes,
             ...dataBlueprintNodes,
             ...elementBlueprintNodes,
@@ -291,6 +303,7 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_BROADCAST_SEND)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_START_STORY)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_EMIT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
@@ -654,12 +667,56 @@ describe("built-in blueprint nodes", () => {
         expect(framePatches).toEqual([{ elementId: "frame", targetSurfaceId: "embedded-page" }]);
     });
 
+    it("executes Start Game as a terminal host API node", async () => {
+        registerCoreBlueprintNodes();
+
+        const startedStories: Array<{ storyId: string; sceneId: string }> = [];
+        const localsAfterStartGame: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "startGame",
+                entries: { main: { start: { nodeId: "start", port: "in" } } },
+                nodes: {
+                    start: {
+                        id: "start",
+                        type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+                        params: { storyId: "story-1", sceneId: "scene-1" },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterStartGame" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "start", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "start", port: "in" } },
+            hostAdapter: createPageNavigationHostAdapter([], {}, [], startedStories),
+            blueprintLocals: localsAfterStartGame,
+        });
+
+        expect(startedStories).toEqual([{ storyId: "story-1", sceneId: "scene-1" }]);
+        expect(localsAfterStartGame).not.toHaveProperty("afterStartGame");
+    });
+
     it("uses class.md palette categories for the new node groups", () => {
         registerCoreBlueprintNodes();
 
         expect(eventHeadBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(broadcastBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(frameBlueprintNodes.every(def => def.category === "Page")).toBe(true);
+        expect(gameBlueprintNodes.every(def => def.category === "Game")).toBe(true);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+        ]);
         expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)?.pins.map(pin => pin.id)).toEqual([
             "in",
         ]);
