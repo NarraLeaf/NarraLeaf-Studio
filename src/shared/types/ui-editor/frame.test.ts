@@ -124,4 +124,37 @@ describe("UI Frame target validation", () => {
             }),
         ).toBe("cycle");
     });
+
+    it("normalizes optional Page component animation settings", () => {
+        expect(normalizeUIFrameWidgetProps({ targetSurfaceId: "page-b" }).animation).toBeUndefined();
+        expect(
+            normalizeUIFrameWidgetProps({
+                targetSurfaceId: "page-b",
+                animation: {
+                    enter: "fade",
+                    exit: "slide",
+                    direction: "up",
+                    speed: "fast",
+                },
+            }).animation,
+        ).toEqual({
+            enter: "fade",
+            exit: "slide",
+            direction: "up",
+            speed: "fast",
+        });
+        expect(
+            normalizeUIFrameWidgetProps({
+                animation: {
+                    enter: "spin",
+                    exit: "explode",
+                },
+            }).animation,
+        ).toEqual({
+            enter: "none",
+            exit: "none",
+            direction: "auto",
+            speed: "normal",
+        });
+    });
 });

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { type UIDocument, type UISurface, type UIElement, isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
@@ -18,6 +19,8 @@ import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtim
 import { renderUnknownWidgetTypeContent } from "@/lib/ui-editor/runtime/unknownWidgetTypeUi";
 import { BlueprintWidgetInitLifecycle } from "@/lib/ui-editor/runtime/surface/BlueprintWidgetInitLifecycle";
 import { WidgetRuntimeScopeProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { getUIFrameWidgetProps } from "@shared/types/ui-editor/frame";
+import { resolvePageAnimationMotion } from "@/lib/ui-editor/runtime/pageAnimation";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
@@ -200,7 +203,6 @@ function NestedSurfaceRenderer(props: {
         nestedSurfaceRuntime,
         surfacePath,
     } = props;
-    const [, setBindingTick] = useState(0);
     const surfacePathKey = surfacePath.join("\0");
     const targetSurface = document.surfaces.find(surface => surface.id === targetSurfaceId);
     const invalidLabel = !targetSurfaceId
@@ -253,16 +255,58 @@ function NestedSurfaceRenderer(props: {
         return { ...runtimeBaseInput, runtimeScopeId };
     }, [runtimeBaseInput, runtimeScopeId]);
 
+    if (invalidLabel) {
+        return <NestedSurfacePlaceholder label={invalidLabel} />;
+    }
+
+    if (!runtimeInput) {
+        return <NestedSurfacePlaceholder label="Page preview unavailable" />;
+    }
+
+    return (
+        <AnimatePresence initial={false}>
+            <NestedSurfaceInstance
+                key={runtimeScopeId}
+                runtimeInput={runtimeInput}
+                rendererRegistry={rendererRegistry}
+                parentHostAdapter={parentHostAdapter}
+                useAppearanceInspectorPreview={useAppearanceInspectorPreview}
+                nestedSurfaceRuntime={nestedSurfaceRuntime}
+                surfacePath={surfacePath}
+            />
+        </AnimatePresence>
+    );
+}
+
+function NestedSurfaceInstance(props: {
+    runtimeInput: NestedSurfaceRuntimeInput;
+    rendererRegistry: ElementRendererRegistry;
+    parentHostAdapter: UIHostAdapter;
+    useAppearanceInspectorPreview: boolean;
+    nestedSurfaceRuntime?: NestedSurfaceRuntime;
+    surfacePath: string[];
+}) {
+    const {
+        runtimeInput,
+        rendererRegistry,
+        parentHostAdapter,
+        useAppearanceInspectorPreview,
+        nestedSurfaceRuntime,
+        surfacePath,
+    } = props;
+    const [, setBindingTick] = useState(0);
+    const prefersReducedMotion = useReducedMotion();
+    const { document, targetSurface } = runtimeInput;
     const hostAdapter = useMemo(
-        () => (runtimeInput ? nestedSurfaceRuntime?.createHostAdapter?.(runtimeInput) ?? parentHostAdapter : parentHostAdapter),
+        () => nestedSurfaceRuntime?.createHostAdapter?.(runtimeInput) ?? parentHostAdapter,
         [nestedSurfaceRuntime, parentHostAdapter, runtimeInput],
     );
     const bindingContext = useMemo(
-        () => (runtimeInput ? nestedSurfaceRuntime?.createBindingContext?.(runtimeInput) ?? null : null),
+        () => nestedSurfaceRuntime?.createBindingContext?.(runtimeInput) ?? null,
         [nestedSurfaceRuntime, runtimeInput],
     );
     const widgetRuntimePatches = useMemo(
-        () => (runtimeInput ? nestedSurfaceRuntime?.getWidgetRuntimePatches?.(runtimeInput) : undefined),
+        () => nestedSurfaceRuntime?.getWidgetRuntimePatches?.(runtimeInput),
         [nestedSurfaceRuntime, runtimeInput],
     );
 
@@ -276,41 +320,47 @@ function NestedSurfaceRenderer(props: {
         });
     }, [bindingContext?.surfaceState]);
 
-    useEffect(() => {
-        if (!runtimeInput) {
-            return undefined;
-        }
-        return nestedSurfaceRuntime?.mountSurface?.({ ...runtimeInput, hostAdapter });
-    }, [hostAdapter, nestedSurfaceRuntime, runtimeInput]);
+    useEffect(() => nestedSurfaceRuntime?.mountSurface?.({ ...runtimeInput, hostAdapter }), [
+        hostAdapter,
+        nestedSurfaceRuntime,
+        runtimeInput,
+    ]);
 
-    if (invalidLabel) {
-        return <NestedSurfacePlaceholder label={invalidLabel} />;
-    }
-
-    const rootElementId = targetSurface!.rootElementId;
+    const rootElementId = targetSurface.rootElementId;
     const rootElement = document.elements[rootElementId];
     if (!rootElement) {
         return <NestedSurfacePlaceholder label="Page root missing" />;
     }
 
+    const frameAnimation = getUIFrameWidgetProps(runtimeInput.frameElement).animation;
+    const animationSettings = frameAnimation ?? targetSurface.settings?.pageAnimation;
+    const animationMotion = resolvePageAnimationMotion({
+        settings: animationSettings,
+        navigationDirection: "forward",
+        reducedMotion: prefersReducedMotion === true || !runtimeInput.parentHostAdapter.blueprintRuntime,
+    });
     const surfaceStyle: CSSProperties = {
         position: "relative",
-        width: targetSurface!.designSize.width,
-        height: targetSurface!.designSize.height,
+        width: targetSurface.designSize.width,
+        height: targetSurface.designSize.height,
         overflow: "hidden",
-        backgroundColor: targetSurface!.settings?.backgroundColor ?? "#ffffff",
+        backgroundColor: targetSurface.settings?.backgroundColor ?? "#ffffff",
     };
 
     return (
-        <div
+        <motion.div
             className="ui-editor-surface"
-            data-ui-surface-id={targetSurface!.id}
-            data-ui-surface-kind={targetSurface!.kind}
+            data-ui-surface-id={targetSurface.id}
+            data-ui-surface-kind={targetSurface.kind}
+            initial={animationMotion.initial}
+            animate={animationMotion.animate}
+            exit={animationMotion.exit}
+            transition={animationMotion.transition}
             style={surfaceStyle}
         >
             <SurfaceElementTree
                 document={document}
-                surface={targetSurface!}
+                surface={targetSurface}
                 rootElement={rootElement}
                 rendererRegistry={rendererRegistry}
                 hostAdapter={hostAdapter}
@@ -318,10 +368,10 @@ function NestedSurfaceRenderer(props: {
                 blueprintBindingContext={bindingContext}
                 widgetRuntimePatches={widgetRuntimePatches}
                 nestedSurfaceRuntime={nestedSurfaceRuntime}
-                surfacePath={[...surfacePath, targetSurface!.id]}
+                surfacePath={[...surfacePath, targetSurface.id]}
                 editorChrome={Boolean(parentHostAdapter.blueprintRuntime)}
             />
-        </div>
+        </motion.div>
     );
 }
 
