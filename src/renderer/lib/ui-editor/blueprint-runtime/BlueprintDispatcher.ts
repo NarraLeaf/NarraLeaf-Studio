@@ -213,7 +213,12 @@ export async function dispatchBlueprintUiEvent(options: {
     const matchingGraphs = candidateGraphs
         .map(eventGraph => {
             const ir = eventGraph.graph;
-            const headIds = collectBlueprintEventHeadNodeIdsForDispatch(ir?.nodes, eventName, widgetElementType);
+            const headIds = collectBlueprintEventHeadNodeIdsForDispatch(
+                ir?.nodes,
+                eventName,
+                widgetElementType,
+                eventPayload,
+            );
             return headIds.length > 0 ? { eventGraph, ir, headIds } : null;
         })
         .filter((entry): entry is { eventGraph: NonNullable<typeof candidateGraphs[number]>; ir: NonNullable<typeof candidateGraphs[number]["graph"]>; headIds: string[] } => Boolean(entry));
@@ -667,6 +672,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
     surfaceId: string;
     runtimeScopeId?: string;
     eventName: string;
+    eventPayload?: Record<string, unknown>;
     hostAdapter: UIHostAdapter;
     debug: DebugBridge;
     getSurfaceState: (key: string) => unknown;
@@ -678,6 +684,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
         surfaceId,
         runtimeScopeId,
         eventName,
+        eventPayload,
         hostAdapter,
         debug,
         getSurfaceState,
@@ -708,7 +715,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
             debug,
             getSurfaceState,
             setSurfaceState,
-            eventPayload: {},
+            eventPayload: eventPayload ?? {},
         });
         try {
             await Promise.resolve(fn(ctx));
@@ -728,7 +735,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
     const matchingGraphs = candidateGraphs
         .map(eventGraph => {
             const ir = eventGraph.graph;
-            const headIds = collectSurfaceEventHeadNodeIdsForDispatch(ir?.nodes, eventName);
+            const headIds = collectSurfaceEventHeadNodeIdsForDispatch(ir?.nodes, eventName, eventPayload);
             return headIds.length > 0 ? { eventGraph, ir, headIds } : null;
         })
         .filter(
@@ -768,7 +775,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
                     entry,
                     hostAdapter,
                     blueprintLocals,
-                    eventPayload: {},
+                    eventPayload: eventPayload ?? {},
                     executionOwner: { surfaceId, blueprintId },
                     persistentVariables: blueprintDocument.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
@@ -811,13 +818,14 @@ export async function dispatchSurfaceBlueprintEvent(options: {
 export async function dispatchGlobalBlueprintEvent(options: {
     blueprintDocument: BlueprintDocument;
     eventName: string;
+    eventPayload?: Record<string, unknown>;
     hostAdapter: UIHostAdapter;
     debug: DebugBridge;
     getSurfaceState: (key: string) => unknown;
     setSurfaceState: (key: string, value: unknown) => void;
     maxSteps?: number;
 }): Promise<void> {
-    const { blueprintDocument, eventName, hostAdapter, debug, getSurfaceState, setSurfaceState } = options;
+    const { blueprintDocument, eventName, eventPayload, hostAdapter, debug, getSurfaceState, setSurfaceState } = options;
 
     const ownerRecord = blueprintDocument.ownerRecords[GLOBAL_MAIN_OWNER_KEY];
     const blueprintId = ownerRecord?.activeBlueprintId;
@@ -842,7 +850,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
             debug,
             getSurfaceState,
             setSurfaceState,
-            eventPayload: {},
+            eventPayload: eventPayload ?? {},
         });
         try {
             await Promise.resolve(fn(ctx));
@@ -862,7 +870,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
     const matchingGraphs = candidateGraphs
         .map(eventGraph => {
             const ir = eventGraph.graph;
-            const headIds = collectGlobalEventHeadNodeIdsForDispatch(ir?.nodes, eventName);
+            const headIds = collectGlobalEventHeadNodeIdsForDispatch(ir?.nodes, eventName, eventPayload);
             return headIds.length > 0 ? { eventGraph, ir, headIds } : null;
         })
         .filter(
@@ -900,7 +908,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
                     entry,
                     hostAdapter,
                     blueprintLocals,
-                    eventPayload: {},
+                    eventPayload: eventPayload ?? {},
                     executionOwner: { blueprintId },
                     persistentVariables: blueprintDocument.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,

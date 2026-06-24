@@ -9,6 +9,10 @@
 | On App Boot | `blueprint.event.head.appBoot` | **已实现**。应用 UI 运行时启动时触发。 |
 | On Surface Init | `blueprint.event.head.surfaceInit` | **已实现**。Page 或 Game UI surface 初始化时触发。 |
 | On Surface Unmount | `blueprint.event.head.surfaceUnmount` | **已实现**。Page 或 Game UI surface 卸载时触发。 |
+| On Key Down | `blueprint.event.head.keyDown` | **已实现**。运行时窗口指定键按下时触发；卡片 `Key` 字段按 `KeyboardEvent.key` 大小写不敏感匹配；仅输出修改键。 |
+| On Key Up | `blueprint.event.head.keyUp` | **已实现**。运行时窗口指定键抬起时触发；卡片 `Key` 字段按 `KeyboardEvent.key` 大小写不敏感匹配；仅输出修改键。 |
+| Any Key Down | `blueprint.event.head.anyKeyDown` | **已实现**。运行时窗口任意键按下时触发；Global 蓝图、当前 active Surface 蓝图和已挂载控件私有蓝图都会收到；输出 `key` 和修改键。 |
+| Any Key Up | `blueprint.event.head.anyKeyUp` | **已实现**。运行时窗口任意键抬起时触发；Global 蓝图、当前 active Surface 蓝图和已挂载控件私有蓝图都会收到；输出 `key` 和修改键。 |
 | On Init | `blueprint.event.head.init` | **已实现**。当前 widget 初始化时触发。 |
 | Mouse Click | `blueprint.event.head.mouseClick` | **已实现**。鼠标左键点击元素时触发。 |
 | Mouse Double Click | `blueprint.event.head.mouseDoubleClick` | **已实现**。鼠标双击元素时触发。 |

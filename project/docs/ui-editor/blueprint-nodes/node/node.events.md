@@ -2,7 +2,9 @@
 
 除非额外声明，所有参数均为传出引脚值。事件 Head 节点没有执行入口，统一通过 `then` 执行出口继续后续逻辑。
 
-鼠标坐标使用当前元素的本地设计坐标系。Broadcast、Page Event 与鼠标事件的传出值均来自当前运行时事件 payload；没有对应 payload 时传出值为 `undefined`。
+鼠标坐标使用当前元素的本地设计坐标系。Broadcast、Page Event、键盘事件与鼠标事件的传出值均来自当前运行时事件 payload；没有对应 payload 时传出值为 `undefined`。
+
+键盘事件由运行时窗口级监听派发，不依赖元素焦点。Global 蓝图、当前 active Surface 蓝图，以及已挂载控件的私有蓝图都会收到对应键盘事件；如果多处都放置事件 Head，它们会分别执行。控件私有蓝图的键盘监听随控件挂载注册，控件卸载时自动移除。
 
 元素事件只从当前元素自己的可交互区域触发，不会冒泡接管子元素事件；控件处于禁用或文本编辑等不可交互状态时不会派发对应 Events Head。
 
@@ -28,6 +30,62 @@
 
 当 Page 或 Game UI Surface 离开当前运行时 scope、被替换，或 Page 组件实例卸载时触发。
 - `then` - 执行出口
+
+## On Key Down
+
+`blueprint.event.head.keyDown` - 指定键按下事件
+
+当运行时窗口收到匹配的键盘按下事件时触发。该节点出现在 Global 蓝图、Surface 蓝图和普通控件私有蓝图中；当前 active Surface 和所有已挂载且拥有该事件 Head 的控件都会收到同一次窗口事件。
+
+卡片字段：
+- `Key` - 要匹配的 `KeyboardEvent.key` 名称，大小写不敏感；空值不会触发，任意键请使用 `Any Key Down`
+
+输出：
+- `then` - 执行出口
+- `altKey` - Alt 是否按下
+- `ctrlKey` - Ctrl 是否按下
+- `shiftKey` - Shift 是否按下
+- `metaKey` - Meta / Command / Windows 是否按下
+
+## On Key Up
+
+`blueprint.event.head.keyUp` - 指定键抬起事件
+
+当运行时窗口收到匹配的键盘抬起事件时触发。该节点出现在 Global 蓝图、Surface 蓝图和普通控件私有蓝图中；不要求任何元素处于焦点状态。
+
+卡片字段：
+- `Key` - 要匹配的 `KeyboardEvent.key` 名称，大小写不敏感；空值不会触发，任意键请使用 `Any Key Up`
+
+输出：
+- `then` - 执行出口
+- `altKey` - Alt 是否按下
+- `ctrlKey` - Ctrl 是否按下
+- `shiftKey` - Shift 是否按下
+- `metaKey` - Meta / Command / Windows 是否按下
+
+## Any Key Down
+
+`blueprint.event.head.anyKeyDown` - 任意键按下事件
+
+当运行时窗口收到任意键盘按下事件时触发。该节点出现在 Global 蓝图、Surface 蓝图和普通控件私有蓝图中。
+- `then` - 执行出口
+- `key` - 按键语义值，对应 `KeyboardEvent.key`
+- `altKey` - Alt 是否按下
+- `ctrlKey` - Ctrl 是否按下
+- `shiftKey` - Shift 是否按下
+- `metaKey` - Meta / Command / Windows 是否按下
+
+## Any Key Up
+
+`blueprint.event.head.anyKeyUp` - 任意键抬起事件
+
+当运行时窗口收到任意键盘抬起事件时触发。该节点出现在 Global 蓝图、Surface 蓝图和普通控件私有蓝图中。
+- `then` - 执行出口
+- `key` - 按键语义值，对应 `KeyboardEvent.key`
+- `altKey` - Alt 是否按下
+- `ctrlKey` - Ctrl 是否按下
+- `shiftKey` - Shift 是否按下
+- `metaKey` - Meta / Command / Windows 是否按下
 
 ## Init
 

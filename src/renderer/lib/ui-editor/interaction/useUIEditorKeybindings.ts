@@ -22,7 +22,9 @@ import {
     uiEditorPasteAfterSelection,
     uiEditorSelectAllInSurface,
 } from "@/lib/ui-editor/commands/uiEditorCommands";
+import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 
 function isTypingInField(): boolean {
     return isEditableKeyboardTarget(document.activeElement);
@@ -47,6 +49,7 @@ export type UseUIEditorKeybindingsParams = {
     localBlueprint: LocalBlueprintService | null;
     historyService: UIEditorHistoryService | null;
     stateService: UIEditorStateService | null;
+    uiService: UIService | null;
     requestRenamePrimary: () => void;
 };
 
@@ -61,6 +64,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         localBlueprint,
         historyService,
         stateService,
+        uiService,
         requestRenamePrimary,
     } = params;
 
@@ -88,7 +92,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
                 return;
             }
             const s = getUiSelection(stateService, surfaceId);
-            uiEditorCutSelection(documentService, localBlueprint, stateService, surfaceId, s);
+            uiEditorCutSelection(documentService, localBlueprint, stateService, surfaceId, s, uiService);
         };
         const paste = () => {
             if (!documentService || !localBlueprint || !stateService || isTypingInField()) {
@@ -115,14 +119,14 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             if (!documentService || !stateService || isTypingInField()) {
                 return;
             }
-            uiEditorSelectAllInSurface(documentService, stateService, surfaceId);
+            uiEditorSelectAllInSurface(documentService, stateService, surfaceId, uiService);
         };
         const del = () => {
             if (!documentService || !stateService || isTypingInField()) {
                 return;
             }
             const s = getUiSelection(stateService, surfaceId);
-            uiEditorDeleteSelection(documentService, stateService, surfaceId, s);
+            uiEditorDeleteSelection(documentService, stateService, surfaceId, s, uiService);
         };
         const undo = () => {
             if (!historyService || isTypingInField()) {
@@ -185,6 +189,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         localBlueprint,
         historyService,
         stateService,
+        uiService,
         requestRenamePrimary,
     ]);
 
@@ -201,8 +206,8 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             stateService.setInteractionOverride(null);
             return;
         }
-        stateService.setSelection({ type: null, data: null });
-    }, [contextMenuOpen, onCloseContextMenu, stateService, surfaceId]);
+        selectSurfaceForProperties(stateService, surfaceId, uiService);
+    }, [contextMenuOpen, onCloseContextMenu, stateService, surfaceId, uiService]);
 
     useKeybinding({
         id: `ui-surface-editor-${tabId}-escape`,

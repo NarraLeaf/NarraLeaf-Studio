@@ -35,6 +35,8 @@ import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryIns
 import type { FloatingToolbarItem } from "@/lib/ui-editor/widget-modules/types";
 import { resolveFloatingToolbarPosition } from "./floatingToolbarPosition";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
+import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 
 function InsertPreviewOverlay({ preview, viewport }: { preview: InsertPreview; viewport: ViewportTransform }) {
     const x = Math.min(preview.startX, preview.currentX);
@@ -73,6 +75,7 @@ type Props = {
     containerRef: React.RefObject<HTMLElement | null>;
     stateService: UIEditorStateService;
     documentService: UIDocumentService;
+    uiService?: UIService | null;
     showOutlines?: boolean;
     openSurfaceEditor?: (surfaceId: string) => void;
 };
@@ -82,6 +85,7 @@ export function UIEditorInteractionLayer({
     containerRef,
     stateService,
     documentService,
+    uiService,
     showOutlines = true,
     openSurfaceEditor,
 }: Props) {
@@ -119,13 +123,13 @@ export function UIEditorInteractionLayer({
         const document = documentService.getDocument();
         const rootId = resolveSurfaceRootElementId(document, surfaceId);
         if (!rootId) {
-            stateService.setSelection({ type: null, data: null });
+            selectSurfaceForProperties(stateService, surfaceId, uiService);
             return;
         }
         const allowed = collectSubtreeElementIds(document, rootId);
         const nextIds = selection.data.elementIds.filter(id => allowed.has(id) && document.elements[id] != null);
         if (nextIds.length === 0) {
-            stateService.setSelection({ type: null, data: null });
+            selectSurfaceForProperties(stateService, surfaceId, uiService);
             return;
         }
         const currentPrimary =
@@ -146,7 +150,7 @@ export function UIEditorInteractionLayer({
             elementIds: nextIds,
             primaryId: nextPrimary,
         });
-    }, [documentRevision, documentService, selection, stateService, surfaceId]);
+    }, [documentRevision, documentService, selection, stateService, surfaceId, uiService]);
 
     const [tool, setTool] = useState<UITool>(stateService.getTool());
     const [viewport, setViewport] = useState<ViewportTransform>(stateService.getViewportTransform());
@@ -562,6 +566,7 @@ export function UIEditorInteractionLayer({
         panStateRef: panState,
         documentService,
         stateService,
+        uiService,
         insertSnapEnabled,
         insertSnapSuspended,
     });

@@ -92,6 +92,10 @@ Displayable 节点组默认具有：
 - `blueprint.event.head.mouseDown`
 - `blueprint.event.head.mouseWheel`
 - `blueprint.event.head.rightClick`
+- `blueprint.event.head.keyDown`
+- `blueprint.event.head.keyUp`
+- `blueprint.event.head.anyKeyDown`
+- `blueprint.event.head.anyKeyUp`
 - `blueprint.event.head.focus`
 - `blueprint.event.head.blur`
 - `blueprint.displayable.getPosition` - 获取元素坐标
@@ -128,6 +132,10 @@ Page 节点组用于 Page 组件和被 Page 组件嵌入的子 Page 之间传递
 
 Page 节点组默认具有：
 - `blueprint.event.head.pageEvent` - Page 组件收到子 Page 事件
+- `blueprint.event.head.keyDown` - Page 组件实例收到运行时窗口指定键按下事件
+- `blueprint.event.head.keyUp` - Page 组件实例收到运行时窗口指定键抬起事件
+- `blueprint.event.head.anyKeyDown` - Page 组件实例收到运行时窗口任意键按下事件
+- `blueprint.event.head.anyKeyUp` - Page 组件实例收到运行时窗口任意键抬起事件
 - `blueprint.frame.getParam` - 读取父级 Page 组件传入的参数
 - `blueprint.frame.emit` - 向父级 Page 组件发送事件
 
@@ -137,6 +145,10 @@ Page 节点组默认具有：
 
 Global 节点组默认具有：
 - `blueprint.event.head.appBoot` - 应用启动事件（仅全局蓝图具有）
+- `blueprint.event.head.keyDown` - 运行时窗口指定键按下事件
+- `blueprint.event.head.keyUp` - 运行时窗口指定键抬起事件
+- `blueprint.event.head.anyKeyDown` - 运行时窗口任意键按下事件
+- `blueprint.event.head.anyKeyUp` - 运行时窗口任意键抬起事件
 
 ## Surface
 
@@ -145,6 +157,10 @@ Global 节点组默认具有：
 Surface 节点组默认具有：
 - `blueprint.event.head.surfaceInit` - 当前 Surface 初始化事件（仅Surface蓝图具有）
 - `blueprint.event.head.surfaceUnmount` - 当前 Surface 卸载事件（仅Surface蓝图具有）
+- `blueprint.event.head.keyDown` - 当前 active Surface 收到运行时窗口指定键按下事件
+- `blueprint.event.head.keyUp` - 当前 active Surface 收到运行时窗口指定键抬起事件
+- `blueprint.event.head.anyKeyDown` - 当前 active Surface 收到运行时窗口任意键按下事件
+- `blueprint.event.head.anyKeyUp` - 当前 active Surface 收到运行时窗口任意键抬起事件
 - Broadcast 节点组
 
 ## List
@@ -160,6 +176,10 @@ List 节点组默认具有：
 - `blueprint.event.head.itemClick` - 列表条目点击事件
 - `blueprint.event.head.itemHover` - 列表条目悬停事件
 - `blueprint.event.head.selectionChanged` - 列表选中项变化事件
+- `blueprint.event.head.keyDown` - List 组件实例收到运行时窗口指定键按下事件
+- `blueprint.event.head.keyUp` - List 组件实例收到运行时窗口指定键抬起事件
+- `blueprint.event.head.anyKeyDown` - List 组件实例收到运行时窗口任意键按下事件
+- `blueprint.event.head.anyKeyUp` - List 组件实例收到运行时窗口任意键抬起事件
 
 - `blueprint.event.head.listItemRefresh` - List item template 后代元素接收条目上下文刷新事件
 - `blueprint.list.setItems` / `blueprint.list.getItems` / `blueprint.list.clear` - 读写运行时内容
@@ -180,6 +200,10 @@ Slider 节点组默认具有：
 - `blueprint.event.head.sliderDragStart` - 滑块拖拽开始事件，输出映射值 `value`
 - `blueprint.event.head.sliderValueChanged` - 滑块值变化事件，输出映射值 `value` 和 `previousValue`
 - `blueprint.event.head.sliderDragEnd` - 滑块拖拽结束事件，输出映射值 `value`
+- `blueprint.event.head.keyDown` - Slider 组件实例收到运行时窗口指定键按下事件
+- `blueprint.event.head.keyUp` - Slider 组件实例收到运行时窗口指定键抬起事件
+- `blueprint.event.head.anyKeyDown` - Slider 组件实例收到运行时窗口任意键按下事件
+- `blueprint.event.head.anyKeyUp` - Slider 组件实例收到运行时窗口任意键抬起事件
 - `blueprint.slider.getValue` / `Get Value` - 获取映射值
 - `blueprint.slider.getNormalizedValue` - 获取 0-1 normalized 值
 - `blueprint.slider.getRange` - 获取 `min`、`max`、`step`

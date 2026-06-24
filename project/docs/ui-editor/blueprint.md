@@ -11,6 +11,10 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.event.head.appBoot` | `App Boot` | `Events` | Entry node for the global UI runtime startup event. It is only available on `globalMain` blueprints. |
 | `blueprint.event.head.surfaceInit` | `Surface Init` | `Events` | Entry node for Page/Game UI surface initialization. It is only available on `surfaceMain` blueprints. |
 | `blueprint.event.head.surfaceUnmount` | `Surface Unmount` | `Events` | Entry node for Page/Game UI surface unmount. It is only available on `surfaceMain` blueprints. |
+| `blueprint.event.head.keyDown` | `On Key Down` | `Events` | Entry node for runtime window keyboard down events filtered by a case-insensitive `KeyboardEvent.key` card field. It is available on `globalMain`, active `surfaceMain`, and mounted widget private blueprints. |
+| `blueprint.event.head.keyUp` | `On Key Up` | `Events` | Entry node for runtime window keyboard up events filtered by a case-insensitive `KeyboardEvent.key` card field. It is available on `globalMain`, active `surfaceMain`, and mounted widget private blueprints. |
+| `blueprint.event.head.anyKeyDown` | `Any Key Down` | `Events` | Entry node for any runtime window keyboard down event. It outputs `key` plus modifier pins. |
+| `blueprint.event.head.anyKeyUp` | `Any Key Up` | `Events` | Entry node for any runtime window keyboard up event. It outputs `key` plus modifier pins. |
 | `blueprint.event.head.init` | `Init` | `Events` | Entry node for widget initialization and Blueprint Value initial evaluation. It is available to widgets that expose the `init` lifecycle event and to `widgetValue` blueprints. |
 | `blueprint.event.head.mouseClick` | `Mouse Click` | `Events` | Entry node for widget mouse click interactions. It is available through the widget logic capability catalog. |
 | `blueprint.event.head.flush` | `On Flush` | `Events` | Entry node fired on the current widget after explicit Host API element property changes trigger a redraw. It outputs the flushed Element reference. |
@@ -177,7 +181,7 @@ Recommended category names:
 
 | Category | Use for |
 | --- | --- |
-| `Events` | Event entry heads such as `Init`, `Mouse Click`, `Surface Init`, `App Boot`, broadcast receivers, and `Page Event`. |
+| `Events` | Event entry heads such as `Init`, `Mouse Click`, `On Key Down`, `Any Key Down`, `Surface Init`, `App Boot`, broadcast receivers, and `Page Event`. |
 | `Variables` | Local blueprint variables and project-level Persistent variables exposed through `Get Var`, `Set Var`, `Get Persistent`, and `Set Persistent`. |
 | `Flow` | Branching, string switching, bounded loops, array iteration, and delay. |
 | `Data` | Literals, objects, arrays, Collection nodes, JSON helpers, string helpers, parsing, and type conversion. |
@@ -460,6 +464,8 @@ To make a widget expose `Init` and `Mouse Click`, its logic API should include t
 ```
 
 The current built-in widgets expose event heads through capability catalogs rather than aliases. Do not add duplicate node ids for the same user action; add or update the event capability first, then add the matching event-head node definition.
+
+Owner-level keyboard events are declared in `src/shared/types/ui-editor/blueprintLifecycle.ts`, and widget-level keyboard events are declared in `src/shared/types/ui-editor/widgetLogic.ts`. `On Key Down` / `On Key Up` and `Any Key Down` / `Any Key Up` listen at the runtime window level and dispatch to `globalMain`, the current active `surfaceMain`, and mounted widgets that expose those event heads. `On Key` heads match the card `Key` field against `KeyboardEvent.key` case-insensitively and only output modifier pins; `Any Key` heads also output `key`. Widget listeners are registered while the component is mounted and removed on unmount; they do not depend on element focus or `tabIndex`.
 
 `nl.slider` exposes `Drag Start`, `Value Changed`, and `Drag End` event heads through this catalog. Slider events output the mapped `value`; `Value Changed` also outputs `previousValue`. They do not output normalized 0-1 progress. Use `Get Normalized Value` when a graph needs normalized progress, and `Get Value` when it needs the mapped value.
 
