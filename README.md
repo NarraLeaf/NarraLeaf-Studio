@@ -32,3 +32,10 @@ For game compatibility, see [docs/game-compatibility.md](docs/game-compatibility
 ### Setup
 
 ### Development
+
+```bash
+yarn dev
+yarn dev --cdp --cdp-port=9222
+```
+
+`--cdp` enables the Electron Chrome DevTools Protocol endpoint during development. `--cdp-port` is optional and defaults to `9222`; the main process ignores CDP flags outside development mode.

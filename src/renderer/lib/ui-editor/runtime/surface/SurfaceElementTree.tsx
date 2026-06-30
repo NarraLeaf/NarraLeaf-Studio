@@ -399,6 +399,12 @@ function applyWidgetRuntimePatches(element: UIElement, patches: Record<string, D
     if (patch.visible !== undefined) {
         next.layout.visible = patch.visible;
     }
+    if (patch.layout) {
+        next.layout = {
+            ...next.layout,
+            ...patch.layout,
+        };
+    }
     if (patch.enabled !== undefined) {
         (next.props as Record<string, unknown>).interactionDisabled = !patch.enabled;
     }
@@ -539,6 +545,7 @@ function renderElementTree(
     valueRuntime: BlueprintValueRuntimeStore | null = null,
     componentPath: string[] = [],
 ): ReactNode {
+    const runtimePatch = widgetRuntimePatches?.[element.id];
     const patched = applyWidgetRuntimePatches(element, widgetRuntimePatches ?? {});
     const bound =
         blueprintBindingContext != null
@@ -657,8 +664,12 @@ function renderElementTree(
             isRoot={resolved.parentId === null}
             layoutMode={layoutMode}
             styleOverrides={styleOverrides}
+            hasRuntimeOpacityOverride={Boolean(
+                runtimePatch?.layout && Object.prototype.hasOwnProperty.call(runtimePatch.layout, "opacity"),
+            )}
             hostAdapter={hostAdapter}
             interactive={editorChrome}
+            useAppearanceInspectorPreview={useAppearanceInspectorPreview}
             listItemScope={listItemScope ?? null}
             instanceKey={instanceKey}
         >

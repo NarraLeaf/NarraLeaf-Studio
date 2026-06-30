@@ -56,6 +56,7 @@ export enum IPCEventType {
     fsIsDir = "fs.isDir",
     fsSelectFile = "fs.selectFile",
     fsSelectDirectory = "fs.selectDirectory",
+    fsGrantFileAccess = "fs.grantFileAccess",
     fsHash = "fs.hash",
 
     editorLaunch = "editor.launch",
@@ -428,6 +429,14 @@ export type IPCFsEvents = {
         consumer: IPCType.Host,
         data: {
             multiple: boolean;
+        },
+        response: FsRequestResult<string[]>;
+    };
+    [IPCEventType.fsGrantFileAccess]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            paths: string[];
         },
         response: FsRequestResult<string[]>;
     };

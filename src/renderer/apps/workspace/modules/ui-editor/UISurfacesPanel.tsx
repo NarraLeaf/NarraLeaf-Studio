@@ -16,6 +16,7 @@ import { useRegistry } from "../../registry";
 import { UISurfaceEditorTab } from "./editors/UISurfaceEditorTab";
 import { ContextMenu, ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { PanelsTopLeft } from "lucide-react";
+import { createInputDialog } from "@/lib/components/dialogs";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_SURFACE_SIZE, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
@@ -39,14 +40,41 @@ import {
     CreateSurfaceDialogValue,
 } from "./panel/dialogs/CreateSurfaceDialogContent";
 import { DEFAULT_STAGE_SLOT_ID, STAGE_SLOT_LABELS, SURFACE_KIND_OPTIONS } from "./panel/constants";
+import type { EditorLayout } from "../../registry/types";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const getSurfaceTabId = (surfaceId: string) => `${SURFACE_TAB_PREFIX}${surfaceId}`;
 const globalOwnerLabel = getOwnerLabel("globalMain");
 
+function findEditorGroupIdByTabId(layout: EditorLayout, tabId: string): string | null {
+    if ("tabs" in layout) {
+        return layout.tabs.some(tab => tab.id === tabId) ? layout.id : null;
+    }
+    return findEditorGroupIdByTabId(layout.first, tabId) ?? findEditorGroupIdByTabId(layout.second, tabId);
+}
+
+function getSurfaceIdentityLabel(surface: UISurface): string {
+    if (surface.id === MAIN_APP_SURFACE_ID) {
+        return DEFAULT_APP_SURFACE_NAME;
+    }
+    return surface.kind === "appSurface" ? "Page" : "Game UI";
+}
+
+function createSurfaceEditorTab(surface: UISurface) {
+    return {
+        id: getSurfaceTabId(surface.id),
+        title: surface.name,
+        icon: <PanelsTopLeft className="w-4 h-4" />,
+        component: UISurfaceEditorTab,
+        payload: { surfaceId: surface.id },
+        closable: true,
+        modified: false,
+    };
+}
+
 export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { context } = useWorkspace();
-    const { openEditorTab, closeEditorTab } = useRegistry();
+    const { editorLayout, openEditorTab, closeEditorTab } = useRegistry();
     const [surfaces, setSurfaces] = useState<UISurface[]>([]);
     const [kind, setKind] = useState<UISurfaceKind>("appSurface");
     const { menuState, showMenu, hideMenu } = useContextMenu();
@@ -74,6 +102,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (!context) return null;
         return context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     }, [context]);
+    const inputDialog = useMemo(() => (uiService ? createInputDialog(uiService) : null), [uiService]);
 
     useEffect(() => {
         if (!documentService) return;
@@ -108,16 +137,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     );
 
     const handleOpenSurface = useCallback((surface: UISurface) => {
-        const tabId = getSurfaceTabId(surface.id);
-        openEditorTab({
-            id: tabId,
-            title: surface.name,
-            icon: <PanelsTopLeft className="w-4 h-4" />,
-            component: UISurfaceEditorTab,
-            payload: { surfaceId: surface.id },
-            closable: true,
-            modified: false,
-        });
+        openEditorTab(createSurfaceEditorTab(surface));
     }, [openEditorTab]);
 
     const handleOpenGlobalBlueprint = useCallback(() => {
@@ -197,7 +217,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (!documentService || !uiService) {
             return;
         }
-        const label = surface.kind === "appSurface" ? "page" : "Game UI";
+        const label = getSurfaceIdentityLabel(surface);
         const document = documentService.getDocument();
         const root = document.elements[surface.rootElementId];
         const hasChildren = Boolean(root && root.childrenIds.length > 0);
@@ -216,35 +236,66 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         }
     }, [documentService, uiService, handleOpenSurface, closeEditorTab]);
 
+    const handleRenameSurface = useCallback(async (surface: UISurface) => {
+        if (!documentService || !inputDialog || !uiService) {
+            return;
+        }
+        const name = await inputDialog.showRenameDialog(surface.name, getSurfaceIdentityLabel(surface));
+        if (!name) {
+            return;
+        }
+        documentService.renameSurface(surface.id, name);
+
+        const updatedSurface = documentService.getDocument().surfaces.find(next => next.id === surface.id);
+        if (!updatedSurface) {
+            return;
+        }
+        const tabId = getSurfaceTabId(surface.id);
+        const groupId = findEditorGroupIdByTabId(editorLayout, tabId);
+        if (groupId) {
+            uiService.getStore().openEditorTabInGroup(createSurfaceEditorTab(updatedSurface), groupId, false);
+        }
+    }, [documentService, editorLayout, inputDialog, uiService]);
+
     const handleOpenMenu = useCallback(
         (event: MouseEvent<HTMLDivElement | HTMLButtonElement>, surface: UISurface) => {
-        event.stopPropagation();
-        const label = surface.kind === "appSurface" ? "Page" : "Game UI";
-        const items: ContextMenuDef = [
-            {
-                id: "open-surface",
-                label: `Open ${label}`,
-                onClick: () => handleOpenSurface(surface),
-            },
-        ];
-        if (surface.id !== MAIN_APP_SURFACE_ID) {
-            items.push(
+            event.preventDefault();
+            event.stopPropagation();
+            const label = getSurfaceIdentityLabel(surface);
+            const items: ContextMenuDef = [
                 {
-                    id: "surface-separator",
-                    separator: true,
+                    id: "open-surface",
+                    label: `Open ${label}`,
+                    onClick: () => handleOpenSurface(surface),
                 },
                 {
-                    id: "delete-surface",
-                    label: `Delete ${label}`,
+                    id: "rename-surface",
+                    label: `Rename ${label}`,
                     onClick: () => {
-                        void handleDeleteSurface(surface);
+                        void handleRenameSurface(surface);
                     },
                 },
-            );
-        }
-        setMenuItems(items);
-        showMenu(event);
-    }, [showMenu, handleOpenSurface, handleDeleteSurface]);
+            ];
+            if (surface.id !== MAIN_APP_SURFACE_ID) {
+                items.push(
+                    {
+                        id: "surface-separator",
+                        separator: true,
+                    },
+                    {
+                        id: "delete-surface",
+                        label: `Delete ${label}`,
+                        onClick: () => {
+                            void handleDeleteSurface(surface);
+                        },
+                    },
+                );
+            }
+            setMenuItems(items);
+            showMenu(event);
+        },
+        [showMenu, handleOpenSurface, handleRenameSurface, handleDeleteSurface],
+    );
 
     const promptCreateSurface = useCallback(
         (suggestedName: string): Promise<CreateSurfaceDialogValue | null> => {

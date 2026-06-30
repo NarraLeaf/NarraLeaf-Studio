@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useMemo, useSyncExternalStore } from "react";
-import { STATIC_WIDGET_RUNTIME_SNAPSHOT, type WidgetRuntimeSnapshot, WidgetRuntimeStateStore } from "./WidgetRuntimeStateStore";
+import {
+    STATIC_WIDGET_RUNTIME_SNAPSHOT,
+    type UIDisplayableMotionOverride,
+    type WidgetRuntimeSnapshot,
+    WidgetRuntimeStateStore,
+} from "./WidgetRuntimeStateStore";
 import {
     DEFAULT_SYSTEM_INTERACTION_SIGNALS,
     type SystemInteractionSignals,
@@ -8,10 +13,11 @@ import {
 const WidgetRuntimeStateContext = createContext<WidgetRuntimeStateStore | null>(null);
 const WidgetRuntimeScopeContext = createContext<string | null>(null);
 const EMPTY_UNSUBSCRIBE = () => () => {};
-const EMPTY_ELEMENT_SIGNATURE = "0|0|0|0|";
+const EMPTY_ELEMENT_SIGNATURE = "||0|0|0|0";
 const STATIC_WIDGET_RUNTIME_ELEMENT_STATE = Object.freeze({
     variantOverrideId: null,
     signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+    displayableMotion: null,
 });
 
 export type WidgetRuntimeStateProviderProps = {
@@ -64,6 +70,7 @@ export function useWidgetRuntimeSnapshot(): WidgetRuntimeSnapshot {
 export type WidgetRuntimeElementState = {
     variantOverrideId: string | null;
     signals: SystemInteractionSignals;
+    displayableMotion: UIDisplayableMotionOverride | null;
 };
 
 function buildElementSignature(
@@ -76,8 +83,10 @@ function buildElementSignature(
     }
     const signals = store.getSignalsForElement(elementId, interactionDisabled);
     const variantOverrideId = store.getVariantOverride(elementId) ?? "";
+    const displayableMotionId = store.getDisplayableMotion(elementId)?.id ?? "";
     return [
         variantOverrideId,
+        displayableMotionId,
         signals.hovered ? "1" : "0",
         signals.active ? "1" : "0",
         signals.focused ? "1" : "0",
@@ -109,6 +118,7 @@ export function useWidgetRuntimeElementState(
         return {
             variantOverrideId: store.getVariantOverride(runtimeElementKey) ?? null,
             signals: store.getSignalsForElement(runtimeElementKey, interactionDisabled),
+            displayableMotion: store.getDisplayableMotion(runtimeElementKey),
         };
     }, [interactionDisabled, runtimeElementKey, signature, store]);
 }

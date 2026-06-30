@@ -5,9 +5,16 @@ import type {
     BindingSourceRef,
     BlueprintDocument,
     BlueprintField,
+    BlueprintGraphIr,
+    BlueprintGraphNode,
     BlueprintMemberIndex,
     BlueprintPrivateOwnerRecord,
 } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+} from "@shared/types/blueprint/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
     ensureBlueprintEventGraphIrStructure,
@@ -80,6 +87,71 @@ function ensurePersistentVariables(doc: BlueprintDocument): BlueprintDocument {
     };
 }
 
+function millisecondsToSeconds(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) ? value / 1000 : undefined;
+}
+
+function migrateTimingParamsForNode(node: BlueprintGraphNode): void {
+    const params = node.params;
+    if (!params) {
+        return;
+    }
+    if (node.type === BLUEPRINT_NODE_TYPE_FLOW_DELAY) {
+        const duration = millisecondsToSeconds(params.duration);
+        if (duration !== undefined) {
+            params.duration = duration;
+        }
+        return;
+    }
+    if (
+        node.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY ||
+        node.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY
+    ) {
+        const duration = millisecondsToSeconds(params.durationMs);
+        if (duration !== undefined) {
+            params.duration = duration;
+        }
+        const delay = millisecondsToSeconds(params.delayMs);
+        if (delay !== undefined) {
+            params.delay = delay;
+        }
+        delete params.durationMs;
+        delete params.delayMs;
+    }
+}
+
+function migrateTimingParamsForGraph(graph: BlueprintGraphIr | undefined): void {
+    if (!graph?.nodes) {
+        return;
+    }
+    for (const node of Object.values(graph.nodes)) {
+        migrateTimingParamsForNode(node);
+    }
+}
+
+function migrateBlueprintTimingUnitsToSeconds(doc: BlueprintDocument): BlueprintDocument {
+    for (const bp of Object.values(doc.blueprints)) {
+        if (bp.program.kind !== "graph") {
+            continue;
+        }
+        const graphs = bp.program.graphs;
+        for (const eventGraph of Object.values(graphs.events ?? {})) {
+            migrateTimingParamsForGraph(eventGraph.graph);
+        }
+        for (const functionGraph of Object.values(graphs.functions ?? {})) {
+            migrateTimingParamsForGraph(functionGraph.graph);
+        }
+        for (const macroGraph of Object.values(graphs.macros ?? {})) {
+            migrateTimingParamsForGraph(macroGraph.graph);
+        }
+    }
+    return doc;
+}
+
+function finalizeLegacyBlueprintDocument(doc: BlueprintDocument): BlueprintDocument {
+    return migrateBlueprintTimingUnitsToSeconds(ensurePersistentVariables(migrateLegacyDeclarationsToFields(doc)));
+}
+
 /**
  * If document is v2/v3/v4, upgrade to latest. Idempotent for current schema.
  */
@@ -91,19 +163,19 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
     if (sv === BLUEPRINT_DOCUMENT_SCHEMA_VERSION) {
         return ensurePersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument));
     }
-    if ((sv === 5 || sv === 6) && isRecord(raw.blueprints)) {
-        const migrated = ensurePersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument));
+    if ((sv === 5 || sv === 6 || sv === 7) && isRecord(raw.blueprints)) {
+        const migrated = finalizeLegacyBlueprintDocument(raw as BlueprintDocument);
         return { ...migrated, schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
     }
     if (sv === 4 && isRecord(raw.blueprints)) {
-        const migrated = ensurePersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument));
+        const migrated = finalizeLegacyBlueprintDocument(raw as BlueprintDocument);
         return { ...migrated, schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
     }
     if (sv === 3 && isRecord(raw.blueprints)) {
         let seq = 0;
         const generateId = () => `nl_mig_${++seq}`;
         const withBodies = upgradeBlueprintGraphBodiesToV4(raw as BlueprintDocument, generateId);
-        const migrated = ensurePersistentVariables(migrateLegacyDeclarationsToFields(withBodies));
+        const migrated = finalizeLegacyBlueprintDocument(withBodies);
         return { ...migrated, schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION };
     }
     if (sv === 2 && isRecord(raw.ownerIndex) && isRecord(raw.blueprints)) {
@@ -127,7 +199,7 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
             ownerRecords,
         } as unknown as BlueprintDocument;
         const upgraded = upgradeBlueprintGraphBodiesToV4(interim, generateId);
-        const migrated = ensurePersistentVariables(migrateLegacyDeclarationsToFields(upgraded));
+        const migrated = finalizeLegacyBlueprintDocument(upgraded);
         return {
             ...migrated,
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,

@@ -26,7 +26,7 @@ export function renameVariant(model: AppearanceModel, variantId: string, name: s
     if (!v) {
         return model;
     }
-    v.name = name.trim() || v.name;
+    v.name = name.trim();
     return next;
 }
 

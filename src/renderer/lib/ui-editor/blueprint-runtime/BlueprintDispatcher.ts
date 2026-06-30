@@ -13,9 +13,14 @@ import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { getWidgetLogicEvent, getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
-import { BlueprintGraphExecutionError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
+import {
+    BlueprintGraphExecutionError,
+    isBlueprintGraphExecutionCancelledError,
+    throwIfBlueprintExecutionCancelled,
+} from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintHostApiRuntime } from "./BlueprintHostApiBridge";
+import type { BlueprintExecutionHandle, BlueprintExecutionManager } from "./BlueprintExecutionManager";
 import { adaptBlueprintGraphIr } from "./adaptBlueprintGraphIr";
 import { acquireBlueprintExecutionLocals } from "./blueprintWidgetLocals";
 import type { DebugBridge } from "./DebugBridge";
@@ -29,6 +34,48 @@ import { readBlueprintElementRefParams } from "@/lib/ui-editor/blueprint-nodes/b
 
 const DEFAULT_MAX_STEPS = 512;
 
+type CancellableDispatchOptions = {
+    executionManager?: BlueprintExecutionManager;
+    allowClosedScopeExecution?: boolean;
+};
+
+function beginTrackedExecution(input: {
+    executionManager?: BlueprintExecutionManager;
+    executionId: string;
+    runtimeScopeId?: string;
+    blueprintId?: string;
+    eventId?: string;
+    allowClosedScopeExecution?: boolean;
+}): BlueprintExecutionHandle | null {
+    return input.executionManager?.beginExecution({
+        executionId: input.executionId,
+        runtimeScopeId: input.runtimeScopeId,
+        blueprintId: input.blueprintId,
+        eventId: input.eventId,
+        allowClosedScope: input.allowClosedScopeExecution,
+    }) ?? null;
+}
+
+function emitExecutionCancelled(input: {
+    debug: DebugBridge;
+    executionId: string;
+    blueprintId?: string;
+    eventId?: string;
+    graphId?: string;
+    nodeId?: string;
+    reason?: string;
+}): void {
+    input.debug.emit({
+        type: "execution.cancelled",
+        executionId: input.executionId,
+        blueprintId: input.blueprintId,
+        eventId: input.eventId,
+        graphId: input.graphId,
+        nodeId: input.nodeId,
+        reason: input.reason,
+    });
+}
+
 function newExecutionId(): string {
     return typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
@@ -41,11 +88,17 @@ function createScriptExecutionContext(input: {
     getSurfaceState: (key: string) => unknown;
     setSurfaceState: (key: string, value: unknown) => void;
     eventPayload?: Record<string, unknown>;
+    signal?: AbortSignal;
 }): Record<string, unknown> {
     const api = input.hostApi;
     if (api) {
         return {
             event: input.eventPayload ?? {},
+            runtime: {
+                signal: input.signal,
+                isCancelled: () => input.signal?.aborted === true,
+                throwIfCancelled: () => throwIfBlueprintExecutionCancelled(input.signal),
+            },
             host: {
                 navigation: api.navigation,
                 widget: api.widget,
@@ -76,6 +129,11 @@ function createScriptExecutionContext(input: {
     }
     return {
         event: input.eventPayload ?? {},
+        runtime: {
+            signal: input.signal,
+            isCancelled: () => input.signal?.aborted === true,
+            throwIfCancelled: () => throwIfBlueprintExecutionCancelled(input.signal),
+        },
         host: {
             devtools: {
                 log: async (msg: string) => {
@@ -139,7 +197,7 @@ export async function dispatchBlueprintUiEvent(options: {
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
     maxSteps?: number;
-}): Promise<void> {
+} & CancellableDispatchOptions): Promise<void> {
     const {
         document,
         blueprintDocument,
@@ -187,6 +245,14 @@ export async function dispatchBlueprintUiEvent(options: {
             return;
         }
         const executionId = newExecutionId();
+        const execution = beginTrackedExecution({
+            executionManager: options.executionManager,
+            executionId,
+            runtimeScopeId,
+            blueprintId,
+            eventId: eventName,
+            allowClosedScopeExecution: options.allowClosedScopeExecution,
+        });
         debug.emit({ type: "execution.started", executionId, blueprintId });
         const ctx = createScriptExecutionContext({
             hostApi: hostAdapter.blueprintRuntime?.hostApi,
@@ -194,11 +260,24 @@ export async function dispatchBlueprintUiEvent(options: {
             getSurfaceState,
             setSurfaceState,
             eventPayload,
+            signal: execution?.signal,
         });
         try {
+            throwIfBlueprintExecutionCancelled(execution?.signal);
             await Promise.resolve(fn(ctx));
+            throwIfBlueprintExecutionCancelled(execution?.signal);
             debug.emit({ type: "execution.finished", executionId, blueprintId });
         } catch (err) {
+            if (isBlueprintGraphExecutionCancelledError(err)) {
+                emitExecutionCancelled({
+                    debug,
+                    executionId,
+                    blueprintId,
+                    eventId: eventName,
+                    reason: err.message,
+                });
+                return;
+            }
             const message = err instanceof Error ? err.message : String(err);
             debug.emit({
                 type: "execution.error",
@@ -207,6 +286,8 @@ export async function dispatchBlueprintUiEvent(options: {
                 blueprintId,
                 eventId: eventName,
             });
+        } finally {
+            execution?.finish();
         }
         return;
     }
@@ -234,6 +315,14 @@ export async function dispatchBlueprintUiEvent(options: {
         return;
     }
     const executionId = newExecutionId();
+    const execution = beginTrackedExecution({
+        executionManager: options.executionManager,
+        executionId,
+        runtimeScopeId,
+        blueprintId,
+        eventId: eventName,
+        allowClosedScopeExecution: options.allowClosedScopeExecution,
+    });
     debug.emit({ type: "execution.started", executionId, blueprintId });
 
     const blueprintLocals = acquireBlueprintExecutionLocals({
@@ -265,6 +354,7 @@ export async function dispatchBlueprintUiEvent(options: {
                     executionOwner: { surfaceId, elementId, blueprintId },
                     persistentVariables: blueprintDocument.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+                    signal: execution?.signal,
                     trace: {
                         executionId,
                         graphId: graph.id,
@@ -277,6 +367,17 @@ export async function dispatchBlueprintUiEvent(options: {
         }
         debug.emit({ type: "execution.finished", executionId, blueprintId });
     } catch (err) {
+        if (isBlueprintGraphExecutionCancelledError(err)) {
+            emitExecutionCancelled({
+                debug,
+                executionId,
+                blueprintId,
+                eventId: eventName,
+                nodeId: err.nodeId,
+                reason: err.message,
+            });
+            return;
+        }
         if (err instanceof BlueprintGraphExecutionError) {
             debug.emit({
                 type: "execution.error",
@@ -296,6 +397,8 @@ export async function dispatchBlueprintUiEvent(options: {
             blueprintId,
             eventId: eventName,
         });
+    } finally {
+        execution?.finish();
     }
 }
 
@@ -416,7 +519,7 @@ export async function dispatchBlueprintElementFlushEvent(options: {
     getSurfaceState: (key: string) => unknown;
     setSurfaceState: (key: string, value: unknown) => void;
     maxSteps?: number;
-}): Promise<void> {
+} & CancellableDispatchOptions): Promise<void> {
     const {
         document,
         blueprintDocument,
@@ -432,6 +535,14 @@ export async function dispatchBlueprintElementFlushEvent(options: {
 
     for (const listener of targets) {
         const executionId = newExecutionId();
+        const execution = beginTrackedExecution({
+            executionManager: options.executionManager,
+            executionId,
+            runtimeScopeId,
+            blueprintId: listener.blueprintId,
+            eventId: "elementFlush",
+            allowClosedScopeExecution: options.allowClosedScopeExecution,
+        });
         debug.emit({ type: "execution.started", executionId, blueprintId: listener.blueprintId });
         const blueprintLocals = acquireBlueprintExecutionLocals({
             blueprintDocument,
@@ -459,6 +570,7 @@ export async function dispatchBlueprintElementFlushEvent(options: {
                     executionOwner: { surfaceId, elementId: listener.elementId, blueprintId: listener.blueprintId },
                     persistentVariables: blueprintDocument.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+                    signal: execution?.signal,
                     trace: {
                         executionId,
                         graphId: graph.id,
@@ -470,6 +582,17 @@ export async function dispatchBlueprintElementFlushEvent(options: {
             }
             debug.emit({ type: "execution.finished", executionId, blueprintId: listener.blueprintId });
         } catch (err) {
+            if (isBlueprintGraphExecutionCancelledError(err)) {
+                emitExecutionCancelled({
+                    debug,
+                    executionId,
+                    blueprintId: listener.blueprintId,
+                    eventId: "elementFlush",
+                    nodeId: err.nodeId,
+                    reason: err.message,
+                });
+                continue;
+            }
             if (err instanceof BlueprintGraphExecutionError) {
                 debug.emit({
                     type: "execution.error",
@@ -483,6 +606,8 @@ export async function dispatchBlueprintElementFlushEvent(options: {
             }
             const message = err instanceof Error ? err.message : String(err);
             debug.emit({ type: "execution.error", executionId, message, blueprintId: listener.blueprintId, eventId: "elementFlush" });
+        } finally {
+            execution?.finish();
         }
     }
 }
@@ -592,7 +717,7 @@ export async function dispatchBlueprintBroadcastEvent(options: {
     getSurfaceState: (key: string) => unknown;
     setSurfaceState: (key: string, value: unknown) => void;
     maxSteps?: number;
-}): Promise<void> {
+} & CancellableDispatchOptions): Promise<void> {
     const {
         document,
         blueprintDocument,
@@ -611,6 +736,14 @@ export async function dispatchBlueprintBroadcastEvent(options: {
 
     for (const target of targets) {
         const executionId = newExecutionId();
+        const execution = beginTrackedExecution({
+            executionManager: options.executionManager,
+            executionId,
+            runtimeScopeId,
+            blueprintId: target.blueprintId,
+            eventId: eventName,
+            allowClosedScopeExecution: options.allowClosedScopeExecution,
+        });
         debug.emit({ type: "execution.started", executionId, blueprintId: target.blueprintId });
         const blueprintLocals = acquireBlueprintExecutionLocals({
             blueprintDocument,
@@ -638,6 +771,7 @@ export async function dispatchBlueprintBroadcastEvent(options: {
                     executionOwner: { surfaceId, elementId: target.elementId, blueprintId: target.blueprintId },
                     persistentVariables: blueprintDocument.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+                    signal: execution?.signal,
                     trace: {
                         executionId,
                         graphId: graph.id,
@@ -649,6 +783,17 @@ export async function dispatchBlueprintBroadcastEvent(options: {
             }
             debug.emit({ type: "execution.finished", executionId, blueprintId: target.blueprintId });
         } catch (err) {
+            if (isBlueprintGraphExecutionCancelledError(err)) {
+                emitExecutionCancelled({
+                    debug,
+                    executionId,
+                    blueprintId: target.blueprintId,
+                    eventId: eventName,
+                    nodeId: err.nodeId,
+                    reason: err.message,
+                });
+                continue;
+            }
             if (err instanceof BlueprintGraphExecutionError) {
                 debug.emit({
                     type: "execution.error",
@@ -662,6 +807,8 @@ export async function dispatchBlueprintBroadcastEvent(options: {
             }
             const message = err instanceof Error ? err.message : String(err);
             debug.emit({ type: "execution.error", executionId, message, blueprintId: target.blueprintId, eventId: eventName });
+        } finally {
+            execution?.finish();
         }
     }
 }
@@ -685,7 +832,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
     getSurfaceState: (key: string) => unknown;
     setSurfaceState: (key: string, value: unknown) => void;
     maxSteps?: number;
-}): Promise<void> {
+} & CancellableDispatchOptions): Promise<void> {
     const {
         blueprintDocument,
         surfaceId,
@@ -716,6 +863,14 @@ export async function dispatchSurfaceBlueprintEvent(options: {
             return;
         }
         const executionId = newExecutionId();
+        const execution = beginTrackedExecution({
+            executionManager: options.executionManager,
+            executionId,
+            runtimeScopeId,
+            blueprintId,
+            eventId: eventName,
+            allowClosedScopeExecution: options.allowClosedScopeExecution,
+        });
         debug.emit({ type: "execution.started", executionId, blueprintId });
         const ctx = createScriptExecutionContext({
             hostApi: hostAdapter.blueprintRuntime?.hostApi,
@@ -723,13 +878,28 @@ export async function dispatchSurfaceBlueprintEvent(options: {
             getSurfaceState,
             setSurfaceState,
             eventPayload: eventPayload ?? {},
+            signal: execution?.signal,
         });
         try {
+            throwIfBlueprintExecutionCancelled(execution?.signal);
             await Promise.resolve(fn(ctx));
+            throwIfBlueprintExecutionCancelled(execution?.signal);
             debug.emit({ type: "execution.finished", executionId, blueprintId });
         } catch (err) {
+            if (isBlueprintGraphExecutionCancelledError(err)) {
+                emitExecutionCancelled({
+                    debug,
+                    executionId,
+                    blueprintId,
+                    eventId: eventName,
+                    reason: err.message,
+                });
+                return;
+            }
             const message = err instanceof Error ? err.message : String(err);
             debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+        } finally {
+            execution?.finish();
         }
         return;
     }
@@ -760,6 +930,14 @@ export async function dispatchSurfaceBlueprintEvent(options: {
     }
 
     const executionId = newExecutionId();
+    const execution = beginTrackedExecution({
+        executionManager: options.executionManager,
+        executionId,
+        runtimeScopeId,
+        blueprintId,
+        eventId: eventName,
+        allowClosedScopeExecution: options.allowClosedScopeExecution,
+    });
     debug.emit({ type: "execution.started", executionId, blueprintId });
     const blueprintLocals = acquireBlueprintExecutionLocals({
         blueprintDocument,
@@ -786,6 +964,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
                     executionOwner: { surfaceId, blueprintId },
                     persistentVariables: blueprintDocument.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+                    signal: execution?.signal,
                     trace: {
                         executionId,
                         graphId: graph.id,
@@ -798,6 +977,17 @@ export async function dispatchSurfaceBlueprintEvent(options: {
         }
         debug.emit({ type: "execution.finished", executionId, blueprintId });
     } catch (err) {
+        if (isBlueprintGraphExecutionCancelledError(err)) {
+            emitExecutionCancelled({
+                debug,
+                executionId,
+                blueprintId,
+                eventId: eventName,
+                nodeId: err.nodeId,
+                reason: err.message,
+            });
+            return;
+        }
         if (err instanceof BlueprintGraphExecutionError) {
             debug.emit({
                 type: "execution.error",
@@ -811,6 +1001,8 @@ export async function dispatchSurfaceBlueprintEvent(options: {
         }
         const message = err instanceof Error ? err.message : String(err);
         debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+    } finally {
+        execution?.finish();
     }
 }
 
@@ -831,7 +1023,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
     getSurfaceState: (key: string) => unknown;
     setSurfaceState: (key: string, value: unknown) => void;
     maxSteps?: number;
-}): Promise<void> {
+} & CancellableDispatchOptions): Promise<void> {
     const { blueprintDocument, eventName, eventPayload, hostAdapter, debug, getSurfaceState, setSurfaceState } = options;
 
     const ownerRecord = blueprintDocument.ownerRecords[GLOBAL_MAIN_OWNER_KEY];
@@ -851,6 +1043,13 @@ export async function dispatchGlobalBlueprintEvent(options: {
             return;
         }
         const executionId = newExecutionId();
+        const execution = beginTrackedExecution({
+            executionManager: options.executionManager,
+            executionId,
+            blueprintId,
+            eventId: eventName,
+            allowClosedScopeExecution: options.allowClosedScopeExecution,
+        });
         debug.emit({ type: "execution.started", executionId, blueprintId });
         const ctx = createScriptExecutionContext({
             hostApi: hostAdapter.blueprintRuntime?.hostApi,
@@ -858,13 +1057,28 @@ export async function dispatchGlobalBlueprintEvent(options: {
             getSurfaceState,
             setSurfaceState,
             eventPayload: eventPayload ?? {},
+            signal: execution?.signal,
         });
         try {
+            throwIfBlueprintExecutionCancelled(execution?.signal);
             await Promise.resolve(fn(ctx));
+            throwIfBlueprintExecutionCancelled(execution?.signal);
             debug.emit({ type: "execution.finished", executionId, blueprintId });
         } catch (err) {
+            if (isBlueprintGraphExecutionCancelledError(err)) {
+                emitExecutionCancelled({
+                    debug,
+                    executionId,
+                    blueprintId,
+                    eventId: eventName,
+                    reason: err.message,
+                });
+                return;
+            }
             const message = err instanceof Error ? err.message : String(err);
             debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+        } finally {
+            execution?.finish();
         }
         return;
     }
@@ -895,6 +1109,13 @@ export async function dispatchGlobalBlueprintEvent(options: {
     }
 
     const executionId = newExecutionId();
+    const execution = beginTrackedExecution({
+        executionManager: options.executionManager,
+        executionId,
+        blueprintId,
+        eventId: eventName,
+        allowClosedScopeExecution: options.allowClosedScopeExecution,
+    });
     debug.emit({ type: "execution.started", executionId, blueprintId });
     const blueprintLocals = acquireBlueprintExecutionLocals({
         blueprintDocument,
@@ -919,6 +1140,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
                     executionOwner: { blueprintId },
                     persistentVariables: blueprintDocument.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+                    signal: execution?.signal,
                     trace: {
                         executionId,
                         graphId: graph.id,
@@ -931,6 +1153,17 @@ export async function dispatchGlobalBlueprintEvent(options: {
         }
         debug.emit({ type: "execution.finished", executionId, blueprintId });
     } catch (err) {
+        if (isBlueprintGraphExecutionCancelledError(err)) {
+            emitExecutionCancelled({
+                debug,
+                executionId,
+                blueprintId,
+                eventId: eventName,
+                nodeId: err.nodeId,
+                reason: err.message,
+            });
+            return;
+        }
         if (err instanceof BlueprintGraphExecutionError) {
             debug.emit({
                 type: "execution.error",
@@ -944,5 +1177,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
         }
         const message = err instanceof Error ? err.message : String(err);
         debug.emit({ type: "execution.error", executionId, message, blueprintId, eventId: eventName });
+    } finally {
+        execution?.finish();
     }
 }

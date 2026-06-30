@@ -1097,6 +1097,24 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    public renameSurface(surfaceId: string, name: string): void {
+        const nextName = name.trim();
+        if (!nextName) {
+            return;
+        }
+        const currentSurface = this.getDocument().surfaces.find(surface => surface.id === surfaceId);
+        if (!currentSurface || currentSurface.name === nextName) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const surface = document.surfaces.find(next => next.id === surfaceId);
+            if (!surface) {
+                return;
+            }
+            surface.name = nextName;
+        });
+    }
+
     public updateSurface(surfaceId: string, updater: (surface: UISurface) => void): void {
         this.mutateDocument(document => {
             const surface = document.surfaces.find(next => next.id === surfaceId);
@@ -1104,10 +1122,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 return;
             }
             const isMainSurface = surface.id === MAIN_APP_SURFACE_ID;
-            const originalName = surface.name;
             updater(surface);
             if (isMainSurface) {
-                surface.name = originalName;
                 surface.id = MAIN_APP_SURFACE_ID;
             }
         });
@@ -2476,10 +2492,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const existingMain = document.surfaces.find(surface => surface.id === MAIN_APP_SURFACE_ID);
         let changed = false;
         if (existingMain) {
-            if (existingMain.name !== DEFAULT_APP_SURFACE_NAME) {
-                existingMain.name = DEFAULT_APP_SURFACE_NAME;
-                changed = true;
-            }
             if (!document.elements[existingMain.rootElementId]) {
                 const rootElementId = uuidService.generate();
                 existingMain.rootElementId = rootElementId;
@@ -2492,7 +2504,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const candidate = document.surfaces.find(surface => surface.kind === "appSurface");
         if (candidate) {
             candidate.id = MAIN_APP_SURFACE_ID;
-            candidate.name = DEFAULT_APP_SURFACE_NAME;
+            candidate.name = candidate.name || DEFAULT_APP_SURFACE_NAME;
             if (!document.elements[candidate.rootElementId]) {
                 const rootElementId = uuidService.generate();
                 candidate.rootElementId = rootElementId;

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_UI_PAGE_ANIMATION_SETTINGS } from "@shared/types/ui-editor/pageAnimation";
 import { getUIComponentLink, type UIElement } from "@shared/types/ui-editor/document";
+import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { Services } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
 
@@ -80,6 +81,26 @@ describe("UIDocumentService surface creation", () => {
         expect(page.settings?.backgroundColor).toBe("#111111");
         expect(page.settings?.pageAnimation?.exitBlocking).toBe(false);
         expect(gameUi.settings?.pageAnimation).toBeUndefined();
+    });
+
+    it("renames the main Page display name while preserving the main surface id", () => {
+        const { service } = createHarness();
+        const mainSurface = service.getDocument().surfaces.find(surface => surface.id === MAIN_APP_SURFACE_ID);
+
+        expect(mainSurface).toBeDefined();
+        service.renameSurface(MAIN_APP_SURFACE_ID, "Title Screen");
+        expect(mainSurface?.name).toBe("Title Screen");
+
+        service.updateSurface(MAIN_APP_SURFACE_ID, surface => {
+            surface.id = "drifted-main-surface";
+            surface.name = "Start";
+        });
+        expect(mainSurface?.id).toBe(MAIN_APP_SURFACE_ID);
+        expect(mainSurface?.name).toBe("Start");
+
+        (service as any).ensureMainSurface(service.getDocument());
+        expect(mainSurface?.id).toBe(MAIN_APP_SURFACE_ID);
+        expect(mainSurface?.name).toBe("Start");
     });
 });
 

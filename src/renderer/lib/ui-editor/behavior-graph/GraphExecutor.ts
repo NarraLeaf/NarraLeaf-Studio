@@ -8,7 +8,12 @@ import type {
     BehaviorNodeExecuteResult,
     BehaviorNodeExecutionContext,
 } from "./BehaviorNodeRegistry";
-import { BlueprintGraphExecutionError } from "./GraphExecutionError";
+import {
+    abortablePromise,
+    BlueprintGraphExecutionError,
+    isBlueprintGraphExecutionCancelledError,
+    throwIfBlueprintExecutionCancelled,
+} from "./GraphExecutionError";
 import { writeBlueprintNodeOutputValues } from "../blueprint-nodes/nodeOutputValues";
 
 export type ExecuteGraphOptions = {
@@ -24,6 +29,7 @@ export type ExecuteGraphOptions = {
     executionOwner?: BehaviorNodeExecutionContext["executionOwner"];
     persistentVariables?: Record<string, BlueprintPersistentVariable>;
     valueExecution?: Pick<NonNullable<BehaviorNodeExecutionContext["valueExecution"]>, "trackDependency">;
+    signal?: AbortSignal;
 };
 
 export type ExecuteGraphResult = {
@@ -60,6 +66,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
 
     while (cursor) {
         const currentCursor: string = cursor;
+        throwIfBlueprintExecutionCancelled(options.signal, currentCursor);
         steps += 1;
         if (steps > (options.maxSteps ?? DEFAULT_MAX_STEPS)) {
             const message = `Behavior graph execution exceeded ${options.maxSteps ?? DEFAULT_MAX_STEPS} steps`;
@@ -102,6 +109,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             trace,
             blueprintLocals,
             eventPayload: options.eventPayload,
+            signal: options.signal,
             listItemScope: options.listItemScope,
             instanceKey: options.instanceKey,
             executionOwner: options.executionOwner,
@@ -111,8 +119,12 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
 
         let result: BehaviorNodeExecuteResult | void;
         try {
-            result = await Promise.resolve(definition.execute(context));
+            result = await abortablePromise(Promise.resolve(definition.execute(context)), options.signal, node.id);
+            throwIfBlueprintExecutionCancelled(options.signal, node.id);
         } catch (err) {
+            if (isBlueprintGraphExecutionCancelledError(err)) {
+                throw err;
+            }
             const message = err instanceof Error ? err.message : String(err);
             const nodeId = err instanceof BlueprintGraphExecutionError ? err.nodeId : node.id;
             if (trace) {
@@ -135,6 +147,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
         if (result && Object.prototype.hasOwnProperty.call(result, "outputValues")) {
             writeBlueprintNodeOutputValues(blueprintLocals, node.id, result.outputValues ?? {});
         }
+        throwIfBlueprintExecutionCancelled(options.signal, node.id);
         const nextPorts = resolveNextPorts(result);
         if (nextPorts == null) {
             return valueResult;

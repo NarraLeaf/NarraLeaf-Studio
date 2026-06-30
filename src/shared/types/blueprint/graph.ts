@@ -450,6 +450,12 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS = "blueprint.ele
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION = "blueprint.element.displayable.getRotation" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY = "blueprint.element.displayable.getOpacity" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE = "blueprint.element.displayable.getVisible" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY = "blueprint.element.displayable.getProperty" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY = "blueprint.element.displayable.setProperty" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT = "blueprint.element.displayable.getVariant" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT = "blueprint.element.displayable.setVariant" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY = "blueprint.element.displayable.animateProperty" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION = "blueprint.element.displayable.stopAnimation" as const;
 
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION = "blueprint.displayable.getPosition" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE = "blueprint.displayable.getSize" as const;
@@ -457,6 +463,12 @@ export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS = "blueprint.displayable
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION = "blueprint.displayable.getRotation" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY = "blueprint.displayable.getOpacity" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE = "blueprint.displayable.getVisible" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY = "blueprint.displayable.getProperty" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY = "blueprint.displayable.setProperty" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT = "blueprint.displayable.getVariant" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT = "blueprint.displayable.setVariant" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY = "blueprint.displayable.animateProperty" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION = "blueprint.displayable.stopAnimation" as const;
 
 export const BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE = "blueprint.slider.getValue" as const;
 export const BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE = "blueprint.slider.getNormalizedValue" as const;

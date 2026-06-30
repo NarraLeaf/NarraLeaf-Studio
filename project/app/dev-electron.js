@@ -14,6 +14,8 @@ const { WebSocketServer } = require('ws');
 const { watchBuild } = require('../build/watch');
 const { postcssPlugin } = require('../build/postCss-plugin');
 
+const forwardedElectronArgs = process.argv.slice(2);
+
 const styleIn = path.join(rootDir, 'src', 'renderer', 'styles', 'styles.css');
 const styleOut = path.join(distWindows, 'styles.css');
 
@@ -73,7 +75,7 @@ function broadcastReload() {
         const electronBinary = require('electron');
         const mainEntry = path.join(distDir, 'main', 'index.js');
         console.log('[dev] starting electron process...');
-        electronProcess = spawn(electronBinary, [mainEntry, '--dev'], {
+        electronProcess = spawn(electronBinary, [mainEntry, '--dev', ...forwardedElectronArgs], {
             stdio: 'inherit',
         });
 

@@ -55,9 +55,11 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_SIZE,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE,
@@ -83,8 +85,10 @@ import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
@@ -1464,17 +1468,62 @@ function resolveElementDisplayableNodeOutput(
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE && portId === "visible") {
         return read("layout.visible", props.visible);
     }
+    if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT && portId === "variantId") {
+        return read("props.appearance.defaultVariantId", api.widget.getCommonProperties(ref.elementId).variantId ?? "");
+    }
+    if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY && portId === "value") {
+        const property = toBlueprintString(params.property || "position");
+        switch (property) {
+            case "position":
+                trackElementDependency(runtime, ref, "layout.x");
+                trackElementDependency(runtime, ref, "layout.y");
+                return props.position;
+            case "size":
+                trackElementDependency(runtime, ref, "layout.width");
+                trackElementDependency(runtime, ref, "layout.height");
+                return props.size;
+            case "bounds":
+                trackElementDependency(runtime, ref, "layout.x");
+                trackElementDependency(runtime, ref, "layout.y");
+                trackElementDependency(runtime, ref, "layout.width");
+                trackElementDependency(runtime, ref, "layout.height");
+                return props.bounds;
+            case "x":
+                return read("layout.x", props.position.x);
+            case "y":
+                return read("layout.y", props.position.y);
+            case "width":
+                return read("layout.width", props.size.width);
+            case "height":
+                return read("layout.height", props.size.height);
+            case "rotation":
+                return read("layout.rotation", props.rotation);
+            case "opacity":
+                return read("layout.opacity", props.opacity);
+            case "visible":
+                return read("layout.visible", props.visible);
+            default:
+                return undefined;
+        }
+    }
     return undefined;
 }
 
-function resolveSelfDisplayableNodeOutput(type: string, portId: string, runtime?: DataPinResolveRuntime): unknown {
+function resolveSelfDisplayableNodeOutput(
+    type: string,
+    portId: string,
+    params: Record<string, unknown>,
+    runtime?: DataPinResolveRuntime,
+): unknown {
     const isDisplayableNode =
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY ||
-        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE;
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY;
     if (!isDisplayableNode) {
         return undefined;
     }
@@ -1506,6 +1555,40 @@ function resolveSelfDisplayableNodeOutput(type: string, portId: string, runtime?
     }
     if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE && portId === "visible") {
         return props.visible;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT && portId === "variantId") {
+        try {
+            return api.widget.getCommonProperties(elementId).variantId ?? "";
+        } catch {
+            return undefined;
+        }
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY && portId === "value") {
+        const property = toBlueprintString(params.property || "position");
+        switch (property) {
+            case "position":
+                return props.position;
+            case "size":
+                return props.size;
+            case "bounds":
+                return props.bounds;
+            case "x":
+                return props.position.x;
+            case "y":
+                return props.position.y;
+            case "width":
+                return props.size.width;
+            case "height":
+                return props.size.height;
+            case "rotation":
+                return props.rotation;
+            case "opacity":
+                return props.opacity;
+            case "visible":
+                return props.visible;
+            default:
+                return undefined;
+        }
     }
     return undefined;
 }
@@ -2120,7 +2203,7 @@ function resolveSelfOutput(
     if (elementDisplayableOutput !== undefined) {
         return elementDisplayableOutput;
     }
-    const selfDisplayableOutput = resolveSelfDisplayableNodeOutput(selfNode.type, portId, runtime);
+    const selfDisplayableOutput = resolveSelfDisplayableNodeOutput(selfNode.type, portId, selfNode.params ?? {}, runtime);
     if (selfDisplayableOutput !== undefined) {
         return selfDisplayableOutput;
     }

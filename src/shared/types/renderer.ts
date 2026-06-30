@@ -68,6 +68,7 @@ export interface RendererPreloadedInterface {
         isDir(path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
         selectFile(filters: string[], multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>>;
         selectDirectory(multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>>;
+        grantFileAccessForFiles(files: ArrayLike<File>): Promise<RequestStatus<FsRequestResult<string[]>>>;
         hash(path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         getPathForFile(file: File): string;
     };

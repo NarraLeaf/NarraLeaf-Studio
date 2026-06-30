@@ -16,6 +16,7 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_WHILE,
 } from "@shared/types/blueprint/graph";
 import type { BehaviorNodeExecutionContext } from "../../behavior-graph/BehaviorNodeRegistry";
+import { abortableSleep } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
 import { readDynamicInputPinIds } from "../effectivePins";
 import { resolveDataPinValue, resolveIfCondition } from "./graphParamResolvers";
@@ -221,7 +222,7 @@ function executeWhile(ctx: BehaviorNodeExecutionContext) {
 async function executeDelay(ctx: BehaviorNodeExecutionContext) {
     const durationSeconds = Math.max(0, toFiniteNumber(resolveInput(ctx, "duration", 0), 0));
     if (durationSeconds > 0) {
-        await new Promise(resolve => setTimeout(resolve, durationSeconds * 1000));
+        await abortableSleep(durationSeconds * 1000, ctx.signal, ctx.node.id);
     }
     return { nextPort: "completed" };
 }
@@ -468,7 +469,7 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
         pins: [
             { id: "in", kind: "input", semantic: "exec", label: "In" },
             { id: "completed", kind: "output", semantic: "exec", label: "Completed" },
-            { id: "duration", kind: "input", semantic: "data", valueType: "float", label: "Duration", allowInlineLiteral: true },
+            { id: "duration", kind: "input", semantic: "data", valueType: "float", label: "Duration (s)", allowInlineLiteral: true },
         ],
         execute: executeDelay,
     },

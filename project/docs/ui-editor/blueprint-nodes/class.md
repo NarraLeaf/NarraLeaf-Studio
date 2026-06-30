@@ -2,10 +2,10 @@
 
 节点分类是节点在图形界面中显示的操作分类，并能够在创建浮窗中导航。
 
-Self 节点和 Element 节点使用不同分类：
+Self 节点和 Element 节点通常使用不同分类：
 - Self 节点操作当前私有蓝图所属控件，不带 Element/ref 输入，显示在对应控件分类中，例如 `Button`、`Slider`、`List`。
 - Element 节点操作显式传入的 Element 引用，带 typed Element 输入，统一显示在 `Element` 分类中。
-- Element 节点只有在当前图里已有兼容的 `Element` 或 `Element Flush` 绑定节点时才会出现在创建浮窗中；创建后不会自动连线。
+- Element 节点只有在当前图里已有兼容的 `Element` 或 `Element Flush` 绑定节点时才会出现在创建浮窗中。同一节点类型在创建浮窗中只显示一项；若兼容来源唯一，创建时会自动连到该来源，若有多个兼容来源则保留目标输入由作者选择。
 
 ## Events
 
@@ -32,7 +32,13 @@ Network分类具有：
 ## Displayable
 
 Displayable分类具有：
-- 当前控件自己的 Displayable 读取节点
+- 当前控件自己的 Displayable `Get Property` / `Set Property`
+- Appearance Variant 节点：Self `Set Variant` 默认绑定当前控件；派生 `Set Element Variant` 才通过 Element 引用目标控件
+- 属性动画节点：`Animate Property` / `Stop Animation`
+
+带 Element 输入的 Displayable 派生节点属于 `Element` 分类；`Displayable` 分类只放当前控件自己的 Self 节点。
+
+Displayable 透明度只有一套有效 `opacity`。Appearance Variant 的 `transformOpacity` 会投影到这套值；`nl.image` Variant 中相对 Default 实际改动过的 `fillOpacity` 也会投影到这套值，并且不会再写到内部 `<img>` 的 opacity。`nl.image` 的非 Default Variant 不覆盖 Default 的 `imageFill` / crop / contain 模式。`Set Property` / `Animate Property` 的 opacity 也操作同一份透明度。
 
 ## Page
 

@@ -59,7 +59,7 @@ function createServices(element: UIElement) {
 }
 
 describe("beginImageCropEdit", () => {
-    it("enters crop mode from image fill props", () => {
+    it("enters crop editing without mutating image fill props first", () => {
         const element = createImageElement({
             fillType: "image",
             imageFill: { mode: "cover", assetId: "asset-1" },
@@ -75,12 +75,12 @@ describe("beginImageCropEdit", () => {
         });
 
         expect(ok).toBe(true);
-        expect(element.props?.imageFill).toMatchObject({ mode: "crop", assetId: "asset-1" });
+        expect(element.props?.imageFill).toMatchObject({ mode: "cover", assetId: "asset-1" });
         expect(services.getSelection()).toMatchObject({ elementIds: [element.id], primaryId: element.id });
         expect(services.getOverride()).toMatchObject({ kind: "imageCrop", elementId: element.id });
     });
 
-    it("uses the effective image fill from appearance", () => {
+    it("can enter crop editing from an effective image fill in appearance", () => {
         const appearanceProps = {
             fillType: "image",
             imageFill: { mode: "cover", assetId: "appearance-asset" },
@@ -101,6 +101,7 @@ describe("beginImageCropEdit", () => {
         });
 
         expect(ok).toBe(true);
-        expect(element.props?.imageFill).toMatchObject({ mode: "crop", assetId: "appearance-asset" });
+        expect(element.props?.imageFill).toMatchObject({ mode: "cover", assetId: null });
+        expect(services.getOverride()).toMatchObject({ kind: "imageCrop", elementId: element.id });
     });
 });
