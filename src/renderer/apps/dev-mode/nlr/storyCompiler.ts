@@ -97,6 +97,7 @@ type CompileInput = {
 };
 
 const EMPTY_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'></svg>";
+const SCENE_DEFAULT_BACKGROUND_BLOCK_ID = "__scene_default_background";
 
 export async function compileStudioStoryToNlr(input: CompileInput): Promise<CompiledNlrStory> {
     const entryScene = input.document.scenes[input.sceneId];
@@ -148,7 +149,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             actionIdBindings,
             nextActionIndex: () => actionIndex++,
         };
-        const statements = await compileBlockList(ctx, scene.rootBlockIds);
+        const statements = [
+            ...await compileSceneDefaultBackground(ctx),
+            ...await compileBlockList(ctx, scene.rootBlockIds),
+        ];
         nlrScene.action(statements as unknown as Parameters<Scene["action"]>[0]);
     }
 
@@ -172,6 +176,24 @@ async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly str
         statements.push(...await compileBlock(ctx, blockId));
     }
     return statements;
+}
+
+async function compileSceneDefaultBackground(ctx: SceneCompileContext): Promise<NlrStatement[]> {
+    const assetId = ctx.scene.defaultBackgroundAssetId?.trim();
+    if (!assetId) {
+        return [];
+    }
+    const src = await resolveAsset(ctx, assetId, "image", SCENE_DEFAULT_BACKGROUND_BLOCK_ID);
+    if (!src) {
+        return [];
+    }
+    return [
+        recordSyntheticStatement(
+            ctx,
+            ctx.nlrScene.setBackground(src as any),
+            SCENE_DEFAULT_BACKGROUND_BLOCK_ID,
+        ),
+    ];
 }
 
 async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<NlrStatement[]> {
@@ -961,6 +983,19 @@ function recordStatement(ctx: SceneCompileContext, statement: NlrStatement, bloc
             staticId,
             blockId: block.id,
             textId,
+        });
+    }
+    return statement;
+}
+
+function recordSyntheticStatement(ctx: SceneCompileContext, statement: NlrStatement, blockId: string): NlrStatement {
+    for (const action of statementToActions(statement)) {
+        const staticId = stableActionId(ctx.document.id, ctx.scene.id, blockId, undefined, ctx.nextActionIndex());
+        setStableActionId(action, staticId);
+        ctx.actionIdBindings.push({
+            action,
+            staticId,
+            blockId,
         });
     }
     return statement;

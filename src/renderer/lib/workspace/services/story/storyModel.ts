@@ -69,6 +69,7 @@ export function createEmptyStoryDocument(input: {
         id: sceneId,
         name: "Scene 1",
         runtimeName: "scene_1",
+        description: "",
         rootBlockIds: [],
         blocks: {},
         meta: {
@@ -197,6 +198,7 @@ export function createScene(input: { id: string; name: string; runtimeName: stri
         id: input.id,
         name: input.name,
         runtimeName: input.runtimeName,
+        description: "",
         rootBlockIds: [],
         blocks: {},
         localVariables: {},
@@ -322,10 +324,17 @@ function normalizeScene(scene: StoryScene): StoryScene {
     }
     return {
         ...scene,
+        description: typeof scene.description === "string" ? scene.description : "",
+        defaultBackgroundAssetId: normalizeOptionalString(scene.defaultBackgroundAssetId),
         rootBlockIds,
         blocks,
         localVariables: scene.localVariables ?? {},
     };
+}
+
+function normalizeOptionalString(value: string | undefined): string | undefined {
+    const trimmed = typeof value === "string" ? value.trim() : "";
+    return trimmed || undefined;
 }
 
 function firstSceneId(chapters: StoryChapter[]): StorySceneId | undefined {

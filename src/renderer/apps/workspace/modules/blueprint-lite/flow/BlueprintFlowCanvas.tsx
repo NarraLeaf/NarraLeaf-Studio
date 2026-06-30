@@ -155,6 +155,8 @@ type BlueprintFlowCanvasInnerProps = {
     diagnostics?: readonly BlueprintGraphEditorDiagnostic[];
     /** Preview data for bound Element Literal nodes by node id. */
     elementPreviews?: Record<string, BlueprintFlowNodeData["elementPreview"]>;
+    /** Static Variant choices for Displayable Set Variant node cards by node id. */
+    displayableTargetVariantsByNodeId?: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]>;
     /** Starts Element Literal binding flow from a node card click. */
     onBindElementLiteral?: (nodeId: string) => void;
     /** Initial React Flow viewport restored from editor-session state. */
@@ -198,6 +200,19 @@ function nodeDiagnosticsSignature(map: ReadonlyMap<string, readonly BlueprintGra
         .join("\x1e");
 }
 
+function displayableTargetVariantsSignature(
+    map: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]> | undefined,
+): string {
+    return Object.entries(map ?? {})
+        .map(([nodeId, item]) =>
+            `${nodeId}:${item?.supported ? "1" : "0"}:${item?.targetLabel ?? ""}:${item?.message ?? ""}:${
+                item?.options.map(option => `${option.value}:${option.label}`).join("\x1f") ?? ""
+            }`,
+        )
+        .sort()
+        .join("\x1e");
+}
+
 function BlueprintFlowCanvasInner({
     nodeCatalog,
     graphKey,
@@ -215,6 +230,7 @@ function BlueprintFlowCanvasInner({
     dynamicSelectOptions,
     diagnostics,
     elementPreviews,
+    displayableTargetVariantsByNodeId,
     onBindElementLiteral,
     initialViewport,
     onViewportChange,
@@ -229,6 +245,10 @@ function BlueprintFlowCanvasInner({
     const nodeDiagnosticsSig = useMemo(
         () => nodeDiagnosticsSignature(nodeDiagnosticsByNodeId),
         [nodeDiagnosticsByNodeId],
+    );
+    const displayableTargetVariantsSig = useMemo(
+        () => displayableTargetVariantsSignature(displayableTargetVariantsByNodeId),
+        [displayableTargetVariantsByNodeId],
     );
     const variableTypeContext = useMemo<BlueprintGraphVariableTypeInferenceContext>(
         () => ({
@@ -443,6 +463,7 @@ function BlueprintFlowCanvasInner({
         revision: number;
         membersSig: string;
         diagnosticsSig: string;
+        displayableTargetVariantsSig: string;
     } | null>(null);
     const lastNodeCatalogRef = useRef(nodeCatalog);
 
@@ -596,7 +617,8 @@ function BlueprintFlowCanvasInner({
             prevStruct.graphKey !== graphKey ||
             prevStruct.revision !== revision ||
             prevStruct.membersSig !== blueprintMembersSig ||
-            prevStruct.diagnosticsSig !== nodeDiagnosticsSig;
+            prevStruct.diagnosticsSig !== nodeDiagnosticsSig ||
+            prevStruct.displayableTargetVariantsSig !== displayableTargetVariantsSig;
 
         if (structural) {
             lastStructuralRef.current = {
@@ -604,6 +626,7 @@ function BlueprintFlowCanvasInner({
                 revision,
                 membersSig: blueprintMembersSig,
                 diagnosticsSig: nodeDiagnosticsSig,
+                displayableTargetVariantsSig,
             };
             setNodes(prevNodes => {
                 const base = blueprintIrToFlowNodes(
@@ -617,6 +640,7 @@ function BlueprintFlowCanvasInner({
                     dynamicSelectOptions,
                     nodeDiagnosticsByNodeId,
                     elementPreviews,
+                    displayableTargetVariantsByNodeId,
                     onBindElementLiteral,
                 );
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
@@ -685,6 +709,8 @@ function BlueprintFlowCanvasInner({
         nodeDiagnosticsByNodeId,
         nodeDiagnosticsSig,
         elementPreviews,
+        displayableTargetVariantsByNodeId,
+        displayableTargetVariantsSig,
         onBindElementLiteral,
         setEdges,
         setNodes,

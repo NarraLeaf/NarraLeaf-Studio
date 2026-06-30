@@ -173,6 +173,17 @@ function listCompatibleMagicElementRefs(
         .map(ref => ref.targetPortId === target.inputPinId ? ref : { ...ref, targetPortId: target.inputPinId });
 }
 
+function listMagicElementPaletteTargets(
+    def: BlueprintNodeDef,
+    ctx: BlueprintPaletteContext,
+): Array<BlueprintMagicElementRefPaletteEntry | undefined> {
+    const refs = listCompatibleMagicElementRefs(def, ctx);
+    if (refs.length <= 1) {
+        return refs;
+    }
+    return [undefined];
+}
+
 function canUseImageAssetLiteral(ctx: BlueprintPaletteContext): boolean {
     if (
         (ctx.owner.kind === "widgetMain" || ctx.owner.kind === "componentWidgetMain") &&
@@ -299,7 +310,7 @@ class BlueprintNodeDefinitionsRegistry {
                 continue;
             }
             if (def.magicElementTarget) {
-                const magicElementRefs = listCompatibleMagicElementRefs(def, ctx);
+                const magicElementRefs = listMagicElementPaletteTargets(def, ctx);
                 if (magicElementRefs.length === 0) {
                     continue;
                 }
@@ -307,7 +318,8 @@ class BlueprintNodeDefinitionsRegistry {
                     continue;
                 }
                 for (const magicElementRef of magicElementRefs) {
-                    out.push({ ...this.toCatalogEntry(def), magicElementRef });
+                    const entry = this.toCatalogEntry(def);
+                    out.push(magicElementRef ? { ...entry, magicElementRef } : entry);
                 }
                 continue;
             }

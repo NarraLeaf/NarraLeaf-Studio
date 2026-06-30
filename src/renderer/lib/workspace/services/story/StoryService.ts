@@ -10,6 +10,7 @@ import {
     StoryLibraryIndex,
     StoryScene,
     StorySceneId,
+    StorySceneUpdate,
 } from "@shared/types/story";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
@@ -467,6 +468,51 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return changed;
     }
 
+    public updateScene(storyId: StoryId, sceneId: StorySceneId, patch: StorySceneUpdate): boolean {
+        const document = this.getStoryDocument(storyId);
+        const current = document.scenes[sceneId];
+        if (!current) {
+            return false;
+        }
+
+        const nextName = patch.name !== undefined ? this.cleanName(patch.name, current.name || "Untitled Scene") : current.name;
+        const nextDescription = patch.description !== undefined ? patch.description.trim() : current.description ?? "";
+        const nextBackgroundAssetId = patch.defaultBackgroundAssetId !== undefined
+            ? this.cleanOptionalString(patch.defaultBackgroundAssetId ?? "")
+            : current.defaultBackgroundAssetId;
+        const currentBackgroundAssetId = current.defaultBackgroundAssetId ?? undefined;
+
+        const hasNameChange = patch.name !== undefined && nextName !== current.name;
+        const hasDescriptionChange = patch.description !== undefined && nextDescription !== (current.description ?? "");
+        const hasBackgroundChange = patch.defaultBackgroundAssetId !== undefined && nextBackgroundAssetId !== currentBackgroundAssetId;
+        if (!hasNameChange && !hasDescriptionChange && !hasBackgroundChange) {
+            return false;
+        }
+
+        this.mutateDocument(storyId, targetDocument => {
+            const scene = targetDocument.scenes[sceneId];
+            if (!scene) {
+                return;
+            }
+            if (hasNameChange) {
+                scene.name = nextName;
+                scene.runtimeName = scene.runtimeName || this.toRuntimeName(nextName);
+            }
+            if (hasDescriptionChange) {
+                scene.description = nextDescription;
+            }
+            if (hasBackgroundChange) {
+                if (nextBackgroundAssetId) {
+                    scene.defaultBackgroundAssetId = nextBackgroundAssetId;
+                } else {
+                    delete scene.defaultBackgroundAssetId;
+                }
+            }
+            scene.meta = { ...scene.meta, updatedAt: new Date().toISOString() };
+        });
+        return true;
+    }
+
     public deleteScene(storyId: StoryId, sceneId: StorySceneId): boolean {
         let changed = false;
         this.mutateDocument(storyId, document => {
@@ -691,6 +737,11 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return value.trim() || fallback;
     }
 
+    private cleanOptionalString(value: string): string | undefined {
+        const trimmed = value.trim();
+        return trimmed || undefined;
+    }
+
     private toRuntimeName(name: string): string {
         const normalized = name
             .trim()
@@ -791,6 +842,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         };
 
         for (const scene of Object.values(document.scenes)) {
+            addAssetLock(scene.id, "__scene__", "scene.defaultBackgroundAssetId", scene.defaultBackgroundAssetId);
             for (const block of Object.values(scene.blocks)) {
                 if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
                     addAssetLock(scene.id, block.id, "voiceAssetId", block.payload.voiceAssetId);

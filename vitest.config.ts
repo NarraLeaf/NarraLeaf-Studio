@@ -11,6 +11,7 @@ export default defineConfig({
         alias: {
             "@": path.resolve(__dirname, "src/renderer"),
             "@shared": path.resolve(__dirname, "src/shared"),
+            "@services": path.resolve(__dirname, "src/renderer/lib/workspace/services"),
         },
     },
 });

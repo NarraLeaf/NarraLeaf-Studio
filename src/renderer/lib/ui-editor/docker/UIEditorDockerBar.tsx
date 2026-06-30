@@ -866,6 +866,8 @@ export function UIEditorDockerBar({
         return selectedModule.createDockerBarItems({
             element: selectedElement,
             documentService,
+            stateService,
+            surfaceId,
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedElement, selectedModule, documentService, docVersion]);
@@ -882,7 +884,7 @@ export function UIEditorDockerBar({
             if (!mod) {
                 return null;
             }
-            const context = { element, documentService };
+            const context = { element, documentService, stateService, surfaceId };
             return (
                 mod.createMultiSelectDockerBarItems?.(context) ??
                 mod.createDockerBarItems?.(context) ??

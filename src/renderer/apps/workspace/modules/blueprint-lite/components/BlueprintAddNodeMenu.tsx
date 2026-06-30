@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import {
     BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID,
+    blueprintAddNodeEntryKey,
     buildBlueprintAddNodeCategories,
     filterBlueprintAddNodeEntries,
 } from "./BlueprintAddNodeMenuModel";
@@ -356,7 +357,7 @@ export function BlueprintAddNodeMenu({
                     ) : (
                         filteredEntries.map((entry, index) => (
                             <BlueprintAddNodeRow
-                                key={entry.type}
+                                key={blueprintAddNodeEntryKey(entry)}
                                 entry={entry}
                                 active={activeFlatIndex === index}
                                 flatIndex={index}
@@ -383,6 +384,16 @@ function BlueprintAddNodeRow(props: {
 }) {
     const visual = getCategoryVisual(props.entry.category);
     const Icon = visual.icon;
+    const magicRef = props.entry.magicElementRef;
+    const subtitle = magicRef
+        ? `${props.entry.category} -> ${magicRef.label}`
+        : props.entry.category;
+    const title = [
+        props.entry.displayName,
+        props.entry.type,
+        magicRef ? `Target: ${magicRef.label} (${magicRef.elementType})` : "",
+        props.entry.keywords?.length ? props.entry.keywords.join(", ") : "",
+    ].filter(Boolean).join("\n");
 
     return (
         <div
@@ -400,9 +411,7 @@ function BlueprintAddNodeRow(props: {
                 aria-setsize={props.itemCount}
                 data-bp-add-node-idx={props.flatIndex}
                 className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
-                title={`${props.entry.displayName}\n${props.entry.type}${
-                    props.entry.keywords?.length ? `\n${props.entry.keywords.join(", ")}` : ""
-                }`}
+                title={title}
                 onClick={() => props.onPick(props.entry)}
                 onMouseEnter={() => props.onHover(props.flatIndex)}
             >
@@ -411,7 +420,7 @@ function BlueprintAddNodeRow(props: {
                 </span>
                 <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-slate-100">{props.entry.displayName}</span>
-                    <span className="block truncate text-[11px] text-slate-500">{props.entry.category}</span>
+                    <span className="block truncate text-[11px] text-slate-500">{subtitle}</span>
                 </span>
                 <span className="min-w-0 max-w-[180px] shrink-0 truncate font-mono text-[11px] text-slate-500">
                     {props.entry.type}

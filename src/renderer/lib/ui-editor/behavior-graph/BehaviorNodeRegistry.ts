@@ -40,6 +40,7 @@ export type BehaviorNodeExecutionContext = {
     /** Per-event execution locals; initialized from blueprint member variables (M4 simplified editor). */
     blueprintLocals?: Record<string, unknown>;
     eventPayload?: Record<string, unknown>;
+    signal?: AbortSignal;
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
     executionOwner?: {

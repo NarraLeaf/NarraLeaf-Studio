@@ -21,12 +21,15 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
+import { StoryService } from "@/lib/workspace/services/story/StoryService";
 
-/** Global settings key; stored in Electron userData/state/global.json. */
+/** Legacy global settings key; stored in Electron userData/state/global.json. */
 export const WORKSPACE_EDITOR_SESSION_SETTINGS_KEY = "ui.editor.session";
+const WORKSPACE_EDITOR_SESSION_SETTINGS_KEY_PREFIX = `${WORKSPACE_EDITOR_SESSION_SETTINGS_KEY}.project`;
 
 const WELCOME_TAB_ID = "narraleaf-studio:welcome";
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
@@ -57,6 +60,35 @@ export type WorkspaceEditorSessionV1 = {
     focus: string | null;
     tabs: SerializedTab[];
 };
+
+export type WorkspaceEditorSessionProjectRef = {
+    projectPath: string;
+    projectIdentifier?: string | null;
+};
+
+function normalizeProjectPathForSessionKey(projectPath: string): string {
+    const normalized = projectPath.trim().replace(/\\/g, "/");
+    if (normalized.length <= 1) {
+        return normalized;
+    }
+    return normalized.replace(/\/+$/g, "");
+}
+
+function stableHashForSettingsKey(value: string): string {
+    let hash = 0xcbf29ce484222325n;
+    const prime = 0x100000001b3n;
+    for (let i = 0; i < value.length; i += 1) {
+        hash ^= BigInt(value.charCodeAt(i));
+        hash = BigInt.asUintN(64, hash * prime);
+    }
+    return hash.toString(36);
+}
+
+export function getWorkspaceEditorSessionSettingsKey(projectRef: WorkspaceEditorSessionProjectRef): string {
+    const projectPath = normalizeProjectPathForSessionKey(projectRef.projectPath);
+    const projectIdentifier = projectRef.projectIdentifier?.trim() ?? "";
+    return `${WORKSPACE_EDITOR_SESSION_SETTINGS_KEY_PREFIX}.${stableHashForSettingsKey(`${projectIdentifier}\0${projectPath}`)}`;
+}
 
 function isBlueprintEntryPayload(value: unknown): value is BlueprintEntryTabPayload {
     if (!value || typeof value !== "object") {
@@ -298,6 +330,31 @@ function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): Editor
     }
     if (entry.kind === "blueprint") {
         const p = entry.payload;
+        const documentService = ctx.services.get<UIDocumentService>(Services.UIDocument);
+        const localBlueprintService = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const document = documentService.getDocument();
+        const blueprintDocument = localBlueprintService.getBlueprintDocument();
+        if (!blueprintDocument.blueprints[p.blueprintId]) {
+            return null;
+        }
+        if (!document.surfaces.some(surface => surface.id === p.surfaceId)) {
+            return null;
+        }
+        if (p.ownerKind === "componentWidgetMain") {
+            const component = p.componentId
+                ? document.components?.find(item => item.id === p.componentId)
+                : undefined;
+            if (!component || !p.elementId || !component.elements[p.elementId]) {
+                return null;
+            }
+        } else if (p.ownerKind === "widgetMain" || p.ownerKind === "widgetValue") {
+            if (!p.elementId || !document.elements[p.elementId]) {
+                return null;
+            }
+            if (p.ownerKind === "widgetValue" && !p.propPath) {
+                return null;
+            }
+        }
         const tabId = getBlueprintEntryTabId({
             blueprintId: p.blueprintId,
             surfaceId: p.surfaceId,
@@ -359,6 +416,10 @@ function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): Editor
         };
     }
     if (entry.kind === "storyScene") {
+        const storyService = ctx.services.get<StoryService>(Services.Story);
+        if (!storyService.getStoryEntry(entry.payload.storyId)) {
+            return null;
+        }
         return {
             id: getStorySceneEditorTabId(entry.payload.storyId, entry.payload.sceneId),
             title: entry.title,
@@ -378,7 +439,7 @@ export function restoreWorkspaceEditorSession(
     ctx: WorkspaceContext,
     session: WorkspaceEditorSessionV1,
     uiService: UIService,
-): void {
+): number {
     const store = uiService.getStore();
     const groupId = session.groupId;
     const openedIds: string[] = [];
@@ -400,4 +461,5 @@ export function restoreWorkspaceEditorSession(
         store.setActiveEditorTabInGroup(resolvedFocus, groupId);
         uiService.focus.setFocus(FocusArea.Editor, resolvedFocus);
     }
+    return openedIds.length;
 }

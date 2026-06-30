@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import type { UISurface, UISurfaceKind } from "@shared/types/ui-editor/document";
 import { MoreVertical } from "lucide-react";
+import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 
 import { formatStageMountLabel } from "./constants";
 
@@ -83,6 +84,13 @@ function SurfacePreview({ surface, children }: { surface: UISurface; children: R
     );
 }
 
+const getSurfaceTypeLabel = (surface: UISurface): string => {
+    if (surface.id === MAIN_APP_SURFACE_ID) {
+        return DEFAULT_APP_SURFACE_NAME;
+    }
+    return surface.kind === "appSurface" ? "Page" : "Game UI";
+};
+
 export function SurfaceList({
     surfaces,
     surfaceKind,
@@ -132,39 +140,39 @@ export function SurfaceList({
             ) : null}
             {surfaces.map(surface => {
                 const preview = renderSurfacePreview?.(surface);
-                const typeLabel = surface.kind === "appSurface" ? "Page" : "Game UI";
+                const typeLabel = getSurfaceTypeLabel(surface);
                 return (
-                <div
-                    key={surface.id}
-                    className="group w-full text-left rounded-md border border-white/10 bg-[#0b0d12] px-3 py-2 transition-colors hover:bg-white/5"
-                    onClick={() => onSurfaceClick(surface)}
-                    onContextMenu={event => onOpenMenu(event, surface)}
-                    role="button"
-                    tabIndex={0}
-                >
-                    <div className="flex items-start gap-2">
-                        <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-white truncate">{surface.name}</div>
-                            <div className="text-[11px] text-gray-400">
-                                {surface.designSize.width}×{surface.designSize.height}
+                    <div
+                        key={surface.id}
+                        className="group w-full text-left rounded-md border border-white/10 bg-[#0b0d12] px-3 py-2 transition-colors hover:bg-white/5"
+                        onClick={() => onSurfaceClick(surface)}
+                        onContextMenu={event => onOpenMenu(event, surface)}
+                        role="button"
+                        tabIndex={0}
+                    >
+                        <div className="flex items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                                <div className="text-sm font-semibold text-white truncate">{surface.name}</div>
+                                <div className="text-[11px] text-gray-400">
+                                    {surface.designSize.width}×{surface.designSize.height}
+                                </div>
+                                <div className="text-[11px] text-gray-500">{typeLabel}</div>
+                                {surface.kind === "stageSurface" && (
+                                    <div className="text-[11px] text-gray-500">{formatStageMountLabel(surface.mount)}</div>
+                                )}
                             </div>
-                            <div className="text-[11px] text-gray-500">{typeLabel}</div>
-                            {surface.kind === "stageSurface" && (
-                                <div className="text-[11px] text-gray-500">{formatStageMountLabel(surface.mount)}</div>
-                            )}
+                            <button
+                                type="button"
+                                className="p-1 rounded hover:bg-white/10 text-gray-300 opacity-0 group-hover:opacity-100"
+                                onClick={event => onOpenMenu(event, surface)}
+                                title={`${typeLabel} actions`}
+                            >
+                                <MoreVertical className="w-4 h-4" />
+                            </button>
                         </div>
-                        <button
-                            type="button"
-                            className="p-1 rounded hover:bg-white/10 text-gray-300 opacity-0 group-hover:opacity-100"
-                            onClick={event => onOpenMenu(event, surface)}
-                            title={`${typeLabel} actions`}
-                        >
-                            <MoreVertical className="w-4 h-4" />
-                        </button>
+                        <SurfacePreview surface={surface}>{preview}</SurfacePreview>
                     </div>
-                    <SurfacePreview surface={surface}>{preview}</SurfacePreview>
-                </div>
-            );
+                );
             })}
         </div>
     );

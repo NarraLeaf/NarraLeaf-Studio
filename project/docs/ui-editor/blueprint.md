@@ -36,7 +36,7 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.data.returnValue` | `Return Value` | `Data` | Exec sink that returns the produced value from a Blueprint Value graph. It is only available on `widgetValue` blueprints. |
 | `blueprint.element.ref` | `Element` | `Element` | Same-Surface magic element literal. It stores `{ surfaceId, elementId, elementType }`, outputs `element` or `element:<widgetType>`, and can fan out like other literals. |
 | `blueprint.element.text.*` | Text element nodes | `Text` | Element-targeted Text nodes with a separated top `element:nl.text` input. Read nodes are pure; write nodes remain event/macro only. |
-| `blueprint.element.displayable.*` | Displayable element reads | `Displayable` | Element-targeted reads for position, size, bounds, rotation, opacity, and visible. |
+| `blueprint.element.displayable.*` | Displayable element nodes | `Displayable` | Element-targeted `Get Property` / `Set Property`, `Set Variant`, and property animation. Old fixed Displayable get nodes remain registered for compatibility but are hidden from new authoring. |
 | `blueprint.local.declareVar` | `Var` | `Variables` | Pinless graph declaration node for blueprint-level execution locals. It is available on widget, Blueprint Value, and shared-asset blueprints, not Page or Global blueprints. |
 | `blueprint.local.get` | `Get Var` | `Variables` | Pure data node that reads an execution-local blueprint variable. |
 | `blueprint.local.set` | `Set Var` | `Variables` | Exec node that writes an execution-local blueprint variable and continues through `next`. |
@@ -193,7 +193,7 @@ Recommended category names:
 | `Data` | Literals, objects, arrays, Collection nodes, JSON helpers, string helpers, parsing, and type conversion. |
 | `Math` | Numeric calculation, rounding, min/max, random numbers, boolean logic, and comparisons. |
 | `Element` | Magic element literals and same-Surface element references. |
-| `Displayable` | Element-targeted layout, visibility, opacity, and rotation reads. |
+| `Displayable` | Displayable `Get Property` / `Set Property`, `Set Variant`, and property animation nodes for Self and Element-targeted forms. |
 | `Text` | Text property reads/writes for the current Text owner or explicit Text element references. |
 | `Widget` | UI element mutations and reads. |
 | `Page` | Page navigation, Page component host reads, and child-to-parent Page events. |

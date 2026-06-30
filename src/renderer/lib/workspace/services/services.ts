@@ -56,6 +56,7 @@ import type {
     StoryLibraryIndex,
     StoryScene,
     StorySceneId,
+    StorySceneUpdate,
 } from "@shared/types/story";
 import type {
     BlueprintNodeDef,
@@ -212,6 +213,7 @@ interface IUIDocumentService extends IService {
         settings?: UISurfaceSettings;
     }): UISurface;
     deleteSurface(surfaceId: string): void;
+    renameSurface(surfaceId: string, name: string): void;
     updateSurface(surfaceId: string, updater: (surface: UISurface) => void): void;
     getComponent(componentId: string): UIComponentDefinition | undefined;
     getComponentUsageCount(componentId: string): number;
@@ -616,6 +618,7 @@ interface IStoryService extends IService {
     moveChapter(storyId: StoryId, chapterId: string, beforeChapterId: string | null): boolean;
     createScene(storyId: StoryId, input: { chapterId?: string; name: string }): StoryScene;
     renameScene(storyId: StoryId, sceneId: StorySceneId, name: string): boolean;
+    updateScene(storyId: StoryId, sceneId: StorySceneId, patch: StorySceneUpdate): boolean;
     deleteScene(storyId: StoryId, sceneId: StorySceneId): boolean;
     moveScene(storyId: StoryId, sceneId: StorySceneId, target: { chapterId: string; beforeSceneId?: string | null }): boolean;
     setEntryScene(storyId: StoryId, sceneId: StorySceneId | undefined): void;

@@ -20,6 +20,7 @@ import { StorageManager } from "./managers/storageManager";
 import { WindowManager } from "./managers/windowManager";
 import { GlobalStateManager } from "./managers/storage/globalState";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
+import { isMainDevMode, parseMainCommandLine } from "./commandLine";
 
 export interface AppDependencies {
     protocolManager: ProtocolManager;
@@ -52,6 +53,7 @@ export class BaseApp {
 
     private initialized: boolean = false;
     protected appInfo: AppInfo | null = null;
+    private readonly commandLine = parseMainCommandLine(process.argv);
 
     constructor(config: BaseAppConfig) {
         this.config = config;
@@ -60,6 +62,7 @@ export class BaseApp {
         this.logger = new Logger("MainProcess");
         this.events = new EventEmitter();
 
+        this.configureCdp();
         this.setupUserDataDir();
 
         this.protocolManager = new ProtocolManager(this);
@@ -187,7 +190,7 @@ export class BaseApp {
     }
 
     public isDevMode(): boolean {
-        return process.argv.includes("--dev");
+        return isMainDevMode(this.commandLine, this.electronApp.isPackaged);
     }
 
     public getAppEntry(type: WindowAppType): string {
@@ -218,6 +221,26 @@ export class BaseApp {
             this.electronApp.setPath("userData", userDataPath);
             this.logger.info(`[App] Setting up dev userData path: ${userDataPath}`);
         }
+    }
+
+    private configureCdp(): void {
+        const cdp = this.commandLine.cdp;
+        if (!cdp.enabled) {
+            return;
+        }
+
+        if (!this.isDevMode()) {
+            this.logger.warn("[CDP] Ignoring --cdp because it is only available in development mode.");
+            return;
+        }
+
+        if (cdp.error) {
+            this.logger.warn(`[CDP] ${cdp.error}. CDP was not enabled.`);
+            return;
+        }
+
+        this.electronApp.commandLine.appendSwitch("remote-debugging-port", String(cdp.port));
+        this.logger.info(`[CDP] Enabled on port ${cdp.port}.`);
     }
 
     private async prepare() {

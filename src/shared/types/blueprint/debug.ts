@@ -6,6 +6,7 @@
 export type BlueprintDebugEvent =
     | { type: "execution.started"; executionId: string; blueprintId: string }
     | { type: "execution.finished"; executionId: string; blueprintId: string }
+    | { type: "execution.cancelled"; executionId: string; blueprintId?: string; eventId?: string; graphId?: string; nodeId?: string; reason?: string }
     | { type: "node.enter"; executionId: string; nodeId: string }
     | { type: "node.exit"; executionId: string; nodeId: string }
     | { type: "state.read"; scope: string; key: string }

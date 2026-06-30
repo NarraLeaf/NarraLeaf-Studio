@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react";
 import { useWorkspace } from "../context";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
+import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import {
     WORKSPACE_EDITOR_SESSION_SETTINGS_KEY,
+    getWorkspaceEditorSessionSettingsKey,
     parseWorkspaceEditorSession,
     restoreWorkspaceEditorSession,
     serializeEditorSession,
@@ -12,8 +14,8 @@ import {
 
 const SAVE_DEBOUNCE_MS = 500;
 
-/** Dedupe restore per project path when React Strict Mode runs effects twice */
-const restorePromisesByProjectPath = new Map<string, Promise<void>>();
+/** Dedupe restore per project session key when React Strict Mode runs effects twice */
+const restorePromisesBySessionKey = new Map<string, Promise<void>>();
 
 let restoreInProgressGlobal = false;
 
@@ -27,22 +29,41 @@ export function useWorkspaceEditorSession() {
 
     const uiService = context?.services.get<UIService>(Services.UI) ?? null;
     const settingsService = context?.services.get<GlobalSettingsService>(Services.GlobalSettings) ?? null;
+    const projectService = context?.services.get<ProjectService>(Services.Project) ?? null;
+    const sessionSettingsKey =
+        context && projectService
+            ? getWorkspaceEditorSessionSettingsKey({
+                  projectPath: context.project.getConfig().projectPath,
+                  projectIdentifier: projectService.getProjectConfig().identifier,
+              })
+            : null;
 
     useEffect(() => {
-        if (!context || !uiService || !settingsService) {
+        if (!context || !uiService || !settingsService || !sessionSettingsKey) {
             return;
         }
 
-        const path = context.project.getConfig().projectPath;
-        let promise = restorePromisesByProjectPath.get(path);
+        let promise = restorePromisesBySessionKey.get(sessionSettingsKey);
         if (!promise) {
             promise = (async () => {
                 restoreInProgressGlobal = true;
                 try {
-                    const raw = await settingsService.get(WORKSPACE_EDITOR_SESSION_SETTINGS_KEY);
-                    const session = parseWorkspaceEditorSession(raw);
+                    const raw = await settingsService.get(sessionSettingsKey);
+                    let session = parseWorkspaceEditorSession(raw);
+                    let shouldMigrateLegacySession = false;
+                    if (!session && !settingsService.has(sessionSettingsKey)) {
+                        const legacyRaw = await settingsService.get(WORKSPACE_EDITOR_SESSION_SETTINGS_KEY);
+                        session = parseWorkspaceEditorSession(legacyRaw);
+                        shouldMigrateLegacySession = Boolean(session);
+                    }
                     if (session?.tabs.length) {
-                        restoreWorkspaceEditorSession(context, session, uiService);
+                        const restoredCount = restoreWorkspaceEditorSession(context, session, uiService);
+                        if (shouldMigrateLegacySession && restoredCount > 0) {
+                            const restoredSession = serializeEditorSession(uiService.getStore().getEditorLayout());
+                            if (restoredSession) {
+                                await settingsService.set(sessionSettingsKey, restoredSession);
+                            }
+                        }
                     }
                 } catch (error) {
                     console.error("[WorkspaceEditorSession] Failed to restore:", error);
@@ -50,17 +71,17 @@ export function useWorkspaceEditorSession() {
                     restoreInProgressGlobal = false;
                 }
             })();
-            restorePromisesByProjectPath.set(path, promise);
+            restorePromisesBySessionKey.set(sessionSettingsKey, promise);
             void promise.finally(() => {
-                restorePromisesByProjectPath.delete(path);
+                restorePromisesBySessionKey.delete(sessionSettingsKey);
             });
         }
 
         return () => {};
-    }, [context, uiService, settingsService]);
+    }, [context, uiService, settingsService, sessionSettingsKey]);
 
     useEffect(() => {
-        if (!context || !uiService || !settingsService) {
+        if (!context || !uiService || !settingsService || !sessionSettingsKey) {
             return;
         }
 
@@ -78,7 +99,7 @@ export function useWorkspaceEditorSession() {
                 if (session === null) {
                     return;
                 }
-                await settingsService.set(WORKSPACE_EDITOR_SESSION_SETTINGS_KEY, session);
+                await settingsService.set(sessionSettingsKey, session);
             } catch (error) {
                 console.error("[WorkspaceEditorSession] Failed to save:", error);
             }
@@ -110,5 +131,5 @@ export function useWorkspaceEditorSession() {
                 saveTimerRef.current = null;
             }
         };
-    }, [context, uiService, settingsService]);
+    }, [context, uiService, settingsService, sessionSettingsKey]);
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
@@ -37,8 +37,21 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON,
     BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,
@@ -144,9 +157,15 @@ import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { elementBlueprintNodes } from "./elementNodes";
+import {
+    ELEMENT_REF_PARAM_ELEMENT_ID,
+    ELEMENT_REF_PARAM_ELEMENT_TYPE,
+    ELEMENT_REF_PARAM_SURFACE_ID,
+} from "./elementRefUtils";
 import { sliderBlueprintNodes } from "./sliderNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
+import { widgetHostBlueprintNodes } from "./widget/widgetHostNodes";
 import { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 import {
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
@@ -753,6 +772,130 @@ describe("built-in blueprint nodes", () => {
         expect(elementBlueprintNodes.some(def => def.category === "Displayable")).toBe(true);
     });
 
+    it("adds Displayable variant and generic property nodes", () => {
+        const displayableTypes = new Set(elementBlueprintNodes
+            .filter(def => def.category === "Displayable")
+            .map(def => def.type));
+        const elementTypes = new Set(elementBlueprintNodes
+            .filter(def => def.category === "Element")
+            .map(def => def.type));
+
+        expect([...displayableTypes]).toEqual(expect.arrayContaining([
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT,
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
+        ]));
+        expect(displayableTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY)).toBe(false);
+        expect(displayableTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)).toBe(false);
+        expect(displayableTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)).toBe(false);
+
+        expect([...elementTypes]).toEqual(expect.arrayContaining([
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT,
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION,
+        ]));
+        expect(elementTypes.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY)).toBe(false);
+
+        const setVariant = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT);
+        expect(setVariant?.category).toBe("Displayable");
+        expect(setVariant?.inspectorParams).toBeUndefined();
+        expect(setVariant?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
+        expect(setVariant?.scope).toMatchObject({
+            ownerKinds: ["widgetMain"],
+            widgetElementTypes: ["nl.container", "nl.text", "nl.image", "nl.button"],
+        });
+
+        const setElementVariant = elementBlueprintNodes.find(
+            def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
+        );
+        expect(setElementVariant?.category).toBe("Element");
+        expect(setElementVariant?.pins.map(pin => pin.id)).toEqual(["in", "next", "element"]);
+        expect(setElementVariant?.magicElementTarget).toEqual({
+            inputPinId: "element",
+            elementTypes: ["nl.container", "nl.text", "nl.image", "nl.button"],
+        });
+
+        const getProperty = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY);
+        expect(getProperty?.inspectorParams?.[0]).toMatchObject({
+            key: "property",
+            kind: "select",
+            options: expect.arrayContaining([
+                { value: "position", label: "Position" },
+                { value: "visible", label: "Visible" },
+            ]),
+        });
+        expect(getProperty?.inspectorParams?.[0]).not.toMatchObject({
+            options: expect.arrayContaining([
+                { value: "variant", label: "Variant" },
+            ]),
+        });
+        const setProperty = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY);
+        expect(setProperty?.pins.map(pin => pin.id)).toEqual(["in", "next", "value"]);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)
+            ?.pins.map(pin => pin.id)).toEqual(["in", "next", "element", "value"]);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)
+            ?.pins.map(pin => pin.id)).toEqual(["in", "next", "element"]);
+        expect(setProperty?.inspectorParams?.[0]).toMatchObject({
+            key: "property",
+            kind: "select",
+            options: expect.arrayContaining([
+                { value: "opacity", label: "Opacity" },
+                { value: "visible", label: "Visible" },
+            ]),
+        });
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION)?.hideInPalette)
+            .toBe(true);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT)?.hideInPalette)
+            .toBe(true);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION)?.hideInPalette)
+            .toBe(true);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT)?.hideInPalette)
+            .toBe(true);
+
+        const legacyWidgetVariantNodes = widgetPropertyBlueprintNodes.filter(
+            def => def.type.endsWith(".getVariant") || def.type.endsWith(".setVariant"),
+        );
+        expect(legacyWidgetVariantNodes.length).toBeGreaterThan(0);
+        expect(legacyWidgetVariantNodes.every(def => def.hideInPalette === true)).toBe(true);
+        expect(legacyWidgetVariantNodes
+            .filter(def => def.type.endsWith(".setVariant"))
+            .flatMap(def => def.pins)
+            .some(pin => pin.id === "variantId")).toBe(false);
+
+        const legacyHostSetVariant = widgetHostBlueprintNodes.find(def => def.type === "blueprint.widget.setVariant");
+        expect(legacyHostSetVariant?.hideInPalette).toBe(true);
+        expect(legacyHostSetVariant?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
+        expect(legacyHostSetVariant?.inspectorParams?.some(param => param.key === "variantId")).toBe(false);
+
+        const animate = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY);
+        expect(animate?.inspectorParams?.map(param => param.key)).toEqual([
+            "property",
+            "from",
+            "to",
+            "duration",
+            "delay",
+            "easing",
+            "after",
+        ]);
+        expect(animate?.inspectorParams?.[0]).toMatchObject({
+            key: "property",
+            kind: "select",
+            options: expect.arrayContaining([
+                { value: "opacity", label: "Opacity" },
+                { value: "offsetX", label: "Offset X" },
+                { value: "offsetY", label: "Offset Y" },
+                { value: "scale", label: "Scale" },
+                { value: "rotation", label: "Rotation" },
+            ]),
+        });
+    });
+
     it("keeps structured literal editor metadata locked to fixed schemas", () => {
         const stringLiteral = dataBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_LITERAL_STRING);
         const rectLiteral = dataBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_LITERAL_RECT);
@@ -1347,6 +1490,10 @@ describe("built-in blueprint nodes", () => {
         expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_REF)).toBe(true);
         expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT)).toBe(false);
         expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE)).toBe(false);
+        expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY)).toBe(false);
+        expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)).toBe(false);
+        expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)).toBe(false);
+        expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT)).toBe(false);
 
         const derivedEntries = blueprintNodeRegistry.listPaletteEntries({
             graphKind: "event",
@@ -1370,7 +1517,56 @@ describe("built-in blueprint nodes", () => {
             targetPortId: "element",
         });
         expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT)).toBe(true);
-        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE)).toBe(true);
+        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE)).toBe(false);
+        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY)).toBe(true);
+        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)).toBe(true);
+        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)).toBe(true);
+        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT)).toBe(true);
+        expect(derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)
+            ?.category).toBe("Element");
+        expect(derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT)
+            ?.magicElementRef).toMatchObject({
+                sourceNodeId: "element-ref",
+                sourcePortId: "element",
+                targetPortId: "element",
+            });
+    });
+
+    it("deduplicates element-derived palette entries when several compatible refs exist", () => {
+        registerCoreBlueprintNodes();
+
+        const derivedEntries = blueprintNodeRegistry.listPaletteEntries({
+            graphKind: "event",
+            owner: { kind: "surfaceMain", surfaceId: "surface" },
+            magicElementRefs: [
+                {
+                    sourceNodeId: "poster-ref",
+                    sourcePortId: "element",
+                    targetPortId: "element",
+                    surfaceId: "surface",
+                    elementId: "poster",
+                    elementType: "nl.image",
+                    label: "Poster",
+                },
+                {
+                    sourceNodeId: "icon-ref",
+                    sourcePortId: "element",
+                    targetPortId: "element",
+                    surfaceId: "surface",
+                    elementId: "icon",
+                    elementType: "nl.image",
+                    label: "Icon",
+                },
+            ],
+        });
+        const entriesOfType = (type: string) => derivedEntries.filter(entry => entry.type === type);
+
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_ASSET)).toHaveLength(1);
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)).toHaveLength(1);
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)).toHaveLength(1);
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)[0]?.category).toBe("Element");
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)[0]?.magicElementRef)
+            .toBeUndefined();
     });
 
     it("exposes Set Frame Page as an Element-category derived element entry", () => {
@@ -1464,6 +1660,35 @@ describe("built-in blueprint nodes", () => {
         expect(getImage?.pins.find(pin => pin.id === "asset")).toMatchObject({
             valueType: BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
         });
+        expect(derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)
+            ?.category).toBe("Element");
+        expect(derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)
+            ?.category).toBe("Element");
+        expect(derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION)
+            ?.category).toBe("Element");
+
+        const imageWidgetDerivedEntries = blueprintNodeRegistry.listPaletteEntries({
+            graphKind: "event",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "owner-image" },
+            widgetElementType: "nl.image",
+            magicElementRefs: [
+                {
+                    sourceNodeId: "other-image-ref",
+                    sourcePortId: "element",
+                    targetPortId: "element",
+                    surfaceId: "surface",
+                    elementId: "other-image",
+                    elementType: "nl.image",
+                    label: "Other Image",
+                },
+            ],
+        });
+        expect(imageWidgetDerivedEntries.find(entry =>
+            entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY
+        )?.category).toBe("Element");
+        expect(imageWidgetDerivedEntries.find(entry =>
+            entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY
+        )?.category).toBe("Element");
     });
 
     it("connects ImageAsset literals to Set Image Asset and keeps legacy string compatibility", () => {
@@ -1922,6 +2147,150 @@ describe("built-in blueprint nodes", () => {
         ).resolves.toEqual({ nextPort: "completed" });
     });
 
+    it("treats Delay duration as seconds", async () => {
+        vi.useFakeTimers();
+        try {
+            const delayNode = controlFlowBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FLOW_DELAY)!;
+            let resolved = false;
+            const execution = Promise.resolve(
+                delayNode.execute({
+                    graph: {
+                        id: "graph",
+                        entries: { main: { start: { nodeId: "delay", port: "in" } } },
+                        nodes: {
+                            delay: {
+                                id: "delay",
+                                type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                                params: { duration: 1 },
+                            },
+                        },
+                        edges: [],
+                    },
+                    entry: { start: { nodeId: "delay", port: "in" } },
+                    node: {
+                        id: "delay",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                        params: { duration: 1 },
+                    },
+                    params: { duration: 1 },
+                    hostAdapter: { host: "player" },
+                }),
+            ).then(result => {
+                resolved = true;
+                return result;
+            });
+
+            await vi.advanceTimersByTimeAsync(999);
+            expect(resolved).toBe(false);
+            await vi.advanceTimersByTimeAsync(1);
+            await expect(execution).resolves.toEqual({ nextPort: "completed" });
+            expect(resolved).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("keeps graph execution suspended while Delay is pending", async () => {
+        vi.useFakeTimers();
+        try {
+            const entered: string[] = [];
+            const graph = {
+                id: "graph",
+                entries: { main: { start: { nodeId: "delay", port: "in" } } },
+                nodes: {
+                    delay: {
+                        id: "delay",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                        params: { duration: 1 },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_NOOP,
+                        params: {},
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "delay", port: "completed" }, to: { nodeId: "after", port: "in" } },
+                ],
+            };
+            const execution = executeGraph({
+                graph,
+                entry: { start: { nodeId: "delay", port: "in" } },
+                hostAdapter: { host: "player" },
+                trace: {
+                    executionId: "execution",
+                    graphId: "graph",
+                    emit: event => {
+                        if (event.type === "node.enter") {
+                            entered.push(event.nodeId);
+                        }
+                    },
+                },
+            });
+
+            await Promise.resolve();
+            expect(entered).toEqual(["delay"]);
+            await vi.advanceTimersByTimeAsync(999);
+            expect(entered).toEqual(["delay"]);
+            await vi.advanceTimersByTimeAsync(1);
+            await expect(execution).resolves.toEqual({ returnValueSet: false, returnValue: undefined });
+            expect(entered).toEqual(["delay", "after"]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("cancels pending Delay graph execution without entering downstream nodes", async () => {
+        vi.useFakeTimers();
+        try {
+            const entered: string[] = [];
+            const controller = new AbortController();
+            const graph = {
+                id: "graph",
+                entries: { main: { start: { nodeId: "delay", port: "in" } } },
+                nodes: {
+                    delay: {
+                        id: "delay",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                        params: { duration: 1 },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_NOOP,
+                        params: {},
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "delay", port: "completed" }, to: { nodeId: "after", port: "in" } },
+                ],
+            };
+            const execution = executeGraph({
+                graph,
+                entry: { start: { nodeId: "delay", port: "in" } },
+                hostAdapter: { host: "player" },
+                signal: controller.signal,
+                trace: {
+                    executionId: "execution",
+                    graphId: "graph",
+                    emit: event => {
+                        if (event.type === "node.enter") {
+                            entered.push(event.nodeId);
+                        }
+                    },
+                },
+            });
+
+            await Promise.resolve();
+            expect(entered).toEqual(["delay"]);
+            controller.abort("Surface unmounted");
+            await expect(execution).rejects.toThrow("Surface unmounted");
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(entered).toEqual(["delay"]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("only exposes Text nodes for Text widget blueprints", () => {
         registerCoreBlueprintNodes();
 
@@ -1944,6 +2313,44 @@ describe("built-in blueprint nodes", () => {
         expect(textPaletteTypes.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);
+    });
+
+    it("binds self Displayable nodes to the current widget and keeps Element references for derived nodes", () => {
+        registerCoreBlueprintNodes();
+
+        const paletteTypesForWidget = (elementType: string) =>
+            new Set(
+                blueprintNodeRegistry.listPaletteEntries({
+                    graphKind: "event",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "owner" },
+                    widgetElementType: elementType,
+                }).map(entry => entry.type),
+            );
+
+        for (const type of ["nl.container", "nl.text", "nl.image", "nl.button"]) {
+            const entries = paletteTypesForWidget(type);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY)).toBe(true);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY)).toBe(true);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT)).toBe(true);
+        }
+
+        const selfDisplayableEntries = blueprintNodeRegistry.listPaletteEntries({
+            graphKind: "event",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "owner" },
+            widgetElementType: "nl.image",
+        });
+        const setSelfProperty = selfDisplayableEntries.find(
+            entry => entry.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+        );
+        expect(setSelfProperty?.category).toBe("Displayable");
+        expect(setSelfProperty?.pins.some(pin => pin.id === "element")).toBe(false);
+
+        for (const type of ["nl.slider", "nl.list", "nl.frame"]) {
+            const entries = paletteTypesForWidget(type);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY)).toBe(true);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY)).toBe(true);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT)).toBe(false);
+        }
     });
 
     it("scopes Blueprint Value event heads and return nodes to value blueprints", () => {
@@ -2331,6 +2738,444 @@ describe("built-in blueprint nodes", () => {
             }),
         );
         expect(textProps.color).toBe("#102030");
+    });
+
+    it("resolves Displayable Get Property against self and element targets without exposing Variant ids", () => {
+        const displayableProps = {
+            self: {
+                position: { x: 11, y: 22 },
+                size: { width: 100, height: 50 },
+                bounds: { x: 11, y: 22, width: 100, height: 50 },
+                rotation: 5,
+                opacity: 0.75,
+                visible: true,
+            },
+            target: {
+                position: { x: 40, y: 80 },
+                size: { width: 200, height: 90 },
+                bounds: { x: 40, y: 80, width: 200, height: 90 },
+                rotation: 10,
+                opacity: 0.5,
+                visible: false,
+            },
+        };
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    widget: {
+                        getDisplayableProperties: (elementId: keyof typeof displayableProps) => displayableProps[elementId],
+                        getCommonProperties: (elementId: string) => ({
+                            visible: true,
+                            enabled: true,
+                            variantId: elementId === "target" ? "variant-target" : "variant-self",
+                        }),
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getX: { type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY, params: { property: "x" } },
+                    },
+                    edges: [],
+                },
+                "getX",
+                "value",
+                { property: "x" },
+                undefined,
+                0,
+                {
+                    hostAdapter,
+                    executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+                },
+            ),
+        ).toBe(11);
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        ref: {
+                            type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                            params: {
+                                [ELEMENT_REF_PARAM_SURFACE_ID]: "surface",
+                                [ELEMENT_REF_PARAM_ELEMENT_ID]: "target",
+                                [ELEMENT_REF_PARAM_ELEMENT_TYPE]: "nl.image",
+                            },
+                        },
+                        getOpacity: {
+                            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
+                            params: { property: "opacity" },
+                        },
+                    },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "getOpacity", port: "element" },
+                        },
+                    ],
+                },
+                "getOpacity",
+                "value",
+                { property: "opacity" },
+                undefined,
+                0,
+                {
+                    hostAdapter,
+                    executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+                },
+            ),
+        ).toBe(0.5);
+    });
+
+    it("executes Displayable Set Variant with a wait-for-animation option", async () => {
+        let setVariantCall: {
+            elementId: string;
+            variantId: string | null;
+            waitForTransition: boolean | undefined;
+        } | null = null;
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    widget: {
+                        setVariant: async (
+                            elementId: string,
+                            variantId: string | null,
+                            options?: { waitForTransition?: boolean },
+                        ) => {
+                            setVariantCall = {
+                                elementId,
+                                variantId,
+                                waitForTransition: options?.waitForTransition,
+                            };
+                        },
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+
+        const setVariant = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT)!;
+        await Promise.resolve(
+            setVariant.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setVariant", port: "in" } } },
+                    nodes: {
+                        setVariant: {
+                            id: "setVariant",
+                            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+                            params: { variantId: "variant-visible", waitForTransition: "wait" },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "setVariant", port: "in" } },
+                node: {
+                    id: "setVariant",
+                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+                    params: { variantId: "variant-visible", waitForTransition: "wait" },
+                },
+                params: { variantId: "variant-visible", waitForTransition: "wait" },
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(setVariantCall).toEqual({
+            elementId: "image",
+            variantId: "variant-visible",
+            waitForTransition: true,
+        });
+    });
+
+    it("rejects Element Displayable Set Variant targets that do not support Appearance variants", async () => {
+        let setVariantCalled = false;
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    widget: {
+                        setVariant: async () => {
+                            setVariantCalled = true;
+                        },
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+        const setElementVariant = elementBlueprintNodes.find(def =>
+            def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT
+        )!;
+        const node = {
+            id: "setVariant",
+            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
+            params: { variantId: "variant-visible", waitForTransition: "wait" },
+        };
+
+        await expect(Promise.resolve(
+            setElementVariant.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setVariant", port: "in" } } },
+                    nodes: {
+                        ref: {
+                            id: "ref",
+                            type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                            params: {
+                                [ELEMENT_REF_PARAM_SURFACE_ID]: "surface",
+                                [ELEMENT_REF_PARAM_ELEMENT_ID]: "slider",
+                                [ELEMENT_REF_PARAM_ELEMENT_TYPE]: "nl.slider",
+                            },
+                        },
+                        setVariant: node,
+                    },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "setVariant", port: "element" },
+                        },
+                    ],
+                },
+                entry: { start: { nodeId: "setVariant", port: "in" } },
+                node,
+                params: node.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+            }),
+        )).rejects.toThrow("cannot target nl.slider");
+        expect(setVariantCalled).toBe(false);
+    });
+
+    it("executes Displayable opacity writes and animations as editor percentages", async () => {
+        let displayablePatch: Record<string, unknown> | undefined;
+        let displayableMotion: { target?: Record<string, unknown>; transition?: Record<string, unknown> } | undefined;
+        const currentDisplayable = {
+            position: { x: 0, y: 0 },
+            size: { width: 100, height: 100 },
+            bounds: { x: 0, y: 0, width: 100, height: 100 },
+            rotation: 0,
+            opacity: 0,
+            visible: true,
+        };
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    widget: {
+                        getDisplayableProperties: () => currentDisplayable,
+                        setDisplayableProperties: async (_elementId: string, patch: Record<string, unknown>) => {
+                            displayablePatch = patch;
+                        },
+                        animateDisplayable: async (_elementId: string, request: { target?: Record<string, unknown>; transition?: Record<string, unknown> }) => {
+                            displayableMotion = request;
+                            return { id: "motion", ...request };
+                        },
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+
+        const setOpacity = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY)!;
+        await Promise.resolve(
+            setOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setOpacity", port: "in" } } },
+                    nodes: {
+                        setOpacity: {
+                            id: "setOpacity",
+                            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+                            params: { property: "opacity", value: 50 },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "setOpacity", port: "in" } },
+                node: {
+                    id: "setOpacity",
+                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+                    params: { property: "opacity", value: 50 },
+                },
+                params: { property: "opacity", value: 50 },
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayablePatch).toEqual({ opacity: 0.5 });
+
+        const animateOpacity = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY)!;
+        await Promise.resolve(
+            animateOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "animateOpacity", port: "in" } } },
+                    nodes: {
+                        animateOpacity: {
+                            id: "animateOpacity",
+                            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+                            params: {
+                                property: "opacity",
+                                from: 0,
+                                to: 100,
+                                duration: 0.3,
+                                delay: 0,
+                                easing: "easeOut",
+                                after: "hold",
+                            },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "animateOpacity", port: "in" } },
+                node: {
+                    id: "animateOpacity",
+                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+                    params: {
+                        property: "opacity",
+                        from: 0,
+                        to: 100,
+                        duration: 0.3,
+                        delay: 0,
+                        easing: "easeOut",
+                        after: "hold",
+                    },
+                },
+                params: {
+                    property: "opacity",
+                    from: 0,
+                    to: 100,
+                    duration: 0.3,
+                    delay: 0,
+                    easing: "easeOut",
+                    after: "hold",
+                },
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayableMotion).toMatchObject({
+            target: { opacity: [0, 1] },
+            transition: { type: "tween", durationMs: 300, delayMs: 0 },
+        });
+    });
+
+    it("executes Element Displayable property writes and animations through Element refs", async () => {
+        let displayablePatchCall: { elementId: string; patch: Record<string, unknown> } | undefined;
+        let displayableMotionCall: { elementId: string; target?: Record<string, unknown>; transition?: Record<string, unknown> } | undefined;
+        const currentDisplayable = {
+            position: { x: 0, y: 0 },
+            size: { width: 100, height: 100 },
+            bounds: { x: 0, y: 0, width: 100, height: 100 },
+            rotation: 0,
+            opacity: 0,
+            visible: true,
+        };
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    widget: {
+                        getDisplayableProperties: () => currentDisplayable,
+                        setDisplayableProperties: async (elementId: string, patch: Record<string, unknown>) => {
+                            displayablePatchCall = { elementId, patch };
+                        },
+                        animateDisplayable: async (elementId: string, request: { target?: Record<string, unknown>; transition?: Record<string, unknown> }) => {
+                            displayableMotionCall = { elementId, target: request.target, transition: request.transition };
+                            return { id: "motion", ...request };
+                        },
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+        const refNode = {
+            id: "ref",
+            type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+            params: {
+                [ELEMENT_REF_PARAM_SURFACE_ID]: "surface",
+                [ELEMENT_REF_PARAM_ELEMENT_ID]: "target",
+                [ELEMENT_REF_PARAM_ELEMENT_TYPE]: "nl.image",
+            },
+        };
+
+        const setElementOpacity = elementBlueprintNodes.find(def =>
+            def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY
+        )!;
+        const setNode = {
+            id: "setOpacity",
+            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+            params: { property: "opacity", value: 25 },
+        };
+        await Promise.resolve(
+            setElementOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setOpacity", port: "in" } } },
+                    nodes: { ref: refNode, setOpacity: setNode },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "setOpacity", port: "element" },
+                        },
+                    ],
+                },
+                entry: { start: { nodeId: "setOpacity", port: "in" } },
+                node: setNode,
+                params: setNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayablePatchCall).toEqual({ elementId: "target", patch: { opacity: 0.25 } });
+
+        const animateElementOpacity = elementBlueprintNodes.find(def =>
+            def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY
+        )!;
+        const animateNode = {
+            id: "animateOpacity",
+            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+            params: {
+                property: "opacity",
+                from: 25,
+                to: 100,
+                duration: 0.3,
+                delay: 0,
+                easing: "easeOut",
+                after: "hold",
+            },
+        };
+        await Promise.resolve(
+            animateElementOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "animateOpacity", port: "in" } } },
+                    nodes: { ref: refNode, animateOpacity: animateNode },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "animateOpacity", port: "element" },
+                        },
+                    ],
+                },
+                entry: { start: { nodeId: "animateOpacity", port: "in" } },
+                node: animateNode,
+                params: animateNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayableMotionCall).toMatchObject({
+            elementId: "target",
+            target: { opacity: [0.25, 1] },
+            transition: { type: "tween", durationMs: 300, delayMs: 0 },
+        });
     });
 
     it("executes Slider write nodes and resolves Slider read nodes against the current widget owner", async () => {

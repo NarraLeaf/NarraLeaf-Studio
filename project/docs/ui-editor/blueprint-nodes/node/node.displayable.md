@@ -4,50 +4,93 @@
 
 Displayable 节点默认读取当前元素。坐标和尺寸均使用当前 Surface 的设计坐标系。
 
-Displayable Self 节点只在可显示控件自己的私有蓝图中出现，创建浮窗中归入 `Displayable` 分类，且没有 Element 输入。
+透明度统一为 Displayable 的有效 `opacity`：Appearance Variant 中的 `transformOpacity` 会解析到同一个元素透明度，不再和内部 chrome/text 透明度叠乘；`nl.image` Variant 中相对 Default 实际改动过的 `fillOpacity` 也会解析到这套透明度，并且不会再写到内部 `<img>` 的 opacity。`nl.image` 的图片内容层 `imageFill` / crop / contain 模式来自 Default，不会被非 Default Variant 切换；需要改图片资源或裁剪时使用 Image 节点/图片控件。`Get Property` / `Set Property` / `Animate Property` 读写和动画的都是这同一套透明度。
 
-Displayable Element 节点使用 `blueprint.element.displayable.*`，带顶部 generic `element` 输入，创建浮窗中归入 `Element` 分类。它们只有在当前图中已有任意 Same-Surface Element Literal 或 Element Flush 时才会显示；放置后不会自动连线，必须手动连接 `element` 输入。这些读取节点是 pure，可用于 Blueprint Value。
+Displayable Self 节点只在可显示控件自己的私有蓝图中出现，创建浮窗中归入 `Displayable` 分类，且没有 Element 输入；执行目标默认就是当前蓝图所属元素。
+
+Displayable Element 派生节点使用 `blueprint.element.displayable.*`，带顶部 generic `element` 输入，创建浮窗中归入 `Element` 分类。只有派生节点允许传入 Element 引用。它们只有在当前图中已有任意 Same-Surface Element Literal 或 Element Flush 时才会显示；同一节点类型只显示一项。若兼容来源唯一，放置时会自动连接对应的 `element` 输入；若有多个兼容来源，则保留 `element` 输入由作者手动选择/连接。读取节点是 pure，可用于 Blueprint Value；写入/动画节点只用于 event/macro。
 
 下文列出的 `blueprint.displayable.*` 均有对应 `blueprint.element.displayable.*` Element 版。
 
-## Get Position
+## Get Property
 
-`blueprint.displayable.getPosition` - 获取元素坐标
+`blueprint.displayable.getProperty` - 读取 Displayable 属性
 
-获取当前元素左上角坐标。
-- `position` - 元素坐标，`Vector2D`
+通过节点卡片的 `Property` 下拉选择要读取的属性。该节点取代旧的多个固定 get 节点，是新图中推荐的 Displayable 读取入口。
 
-## Get Size
+卡片参数：
+- `property` - `position`、`size`、`bounds`、`x`、`y`、`width`、`height`、`rotation`、`opacity`、`visible`
 
-`blueprint.displayable.getSize` - 获取元素尺寸
+输出：
+- `value` - 所选属性值
 
-获取当前元素尺寸。
-- `size` - 元素尺寸，`Vector2D`
+属性语义：
+- `position` 返回 `{ x, y }`
+- `size` 返回 `{ width, height }`
+- `bounds` 返回 `{ x, y, width, height }`
+- `x` / `y` / `width` / `height` / `rotation` / `opacity` 返回 number
+- `visible` 返回 boolean
+兼容说明：旧节点 `Get Position`、`Get Size`、`Get Bounds`、`Get Rotation`、`Get Opacity`、`Get Visible`、`Get Variant` 仍注册以支持旧蓝图，但在创建浮窗中隐藏。新图应使用 `Get Property`。
 
-## Get Bounds
+## Set Property
 
-`blueprint.displayable.getBounds` - 获取元素边界
+`blueprint.displayable.setProperty` - 设置 Displayable 运行时属性
 
-获取当前元素的矩形边界。
-- `bounds` - 元素矩形，JSON object，包含 `x`、`y`、`width`、`height`
+通过节点卡片选择一个可写 Displayable 属性并填写值。写入发生在运行时 patch 层，不直接改 authored UI document；值变化会触发目标元素 flush。
 
-## Get Rotation
+卡片参数：
+- `property` - `x`、`y`、`width`、`height`、`rotation`、`opacity`、`visible`
+- `value` - 属性值；`visible` 使用 Visible / Hidden 下拉，`opacity` 按百分比 `0..100` 输入，其它属性使用 number 输入
 
-`blueprint.displayable.getRotation` - 获取元素旋转角度
+卡片会在数字输入框右侧显示单位：`x` / `y` / `width` / `height` 使用 `px`，`rotation` 使用 `deg`，`opacity` 使用 `%`。
 
-获取当前元素的旋转角度。
-- `rotation` - 旋转角度
+如果 `value` 输入 pin 已经接入数据线，卡片上的 Value 控件会禁用，运行时以传入 pin 值为准。
 
-## Get Opacity
+数字输入采用草稿编辑：输入时不立即写回节点参数，失去输入/节点/窗口焦点或按 Enter 时提交，按 Esc 放弃本次编辑。
 
-`blueprint.displayable.getOpacity` - 获取元素透明度
+可写属性暂不包含 `variant`，Variant 使用 `Set Variant`。
 
-获取当前元素的透明度。
-- `opacity` - 透明度
+## Set Variant
 
-## Get Visible
+`blueprint.displayable.setVariant` - 设置 Appearance Variant
 
-`blueprint.displayable.getVisible` - 获取元素可见状态
+设置目标元素的运行时 Variant 覆盖。Self 版默认绑定当前蓝图所属元素，只有支持 Appearance Variant 的控件会显示该节点；Element 派生版通过 `element` 输入引用目标元素。节点卡片的 `Variant` 字段会在能静态推断目标元素时显示该元素已有 Variants 的下拉列表；`Wait For Animation` 下拉选择是否等待目标 Variant 的 Appearance transition 完成后再继续执行 `Next`。
 
-获取当前元素是否可见。
-- `visible` - 是否可见
+卡片参数：
+- `variantId` - 隐藏持久化值，只能由 Variant 下拉写入
+- `waitForTransition` - `continue` 立即继续，`wait` 等待目标 Variant 上最长的字段 transition；没有 transition 时不会额外等待
+
+Variant 的内部 UUID 只作为隐藏持久化值保存。节点没有 `variantId` 数据输入，也不能手动输入 Variant id；作者只会看到 Variant 名称。运行时会校验目标元素是否支持 Appearance Variant，以及所选 Variant 是否存在。不支持 Variant 的 Displayable 元素执行时提交错误，不会静默忽略。
+
+当 Variant 设置了 `transformOpacity`，运行时会把它投影到同一个 Displayable `opacity`；`nl.image` 还会把 Variant 中相对 Default 实际改动过的 `fillOpacity` 作为 Displayable opacity 来源，并且不会再把这个值写到内部 `<img>` 的 opacity 上。`nl.image` 的非 Default Variant 不覆盖 Default 的 `imageFill`，因此透明 Variant 不会把图片从 `contain` 切成残留的 `crop`。`Set Variant` 本身不持有 runtime opacity patch；它会清理旧的 runtime opacity override，让当前 Variant 决定透明度。因此先切换到透明 Variant，再运行 `Animate Property opacity 0 -> 100` 会从该透明状态正常进入，而不会被 Variant 的透明状态锁住。`Animate Property` 使用 `hold` 时会把最终 opacity 写回运行时 Displayable opacity，后续刷新不会被透明 Variant 再压回 0。
+
+## Animate Property
+
+`blueprint.displayable.animateProperty` - 动画化 Displayable 属性
+
+通过节点卡片选择一个属性并填写动画参数。第一版是属性驱动的基础节点，不内建 Fade / Shake / Pulse 等动画序列；这些序列之后可以作为更高层节点或宏基于本节点构建。
+
+卡片参数：
+- `property` - 要动画化的属性：`opacity`、`offsetX`、`offsetY`、`scale`、`rotation`
+- `from` - 起始值；`opacity` 按百分比输入
+- `to` - 目标值；`opacity` 按百分比输入
+- `duration` - 时长，单位为秒；例如 `0.3` 表示 300ms
+- `delay` - 延迟，单位为秒；例如 `1` 表示 1 秒
+- `easing` - 曲线：`linear`、`easeIn`、`easeOut`、`easeInOut`、`circIn`、`circOut`、`circInOut`
+- `after` - 完成后行为：`hold` 保持最终值，`reset` 回到 authored layout/appearance
+
+卡片会在数字输入框右侧显示单位：`opacity` 使用 `%`，`offsetX` / `offsetY` 使用 `px`，`scale` 使用 `x`，`rotation` 使用 `deg`，`duration` / `delay` 使用 `s`。
+
+数字输入采用草稿编辑：输入时不立即写回节点参数，失去输入/节点/窗口焦点或按 Enter 时提交，按 Esc 放弃本次编辑。
+
+属性语义：
+- `opacity` 使用元素透明度，卡片显示/输入为百分比 `0..100`，运行时归一化为 `0..1`；`after = hold` 会把最终 opacity 持久到运行时 patch，旧图中已经保存的 `0..1` 值仍兼容
+- `offsetX` / `offsetY` 是相对 authored layout 的视觉位移，单位为设计坐标 px
+- `scale` 是视觉缩放倍率，`1` 为原始大小
+- `rotation` 是视觉旋转角度，单位为度
+
+## Stop Animation
+
+`blueprint.displayable.stopAnimation` - 停止 Displayable 动画
+
+清除当前 Displayable runtime animation override，元素回到 authored layout/appearance 和当前 Variant 状态。

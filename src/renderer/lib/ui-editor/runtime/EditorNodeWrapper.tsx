@@ -1,14 +1,22 @@
 import React, { useCallback, useEffect, useMemo } from "react";
 import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
+import { motion } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import {
+    useWidgetRuntimeElementState,
     useWidgetRuntimeElementKey,
     useWidgetRuntimeStateStore,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import { toDisplayableMotionTransition } from "@/lib/ui-editor/runtime/displayableMotion";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
+import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
+import {
+    resolveAppearanceDisplayableOpacity,
+} from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
+import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 
 export type EditorNodeLayoutMode = "absolute" | "flow";
 
@@ -19,8 +27,10 @@ type EditorNodeWrapperProps = {
     /** Flow children are laid out by a flex parent (`nl.container` stack/scroll or `nl.list`); skip absolute x/y. */
     layoutMode?: EditorNodeLayoutMode;
     styleOverrides?: CSSProperties;
+    hasRuntimeOpacityOverride?: boolean;
     hostAdapter?: UIHostAdapter;
     interactive?: boolean;
+    useAppearanceInspectorPreview?: boolean;
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
     children?: React.ReactNode;
@@ -62,21 +72,49 @@ function keyboardEventPayload(event: KeyboardEvent): Record<string, unknown> {
     };
 }
 
+function firstMotionValue(value: number | number[] | undefined, fallback: number): number {
+    if (Array.isArray(value)) {
+        return value.length > 0 ? Number(value[0]) : fallback;
+    }
+    return value ?? fallback;
+}
+
+function displayableOpacityKeysForElementType(elementType: string): readonly string[] {
+    return elementType === "nl.image" ? ["fillOpacity", "transformOpacity"] : ["transformOpacity"];
+}
+
 export function EditorNodeWrapper({
     element,
     layout,
     isRoot = false,
     layoutMode = "absolute",
     styleOverrides,
+    hasRuntimeOpacityOverride = false,
     hostAdapter,
     interactive = true,
+    useAppearanceInspectorPreview = false,
     listItemScope,
     instanceKey,
     children,
 }: EditorNodeWrapperProps) {
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
+    const runtimeElementState = useWidgetRuntimeElementState(element.id);
+    const displayableMotion = runtimeElementState.displayableMotion;
     const blueprintRuntime = hostAdapter?.blueprintRuntime;
+    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const listScopedVariantId =
+        typeof (element.extra as { runtimeVariantOverrideId?: unknown } | undefined)?.runtimeVariantOverrideId === "string"
+            ? String((element.extra as { runtimeVariantOverrideId?: unknown }).runtimeVariantOverrideId)
+            : null;
+    const appearanceOpacity = resolveAppearanceDisplayableOpacity(
+        (element.props as { appearance?: AppearanceModel | null } | undefined)?.appearance,
+        {
+            variantOverrideId: listScopedVariantId ?? runtimeElementState.variantOverrideId ?? inspectorVariantId ?? null,
+            signals: runtimeElementState.signals,
+            displayableOpacityKeys: displayableOpacityKeysForElementType(element.type),
+        },
+    );
     const eventOptions = useMemo(
         () =>
             listItemScope || instanceKey
@@ -281,6 +319,7 @@ export function EditorNodeWrapper({
 
     const containerStyle = useMemo<CSSProperties>(() => {
         const { x, y, width, height, rotation, opacity = 1 } = layout;
+        const effectiveOpacity = hasRuntimeOpacityOverride ? opacity : appearanceOpacity ?? opacity;
         const normalizedWidth = Math.abs(width);
         const normalizedHeight = Math.abs(height);
         const offsetX = Math.min(0, width);
@@ -292,7 +331,7 @@ export function EditorNodeWrapper({
             top: isFlow ? 0 : y + offsetY,
             width: normalizedWidth,
             height: normalizedHeight,
-            opacity,
+            opacity: effectiveOpacity,
             pointerEvents: isRoot ? "none" : "auto",
             boxSizing: "border-box",
             display: "flex",
@@ -307,7 +346,7 @@ export function EditorNodeWrapper({
             isolation: isRoot ? undefined : "isolate",
             ...styleOverrides,
         };
-        if (rotation) {
+        if (rotation && !displayableMotion) {
             const transforms = [];
             if (rotation) {
                 transforms.push(`rotate(${rotation}deg)`);
@@ -316,13 +355,58 @@ export function EditorNodeWrapper({
             style.transformOrigin = "center center";
         }
         return style;
-    }, [layout, isRoot, layoutMode, styleOverrides]);
+    }, [appearanceOpacity, displayableMotion, hasRuntimeOpacityOverride, layout, isRoot, layoutMode, styleOverrides]);
+
+    const motionAnimate = useMemo(() => {
+        if (!displayableMotion) {
+            return undefined;
+        }
+        const baseOpacity = layout.opacity ?? 1;
+        const baseRotation = layout.rotation ?? 0;
+        const target = displayableMotion.target;
+        return {
+            x: target.x ?? 0,
+            y: target.y ?? 0,
+            scale: target.scale ?? 1,
+            rotate: target.rotate ?? baseRotation,
+            opacity: target.opacity ?? baseOpacity,
+        };
+    }, [displayableMotion, layout.opacity, layout.rotation]);
+
+    const motionInitial = useMemo(() => {
+        if (!displayableMotion) {
+            return false;
+        }
+        return {
+            x: firstMotionValue(displayableMotion.target.x, 0),
+            y: firstMotionValue(displayableMotion.target.y, 0),
+            scale: firstMotionValue(displayableMotion.target.scale, 1),
+            rotate: firstMotionValue(displayableMotion.target.rotate, layout.rotation ?? 0),
+            opacity: firstMotionValue(displayableMotion.target.opacity, layout.opacity ?? 1),
+        };
+    }, [displayableMotion, layout.opacity, layout.rotation]);
+
+    const motionTransition = useMemo(
+        () => (displayableMotion ? toDisplayableMotionTransition(displayableMotion.transition) : undefined),
+        [displayableMotion],
+    );
+
+    const onAnimationComplete = useCallback(() => {
+        if (!displayableMotion?.resetOnComplete) {
+            return;
+        }
+        widgetRuntimeStore?.completeDisplayableMotion(runtimeElementKey, displayableMotion.id);
+    }, [displayableMotion, runtimeElementKey, widgetRuntimeStore]);
 
     return (
-        <div
+        <motion.div
             data-ui-element-id={interactive ? element.id : undefined}
             className={`${interactive ? "ui-editor-node" : "ui-editor-node-preview"} ${isRoot ? "ui-editor-node-root" : ""}`}
             style={containerStyle}
+            initial={motionInitial}
+            animate={motionAnimate}
+            transition={motionTransition}
+            onAnimationComplete={onAnimationComplete}
             onPointerEnter={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerEnter : undefined}
             onPointerLeave={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerLeave : undefined}
             onPointerDown={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerDown : undefined}
@@ -337,6 +421,6 @@ export function EditorNodeWrapper({
             onBlur={interactive && (widgetRuntimeStore || blueprintRuntime) ? onBlur : undefined}
         >
             {children}
-        </div>
+        </motion.div>
     );
 }

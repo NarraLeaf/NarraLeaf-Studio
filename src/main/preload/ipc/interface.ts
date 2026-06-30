@@ -55,6 +55,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         isDir: (path: string) => ipcClient.invoke(IPCEventType.fsIsDir, { path }),
         selectFile: (filters: string[], multiple: boolean) => ipcClient.invoke(IPCEventType.fsSelectFile, { filters, multiple }),
         selectDirectory: (multiple: boolean) => ipcClient.invoke(IPCEventType.fsSelectDirectory, { multiple }),
+        grantFileAccessForFiles: (files: ArrayLike<File>) => grantFileAccessForFiles(files),
         hash: (path: string) => ipcClient.invoke(IPCEventType.fsHash, { path }),
         getPathForFile: (file: File) => getPathForFile(file),
     },
@@ -199,4 +200,16 @@ function getPathForFile(file: File): string {
     } catch {
         return "";
     }
+}
+
+function grantFileAccessForFiles(files: ArrayLike<File>) {
+    if (!files || typeof files.length !== "number") {
+        return ipcClient.invoke(IPCEventType.fsGrantFileAccess, { paths: [] });
+    }
+
+    const paths = Array.from(files)
+        .map(file => getPathForFile(file))
+        .filter((path): path is string => path.length > 0);
+
+    return ipcClient.invoke(IPCEventType.fsGrantFileAccess, { paths });
 }

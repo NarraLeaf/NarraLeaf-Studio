@@ -68,10 +68,18 @@ export type StoryScene = {
     id: StorySceneId;
     name: string;
     runtimeName: string;
+    description?: string;
+    defaultBackgroundAssetId?: string;
     rootBlockIds: StoryBlockId[];
     blocks: Record<StoryBlockId, StoryBlock>;
     localVariables?: Record<string, StoryVariableDefinition>;
     meta?: StoryMeta;
+};
+
+export type StorySceneUpdate = {
+    name?: string;
+    description?: string;
+    defaultBackgroundAssetId?: string | null;
 };
 
 export type StoryVariableScope = "studioGlobal" | "gamePersistent" | "sceneLocal";

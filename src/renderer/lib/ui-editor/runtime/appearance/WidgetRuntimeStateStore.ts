@@ -15,6 +15,39 @@ type UIListRuntimeScrollRequestInput = UIListRuntimeScrollRequest extends infer 
         : never
     : never;
 
+export type UIDisplayableMotionValue = number | number[];
+
+export type UIDisplayableMotionTarget = {
+    x?: UIDisplayableMotionValue;
+    y?: UIDisplayableMotionValue;
+    scale?: UIDisplayableMotionValue;
+    rotate?: UIDisplayableMotionValue;
+    opacity?: UIDisplayableMotionValue;
+};
+
+export type UIDisplayableMotionTransition =
+    | {
+          type: "tween";
+          durationMs: number;
+          delayMs?: number;
+          easing?: string;
+      }
+    | {
+          type: "spring";
+          delayMs?: number;
+          stiffness: number;
+          damping: number;
+          mass: number;
+      };
+
+export type UIDisplayableMotionOverride = {
+    id: string;
+    target: UIDisplayableMotionTarget;
+    transition: UIDisplayableMotionTransition;
+    /** One-shot effects such as shake/pulse should hand control back to authored layout when finished. */
+    resetOnComplete?: boolean;
+};
+
 export type WidgetRuntimeSnapshot = {
     hoverTargetId: string | null;
     activePointerId: string | null;
@@ -27,6 +60,7 @@ export type WidgetRuntimeSnapshot = {
     listItems: ReadonlyMap<string, readonly unknown[]>;
     listSelectedIndexes: ReadonlyMap<string, number>;
     listScrollRequests: ReadonlyMap<string, UIListRuntimeScrollRequest>;
+    displayableMotions: ReadonlyMap<string, UIDisplayableMotionOverride>;
 };
 
 /** Stable snapshot when no provider is mounted (e.g. Dev Mode without store). */
@@ -39,6 +73,7 @@ export const STATIC_WIDGET_RUNTIME_SNAPSHOT: WidgetRuntimeSnapshot = Object.free
     listItems: new Map<string, readonly unknown[]>(),
     listSelectedIndexes: new Map<string, number>(),
     listScrollRequests: new Map<string, UIListRuntimeScrollRequest>(),
+    displayableMotions: new Map<string, UIDisplayableMotionOverride>(),
 });
 
 /**
@@ -54,9 +89,11 @@ export class WidgetRuntimeStateStore {
     private readonly listItems = new Map<string, unknown[]>();
     private readonly listSelectedIndexes = new Map<string, number>();
     private readonly listScrollRequests = new Map<string, UIListRuntimeScrollRequest>();
+    private readonly displayableMotions = new Map<string, UIDisplayableMotionOverride>();
     private readonly listeners = new Set<() => void>();
     private snapshot: WidgetRuntimeSnapshot;
     private listScrollRequestVersion = 0;
+    private displayableMotionVersion = 0;
 
     constructor() {
         this.snapshot = this.rebuildSnapshot();
@@ -79,6 +116,7 @@ export class WidgetRuntimeStateStore {
             listItems: new Map(this.listItems),
             listSelectedIndexes: new Map(this.listSelectedIndexes),
             listScrollRequests: new Map(this.listScrollRequests),
+            displayableMotions: new Map(this.displayableMotions),
         };
     }
 
@@ -205,6 +243,40 @@ export class WidgetRuntimeStateStore {
             ...request,
             version: this.listScrollRequestVersion,
         } as UIListRuntimeScrollRequest);
+        this.emit();
+    }
+
+    setDisplayableMotion(
+        elementId: string,
+        motion: Omit<UIDisplayableMotionOverride, "id"> & { id?: string },
+    ): UIDisplayableMotionOverride {
+        this.displayableMotionVersion += 1;
+        const next: UIDisplayableMotionOverride = {
+            ...motion,
+            id: motion.id ?? `${this.displayableMotionVersion}`,
+        };
+        this.displayableMotions.set(elementId, next);
+        this.emit();
+        return next;
+    }
+
+    getDisplayableMotion(elementId: string): UIDisplayableMotionOverride | null {
+        return this.displayableMotions.get(elementId) ?? null;
+    }
+
+    clearDisplayableMotion(elementId: string): void {
+        if (!this.displayableMotions.delete(elementId)) {
+            return;
+        }
+        this.emit();
+    }
+
+    completeDisplayableMotion(elementId: string, motionId: string): void {
+        const current = this.displayableMotions.get(elementId);
+        if (!current || current.id !== motionId || !current.resetOnComplete) {
+            return;
+        }
+        this.displayableMotions.delete(elementId);
         this.emit();
     }
 

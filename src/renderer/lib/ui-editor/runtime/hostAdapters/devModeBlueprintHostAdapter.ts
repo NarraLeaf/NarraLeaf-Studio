@@ -11,6 +11,7 @@ import {
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import type { BlueprintExecutionManager } from "@/lib/ui-editor/blueprint-runtime/BlueprintExecutionManager";
 
 const MAX_FLUSH_CASCADE_ROUNDS = 24;
 
@@ -21,13 +22,14 @@ export type DevModeBlueprintHostAdapterOptions = {
     scopeBridge: ScopeStoreBridge;
     debug: DebugBridge;
     hostApi: BlueprintHostApiRuntime;
+    executionManager?: BlueprintExecutionManager;
 };
 
 /**
  * Build Dev Mode UIHostAdapter base + blueprintRuntime for widget event dispatch and graph execution.
  */
 export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostAdapterOptions): UIHostAdapter {
-    const { bundle, surface, runtimeScopeId, scopeBridge, debug, hostApi } = options;
+    const { bundle, surface, runtimeScopeId, scopeBridge, debug, hostApi, executionManager } = options;
     const effectiveRuntimeScopeId = runtimeScopeId ?? surface.id;
     const document = bundle.ui.uidoc;
     const blueprintDocument = bundle.ui.localBlueprints;
@@ -89,6 +91,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             setSurfaceState: (key, value) => {
                 hostApi.state.set("surface", key, value);
             },
+            executionManager,
         });
         if (eventName === "flush" && flushedElement) {
             const target = {
@@ -109,6 +112,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 setSurfaceState: (key, value) => {
                     hostApi.state.set("surface", key, value);
                 },
+                executionManager,
             });
         }
     };
@@ -239,6 +243,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             setSurfaceState: (key, value) => {
                 hostApi.state.set("surface", key, value);
             },
+            executionManager,
         });
     };
 

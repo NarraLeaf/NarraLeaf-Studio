@@ -119,6 +119,7 @@ function DevModeSurfaceLifecycleLayer(props: {
         if (!bpCore || !hostAdapter.blueprintRuntime) {
             return;
         }
+        bpCore.executionManager.openScope(runtimeScopeId);
         const shouldInit = lifecycleRef.current.onSurfaceEnter(runtimeScopeId);
         if (!shouldInit) {
             return;
@@ -136,6 +137,7 @@ function DevModeSurfaceLifecycleLayer(props: {
             debug: bpCore.debug,
             getSurfaceState: acc.get,
             setSurfaceState: acc.set,
+            executionManager: bpCore.executionManager,
         });
     }, [bpCore, bundle, hostAdapter, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
 
@@ -147,6 +149,7 @@ function DevModeSurfaceLifecycleLayer(props: {
         const scopeToUnmount = runtimeScopeId;
         return () => {
             lifecycleRef.current.onSurfaceExit(scopeToUnmount);
+            bpCore.executionManager.closeScope(scopeToUnmount, "Surface unmounted");
             const acc = makeStateAccessors(scopeToUnmount);
             if (!acc) {
                 return;
@@ -160,6 +163,8 @@ function DevModeSurfaceLifecycleLayer(props: {
                 debug: bpCore.debug,
                 getSurfaceState: acc.get,
                 setSurfaceState: acc.set,
+                executionManager: bpCore.executionManager,
+                allowClosedScopeExecution: true,
             });
         };
     }, [bpCore, bundle, hostAdapter, makeStateAccessors, runtimeScopeId, surface.id]);
@@ -642,6 +647,7 @@ export function DevModeContent(props: DevModeContentProps) {
             scopeBridge: bpCore.scopeBridge,
             debug: bpCore.debug,
             hostApi,
+            executionManager: bpCore.executionManager,
         });
     }, [activeRuntimeScopeId, bundle, activeSurface, bpCore, hostApi]);
 
@@ -684,6 +690,7 @@ export function DevModeContent(props: DevModeContentProps) {
                     debug: bpCore.debug,
                     getSurfaceState: acc.get,
                     setSurfaceState: acc.set,
+                    executionManager: bpCore.executionManager,
                 });
                 await dispatchSurfaceBlueprintEvent({
                     blueprintDocument: bundle.ui.localBlueprints,
@@ -695,6 +702,7 @@ export function DevModeContent(props: DevModeContentProps) {
                     debug: bpCore.debug,
                     getSurfaceState: acc.get,
                     setSurfaceState: acc.set,
+                    executionManager: bpCore.executionManager,
                 });
             })();
         };
@@ -739,6 +747,7 @@ export function DevModeContent(props: DevModeContentProps) {
             debug: bpCore.debug,
             getSurfaceState: acc.get,
             setSurfaceState: acc.set,
+            executionManager: bpCore.executionManager,
         });
     }, [activeRuntimeScopeId, bpCore, bundle, hostAdapter, makeStateAccessors, surface?.id]);
 
@@ -799,6 +808,7 @@ export function DevModeContent(props: DevModeContentProps) {
                     scopeBridge: bpCore.scopeBridge,
                     debug: bpCore.debug,
                     hostApi,
+                    executionManager: bpCore.executionManager,
                 });
                 return nestedHostAdapter;
             },
@@ -815,6 +825,7 @@ export function DevModeContent(props: DevModeContentProps) {
                     return undefined;
                 }
                 if (lifecycleRef.current.onSurfaceEnter(input.runtimeScopeId)) {
+                    bpCore.executionManager.openScope(input.runtimeScopeId);
                     void dispatchSurfaceBlueprintEvent({
                         blueprintDocument: bundle.ui.localBlueprints,
                         surfaceId: input.targetSurface.id,
@@ -824,10 +835,12 @@ export function DevModeContent(props: DevModeContentProps) {
                         debug: bpCore.debug,
                         getSurfaceState: acc.get,
                         setSurfaceState: acc.set,
+                        executionManager: bpCore.executionManager,
                     });
                 }
                 return () => {
                     lifecycleRef.current.onSurfaceExit(input.runtimeScopeId);
+                    bpCore.executionManager.closeScope(input.runtimeScopeId, "Surface unmounted");
                     void dispatchSurfaceBlueprintEvent({
                         blueprintDocument: bundle.ui.localBlueprints,
                         surfaceId: input.targetSurface.id,
@@ -837,6 +850,8 @@ export function DevModeContent(props: DevModeContentProps) {
                         debug: bpCore.debug,
                         getSurfaceState: acc.get,
                         setSurfaceState: acc.set,
+                        executionManager: bpCore.executionManager,
+                        allowClosedScopeExecution: true,
                     });
                 };
             },
