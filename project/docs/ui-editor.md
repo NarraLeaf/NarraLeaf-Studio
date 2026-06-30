@@ -10,8 +10,9 @@
 - 底层仍保留 `appSurface` / `stageSurface` 作为内部数据边界：`appSurface` 映射 Page，`stageSurface` 映射 Game UI。
 - UI document 由 `UIDocumentService` 负责 `editor/ui/uidoc.json` 的创建、迁移、编辑、保存。
 - UI 管理器边栏按 Page / Game UI 创建和浏览界面；Page 创建时可设置画布尺寸，Game UI 固定使用项目分辨率并选择插槽。
+- Dialog Game UI 是 `stageSurface` 的 `dialog` slot。创建时会生成透明背景、底部 dialog panel、`Nametag` 和 `Sentence` 模板；同一 slot 只允许一个 active Game UI。
 - 已有 canvas 编辑、outline、inspector、拖拽/缩放、复制粘贴、分组排列、undo/redo、图片拖放、静态诊断、card preview。
-- 已有 widget module registry 和内置 widget 渲染。插入栏主区包含 Container、Text、Image、Button；Slider、List 和 Page 收在 overflow 菜单。
+- 已有 widget module registry 和内置 widget 渲染。插入栏主区包含 Container、Text、Image、Button；Slider、List 和 Page 收在 overflow 菜单。Dialog slot 私有控件 `Sentence`、`Nametag` 只会在 Dialog Game UI 的 insert palette 和右键 Insert 菜单出现。
 - 已有 local blueprint document：`UIGraphService` 持久化 `editor/ui/uigraphs.json`，`LocalBlueprintService` 操作 private blueprint。
 - 已有 Blueprint Lite editor，可编辑 Page / Game UI / widget private blueprint 的 event graph、variables、fields、TypeScript module source。
 - 已有 Dev Mode UI runtime，可读取磁盘 bundle、执行最小 blueprint runtime、应用 Host API 变更并展示 debug panel。
@@ -46,6 +47,7 @@
 - Main Page 使用稳定 id，运行时按 id 查找，不按 name 查找。
 - Page 底层为 `appSurface`，host 为 `app`。
 - Game UI 底层为 `stageSurface`，host 为 `player`，插槽为 `onStage`、`dialog`、`notification`、`choice`。
+- Dialog Game UI 私有 widget 类型为 `nl.dialog.sentence` 和 `nl.dialog.nametag`。Workspace preview 中它们使用安全预览文本；Dev Mode NarraLeaf 运行时中，`Sentence` 映射 NarraLeaf React `<Texts />`，`Nametag` 映射 `<Nametag />`，并放在 NarraLeaf `<Dialog>` / `DialogContext` 内渲染。
 - Game UI 不再暴露 link 或 layer 配置；Page 在游戏内作为叠层显示的互通由后续 page/layer API 内部管理。
 - Flow parent 主要包括 `nl.stack`、`nl.scroll`、`nl.listRepeater`。
 - `nl.slider` 是数值映射滑块控件，props 使用 `value` / `min` / `max` / `step` / `orientation`。插入时会创建两个专用 `nl.container` 内部部件：`track` 和 `handle`，并通过 `extra.sliderSlot` 与 `trackElementId` / `handleElementId` 识别。
@@ -72,6 +74,7 @@
 - Workspace preview 中 Slider 只读显示当前字面值或 Blueprint Value 初始值推导出的 handle 位置，不通过指针拖拽改值。Dev Mode / 运行时可通过真实交互或 Slider Host API 更新运行时值。
 - 启动 Dev Mode 前，调用方需要确保 dirty UIDocument/UIGraph 已保存；Dev Mode 主进程从磁盘读取 `uidoc.json` 和 `uigraphs.json`。
 - Dev Mode 的 runtime、Host API trace、binding evaluation、debug event bus 在 `src/renderer/apps/dev-mode/` 与 `src/renderer/lib/ui-editor/blueprint-runtime/`。
+- Dev Mode 启动 NarraLeaf 故事时会查找第一个 `mount.slotId: "dialog"` 的 Game UI surface。存在时，会把 Studio Dialog component 注入 `new Game({ dialog })`；该 component 使用独立 runtime scope `nlr:<sessionId>:slot:dialog:<surfaceId>`，接入 Blueprint binding、widget runtime patches 和 surface init/unmount lifecycle。不存在 Dialog Game UI 时，继续使用 NarraLeaf 默认 Dialog。
 - Blueprint Value runtime 在元素挂载时执行 `init`，并在求值期间记录 Element/property 读取依赖。后续 UIDocument/runtime 同步时只比较这些依赖的属性快照；目标属性变化会排队重跑该 value binding，无关 surface/global state 变化不会强制重跑。没有返回值时保留上一次解析值，或退回 UIDocument 中的字面 props。
 - 内部 widget `nl.frame` 在用户界面显示为 Page。它只出现在 Page surface 的 insert palette overflow 中，Game UI 不显示入口。
 - Page 组件不是 iframe；它通过共享 renderer 在当前 UIDocument 中真实渲染目标 Page。目标必须是另一个 Page，不能指向当前 Page、Game UI、缺失 surface，或形成循环嵌套；非法目标显示占位错误而不是中断渲染。
