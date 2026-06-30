@@ -67,6 +67,7 @@ export enum IPCEventType {
     workspaceLaunch = "workspace.launch",
     workspaceSelectFolder = "workspace.selectFolder",
     workspaceClose = "workspace.close",
+    workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
     
@@ -77,6 +78,7 @@ export enum IPCEventType {
     devModePayloadUpdate = "devMode.payload.update",
     devModeControlReload = "devMode.control.reload",
     devModeControlError = "devMode.control.error",
+    devModeResolveAssetUrl = "devMode.resolveAssetUrl",
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
     devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
 
@@ -503,6 +505,15 @@ export type IPCWorkspaceEvents = {
         data: {},
         response: void;
     };
+    [IPCEventType.workspaceResolveAssetUrl]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: {
+            assetId: string;
+            assetType?: string;
+        };
+        response: RequestStatus<{ url: string }>;
+    };
     [IPCEventType.workspaceResolveImageAssetUrl]: {
         type: IPCMessageType.request,
         consumer: IPCType.Client,
@@ -579,6 +590,17 @@ export type IPCDevModeEvents = {
             message: string;
         },
         response: never;
+    };
+    [IPCEventType.devModeResolveAssetUrl]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            assetId: string;
+            assetType?: string;
+        };
+        response: {
+            url: string;
+        };
     };
     [IPCEventType.devModeResolveImageAssetUrl]: {
         type: IPCMessageType.request,

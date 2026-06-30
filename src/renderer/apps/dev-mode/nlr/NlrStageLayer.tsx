@@ -65,9 +65,9 @@ export function NlrStageLayer(props: {
                 <PlayerWithPreloadReady
                     key={session.id}
                     story={session.compiled.story}
-                    width={session.width}
-                    height={session.height}
-                    className="h-full w-full"
+                    width="100%"
+                    height="100%"
+                    className="block h-full w-full overflow-hidden"
                     active={visible}
                     onReady={handleReady}
                     onPreloadedReady={handlePreloadedReady}

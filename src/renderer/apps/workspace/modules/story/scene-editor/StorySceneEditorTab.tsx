@@ -262,7 +262,7 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
                                     onCloseInspector={() => editor.setEditorMode({ kind: "idle" })}
                                     onUpdatePayload={payload => editor.updateBlockPayloadFor(row.block.id, payload)}
                                     onSetDialogueCharacter={characterId => editor.setDialogueCharacter(row.block, characterId)}
-                                    generateTextId={() => editor.uuidService?.generate() ?? `text-${Date.now()}`}
+                                    generateTextId={() => editor.uuidService?.generate() ?? crypto.randomUUID()}
                                     onInsertAfter={() => editor.startInsertAfter(row.block.id, true)}
                                 />
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && editor.editorMode.slot.afterBlockId === row.block.id ? (

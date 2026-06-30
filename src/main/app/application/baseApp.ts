@@ -151,7 +151,7 @@ export class BaseApp {
             return null;
         }
 
-        return this.resolveExistingResource("app-icon.png", "app-icon.icns");
+        return this.resolveExistingResource("app-icon-mac.png", "app-icon.png", "app-icon.icns");
     }
 
     public getDistDir(): string {

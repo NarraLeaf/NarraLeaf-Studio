@@ -223,15 +223,36 @@ function formatAction(payload: StoryActionPayload): string {
         return `/background ${payload.assetId ?? payload.color ?? ""}`.trimEnd();
     }
     if (payload.action === "character") {
-        return `/character ${payload.operation}${payload.characterId ? ` ${payload.characterId}` : ""}`;
+        return `/character ${payload.operation}${payload.characterId ? ` ${payload.characterId}` : payload.objectName ? ` ${payload.objectName}` : ""}`;
     }
     if (payload.action === "audio") {
-        return `/audio ${payload.operation}${payload.assetId ? ` ${payload.assetId}` : ""}`;
+        return `/audio ${payload.operation}${payload.objectName ? ` ${payload.objectName}` : payload.assetId ? ` ${payload.assetId}` : ""}`;
     }
     if (payload.action === "setVariable") {
         return `/set ${payload.target.key} ${String(payload.value)}`;
     }
-    return payload.mode === "duration" ? `/wait ${payload.durationMs ?? 0}ms` : "/wait click";
+    if (payload.action === "wait") {
+        return payload.mode === "duration" ? `/wait ${payload.durationMs ?? 0}ms` : "/wait click";
+    }
+    if (payload.action === "image") {
+        return `/image ${payload.operation} ${payload.objectName}`.trimEnd();
+    }
+    if (payload.action === "displayable") {
+        return `/displayable ${payload.operation} ${payload.target.name}`.trimEnd();
+    }
+    if (payload.action === "text") {
+        return `/text ${payload.operation} ${payload.objectName}${payload.text ? ` ${payload.text}` : ""}`.trimEnd();
+    }
+    if (payload.action === "layer") {
+        return `/layer ${payload.operation} ${payload.objectName}`.trimEnd();
+    }
+    if (payload.action === "video") {
+        return `/video ${payload.operation} ${payload.objectName}`.trimEnd();
+    }
+    if (payload.action === "nvl") {
+        return "/nvl";
+    }
+    return `/effect ${payload.effect}`;
 }
 
 function formatCondition(condition: StoryConditionRef | undefined): string {

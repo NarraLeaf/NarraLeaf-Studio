@@ -92,9 +92,14 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         }
 
         const assetsService = context.services.get<AssetsService>(Services.Assets);
-        const handler = async ({ assetId }: { assetId: string }): Promise<RequestStatus<{ url: string }>> => {
-            const asset = assetsService.getAssets()[AssetType.Image]?.[assetId]
-                ?? assetsService.getAssets()[AssetType.Font]?.[assetId];
+        const handler = async ({ assetId, assetType }: { assetId: string; assetType?: string }): Promise<RequestStatus<{ url: string }>> => {
+            const assets = assetsService.getAssets();
+            const typedAsset = Object.values(AssetType).includes(assetType as AssetType)
+                ? assets[assetType as AssetType]?.[assetId]
+                : undefined;
+            const asset = typedAsset ?? Object.values(AssetType)
+                .map(type => assets[type]?.[assetId])
+                .find(Boolean);
             if (!asset) {
                 return {
                     success: false,
@@ -133,9 +138,11 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             };
         };
 
-        const token = getInterface().workspace.onResolveImageAssetUrl(handler);
+        const assetToken = getInterface().workspace.onResolveAssetUrl(handler);
+        const imageToken = getInterface().workspace.onResolveImageAssetUrl(handler);
         return () => {
-            token.cancel();
+            assetToken.cancel();
+            imageToken.cancel();
         };
     }, [context]);
 

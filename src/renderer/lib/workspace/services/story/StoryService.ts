@@ -20,6 +20,7 @@ import { UuidService } from "../core/UuidService";
 import { AssetsService } from "../core/AssetsService";
 import { AssetLockReason } from "../assets/AssetLockManager";
 import { EventEmitter } from "../ui/EventEmitter";
+import { assertValidStoryId } from "@shared/utils/storyId";
 import {
     createChapter as createStoryChapterModel,
     createEmptyStoryDocument,
@@ -110,7 +111,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const trimmed = this.cleanName(name, "Untitled Story");
         const now = new Date().toISOString();
         const uuid = this.getUuidService();
-        const storyId = uuid.generate();
+        const storyId = this.generateUniqueStoryId();
         const documentPath = storyDocumentRelativePath(storyId);
         const entry = createStoryLibraryEntry({
             id: storyId,
@@ -187,6 +188,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     public async loadStory(storyId: StoryId): Promise<StoryDocument> {
+        assertValidStoryId(storyId);
         const cached = this.documents.get(storyId);
         if (cached) {
             this.syncDocumentAssetLocks(storyId, cached);
@@ -204,6 +206,9 @@ export class StoryService extends Service<StoryService> implements IStoryService
         }
         try {
             const document = normalizeStoryDocument(result.data, new Date().toISOString());
+            if (document.id !== storyId) {
+                throw new Error(`Story document id mismatch: expected ${storyId}, received ${document.id}`);
+            }
             this.documents.set(storyId, document);
             this.syncDocumentAssetLocks(storyId, document);
             this.events.emit("documentChanged", { storyId, document });
@@ -649,6 +654,18 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.events.emit("pluginActionsChanged", this.listPluginActions());
     }
 
+    private generateUniqueStoryId(): StoryId {
+        const uuid = this.getUuidService();
+        for (let attempts = 0; attempts < 10; attempts += 1) {
+            const storyId = uuid.generate();
+            assertValidStoryId(storyId);
+            if (!this.getStoryEntry(storyId)) {
+                return storyId;
+            }
+        }
+        throw new RendererError("Failed to generate a unique story id");
+    }
+
     private getSceneOrThrow(document: StoryDocument, sceneId: StorySceneId): StoryScene {
         const scene = document.scenes[sceneId];
         if (!scene) {
@@ -801,6 +818,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private getStoryDocumentPath(storyId: StoryId): string {
+        assertValidStoryId(storyId);
         return this.getContext().project.resolve(ProjectNameConvention.EditorStoryDocument(storyId));
     }
 
@@ -825,6 +843,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private async ensureStoryDocumentDir(storyId: StoryId): Promise<void> {
+        assertValidStoryId(storyId);
         await this.ensureStoryDirs();
         const fs = this.getFileSystem();
         const dir = this.getStoryDocumentDir(storyId);
@@ -841,6 +860,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
     }
 
     private getStoryDocumentDir(storyId: StoryId): string {
+        assertValidStoryId(storyId);
         return this.getContext().project.resolve(ProjectNameConvention.EditorStoryStories, `${storyId}/`);
     }
 }

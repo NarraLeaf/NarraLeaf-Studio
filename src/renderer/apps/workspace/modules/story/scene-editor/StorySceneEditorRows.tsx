@@ -344,7 +344,11 @@ export function InsertRow(props: {
 
 function getActionCommandOptions(query: string) {
     const normalizedQuery = query.trim().toLowerCase();
-    return ACTION_COMMANDS.filter(command => !normalizedQuery || command.label.toLowerCase().includes(normalizedQuery) || command.id.toLowerCase().includes(normalizedQuery));
+    return ACTION_COMMANDS.filter(command => !normalizedQuery ||
+        command.label.toLowerCase().includes(normalizedQuery) ||
+        command.id.toLowerCase().includes(normalizedQuery) ||
+        command.detail.toLowerCase().includes(normalizedQuery) ||
+        command.nlrCapability?.toLowerCase().includes(normalizedQuery));
 }
 
 function getCharacterOptions(characters: Character[], query: string) {

@@ -83,7 +83,8 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
             }
             return command.label.toLowerCase().includes(normalizedQuery) ||
                 command.id.toLowerCase().includes(normalizedQuery) ||
-                command.detail.toLowerCase().includes(normalizedQuery);
+                command.detail.toLowerCase().includes(normalizedQuery) ||
+                command.nlrCapability?.toLowerCase().includes(normalizedQuery);
         });
     }, [activeCategoryId, query, starredIds]);
 
