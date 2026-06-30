@@ -11,6 +11,7 @@ import type {
 } from "../../../ui-editor/runtime/types";
 import { resolveSurfaceRootElementId } from "../../../ui-editor/runtime/resolveSurfaceRoot";
 import { SurfaceElementTree } from "../../../ui-editor/runtime/surface/SurfaceElementTree";
+import { getSurfaceBackgroundColor } from "../../../ui-editor/runtime/surfaceBackground";
 import { Service } from "../Service";
 import { IUIRuntimeBridgeService, Services, WorkspaceContext } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
@@ -51,7 +52,7 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
             width: surface.designSize.width,
             height: surface.designSize.height,
             overflow: "hidden",
-            backgroundColor: surface.settings?.backgroundColor ?? "#ffffff",
+            backgroundColor: getSurfaceBackgroundColor(surface),
             ...options.style,
         };
 

@@ -771,11 +771,11 @@ export function UIEditorDockerBar({
     runtimeBridge,
     enableComponents = true,
 }: UIEditorDockerBarProps) {
-    const surfaceKind = useMemo(() => {
-        return documentService.getDocument().surfaces.find(surface => surface.id === surfaceId)?.kind;
+    const surface = useMemo(() => {
+        return documentService.getDocument().surfaces.find(candidate => candidate.id === surfaceId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [documentService, surfaceId]);
-    const paletteEntries = useMemo(() => listInsertPaletteEntries(surfaceKind), [surfaceKind]);
+    const paletteEntries = useMemo(() => listInsertPaletteEntries(surface), [surface]);
     const primaryEntries = useMemo(
         () => paletteEntries.filter(entry => entry.placement === "primary"),
         [paletteEntries],

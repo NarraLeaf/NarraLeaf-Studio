@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_UI_PAGE_ANIMATION_SETTINGS } from "@shared/types/ui-editor/pageAnimation";
-import { getUIComponentLink, type UIElement } from "@shared/types/ui-editor/document";
+import {
+    UI_DOCUMENT_SCHEMA_VERSION,
+    getUIComponentLink,
+    type UIElement,
+    type UIDocument,
+    type UIStageSurface,
+} from "@shared/types/ui-editor/document";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { Services } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
@@ -57,7 +63,7 @@ describe("UIDocumentService surface creation", () => {
         expect(page.settings?.pageAnimation?.exitBlocking).toBe(true);
     });
 
-    it("preserves explicit Page animation wait choices and leaves Game UI creation unchanged", () => {
+    it("preserves explicit Page animation wait choices while Game UI defaults to transparent", () => {
         const { service } = createHarness();
 
         const page = service.createSurface({
@@ -81,6 +87,109 @@ describe("UIDocumentService surface creation", () => {
         expect(page.settings?.backgroundColor).toBe("#111111");
         expect(page.settings?.pageAnimation?.exitBlocking).toBe(false);
         expect(gameUi.settings?.pageAnimation).toBeUndefined();
+        expect(gameUi.settings?.backgroundColor).toBe("transparent");
+        expect(gameUi.kind === "stageSurface" ? gameUi.mount.slotId : null).toBe("onStage");
+    });
+
+    it("creates Dialog Game UI with slot mount and private widget template", () => {
+        const { service } = createHarness();
+
+        const dialog = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "Dialog",
+            stageMount: { kind: "slot", slotId: "dialog" },
+        }) as UIStageSurface;
+        const doc = service.getDocument();
+        const root = doc.elements[dialog.rootElementId]!;
+        const panel = doc.elements[root.childrenIds[0]!]!;
+        const stack = doc.elements[panel.childrenIds[0]!]!;
+        const children = stack.childrenIds.map(id => doc.elements[id]!.type);
+
+        expect(dialog.mount.slotId).toBe("dialog");
+        expect(dialog.settings?.backgroundColor).toBe("transparent");
+        expect(panel.type).toBe("nl.container");
+        expect(children).toEqual(["nl.dialog.nametag", "nl.dialog.sentence"]);
+    });
+
+    it("returns the existing active Game UI when creating a duplicate slot", () => {
+        const { service } = createHarness();
+
+        const first = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "Dialog",
+            stageMount: { kind: "slot", slotId: "dialog" },
+        });
+        const second = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "Dialog Duplicate",
+            stageMount: { kind: "slot", slotId: "dialog" },
+        });
+
+        const dialogSurfaces = service.getDocument().surfaces.filter(surface =>
+            surface.kind === "stageSurface" && surface.mount.slotId === "dialog"
+        );
+        expect(second.id).toBe(first.id);
+        expect(dialogSurfaces).toHaveLength(1);
+        expect(dialogSurfaces[0]?.name).toBe("Dialog");
+    });
+
+    it("migrates legacy stage mounts and slot aliases", () => {
+        const { service } = createHarness();
+        const base = service.getDocument();
+        const migrated = (service as any).migrateIfNeeded({
+            ...base,
+            schemaVersion: 9,
+            surfaces: [
+                base.surfaces[0]!,
+                {
+                    id: "legacy-menu",
+                    name: "Menu",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 1280, height: 720 },
+                    rootElementId: base.surfaces[0]!.rootElementId,
+                    settings: {},
+                    mount: { kind: "slot", slotId: "menu" },
+                },
+                {
+                    id: "legacy-layer",
+                    name: "Layer",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 1280, height: 720 },
+                    rootElementId: base.surfaces[0]!.rootElementId,
+                    settings: {},
+                    mount: { kind: "layer" },
+                },
+                {
+                    id: "legacy-missing",
+                    name: "Missing",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 1280, height: 720 },
+                    rootElementId: base.surfaces[0]!.rootElementId,
+                    settings: {},
+                    mount: { kind: "slot", slotId: "unknown" },
+                },
+            ],
+        } as UIDocument) as UIDocument;
+
+        const slots = new Map(
+            migrated.surfaces
+                .filter((surface): surface is UIStageSurface => surface.kind === "stageSurface")
+                .map(surface => [surface.id, surface.mount.slotId]),
+        );
+        expect(migrated.schemaVersion).toBe(UI_DOCUMENT_SCHEMA_VERSION);
+        expect(slots.get("legacy-menu")).toBe("choice");
+        expect(slots.get("legacy-layer")).toBe("onStage");
+        expect(slots.get("legacy-missing")).toBe("onStage");
+        for (const surface of migrated.surfaces.filter((surface): surface is UIStageSurface => surface.kind === "stageSurface")) {
+            expect(surface.mount.kind).toBe("slot");
+            expect(surface.settings?.backgroundColor).toBe("transparent");
+        }
     });
 
     it("renames the main Page display name while preserving the main surface id", () => {

@@ -102,7 +102,7 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.actionIdBindings.find(binding => binding.blockId === "say")?.staticId).toContain("text-say");
     });
 
-    it("applies a scene default background before authored rows", async () => {
+    it("uses the NarraLeaf scene initial background for scene defaults", async () => {
         const document = baseDocument({
             say: narrationBlock("say", "text-say", "The room is quiet."),
         }, ["say"]);
@@ -120,10 +120,8 @@ describe("compileStudioStoryToNlr", () => {
 
         expect(compiled.diagnostics).toEqual([]);
         expect(calls).toEqual(["image:asset-default-bg"]);
-        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual([
-            "__scene_default_background",
-            "say",
-        ]);
+        expect((compiled.scene.background as any).state.currentSrc).toBe("nlr://asset-default-bg");
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual(["say"]);
     });
 
     it("compiles choice, condition, variables, and skips script-only blocks with diagnostics", async () => {

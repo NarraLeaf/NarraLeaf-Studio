@@ -3,7 +3,7 @@ import { getUIListChildSlot, isUIListScrollbarSlot } from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
 import { getUISliderChildSlot } from "./slider";
 
-export const UI_DOCUMENT_SCHEMA_VERSION = 9 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 10 as const;
 
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;
