@@ -146,6 +146,7 @@ function readNode(input: {
     target: WidgetTarget;
     mode: TargetMode;
     category?: string;
+    hideInPalette?: boolean;
 }): BlueprintNodeDef {
     const elementTarget = input.mode === "element";
     return {
@@ -154,6 +155,7 @@ function readNode(input: {
         category: input.category ?? (elementTarget ? "Element" : input.target.label),
         keywords: input.keywords,
         graphKinds: [...READ_GRAPH_KINDS],
+        hideInPalette: input.hideInPalette,
         isPure: true,
         pins: elementTarget ? [elementIn(input.target), input.output] : [input.output],
         magicElementTarget: elementTarget ? { inputPinId: "element", elementTypes: [input.target.elementType] } : undefined,
@@ -170,6 +172,7 @@ function writeNode(input: {
     target: WidgetTarget;
     mode: TargetMode;
     category?: string;
+    hideInPalette?: boolean;
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
     execute: BlueprintNodeDef["execute"];
 }): BlueprintNodeDef {
@@ -180,6 +183,7 @@ function writeNode(input: {
         category: input.category ?? (elementTarget ? "Element" : input.target.label),
         keywords: input.keywords,
         graphKinds: [...WRITE_GRAPH_KINDS],
+        hideInPalette: input.hideInPalette,
         isPure: false,
         isLatent: true,
         pins: elementTarget
@@ -252,14 +256,15 @@ function commonNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[]
                 output: out("variantId", "Variant", "string"),
                 target,
                 mode,
+                hideInPalette: true,
             }),
             writeNode({
                 type: `${prefix}.setVariant`,
                 displayName: `Set ${labelPrefix}Variant`,
                 keywords: [target.key, "variant", "appearance", "set"],
-                pins: [stringIn("variantId", "Variant")],
                 target,
                 mode,
+                hideInPalette: true,
                 execute: async ctx => {
                     const api = requireHostApi(ctx);
                     await api.widget.setVariant(

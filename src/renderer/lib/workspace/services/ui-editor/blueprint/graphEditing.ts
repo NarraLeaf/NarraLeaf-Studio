@@ -1,6 +1,14 @@
 import type { BlueprintGraphEdge, BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
@@ -228,6 +236,34 @@ export function createGraphNodeForPalette(type: string, id: string): BlueprintGr
         base.params = { value: { x: 0, y: 0 } };
     } else if (type === BLUEPRINT_NODE_TYPE_LITERAL_RECT) {
         base.params = { value: { x: 0, y: 0, width: 0, height: 0 } };
+    } else if (
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY
+    ) {
+        base.params = {
+            property: "opacity",
+            from: 0,
+            to: 100,
+            duration: 0.3,
+            delay: 0,
+            easing: "easeOut",
+            after: "hold",
+        };
+    } else if (
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY
+    ) {
+        base.params = { property: "position" };
+    } else if (
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY
+    ) {
+        base.params = { property: "opacity", value: 100 };
+    } else if (
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT
+    ) {
+        base.params = { waitForTransition: "continue" };
     } else if (type === BLUEPRINT_NODE_TYPE_LITERAL_JSON) {
         base.params = { value: {} };
     } else if (type === BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL) {

@@ -483,6 +483,23 @@ function formatExecutionError(ev: Extract<BlueprintDebugEvent, { type: "executio
     return parts.join(" · ");
 }
 
+function formatExecutionCancelled(ev: Extract<BlueprintDebugEvent, { type: "execution.cancelled" }>): string {
+    const parts = [ev.reason || "cancelled"];
+    if (ev.blueprintId) {
+        parts.push(`bp:${ev.blueprintId.slice(0, 8)}…`);
+    }
+    if (ev.eventId) {
+        parts.push(`evt:${ev.eventId}`);
+    }
+    if (ev.nodeId) {
+        parts.push(`node:${ev.nodeId.slice(0, 10)}…`);
+    }
+    if (ev.graphId) {
+        parts.push(`graph:${String(ev.graphId).slice(0, 14)}…`);
+    }
+    return parts.join(" · ");
+}
+
 export function getBlueprintDebugEventLogLevel(ev: BlueprintDebugEvent): BlueprintOutputLogLevel {
     if (ev.type === "execution.error") {
         return "error";
@@ -540,6 +557,8 @@ function formatEvent(ev: BlueprintDebugEvent): string {
             return `${ev.blueprintId.slice(0, 8)}… / ${ev.executionId.slice(0, 8)}…`;
         case "execution.error":
             return formatExecutionError(ev);
+        case "execution.cancelled":
+            return formatExecutionCancelled(ev);
         case "node.enter":
         case "node.exit":
             return `${ev.nodeId.slice(0, 12)}…`;

@@ -20,8 +20,10 @@ import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { getUIListChildSlot } from "@shared/types/ui-editor/list";
 import {
+    applyBlueprintIrConnection,
     createGraphNodeForPalette,
     ensureBlueprintGraphIr,
     graphIrHasFunctionEntry,
@@ -59,6 +61,8 @@ import type {
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
 } from "@shared/types/blueprint/graph";
@@ -269,34 +273,105 @@ function isElementBindingNodeType(type: string): boolean {
     return type === BLUEPRINT_NODE_TYPE_ELEMENT_REF || type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH;
 }
 
+function elementVariantOptions(
+    element: UIElement | undefined,
+    targetLabel?: string,
+): NonNullable<BlueprintFlowNodeData["displayableTargetVariants"]> {
+    if (!element) {
+        return {
+            supported: false,
+            options: [],
+            message: "Target element is missing",
+        };
+    }
+    const appearance = (element.props as { appearance?: unknown } | undefined)?.appearance;
+    if (!isAppearanceModel(appearance)) {
+        return {
+            supported: false,
+            targetLabel,
+            options: [],
+            message: `${targetLabel ?? element.name ?? element.id} does not support variants`,
+        };
+    }
+    return {
+        supported: true,
+        targetLabel,
+        options: appearance.variants.map((variant, index) => ({
+            value: variant.id,
+            label: variant.name?.trim() || `Variant ${index + 1}`,
+        })),
+        message: targetLabel,
+    };
+}
+
 function previewNumber(value: number | undefined, fallback: number): number {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 function ElementLiteralSurfacePreview({
     runtimeBridge,
+    document,
     surface,
     element,
 }: {
     runtimeBridge: UIRuntimeBridgeService;
+    document: UIDocument;
     surface: UISurface;
     element: UIElement;
 }) {
-    const width = Math.max(1, previewNumber(element.layout.width, 1));
-    const height = Math.max(1, previewNumber(element.layout.height, 1));
-    const x = previewNumber(element.layout.x, 0);
-    const y = previewNumber(element.layout.y, 0);
+    const width = Math.max(1, Math.abs(previewNumber(element.layout.width, 1)));
+    const height = Math.max(1, Math.abs(previewNumber(element.layout.height, 1)));
     const scale = Math.max(
         0.02,
         Math.min(2.2, ELEMENT_LITERAL_PREVIEW_WIDTH / width, ELEMENT_LITERAL_PREVIEW_HEIGHT / height),
     );
     const frameWidth = Math.max(24, Math.min(ELEMENT_LITERAL_PREVIEW_WIDTH, width * scale));
     const frameHeight = Math.max(18, Math.min(ELEMENT_LITERAL_PREVIEW_HEIGHT, height * scale));
-    const rendered = runtimeBridge.renderSurface({
-        surfaceId: surface.id,
+    const previewSurfaceId = `${surface.id}:element-preview:${element.id}`;
+    const previewDocument = useMemo<UIDocument>(() => {
+        const previewRoot: UIElement = {
+            ...element,
+            parentId: null,
+            childrenIds: [...element.childrenIds],
+            layout: {
+                ...element.layout,
+                x: 0,
+                y: 0,
+                width,
+                height,
+            },
+            props: element.props ? { ...element.props } : undefined,
+            style: element.style ? { ...element.style } : undefined,
+            behavior: element.behavior ? { ...element.behavior } : undefined,
+            valueBindings: element.valueBindings ? { ...element.valueBindings } : undefined,
+            extra: element.extra ? { ...element.extra } : undefined,
+        };
+        const previewSurface: UISurface = {
+            ...surface,
+            id: previewSurfaceId,
+            name: `${surface.name} Element Preview`,
+            designSize: { width, height },
+            rootElementId: element.id,
+            settings: {
+                ...(surface.settings ?? {}),
+                backgroundColor: "transparent",
+            },
+        };
+        return {
+            ...document,
+            surfaces: [previewSurface, ...document.surfaces.filter(item => item.id !== previewSurfaceId)],
+            elements: {
+                ...document.elements,
+                [element.id]: previewRoot,
+            },
+        };
+    }, [document, element, height, previewSurfaceId, surface, width]);
+    const rendered = runtimeBridge.renderDocumentSurface({
+        document: previewDocument,
+        surfaceId: previewSurfaceId,
         hostAdapter: { host: surface.host },
         className: "pointer-events-none select-none",
-        style: { backgroundColor: surface.settings?.backgroundColor ?? "#ffffff" },
+        style: { backgroundColor: "transparent" },
         editorChrome: false,
     });
 
@@ -321,8 +396,8 @@ function ElementLiteralSurfacePreview({
                 <div
                     className="absolute"
                     style={{
-                        left: -x * scale,
-                        top: -y * scale,
+                        left: 0,
+                        top: 0,
                         transform: `scale(${scale})`,
                         transformOrigin: "top left",
                         pointerEvents: "none",
@@ -742,6 +817,14 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 // Mutate `draft` in place — `ensureBlueprintGraphIr(draft)` returns a new object, so assigning
                 // to that copy would not update the IR reference held by LocalBlueprintService.
                 draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
+                if (entry.magicElementRef) {
+                    draft.edges = applyBlueprintIrConnection(draft, {
+                        source: entry.magicElementRef.sourceNodeId,
+                        sourceHandle: entry.magicElementRef.sourcePortId,
+                        target: node.id,
+                        targetHandle: entry.magicElementRef.targetPortId,
+                    });
+                }
             };
             if (editor.graphView.kind === "event") {
                 localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
@@ -1039,6 +1122,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         isComponentDefinitionGraph,
         listItemContextAvailable,
         payload.surfaceId,
+        revision,
         widgetElement?.type,
         widgetEventLayerSlots,
         widgetLogicEvents,
@@ -1073,6 +1157,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                     <ElementLiteralSurfacePreview
                         key={`${node.id}:${ref.surfaceId}:${ref.elementId}:${uiDocumentRevision}`}
                         runtimeBridge={runtimeBridge}
+                        document={uiDocument}
                         surface={surface}
                         element={element}
                     />
@@ -1081,6 +1166,48 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         }
         return previews;
     }, [blueprintDocumentService, editor.graphView, ir, runtimeBridge, uiDocumentRevision]);
+
+    const displayableTargetVariantsByNodeId = useMemo(() => {
+        const activeIr = editor.graphView ? ir : null;
+        if (!activeIr) {
+            return {};
+        }
+        const currentDocument = blueprintDocumentService.getDocument();
+        const out: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]> = {};
+        for (const node of Object.values(activeIr.nodes ?? {})) {
+            if (node.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT) {
+                const label = widgetElement?.name?.trim() || widgetElement?.id;
+                out[node.id] = elementVariantOptions(widgetElement, label);
+                continue;
+            }
+            if (node.type !== BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT) {
+                continue;
+            }
+            const edge = activeIr.edges?.find(item => item.to.nodeId === node.id && item.to.port === "element");
+            if (!edge) {
+                out[node.id] = {
+                    supported: false,
+                    options: [],
+                    message: "Connect an Element ref to preview variants",
+                };
+                continue;
+            }
+            const sourceNode = activeIr.nodes?.[edge.from.nodeId];
+            if (!sourceNode || !isElementBindingNodeType(sourceNode.type) || edge.from.port !== "element") {
+                out[node.id] = {
+                    supported: false,
+                    options: [],
+                    message: "Static Element target required for variant list",
+                };
+                continue;
+            }
+            const ref = readBlueprintElementRefParams(sourceNode.params);
+            const element = ref ? currentDocument.elements[ref.elementId] : undefined;
+            const label = element?.name?.trim() || element?.id || ref?.elementId;
+            out[node.id] = elementVariantOptions(element, label);
+        }
+        return out;
+    }, [blueprintDocumentService, editor.graphView, ir, revision, uiDocumentRevision, widgetElement]);
 
     const contextTitle = useMemo(
         () =>
@@ -1300,7 +1427,6 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const header = (
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5" title={contextTitle}>
             <span className="text-sm font-semibold text-white">Blueprint</span>
-            <BlueprintFrontendBadge kind="visual" />
             <span className="truncate font-mono text-[11px] text-gray-400">{bp.name}</span>
         </div>
     );
@@ -1331,6 +1457,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                         dynamicSelectOptions={dynamicSelectOptions}
                         diagnostics={diagnostics}
                         elementPreviews={elementPreviews}
+                        displayableTargetVariantsByNodeId={displayableTargetVariantsByNodeId}
                         onBindElementLiteral={onBindElementLiteral}
                         initialViewport={initialFlowViewport}
                         onViewportChange={onFlowViewportChange}

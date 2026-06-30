@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
@@ -77,6 +77,42 @@ describe("createImageDockerBarItems", () => {
         expect(getAppearanceImageFill(element.props?.appearance as AppearanceModel)).toMatchObject({
             mode: "contain",
             assetId: "appearance-asset",
+        });
+    });
+
+    it("exits crop interaction when changing fit mode away from crop", () => {
+        const element = createImageElement({
+            fillType: "image",
+            imageFill: { mode: "crop", assetId: "asset-1" },
+        });
+        const documentService = createDocumentService(element);
+        const setInteractionOverride = vi.fn();
+        const items = createImageDockerBarItems({
+            element,
+            documentService: documentService as never,
+            stateService: {
+                getInteractionOverride: () => ({
+                    kind: "imageCrop",
+                    surfaceId: "surface-1",
+                    elementId: element.id,
+                    source: "test",
+                }),
+                setInteractionOverride,
+            } as never,
+            surfaceId: "surface-1",
+        });
+        const fitItem = items.find(item => item.id === "docker-image-fill-mode");
+
+        if (!fitItem || fitItem.kind !== "select") {
+            throw new Error("Missing image fit Docker Bar select");
+        }
+
+        fitItem.onChange("contain");
+
+        expect(setInteractionOverride).toHaveBeenCalledWith(null);
+        expect(element.props?.imageFill).toMatchObject({
+            mode: "contain",
+            assetId: "asset-1",
         });
     });
 });

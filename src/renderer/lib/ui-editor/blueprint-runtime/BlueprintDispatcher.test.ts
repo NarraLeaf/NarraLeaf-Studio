@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -15,6 +15,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
+    BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
 import {
@@ -30,6 +31,7 @@ import {
     releaseBlueprintWidgetLocals,
 } from "./blueprintWidgetLocals";
 import { DebugBridge } from "./DebugBridge";
+import { BlueprintExecutionManager } from "./BlueprintExecutionManager";
 import { createExplicitBlueprintVariableRef } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 
 describe("BlueprintDispatcher", () => {
@@ -701,6 +703,111 @@ describe("BlueprintDispatcher", () => {
                 surfaceId: "surface",
             }).initialized,
         ).toBe("yes");
+    });
+
+    it("cancels pending surface graph executions when their runtime scope closes", async () => {
+        vi.useFakeTimers();
+        try {
+            const surfaceBlueprintId = "bp-surface-cancel";
+            const runtimeScopeId = "surface:cancel-test";
+            const blueprintDocument: BlueprintDocument = {
+                schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+                persistentVariables: {},
+                blueprints: {
+                    [surfaceBlueprintId]: {
+                        id: surfaceBlueprintId,
+                        name: "Surface Cancel",
+                        owner: { kind: "surfaceMain", surfaceId: "surface" },
+                        frontend: "visual",
+                        programKind: "graph",
+                        members: {
+                            variables: {
+                                initialized: {
+                                    id: "initialized",
+                                    name: "initialized",
+                                    valueType: "string",
+                                    defaultValue: "no",
+                                },
+                            },
+                            fields: {},
+                            functions: {},
+                        },
+                        bindings: {},
+                        program: {
+                            kind: "graph",
+                            graphs: {
+                                events: {
+                                    surfaceInit: {
+                                        id: "surfaceInit",
+                                        graph: {
+                                            nodes: {
+                                                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT },
+                                                delay: {
+                                                    id: "delay",
+                                                    type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                                                    params: { duration: 1 },
+                                                },
+                                                setInitialized: {
+                                                    id: "setInitialized",
+                                                    type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                    params: { variableId: "initialized", value: "yes" },
+                                                },
+                                            },
+                                            edges: [
+                                                { from: { nodeId: "head", port: "then" }, to: { nodeId: "delay", port: "in" } },
+                                                { from: { nodeId: "delay", port: "completed" }, to: { nodeId: "setInitialized", port: "in" } },
+                                            ],
+                                        },
+                                    },
+                                },
+                                functions: {},
+                            },
+                        },
+                    },
+                },
+                ownerRecords: {
+                    "surfaceMain:surface": {
+                        activeBlueprintId: surfaceBlueprintId,
+                        privateBlueprintIds: [surfaceBlueprintId],
+                        initializedFrontend: "visual",
+                    },
+                },
+            };
+            const debug = new DebugBridge();
+            const executionManager = new BlueprintExecutionManager();
+            executionManager.openScope(runtimeScopeId);
+            const hostAdapter: UIHostAdapter = { host: "player" };
+
+            const dispatch = dispatchSurfaceBlueprintEvent({
+                blueprintDocument,
+                surfaceId: "surface",
+                runtimeScopeId,
+                eventName: "surfaceInit",
+                hostAdapter,
+                debug,
+                getSurfaceState: () => undefined,
+                setSurfaceState: () => undefined,
+                executionManager,
+            });
+
+            await Promise.resolve();
+            executionManager.closeScope(runtimeScopeId, "Surface unmounted");
+            await expect(dispatch).resolves.toBeUndefined();
+            await vi.advanceTimersByTimeAsync(1000);
+
+            expect(
+                acquireBlueprintExecutionLocals({
+                    blueprintDocument,
+                    currentBlueprintId: surfaceBlueprintId,
+                    surfaceId: "surface",
+                    runtimeScopeId,
+                }).initialized,
+            ).toBe("no");
+            expect(debug.snapshot().some(event => event.type === "execution.cancelled")).toBe(true);
+            expect(debug.snapshot().some(event => event.type === "execution.error")).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("dispatches global and surface any-key event payloads", async () => {

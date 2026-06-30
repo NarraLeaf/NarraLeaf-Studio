@@ -64,18 +64,26 @@ export type AppearanceResolveContext = {
     /** Runtime override for active variant (e.g. blueprint setVariant in P4). */
     variantOverrideId?: string | null;
     signals: SystemInteractionSignals;
+    displayableOpacityKeys?: readonly string[];
 };
 
 export type TextResolvedVisualProps = Omit<TextWidgetProps, "appearance">;
 
 function pickLastMatchingRowValue(rows: AppearanceValueRow[], signals: SystemInteractionSignals): unknown {
-    let picked: unknown = undefined;
+    return pickLastMatchingRow(rows, signals)?.value;
+}
+
+function pickLastMatchingRow(
+    rows: AppearanceValueRow[],
+    signals: SystemInteractionSignals,
+): AppearanceValueRow | null {
+    let pickedRow: AppearanceValueRow | null = null;
     for (const row of rows) {
         if (conditionMatches(row.conditions, signals)) {
-            picked = row.value;
+            pickedRow = row;
         }
     }
-    return picked;
+    return pickedRow;
 }
 
 function resolveActiveVariant(appearance: AppearanceModel, variantOverrideId?: string | null) {
@@ -738,6 +746,74 @@ function isUsableAppearance(appearance: AppearanceModel | null | undefined): app
     return Boolean(appearance && appearance.variants.length > 0);
 }
 
+function resolveAppearanceOpacityFromKeys(
+    variant: ReturnType<typeof resolveActiveVariant>,
+    ctx: AppearanceResolveContext,
+    keys: readonly string[],
+    defaultVariant?: ReturnType<typeof resolveActiveVariant>,
+): { key: string; row: AppearanceValueRow } | null {
+    if (!variant) {
+        return null;
+    }
+    const candidates: Array<{ key: string; row: AppearanceValueRow }> = [];
+    for (const key of keys) {
+        const group = variant.propertyGroups.find(item => item.key === key);
+        if (!group) {
+            continue;
+        }
+        const row = pickLastMatchingRow(group.rows, ctx.signals);
+        if (row) {
+            candidates.push({ key, row });
+        }
+    }
+    if (candidates.length > 1 && defaultVariant && defaultVariant.id !== variant.id) {
+        const changed = candidates.find(candidate => {
+            const current = coerceNumber(candidate.row.value);
+            if (current === undefined) {
+                return false;
+            }
+            const defaultGroup = defaultVariant.propertyGroups.find(item => item.key === candidate.key);
+            const defaultRow = defaultGroup ? pickLastMatchingRow(defaultGroup.rows, ctx.signals) : null;
+            const baseline = defaultRow ? coerceNumber(defaultRow.value) : undefined;
+            return baseline === undefined || baseline !== current;
+        });
+        if (changed) {
+            return changed;
+        }
+    }
+    return candidates[0] ?? null;
+}
+
+export function resolveAppearanceDisplayableOpacity(
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext,
+): number | null {
+    if (!isUsableAppearance(appearance)) {
+        return null;
+    }
+    const variant = resolveActiveVariant(appearance, ctx.variantOverrideId);
+    if (!variant) {
+        return null;
+    }
+    const defaultVariant = appearance.variants.find(v => v.id === appearance.defaultVariantId) ?? appearance.variants[0] ?? null;
+    const resolved = resolveAppearanceOpacityFromKeys(
+        variant,
+        ctx,
+        ctx.displayableOpacityKeys ?? ["transformOpacity"],
+        defaultVariant,
+    );
+    if (!resolved) {
+        return null;
+    }
+    const isDefaultVariant = defaultVariant?.id === variant.id;
+    const hasConditions = Boolean(resolved.row.conditions && Object.keys(resolved.row.conditions).length > 0);
+    if (isDefaultVariant && !hasConditions) {
+        return null;
+    }
+    const n = coerceNumber(resolved.row.value);
+    return n === undefined ? null : Math.max(0, Math.min(1, n));
+}
+
 /**
  * Resolve rectangle-like chrome for `nl.container`: legacy baseline from element props, then appearance overlays.
  * `clipContent` stays on flat `element.props` (merged via `getContainerProps`); it is not driven by appearance
@@ -796,9 +872,20 @@ export function resolveImageRectangleLike(
     if (!variant) {
         return baseline;
     }
+    const defaultVariant = appearance.variants.find(v => v.id === appearance.defaultVariantId) ?? appearance.variants[0] ?? null;
     const next: RectangleLikeProps = { ...baseline };
+    const defaultImageFillGroup = defaultVariant?.propertyGroups.find(group => group.key === "imageFill");
+    const defaultImageFill = defaultImageFillGroup
+        ? pickLastMatchingRowValue(defaultImageFillGroup.rows, ctx.signals)
+        : undefined;
+    if (defaultImageFill !== undefined) {
+        applyContainerKey(next, "imageFill", defaultImageFill);
+    }
     for (const group of variant.propertyGroups) {
         const key = group.key;
+        if (key === "fillOpacity" || key === "imageFill") {
+            continue;
+        }
         if (!isContainerAppearanceKey(key)) {
             continue;
         }
@@ -816,7 +903,10 @@ export function resolveImageAppearanceTransitions(
     appearance: AppearanceModel | null | undefined,
     ctx: AppearanceResolveContext
 ): Partial<Record<ContainerAppearancePropertyKey, AppearanceFieldTransition>> {
-    return resolveContainerAppearanceTransitions(appearance, ctx);
+    const transitions = resolveContainerAppearanceTransitions(appearance, ctx);
+    delete transitions.fillOpacity;
+    delete transitions.imageFill;
+    return transitions;
 }
 
 /**

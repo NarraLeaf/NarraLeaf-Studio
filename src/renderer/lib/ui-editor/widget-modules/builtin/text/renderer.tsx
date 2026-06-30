@@ -229,7 +229,6 @@ export function TextRenderer({
     const ty = Number.isFinite(p.transformOffsetY) ? p.transformOffsetY : 0;
     const ts = Number.isFinite(p.transformScale) && p.transformScale > 0 ? p.transformScale : 1;
     const tr = Number.isFinite(p.transformRotation) ? p.transformRotation : 0;
-    const tOp = Math.max(0, Math.min(1, Number.isFinite(p.transformOpacity) ? p.transformOpacity : 1));
     const transformCss = `translate(${tx}px, ${ty}px) scale(${ts}) rotate(${tr}deg)`;
 
     const rootAnimate: Record<string, string | number> = {
@@ -237,7 +236,7 @@ export function TextRenderer({
         y: ty,
         scale: ts,
         rotate: tr,
-        opacity: tOp,
+        opacity: 1,
     };
     const rootTransition: Record<string, unknown> = {};
     assignMotionTransition(
@@ -259,11 +258,6 @@ export function TextRenderer({
         rootTransition,
         "rotate",
         firstTransitionForKeys(appearanceTransitions, ["transformRotation"])
-    );
-    assignMotionTransition(
-        rootTransition,
-        "opacity",
-        firstTransitionForKeys(appearanceTransitions, ["transformOpacity"])
     );
     const rootMotionActive = Object.keys(rootTransition).length > 0;
 
@@ -308,7 +302,7 @@ export function TextRenderer({
     const outerStaticStyle: CSSProperties = {
         ...outerStyle,
         transform: transformCss,
-        opacity: tOp,
+        opacity: 1,
     };
 
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);

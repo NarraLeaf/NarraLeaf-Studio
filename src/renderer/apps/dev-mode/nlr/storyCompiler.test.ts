@@ -102,6 +102,30 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.actionIdBindings.find(binding => binding.blockId === "say")?.staticId).toContain("text-say");
     });
 
+    it("applies a scene default background before authored rows", async () => {
+        const document = baseDocument({
+            say: narrationBlock("say", "text-say", "The room is quiet."),
+        }, ["say"]);
+        document.scenes["scene-1"].defaultBackgroundAssetId = "asset-default-bg";
+        const calls: string[] = [];
+
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            resolveAssetUrl: async (assetId, assetType) => {
+                calls.push(`${assetType}:${assetId}`);
+                return `nlr://${assetId}`;
+            },
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(calls).toEqual(["image:asset-default-bg"]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual([
+            "__scene_default_background",
+            "say",
+        ]);
+    });
+
     it("compiles choice, condition, variables, and skips script-only blocks with diagnostics", async () => {
         const optionChild = narrationBlock("option-child", "text-option-child", "Selected");
         optionChild.parentId = "option";

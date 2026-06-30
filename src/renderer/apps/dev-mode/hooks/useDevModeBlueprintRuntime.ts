@@ -4,11 +4,13 @@ import { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBr
 import { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
 import { mountBlueprintCompiledScripts } from "@/lib/ui-editor/blueprint-runtime/mountBlueprintScripts";
+import { BlueprintExecutionManager } from "@/lib/ui-editor/blueprint-runtime/BlueprintExecutionManager";
 
 export type DevModeBlueprintRuntimeCore = {
     scopeBridge: ScopeStoreBridge;
     debug: DebugBridge;
     bindingDebugCoalescer: BindingDebugCoalescer;
+    executionManager: BlueprintExecutionManager;
 };
 
 /**
@@ -24,11 +26,16 @@ export function useDevModeBlueprintRuntime(bundle: DevModeBundle | null): DevMod
             return;
         }
         mountBlueprintCompiledScripts(bundle);
-        setSession({
+        const nextSession: DevModeBlueprintRuntimeCore = {
             scopeBridge: new ScopeStoreBridge(),
             debug: new DebugBridge(),
             bindingDebugCoalescer: new BindingDebugCoalescer(),
-        });
+            executionManager: new BlueprintExecutionManager(),
+        };
+        setSession(nextSession);
+        return () => {
+            nextSession.executionManager.cancelAll("Dev Mode runtime disposed");
+        };
     }, [bundle?.revision, bundle?.bundleId]);
 
     return session;

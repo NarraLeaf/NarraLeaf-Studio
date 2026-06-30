@@ -114,6 +114,9 @@ export function UIEditorInteractionLayer({
             moveableRef.current?.updateRect?.();
         });
     }, []);
+    const updateMoveableRectNow = useCallback(() => {
+        moveableRef.current?.updateRect?.();
+    }, []);
 
     useEffect(() => {
         const unsubscribe = stateService.on("selectionChanged", setSelection);
@@ -642,6 +645,7 @@ export function UIEditorInteractionLayer({
         selectedTargets,
         viewportScale: viewport.scale,
         scheduleMoveableRectUpdate,
+        updateMoveableRectNow,
         beginTransform,
         endTransform,
         surfaceId,

@@ -8,7 +8,12 @@ import {
 import { truncateDebugEventMessage } from "./DebugBridge";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
-import type { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
+import type {
+    UIDisplayableMotionOverride,
+    UIDisplayableMotionTarget,
+    UIDisplayableMotionTransition,
+    WidgetRuntimeStateStore,
+} from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
@@ -29,10 +34,23 @@ import type {
 import type { UISliderRuntimeValue, UISliderWidgetProps } from "@shared/types/ui-editor/slider";
 import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
+import type {
+    AppearanceFieldTransition,
+    AppearanceModel,
+    AppearanceVariant,
+} from "@shared/types/ui-editor/appearance";
+import {
+    DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+} from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
+import {
+    resolveAppearanceDisplayableOpacity,
+} from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 
 export type DevModeWidgetRuntimePatch = {
     visible?: boolean;
     enabled?: boolean;
+    layout?: Partial<Pick<BlueprintDisplayableProperties["bounds"], "x" | "y" | "width" | "height">> &
+        Partial<Pick<BlueprintDisplayableProperties, "rotation" | "opacity">>;
 };
 
 export type BlueprintElementFlushPayload = {
@@ -73,6 +91,22 @@ export type BlueprintDisplayableProperties = {
     visible: boolean;
 };
 
+export type BlueprintDisplayablePropertiesPatch = Partial<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation: number;
+    opacity: number;
+    visible: boolean;
+}>;
+
+export type BlueprintDisplayableMotionRequest = {
+    target: UIDisplayableMotionTarget;
+    transition: UIDisplayableMotionTransition;
+    resetOnComplete?: boolean;
+};
+
 export type BlueprintWidgetCommonProperties = {
     visible: boolean;
     enabled: boolean;
@@ -107,7 +141,7 @@ export type BlueprintHostApiRuntime = {
         setVisible: (elementId: string, visible: boolean) => Promise<void>;
         setEnabled: (elementId: string, enabled: boolean) => Promise<void>;
         /** `null` clears runtime override and restores authored default variant resolution. */
-        setVariant: (elementId: string, variantId: string | null) => Promise<void>;
+        setVariant: (elementId: string, variantId: string | null, options?: { waitForTransition?: boolean }) => Promise<void>;
         getCommonProperties: (elementId: string) => BlueprintWidgetCommonProperties;
         getTextProperties: (elementId: string) => BlueprintTextProperties;
         setTextProperties: (elementId: string, patch: BlueprintTextPropertiesPatch) => Promise<void>;
@@ -126,6 +160,9 @@ export type BlueprintHostApiRuntime = {
         scrollListToTop: (elementId: string) => Promise<void>;
         scrollListToBottom: (elementId: string) => Promise<void>;
         getDisplayableProperties: (elementId: string) => BlueprintDisplayableProperties;
+        setDisplayableProperties: (elementId: string, patch: BlueprintDisplayablePropertiesPatch) => Promise<void>;
+        animateDisplayable: (elementId: string, request: BlueprintDisplayableMotionRequest) => Promise<UIDisplayableMotionOverride>;
+        stopDisplayableAnimation: (elementId: string) => Promise<void>;
         getFrameProperties: (elementId: string) => BlueprintFrameProperties;
         setFrameProperties: (elementId: string, patch: Partial<BlueprintFrameProperties>) => Promise<void>;
     };
@@ -189,6 +226,80 @@ function assertAppearanceVariantId(document: UIDocument, elementId: string, vari
     if (!variants.some(v => v.id === variantId)) {
         throw new Error(`setVariant: unknown variant id "${variantId}" for element ${elementId}`);
     }
+}
+
+function readAppearanceModel(document: UIDocument, elementId: string): AppearanceModel | null {
+    const raw = (document.elements[elementId]?.props as Record<string, unknown> | undefined)?.appearance;
+    if (!raw || typeof raw !== "object") {
+        return null;
+    }
+    const model = raw as AppearanceModel;
+    return Array.isArray(model.variants) ? model : null;
+}
+
+function resolveVariantForSetVariant(model: AppearanceModel | null, variantId: string | null): AppearanceVariant | null {
+    if (!model || model.variants.length === 0) {
+        return null;
+    }
+    if (variantId) {
+        return model.variants.find(variant => variant.id === variantId) ?? null;
+    }
+    return model.variants.find(variant => variant.id === model.defaultVariantId) ?? model.variants[0] ?? null;
+}
+
+function transitionWaitMs(transition: AppearanceFieldTransition | null | undefined): number {
+    if (!transition) {
+        return 0;
+    }
+    const delay = Math.max(0, transition.delayMs ?? 0);
+    if (transition.type === "tween") {
+        return delay + Math.max(0, transition.durationMs);
+    }
+    return delay + 300;
+}
+
+function displayableMotionWaitMs(transition: UIDisplayableMotionTransition | null | undefined): number {
+    if (!transition) {
+        return 0;
+    }
+    const delay = Math.max(0, transition.delayMs ?? 0);
+    if (transition.type === "tween") {
+        return delay + Math.max(0, transition.durationMs);
+    }
+    return delay + 300;
+}
+
+function variantWaitMs(variant: AppearanceVariant | null): number {
+    if (!variant) {
+        return 0;
+    }
+    return Math.max(0, ...variant.propertyGroups.map(group => transitionWaitMs(group.transition)));
+}
+
+function variantTransitionForKey(variant: AppearanceVariant | null, key: string): AppearanceFieldTransition | null {
+    return variant?.propertyGroups.find(group => group.key === key)?.transition ?? null;
+}
+
+function toDisplayableTransition(transition: AppearanceFieldTransition): UIDisplayableMotionTransition {
+    return transition.type === "spring"
+        ? {
+              type: "spring",
+              delayMs: transition.delayMs,
+              stiffness: transition.stiffness,
+              damping: transition.damping,
+              mass: transition.mass,
+          }
+        : {
+              type: "tween",
+              durationMs: transition.durationMs,
+              delayMs: transition.delayMs,
+              easing: transition.easing,
+          };
+}
+
+function sleepMs(durationMs: number): Promise<void> {
+    const waitMs = Math.max(0, durationMs);
+    return waitMs > 0 ? new Promise(resolve => setTimeout(resolve, waitMs)) : Promise.resolve();
 }
 
 function assertTextElement(document: UIDocument, elementId: string) {
@@ -371,6 +482,90 @@ function readDisplayableProperties(document: UIDocument, elementId: string): Blu
         opacity: layout.opacity ?? 1,
         visible: layout.visible !== false,
     };
+}
+
+function mergeDisplayableRuntimePatch(
+    props: BlueprintDisplayableProperties,
+    patch: DevModeWidgetRuntimePatch | undefined,
+): BlueprintDisplayableProperties {
+    const x = patch?.layout?.x ?? props.position.x;
+    const y = patch?.layout?.y ?? props.position.y;
+    const width = patch?.layout?.width ?? props.size.width;
+    const height = patch?.layout?.height ?? props.size.height;
+    return {
+        position: { x, y },
+        size: { width, height },
+        bounds: { x, y, width, height },
+        rotation: patch?.layout?.rotation ?? props.rotation,
+        opacity: patch?.layout?.opacity ?? props.opacity,
+        visible: patch?.visible ?? props.visible,
+    };
+}
+
+function hasRuntimeOpacityPatch(patch: DevModeWidgetRuntimePatch | undefined): boolean {
+    return Boolean(patch?.layout && Object.prototype.hasOwnProperty.call(patch.layout, "opacity"));
+}
+
+function lastFiniteMotionValue(value: number | number[] | undefined): number | undefined {
+    const raw = Array.isArray(value) ? value[value.length - 1] : value;
+    return typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
+}
+
+function normalizeDisplayableOpacity(value: number): number {
+    return Math.max(0, Math.min(1, value));
+}
+
+function displayableOpacityKeysForElement(document: UIDocument, elementId: string): readonly string[] {
+    return document.elements[elementId]?.type === "nl.image" ? ["fillOpacity", "transformOpacity"] : ["transformOpacity"];
+}
+
+function readAppearanceOpacity(
+    document: UIDocument,
+    widgetRuntimeStore: WidgetRuntimeStateStore,
+    scopedKey: string,
+    elementId: string,
+    variantId?: string | null,
+): number | null {
+    const appearance = readAppearanceModel(document, elementId);
+    return resolveAppearanceDisplayableOpacity(appearance, {
+        variantOverrideId: variantId === undefined ? widgetRuntimeStore.getVariantOverride(scopedKey) : variantId,
+        signals: widgetRuntimeStore.getSignalsForElement(scopedKey, false) ?? DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+        displayableOpacityKeys: displayableOpacityKeysForElement(document, elementId),
+    });
+}
+
+function variantDisplayableOpacityTransition(
+    document: UIDocument,
+    elementId: string,
+    variant: AppearanceVariant | null,
+): AppearanceFieldTransition | null {
+    for (const key of displayableOpacityKeysForElement(document, elementId)) {
+        const transition = variantTransitionForKey(variant, key);
+        if (transition) {
+            return transition;
+        }
+    }
+    return null;
+}
+
+function readEffectiveDisplayableProperties(
+    document: UIDocument,
+    widgetRuntimeStore: WidgetRuntimeStateStore,
+    runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
+    runtimeScopeId: string | undefined,
+    activeSurfaceId: string,
+    elementId: string,
+): BlueprintDisplayableProperties {
+    const patch = runtimePatches.get(elementId);
+    const merged = mergeDisplayableRuntimePatch(readDisplayableProperties(document, elementId), patch);
+    if (!hasRuntimeOpacityPatch(patch)) {
+        const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+        const appearanceOpacity = readAppearanceOpacity(document, widgetRuntimeStore, scopedKey, elementId);
+        if (appearanceOpacity !== null) {
+            merged.opacity = appearanceOpacity;
+        }
+    }
+    return merged;
 }
 
 function readVariantId(document: UIDocument, widgetRuntimeStore: WidgetRuntimeStateStore, scopedKey: string, elementId: string): string | null {
@@ -689,15 +884,50 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 }
                 emitHostCall(emit, cap, "return");
             },
-            setVariant: async (elementId: string, variantId: string | null) => {
+            setVariant: async (elementId: string, variantId: string | null, options?: { waitForTransition?: boolean }) => {
                 const cap = "widget.setVariant";
                 emitHostCall(emit, cap, "call");
                 assertAppearanceVariantId(document, elementId, variantId);
                 const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
                 const previous = widgetRuntimeStore.getVariantOverride(scopedKey);
+                const before = readEffectiveDisplayableProperties(
+                    document,
+                    widgetRuntimeStore,
+                    runtimePatches,
+                    runtimeScopeId,
+                    activeSurfaceId,
+                    elementId,
+                );
+                const model = readAppearanceModel(document, elementId);
+                const targetVariant = resolveVariantForSetVariant(model, variantId);
+                const targetOpacity =
+                    readAppearanceOpacity(document, widgetRuntimeStore, scopedKey, elementId, variantId) ??
+                    readDisplayableProperties(document, elementId).opacity;
                 widgetRuntimeStore.setVariantOverride(scopedKey, variantId);
-                if (previous !== variantId) {
+                const previousPatch = runtimePatches.get(elementId) ?? {};
+                if (hasRuntimeOpacityPatch(previousPatch)) {
+                    const layout = { ...(previousPatch.layout ?? {}) };
+                    delete layout.opacity;
+                    const nextPatch: DevModeWidgetRuntimePatch = {
+                        ...previousPatch,
+                        layout,
+                    };
+                    runtimePatches.set(elementId, nextPatch);
+                    onWidgetPatch(elementId, nextPatch);
+                }
+                const opacityTransition = variantDisplayableOpacityTransition(document, elementId, targetVariant);
+                if (opacityTransition && before.opacity !== targetOpacity) {
+                    widgetRuntimeStore.setDisplayableMotion(scopedKey, {
+                        target: { opacity: [before.opacity, targetOpacity] },
+                        transition: toDisplayableTransition(opacityTransition),
+                        resetOnComplete: true,
+                    });
+                }
+                if (previous !== variantId || before.opacity !== targetOpacity) {
                     scheduleElementFlush(elementId);
+                }
+                if (options?.waitForTransition) {
+                    await sleepMs(variantWaitMs(targetVariant));
                 }
                 emitHostCall(emit, cap, "return");
             },
@@ -973,12 +1203,149 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getDisplayableProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const props = readDisplayableProperties(document, elementId);
-                    const patch = runtimePatches.get(elementId);
-                    return {
-                        ...props,
-                        visible: patch?.visible ?? props.visible,
+                    return readEffectiveDisplayableProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimePatches,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setDisplayableProperties: async (elementId: string, patch: BlueprintDisplayablePropertiesPatch) => {
+                const cap = "widget.setDisplayableProperties";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const current = readEffectiveDisplayableProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimePatches,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                    const layoutPatch: NonNullable<DevModeWidgetRuntimePatch["layout"]> = {};
+                    const assignFinite = (value: unknown): number | undefined => {
+                        if (typeof value !== "number" || !Number.isFinite(value)) {
+                            return undefined;
+                        }
+                        return value;
                     };
+                    const x = assignFinite(patch.x);
+                    const y = assignFinite(patch.y);
+                    const width = assignFinite(patch.width);
+                    const height = assignFinite(patch.height);
+                    const rotation = assignFinite(patch.rotation);
+                    const opacity = assignFinite(patch.opacity);
+                    if (x !== undefined) {
+                        layoutPatch.x = x;
+                    }
+                    if (y !== undefined) {
+                        layoutPatch.y = y;
+                    }
+                    if (width !== undefined) {
+                        layoutPatch.width = width;
+                    }
+                    if (height !== undefined) {
+                        layoutPatch.height = height;
+                    }
+                    if (rotation !== undefined) {
+                        layoutPatch.rotation = rotation;
+                    }
+                    if (opacity !== undefined) {
+                        layoutPatch.opacity = opacity;
+                    }
+                    const previousPatch = runtimePatches.get(elementId) ?? {};
+                    const nextPatch: DevModeWidgetRuntimePatch = {
+                        ...previousPatch,
+                        layout: {
+                            ...(previousPatch.layout ?? {}),
+                            ...layoutPatch,
+                        },
+                    };
+                    if (patch.visible !== undefined) {
+                        nextPatch.visible = patch.visible;
+                    }
+                    if (Object.keys(nextPatch.layout ?? {}).length === 0) {
+                        delete nextPatch.layout;
+                    }
+                    runtimePatches.set(elementId, nextPatch);
+                    onWidgetPatch(elementId, nextPatch);
+                    const next = readEffectiveDisplayableProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimePatches,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                    if (
+                        current.position.x !== next.position.x ||
+                        current.position.y !== next.position.y ||
+                        current.size.width !== next.size.width ||
+                        current.size.height !== next.size.height ||
+                        current.rotation !== next.rotation ||
+                        current.opacity !== next.opacity ||
+                        current.visible !== next.visible
+                    ) {
+                        scheduleElementFlush(elementId);
+                    }
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            animateDisplayable: async (elementId: string, request: BlueprintDisplayableMotionRequest) => {
+                const cap = "widget.animateDisplayable";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const current = readEffectiveDisplayableProperties(
+                        document,
+                        widgetRuntimeStore,
+                        runtimePatches,
+                        runtimeScopeId,
+                        activeSurfaceId,
+                        elementId,
+                    );
+                    const heldOpacity = request.resetOnComplete
+                        ? undefined
+                        : lastFiniteMotionValue(request.target.opacity);
+                    const motion = widgetRuntimeStore.setDisplayableMotion(
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        request,
+                    );
+                    if (heldOpacity !== undefined) {
+                        const opacity = normalizeDisplayableOpacity(heldOpacity);
+                        const previousPatch = runtimePatches.get(elementId) ?? {};
+                        const nextPatch: DevModeWidgetRuntimePatch = {
+                            ...previousPatch,
+                            layout: {
+                                ...(previousPatch.layout ?? {}),
+                                opacity,
+                            },
+                        };
+                        runtimePatches.set(elementId, nextPatch);
+                        onWidgetPatch(elementId, nextPatch);
+                        if (current.opacity !== opacity) {
+                            scheduleElementFlush(elementId);
+                        }
+                    }
+                    await sleepMs(displayableMotionWaitMs(request.transition));
+                    return motion;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            stopDisplayableAnimation: async (elementId: string) => {
+                const cap = "widget.stopDisplayableAnimation";
+                emitHostCall(emit, cap, "call");
+                try {
+                    readDisplayableProperties(document, elementId);
+                    widgetRuntimeStore.clearDisplayableMotion(
+                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                    );
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

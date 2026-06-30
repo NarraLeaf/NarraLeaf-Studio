@@ -58,6 +58,7 @@ export function blueprintIrToFlowNodes(
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
     nodeDiagnosticsByNodeId?: ReadonlyMap<string, readonly BlueprintFlowNodeDiagnostic[]>,
     elementPreviews?: Record<string, BlueprintFlowNodeData["elementPreview"]>,
+    displayableTargetVariantsByNodeId?: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]>,
     onBindElementLiteral?: (nodeId: string) => void,
 ): Node<BlueprintFlowNodeData>[] {
     const nodes = ir.nodes ?? {};
@@ -90,6 +91,7 @@ export function blueprintIrToFlowNodes(
                 dynamicSelectOptions,
                 nodeDiagnostics: nodeDiagnosticsByNodeId?.get(n.id) ?? [],
                 elementPreview: elementPreviews?.[n.id],
+                displayableTargetVariants: displayableTargetVariantsByNodeId?.[n.id],
                 onBindElementLiteral,
             },
         };
@@ -184,6 +186,7 @@ export function useBlueprintFlowProjection(
     persistentVariables?: BlueprintFlowNodeData["persistentVariables"],
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
     nodeDiagnosticsByNodeId?: ReadonlyMap<string, readonly BlueprintFlowNodeDiagnostic[]>,
+    displayableTargetVariantsByNodeId?: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]>,
 ) {
     const selectedKey = blueprintSelectedNodesDependencyKey(selectedNodeIds);
     return useMemo(
@@ -204,6 +207,8 @@ export function useBlueprintFlowProjection(
                         undefined,
                         dynamicSelectOptions,
                         nodeDiagnosticsByNodeId,
+                        undefined,
+                        displayableTargetVariantsByNodeId,
                     ),
                     selectedNodeIds,
                 ),
@@ -220,6 +225,7 @@ export function useBlueprintFlowProjection(
             selectedNodeIds,
             dynamicSelectOptions,
             nodeDiagnosticsByNodeId,
+            displayableTargetVariantsByNodeId,
         ],
     );
 }

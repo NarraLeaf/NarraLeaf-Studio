@@ -99,12 +99,21 @@ export function ImageFillField<TData extends UIInspectorData>({
                 return;
             }
             const nextMode = value as ImageFillMode;
+            const override = stateService?.getInteractionOverride();
+            if (
+                nextMode !== "crop" &&
+                override?.kind === "imageCrop" &&
+                override.elementId === element.id &&
+                (!surfaceId || override.surfaceId === surfaceId)
+            ) {
+                stateService?.setInteractionOverride(null);
+            }
             void applyValue({
                 ...normalizedFill,
                 mode: nextMode,
             });
         },
-        [applyValue, normalizedFill],
+        [applyValue, element.id, normalizedFill, stateService, surfaceId],
     );
 
     const computeCropPlacement = useCallback(() => {
@@ -154,6 +163,15 @@ export function ImageFillField<TData extends UIInspectorData>({
         const isElementSelected =
             selection?.type === "element" && selection.data?.elementIds.includes(element.id);
         const cropAllowed = !allowedModes?.length || allowedModes.includes("crop");
+        if (
+            normalizedFill.mode !== "crop" &&
+            override?.kind === "imageCrop" &&
+            override.elementId === element.id &&
+            (!surfaceId || override.surfaceId === surfaceId)
+        ) {
+            stateService.setInteractionOverride(null);
+            return;
+        }
         if (isOpen && normalizedFill.mode === "crop" && cropAllowed && surfaceId && isElementSelected) {
             stateService.setInteractionOverride({
                 kind: "imageCrop",
