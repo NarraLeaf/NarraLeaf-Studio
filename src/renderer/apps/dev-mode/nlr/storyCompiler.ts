@@ -97,7 +97,7 @@ type CompileInput = {
 };
 
 const EMPTY_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'></svg>";
-const SCENE_DEFAULT_BACKGROUND_BLOCK_ID = "__scene_default_background";
+const SCENE_INITIAL_BACKGROUND_BLOCK_ID = "__scene_initial_background";
 
 export async function compileStudioStoryToNlr(input: CompileInput): Promise<CompiledNlrStory> {
     const entryScene = input.document.scenes[input.sceneId];
@@ -108,18 +108,18 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const nlrStory = new Story(input.document.name || input.document.id);
     const diagnostics: NlrStoryCompileDiagnostic[] = [];
     const actionIdBindings: NlrActionIdBinding[] = [];
-    const allScenes = Object.fromEntries(
-        Object.values(input.document.scenes).map(scene => [
-            scene.id,
-            new Scene(scene.runtimeName || scene.name || scene.id),
-        ]),
-    ) as Record<string, Scene>;
     const characters = new Map<string, Character>();
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
     const persistentByNamespace = new Map<string, Persistent<Record<string, StoryLiteralValue>>>();
     const assetUrlCache = new Map<string, string | null>();
     let actionIndex = 0;
     const resolveAssetUrl = input.resolveAssetUrl ?? ((assetId: string) => assetId);
+    const allScenes = await createNlrScenes({
+        document: input.document,
+        resolveAssetUrl,
+        assetUrlCache,
+        diagnostics,
+    });
 
     for (const persistent of Object.values(input.document.gamePersistents ?? {})) {
         const namespace = normalizePersistentNamespace(persistent.namespace);
@@ -149,10 +149,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             actionIdBindings,
             nextActionIndex: () => actionIndex++,
         };
-        const statements = [
-            ...await compileSceneDefaultBackground(ctx),
-            ...await compileBlockList(ctx, scene.rootBlockIds),
-        ];
+        const statements = await compileBlockList(ctx, scene.rootBlockIds);
         nlrScene.action(statements as unknown as Parameters<Scene["action"]>[0]);
     }
 
@@ -170,30 +167,54 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     };
 }
 
+async function createNlrScenes(input: {
+    document: StoryDocument;
+    resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
+    assetUrlCache: Map<string, string | null>;
+    diagnostics: NlrStoryCompileDiagnostic[];
+}): Promise<Record<string, Scene>> {
+    const scenes: Record<string, Scene> = {};
+    for (const scene of Object.values(input.document.scenes)) {
+        const background = await resolveSceneInitialBackground({
+            scene,
+            resolveAssetUrl: input.resolveAssetUrl,
+            assetUrlCache: input.assetUrlCache,
+            diagnostics: input.diagnostics,
+        });
+        scenes[scene.id] = new Scene(
+            scene.runtimeName || scene.name || scene.id,
+            background ? { background } : undefined,
+        );
+    }
+    return scenes;
+}
+
+async function resolveSceneInitialBackground(input: {
+    scene: StoryScene;
+    resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
+    assetUrlCache: Map<string, string | null>;
+    diagnostics: NlrStoryCompileDiagnostic[];
+}): Promise<string | null> {
+    const assetId = input.scene.defaultBackgroundAssetId?.trim();
+    if (!assetId) {
+        return null;
+    }
+    return resolveAssetUrlCached({
+        assetId,
+        assetType: "image",
+        blockId: SCENE_INITIAL_BACKGROUND_BLOCK_ID,
+        resolveAssetUrl: input.resolveAssetUrl,
+        assetUrlCache: input.assetUrlCache,
+        diagnostics: input.diagnostics,
+    });
+}
+
 async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly string[]): Promise<NlrStatement[]> {
     const statements: NlrStatement[] = [];
     for (const blockId of blockIds) {
         statements.push(...await compileBlock(ctx, blockId));
     }
     return statements;
-}
-
-async function compileSceneDefaultBackground(ctx: SceneCompileContext): Promise<NlrStatement[]> {
-    const assetId = ctx.scene.defaultBackgroundAssetId?.trim();
-    if (!assetId) {
-        return [];
-    }
-    const src = await resolveAsset(ctx, assetId, "image", SCENE_DEFAULT_BACKGROUND_BLOCK_ID);
-    if (!src) {
-        return [];
-    }
-    return [
-        recordSyntheticStatement(
-            ctx,
-            ctx.nlrScene.setBackground(src as any),
-            SCENE_DEFAULT_BACKGROUND_BLOCK_ID,
-        ),
-    ];
 }
 
 async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<NlrStatement[]> {
@@ -955,21 +976,45 @@ function selectCharacterVariantNames(
 }
 
 async function resolveAsset(ctx: SceneCompileContext, assetId: string, assetType: StoryAssetKind, blockId: string): Promise<string | null> {
+    return resolveAssetUrlCached({
+        assetId,
+        assetType,
+        blockId,
+        resolveAssetUrl: ctx.resolveAssetUrl,
+        assetUrlCache: ctx.assetUrlCache,
+        diagnostics: ctx.diagnostics,
+    });
+}
+
+async function resolveAssetUrlCached(input: {
+    assetId: string;
+    assetType: StoryAssetKind;
+    blockId: string;
+    resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
+    assetUrlCache: Map<string, string | null>;
+    diagnostics: NlrStoryCompileDiagnostic[];
+}): Promise<string | null> {
+    const { assetId, assetType, blockId, resolveAssetUrl, assetUrlCache, diagnostics } = input;
     const cacheKey = `${assetType}:${assetId}`;
-    if (ctx.assetUrlCache.has(cacheKey)) {
-        return ctx.assetUrlCache.get(cacheKey) ?? null;
+    if (assetUrlCache.has(cacheKey)) {
+        return assetUrlCache.get(cacheKey) ?? null;
     }
     try {
-        const resolved = await ctx.resolveAssetUrl(assetId, assetType);
+        const resolved = await resolveAssetUrl(assetId, assetType);
         const url = typeof resolved === "string" && resolved.trim() ? resolved : null;
-        ctx.assetUrlCache.set(cacheKey, url);
+        assetUrlCache.set(cacheKey, url);
         if (!url) {
-            diagnostic(ctx, "warning", blockId, `Asset could not be resolved: ${assetId}`);
+            pushDiagnostic(diagnostics, "warning", blockId, `Asset could not be resolved: ${assetId}`);
         }
         return url;
     } catch (error) {
-        diagnostic(ctx, "warning", blockId, `Asset resolver failed for ${assetId}: ${error instanceof Error ? error.message : String(error)}`);
-        ctx.assetUrlCache.set(cacheKey, null);
+        pushDiagnostic(
+            diagnostics,
+            "warning",
+            blockId,
+            `Asset resolver failed for ${assetId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        assetUrlCache.set(cacheKey, null);
         return null;
     }
 }
@@ -983,19 +1028,6 @@ function recordStatement(ctx: SceneCompileContext, statement: NlrStatement, bloc
             staticId,
             blockId: block.id,
             textId,
-        });
-    }
-    return statement;
-}
-
-function recordSyntheticStatement(ctx: SceneCompileContext, statement: NlrStatement, blockId: string): NlrStatement {
-    for (const action of statementToActions(statement)) {
-        const staticId = stableActionId(ctx.document.id, ctx.scene.id, blockId, undefined, ctx.nextActionIndex());
-        setStableActionId(action, staticId);
-        ctx.actionIdBindings.push({
-            action,
-            staticId,
-            blockId,
         });
     }
     return statement;
@@ -1045,7 +1077,16 @@ function setStableActionId(action: NlrAction, staticId: string): void {
 }
 
 function diagnostic(ctx: SceneCompileContext, level: NlrStoryCompileDiagnostic["level"], blockId: string | undefined, message: string): void {
-    ctx.diagnostics.push({ level, blockId, message });
+    pushDiagnostic(ctx.diagnostics, level, blockId, message);
+}
+
+function pushDiagnostic(
+    diagnostics: NlrStoryCompileDiagnostic[],
+    level: NlrStoryCompileDiagnostic["level"],
+    blockId: string | undefined,
+    message: string,
+): void {
+    diagnostics.push({ level, blockId, message });
 }
 
 function normalizeObjectName(value: string | undefined): string {

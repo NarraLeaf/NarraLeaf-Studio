@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintHostApiContractVersion } from "@shared/types/blueprint/hostApi";
-import type { UIDocument, UIComponentId, UISurfaceId } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIComponentId, UISurfaceId, UIStageSlotId } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
@@ -47,6 +47,9 @@ export type UIHostAdapter = {
     host: UIHost;
     navigate?: (target: unknown) => Promise<void> | void;
     resolveSlot?: (slotId: string) => { mount: (node: ReactNode) => void } | null;
+    gameUiRuntime?: {
+        slotId: UIStageSlotId;
+    };
     /**
      * M1 latch: which frozen BlueprintHostApiContract generation this adapter targets.
      * Does not imply all capabilities are implemented yet.

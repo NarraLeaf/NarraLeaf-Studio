@@ -11,6 +11,8 @@ import {
     UISurfaceKind,
     UISurfaceDesignSize,
     UIComponentDefinition,
+    UIStageSlotId,
+    UIStageSurface,
 } from "@shared/types/ui-editor/document";
 import { useRegistry } from "../../registry";
 import { UISurfaceEditorTab } from "./editors/UISurfaceEditorTab";
@@ -39,8 +41,9 @@ import {
     CreateSurfaceDialogContent,
     CreateSurfaceDialogValue,
 } from "./panel/dialogs/CreateSurfaceDialogContent";
-import { DEFAULT_STAGE_SLOT_ID, STAGE_SLOT_LABELS, SURFACE_KIND_OPTIONS } from "./panel/constants";
+import { DEFAULT_STAGE_SLOT_ID, GAME_UI_SLOT_OPTIONS, STAGE_SLOT_LABELS, SURFACE_KIND_OPTIONS } from "./panel/constants";
 import type { EditorLayout } from "../../registry/types";
+import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const getSurfaceTabId = (surfaceId: string) => `${SURFACE_TAB_PREFIX}${surfaceId}`;
@@ -124,6 +127,20 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         return surfaces.filter(surface => surface.kind === kind);
     }, [surfaces, kind]);
     const currentKindOption = useMemo(() => SURFACE_KIND_OPTIONS.find(option => option.kind === kind), [kind]);
+    const occupiedStageSlotIds = useMemo(() => {
+        return new Set(
+            surfaces
+                .filter((surface): surface is UIStageSurface => surface.kind === "stageSurface")
+                .map(surface => surface.mount.slotId),
+        );
+    }, [surfaces]);
+    const disabledStageSlotIds = useMemo<UIStageSlotId[]>(
+        () => [...occupiedStageSlotIds],
+        [occupiedStageSlotIds],
+    );
+    const defaultStageSlotId = useMemo<UIStageSlotId>(() => {
+        return GAME_UI_SLOT_OPTIONS.find(option => !occupiedStageSlotIds.has(option.value))?.value ?? DEFAULT_STAGE_SLOT_ID;
+    }, [occupiedStageSlotIds]);
     const defaultDesignSize = useMemo<UISurfaceDesignSize>(() => {
         return surfaces[0]?.designSize ?? DEFAULT_UI_SURFACE_SIZE;
     }, [surfaces]);
@@ -184,10 +201,12 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (!runtimeBridge) {
             return null;
         }
+        const backgroundColor = getEditorSurfaceAreaBackgroundColor(surface);
         return runtimeBridge.renderSurface({
             surfaceId: surface.id,
             hostAdapter: { host: surface.host },
             className: "relative",
+            style: backgroundColor ? { backgroundColor } : undefined,
         });
     }, [runtimeBridge]);
 
@@ -308,8 +327,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 const selection: CreateSurfaceDialogValue = {
                     name: suggestedName,
                     designSize: defaultDesignSize,
-                    slotId: DEFAULT_STAGE_SLOT_ID,
-                    valid: true,
+                    slotId: defaultStageSlotId,
+                    valid: kind === "appSurface" || !occupiedStageSlotIds.has(defaultStageSlotId),
                 };
 
                 const safeResolve = (value: CreateSurfaceDialogValue | null) => {
@@ -329,7 +348,12 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
 
                 const handleConfirm = () => {
                     if (!selection.valid) {
-                        uiService.showNotification("Check the page name and size before creating it.", "warning");
+                        uiService.showNotification(
+                            kind === "appSurface"
+                                ? "Check the page name and size before creating it."
+                                : "Select an available Game UI slot before creating it.",
+                            "warning",
+                        );
                         return;
                     }
                     safeResolve({ ...selection });
@@ -348,7 +372,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                             kind={kind}
                             defaultName={suggestedName}
                             defaultDesignSize={defaultDesignSize}
-                            defaultSlotId={DEFAULT_STAGE_SLOT_ID}
+                            defaultSlotId={defaultStageSlotId}
+                            disabledSlotIds={disabledStageSlotIds}
                             onChange={value => {
                                 selection.name = value.name;
                                 selection.designSize = value.designSize;
@@ -374,17 +399,21 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 });
             });
         },
-        [defaultDesignSize, kind, uiService],
+        [defaultDesignSize, defaultStageSlotId, disabledStageSlotIds, kind, occupiedStageSlotIds, uiService],
     );
 
     const handleCreateSurface = useCallback(async () => {
         if (!documentService || !currentKindOption) {
             return;
         }
+        if (kind === "stageSurface" && disabledStageSlotIds.length >= GAME_UI_SLOT_OPTIONS.length) {
+            uiService?.showNotification("All Game UI slots already have a surface. Open an existing Game UI from the list.", "info");
+            return;
+        }
         const suggestedName =
             kind === "appSurface"
                 ? `Page ${filteredSurfaces.length + 1}`
-                : `${STAGE_SLOT_LABELS[DEFAULT_STAGE_SLOT_ID]} UI`;
+                : `${STAGE_SLOT_LABELS[defaultStageSlotId]} UI`;
         const selection = await promptCreateSurface(suggestedName);
         if (!selection) {
             return;
@@ -406,11 +435,14 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         handleOpenSurface(surface);
     }, [
         currentKindOption,
+        defaultStageSlotId,
+        disabledStageSlotIds.length,
         documentService,
         filteredSurfaces.length,
         handleOpenSurface,
         kind,
         promptCreateSurface,
+        uiService,
     ]);
 
     const globalBlueprintCard = useMemo<SurfaceListGlobalBlueprintCard | undefined>(() => {

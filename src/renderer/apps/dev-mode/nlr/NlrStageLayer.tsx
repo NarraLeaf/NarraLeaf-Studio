@@ -25,11 +25,11 @@ const devToolsWithStaticId = DevTools as typeof DevTools & { setStaticId?: unkno
 
 export function NlrStageLayer(props: {
     session: NlrStageSession | null;
-    visible: boolean;
+    interactive: boolean;
     onPreloadedReady: (sessionId: string) => void;
     onError: (error: Error) => void;
 }) {
-    const { session, visible, onPreloadedReady, onError } = props;
+    const { session, interactive, onPreloadedReady, onError } = props;
     const startedSessionRef = useRef<string | null>(null);
 
     const handleReady = useCallback((ctx: PlayerEventContext) => {
@@ -59,7 +59,7 @@ export function NlrStageLayer(props: {
     return (
         <div
             className="absolute inset-0 z-0 overflow-hidden bg-black"
-            style={{ pointerEvents: visible ? "auto" : "none" }}
+            style={{ pointerEvents: interactive ? "auto" : "none" }}
         >
             <GameProviders game={session.game}>
                 <PlayerWithPreloadReady
@@ -68,7 +68,7 @@ export function NlrStageLayer(props: {
                     width="100%"
                     height="100%"
                     className="block h-full w-full overflow-hidden"
-                    active={visible}
+                    active={true}
                     onReady={handleReady}
                     onPreloadedReady={handlePreloadedReady}
                     onError={(error) => onError(error)}

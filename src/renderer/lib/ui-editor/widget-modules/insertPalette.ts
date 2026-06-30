@@ -1,6 +1,6 @@
 import { widgetModuleRegistry } from "./registryInstance";
 import type { UIWidgetModule } from "./types";
-import type { UISurfaceKind } from "@shared/types/ui-editor/document";
+import type { UIStageSlotId, UISurface, UISurfaceKind } from "@shared/types/ui-editor/document";
 
 export type InsertPalettePlacement = "primary" | "overflow";
 
@@ -8,6 +8,7 @@ export type InsertPaletteConfigEntry = {
     readonly type: string;
     readonly placement?: InsertPalettePlacement;
     readonly surfaceKinds?: readonly UISurfaceKind[];
+    readonly stageSlots?: readonly UIStageSlotId[];
 };
 
 export type InsertPaletteEntry = {
@@ -22,6 +23,8 @@ export type InsertPaletteEntry = {
 export const DEFAULT_INSERT_PALETTE_CONFIG = [
     { type: "nl.container" },
     { type: "nl.text" },
+    { type: "nl.dialog.sentence", surfaceKinds: ["stageSurface"], stageSlots: ["dialog"] },
+    { type: "nl.dialog.nametag", surfaceKinds: ["stageSurface"], stageSlots: ["dialog"] },
     { type: "nl.image" },
     { type: "nl.button" },
     { type: "nl.slider", placement: "overflow" },
@@ -29,13 +32,28 @@ export const DEFAULT_INSERT_PALETTE_CONFIG = [
     { type: "nl.frame", placement: "overflow", surfaceKinds: ["appSurface"] },
 ] as const satisfies readonly InsertPaletteConfigEntry[];
 
+export type InsertPaletteSurfaceFilter = UISurfaceKind | UISurface | null | undefined;
+
+function surfaceKindForFilter(surface: InsertPaletteSurfaceFilter): UISurfaceKind | undefined {
+    return typeof surface === "string" ? surface : surface?.kind;
+}
+
+function stageSlotForFilter(surface: InsertPaletteSurfaceFilter): UIStageSlotId | undefined {
+    return typeof surface === "string" || !surface || surface.kind !== "stageSurface"
+        ? undefined
+        : surface.mount.slotId;
+}
+
 export function resolveInsertPaletteEntries(
     config: readonly InsertPaletteConfigEntry[],
     resolveModule: (type: string) => UIWidgetModule | undefined = type => widgetModuleRegistry.get(type),
-    surfaceKind?: UISurfaceKind,
+    surface?: InsertPaletteSurfaceFilter,
 ): InsertPaletteEntry[] {
+    const surfaceKind = surfaceKindForFilter(surface);
+    const stageSlot = stageSlotForFilter(surface);
     return config
         .filter(entry => !surfaceKind || !entry.surfaceKinds || entry.surfaceKinds.includes(surfaceKind))
+        .filter(entry => !entry.stageSlots || (surfaceKind === "stageSurface" && stageSlot != null && entry.stageSlots.includes(stageSlot)))
         .map(entry => {
             const mod = resolveModule(entry.type);
             if (!mod) {
@@ -48,10 +66,10 @@ export function resolveInsertPaletteEntries(
         });
 }
 
-export function listInsertPaletteEntries(surfaceKind?: UISurfaceKind): InsertPaletteEntry[] {
-    return resolveInsertPaletteEntries(DEFAULT_INSERT_PALETTE_CONFIG, undefined, surfaceKind);
+export function listInsertPaletteEntries(surface?: InsertPaletteSurfaceFilter): InsertPaletteEntry[] {
+    return resolveInsertPaletteEntries(DEFAULT_INSERT_PALETTE_CONFIG, undefined, surface);
 }
 
-export function listInsertPaletteModules(surfaceKind?: UISurfaceKind): UIWidgetModule[] {
-    return listInsertPaletteEntries(surfaceKind).map(entry => entry.module);
+export function listInsertPaletteModules(surface?: InsertPaletteSurfaceFilter): UIWidgetModule[] {
+    return listInsertPaletteEntries(surface).map(entry => entry.module);
 }

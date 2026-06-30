@@ -27,6 +27,7 @@ import { BlueprintWidgetInitLifecycle } from "@/lib/ui-editor/runtime/surface/Bl
 import { WidgetRuntimeScopeProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { getUIFrameWidgetProps } from "@shared/types/ui-editor/frame";
 import { resolvePageAnimationMotion, shouldBlockPageAnimationExit } from "@/lib/ui-editor/runtime/pageAnimation";
+import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
@@ -356,7 +357,7 @@ function NestedSurfaceInstance(props: {
         width: targetSurface.designSize.width,
         height: targetSurface.designSize.height,
         overflow: "hidden",
-        backgroundColor: targetSurface.settings?.backgroundColor ?? "#ffffff",
+        backgroundColor: getSurfaceBackgroundColor(targetSurface),
     };
 
     return (

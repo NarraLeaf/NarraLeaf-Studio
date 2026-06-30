@@ -282,34 +282,10 @@ const baseCommands: readonly WidgetLogicCommandDef[] = [
     },
 ];
 
-export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
-    "nl.root": {
-        supportsPrivateBlueprint: false,
-        blueprintLabel: "Page Logic",
-        events: [],
-        commands: [],
-        readableState: [],
-        writableProps: [],
-    },
-    "nl.container": {
+function createTextWidgetLogicApi(blueprintLabel: string): WidgetLogicApi {
+    return {
         supportsPrivateBlueprint: true,
-        blueprintLabel: "Container logic",
-        events: DISPLAYABLE_WIDGET_EVENTS,
-        commands: baseCommands,
-        readableState: [
-            { id: "visible", displayName: "Visible" },
-            { id: "enabled", displayName: "Enabled" },
-            { id: "variant", displayName: "Variant" },
-        ],
-        writableProps: [
-            { propPath: "variant", displayName: "Variant" },
-            { propPath: "appearance", displayName: "Appearance" },
-            { propPath: "clipContent", displayName: "Clip content" },
-        ],
-    },
-    "nl.text": {
-        supportsPrivateBlueprint: true,
-        blueprintLabel: "Text logic",
+        blueprintLabel,
         events: DISPLAYABLE_WIDGET_EVENTS,
         commands: [
             ...baseCommands,
@@ -349,7 +325,37 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { propPath: "textWrapMode", displayName: "Wrap mode" },
             { propPath: "effects", displayName: "Effects" },
         ],
+    };
+}
+
+export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
+    "nl.root": {
+        supportsPrivateBlueprint: false,
+        blueprintLabel: "Page Logic",
+        events: [],
+        commands: [],
+        readableState: [],
+        writableProps: [],
     },
+    "nl.container": {
+        supportsPrivateBlueprint: true,
+        blueprintLabel: "Container logic",
+        events: DISPLAYABLE_WIDGET_EVENTS,
+        commands: baseCommands,
+        readableState: [
+            { id: "visible", displayName: "Visible" },
+            { id: "enabled", displayName: "Enabled" },
+            { id: "variant", displayName: "Variant" },
+        ],
+        writableProps: [
+            { propPath: "variant", displayName: "Variant" },
+            { propPath: "appearance", displayName: "Appearance" },
+            { propPath: "clipContent", displayName: "Clip content" },
+        ],
+    },
+    "nl.text": createTextWidgetLogicApi("Text logic"),
+    "nl.dialog.sentence": createTextWidgetLogicApi("Sentence logic"),
+    "nl.dialog.nametag": createTextWidgetLogicApi("Nametag logic"),
     "nl.image": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Image logic",

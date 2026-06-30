@@ -15,6 +15,7 @@ type CreateSurfaceDialogContentProps = {
     defaultName: string;
     defaultDesignSize: UISurfaceDesignSize;
     defaultSlotId: UIStageSlotId;
+    disabledSlotIds?: readonly UIStageSlotId[];
     onChange: (value: CreateSurfaceDialogValue) => void;
 };
 
@@ -31,6 +32,7 @@ export function CreateSurfaceDialogContent({
     defaultName,
     defaultDesignSize,
     defaultSlotId,
+    disabledSlotIds = [],
     onChange,
 }: CreateSurfaceDialogContentProps) {
     const [name, setName] = useState(defaultName);
@@ -43,6 +45,8 @@ export function CreateSurfaceDialogContent({
     const isPage = kind === "appSurface";
     const pageValid = name.trim().length > 0 && widthValue != null && heightValue != null;
     const gameUiName = `${STAGE_SLOT_LABELS[slotId] ?? slotId} UI`;
+    const disabledSlots = useMemo(() => new Set(disabledSlotIds), [disabledSlotIds]);
+    const gameUiValid = !disabledSlots.has(slotId);
 
     useEffect(() => {
         onChange(
@@ -57,10 +61,10 @@ export function CreateSurfaceDialogContent({
                 : {
                       name: gameUiName,
                       slotId,
-                      valid: true,
+                      valid: gameUiValid,
                   },
         );
-    }, [gameUiName, heightValue, isPage, name, onChange, pageValid, slotId, widthValue]);
+    }, [gameUiName, gameUiValid, heightValue, isPage, name, onChange, pageValid, slotId, widthValue]);
 
     if (!isPage) {
         return (
@@ -69,19 +73,27 @@ export function CreateSurfaceDialogContent({
                 <div className="grid gap-2">
                     {GAME_UI_SLOT_OPTIONS.map(option => {
                         const isActive = slotId === option.value;
+                        const disabled = disabledSlots.has(option.value);
                         return (
                             <button
                                 key={option.value}
                                 type="button"
-                                onClick={() => setSlotId(option.value)}
+                                disabled={disabled}
+                                onClick={() => {
+                                    if (!disabled) {
+                                        setSlotId(option.value);
+                                    }
+                                }}
                                 className={`w-full rounded-md border px-3 py-3 text-left text-sm transition-colors ${
                                     isActive
                                         ? "border-primary bg-primary/10 text-white"
                                         : "border-white/10 text-gray-300 hover:border-white/30 hover:bg-white/5"
-                                }`}
+                                } ${disabled ? "cursor-not-allowed opacity-45 hover:border-white/10 hover:bg-transparent" : ""}`}
                             >
                                 <div className="font-semibold">{option.label}</div>
-                                <div className="text-[11px] text-gray-400">{option.description}</div>
+                                <div className="text-[11px] text-gray-400">
+                                    {disabled ? "Already created. Open the existing Game UI from the list." : option.description}
+                                </div>
                             </button>
                         );
                     })}

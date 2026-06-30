@@ -67,6 +67,12 @@ import {
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
 import { normalizeUIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
+import {
+    DEFAULT_UI_STAGE_SLOT_ID,
+    normalizeUIStageSlotId,
+} from "@shared/types/ui-editor/stageSlots";
+import { defaultContainerWidgetProps } from "@shared/types/ui-editor/container";
+import { defaultTextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 
 type UIDocumentServiceEvents = {
     documentChanged: UIDocument;
@@ -103,9 +109,11 @@ function createDefaultPageSurfaceSettings(settings?: UISurfaceSettings): UISurfa
     };
 }
 
-const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = "onStage";
+const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 const COMPONENT_LINKED_LAYOUT_KEYS = new Set<keyof UILayout>(["x", "y", "width", "height", "rotation"]);
 const DEFAULT_COMPONENT_SIZE: UISurfaceDesignSize = { width: 240, height: 120 };
+const DIALOG_SENTENCE_WIDGET_TYPE = "nl.dialog.sentence";
+const DIALOG_NAMETAG_WIDGET_TYPE = "nl.dialog.nametag";
 
 function getComponentPreviewDesignSize(component: UIComponentDefinition): UISurfaceDesignSize {
     return {
@@ -259,9 +267,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         const migrated = this.migrateIfNeeded(result.data);
         this.document = migrated;
+        const schemaChanged = result.data.schemaVersion !== migrated.schemaVersion;
         const mainSurfaceChanged = this.ensureMainSurface(this.document);
         const flowLayoutsChanged = normalizeFlowChildLayouts(this.document);
-        const needsSave = mainSurfaceChanged || flowLayoutsChanged;
+        const needsSave = schemaChanged || mainSurfaceChanged || flowLayoutsChanged;
         if (needsSave) {
             await this.save(this.document);
             this.revision = 0;
@@ -765,7 +774,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             throw new RendererError("UI document schema is newer than this Studio version");
         }
         if (document.schemaVersion === UI_DOCUMENT_SCHEMA_VERSION) {
-            return this.ensureComponentLibrary(document);
+            return this.normalizeSpecialChildSlots(this.ensureComponentLibrary(document));
         }
         if (document.schemaVersion === 1) {
             return this.migrateFromLegacyDocument(document);
@@ -790,6 +799,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         if (document.schemaVersion === 8) {
             return this.migrateFromV8Document(document);
+        }
+        if (document.schemaVersion === 9) {
+            return this.migrateFromV9Document(document);
         }
         throw new RendererError("UI document migration is not implemented");
     }
@@ -871,8 +883,33 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /** P10: Game UI stage slots are normalized and Dialog gets slot-private widgets. */
+    private migrateFromV9Document(document: UIDocument): UIDocument {
+        return this.normalizeSpecialChildSlots({
+            ...document,
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        });
+    }
+
     private normalizeSpecialChildSlots(document: UIDocument): UIDocument {
         document = this.withComponentLibrary(document);
+        for (const surface of document.surfaces) {
+            if (surface.kind !== "stageSurface") {
+                continue;
+            }
+            const rawMount = (surface as UISurface & { mount?: unknown }).mount;
+            const rawMountRecord = rawMount && typeof rawMount === "object"
+                ? rawMount as Record<string, unknown>
+                : {};
+            surface.mount = {
+                kind: "slot",
+                slotId: normalizeUIStageSlotId(rawMountRecord.slotId),
+            };
+            surface.settings = {
+                backgroundColor: "transparent",
+                ...(surface.settings ?? {}),
+            };
+        }
         for (const element of Object.values(document.elements)) {
             if (element.type === "nl.list") {
                 const props = (element.props ?? {}) as Record<string, unknown>;
@@ -949,7 +986,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         const stageMount: UIStageSurfaceMount = {
             kind: "slot",
-            slotId: surface.settings?.stageElementType ?? DEFAULT_STAGE_SLOT_ID,
+            slotId: normalizeUIStageSlotId(surface.settings?.stageElementType),
         };
 
         return {
@@ -959,7 +996,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             kind: "stageSurface",
             designSize: surface.designSize,
             rootElementId: surface.rootElementId,
-            settings,
+            settings: {
+                backgroundColor: "transparent",
+                ...(settings ?? {}),
+            },
             mount: stageMount,
             slots: surface.slots,
         };
@@ -1017,7 +1057,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const { kind, name, host, settings, stageMount } = input;
         const effectiveMount =
             kind === "stageSurface"
-                ? stageMount ?? { kind: "slot", slotId: DEFAULT_STAGE_SLOT_ID }
+                ? {
+                      kind: "slot" as const,
+                      slotId: normalizeUIStageSlotId(stageMount?.slotId),
+                  }
                 : undefined;
 
         if (kind === "stageSurface" && host !== "player") {
@@ -1025,6 +1068,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         if (kind === "appSurface" && host !== "app") {
             throw new RendererError("Pages must be hosted by app");
+        }
+        if (kind === "stageSurface") {
+            const existing = this.getDocument().surfaces.find(surface =>
+                surface.kind === "stageSurface" && surface.mount.slotId === effectiveMount?.slotId
+            );
+            if (existing) {
+                return existing;
+            }
         }
 
         const surface: UISurface =
@@ -1036,7 +1087,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                       kind,
                       designSize,
                       rootElementId,
-                      settings,
+                      settings: {
+                          backgroundColor: "transparent",
+                          ...(settings ?? {}),
+                      },
                       mount: effectiveMount ?? { kind: "slot", slotId: DEFAULT_STAGE_SLOT_ID },
                   }
                 : {
@@ -1050,9 +1104,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                   };
 
         const rootElement = this.createRootElement(rootElementId, designSize);
+        const templateElements =
+            kind === "stageSurface" && effectiveMount?.slotId === "dialog"
+                ? this.createDialogStageTemplate(rootElement, designSize)
+                : {};
 
         this.mutateDocument(document => {
             document.elements[rootElementId] = rootElement;
+            Object.assign(document.elements, templateElements);
             document.surfaces.push(surface);
         });
 
@@ -2483,6 +2542,137 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
                 opacity: 1,
             },
+        };
+    }
+
+    private createDialogStageTemplate(rootElement: UIElement, designSize: UISurfaceDesignSize): Record<UIElementId, UIElement> {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const panelId = uuidService.generate();
+        const stackId = uuidService.generate();
+        const nametagId = uuidService.generate();
+        const sentenceId = uuidService.generate();
+        const panelWidth = Math.round(designSize.width * 0.86);
+        const panelHeight = Math.max(180, Math.round(designSize.height * 0.24));
+        const panelX = Math.round((designSize.width - panelWidth) / 2);
+        const panelY = Math.max(0, designSize.height - panelHeight - Math.round(designSize.height * 0.04));
+
+        rootElement.childrenIds = [panelId];
+
+        const panel: UIElement = {
+            id: panelId,
+            type: "nl.container",
+            name: "Dialog Panel",
+            parentId: rootElement.id,
+            childrenIds: [stackId],
+            layout: roundUILayoutGeometryFields({
+                x: panelX,
+                y: panelY,
+                width: panelWidth,
+                height: panelHeight,
+                opacity: 1,
+                visible: true,
+            }),
+            props: {
+                ...cloneJson(defaultContainerWidgetProps),
+                layoutKind: "free",
+                backgroundColor: "#0b0d12",
+                fillOpacity: 0.78,
+                borderRadius: 12,
+                borderRadiusTL: 12,
+                borderRadiusTR: 12,
+                borderRadiusBL: 12,
+                borderRadiusBR: 12,
+                borderColor: "#f8fafc",
+                borderWidth: 1,
+                strokeOpacity: 0.18,
+                clipContent: true,
+            },
+        };
+
+        const stack: UIElement = {
+            id: stackId,
+            type: "nl.container",
+            name: "Dialog Content",
+            parentId: panelId,
+            childrenIds: [nametagId, sentenceId],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: panelWidth,
+                height: panelHeight,
+                opacity: 1,
+                visible: true,
+            }),
+            props: {
+                ...cloneJson(defaultContainerWidgetProps),
+                layoutKind: "stack",
+                stackDirection: "vertical",
+                stackGap: 10,
+                stackPaddingTop: 22,
+                stackPaddingRight: 28,
+                stackPaddingBottom: 22,
+                stackPaddingLeft: 28,
+                backgroundColor: "transparent",
+                fillVisible: false,
+                strokeVisible: false,
+                borderWidth: 0,
+                clipContent: false,
+            },
+        };
+
+        const nametag: UIElement = {
+            id: nametagId,
+            type: DIALOG_NAMETAG_WIDGET_TYPE,
+            name: "Nametag",
+            parentId: stackId,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: 320,
+                height: 34,
+                opacity: 1,
+                visible: true,
+            }),
+            props: {
+                ...cloneJson(defaultTextWidgetProps),
+                text: "Speaker",
+                fontSize: 22,
+                color: "#f8d37a",
+                fontWeight: "600",
+                lineHeight: 1.2,
+                textVerticalAlign: "center",
+            },
+        };
+
+        const sentence: UIElement = {
+            id: sentenceId,
+            type: DIALOG_SENTENCE_WIDGET_TYPE,
+            name: "Sentence",
+            parentId: stackId,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: Math.max(1, panelWidth - 56),
+                height: Math.max(96, panelHeight - 88),
+                opacity: 1,
+                visible: true,
+            }),
+            props: {
+                ...cloneJson(defaultTextWidgetProps),
+                text: "The current line will appear here.",
+                fontSize: 24,
+                color: "#f8fafc",
+                lineHeight: 1.45,
+            },
+        };
+
+        return {
+            [panel.id]: panel,
+            [stack.id]: stack,
+            [nametag.id]: nametag,
+            [sentence.id]: sentence,
         };
     }
 

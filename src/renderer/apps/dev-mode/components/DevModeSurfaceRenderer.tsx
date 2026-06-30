@@ -7,6 +7,7 @@ import type { SurfaceBlueprintBindingContext } from "@/lib/ui-editor/runtime/sur
 import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import { SurfaceElementTree } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 
 type DevModeSurfaceRendererProps = {
     document: UIDocument;
@@ -68,7 +69,7 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
         width: surface.designSize.width,
         height: surface.designSize.height,
         overflow: "hidden",
-        backgroundColor: surface.settings?.backgroundColor ?? "#ffffff",
+        backgroundColor: getSurfaceBackgroundColor(surface),
         transform: `scale(${safeScale})`,
         transformOrigin: "top left",
     };

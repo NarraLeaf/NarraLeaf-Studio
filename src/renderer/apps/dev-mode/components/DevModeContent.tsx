@@ -1,9 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from "react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type ComponentProps,
+    type Dispatch,
+    type MutableRefObject,
+    type ReactNode,
+    type SetStateAction,
+} from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check } from "lucide-react";
-import { FixedAspectRatioContainer, Game } from "narraleaf-react";
+import { Dialog as NlrDialog, FixedAspectRatioContainer, Game } from "narraleaf-react";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
-import type { UISurface, UIDocument } from "@shared/types/ui-editor/document";
+import type { UISurface, UIDocument, UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -172,6 +183,184 @@ function DevModeSurfaceLifecycleLayer(props: {
     return <>{children}</>;
 }
 
+function findStageSurfaceForSlot(document: UIDocument, slotId: UIStageSlotId): UIStageSurface | null {
+    const matches = document.surfaces.filter((surface): surface is UIStageSurface =>
+        surface.kind === "stageSurface" && surface.mount.slotId === slotId
+    );
+    if (matches.length > 1) {
+        console.warn(
+            `[DevMode][GameUI] Multiple active surfaces found for slot "${slotId}". ` +
+            `Using the first surface in document order: ${matches[0]?.id ?? "(unknown)"}.`,
+        );
+    }
+    return matches[0] ?? null;
+}
+
+function dialogSlotRuntimeScopeId(sessionId: string, surfaceId: string): string {
+    return `nlr:${sessionId}:slot:dialog:${surfaceId}`;
+}
+
+function StudioDialogSlotSurface(props: {
+    sessionId: string;
+    bpCore: DevModeBlueprintRuntimeCore | null;
+    bundle: DevModeBundle;
+    surface: UIStageSurface;
+    rendererRegistry: ElementRendererRegistry;
+    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
+    makeStateAccessors: (surfaceId: string) => SurfaceStateAccessors | null;
+    openSurfaceWithTransition: (surfaceId: string) => Promise<void>;
+    closeLayerWithTransition: () => Promise<void>;
+    startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
+    setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
+    widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
+    widgetRuntimeStore: WidgetRuntimeStateStore;
+}) {
+    const {
+        sessionId,
+        bpCore,
+        bundle,
+        surface,
+        rendererRegistry,
+        lifecycleRef,
+        makeStateAccessors,
+        openSurfaceWithTransition,
+        closeLayerWithTransition,
+        startStoryInGame,
+        setWidgetPatchesByScope,
+        widgetPatchesByScopeRef,
+        widgetRuntimeStore,
+    } = props;
+    const runtimeScopeId = useMemo(() => dialogSlotRuntimeScopeId(sessionId, surface.id), [sessionId, surface.id]);
+    const hostAdapterRef = useRef<UIHostAdapter | null>(null);
+    const document = bundle.ui.uidoc;
+
+    const hostApi = useMemo(() => {
+        if (!bpCore) {
+            return null;
+        }
+        return createDevModeBlueprintHostApi({
+            document,
+            scope: bpCore.scopeBridge,
+            activeSurfaceId: surface.id,
+            runtimeScopeId,
+            emit: e => bpCore.debug.emit(e),
+            onOpenSurface: openSurfaceWithTransition,
+            onCloseLayer: closeLayerWithTransition,
+            onStartStory: startStoryInGame,
+            onWidgetPatch: (elementId, patch) => {
+                setWidgetPatchesByScope(prev => ({
+                    ...prev,
+                    [runtimeScopeId]: {
+                        ...(prev[runtimeScopeId] ?? {}),
+                        [elementId]: {
+                            ...(prev[runtimeScopeId]?.[elementId] ?? {}),
+                            ...patch,
+                        },
+                    },
+                }));
+            },
+            onElementFlush: (elementId, payload) => {
+                void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
+                    elementId,
+                    "flush",
+                    payload,
+                );
+            },
+            widgetRuntimeStore,
+        });
+    }, [
+        bpCore,
+        closeLayerWithTransition,
+        document,
+        openSurfaceWithTransition,
+        runtimeScopeId,
+        setWidgetPatchesByScope,
+        startStoryInGame,
+        surface.id,
+        widgetRuntimeStore,
+    ]);
+
+    const hostAdapter = useMemo((): UIHostAdapter => {
+        if (!bpCore || !hostApi) {
+            return {
+                ...staticDevHostAdapter(surface),
+                gameUiRuntime: { slotId: "dialog" },
+            };
+        }
+        return {
+            ...createDevModeBlueprintHostAdapter({
+                bundle,
+                surface,
+                runtimeScopeId,
+                scopeBridge: bpCore.scopeBridge,
+                debug: bpCore.debug,
+                hostApi,
+                executionManager: bpCore.executionManager,
+            }),
+            gameUiRuntime: { slotId: "dialog" },
+        };
+    }, [bpCore, bundle, hostApi, runtimeScopeId, surface]);
+
+    useEffect(() => {
+        hostAdapterRef.current = hostAdapter;
+    }, [hostAdapter]);
+
+    const globalStateReader = useMemo(() => {
+        if (!bpCore) {
+            return undefined;
+        }
+        return {
+            get: (key: string) => bpCore.scopeBridge.globalGet(key),
+            subscribe: (listener: () => void) => bpCore.scopeBridge.subscribeGlobals(listener),
+        };
+    }, [bpCore]);
+
+    const bindingContext = useMemo(() => {
+        if (!bpCore) {
+            return null;
+        }
+        return {
+            blueprintDocument: bundle.ui.localBlueprints,
+            surfaceState: bpCore.scopeBridge.getSurfaceStore(runtimeScopeId),
+            debug: bpCore.debug,
+            coalescer: bpCore.bindingDebugCoalescer,
+            globalState: globalStateReader,
+        };
+    }, [bpCore, bundle.ui.localBlueprints, globalStateReader, runtimeScopeId]);
+
+    return (
+        <NlrDialog style={{ width: "100%", height: "100%", position: "relative" }}>
+            <DevModeSurfaceLifecycleLayer
+                bpCore={bpCore}
+                bundle={bundle}
+                surface={surface}
+                runtimeScopeId={runtimeScopeId}
+                hostAdapter={hostAdapter}
+                lifecycleRef={lifecycleRef}
+                makeStateAccessors={makeStateAccessors}
+            >
+                <WidgetRuntimeStateProvider externalStore={widgetRuntimeStore}>
+                    <DevModeSurfaceRenderer
+                        document={document}
+                        surface={surface}
+                        rendererRegistry={rendererRegistry}
+                        scale={1}
+                        hostAdapter={hostAdapter}
+                        blueprintBindingContext={bindingContext}
+                        widgetRuntimePatches={widgetPatchesByScopeRef.current[runtimeScopeId] ?? {}}
+                    />
+                </WidgetRuntimeStateProvider>
+            </DevModeSurfaceLifecycleLayer>
+        </NlrDialog>
+    );
+}
+
+function createStudioDialogComponent(options: ComponentProps<typeof StudioDialogSlotSurface>) {
+    return function StudioDialogGameUI() {
+        return <StudioDialogSlotSurface {...options} />;
+    };
+}
+
 export function DevModeContent(props: DevModeContentProps) {
     const {
         bundle,
@@ -210,7 +399,10 @@ export function DevModeContent(props: DevModeContentProps) {
     const nlrSessionSeqRef = useRef(0);
     const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
     const activeStoryRevisionRef = useRef<number | null>(null);
+    const startStoryInGameRef = useRef<((request: DevModeStartStoryRequest) => Promise<void>) | null>(null);
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
+    const lifecycleRef = useRef<SurfaceLifecycleManager>(new SurfaceLifecycleManager());
+    const appBootFiredRef = useRef<string | null>(null);
     const persistenceProjectRef = useMemo<BlueprintPersistenceProjectRef | null>(() => {
         if (!projectPath) {
             return null;
@@ -464,6 +656,20 @@ export function DevModeContent(props: DevModeContentProps) {
         return wait;
     }, [beginTransitionWait, estimateTransitionDuration, navStack, shouldWaitForExit, uiDocument?.surfaces]);
 
+    const makeStateAccessors = useCallback(
+        (runtimeScopeId: string) => {
+            if (!bpCore) {
+                return null;
+            }
+            const store = bpCore.scopeBridge.getSurfaceStore(runtimeScopeId);
+            return {
+                get: (key: string) => store.get(key),
+                set: (key: string, value: unknown) => store.set(key, value),
+            };
+        },
+        [bpCore],
+    );
+
     const rejectPendingGameStarts = useCallback((error: Error) => {
         pendingGameStartsRef.current.forEach(pending => pending.reject(error));
         pendingGameStartsRef.current.clear();
@@ -522,14 +728,36 @@ export function DevModeContent(props: DevModeContentProps) {
         nlrSessionSeqRef.current += 1;
         const sessionId = `${bundle.bundleId}:${bundle.revision}:${nlrSessionSeqRef.current}`;
         const { width, height } = activeSurface.designSize;
-        const game = new Game({
+        const dialogSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "dialog");
+        const dialogComponent = dialogSurface
+            ? createStudioDialogComponent({
+                  sessionId,
+                  bpCore,
+                  bundle,
+                  surface: dialogSurface,
+                  rendererRegistry,
+                  lifecycleRef,
+                  makeStateAccessors,
+                  openSurfaceWithTransition,
+                  closeLayerWithTransition,
+                  startStoryInGame: request =>
+                      startStoryInGameRef.current?.(request) ??
+                      Promise.reject(new Error("Start Game is not available")),
+                  setWidgetPatchesByScope,
+                  widgetPatchesByScopeRef,
+                  widgetRuntimeStore,
+              })
+            : undefined;
+        const gameConfig: ConstructorParameters<typeof Game>[0] = {
             app: { debug: true },
             width,
             height,
             aspectRatio: width / height,
             ratioUpdateInterval: 0,
             contentContainerId: `__nlr_dev_stage_${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
-        });
+            ...(dialogComponent ? { dialog: dialogComponent } : {}),
+        };
+        const game = new Game(gameConfig);
 
         const ready = new Promise<void>((resolve, reject) => {
             pendingGameStartsRef.current.set(sessionId, { resolve, reject });
@@ -549,7 +777,19 @@ export function DevModeContent(props: DevModeContentProps) {
         await waitForAnimationFrame();
         setGameStageVisible(true);
         setStudioPageHiddenForGame(true);
-    }, [activeSurface, bundle, rejectPendingGameStarts]);
+    }, [
+        activeSurface,
+        bpCore,
+        bundle,
+        closeLayerWithTransition,
+        lifecycleRef,
+        makeStateAccessors,
+        openSurfaceWithTransition,
+        rejectPendingGameStarts,
+        rendererRegistry,
+        widgetRuntimeStore,
+    ]);
+    startStoryInGameRef.current = startStoryInGame;
 
     const handleNlrPreloadedReady = useCallback((sessionId: string) => {
         const pending = pendingGameStartsRef.current.get(sessionId);
@@ -655,20 +895,6 @@ export function DevModeContent(props: DevModeContentProps) {
         hostAdapterRef.current = hostAdapter;
     }, [hostAdapter]);
 
-    const makeStateAccessors = useCallback(
-        (runtimeScopeId: string) => {
-            if (!bpCore) {
-                return null;
-            }
-            const store = bpCore.scopeBridge.getSurfaceStore(runtimeScopeId);
-            return {
-                get: (key: string) => store.get(key),
-                set: (key: string, value: unknown) => store.set(key, value),
-            };
-        },
-        [bpCore],
-    );
-
     useEffect(() => {
         if (!bpCore || !bundle || !activeSurface || !hostAdapter.blueprintRuntime) {
             return undefined;
@@ -716,9 +942,6 @@ export function DevModeContent(props: DevModeContentProps) {
             window.removeEventListener("keyup", onKeyUp);
         };
     }, [activeRuntimeScopeId, activeSurface, bpCore, bundle, hostAdapter, makeStateAccessors]);
-
-    const lifecycleRef = useRef<SurfaceLifecycleManager>(new SurfaceLifecycleManager());
-    const appBootFiredRef = useRef<string | null>(null);
 
     // Reset lifecycle tracking on new session
     useEffect(() => {
@@ -964,7 +1187,7 @@ export function DevModeContent(props: DevModeContentProps) {
                         <div className="relative h-full w-full overflow-hidden">
                             <NlrStageLayer
                                 session={nlrSession}
-                                visible={gameStageVisible}
+                                interactive={gameStageVisible}
                                 onPreloadedReady={handleNlrPreloadedReady}
                                 onError={handleNlrStageError}
                             />

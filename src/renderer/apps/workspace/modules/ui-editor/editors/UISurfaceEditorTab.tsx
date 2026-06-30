@@ -5,6 +5,7 @@ import {
     useMemo,
     useRef,
     useState,
+    type CSSProperties,
 } from "react";
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
@@ -68,9 +69,19 @@ import {
     subscribeElementBindingSession,
 } from "@/apps/workspace/modules/blueprint-lite/elementBindingSession";
 import type { EditorLayout } from "@/apps/workspace/registry/types";
+import type { UISurface } from "@shared/types/ui-editor/document";
+import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const getSurfaceTabId = (targetSurfaceId: string) => `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
+
+function getEditorSurfaceStyle(surface: UISurface | null | undefined): CSSProperties | undefined {
+    if (!surface) {
+        return undefined;
+    }
+    const backgroundColor = getEditorSurfaceAreaBackgroundColor(surface);
+    return backgroundColor ? { backgroundColor } : undefined;
+}
 
 function findEditorGroupIdByTabId(layout: EditorLayout, tabId: string): string | null {
     if ("tabs" in layout) {
@@ -118,7 +129,7 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
     const smartSnapEnabled = useSmartSnapEnabled(stateService);
     const smartSnapDetail = useSmartSnapDetailSettings(stateService);
     const { surface, documentVersion } = useSurfaceDocument(surfaceId, stateService, documentService);
-    const widgetModules = useMemo(() => listInsertPaletteModules(surface?.kind), [surface?.kind]);
+    const widgetModules = useMemo(() => listInsertPaletteModules(surface), [surface]);
     const deferredDocumentVersion = useDeferredValue(documentVersion);
     const deferredGraphVersion = useDeferredValue(graphVersion);
     const [bindingSession, setBindingSession] = useState(readElementBindingSession());
@@ -362,20 +373,23 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         if (!surfaceId || !runtimeBridge || !documentService) {
             return null;
         }
+        const style = getEditorSurfaceStyle(surface);
         if (isComponentEdit) {
             return runtimeBridge.renderDocumentSurface({
                 document: documentService.getDocument(),
                 surfaceId,
                 hostAdapter,
                 className: "relative",
+                style,
             });
         }
         return runtimeBridge.renderSurface({
             surfaceId,
             hostAdapter,
             className: "relative",
+            style,
         });
-    }, [documentService, isComponentEdit, runtimeBridge, surfaceId, hostAdapter, documentVersion]);
+    }, [documentService, isComponentEdit, runtimeBridge, surface, surfaceId, hostAdapter, documentVersion]);
 
     const applyTool = useCallback(
         (nextTool: UITool) => {

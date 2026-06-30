@@ -1,15 +1,17 @@
 {
-  "schemaVersion": 5,
+  "schemaVersion": 10,
   "id": "ex-doc-dialog",
-  "name": "Example · Dialog (App Surface)",
+  "name": "Example · Dialog Game UI",
   "surfaces": [
     {
-      "id": "ex-surf-dialog-app",
-      "name": "Dialog · App",
-      "host": "app",
-      "kind": "appSurface",
+      "id": "ex-surf-dialog",
+      "name": "Dialog · Game UI",
+      "host": "player",
+      "kind": "stageSurface",
       "designSize": { "width": 1280, "height": 720 },
-      "rootElementId": "ex-el-dialog-root"
+      "rootElementId": "ex-el-dialog-root",
+      "settings": { "backgroundColor": "transparent" },
+      "mount": { "kind": "slot", "slotId": "dialog" }
     }
   ],
   "elements": {
@@ -26,169 +28,102 @@
       "type": "nl.container",
       "name": "Dialog panel",
       "parentId": "ex-el-dialog-root",
-      "childrenIds": ["ex-el-dialog-vstack"],
-      "layout": { "x": 340, "y": 200, "width": 600, "height": 300, "visible": true, "opacity": 1 },
+      "childrenIds": ["ex-el-dialog-stack"],
+      "layout": { "x": 90, "y": 500, "width": 1100, "height": 170, "visible": true, "opacity": 1 },
       "props": {
         "layoutKind": "free",
-        "backgroundColor": "#1f2937",
+        "backgroundColor": "#0b0d12",
+        "fillOpacity": 0.78,
         "borderRadius": 12,
+        "borderRadiusTL": 12,
+        "borderRadiusTR": 12,
+        "borderRadiusBL": 12,
+        "borderRadiusBR": 12,
+        "borderColor": "#f8fafc",
         "borderWidth": 1,
-        "borderColor": "#374151",
-        "borderStyle": "solid",
+        "strokeOpacity": 0.18,
         "clipContent": true
       }
     },
-    "ex-el-dialog-vstack": {
-      "id": "ex-el-dialog-vstack",
+    "ex-el-dialog-stack": {
+      "id": "ex-el-dialog-stack",
       "type": "nl.container",
-      "name": "Content stack",
+      "name": "Dialog content",
       "parentId": "ex-el-dialog-panel",
-      "childrenIds": ["ex-el-dialog-title", "ex-el-dialog-body", "ex-el-dialog-actions"],
-      "layout": { "x": 0, "y": 0, "width": 600, "height": 300, "visible": true, "opacity": 1 },
+      "childrenIds": ["ex-el-dialog-nametag", "ex-el-dialog-sentence"],
+      "layout": { "x": 0, "y": 0, "width": 1100, "height": 170, "visible": true, "opacity": 1 },
       "props": {
         "layoutKind": "stack",
         "stackDirection": "vertical",
-        "stackGap": 16,
-        "stackPaddingTop": 24,
-        "stackPaddingRight": 24,
-        "stackPaddingBottom": 24,
-        "stackPaddingLeft": 24,
+        "stackGap": 10,
+        "stackPaddingTop": 22,
+        "stackPaddingRight": 28,
+        "stackPaddingBottom": 22,
+        "stackPaddingLeft": 28,
         "stackAlignItems": "stretch",
         "stackJustifyContent": "start",
         "backgroundColor": "transparent",
+        "fillVisible": false,
+        "strokeVisible": false,
         "borderRadius": 0,
         "borderWidth": 0,
         "borderStyle": "none",
         "clipContent": false
       }
     },
-    "ex-el-dialog-title": {
-      "id": "ex-el-dialog-title",
-      "type": "nl.text",
-      "name": "Title",
-      "parentId": "ex-el-dialog-vstack",
+    "ex-el-dialog-nametag": {
+      "id": "ex-el-dialog-nametag",
+      "type": "nl.dialog.nametag",
+      "name": "Nametag",
+      "parentId": "ex-el-dialog-stack",
       "childrenIds": [],
-      "layout": { "x": 0, "y": 0, "width": 552, "height": 28, "visible": true, "opacity": 1 },
+      "layout": { "x": 0, "y": 0, "width": 320, "height": 34, "visible": true, "opacity": 1 },
       "props": {
-        "text": "Dialog title",
-        "fontSize": 20,
-        "color": "#f9fafb",
+        "text": "Speaker",
+        "fontSize": 22,
+        "color": "#f8d37a",
         "fontWeight": "600",
+        "fontStyle": "normal",
         "textAlign": "left",
-        "lineHeight": 1.3
+        "textVerticalAlign": "center",
+        "lineHeight": 1.2,
+        "fontAssetId": null,
+        "textWrapMode": "word",
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1
       }
     },
-    "ex-el-dialog-body": {
-      "id": "ex-el-dialog-body",
-      "type": "nl.text",
-      "name": "Body",
-      "parentId": "ex-el-dialog-vstack",
+    "ex-el-dialog-sentence": {
+      "id": "ex-el-dialog-sentence",
+      "type": "nl.dialog.sentence",
+      "name": "Sentence",
+      "parentId": "ex-el-dialog-stack",
       "childrenIds": [],
-      "layout": { "x": 0, "y": 0, "width": 552, "height": 80, "visible": true, "opacity": 1 },
+      "layout": { "x": 0, "y": 0, "width": 1044, "height": 92, "visible": true, "opacity": 1 },
       "props": {
-        "text": "Message body. Editor shows layout only; wire actions in Blueprint / Dev Mode.",
-        "fontSize": 14,
-        "color": "#d1d5db",
+        "text": "The current line will appear here.",
+        "fontSize": 24,
+        "color": "#f8fafc",
         "fontWeight": "normal",
+        "fontStyle": "normal",
         "textAlign": "left",
-        "lineHeight": 1.5
-      }
-    },
-    "ex-el-dialog-actions": {
-      "id": "ex-el-dialog-actions",
-      "type": "nl.container",
-      "name": "Actions",
-      "parentId": "ex-el-dialog-vstack",
-      "childrenIds": ["ex-el-dialog-btn-ok", "ex-el-dialog-btn-cancel"],
-      "layout": { "x": 0, "y": 0, "width": 552, "height": 44, "visible": true, "opacity": 1 },
-      "props": {
-        "layoutKind": "stack",
-        "stackDirection": "horizontal",
-        "stackGap": 12,
-        "stackPaddingTop": 0,
-        "stackPaddingRight": 0,
-        "stackPaddingBottom": 0,
-        "stackPaddingLeft": 0,
-        "stackAlignItems": "center",
-        "stackJustifyContent": "end",
-        "backgroundColor": "transparent",
-        "borderRadius": 0,
-        "borderWidth": 0,
-        "borderStyle": "none",
-        "clipContent": false
-      }
-    },
-    "ex-el-dialog-btn-ok": {
-      "id": "ex-el-dialog-btn-ok",
-      "type": "nl.button",
-      "name": "OK",
-      "parentId": "ex-el-dialog-actions",
-      "childrenIds": ["ex-el-dialog-btn-ok-label"],
-      "layout": { "x": 0, "y": 0, "width": 100, "height": 40, "visible": true, "opacity": 1 },
-      "props": {
-        "backgroundColor": "#2563eb",
-        "borderRadius": 8,
-        "borderWidth": 0,
-        "borderColor": "#000000",
-        "borderStyle": "none",
-        "paddingX": 16,
-        "paddingY": 10,
-        "clipContent": true
-      }
-    },
-    "ex-el-dialog-btn-ok-label": {
-      "id": "ex-el-dialog-btn-ok-label",
-      "type": "nl.text",
-      "name": "OK label",
-      "parentId": "ex-el-dialog-btn-ok",
-      "childrenIds": [],
-      "layout": { "x": 0, "y": 0, "width": 100, "height": 24, "visible": true, "opacity": 1 },
-      "props": {
-        "text": "OK",
-        "fontSize": 14,
-        "color": "#ffffff",
-        "fontWeight": "600",
-        "textAlign": "center",
-        "lineHeight": 1.2
-      }
-    },
-    "ex-el-dialog-btn-cancel": {
-      "id": "ex-el-dialog-btn-cancel",
-      "type": "nl.button",
-      "name": "Cancel",
-      "parentId": "ex-el-dialog-actions",
-      "childrenIds": ["ex-el-dialog-btn-cancel-label"],
-      "layout": { "x": 0, "y": 0, "width": 100, "height": 40, "visible": true, "opacity": 1 },
-      "props": {
-        "backgroundColor": "#374151",
-        "borderRadius": 8,
-        "borderWidth": 0,
-        "borderColor": "#000000",
-        "borderStyle": "none",
-        "paddingX": 16,
-        "paddingY": 10,
-        "clipContent": true
-      }
-    },
-    "ex-el-dialog-btn-cancel-label": {
-      "id": "ex-el-dialog-btn-cancel-label",
-      "type": "nl.text",
-      "name": "Cancel label",
-      "parentId": "ex-el-dialog-btn-cancel",
-      "childrenIds": [],
-      "layout": { "x": 0, "y": 0, "width": 100, "height": 24, "visible": true, "opacity": 1 },
-      "props": {
-        "text": "Cancel",
-        "fontSize": 14,
-        "color": "#e5e7eb",
-        "fontWeight": "normal",
-        "textAlign": "center",
-        "lineHeight": 1.2
+        "textVerticalAlign": "start",
+        "lineHeight": 1.45,
+        "fontAssetId": null,
+        "textWrapMode": "word",
+        "transformOffsetX": 0,
+        "transformOffsetY": 0,
+        "transformScale": 1,
+        "transformRotation": 0,
+        "transformOpacity": 1
       }
     }
   },
   "meta": {
-    "createdAt": "2026-04-03T00:00:00.000Z",
-    "updatedAt": "2026-04-03T00:00:00.000Z"
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
   }
 }
