@@ -97,8 +97,8 @@ function structuredCloneBlock(block: StoryBlock): StoryBlock {
 
 function clonePayloadWithNewTextIds(payload: StoryBlock["payload"], generateId: () => string): StoryBlock["payload"] {
     const clone = JSON.parse(JSON.stringify(payload)) as StoryBlock["payload"];
-    const replaceTextId = (text: StoryTextSegment | undefined) => {
-        if (text) {
+    const replaceTextId = (text: StoryTextSegment | string | undefined) => {
+        if (isStoryTextSegment(text)) {
             text.textId = generateId();
         }
     };
@@ -109,4 +109,8 @@ function clonePayloadWithNewTextIds(payload: StoryBlock["payload"], generateId: 
         replaceTextId(clone.prompt);
     }
     return clone;
+}
+
+function isStoryTextSegment(value: unknown): value is StoryTextSegment {
+    return Boolean(value && typeof value === "object" && "textId" in value && "value" in value);
 }

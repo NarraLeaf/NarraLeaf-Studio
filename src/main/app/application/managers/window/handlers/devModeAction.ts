@@ -56,6 +56,18 @@ export class DevModeGetStatusHandler extends IPCHandler<IPCEventType.devModeGetS
     }
 }
 
+export class DevModeResolveAssetUrlHandler extends IPCHandler<IPCEventType.devModeResolveAssetUrl> {
+    readonly name = IPCEventType.devModeResolveAssetUrl;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow<WindowAppType.DevMode>,
+        { assetId, assetType }: IPCEvents[IPCEventType.devModeResolveAssetUrl]["data"],
+    ): Promise<RequestStatus<{ url: string }>> {
+        return resolveDevModeAssetUrl(window, assetId, assetType);
+    }
+}
+
 export class DevModeResolveImageAssetUrlHandler extends IPCHandler<IPCEventType.devModeResolveImageAssetUrl> {
     readonly name = IPCEventType.devModeResolveImageAssetUrl;
     readonly type = IPCMessageType.request;
@@ -64,6 +76,15 @@ export class DevModeResolveImageAssetUrlHandler extends IPCHandler<IPCEventType.
         window: AppWindow<WindowAppType.DevMode>,
         { assetId }: IPCEvents[IPCEventType.devModeResolveImageAssetUrl]["data"],
     ): Promise<RequestStatus<{ url: string }>> {
+        return resolveDevModeAssetUrl(window, assetId, "image");
+    }
+}
+
+async function resolveDevModeAssetUrl(
+    window: AppWindow<WindowAppType.DevMode>,
+    assetId: string,
+    assetType?: string,
+): Promise<RequestStatus<{ url: string }>> {
         const props = window.getProps();
         const workspaceWindow = window.getApp().windowManager
             .getWindows()
@@ -75,22 +96,21 @@ export class DevModeResolveImageAssetUrlHandler extends IPCHandler<IPCEventType.
             ) as AppWindow<WindowAppType.Workspace> | undefined;
 
         if (!workspaceWindow) {
-            return this.failed("Workspace window not available");
+            return { success: false, error: "Workspace window not available" };
         }
 
         try {
             const workspaceResult = await workspaceWindow.invokeIpcRequest(
-                IPCEventType.workspaceResolveImageAssetUrl,
-                { assetId },
+                IPCEventType.workspaceResolveAssetUrl,
+                { assetId, assetType },
             );
             if (!workspaceResult.success) {
-                return this.failed(workspaceResult.error ?? "Failed to resolve image asset");
+                return { success: false, error: workspaceResult.error ?? "Failed to resolve asset" };
             }
-            return this.success(workspaceResult.data);
+            return { success: true, data: workspaceResult.data };
         } catch (error) {
-            return this.failed(error);
+            return { success: false, error: error instanceof Error ? error.message : String(error) };
         }
-    }
 }
 
 export class DevModeOpenBlueprintInWorkspaceHandler extends IPCHandler<IPCEventType.devModeOpenBlueprintInWorkspace> {

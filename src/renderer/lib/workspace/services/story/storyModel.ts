@@ -12,7 +12,9 @@ import {
     StoryScene,
     StorySceneId,
     StoryTextId,
+    StoryTextSegment,
 } from "@shared/types/story";
+import { assertValidStoryEntityId, assertValidStoryId, isValidStoryId } from "@shared/utils/storyId";
 
 export type StoryIdFactory = () => string;
 
@@ -33,6 +35,7 @@ export function createStoryLibraryEntry(input: {
     documentPath: string;
     now: string;
 }): StoryLibraryEntry {
+    assertValidStoryId(input.id);
     return {
         id: input.id,
         name: input.name,
@@ -48,8 +51,11 @@ export function createEmptyStoryDocument(input: {
     now: string;
     generateId: StoryIdFactory;
 }): StoryDocument {
+    assertValidStoryId(input.id);
     const chapterId = input.generateId();
     const sceneId = input.generateId();
+    assertValidStoryEntityId(chapterId, "Story chapter id");
+    assertValidStoryEntityId(sceneId, "Story scene id");
     const chapter: StoryChapter = {
         id: chapterId,
         name: "Chapter 1",
@@ -89,6 +95,7 @@ export function createEmptyStoryDocument(input: {
 }
 
 export function storyDocumentRelativePath(storyId: StoryId): string {
+    assertValidStoryId(storyId);
     return `editor/story/stories/${storyId}/storydoc.json`;
 }
 
@@ -113,12 +120,19 @@ export function assertSupportedStoryDocument(document: StoryDocument): void {
 export function normalizeStoryLibraryIndex(index: StoryLibraryIndex, now: string): StoryLibraryIndex {
     assertSupportedStoryLibraryIndex(index);
     const seen = new Set<string>();
-    const stories = index.stories.filter(entry => {
-        if (!entry.id || seen.has(entry.id)) {
-            return false;
+    const sourceStories = Array.isArray(index.stories) ? index.stories : [];
+    const stories = sourceStories.flatMap(entry => {
+        if (!entry || typeof entry !== "object") {
+            return [];
+        }
+        if (!isValidStoryId(entry.id) || seen.has(entry.id)) {
+            return [];
         }
         seen.add(entry.id);
-        return true;
+        return [{
+            ...entry,
+            documentPath: storyDocumentRelativePath(entry.id),
+        }];
     });
     const defaultStoryId =
         index.defaultStoryId && stories.some(entry => entry.id === index.defaultStoryId)
@@ -137,6 +151,7 @@ export function normalizeStoryLibraryIndex(index: StoryLibraryIndex, now: string
 
 export function normalizeStoryDocument(document: StoryDocument, now: string): StoryDocument {
     assertSupportedStoryDocument(document);
+    assertValidStoryId(document.id);
     const scenes: Record<StorySceneId, StoryScene> = {};
     for (const [sceneId, scene] of Object.entries(document.scenes)) {
         const normalized = normalizeScene(scene);
@@ -164,6 +179,7 @@ export function normalizeStoryDocument(document: StoryDocument, now: string): St
 }
 
 export function createChapter(input: { id: string; name: string; now: string }): StoryChapter {
+    assertValidStoryEntityId(input.id, "Story chapter id");
     return {
         id: input.id,
         name: input.name,
@@ -176,6 +192,7 @@ export function createChapter(input: { id: string; name: string; now: string }):
 }
 
 export function createScene(input: { id: string; name: string; runtimeName: string; now: string }): StoryScene {
+    assertValidStoryEntityId(input.id, "Story scene id");
     return {
         id: input.id,
         name: input.name,
@@ -264,7 +281,9 @@ export function moveBlockInScene(
 }
 
 export function createTextId(generateId: StoryIdFactory): StoryTextId {
-    return generateId();
+    const textId = generateId();
+    assertValidStoryEntityId(textId, "Story text id");
+    return textId;
 }
 
 export function canAcceptChildren(block: StoryBlock | undefined): boolean {
@@ -354,7 +373,7 @@ function collectBlockSubtree(scene: StoryScene, blockId: StoryBlockId): StoryBlo
 
 function preserveTextIds(previous: StoryBlock["payload"], next: StoryBlock["payload"]): StoryBlock["payload"] {
     if (isNodeTextPayload(previous) && isNodeTextPayload(next) && previous.action === next.action) {
-        if ("text" in previous && "text" in next) {
+        if ("text" in previous && "text" in next && isStoryTextSegment(previous.text) && isStoryTextSegment(next.text)) {
             return {
                 ...next,
                 text: {
@@ -363,7 +382,7 @@ function preserveTextIds(previous: StoryBlock["payload"], next: StoryBlock["payl
                 },
             } as StoryBlock["payload"];
         }
-        if ("prompt" in previous && "prompt" in next && previous.prompt && next.prompt) {
+        if ("prompt" in previous && "prompt" in next && isStoryTextSegment(previous.prompt) && isStoryTextSegment(next.prompt)) {
             return {
                 ...next,
                 prompt: {
@@ -373,7 +392,7 @@ function preserveTextIds(previous: StoryBlock["payload"], next: StoryBlock["payl
             } as StoryBlock["payload"];
         }
     }
-    if ("text" in previous && "text" in next) {
+    if ("text" in previous && "text" in next && isStoryTextSegment(previous.text) && isStoryTextSegment(next.text)) {
         return {
             ...next,
             text: {
@@ -387,4 +406,8 @@ function preserveTextIds(previous: StoryBlock["payload"], next: StoryBlock["payl
 
 function isNodeTextPayload(payload: StoryBlock["payload"]): payload is StoryNodeActionPayload {
     return "action" in payload;
+}
+
+function isStoryTextSegment(value: unknown): value is StoryTextSegment {
+    return Boolean(value && typeof value === "object" && "textId" in value && "value" in value);
 }

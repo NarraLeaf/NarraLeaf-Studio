@@ -76,6 +76,8 @@ export type StoryScene = {
 
 export type StoryVariableScope = "studioGlobal" | "gamePersistent" | "sceneLocal";
 export type StoryVariableValueType = "boolean" | "number" | "string" | "json";
+export type StoryStageObjectKind = "image" | "text" | "layer" | "video";
+export type StoryDisplayableTargetKind = Exclude<StoryStageObjectKind, "video"> | "character";
 
 export type StoryVariableDefinition = {
     id: string;
@@ -154,13 +156,30 @@ export type StoryActionPayload =
           operation: "enter" | "move" | "exit" | "expression";
           characterId?: string;
           assetId?: string;
+          objectName?: string;
+          formName?: string;
+          variants?: StoryCharacterVariantSelection;
+          transition?: StoryTransitionRef;
           transform?: StoryTransformRef;
       }
     | {
           action: "audio";
-          operation: "setBgm" | "playSound" | "stopSound";
+          operation:
+              | "setBgm"
+              | "playSound"
+              | "stopSound"
+              | "pauseSound"
+              | "resumeSound"
+              | "setVolume"
+              | "setRate"
+              | "muteSound";
+          objectName?: string;
           assetId?: string;
           fadeMs?: number;
+          volume?: number;
+          rate?: number;
+          muted?: boolean;
+          loop?: boolean;
       }
     | {
           action: "setVariable";
@@ -171,6 +190,60 @@ export type StoryActionPayload =
           action: "wait";
           mode: "duration" | "click";
           durationMs?: number;
+      }
+    | {
+          action: "image";
+          operation: "create" | "setSource" | "show" | "hide";
+          objectName: string;
+          assetId?: string;
+          color?: string;
+          layerName?: string;
+          autoFit?: boolean;
+          transition?: StoryTransitionRef;
+          transform?: StoryTransformRef;
+      }
+    | {
+          action: "displayable";
+          operation: "show" | "hide" | "transform";
+          target: StoryDisplayableTargetRef;
+          transform?: StoryTransformRef;
+      }
+    | {
+          action: "text";
+          operation: "create" | "setText" | "show" | "hide" | "setFontSize" | "setFontColor";
+          objectName: string;
+          text?: string;
+          fontSize?: number;
+          fontColor?: string;
+          layerName?: string;
+          transform?: StoryTransformRef;
+      }
+    | {
+          action: "layer";
+          operation: "create" | "setZIndex" | "show" | "hide" | "transform";
+          objectName: string;
+          zIndex?: number;
+          transform?: StoryTransformRef;
+      }
+    | {
+          action: "video";
+          operation: "create" | "show" | "hide" | "play";
+          objectName: string;
+          assetId?: string;
+          muted?: boolean;
+      }
+    | {
+          action: "nvl";
+          transition?: StoryTransformRef;
+      }
+    | {
+          action: "screenEffect";
+          effect: "blink" | "vignette";
+          durationMs?: number;
+          holdMs?: number;
+          color?: string;
+          opacity?: number;
+          easing?: string;
       };
 
 export type StoryControlPayload =
@@ -181,6 +254,11 @@ export type StoryControlPayload =
           control: "conditionBranch";
           branch: "if" | "elseIf" | "else";
           condition?: StoryConditionRef;
+      }
+    | {
+          control: "sequence" | "parallel" | "race" | "repeat";
+          mode?: "do" | "doAsync" | "all" | "allAsync" | "any";
+          times?: number;
       };
 
 export type StoryJumpPayload = {
@@ -211,6 +289,13 @@ export type StoryVariableRef = {
     key: string;
 };
 
+export type StoryDisplayableTargetRef = {
+    kind?: StoryDisplayableTargetKind;
+    name: string;
+};
+
+export type StoryCharacterVariantSelection = string[] | Record<string, string>;
+
 export type StoryConditionRef =
     | {
           kind: "variable";
@@ -223,15 +308,38 @@ export type StoryConditionRef =
           source: string;
       };
 
+export type StoryTransformPreset =
+    | "none"
+    | "left"
+    | "center"
+    | "right"
+    | "custom"
+    | "fadeIn"
+    | "fadeOut"
+    | "slideLeft"
+    | "slideRight"
+    | "slideUp"
+    | "slideDown"
+    | "zoom"
+    | "scale"
+    | "rotate"
+    | "opacity"
+    | "darken"
+    | "circleReveal"
+    | "circleClose"
+    | "wipe";
+
 export type StoryTransformRef = {
-    preset?: "left" | "center" | "right";
+    mode?: "preset" | "animation";
+    preset?: StoryTransformPreset;
     durationMs?: number;
     easing?: string;
     props?: Record<string, StoryLiteralValue>;
+    animationId?: string;
 };
 
 export type StoryTransitionRef = {
-    kind: "dissolve" | "fadeIn" | "darkness" | "custom";
+    kind: "none" | "dissolve" | "fadeIn" | "maskCircle" | "maskWipe" | "darkness" | "custom";
     durationMs?: number;
     easing?: string;
     props?: Record<string, StoryLiteralValue>;

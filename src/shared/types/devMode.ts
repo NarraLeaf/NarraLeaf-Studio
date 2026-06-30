@@ -34,6 +34,20 @@ export type DevModeStatus =
 export type DevModeCharacterSummary = {
     id: string;
     name: string;
+    defaultForm?: string | null;
+    forms?: DevModeCharacterFormSummary[];
+};
+
+export type DevModeCharacterFormSummary = {
+    name: string;
+    groups: DevModeCharacterVariantGroupSummary[];
+    variantAssets: Record<string, { assetId: string; name?: string }>;
+};
+
+export type DevModeCharacterVariantGroupSummary = {
+    name: string;
+    defaultVariant: string | null;
+    variants: { name: string }[];
 };
 
 export type DevModeStoryLibrary = {

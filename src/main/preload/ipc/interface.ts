@@ -67,6 +67,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         launch: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) =>
             ipcClient.invoke(IPCEventType.workspaceLaunch, { props, closeCurrentWindow }),
         close: () => ipcClient.invoke(IPCEventType.workspaceClose, {}),
+        onResolveAssetUrl: (handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>) =>
+            ipcClient.onRequest(IPCEventType.workspaceResolveAssetUrl, handler),
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
         onBlueprintNavigateFromPreview: (handler: (payload: PreviewStudioBlueprintOpenPayload) => void) =>
@@ -103,6 +105,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.devModeControlReload, handler),
         onControlError: (handler: (payload: { message: string }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeControlError, handler),
+        resolveAssetUrl: (assetId: string, assetType?: string) =>
+            ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
         openBlueprintInWorkspace: (payload: PreviewStudioBlueprintOpenPayload & { projectPath: string }) =>

@@ -498,10 +498,17 @@ export function DevModeContent(props: DevModeContentProps) {
         activeStoryRequestRef.current = { storyId, sceneId };
         activeStoryRevisionRef.current = bundle.revision;
 
-        const compiled = compileStudioStoryToNlr({
+        const compiled = await compileStudioStoryToNlr({
             document: storyDocument,
             sceneId,
             characters: bundle.storyLibrary.characters,
+            resolveAssetUrl: async (assetId, assetType) => {
+                const result = await getInterface().devMode.resolveAssetUrl(assetId, assetType);
+                if (!result.success || !result.data?.url) {
+                    throw new Error(result.error ?? `Failed to resolve asset: ${assetId}`);
+                }
+                return result.data.url;
+            },
         });
         if (compiled.diagnostics.length > 0) {
             console.warn("[DevMode][NLR] Story compile diagnostics", compiled.diagnostics);
@@ -514,9 +521,8 @@ export function DevModeContent(props: DevModeContentProps) {
             app: { debug: true },
             width,
             height,
-            minWidth: width,
-            minHeight: height,
             aspectRatio: width / height,
+            ratioUpdateInterval: 0,
             contentContainerId: `__nlr_dev_stage_${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
         });
 
