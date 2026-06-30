@@ -8,6 +8,8 @@ export interface NumericDraftEnhancedInputProps extends Passthrough {
     committedDisplay: string;
     /** Called only when the raw string parses to a finite number */
     onFiniteNumber: (n: number) => void;
+    /** Called when the raw string is emptied */
+    onEmpty?: () => void;
     /** When this changes (e.g. selected element id), clear any in-progress draft */
     draftResetKey?: string;
 }
@@ -20,6 +22,7 @@ export interface NumericDraftEnhancedInputProps extends Passthrough {
 export function NumericDraftEnhancedInput({
     committedDisplay,
     onFiniteNumber,
+    onEmpty,
     draftResetKey,
     onBlur,
     popoverWhenNarrow = true,
@@ -38,12 +41,16 @@ export function NumericDraftEnhancedInput({
     const handleChange = useCallback(
         (next: string) => {
             setDraft(next);
+            if (next.trim() === "") {
+                onEmpty?.();
+                return;
+            }
             const n = Number.parseFloat(next);
             if (Number.isFinite(n)) {
                 onFiniteNumber(n);
             }
         },
-        [onFiniteNumber]
+        [onEmpty, onFiniteNumber]
     );
 
     const handleBlur = useCallback(
