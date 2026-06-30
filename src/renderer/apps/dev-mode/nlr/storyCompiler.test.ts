@@ -41,6 +41,26 @@ function narrationBlock(id: string, textId: string, value: string, childrenIds: 
     };
 }
 
+function collectActionTree(action: any, story: unknown, seen = new Set<any>()): any[] {
+    if (!action || seen.has(action)) {
+        return [];
+    }
+    seen.add(action);
+    const children = typeof action.getFutureActions === "function"
+        ? action.getFutureActions(story, { allowFutureScene: true })
+        : [];
+    return [action, ...children.flatMap((child: any) => collectActionTree(child, story, seen))];
+}
+
+function getDisplayableTransformProps(actions: any[]): Record<string, unknown>[] {
+    return actions
+        .filter(action => action?.type === "displayable:applyTransform")
+        .flatMap(action => {
+            const transform = action.contentNode?.getContent?.()[0] as { sequences?: { props?: Record<string, unknown> }[] } | undefined;
+            return transform?.sequences?.map(sequence => sequence.props ?? {}) ?? [];
+        });
+}
+
 describe("compileStudioStoryToNlr", () => {
     it("compiles core scene actions, resolves assets, and assigns stable ids", async () => {
         const blocks: Record<string, StoryBlock> = {
@@ -122,6 +142,68 @@ describe("compileStudioStoryToNlr", () => {
         expect(calls).toEqual(["image:asset-default-bg"]);
         expect((compiled.scene.background as any).state.currentSrc).toBe("nlr://asset-default-bg");
         expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual(["say"]);
+    });
+
+    it("compiles character enter as a visible stage image", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            enter: {
+                id: "enter",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "character",
+                    operation: "enter",
+                    characterId: "char-alice",
+                    transform: { preset: "center", durationMs: 300, props: { zoom: 0.5, xoffset: 24, yoffset: -12 } },
+                },
+            },
+        };
+        const calls: string[] = [];
+
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["enter"]),
+            sceneId: "scene-1",
+            characters: [{
+                id: "char-alice",
+                name: "Alice",
+                defaultForm: "base",
+                forms: [{
+                    name: "base",
+                    groups: [{
+                        name: "Expression",
+                        defaultVariant: "Neutral",
+                        variants: [{ name: "Neutral" }],
+                    }],
+                    variantAssets: {
+                        Neutral: { assetId: "asset-alice-neutral" },
+                    },
+                }],
+            }],
+            resolveAssetUrl: async (assetId, assetType) => {
+                calls.push(`${assetType}:${assetId}`);
+                return `nlr://${assetId}`;
+            },
+        });
+
+        const enterActions = compiled.actionIdBindings
+            .filter(binding => binding.blockId === "enter")
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const actionTypes = enterActions.map(action => action.type);
+        const transformProps = getDisplayableTransformProps(enterActions);
+        const setSrcAction = enterActions.find(action => action?.type === "image:setSrc");
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(calls).toEqual(["image:asset-alice-neutral"]);
+        expect(actionTypes).toContain("image:setSrc");
+        expect(setSrcAction?.callee?.state?.currentSrc).toBe("nlr://asset-alice-neutral");
+        expect(transformProps).toEqual([
+            expect.objectContaining({
+                opacity: 1,
+                position: expect.objectContaining({ xalign: 0.5, yalign: 0.5, xoffset: 24, yoffset: -12 }),
+                zoom: 0.5,
+            }),
+        ]);
     });
 
     it("compiles choice, condition, variables, and skips script-only blocks with diagnostics", async () => {

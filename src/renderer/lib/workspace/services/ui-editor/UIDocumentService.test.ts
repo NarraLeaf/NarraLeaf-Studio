@@ -104,12 +104,18 @@ describe("UIDocumentService surface creation", () => {
         const root = doc.elements[dialog.rootElementId]!;
         const panel = doc.elements[root.childrenIds[0]!]!;
         const stack = doc.elements[panel.childrenIds[0]!]!;
+        const nametag = doc.elements[stack.childrenIds[0]!]!;
+        const sentence = doc.elements[stack.childrenIds[1]!]!;
         const children = stack.childrenIds.map(id => doc.elements[id]!.type);
 
         expect(dialog.mount.slotId).toBe("dialog");
         expect(dialog.settings?.backgroundColor).toBe("transparent");
         expect(panel.type).toBe("nl.container");
         expect(children).toEqual(["nl.dialog.nametag", "nl.dialog.sentence"]);
+        expect(panel.props?.appearance).toBeTruthy();
+        expect(stack.props?.appearance).toBeTruthy();
+        expect(nametag.props?.appearance).toBeTruthy();
+        expect(sentence.props?.appearance).toBeTruthy();
     });
 
     it("returns the existing active Game UI when creating a duplicate slot", () => {
@@ -134,6 +140,33 @@ describe("UIDocumentService surface creation", () => {
         expect(second.id).toBe(first.id);
         expect(dialogSurfaces).toHaveLength(1);
         expect(dialogSurfaces[0]?.name).toBe("Dialog");
+    });
+
+    it("repairs missing serialized appearance on existing Dialog Game UI templates", () => {
+        const { service } = createHarness();
+
+        const dialog = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "Dialog",
+            stageMount: { kind: "slot", slotId: "dialog" },
+        }) as UIStageSurface;
+        const doc = service.getDocument();
+        const root = doc.elements[dialog.rootElementId]!;
+        const panel = doc.elements[root.childrenIds[0]!]!;
+        const stack = doc.elements[panel.childrenIds[0]!]!;
+        const nametag = doc.elements[stack.childrenIds[0]!]!;
+        const sentence = doc.elements[stack.childrenIds[1]!]!;
+        for (const element of [panel, stack, nametag, sentence]) {
+            delete element.props?.appearance;
+        }
+
+        const migrated = (service as any).migrateIfNeeded(doc) as UIDocument;
+
+        expect(migrated.elements[panel.id]!.props?.appearance).toBeTruthy();
+        expect(migrated.elements[stack.id]!.props?.appearance).toBeTruthy();
+        expect(migrated.elements[nametag.id]!.props?.appearance).toBeTruthy();
+        expect(migrated.elements[sentence.id]!.props?.appearance).toBeTruthy();
     });
 
     it("migrates legacy stage mounts and slot aliases", () => {

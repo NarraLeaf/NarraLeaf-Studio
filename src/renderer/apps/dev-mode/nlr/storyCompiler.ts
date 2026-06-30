@@ -16,6 +16,7 @@ import {
     Sound,
     Story,
     Text,
+    Transform,
     Video,
 } from "narraleaf-react";
 import { blink, vignette } from "narraleaf-react/built-in";
@@ -381,30 +382,39 @@ async function compileCharacterStageAction(
     block: StoryBlock,
     payload: Extract<StoryActionPayload, { action: "character" }>,
 ): Promise<NlrStatement[]> {
-    const name = normalizeObjectName(payload.objectName || payload.characterId || "character");
-    const image = getImage(ctx, name, {
-        layerName: undefined,
-        autoFit: true,
-    });
-    const src = payload.assetId
-        ? await resolveAsset(ctx, payload.assetId, "image", block.id)
-        : await resolveCharacterImageUrl(ctx, payload.characterId, payload.formName, payload.variants, block.id);
+    const name = getCharacterStageObjectName(payload);
     const statements: NlrStatement[] = [];
 
-    if ((payload.operation === "enter" || payload.operation === "expression") && src) {
-        statements.push(recordStatement(ctx, image.char(src as any, createTransition(payload.transition, ctx, block.id) as any), block));
-    } else if ((payload.operation === "enter" || payload.operation === "expression") && !src) {
-        diagnostic(ctx, "warning", block.id, `Character image source not found for ${payload.characterId || name}.`);
-    }
-
     if (payload.operation === "exit") {
+        const image = getImage(ctx, name, { autoFit: true });
         const chain = compileDisplayableOperation(image, "hide", payload.transform ?? { preset: "fadeOut", durationMs: 250 }, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
 
-    const chain = compileDisplayableOperation(image, payload.operation === "move" ? "transform" : "show", payload.transform, ctx, block.id);
-    if (chain) statements.push(recordStatement(ctx, chain, block));
+    if (payload.operation === "move") {
+        const image = getImage(ctx, name, { autoFit: true });
+        const chain = compileDisplayableOperation(image, "transform", payload.transform, ctx, block.id);
+        if (chain) statements.push(recordStatement(ctx, chain, block));
+        return statements;
+    }
+
+    const src = payload.assetId
+        ? await resolveAsset(ctx, payload.assetId, "image", block.id)
+        : await resolveCharacterImageUrl(ctx, payload.characterId, payload.formName, payload.variants, block.id);
+    if (!src) {
+        diagnostic(ctx, "warning", block.id, `Character image source not found for ${payload.characterId || name}.`);
+        return statements;
+    }
+
+    const image = getImage(ctx, name, { autoFit: true, src });
+    const sourceChain = image.char(src as any, createTransition(payload.transition, ctx, block.id) as any);
+    if (payload.operation === "enter") {
+        statements.push(recordStatement(ctx, sourceChain.show(createShowTransform(payload.transform, ctx, block.id) as any), block));
+        return statements;
+    }
+
+    statements.push(recordStatement(ctx, sourceChain, block));
     return statements;
 }
 
@@ -642,7 +652,7 @@ function getCharacter(ctx: SceneCompileContext, characterId: string | undefined)
     return character;
 }
 
-function getImage(ctx: SceneCompileContext, objectName: string, options?: { layerName?: string; autoFit?: boolean }): Image {
+function getImage(ctx: SceneCompileContext, objectName: string, options?: { layerName?: string; autoFit?: boolean; src?: string }): Image {
     const name = normalizeObjectName(objectName);
     const existing = ctx.images.get(name);
     if (existing) {
@@ -653,7 +663,7 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
     }
     const image = new Image({
         name,
-        src: EMPTY_IMAGE_SRC,
+        src: options?.src ?? EMPTY_IMAGE_SRC,
         autoFit: options?.autoFit ?? false,
         layer: options?.layerName ? getLayer(ctx, options.layerName) : undefined,
     });
@@ -758,13 +768,15 @@ function compileDisplayableOperation(
 ): NlrStatement | null {
     if (operation === "show") {
         if (transform?.preset && !["none", "fadeIn"].includes(transform.preset)) {
-            return applyTransformPreset(target, transform, ctx, blockId);
+            const visible = target.show({ duration: 0, ease: transform.easing });
+            return applyTransformPreset(visible, transform, ctx, blockId) ?? visible;
         }
         return target.show(transformOptions(transform));
     }
     if (operation === "hide") {
         if (transform?.preset && !["none", "fadeOut"].includes(transform.preset)) {
-            return applyTransformPreset(target, transform, ctx, blockId);
+            const chain = applyTransformPreset(target, transform, ctx, blockId);
+            return (chain ?? target).hide({ duration: 0, ease: transform.easing });
         }
         return target.hide(transformOptions(transform));
     }
@@ -785,17 +797,11 @@ function applyTransformPreset(target: any, transform: StoryTransformRef | undefi
     const duration = transform.durationMs ?? 0;
     const easing = transform.easing as any;
     const props = transform.props ?? {};
-    const xalign = numberProp(props, "xalign", numberProp(props, "x", undefined));
-    const yalign = numberProp(props, "yalign", numberProp(props, "y", 0.5));
+    const position = getPresetPosition(preset, props);
 
-    if (preset === "left" || preset === "center" || preset === "right" || preset === "custom") {
-        const targetX = preset === "left" ? 0.25 : preset === "right" ? 0.75 : preset === "center" ? 0.5 : xalign ?? 0.5;
-        return target.pos({ xalign: targetX, yalign }, duration, easing);
+    if (position) {
+        return target.pos(position, duration, easing);
     }
-    if (preset === "slideLeft") return target.pos({ xalign: xalign ?? 0.25, yalign }, duration, easing);
-    if (preset === "slideRight") return target.pos({ xalign: xalign ?? 0.75, yalign }, duration, easing);
-    if (preset === "slideUp") return target.pos({ xalign: xalign ?? 0.5, yalign: yalign ?? 0.7 }, duration, easing);
-    if (preset === "slideDown") return target.pos({ xalign: xalign ?? 0.5, yalign: yalign ?? 0.3 }, duration, easing);
     if (preset === "fadeIn") return target.show({ duration, ease: easing });
     if (preset === "fadeOut") return target.hide({ duration, ease: easing });
     if (preset === "zoom") return target.zoom(numberProp(props, "zoom", 1), duration, easing);
@@ -821,6 +827,94 @@ function applyTransformPreset(target: any, transform: StoryTransformRef | undefi
     if (preset === "wipe" && typeof target.wipe === "function") {
         return target.wipe({ duration, ease: easing, direction: stringProp(props, "direction", "left") as any, reverse: boolProp(props, "reverse", false) });
     }
+    return null;
+}
+
+function createShowTransform(transform: StoryTransformRef | undefined, ctx: SceneCompileContext, blockId: string): Transform {
+    return new Transform({
+        opacity: 1,
+        ...getInlineTransformProps(transform, ctx, blockId),
+    } as any, transformOptions(transform) as any);
+}
+
+function getInlineTransformProps(transform: StoryTransformRef | undefined, ctx: SceneCompileContext, blockId: string): Record<string, unknown> {
+    if (!transform) {
+        return {};
+    }
+    if (transform.mode === "animation") {
+        diagnostic(ctx, "warning", blockId, "Animation editor transforms are reserved but not implemented yet.");
+        return {};
+    }
+    const preset = transform.preset ?? "none";
+    if (preset === "none" || preset === "fadeIn" || preset === "fadeOut") {
+        return {};
+    }
+
+    const props = transform.props ?? {};
+    const inlineProps: Record<string, unknown> = {};
+    const position = getPresetPosition(preset, props);
+    if (position) {
+        inlineProps.position = position;
+    }
+
+    const explicitZoom = optionalNumberProp(props, "zoom");
+    if (explicitZoom !== undefined) {
+        inlineProps.zoom = explicitZoom;
+    }
+    if (preset === "zoom") {
+        inlineProps.zoom = explicitZoom ?? 1;
+        return inlineProps;
+    }
+    if (preset === "scale") {
+        const scale = numberProp(props, "scale", 1);
+        inlineProps.scaleX = numberProp(props, "scaleX", scale);
+        inlineProps.scaleY = numberProp(props, "scaleY", scale);
+        return inlineProps;
+    }
+    if (preset === "rotate") {
+        inlineProps.rotation = numberProp(props, "rotation", numberProp(props, "degrees", 0));
+        return inlineProps;
+    }
+    if (preset === "opacity") {
+        inlineProps.opacity = numberProp(props, "opacity", 1);
+        return inlineProps;
+    }
+    if (preset === "darken") {
+        inlineProps.filter = `brightness(${1 - numberProp(props, "darkness", 0.5)})`;
+        return inlineProps;
+    }
+    if (preset === "circleReveal" || preset === "circleClose" || preset === "wipe") {
+        diagnostic(ctx, "warning", blockId, `${preset} transforms cannot be folded into character show yet.`);
+    }
+    return inlineProps;
+}
+
+type StoryAlignPosition = {
+    xalign: number;
+    yalign: number;
+    xoffset?: number;
+    yoffset?: number;
+};
+
+function getPresetPosition(preset: string, props: Record<string, StoryLiteralValue>): StoryAlignPosition | null {
+    const xalign = optionalNumberProp(props, "xalign") ?? optionalNumberProp(props, "x");
+    const yalign = optionalNumberProp(props, "yalign") ?? optionalNumberProp(props, "y") ?? 0.5;
+    const xoffset = optionalNumberProp(props, "xoffset") ?? optionalNumberProp(props, "xOffset");
+    const yoffset = optionalNumberProp(props, "yoffset") ?? optionalNumberProp(props, "yOffset");
+    const withOffsets = (position: { xalign: number; yalign: number }): StoryAlignPosition => ({
+        ...position,
+        ...(xoffset !== undefined ? { xoffset } : {}),
+        ...(yoffset !== undefined ? { yoffset } : {}),
+    });
+
+    if (preset === "left" || preset === "center" || preset === "right" || preset === "custom") {
+        const targetX = preset === "left" ? 0.25 : preset === "right" ? 0.75 : preset === "center" ? 0.5 : xalign ?? 0.5;
+        return withOffsets({ xalign: targetX, yalign });
+    }
+    if (preset === "slideLeft") return withOffsets({ xalign: xalign ?? 0.25, yalign });
+    if (preset === "slideRight") return withOffsets({ xalign: xalign ?? 0.75, yalign });
+    if (preset === "slideUp") return withOffsets({ xalign: xalign ?? 0.5, yalign: yalign ?? 0.7 });
+    if (preset === "slideDown") return withOffsets({ xalign: xalign ?? 0.5, yalign: yalign ?? 0.3 });
     return null;
 }
 
@@ -1094,18 +1188,30 @@ function normalizeObjectName(value: string | undefined): string {
     return normalized || "object";
 }
 
+function getCharacterStageObjectName(payload: Extract<StoryActionPayload, { action: "character" }>): string {
+    const explicitName = payload.objectName?.trim();
+    if (explicitName && explicitName !== "character") {
+        return normalizeObjectName(explicitName);
+    }
+    return normalizeObjectName(payload.characterId || explicitName || "character");
+}
+
 function normalizePersistentNamespace(namespace: string | undefined): string {
     return namespace?.trim() || "story";
 }
 
 function numberProp(props: Record<string, StoryLiteralValue>, key: string, fallback: number | undefined): number {
+    return optionalNumberProp(props, key) ?? fallback ?? 0;
+}
+
+function optionalNumberProp(props: Record<string, StoryLiteralValue>, key: string): number | undefined {
     const value = props[key];
     if (typeof value === "number") return value;
     if (typeof value === "string") {
         const parsed = Number(value);
         if (Number.isFinite(parsed)) return parsed;
     }
-    return fallback ?? 0;
+    return undefined;
 }
 
 function stringProp(props: Record<string, StoryLiteralValue>, key: string, fallback: string): string {

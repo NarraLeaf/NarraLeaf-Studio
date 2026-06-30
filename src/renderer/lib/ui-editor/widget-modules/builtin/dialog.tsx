@@ -35,6 +35,14 @@ function useDialogTextStyles({
 }: Pick<WidgetRendererProps, "element" | "useAppearanceInspectorPreview">): {
     outerStyle: CSSProperties;
     textStyle: CSSProperties;
+    nametagStyle: CSSProperties;
+    textAppearanceProps: {
+        defaultColor: NlrHexColor;
+        fontSize: CSSProperties["fontSize"];
+        fontWeight: CSSProperties["fontWeight"];
+        fontWeightBold: CSSProperties["fontWeight"];
+        fontFamily?: CSSProperties["fontFamily"];
+    };
     defaultColor: NlrHexColor;
 } {
     const flatProps = getTextProps(element);
@@ -57,9 +65,25 @@ function useDialogTextStyles({
     const tr = Number.isFinite(p.transformRotation) ? p.transformRotation : 0;
     const opacity = Number.isFinite(p.transformOpacity) ? Math.max(0, Math.min(1, p.transformOpacity)) : 1;
     const useEffectShell = Boolean(effectTextStyle.filter) || Boolean(effectTextStyle.mixBlendMode);
+    const baseTextStyle: CSSProperties = {
+        width: "100%",
+        margin: 0,
+        padding: 4,
+        boxSizing: "border-box",
+        fontStyle: p.fontStyle,
+        textAlign: p.textAlign,
+        lineHeight: p.lineHeight,
+        flexShrink: 0,
+        ...lineWrapCss(p.textWrapMode),
+        ...(effectTextStyle.textShadow ? { textShadow: effectTextStyle.textShadow } : {}),
+        ...(!useEffectShell && effectTextStyle.filter ? { filter: effectTextStyle.filter } : {}),
+        ...(!useEffectShell && effectTextStyle.mixBlendMode ? { mixBlendMode: effectTextStyle.mixBlendMode } : {}),
+    };
+    const defaultColor = p.color as NlrHexColor;
+    const fontWeightBold: CSSProperties["fontWeight"] = p.fontWeight === "normal" ? "bold" : 700;
 
     return {
-        defaultColor: p.color as NlrHexColor,
+        defaultColor,
         outerStyle: {
             width: "100%",
             height: "100%",
@@ -74,41 +98,38 @@ function useDialogTextStyles({
             ...(useEffectShell && effectTextStyle.filter ? { filter: effectTextStyle.filter } : {}),
             ...(useEffectShell && effectTextStyle.mixBlendMode ? { mixBlendMode: effectTextStyle.mixBlendMode } : {}),
         },
-        textStyle: {
-            width: "100%",
-            margin: 0,
-            padding: 4,
-            boxSizing: "border-box",
+        textStyle: baseTextStyle,
+        nametagStyle: {
+            ...baseTextStyle,
             fontSize: p.fontSize,
             fontWeight: p.fontWeight,
-            fontStyle: p.fontStyle,
             color,
-            textAlign: p.textAlign,
-            lineHeight: p.lineHeight,
-            flexShrink: 0,
-            ...lineWrapCss(p.textWrapMode),
             ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
-            ...(effectTextStyle.textShadow ? { textShadow: effectTextStyle.textShadow } : {}),
-            ...(!useEffectShell && effectTextStyle.filter ? { filter: effectTextStyle.filter } : {}),
-            ...(!useEffectShell && effectTextStyle.mixBlendMode ? { mixBlendMode: effectTextStyle.mixBlendMode } : {}),
+        },
+        textAppearanceProps: {
+            defaultColor,
+            fontSize: p.fontSize,
+            fontWeight: p.fontWeight,
+            fontWeightBold,
+            ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
         },
     };
 }
 
 function LiveSentenceRenderer(props: WidgetRendererProps) {
-    const { outerStyle, textStyle, defaultColor } = useDialogTextStyles(props);
+    const { outerStyle, textStyle, textAppearanceProps } = useDialogTextStyles(props);
     return (
         <div style={outerStyle}>
-            <Texts defaultColor={defaultColor} style={textStyle} />
+            <Texts {...textAppearanceProps} style={textStyle} />
         </div>
     );
 }
 
 function LiveNametagRenderer(props: WidgetRendererProps) {
-    const { outerStyle, textStyle } = useDialogTextStyles(props);
+    const { outerStyle, nametagStyle, defaultColor } = useDialogTextStyles(props);
     return (
         <div style={outerStyle}>
-            <Nametag style={textStyle} />
+            <Nametag color={defaultColor} style={nametagStyle} />
         </div>
     );
 }

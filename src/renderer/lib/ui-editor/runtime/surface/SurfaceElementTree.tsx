@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { AnimatePresence, useReducedMotion } from "motion/react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import {
     type UIDocument,
@@ -28,6 +28,7 @@ import { WidgetRuntimeScopeProvider } from "@/lib/ui-editor/runtime/appearance/W
 import { getUIFrameWidgetProps } from "@shared/types/ui-editor/frame";
 import { resolvePageAnimationMotion, shouldBlockPageAnimationExit } from "@/lib/ui-editor/runtime/pageAnimation";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
+import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
@@ -264,6 +265,69 @@ function NestedSurfaceRenderer(props: {
         return { ...runtimeBaseInput, runtimeScopeId };
     }, [runtimeBaseInput, runtimeScopeId]);
 
+    const frameAnimation = getUIFrameWidgetProps(frameElement).animation;
+    const reducedMotion = prefersReducedMotion === true || !parentHostAdapter.blueprintRuntime;
+    const [visibleInputs, setVisibleInputs] = useState<NestedSurfaceRuntimeInput[]>(() =>
+        runtimeInput ? [runtimeInput] : []
+    );
+    const [presenceMode, setPresenceMode] = useState<"sync" | "wait">("sync");
+    const visibleInputsRef = useRef(visibleInputs);
+    const pendingWaitInputRef = useRef<NestedSurfaceRuntimeInput | null>(null);
+    const pendingUnderlayReadyKeyRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        visibleInputsRef.current = visibleInputs;
+    }, [visibleInputs]);
+
+    useEffect(() => {
+        if (!runtimeInput) {
+            pendingWaitInputRef.current = null;
+            pendingUnderlayReadyKeyRef.current = null;
+            setPresenceMode("sync");
+            setVisibleInputs([]);
+            return;
+        }
+        const currentInput = visibleInputsRef.current[visibleInputsRef.current.length - 1] ?? null;
+        if (!currentInput) {
+            pendingWaitInputRef.current = null;
+            pendingUnderlayReadyKeyRef.current = null;
+            setPresenceMode("sync");
+            setVisibleInputs([runtimeInput]);
+            return;
+        }
+        if (currentInput.runtimeScopeId === runtimeInput.runtimeScopeId) {
+            setVisibleInputs(prev => prev.map(input =>
+                input.runtimeScopeId === runtimeInput.runtimeScopeId ? runtimeInput : input
+            ));
+            return;
+        }
+
+        const exitSettings = frameAnimation ?? currentInput.targetSurface.settings?.pageAnimation;
+        const waitForExit = shouldBlockPageAnimationExit(exitSettings, reducedMotion);
+        pendingWaitInputRef.current = waitForExit ? runtimeInput : null;
+        pendingUnderlayReadyKeyRef.current = waitForExit ? null : runtimeInput.runtimeScopeId;
+        setPresenceMode(waitForExit ? "wait" : "sync");
+        setVisibleInputs(waitForExit ? [] : [runtimeInput, currentInput]);
+    }, [frameAnimation, reducedMotion, runtimeInput]);
+
+    const handleLayerPrepaintReady = (runtimeScopeId: string) => {
+        if (pendingUnderlayReadyKeyRef.current !== runtimeScopeId) {
+            return;
+        }
+        pendingUnderlayReadyKeyRef.current = null;
+        setVisibleInputs(prev => prev.filter(input => input.runtimeScopeId === runtimeScopeId));
+    };
+
+    const handleExitComplete = () => {
+        const pendingInput = pendingWaitInputRef.current;
+        if (!pendingInput) {
+            return;
+        }
+        pendingWaitInputRef.current = null;
+        setPresenceMode("sync");
+        setVisibleInputs([pendingInput]);
+    };
+
     if (invalidLabel) {
         return <NestedSurfacePlaceholder label={invalidLabel} />;
     }
@@ -271,44 +335,50 @@ function NestedSurfaceRenderer(props: {
     if (!runtimeInput) {
         return <NestedSurfacePlaceholder label="Page preview unavailable" />;
     }
-    const frameAnimation = getUIFrameWidgetProps(frameElement).animation;
-    const animationSettings = frameAnimation ?? targetSurface?.settings?.pageAnimation;
-    const reducedMotion = prefersReducedMotion === true || !parentHostAdapter.blueprintRuntime;
-    const waitForExit = shouldBlockPageAnimationExit(animationSettings, reducedMotion);
 
     return (
-        <AnimatePresence initial={false} mode={waitForExit ? "wait" : "sync"}>
-            <NestedSurfaceInstance
-                key={runtimeScopeId}
-                runtimeInput={runtimeInput}
-                rendererRegistry={rendererRegistry}
-                parentHostAdapter={parentHostAdapter}
-                useAppearanceInspectorPreview={useAppearanceInspectorPreview}
-                nestedSurfaceRuntime={nestedSurfaceRuntime}
-                surfacePath={surfacePath}
-            />
+        <AnimatePresence custom="forward" initial={false} mode={presenceMode} onExitComplete={handleExitComplete}>
+            {visibleInputs.map((visibleInput, layerIndex) => (
+                <NestedSurfaceInstance
+                    key={visibleInput.runtimeScopeId}
+                    runtimeInput={visibleInput}
+                    layerIndex={layerIndex}
+                    rendererRegistry={rendererRegistry}
+                    parentHostAdapter={parentHostAdapter}
+                    useAppearanceInspectorPreview={useAppearanceInspectorPreview}
+                    nestedSurfaceRuntime={nestedSurfaceRuntime}
+                    surfacePath={surfacePath}
+                    reducedMotion={reducedMotion}
+                    onPrepaintReady={handleLayerPrepaintReady}
+                />
+            ))}
         </AnimatePresence>
     );
 }
 
 function NestedSurfaceInstance(props: {
     runtimeInput: NestedSurfaceRuntimeInput;
+    layerIndex: number;
     rendererRegistry: ElementRendererRegistry;
     parentHostAdapter: UIHostAdapter;
     useAppearanceInspectorPreview: boolean;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     surfacePath: string[];
+    reducedMotion: boolean;
+    onPrepaintReady: (runtimeScopeId: string) => void;
 }) {
     const {
         runtimeInput,
+        layerIndex,
         rendererRegistry,
         parentHostAdapter,
         useAppearanceInspectorPreview,
         nestedSurfaceRuntime,
         surfacePath,
+        reducedMotion,
+        onPrepaintReady,
     } = props;
     const [, setBindingTick] = useState(0);
-    const prefersReducedMotion = useReducedMotion();
     const { document, targetSurface } = runtimeInput;
     const hostAdapter = useMemo(
         () => nestedSurfaceRuntime?.createHostAdapter?.(runtimeInput) ?? parentHostAdapter,
@@ -350,8 +420,13 @@ function NestedSurfaceInstance(props: {
     const animationMotion = resolvePageAnimationMotion({
         settings: animationSettings,
         navigationDirection: "forward",
-        reducedMotion: prefersReducedMotion === true || !runtimeInput.parentHostAdapter.blueprintRuntime,
+        reducedMotion,
     });
+    const resolveExit = () => resolvePageAnimationMotion({
+        settings: animationSettings,
+        navigationDirection: "forward",
+        reducedMotion,
+    }).exit;
     const surfaceStyle: CSSProperties = {
         position: "relative",
         width: targetSurface.designSize.width,
@@ -361,14 +436,19 @@ function NestedSurfaceInstance(props: {
     };
 
     return (
-        <motion.div
+        <SurfaceAnimationLayer
+            prepaintKey={runtimeInput.runtimeScopeId}
+            direction="forward"
+            pageMotion={animationMotion}
             className="ui-editor-surface"
-            data-ui-surface-id={targetSurface.id}
-            data-ui-surface-kind={targetSurface.kind}
-            initial={animationMotion.initial}
-            animate={animationMotion.animate}
-            exit={animationMotion.exit}
+            surfaceId={targetSurface.id}
+            surfaceKind={targetSurface.kind}
             style={surfaceStyle}
+            contentStyle={{ width: "100%", height: "100%" }}
+            presentZIndex={10 + layerIndex}
+            exitZIndex={30 + layerIndex}
+            resolveExit={resolveExit}
+            onPrepaintReady={onPrepaintReady}
         >
             <SurfaceElementTree
                 document={document}
@@ -383,7 +463,7 @@ function NestedSurfaceInstance(props: {
                 surfacePath={[...surfacePath, targetSurface.id]}
                 editorChrome={Boolean(parentHostAdapter.blueprintRuntime)}
             />
-        </motion.div>
+        </SurfaceAnimationLayer>
     );
 }
 

@@ -193,13 +193,13 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
         case "background":
             return { ...base, kind: "action", payload: { action: "setBackground" } };
         case "characterEnter":
-            return { ...base, kind: "action", payload: { action: "character", operation: "enter", objectName: "character", transform: { preset: "center", durationMs: 300 } } };
+            return { ...base, kind: "action", payload: { action: "character", operation: "enter", transform: { preset: "center", durationMs: 300 } } };
         case "characterMove":
-            return { ...base, kind: "action", payload: { action: "character", operation: "move", objectName: "character", transform: { preset: "center", durationMs: 300 } } };
+            return { ...base, kind: "action", payload: { action: "character", operation: "move", transform: { preset: "center", durationMs: 300 } } };
         case "characterExit":
-            return { ...base, kind: "action", payload: { action: "character", operation: "exit", objectName: "character", transform: { preset: "fadeOut", durationMs: 250 } } };
+            return { ...base, kind: "action", payload: { action: "character", operation: "exit", transform: { preset: "fadeOut", durationMs: 250 } } };
         case "characterExpression":
-            return { ...base, kind: "action", payload: { action: "character", operation: "expression", objectName: "character" } };
+            return { ...base, kind: "action", payload: { action: "character", operation: "expression" } };
         case "bgm":
             return { ...base, kind: "action", payload: { action: "audio", operation: "setBgm" } };
         case "sound":

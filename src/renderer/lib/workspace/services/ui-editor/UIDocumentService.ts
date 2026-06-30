@@ -71,8 +71,13 @@ import {
     DEFAULT_UI_STAGE_SLOT_ID,
     normalizeUIStageSlotId,
 } from "@shared/types/ui-editor/stageSlots";
-import { defaultContainerWidgetProps } from "@shared/types/ui-editor/container";
-import { defaultTextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
+import { defaultContainerWidgetProps, type ContainerWidgetProps } from "@shared/types/ui-editor/container";
+import { defaultTextWidgetProps, type TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
+import {
+    createInitialContainerAppearance,
+    createInitialTextAppearance,
+    isUsableAppearanceModel,
+} from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 
 type UIDocumentServiceEvents = {
     documentChanged: UIDocument;
@@ -148,6 +153,56 @@ type LegacyUIDocument = Omit<UIDocument, "surfaces" | "schemaVersion"> & {
 
 function cloneJson<T>(value: T): T {
     return value == null ? value : JSON.parse(JSON.stringify(value)) as T;
+}
+
+function createContainerTemplateProps(overrides: Partial<ContainerWidgetProps>): ContainerWidgetProps {
+    const props: ContainerWidgetProps = {
+        ...cloneJson(defaultContainerWidgetProps),
+        ...overrides,
+    };
+    props.appearance = createInitialContainerAppearance(props);
+    return props;
+}
+
+function createTextTemplateProps(overrides: Partial<TextWidgetProps>): TextWidgetProps {
+    const props: TextWidgetProps = {
+        ...cloneJson(defaultTextWidgetProps),
+        ...overrides,
+    };
+    props.appearance = createInitialTextAppearance(props);
+    return props;
+}
+
+function ensureElementSerializedAppearance(element: UIElement): boolean {
+    if (element.type === "nl.container") {
+        const props: ContainerWidgetProps = {
+            ...cloneJson(defaultContainerWidgetProps),
+            ...(element.props ?? {}),
+        };
+        if (isUsableAppearanceModel(props.appearance)) {
+            return false;
+        }
+        props.appearance = createInitialContainerAppearance(props);
+        element.props = props;
+        return true;
+    }
+    const isTextLike =
+        element.type === "nl.text" ||
+        element.type === DIALOG_NAMETAG_WIDGET_TYPE ||
+        element.type === DIALOG_SENTENCE_WIDGET_TYPE;
+    if (isTextLike) {
+        const props: TextWidgetProps = {
+            ...cloneJson(defaultTextWidgetProps),
+            ...(element.props ?? {}),
+        };
+        if (isUsableAppearanceModel(props.appearance)) {
+            return false;
+        }
+        props.appearance = createInitialTextAppearance(props);
+        element.props = props;
+        return true;
+    }
+    return false;
 }
 
 function sanitizeComponentName(name: string | undefined, fallback: string): string {
@@ -265,12 +320,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             throw new RendererError(result.error.message);
         }
 
+        const loadedSnapshot = JSON.stringify(result.data);
         const migrated = this.migrateIfNeeded(result.data);
         this.document = migrated;
         const schemaChanged = result.data.schemaVersion !== migrated.schemaVersion;
+        const normalizedChanged = loadedSnapshot !== JSON.stringify(migrated);
         const mainSurfaceChanged = this.ensureMainSurface(this.document);
         const flowLayoutsChanged = normalizeFlowChildLayouts(this.document);
-        const needsSave = schemaChanged || mainSurfaceChanged || flowLayoutsChanged;
+        const needsSave = schemaChanged || normalizedChanged || mainSurfaceChanged || flowLayoutsChanged;
         if (needsSave) {
             await this.save(this.document);
             this.revision = 0;
@@ -911,6 +968,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             };
         }
         for (const element of Object.values(document.elements)) {
+            ensureElementSerializedAppearance(element);
             if (element.type === "nl.list") {
                 const props = (element.props ?? {}) as Record<string, unknown>;
                 const scrollbar = props.scrollbar && typeof props.scrollbar === "object"
@@ -2572,8 +2630,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 opacity: 1,
                 visible: true,
             }),
-            props: {
-                ...cloneJson(defaultContainerWidgetProps),
+            props: createContainerTemplateProps({
                 layoutKind: "free",
                 backgroundColor: "#0b0d12",
                 fillOpacity: 0.78,
@@ -2586,7 +2643,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 borderWidth: 1,
                 strokeOpacity: 0.18,
                 clipContent: true,
-            },
+            }),
         };
 
         const stack: UIElement = {
@@ -2603,8 +2660,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 opacity: 1,
                 visible: true,
             }),
-            props: {
-                ...cloneJson(defaultContainerWidgetProps),
+            props: createContainerTemplateProps({
                 layoutKind: "stack",
                 stackDirection: "vertical",
                 stackGap: 10,
@@ -2617,7 +2673,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 strokeVisible: false,
                 borderWidth: 0,
                 clipContent: false,
-            },
+            }),
         };
 
         const nametag: UIElement = {
@@ -2634,15 +2690,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 opacity: 1,
                 visible: true,
             }),
-            props: {
-                ...cloneJson(defaultTextWidgetProps),
+            props: createTextTemplateProps({
                 text: "Speaker",
                 fontSize: 22,
                 color: "#f8d37a",
                 fontWeight: "600",
                 lineHeight: 1.2,
                 textVerticalAlign: "center",
-            },
+            }),
         };
 
         const sentence: UIElement = {
@@ -2659,13 +2714,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 opacity: 1,
                 visible: true,
             }),
-            props: {
-                ...cloneJson(defaultTextWidgetProps),
+            props: createTextTemplateProps({
                 text: "The current line will appear here.",
                 fontSize: 24,
                 color: "#f8fafc",
                 lineHeight: 1.45,
-            },
+            }),
         };
 
         return {
