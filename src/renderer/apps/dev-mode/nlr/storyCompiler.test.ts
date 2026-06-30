@@ -3,6 +3,31 @@ import { DevTools } from "narraleaf-react";
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
 import { compileStudioStoryToNlr } from "./storyCompiler";
 
+function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
+    return {
+        schemaVersion: 1,
+        id: "story-1",
+        name: "Story",
+        chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1", "scene-2"] }],
+        scenes: {
+            "scene-1": {
+                id: "scene-1",
+                name: "Scene 1",
+                runtimeName: "Scene 1",
+                rootBlockIds,
+                blocks,
+            },
+            "scene-2": {
+                id: "scene-2",
+                name: "Scene 2",
+                runtimeName: "Scene 2",
+                rootBlockIds: [],
+                blocks: {},
+            },
+        },
+    };
+}
+
 function narrationBlock(id: string, textId: string, value: string, childrenIds: string[] = []): StoryBlock {
     return {
         id,
@@ -16,84 +41,159 @@ function narrationBlock(id: string, textId: string, value: string, childrenIds: 
     };
 }
 
-function dialogueBlock(id: string, textId: string, characterId: string, value: string): StoryBlock {
-    return {
-        id,
-        kind: "nodeAction",
-        parentId: null,
-        childrenIds: [],
-        payload: {
-            action: "dialogue",
-            characterId,
-            text: { textId, value, role: "dialogue" },
-        },
-    };
-}
-
 describe("compileStudioStoryToNlr", () => {
-    it("compiles narration and dialogue in tree preorder with stable static action ids", () => {
-        const root = narrationBlock("root", "text-root", "First", ["child"]);
-        const child = dialogueBlock("child", "text-child", "char-alice", "Hello");
-        child.parentId = "root";
-        const unsupported: StoryBlock = {
-            id: "unsupported",
-            kind: "action",
-            parentId: null,
-            childrenIds: ["after-unsupported"],
-            payload: {
-                action: "wait",
-                mode: "duration",
-                durationMs: 100,
+    it("compiles core scene actions, resolves assets, and assigns stable ids", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            bg: {
+                id: "bg",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "setBackground",
+                    assetId: "asset-bg",
+                    transition: { kind: "dissolve", durationMs: 250 },
+                },
+            },
+            say: {
+                id: "say",
+                kind: "nodeAction",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "dialogue",
+                    characterId: "char-alice",
+                    voiceAssetId: "asset-voice",
+                    text: { textId: "text-say", value: "Hello", role: "dialogue" },
+                },
+            },
+            wait: {
+                id: "wait",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "wait", mode: "duration", durationMs: 100 },
+            },
+            jump: {
+                id: "jump",
+                kind: "jump",
+                parentId: null,
+                childrenIds: [],
+                payload: { targetSceneId: "scene-2", transition: { kind: "fadeIn", durationMs: 120 } },
             },
         };
-        const afterUnsupported = narrationBlock("after-unsupported", "text-after", "After");
-        afterUnsupported.parentId = "unsupported";
-        const document: StoryDocument = {
-            schemaVersion: 1,
-            id: "story-1",
-            name: "Story",
-            chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1"] }],
-            scenes: {
-                "scene-1": {
-                    id: "scene-1",
-                    name: "Scene",
-                    runtimeName: "Scene",
-                    rootBlockIds: ["root", "unsupported"],
-                    blocks: {
-                        root,
-                        child,
-                        unsupported,
-                        "after-unsupported": afterUnsupported,
-                    },
+        const calls: string[] = [];
+
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["bg", "say", "wait", "jump"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+            resolveAssetUrl: async (assetId, assetType) => {
+                calls.push(`${assetType}:${assetId}`);
+                return `nlr://${assetId}`;
+            },
+        });
+
+        expect(compiled.scene).toBe(compiled.scenes["scene-1"]);
+        expect(compiled.diagnostics).toEqual([]);
+        expect(calls).toEqual(["image:asset-bg", "audio:asset-voice"]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual(expect.arrayContaining(["bg", "say", "wait", "jump"]));
+        expect(compiled.actionIdBindings.every(binding => DevTools.getStaticId(binding.action) === binding.staticId)).toBe(true);
+        expect(compiled.actionIdBindings.find(binding => binding.blockId === "say")?.staticId).toContain("text-say");
+    });
+
+    it("compiles choice, condition, variables, and skips script-only blocks with diagnostics", async () => {
+        const optionChild = narrationBlock("option-child", "text-option-child", "Selected");
+        optionChild.parentId = "option";
+        const option: StoryBlock = {
+            id: "option",
+            kind: "nodeAction",
+            parentId: "choice",
+            childrenIds: ["option-child"],
+            payload: {
+                action: "choiceOption",
+                text: { textId: "text-option", value: "Go", role: "choiceText" },
+                disabledWhen: {
+                    kind: "variable",
+                    target: { scope: "sceneLocal", key: "locked" },
+                    operator: "isTrue",
                 },
             },
         };
+        const choice: StoryBlock = {
+            id: "choice",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: ["option"],
+            payload: {
+                action: "choice",
+                prompt: { textId: "text-choice", value: "Pick one", role: "choicePrompt" },
+            },
+        };
+        const setVariable: StoryBlock = {
+            id: "set-var",
+            kind: "action",
+            parentId: "if-branch",
+            childrenIds: [],
+            payload: {
+                action: "setVariable",
+                target: { scope: "sceneLocal", key: "locked" },
+                value: true,
+            },
+        };
+        const branch: StoryBlock = {
+            id: "if-branch",
+            kind: "control",
+            parentId: "condition",
+            childrenIds: ["set-var"],
+            payload: {
+                control: "conditionBranch",
+                branch: "if",
+                condition: {
+                    kind: "variable",
+                    target: { scope: "sceneLocal", key: "started" },
+                    operator: "isFalse",
+                },
+            },
+        };
+        const condition: StoryBlock = {
+            id: "condition",
+            kind: "control",
+            parentId: null,
+            childrenIds: ["if-branch"],
+            payload: { control: "condition" },
+        };
+        const code: StoryBlock = {
+            id: "code",
+            kind: "code",
+            parentId: null,
+            childrenIds: [],
+            payload: { language: "narraleaf", source: "Script.action()", advanced: true },
+        };
 
-        const compiled = compileStudioStoryToNlr({
-            document,
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                choice,
+                option,
+                "option-child": optionChild,
+                condition,
+                "if-branch": branch,
+                "set-var": setVariable,
+                code,
+            }, ["choice", "condition", "code"]),
             sceneId: "scene-1",
-            characters: [{ id: "char-alice", name: "Alice" }],
         });
 
-        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual([
-            "root",
-            "child",
-            "after-unsupported",
-        ]);
-        expect(compiled.actionIdBindings.map(binding => binding.staticId)).toEqual([
-            "studio:story-1:scene-1:root:text-root:0",
-            "studio:story-1:scene-1:child:text-child:1",
-            "studio:story-1:scene-1:after-unsupported:text-after:2",
-        ]);
-        expect(compiled.actionIdBindings.map(binding => DevTools.getStaticId(binding.action))).toEqual(
-            compiled.actionIdBindings.map(binding => binding.staticId),
-        );
-        expect((compiled.actionIdBindings[1]!.action as unknown as { callee: { state: { name: string } } }).callee.state.name).toBe("Alice");
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual(expect.arrayContaining([
+            "option-child",
+            "condition",
+            "set-var",
+        ]));
         expect(compiled.diagnostics).toEqual([
             {
                 level: "warning",
-                blockId: "unsupported",
-                message: "Unsupported story block kind: action",
+                blockId: "code",
+                message: "Code/Script blocks are not part of the NLR Story action surface and were skipped.",
             },
         ]);
     });

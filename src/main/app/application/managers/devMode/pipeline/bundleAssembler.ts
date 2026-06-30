@@ -3,12 +3,13 @@ import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBluep
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type { SharedBlueprintAsset } from "@shared/types/blueprint/document";
 import type { DevModeBundle, DevModeCharacterSummary, DevModeStoryLibrary } from "@shared/types/devMode";
-import type { StoryDocument, StoryLibraryIndex } from "@shared/types/story";
+import type { StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { Fs } from "@shared/utils/fs";
 import { decodeProjectConfig, findProjectConfigFileName } from "@shared/utils/nlproj";
+import { isValidStoryId } from "@shared/utils/storyId";
 import type { DevModeBundleLoadContext, DevModeBundleSource } from "./types";
 
 /**
@@ -113,21 +114,52 @@ async function loadStoryLibrary(projectPath: string): Promise<DevModeStoryLibrar
         return undefined;
     }
     const documents: Record<string, StoryDocument> = {};
-    for (const entry of index.stories ?? []) {
-        const documentPath = entry.documentPath?.trim()
-            ? resolveProjectFilePath(projectPath, entry.documentPath)
-            : path.join(projectPath, "editor", "story", "stories", entry.id, "storydoc.json");
-        const document = await readJsonFile<StoryDocument>(documentPath);
-        documents[entry.id] = document;
-        if (document.id && document.id !== entry.id) {
-            documents[document.id] = document;
+    const stories: StoryLibraryEntry[] = [];
+    const seen = new Set<string>();
+    for (const entry of Array.isArray(index.stories) ? index.stories : []) {
+        if (!isValidStoryId(entry.id) || seen.has(entry.id)) {
+            continue;
         }
+        seen.add(entry.id);
+        const documentPath = resolveStoryDocumentPathForIndexEntry(projectPath, entry);
+        if (!documentPath) {
+            continue;
+        }
+        const document = await readJsonFile<StoryDocument>(documentPath);
+        if (document.id !== entry.id) {
+            throw new Error(`Story document id mismatch: expected ${entry.id}, received ${document.id}`);
+        }
+        documents[entry.id] = document;
+        stories.push({
+            ...entry,
+            documentPath: storyDocumentRelativePath(entry.id),
+        });
+    }
+    const normalizedIndex: StoryLibraryIndex = {
+        ...index,
+        stories,
+    };
+    if (index.defaultStoryId && stories.some(story => story.id === index.defaultStoryId)) {
+        normalizedIndex.defaultStoryId = index.defaultStoryId;
+    } else {
+        delete normalizedIndex.defaultStoryId;
     }
     return {
-        index,
+        index: normalizedIndex,
         documents,
         characters: await loadCharacterSummaries(projectPath),
     };
+}
+
+export function resolveStoryDocumentPathForIndexEntry(projectPath: string, entry: Pick<StoryLibraryEntry, "id">): string | null {
+    if (!isValidStoryId(entry.id)) {
+        return null;
+    }
+    return path.join(projectPath, "editor", "story", "stories", entry.id, "storydoc.json");
+}
+
+function storyDocumentRelativePath(storyId: string): string {
+    return `editor/story/stories/${storyId}/storydoc.json`;
 }
 
 async function loadCharacterSummaries(projectPath: string): Promise<DevModeCharacterSummary[]> {
@@ -142,13 +174,82 @@ async function loadCharacterSummaries(projectPath: string): Promise<DevModeChara
         if (!profile || typeof profile !== "object") {
             return [];
         }
-        const raw = profile as { id?: unknown; name?: unknown };
+        const raw = profile as {
+            id?: unknown;
+            name?: unknown;
+            defaultForm?: unknown;
+            appearance?: {
+                forms?: unknown[];
+            };
+        };
         const id = typeof raw.id === "string" ? raw.id.trim() : "";
         if (!id) {
             return [];
         }
         const name = typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : id;
-        return [{ id, name }];
+        const forms = Array.isArray(raw.appearance?.forms)
+            ? raw.appearance.forms.flatMap(formEntry => {
+                if (!formEntry || typeof formEntry !== "object") {
+                    return [];
+                }
+                const form = formEntry as {
+                    name?: unknown;
+                    groups?: unknown[];
+                    variantAssets?: Record<string, { data?: { id?: unknown; name?: unknown } }>;
+                };
+                const formName = typeof form.name === "string" && form.name.trim() ? form.name.trim() : "";
+                if (!formName) {
+                    return [];
+                }
+                const groups = Array.isArray(form.groups)
+                    ? form.groups.flatMap(groupEntry => {
+                        if (!groupEntry || typeof groupEntry !== "object") {
+                            return [];
+                        }
+                        const group = groupEntry as { name?: unknown; defaultVariant?: unknown; variants?: unknown[] };
+                        const groupName = typeof group.name === "string" && group.name.trim() ? group.name.trim() : "";
+                        if (!groupName) {
+                            return [];
+                        }
+                        const variants = Array.isArray(group.variants)
+                            ? group.variants.flatMap(variantEntry => {
+                                if (!variantEntry || typeof variantEntry !== "object") {
+                                    return [];
+                                }
+                                const variant = variantEntry as { name?: unknown };
+                                const variantName = typeof variant.name === "string" && variant.name.trim() ? variant.name.trim() : "";
+                                return variantName ? [{ name: variantName }] : [];
+                            })
+                            : [];
+                        return [{
+                            name: groupName,
+                            defaultVariant: typeof group.defaultVariant === "string" && group.defaultVariant.trim() ? group.defaultVariant.trim() : null,
+                            variants,
+                        }];
+                    })
+                    : [];
+                const variantAssets = Object.fromEntries(
+                    Object.entries(form.variantAssets ?? {}).flatMap(([variantName, variantData]) => {
+                        const asset = variantData?.data;
+                        const assetId = typeof asset?.id === "string" && asset.id.trim() ? asset.id.trim() : "";
+                        if (!assetId) {
+                            return [];
+                        }
+                        return [[variantName, {
+                            assetId,
+                            name: typeof asset?.name === "string" ? asset.name : undefined,
+                        }]];
+                    }),
+                );
+                return [{ name: formName, groups, variantAssets }];
+            })
+            : [];
+        return [{
+            id,
+            name,
+            defaultForm: typeof raw.defaultForm === "string" && raw.defaultForm.trim() ? raw.defaultForm.trim() : null,
+            forms,
+        }];
     });
 }
 
@@ -190,10 +291,6 @@ function resolveAssetContentPath(projectPath: string, assetId: string): string |
     } catch {
         return null;
     }
-}
-
-function resolveProjectFilePath(projectPath: string, filePath: string): string {
-    return path.isAbsolute(filePath) ? filePath : path.join(projectPath, filePath);
 }
 
 /** Default bundle source: project files on disk. */
