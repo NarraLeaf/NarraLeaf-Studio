@@ -4,6 +4,7 @@ import { BLUEPRINT_HOST_API_CONTRACT_VERSION } from "@shared/types/blueprint/hos
 import type { UIHostAdapter, UIHostAdapterBlueprintRuntime } from "../types";
 import {
     countBlueprintBroadcastListeners,
+    dispatchBlueprintElementClickEvent,
     dispatchBlueprintElementFlushEvent,
     dispatchBlueprintBroadcastEvent,
     dispatchSurfaceBlueprintEvent,
@@ -76,6 +77,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         eventOptions,
     ) => {
         const flushedElement = eventName === "flush" ? document.elements[elementId] : undefined;
+        const clickedElement = eventName === "mouseClick" ? document.elements[elementId] : undefined;
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
@@ -107,6 +109,28 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 runtimeScopeId: effectiveRuntimeScopeId,
                 target,
                 eventPayload: eventPayload ?? { element: target },
+                hostAdapter: adapter,
+                debug,
+                getSurfaceState: key => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key),
+                setSurfaceState: (key, value) => {
+                    hostApi.state.set("surface", key, value);
+                },
+                executionManager,
+            });
+        }
+        if (eventName === "mouseClick" && clickedElement) {
+            const target = {
+                surfaceId: surface.id,
+                elementId,
+                elementType: clickedElement.type,
+            };
+            await dispatchBlueprintElementClickEvent({
+                document,
+                blueprintDocument,
+                surfaceId: surface.id,
+                runtimeScopeId: effectiveRuntimeScopeId,
+                target,
+                eventPayload: { ...(eventPayload ?? {}), element: target },
                 hostAdapter: adapter,
                 debug,
                 getSurfaceState: key => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key),

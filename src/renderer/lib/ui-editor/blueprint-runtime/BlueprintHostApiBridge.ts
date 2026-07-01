@@ -6,6 +6,7 @@ import {
     type BlueprintImageAsset,
 } from "@shared/types/blueprint/valueTypes";
 import { truncateDebugEventMessage } from "./DebugBridge";
+import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
 import type {
@@ -184,6 +185,10 @@ export type BlueprintHostApiRuntime = {
         loadSave: (id: string) => Promise<void>;
         listSaveIds: () => Promise<string[]>;
         getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+        getNametag: () => string | null;
+        next: () => Promise<void>;
+        skip: () => Promise<void>;
+        setSentenceSpeed: (speed: number) => Promise<void>;
     };
     devtools: {
         log: (level: string, message: string) => void;
@@ -202,6 +207,10 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onLoadSave?: (id: string) => Promise<void> | void;
     onListSaveIds?: () => Promise<string[]> | string[];
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
+    onGetNametag?: () => string | null;
+    onNext?: () => Promise<void> | void;
+    onSkip?: () => Promise<void> | void;
+    onSetSentenceSpeed?: (speed: number) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
@@ -652,6 +661,18 @@ function normalizeString(raw: unknown, fallback: string): string {
     return raw == null ? fallback : String(raw);
 }
 
+function toBlueprintVisibleValue(value: unknown): unknown {
+    return value === undefined ? null : value;
+}
+
+function normalizeBlueprintNametag(value: unknown): string | null {
+    if (value == null) {
+        return null;
+    }
+    const text = String(value);
+    return text.trim().length > 0 ? text : null;
+}
+
 function normalizeNullableString(raw: unknown): string | null {
     if (raw === null) {
         return null;
@@ -771,6 +792,14 @@ function normalizeGameSaveId(operation: string, id: string): string {
     return safe;
 }
 
+function normalizeSentenceSpeed(speed: unknown): number {
+    const value = typeof speed === "number" ? speed : Number(speed);
+    if (!Number.isFinite(value) || value <= 0) {
+        throw new Error("setSentenceSpeed: speed must be a positive number");
+    }
+    return value;
+}
+
 /**
  * Unified Host API implementation for Dev Mode (M3-full). Workspace editor does not instantiate this.
  */
@@ -787,6 +816,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onLoadSave,
         onListSaveIds,
         onGetSavePreview,
+        onGetNametag,
+        onNext,
+        onSkip,
+        onSetSentenceSpeed,
         emit,
         onOpenSurface,
         onCloseLayer,
@@ -1408,23 +1441,24 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             get: (scopeKind: string, key: string) => {
                 emit({ type: "state.read", scope: scopeKind, key });
                 if (scopeKind === "surface") {
-                    return scope.getSurfaceStore(stateScopeId).get(key);
+                    return toBlueprintVisibleValue(scope.getSurfaceStore(stateScopeId).get(key));
                 }
                 if (scopeKind === "global") {
-                    return scope.globalGet(key);
+                    return toBlueprintVisibleValue(scope.globalGet(key));
                 }
                 if (scopeKind === "persistence") {
-                    return scope.persistenceGet(key);
+                    return toBlueprintVisibleValue(scope.persistenceGet(key));
                 }
-                return undefined;
+                return null;
             },
             set: (scopeKind: string, key: string, value: unknown) => {
+                const nextValue = toBlueprintVisibleValue(value);
                 if (scopeKind === "surface") {
-                    scope.getSurfaceStore(stateScopeId).set(key, value);
+                    scope.getSurfaceStore(stateScopeId).set(key, nextValue);
                 } else if (scopeKind === "global") {
-                    scope.globalSet(key, value);
+                    scope.globalSet(key, nextValue);
                 } else if (scopeKind === "persistence") {
-                    scope.persistenceSet(key, value);
+                    scope.persistenceSet(key, nextValue);
                 }
                 emit({ type: "state.write", scope: scopeKind, key });
             },
@@ -1433,7 +1467,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             get: async (key: string) => {
                 emitHostCall(emit, "persistence.get", "call");
                 try {
-                    return await scope.persistenceGetAsync(key);
+                    return toBlueprintVisibleValue(await scope.persistenceGetAsync(key));
                 } finally {
                     emitHostCall(emit, "persistence.get", "return");
                 }
@@ -1441,7 +1475,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             set: async (key: string, value: unknown) => {
                 emitHostCall(emit, "persistence.set", "call");
                 try {
-                    await scope.persistenceSetAsync(key, value);
+                    await scope.persistenceSetAsync(key, toBlueprintVisibleValue(value));
                     emit({ type: "state.write", scope: "persistence", key });
                 } finally {
                     emitHostCall(emit, "persistence.set", "return");
@@ -1453,14 +1487,14 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, "frame.getParam", "call");
                 const value = frameParams?.[key];
                 emitHostCall(emit, "frame.getParam", "return");
-                return value;
+                return toBlueprintVisibleValue(value);
             },
             emit: async (eventName: string, data: unknown) => {
                 const cap = "frame.emit";
                 emitHostCall(emit, cap, "call");
                 const safeEventName = String(eventName ?? "").trim();
                 if (safeEventName && onFrameEmit) {
-                    await onFrameEmit(safeEventName, data);
+                    await onFrameEmit(safeEventName, toBlueprintVisibleValue(data));
                 }
                 emitHostCall(emit, cap, "return");
             },
@@ -1534,6 +1568,53 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("getSavePreview: game save runtime is not available");
                     }
                     return normalizeBlueprintImageAssetValue(await onGetSavePreview(saveId));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getNametag: () => {
+                const cap = "game.getNametag";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onGetNametag ? onGetNametag() : scope.globalGet(BLUEPRINT_GAME_NAMETAG_STATE_KEY);
+                    return normalizeBlueprintNametag(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            next: async () => {
+                const cap = "game.next";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onNext) {
+                        throw new Error("next: game runtime is not available");
+                    }
+                    await onNext();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            skip: async () => {
+                const cap = "game.skip";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onSkip) {
+                        throw new Error("skip: game runtime is not available");
+                    }
+                    await onSkip();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setSentenceSpeed: async (speed: number) => {
+                const cap = "game.setSentenceSpeed";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const safeSpeed = normalizeSentenceSpeed(speed);
+                    if (!onSetSentenceSpeed) {
+                        throw new Error("setSentenceSpeed: game runtime is not available");
+                    }
+                    await onSetSentenceSpeed(safeSpeed);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

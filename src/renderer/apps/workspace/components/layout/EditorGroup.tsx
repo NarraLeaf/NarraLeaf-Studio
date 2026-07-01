@@ -7,6 +7,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui";
 import type { FocusContext } from "@/lib/workspace/services/ui/types";
+import { isMacPlatform } from "@/lib/app/platform";
 import { useKeybinding, contextual, whenEditorTabsFocused } from "../../hooks";
 import { useEditorGroupAssetDrop } from "./useEditorGroupAssetDrop";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
@@ -31,6 +32,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
     const activeTab = group.tabs.find((tab) => tab.id === group.focus);
 
     const tabIds = useMemo(() => new Set(group.tabs.map((t) => t.id)), [group.tabs]);
+    const closeTabShortcut = useMemo(() => isMacPlatform() ? "cmd+w" : "ctrl+w", []);
 
     // Drop stale selection entries when tabs change
     useEffect(() => {
@@ -159,20 +161,20 @@ export function EditorGroup({ group }: EditorGroupProps) {
         [tabIds]
     );
 
-    // Ctrl+W: tab strip closes multi-selection (or active if none selected)
+    // Close shortcut: tab strip closes multi-selection (or active if none selected)
     useKeybinding({
         id: `editor-group-${group.id}-close-tabs-strip`,
-        key: "ctrl+w",
+        key: closeTabShortcut,
         description: "Close selected editor tabs",
         handler: handleCloseTabStripSelection,
         when: whenEditorTabsFocused(group.id),
         enabled: group.tabs.length > 0,
     });
 
-    // Ctrl+W: editor body closes active tab only
+    // Close shortcut: editor body closes active tab only
     useKeybinding({
         id: `editor-group-${group.id}-close-tab-editor-body`,
-        key: "ctrl+w",
+        key: closeTabShortcut,
         description: "Close active editor tab",
         handler: handleCloseActiveTab,
         when: whenGroupEditorBodyFocused,

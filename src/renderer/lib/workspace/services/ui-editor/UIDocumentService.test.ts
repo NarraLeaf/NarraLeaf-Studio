@@ -10,10 +10,71 @@ import {
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { Services } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
+import {
+    BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_FLOW_IF,
+    BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_NEXT,
+    BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
+} from "@shared/types/blueprint/graph";
 
-function createHarness() {
+function createHarness(options: { withLocalBlueprint?: boolean } = {}) {
     let nextId = 0;
     const service = new UIDocumentService();
+    const blueprintDocument: any = {
+        schemaVersion: 1,
+        blueprints: {},
+        ownerRecords: {},
+        persistentVariables: {},
+        meta: {},
+    };
+    const createGraphBlueprint = (id: string, name: string, owner: Record<string, unknown>) => {
+        blueprintDocument.blueprints[id] = blueprintDocument.blueprints[id] ?? {
+            id,
+            name,
+            owner,
+            frontend: "visual",
+            programKind: "graph",
+            program: {
+                kind: "graph",
+                graphs: {
+                    events: {},
+                    functions: {},
+                },
+            },
+            members: {
+                variables: {},
+                fields: {},
+                functions: {},
+            },
+            bindings: {},
+        };
+        return id;
+    };
+    const localBlueprintService = {
+        ensureWidgetMain: (surfaceId: string, elementId: string, displayName?: string) =>
+            createGraphBlueprint(`widget-main-${elementId}`, displayName ?? "Widget", {
+                kind: "widgetMain",
+                surfaceId,
+                elementId,
+            }),
+        ensureWidgetValueBlueprint: (input: { surfaceId: string; elementId: string; propPath: string; displayName?: string }) =>
+            createGraphBlueprint(`widget-value-${input.elementId}-${input.propPath}`, input.displayName ?? "Value", {
+                kind: "widgetValue",
+                surfaceId: input.surfaceId,
+                elementId: input.elementId,
+                propPath: input.propPath,
+            }),
+        applyBlueprintMutation: (mutator: (doc: any) => void) => mutator(blueprintDocument),
+        getBlueprintDocument: () => blueprintDocument,
+    };
     service.setContext({
         project: {
             resolve: (name: string) => name,
@@ -26,6 +87,9 @@ function createHarness() {
                 if (serviceId === Services.Project) {
                     return { getProjectConfig: () => ({ metadata: { resolution: { width: 1280, height: 720 } } }) };
                 }
+                if (options.withLocalBlueprint && serviceId === Services.LocalBlueprint) {
+                    return localBlueprintService;
+                }
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         } as any,
@@ -34,7 +98,7 @@ function createHarness() {
     const initialDocument = (service as any).createEmptyDocument();
     (service as any).document = initialDocument;
 
-    return { service, initialDocument };
+    return { service, initialDocument, blueprintDocument };
 }
 
 describe("UIDocumentService surface creation", () => {
@@ -91,7 +155,7 @@ describe("UIDocumentService surface creation", () => {
         expect(gameUi.kind === "stageSurface" ? gameUi.mount.slotId : null).toBe("onStage");
     });
 
-    it("creates Dialog Game UI with slot mount and private widget template", () => {
+    it("creates Dialog Game UI with slot mount and decoupled dialog template", () => {
         const { service } = createHarness();
 
         const dialog = service.createSurface({
@@ -102,20 +166,97 @@ describe("UIDocumentService surface creation", () => {
         }) as UIStageSurface;
         const doc = service.getDocument();
         const root = doc.elements[dialog.rootElementId]!;
-        const panel = doc.elements[root.childrenIds[0]!]!;
+        const interactionLayer = doc.elements[root.childrenIds[0]!]!;
+        const panel = doc.elements[root.childrenIds[1]!]!;
         const stack = doc.elements[panel.childrenIds[0]!]!;
         const nametag = doc.elements[stack.childrenIds[0]!]!;
         const sentence = doc.elements[stack.childrenIds[1]!]!;
         const children = stack.childrenIds.map(id => doc.elements[id]!.type);
 
+        expect(root.childrenIds).toHaveLength(2);
         expect(dialog.mount.slotId).toBe("dialog");
         expect(dialog.settings?.backgroundColor).toBe("transparent");
+        expect(interactionLayer.type).toBe("nl.container");
+        expect(interactionLayer.layout).toMatchObject({ x: 0, y: 0, width: 1280, height: 720 });
+        expect(interactionLayer.childrenIds).toEqual([]);
+        expect(interactionLayer.props).toMatchObject({
+            fillVisible: false,
+            strokeVisible: false,
+            borderWidth: 0,
+        });
         expect(panel.type).toBe("nl.container");
-        expect(children).toEqual(["nl.dialog.nametag", "nl.dialog.sentence"]);
+        expect(panel.parentId).toBe(root.id);
+        expect(children).toEqual(["nl.text", "nl.dialog.sentence"]);
+        expect(nametag.type).toBe("nl.text");
+        expect(sentence.type).toBe("nl.dialog.sentence");
+        expect(interactionLayer.props?.appearance).toBeTruthy();
         expect(panel.props?.appearance).toBeTruthy();
         expect(stack.props?.appearance).toBeTruthy();
         expect(nametag.props?.appearance).toBeTruthy();
         expect(sentence.props?.appearance).toBeTruthy();
+    });
+
+    it("wires default Dialog template blueprints for Next and Nametag updates", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+
+        const dialog = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "Dialog",
+            stageMount: { kind: "slot", slotId: "dialog" },
+        }) as UIStageSurface;
+        const doc = service.getDocument();
+        const root = doc.elements[dialog.rootElementId]!;
+        const interactionLayer = doc.elements[root.childrenIds[0]!]!;
+        const panel = doc.elements[root.childrenIds[1]!]!;
+        const stack = doc.elements[panel.childrenIds[0]!]!;
+        const nametag = doc.elements[stack.childrenIds[0]!]!;
+        const sentence = doc.elements[stack.childrenIds[1]!]!;
+
+        expect(interactionLayer.behavior?.events?.mouseClick).toBeUndefined();
+        expect(interactionLayer.behavior?.events?.keyUp).toBeUndefined();
+
+        expect(blueprintDocument.blueprints[`widget-main-${panel.id}`]).toBeUndefined();
+        const contentBlueprint = blueprintDocument.blueprints[`widget-main-${stack.id}`];
+        expect(contentBlueprint.owner).toMatchObject({ kind: "widgetMain", elementId: stack.id });
+        expect(Object.keys(contentBlueprint.program.graphs.events)).toEqual(["dialogNext"]);
+        const nextGraph = contentBlueprint.program.graphs.events.dialogNext.graph;
+        const nextNodes = Object.values(nextGraph.nodes) as any[];
+        expect(nextNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
+        const elementClickTargets = nextNodes
+            .filter((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK)
+            .map((node: any) => [node.params?.elementId, node.params?.elementType]);
+        expect(elementClickTargets).toHaveLength(4);
+        expect(elementClickTargets).toEqual(expect.arrayContaining([
+            [interactionLayer.id, "nl.container"],
+            [panel.id, "nl.container"],
+            [nametag.id, "nl.text"],
+            [sentence.id, "nl.dialog.sentence"],
+        ]));
+        expect(nextNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_GAME_NEXT)).toBe(true);
+        expect(nextNodes.some((node: any) =>
+            node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP &&
+            node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME] === " "
+        )).toBe(true);
+        const nextIncomingEdges = nextGraph.edges.filter((edge: any) => edge.to.nodeId === "dialog.next" && edge.to.port === "in");
+        expect(nextIncomingEdges).toHaveLength(6);
+        const outgoingKeys = nextGraph.edges.map((edge: any) => `${edge.from.nodeId}:${edge.from.port}`);
+        expect(new Set(outgoingKeys).size).toBe(outgoingKeys.length);
+
+        expect(nametag.valueBindings?.text).toBeUndefined();
+        const nametagBlueprint = blueprintDocument.blueprints[`widget-main-${nametag.id}`];
+        expect(nametagBlueprint.owner).toMatchObject({ kind: "widgetMain", elementId: nametag.id });
+        expect(Object.keys(nametagBlueprint.program.graphs.events)).toEqual(["nametagUpdate"]);
+        const nametagGraph = nametagBlueprint.program.graphs.events.nametagUpdate.graph;
+        const nametagNodeTypes = new Set(Object.values(nametagGraph.nodes).map((node: any) => node.type));
+        expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(true);
+        expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH)).toBe(true);
+        expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)).toBe(true);
+        expect(Object.values(nametagGraph.nodes).filter((node: any) => node.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)).toHaveLength(2);
+        expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_DATA_NOT_NULL)).toBe(true);
+        expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_FLOW_IF)).toBe(true);
+        expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY)).toBe(true);
+        expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(true);
     });
 
     it("returns the existing active Game UI when creating a duplicate slot", () => {
@@ -153,16 +294,18 @@ describe("UIDocumentService surface creation", () => {
         }) as UIStageSurface;
         const doc = service.getDocument();
         const root = doc.elements[dialog.rootElementId]!;
-        const panel = doc.elements[root.childrenIds[0]!]!;
+        const interactionLayer = doc.elements[root.childrenIds[0]!]!;
+        const panel = doc.elements[root.childrenIds[1]!]!;
         const stack = doc.elements[panel.childrenIds[0]!]!;
         const nametag = doc.elements[stack.childrenIds[0]!]!;
         const sentence = doc.elements[stack.childrenIds[1]!]!;
-        for (const element of [panel, stack, nametag, sentence]) {
+        for (const element of [interactionLayer, panel, stack, nametag, sentence]) {
             delete element.props?.appearance;
         }
 
         const migrated = (service as any).migrateIfNeeded(doc) as UIDocument;
 
+        expect(migrated.elements[interactionLayer.id]!.props?.appearance).toBeTruthy();
         expect(migrated.elements[panel.id]!.props?.appearance).toBeTruthy();
         expect(migrated.elements[stack.id]!.props?.appearance).toBeTruthy();
         expect(migrated.elements[nametag.id]!.props?.appearance).toBeTruthy();

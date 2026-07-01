@@ -104,6 +104,7 @@ export type BlueprintInspectorParamKind =
     | "number"
     | "json"
     | "color"
+    | "keyboardBinding"
     | "literal"
     | "variableRef"
     | "persistentVariableRef"
