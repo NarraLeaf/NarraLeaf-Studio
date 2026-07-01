@@ -339,6 +339,8 @@ export class StorageManager extends Manager {
     private getProtectedStorageRoots(): string[] {
         return [
             path.join(this.app.getUserDataDir(), UserDataNamespace.Authorization),
+            path.join(this.app.getUserDataDir(), UserDataNamespace.Plugins),
+            this.app.getBuiltInPluginsDir(),
         ];
     }
 

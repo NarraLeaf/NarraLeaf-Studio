@@ -7,6 +7,7 @@ import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import type { StoryMotionPanelPayload } from "./storyMotionTypes";
 export { createStoryMotionEditorTab } from "./StoryMotionEditorTab";
+export { StoryMotionPicker } from "./StoryMotionPicker";
 export type { StoryMotionActionContext, StoryMotionEditorPayload, StoryMotionPanelPayload } from "./storyMotionTypes";
 
 export const STORY_MOTION_PANEL_ID = "narraleaf-studio:story-motion";

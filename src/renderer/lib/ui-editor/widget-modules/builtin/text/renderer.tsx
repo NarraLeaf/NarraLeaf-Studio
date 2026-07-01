@@ -5,8 +5,8 @@ import {
     useRef,
     useState,
     type CSSProperties,
+    type ChangeEvent,
     type FocusEvent,
-    type FormEvent,
     type KeyboardEvent,
     type MouseEvent,
 } from "react";
@@ -310,6 +310,7 @@ export function TextRenderer({
 
     const commitAndClose = useCallback(
         (nextText: string) => {
+            draftRef.current = nextText;
             const docEl = documentService.getDocument().elements[element.id];
             documentService.updateElementProps(element.id, {
                 ...(docEl?.props ?? element.props),
@@ -342,7 +343,7 @@ export function TextRenderer({
         el.select();
     }, [isEditing]);
 
-    const handleTextareaInput = useCallback((e: FormEvent<HTMLTextAreaElement>) => {
+    const handleTextareaChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
         draftRef.current = e.currentTarget.value;
     }, []);
 
@@ -397,13 +398,14 @@ export function TextRenderer({
                 }
                 return;
             }
+            draftRef.current = e.currentTarget.value;
             debugUIDoubleClick("TextRenderer blur commit", {
                 elementId: element.id,
                 surfaceId: surface.id,
                 openedMsAgo,
                 relatedTarget: describeDoubleClickTarget(relatedTarget),
             });
-            commitAndClose(e.target.value);
+            commitAndClose(e.currentTarget.value);
         },
         [commitAndClose, element.id, surface.id],
     );
@@ -425,7 +427,7 @@ export function TextRenderer({
                 ref={textareaRef}
                 defaultValue={p.text}
                 style={textareaStyle}
-                onInput={handleTextareaInput}
+                onChange={handleTextareaChange}
                 onBlur={handleTextareaBlur}
                 onKeyDown={handleTextareaKeyDown}
                 onClick={e => e.stopPropagation()}

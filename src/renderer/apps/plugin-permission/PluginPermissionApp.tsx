@@ -67,7 +67,7 @@ function buildPermissionCopy(props: PluginPermissionPromptProps): PermissionCopy
                 title: `${requester} requests to install ${plugin}`,
                 body: [
                     "Studio identified these privileged controls for this installation:",
-                    "Installation approval does not automatically grant file or API access. Only install plugins you trust.",
+                    "Approving this install grants the listed controls to this plugin version. Only install plugins you trust.",
                 ],
                 permissions: describePluginInstallPermissions(request.permissions),
                 detail: `Source: ${request.source}`,

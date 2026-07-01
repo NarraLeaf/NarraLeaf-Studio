@@ -31,6 +31,16 @@ import {
 } from "./window/handlers/devModeSaveAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./window/handlers/pluginPermissionAction";
 import {
+    PluginApproveHandler,
+    PluginInstallLocalHandler,
+    PluginListHandler,
+    PluginReportLoadErrorHandler,
+    PluginRevokeHandler,
+    PluginSetEnabledHandler,
+    PluginUninstallHandler,
+    PluginWorkspaceListHandler,
+} from "./window/handlers/pluginManagerAction";
+import {
     BlueprintPersistenceGetAllHandler,
     BlueprintPersistenceGetValueHandler,
     BlueprintPersistenceRemoveValueHandler,
@@ -138,6 +148,14 @@ export class WindowManager {
         // Register plugin permission handlers
         win.registerIPCHandler(new PluginPermissionPromptLaunchHandler());
         win.registerIPCHandler(new PluginPermissionGrantHandler());
+        win.registerIPCHandler(new PluginListHandler());
+        win.registerIPCHandler(new PluginInstallLocalHandler());
+        win.registerIPCHandler(new PluginSetEnabledHandler());
+        win.registerIPCHandler(new PluginApproveHandler());
+        win.registerIPCHandler(new PluginUninstallHandler());
+        win.registerIPCHandler(new PluginRevokeHandler());
+        win.registerIPCHandler(new PluginWorkspaceListHandler());
+        win.registerIPCHandler(new PluginReportLoadErrorHandler());
 
         // Register actor-aware privileged facade handlers
         win.registerIPCHandler(new PrivilegedFsCallHandler());

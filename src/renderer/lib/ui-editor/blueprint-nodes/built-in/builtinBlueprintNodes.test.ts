@@ -781,6 +781,26 @@ describe("built-in blueprint nodes", () => {
             executionOwner: { surfaceId: "surface", elementId: "frame" },
         });
         expect(framePatches).toEqual([{ elementId: "frame", targetSurfaceId: "embedded-page" }]);
+
+        framePatches.length = 0;
+        await executeGraph({
+            graph: {
+                id: "clearPage",
+                entries: { main: { start: { nodeId: "set", port: "in" } } },
+                nodes: {
+                    set: {
+                        id: "set",
+                        type: BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
+                        params: {},
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "set", port: "in" } },
+            hostAdapter: createPageNavigationHostAdapter([], { frame: "embedded-page" }, framePatches),
+            executionOwner: { surfaceId: "surface", elementId: "frame" },
+        });
+        expect(framePatches).toEqual([{ elementId: "frame", targetSurfaceId: null }]);
     });
 
     it("executes Start Game as a terminal host API node", async () => {
@@ -1106,6 +1126,7 @@ describe("built-in blueprint nodes", () => {
                 label: "Page",
                 kind: "select",
                 dynamicOptionsSource: "surfaces",
+                emptyOptionLabel: "None",
             },
         ]);
         expect(elementFrameSetPage?.inspectorParams).toEqual(frameSetPage?.inspectorParams);
@@ -1983,6 +2004,7 @@ describe("built-in blueprint nodes", () => {
                 label: "Page",
                 kind: "select",
                 dynamicOptionsSource: "surfaces",
+                emptyOptionLabel: "None",
             },
         ]);
         expect(setPage?.magicElementRef).toMatchObject({

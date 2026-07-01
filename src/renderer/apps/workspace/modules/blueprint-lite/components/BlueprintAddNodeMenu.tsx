@@ -27,6 +27,7 @@ import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox"
 const MENU_W = 440;
 const MENU_MAX_H = 520;
 const MENU_CHROME_H = 132;
+const WINDOW_TITLEBAR_HEIGHT = 40;
 
 type PaletteEntry = ReturnType<IBlueprintNodeCatalogService["listPaletteEntries"]>[number];
 
@@ -133,9 +134,10 @@ export function BlueprintAddNodeMenu({
             return { left: anchor.x, top: anchor.y, maxHeight: MENU_MAX_H };
         }
         const pad = 8;
-        const maxHeight = Math.min(MENU_MAX_H, Math.max(280, window.innerHeight - pad * 2));
+        const viewportTop = WINDOW_TITLEBAR_HEIGHT + pad;
+        const maxHeight = Math.min(MENU_MAX_H, Math.max(280, window.innerHeight - viewportTop - pad));
         const left = Math.max(pad, Math.min(anchor.x, window.innerWidth - MENU_W - pad));
-        const top = Math.max(pad, Math.min(anchor.y, window.innerHeight - maxHeight - pad));
+        const top = Math.max(viewportTop, Math.min(anchor.y, Math.max(viewportTop, window.innerHeight - maxHeight - pad)));
         return { left, top, maxHeight };
     }, [anchor.x, anchor.y]);
 
@@ -280,7 +282,7 @@ export function BlueprintAddNodeMenu({
         <>
             <button
                 type="button"
-                className="fixed inset-0 z-[100] cursor-default bg-transparent"
+                className="nl-window-content-layer z-[100] cursor-default bg-transparent"
                 aria-label="Close add node menu"
                 onClick={onClose}
             />

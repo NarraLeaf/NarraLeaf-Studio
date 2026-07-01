@@ -16,7 +16,7 @@ import type {
     StoryVariableScope,
 } from "@shared/types/story";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Image as ImageIcon, Music, Palette, Trash2, Video } from "lucide-react";
+import { Image as ImageIcon, Music, Palette, Trash2, Video } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
@@ -31,12 +31,9 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
-import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
-import { useRegistry } from "@/apps/workspace/registry";
-import { createStoryMotionEditorTab, openStoryMotionPanel } from "../../story-motion";
-import { getStoryMotionDurationMs } from "../../story-motion/storyMotionTimeline";
+import { StoryMotionPicker } from "../../story-motion";
 
 const FIELD_LABEL_CLASS = "block text-xs font-medium text-gray-400 mb-1";
 const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-white/10 bg-[#1e1f22] px-3 py-2 text-sm text-gray-300 outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -990,137 +987,55 @@ function TransformPresetEditor(props: {
     storyName: string;
     onChange: (value: StoryTransformRef | undefined) => void;
 }) {
-    const { context } = useWorkspace();
-    const { openEditorTab } = useRegistry();
-    const storyService = useMemo(
-        () => context ? context.services.get<StoryService>(Services.Story) : null,
-        [context],
-    );
     const value = props.value ?? { preset: "none" as StoryTransformPreset };
     const propsText = formatPropsText(value.props);
-    const [motionSummary, setMotionSummary] = useState<{ name: string; durationMs: number } | null>(null);
-    useEffect(() => {
-        if (!storyService || value.mode !== "animation" || !value.animationId) {
-            setMotionSummary(null);
-            return;
-        }
-        let disposed = false;
-        void storyService.loadAnimationAsset(value.animationId)
-            .then(asset => {
-                if (!disposed) {
-                    setMotionSummary({
-                        name: asset.name,
-                        durationMs: getStoryMotionDurationMs(asset.timeline),
-                    });
-                }
-            })
-            .catch(() => {
-                if (!disposed) {
-                    setMotionSummary(null);
-                }
-            });
-        return () => {
-            disposed = true;
-        };
-    }, [storyService, value.animationId, value.mode]);
-    const openMotionEditor = () => {
-        if (!context) {
-            return;
-        }
-        if (value.mode === "animation" && value.animationId) {
-            openEditorTab(createStoryMotionEditorTab({
-                animationId: value.animationId,
-                actionContext: {
+    return (
+        <div className="grid gap-2">
+            <StoryMotionPicker
+                value={props.value}
+                targetKind={props.motionTargetKind}
+                motionLabel={props.motionLabel}
+                actionContext={{
                     storyId: props.storyId,
                     sceneId: props.sceneId,
                     blockId: props.blockId,
                     storyName: props.storyName,
-                },
-            }));
-            return;
-        }
-        openStoryMotionPanel(context, {
-            storyId: props.storyId,
-            sceneId: props.sceneId,
-            blockId: props.blockId,
-            storyName: props.storyName,
-        });
-    };
-    if (value.mode === "animation") {
-        return (
-            <div className="rounded-lg border border-primary/25 bg-primary/10 p-2">
-                <div className="flex min-w-0 items-center gap-2">
-                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-primary/25 bg-primary/15 text-primary">
-                        <Activity className="h-3.5 w-3.5" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-medium text-primary">Motion: {props.motionLabel}</div>
-                        <div className="truncate text-[11px] text-slate-400">
-                            {motionSummary
-                                ? `${motionSummary.name} / ${motionSummary.durationMs}ms`
-                                : value.animationId ? `Asset ${value.animationId}` : "No animation asset selected"}
-                        </div>
+                }}
+                onChange={props.onChange}
+            />
+            {value.mode === "animation" ? null : (
+                <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
+                    <div className="mb-2 text-xs font-medium text-slate-300">Preset Transform</div>
+                    <div className="grid gap-2 sm:grid-cols-4">
+                        <SelectField
+                            label="Preset"
+                            options={TRANSFORM_PRESET_OPTIONS}
+                            value={value.preset ?? "none"}
+                            onChange={preset => props.onChange({
+                                ...value,
+                                mode: "preset",
+                                preset: preset as StoryTransformPreset,
+                            })}
+                        />
+                        <NumberField
+                            label="Duration ms"
+                            value={value.durationMs}
+                            onChange={durationMs => props.onChange({ ...value, durationMs })}
+                        />
+                        <SelectField
+                            label="Easing"
+                            options={EASING_OPTIONS}
+                            value={value.easing ?? ""}
+                            onChange={easing => props.onChange({ ...value, easing: String(easing) || undefined })}
+                        />
+                        <TextField
+                            label="Params"
+                            value={propsText}
+                            onChange={nextProps => props.onChange({ ...value, props: parsePropsText(nextProps) })}
+                        />
                     </div>
-                    <button
-                        type="button"
-                        className="h-8 rounded-md border border-primary/30 bg-primary/10 px-2 text-xs text-primary hover:bg-primary/20"
-                        onClick={openMotionEditor}
-                    >
-                        Edit Motion
-                    </button>
-                    <button
-                        type="button"
-                        className="h-8 rounded-md border border-white/10 px-2 text-xs text-slate-400 hover:border-white/20 hover:text-slate-200"
-                        onClick={() => props.onChange({ ...value, mode: "preset", animationId: undefined })}
-                    >
-                        Preset
-                    </button>
                 </div>
-            </div>
-        );
-    }
-    return (
-        <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
-            <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-xs font-medium text-slate-300">Transform</div>
-                <button
-                    type="button"
-                    className="inline-flex h-7 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 text-xs text-slate-300 hover:border-primary/40 hover:text-primary"
-                    onClick={openMotionEditor}
-                    title={`Open Story Motion for ${props.motionTargetKind}`}
-                >
-                    <Activity className="h-3.5 w-3.5" />
-                    Motion
-                </button>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-4">
-                <SelectField
-                    label="Preset"
-                    options={TRANSFORM_PRESET_OPTIONS}
-                    value={value.preset ?? "none"}
-                    onChange={preset => props.onChange({
-                        ...value,
-                        mode: "preset",
-                        preset: preset as StoryTransformPreset,
-                    })}
-                />
-                <NumberField
-                    label="Duration ms"
-                    value={value.durationMs}
-                    onChange={durationMs => props.onChange({ ...value, durationMs })}
-                />
-                <SelectField
-                    label="Easing"
-                    options={EASING_OPTIONS}
-                    value={value.easing ?? ""}
-                    onChange={easing => props.onChange({ ...value, easing: String(easing) || undefined })}
-                />
-                <TextField
-                    label="Params"
-                    value={propsText}
-                    onChange={nextProps => props.onChange({ ...value, props: parsePropsText(nextProps) })}
-                />
-            </div>
+            )}
         </div>
     );
 }

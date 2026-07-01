@@ -55,8 +55,19 @@ import {
     remapElementValueBindingBlueprintIds,
 } from "./blueprint/cloneBlueprintForPaste";
 import { registerPrivateBlueprintAsActive } from "./blueprint/ownerRecords";
-import { componentWidgetMainOwnerKey, widgetMainOwnerKey, widgetValueOwnerKey } from "./blueprint/ownerKeys";
-import type { Blueprint, BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
+import {
+    componentWidgetMainOwnerKey,
+    surfaceMainOwnerKey,
+    widgetMainOwnerKey,
+    widgetValueOwnerKey,
+} from "./blueprint/ownerKeys";
+import type {
+    Blueprint,
+    BlueprintGraphIr,
+    BlueprintGraphNode,
+    BlueprintOwnerRef,
+    BlueprintPrivateOwnerRecord,
+} from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
@@ -176,6 +187,87 @@ type LegacyUIDocument = Omit<UIDocument, "surfaces" | "schemaVersion"> & {
 
 function cloneJson<T>(value: T): T {
     return value == null ? value : JSON.parse(JSON.stringify(value)) as T;
+}
+
+function createDuplicateName(baseName: string, existingNames: Set<string>): string {
+    const base = `${baseName.trim() || "Page"} Copy`;
+    if (!existingNames.has(base)) {
+        return base;
+    }
+    let i = 2;
+    while (existingNames.has(`${base} ${i}`)) {
+        i += 1;
+    }
+    return `${base} ${i}`;
+}
+
+function isReferenceKey(key: string, suffix: string): boolean {
+    return key === suffix || key.endsWith(suffix[0].toUpperCase() + suffix.slice(1));
+}
+
+type SurfaceDuplicateRemapContext = {
+    oldSurfaceId: string;
+    newSurfaceId: string;
+    elementIdMap: Record<string, string>;
+    blueprintIdMap: Record<string, string>;
+};
+
+function remapSurfaceDuplicateReferenceValue<T>(value: T, ctx: SurfaceDuplicateRemapContext, key?: string): T {
+    if (typeof value === "string") {
+        if (key && isReferenceKey(key, "surfaceId") && value === ctx.oldSurfaceId) {
+            return ctx.newSurfaceId as T;
+        }
+        if (key && isReferenceKey(key, "elementId") && ctx.elementIdMap[value]) {
+            return ctx.elementIdMap[value] as T;
+        }
+        if (key && isReferenceKey(key, "blueprintId") && ctx.blueprintIdMap[value]) {
+            return ctx.blueprintIdMap[value] as T;
+        }
+        return value;
+    }
+    if (Array.isArray(value)) {
+        return value.map(item => remapSurfaceDuplicateReferenceValue(item, ctx)) as T;
+    }
+    if (value && typeof value === "object") {
+        const out: Record<string, unknown> = {};
+        for (const [childKey, childValue] of Object.entries(value)) {
+            out[childKey] = remapSurfaceDuplicateReferenceValue(childValue, ctx, childKey);
+        }
+        return out as T;
+    }
+    return value;
+}
+
+function remapDuplicatedBlueprintOwner(owner: BlueprintOwnerRef, ctx: SurfaceDuplicateRemapContext): BlueprintOwnerRef | null {
+    if (owner.kind === "surfaceMain" && owner.surfaceId === ctx.oldSurfaceId) {
+        return { kind: "surfaceMain", surfaceId: ctx.newSurfaceId };
+    }
+    if (owner.kind === "widgetMain" && owner.surfaceId === ctx.oldSurfaceId) {
+        const newElementId = ctx.elementIdMap[owner.elementId];
+        return newElementId ? { kind: "widgetMain", surfaceId: ctx.newSurfaceId, elementId: newElementId } : null;
+    }
+    if (owner.kind === "widgetValue" && owner.surfaceId === ctx.oldSurfaceId) {
+        const newElementId = ctx.elementIdMap[owner.elementId];
+        return newElementId
+            ? { kind: "widgetValue", surfaceId: ctx.newSurfaceId, elementId: newElementId, propPath: owner.propPath }
+            : null;
+    }
+    return null;
+}
+
+function cloneBlueprintForSurfaceDuplicate(
+    source: Blueprint,
+    newBlueprintId: string,
+    ctx: SurfaceDuplicateRemapContext,
+): Blueprint | null {
+    const owner = remapDuplicatedBlueprintOwner(source.owner, ctx);
+    if (!owner) {
+        return null;
+    }
+    const cloned = remapSurfaceDuplicateReferenceValue(cloneJson(source), ctx);
+    cloned.id = newBlueprintId;
+    cloned.owner = owner;
+    return cloned;
 }
 
 function createContainerTemplateProps(overrides: Partial<ContainerWidgetProps>): ContainerWidgetProps {
@@ -1270,6 +1362,174 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 surface.id = MAIN_APP_SURFACE_ID;
             }
         });
+    }
+
+    public duplicateSurface(surfaceId: string, name?: string): UISurface | null {
+        const sourceDocument = this.getDocument();
+        const sourceSurface = sourceDocument.surfaces.find(next => next.id === surfaceId);
+        if (!sourceSurface || sourceSurface.kind !== "appSurface") {
+            return null;
+        }
+        const sourceRootId = sourceSurface.rootElementId;
+        if (!sourceDocument.elements[sourceRootId]) {
+            return null;
+        }
+
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const newSurfaceId = uuidService.generate();
+        const sourceElementIds = Array.from(collectSubtreeElementIds(sourceDocument, sourceRootId))
+            .filter(elementId => Boolean(sourceDocument.elements[elementId]));
+        const elementIdMap: Record<string, string> = {};
+        for (const elementId of sourceElementIds) {
+            elementIdMap[elementId] = uuidService.generate();
+        }
+        const newRootElementId = elementIdMap[sourceRootId];
+        if (!newRootElementId) {
+            return null;
+        }
+
+        let localBp: LocalBlueprintService | null = null;
+        try {
+            localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        } catch {
+            localBp = null;
+        }
+
+        const blueprintIdMap: Record<string, string> = {};
+        const ownerRecordsToClone: Record<string, BlueprintPrivateOwnerRecord> = {};
+        const sourceBlueprintDocument = localBp?.getBlueprintDocument();
+        if (sourceBlueprintDocument) {
+            for (const [ownerKey, ownerRecord] of Object.entries(sourceBlueprintDocument.ownerRecords)) {
+                const firstBlueprint = ownerRecord.privateBlueprintIds
+                    .map(blueprintId => sourceBlueprintDocument.blueprints[blueprintId])
+                    .find((blueprint): blueprint is Blueprint => Boolean(blueprint));
+                const owner = firstBlueprint?.owner;
+                if (!owner || !remapDuplicatedBlueprintOwner(owner, {
+                    oldSurfaceId: sourceSurface.id,
+                    newSurfaceId,
+                    elementIdMap,
+                    blueprintIdMap: {},
+                })) {
+                    continue;
+                }
+                ownerRecordsToClone[ownerKey] = cloneJson(ownerRecord);
+                for (const blueprintId of ownerRecord.privateBlueprintIds) {
+                    if (sourceBlueprintDocument.blueprints[blueprintId] && !blueprintIdMap[blueprintId]) {
+                        blueprintIdMap[blueprintId] = uuidService.generate();
+                    }
+                }
+            }
+        }
+
+        const remapContext: SurfaceDuplicateRemapContext = {
+            oldSurfaceId: sourceSurface.id,
+            newSurfaceId,
+            elementIdMap,
+            blueprintIdMap,
+        };
+        const existingNames = new Set(sourceDocument.surfaces.map(surface => surface.name));
+        const nextName = name?.trim() || createDuplicateName(sourceSurface.name, existingNames);
+        const duplicatedSurface: UISurface = {
+            ...cloneJson(sourceSurface),
+            id: newSurfaceId,
+            name: nextName,
+            rootElementId: newRootElementId,
+            settings: sourceSurface.settings
+                ? remapSurfaceDuplicateReferenceValue(cloneJson(sourceSurface.settings), remapContext)
+                : undefined,
+        };
+
+        localBp?.applyBlueprintMutation(bpDoc => {
+            for (const sourceOwnerRecord of Object.values(ownerRecordsToClone)) {
+                const clonedBlueprintIds = sourceOwnerRecord.privateBlueprintIds
+                    .map(oldBlueprintId => blueprintIdMap[oldBlueprintId])
+                    .filter((blueprintId): blueprintId is string => Boolean(blueprintId));
+                const activeBlueprintId = blueprintIdMap[sourceOwnerRecord.activeBlueprintId];
+                if (!activeBlueprintId || clonedBlueprintIds.length === 0) {
+                    continue;
+                }
+                const firstSourceBlueprint = sourceOwnerRecord.privateBlueprintIds
+                    .map(oldBlueprintId => sourceBlueprintDocument?.blueprints[oldBlueprintId])
+                    .find((blueprint): blueprint is Blueprint => Boolean(blueprint));
+                const newOwner = firstSourceBlueprint ? remapDuplicatedBlueprintOwner(firstSourceBlueprint.owner, remapContext) : null;
+                if (!newOwner) {
+                    continue;
+                }
+                let newOwnerKey: string;
+                if (newOwner.kind === "surfaceMain") {
+                    newOwnerKey = surfaceMainOwnerKey(newOwner.surfaceId);
+                } else if (newOwner.kind === "widgetMain") {
+                    newOwnerKey = widgetMainOwnerKey(newOwner.surfaceId, newOwner.elementId);
+                } else if (newOwner.kind === "widgetValue") {
+                    newOwnerKey = widgetValueOwnerKey(newOwner.surfaceId, newOwner.elementId, newOwner.propPath);
+                } else {
+                    continue;
+                }
+                for (const oldBlueprintId of sourceOwnerRecord.privateBlueprintIds) {
+                    const sourceBlueprint = sourceBlueprintDocument?.blueprints[oldBlueprintId];
+                    const newBlueprintId = blueprintIdMap[oldBlueprintId];
+                    if (!sourceBlueprint || !newBlueprintId) {
+                        continue;
+                    }
+                    const clonedBlueprint = cloneBlueprintForSurfaceDuplicate(sourceBlueprint, newBlueprintId, remapContext);
+                    if (clonedBlueprint) {
+                        bpDoc.blueprints[newBlueprintId] = clonedBlueprint;
+                    }
+                }
+                bpDoc.ownerRecords[newOwnerKey] = {
+                    ...cloneJson(sourceOwnerRecord),
+                    activeBlueprintId,
+                    privateBlueprintIds: clonedBlueprintIds,
+                };
+            }
+        });
+
+        const duplicatedElements: Record<string, UIElement> = {};
+        for (const oldElementId of sourceElementIds) {
+            const sourceElement = sourceDocument.elements[oldElementId];
+            const newElementId = elementIdMap[oldElementId];
+            if (!sourceElement || !newElementId) {
+                continue;
+            }
+            const copy = cloneJson(sourceElement);
+            copy.id = newElementId;
+            copy.parentId = sourceElement.parentId ? elementIdMap[sourceElement.parentId] ?? null : null;
+            copy.childrenIds = sourceElement.childrenIds
+                .filter(childId => Boolean(elementIdMap[childId]))
+                .map(childId => elementIdMap[childId]);
+            copy.props = copy.props
+                ? remapSurfaceDuplicateReferenceValue(copy.props, remapContext)
+                : undefined;
+            copy.style = copy.style
+                ? remapSurfaceDuplicateReferenceValue(copy.style, remapContext)
+                : undefined;
+            copy.extra = copy.extra
+                ? remapSurfaceDuplicateReferenceValue(copy.extra, remapContext)
+                : undefined;
+            if (copy.behavior?.events) {
+                copy.behavior = {
+                    ...copy.behavior,
+                    events: remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap),
+                };
+            }
+            if (copy.valueBindings) {
+                copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
+            }
+            duplicatedElements[newElementId] = copy;
+        }
+
+        this.mutateDocument(document => {
+            Object.assign(document.elements, duplicatedElements);
+            const sourceIndex = document.surfaces.findIndex(surface => surface.id === sourceSurface.id);
+            if (sourceIndex >= 0) {
+                document.surfaces.splice(sourceIndex + 1, 0, duplicatedSurface);
+            } else {
+                document.surfaces.push(duplicatedSurface);
+            }
+            normalizeFlowChildLayouts(document, Object.keys(duplicatedElements));
+        });
+
+        return duplicatedSurface;
     }
 
     public getComponent(componentId: string): UIComponentDefinition | undefined {

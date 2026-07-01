@@ -7,6 +7,8 @@ import {
     type UIDocument,
     type UIStageSurface,
 } from "@shared/types/ui-editor/document";
+import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import type { BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { Services } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
@@ -25,17 +27,38 @@ import {
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
 } from "@shared/types/blueprint/graph";
 
+function ownerKeyForTest(owner: BlueprintOwnerRef): string {
+    switch (owner.kind) {
+        case "globalMain":
+            return "globalMain";
+        case "surfaceMain":
+            return `surfaceMain:${owner.surfaceId}`;
+        case "widgetMain":
+            return `widgetMain:${owner.surfaceId}:${owner.elementId}`;
+        case "widgetValue":
+            return `widgetValue:${owner.surfaceId}:${owner.elementId}:${encodeURIComponent(owner.propPath)}`;
+        case "componentWidgetMain":
+            return `componentWidgetMain:${owner.componentId}:${owner.elementId}`;
+        case "sharedAsset":
+            return `sharedAsset:${owner.assetId}`;
+        default: {
+            const _exhaustive: never = owner;
+            return _exhaustive;
+        }
+    }
+}
+
 function createHarness(options: { withLocalBlueprint?: boolean } = {}) {
     let nextId = 0;
     const service = new UIDocumentService();
     const blueprintDocument: any = {
-        schemaVersion: 1,
+        schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
         blueprints: {},
         ownerRecords: {},
         persistentVariables: {},
         meta: {},
     };
-    const createGraphBlueprint = (id: string, name: string, owner: Record<string, unknown>) => {
+    const createGraphBlueprint = (id: string, name: string, owner: BlueprintOwnerRef) => {
         blueprintDocument.blueprints[id] = blueprintDocument.blueprints[id] ?? {
             id,
             name,
@@ -55,6 +78,15 @@ function createHarness(options: { withLocalBlueprint?: boolean } = {}) {
                 functions: {},
             },
             bindings: {},
+        };
+        const ownerKey = ownerKeyForTest(owner);
+        const prev = blueprintDocument.ownerRecords[ownerKey];
+        blueprintDocument.ownerRecords[ownerKey] = {
+            activeBlueprintId: id,
+            privateBlueprintIds: prev?.privateBlueprintIds?.includes(id)
+                ? prev.privateBlueprintIds
+                : [...(prev?.privateBlueprintIds ?? []), id],
+            initializedFrontend: prev?.initializedFrontend ?? "visual",
         };
         return id;
     };
@@ -98,7 +130,7 @@ function createHarness(options: { withLocalBlueprint?: boolean } = {}) {
     const initialDocument = (service as any).createEmptyDocument();
     (service as any).document = initialDocument;
 
-    return { service, initialDocument, blueprintDocument };
+    return { service, initialDocument, blueprintDocument, createGraphBlueprint };
 }
 
 describe("UIDocumentService surface creation", () => {
@@ -386,6 +418,248 @@ describe("UIDocumentService surface creation", () => {
         (service as any).ensureMainSurface(service.getDocument());
         expect(mainSurface?.id).toBe(MAIN_APP_SURFACE_ID);
         expect(mainSurface?.name).toBe("Start");
+    });
+
+    it("duplicates Pages with independent elements and private blueprints", () => {
+        const { service, blueprintDocument, createGraphBlueprint } = createHarness({ withLocalBlueprint: true });
+        const source = service.createSurface({
+            kind: "appSurface",
+            host: "app",
+            name: "Inventory",
+        });
+        const component = service.createEmptyComponent("Shared CTA");
+        const componentBlueprintId = createGraphBlueprint("bp-component", "Shared CTA Logic", {
+            kind: "componentWidgetMain",
+            componentId: component.id,
+            elementId: component.rootElementId,
+        });
+
+        const doc = service.getDocument();
+        const root = doc.elements[source.rootElementId]!;
+        const label: UIElement = {
+            id: "source-label",
+            type: "nl.text",
+            name: "Label",
+            parentId: "source-button",
+            childrenIds: [],
+            layout: { x: 8, y: 8, width: 80, height: 20 },
+        };
+        const button: UIElement = {
+            id: "source-button",
+            type: "nl.button",
+            name: "Open Button",
+            parentId: root.id,
+            childrenIds: [label.id],
+            layout: { x: 20, y: 30, width: 140, height: 48 },
+            props: {
+                label: "Open",
+                targetSurfaceId: source.id,
+                nested: {
+                    surfaceId: source.id,
+                    elementId: label.id,
+                },
+            },
+        };
+        root.childrenIds.push(button.id);
+        doc.elements[button.id] = button;
+        doc.elements[label.id] = label;
+        const linkedInstance = service.createComponentInstance(root.id, component.id, {
+            x: 240,
+            y: 30,
+            width: 160,
+            height: 64,
+        });
+
+        const surfaceBlueprintId = createGraphBlueprint("bp-surface", "Inventory Logic", {
+            kind: "surfaceMain",
+            surfaceId: source.id,
+        });
+        const widgetBlueprintId = createGraphBlueprint("bp-widget", "Button Logic", {
+            kind: "widgetMain",
+            surfaceId: source.id,
+            elementId: button.id,
+        });
+        const valueBlueprintId = createGraphBlueprint("bp-value", "Button Label Value", {
+            kind: "widgetValue",
+            surfaceId: source.id,
+            elementId: button.id,
+            propPath: "label",
+        });
+        button.behavior = {
+            events: {
+                mouseClick: { kind: "blueprintEvent", blueprintId: widgetBlueprintId, eventId: "click" },
+            },
+        };
+        button.valueBindings = {
+            label: { kind: "blueprintValue", blueprintId: valueBlueprintId, valueType: "string" },
+        };
+
+        const surfaceBlueprint = blueprintDocument.blueprints[surfaceBlueprintId];
+        surfaceBlueprint.members.fields["field-surface"] = { id: "field-surface", name: "Title" };
+        surfaceBlueprint.bindings["bind-surface"] = {
+            id: "bind-surface",
+            target: {
+                kind: "widgetProp",
+                surfaceId: source.id,
+                elementId: button.id,
+                propPath: "label",
+            },
+            source: {
+                kind: "field",
+                blueprintId: surfaceBlueprintId,
+                fieldId: "field-surface",
+            },
+            mode: "replace",
+            status: "active",
+        };
+        surfaceBlueprint.program.graphs.events.init = {
+            id: "init",
+            graph: {
+                nodes: {
+                    "node-self": {
+                        id: "node-self",
+                        type: "test.node",
+                        params: {
+                            surfaceId: source.id,
+                            targetSurfaceId: source.id,
+                            elementId: button.id,
+                            blueprintId: surfaceBlueprintId,
+                        },
+                    },
+                },
+                edges: [],
+            },
+        };
+
+        const widgetBlueprint = blueprintDocument.blueprints[widgetBlueprintId];
+        widgetBlueprint.members.fields["field-widget"] = { id: "field-widget", name: "Enabled" };
+        widgetBlueprint.bindings["bind-widget"] = {
+            id: "bind-widget",
+            target: {
+                kind: "widgetProp",
+                surfaceId: source.id,
+                elementId: button.id,
+                propPath: "layout.visible",
+            },
+            source: {
+                kind: "field",
+                blueprintId: widgetBlueprintId,
+                fieldId: "field-widget",
+            },
+            mode: "replace",
+            status: "active",
+        };
+        widgetBlueprint.program.graphs.events.click = {
+            id: "click",
+            graph: {
+                nodes: {
+                    "node-target": {
+                        id: "node-target",
+                        type: "test.widget",
+                        params: {
+                            surfaceId: source.id,
+                            elementId: label.id,
+                            blueprintId: widgetBlueprintId,
+                        },
+                    },
+                },
+                edges: [],
+            },
+        };
+
+        const duplicated = service.duplicateSurface(source.id)!;
+        const duplicatedDoc = service.getDocument();
+        const duplicatedRoot = duplicatedDoc.elements[duplicated.rootElementId]!;
+        const duplicatedChildren = duplicatedRoot.childrenIds.map(id => duplicatedDoc.elements[id]!);
+        const duplicatedButton = duplicatedChildren.find(element => element.name === "Open Button")!;
+        const duplicatedLabel = duplicatedDoc.elements[duplicatedButton.childrenIds[0]!]!;
+        const duplicatedLinkedInstance = duplicatedChildren.find(element => getUIComponentLink(element)?.componentId === component.id)!;
+
+        expect(duplicated).toMatchObject({
+            name: "Inventory Copy",
+            kind: "appSurface",
+            host: "app",
+        });
+        expect(duplicated.id).not.toBe(source.id);
+        expect(duplicated.rootElementId).not.toBe(source.rootElementId);
+        expect(duplicatedButton.id).not.toBe(button.id);
+        expect(duplicatedLabel.id).not.toBe(label.id);
+        expect(duplicatedButton.parentId).toBe(duplicated.rootElementId);
+        expect(duplicatedButton.props).toMatchObject({
+            targetSurfaceId: duplicated.id,
+            nested: {
+                surfaceId: duplicated.id,
+                elementId: duplicatedLabel.id,
+            },
+        });
+        expect(duplicatedLinkedInstance.id).not.toBe(linkedInstance.id);
+        expect(getUIComponentLink(duplicatedLinkedInstance)).toEqual({ componentId: component.id, linked: true });
+        expect(duplicatedDoc.components).toHaveLength(1);
+
+        const duplicatedEvent = duplicatedButton.behavior?.events?.mouseClick;
+        expect(duplicatedEvent?.kind).toBe("blueprintEvent");
+        if (duplicatedEvent?.kind !== "blueprintEvent") {
+            throw new Error("Expected duplicated button event blueprint binding");
+        }
+        const duplicatedWidgetBlueprintId = duplicatedEvent.blueprintId;
+        const duplicatedValueBlueprintId = duplicatedButton.valueBindings?.label?.blueprintId;
+        const duplicatedSurfaceBlueprintId = blueprintDocument.ownerRecords[`surfaceMain:${duplicated.id}`]?.activeBlueprintId;
+
+        expect(duplicatedSurfaceBlueprintId).toBeTruthy();
+        expect(duplicatedSurfaceBlueprintId).not.toBe(surfaceBlueprintId);
+        expect(duplicatedWidgetBlueprintId).not.toBe(widgetBlueprintId);
+        expect(duplicatedValueBlueprintId).toBeTruthy();
+        expect(duplicatedValueBlueprintId).not.toBe(valueBlueprintId);
+        if (!duplicatedValueBlueprintId) {
+            throw new Error("Expected duplicated value blueprint binding");
+        }
+
+        expect(blueprintDocument.ownerRecords[`surfaceMain:${source.id}`]?.activeBlueprintId).toBe(surfaceBlueprintId);
+        expect(blueprintDocument.ownerRecords[`widgetMain:${source.id}:${button.id}`]?.activeBlueprintId).toBe(widgetBlueprintId);
+        expect(blueprintDocument.ownerRecords[`widgetValue:${source.id}:${button.id}:label`]?.activeBlueprintId).toBe(valueBlueprintId);
+        expect(blueprintDocument.ownerRecords[`componentWidgetMain:${component.id}:${component.rootElementId}`]?.activeBlueprintId)
+            .toBe(componentBlueprintId);
+        expect(Object.keys(blueprintDocument.ownerRecords).filter(key => key.startsWith("componentWidgetMain:")))
+            .toEqual([`componentWidgetMain:${component.id}:${component.rootElementId}`]);
+
+        const duplicatedSurfaceBlueprint = blueprintDocument.blueprints[duplicatedSurfaceBlueprintId];
+        expect(duplicatedSurfaceBlueprint.owner).toEqual({ kind: "surfaceMain", surfaceId: duplicated.id });
+        expect(duplicatedSurfaceBlueprint.bindings["bind-surface"].target).toMatchObject({
+            surfaceId: duplicated.id,
+            elementId: duplicatedButton.id,
+        });
+        expect(duplicatedSurfaceBlueprint.bindings["bind-surface"].source.blueprintId).toBe(duplicatedSurfaceBlueprintId);
+        expect(duplicatedSurfaceBlueprint.program.graphs.events.init.graph.nodes["node-self"].params).toMatchObject({
+            surfaceId: duplicated.id,
+            targetSurfaceId: duplicated.id,
+            elementId: duplicatedButton.id,
+            blueprintId: duplicatedSurfaceBlueprintId,
+        });
+
+        const duplicatedWidgetBlueprint = blueprintDocument.blueprints[duplicatedWidgetBlueprintId];
+        expect(duplicatedWidgetBlueprint.owner).toEqual({
+            kind: "widgetMain",
+            surfaceId: duplicated.id,
+            elementId: duplicatedButton.id,
+        });
+        expect(duplicatedWidgetBlueprint.bindings["bind-widget"].target).toMatchObject({
+            surfaceId: duplicated.id,
+            elementId: duplicatedButton.id,
+        });
+        expect(duplicatedWidgetBlueprint.bindings["bind-widget"].source.blueprintId).toBe(duplicatedWidgetBlueprintId);
+        expect(duplicatedWidgetBlueprint.program.graphs.events.click.graph.nodes["node-target"].params).toMatchObject({
+            surfaceId: duplicated.id,
+            elementId: duplicatedLabel.id,
+            blueprintId: duplicatedWidgetBlueprintId,
+        });
+
+        const duplicatedValueBlueprint = blueprintDocument.blueprints[duplicatedValueBlueprintId];
+        expect(duplicatedValueBlueprint.owner).toEqual({
+            kind: "widgetValue",
+            surfaceId: duplicated.id,
+            elementId: duplicatedButton.id,
+            propPath: "label",
+        });
     });
 });
 

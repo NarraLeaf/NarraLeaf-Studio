@@ -9,6 +9,12 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type { PluginPermissionGrantPayload, PluginPermissionGrantResult, PluginPermissionPromptResult } from "./pluginPermissions";
 import type {
+    PluginApproveResult,
+    PluginInstallResult,
+    PluginListItem,
+    WorkspacePluginDescriptor,
+} from "./plugins";
+import type {
     PrivilegedBashExecutePayload,
     PrivilegedBashExecuteResult,
     PrivilegedFileSystemCallPayload,
@@ -107,6 +113,14 @@ export enum IPCEventType {
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
+    pluginList = "plugin.list",
+    pluginInstallLocal = "plugin.installLocal",
+    pluginSetEnabled = "plugin.setEnabled",
+    pluginApprove = "plugin.approve",
+    pluginUninstall = "plugin.uninstall",
+    pluginRevoke = "plugin.revoke",
+    pluginWorkspaceList = "plugin.workspaceList",
+    pluginReportLoadError = "plugin.reportLoadError",
 
     privilegedFsCall = "privileged.fs.call",
     privilegedPermissionRequest = "privileged.permission.request",
@@ -255,7 +269,7 @@ export type IPCEvents = {
             path: string;
         };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPrivilegedEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCPrivilegedEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -776,6 +790,73 @@ export type IPCPluginPermissionEvents = {
         consumer: IPCType.Host,
         data: PluginPermissionGrantPayload,
         response: PluginPermissionGrantResult;
+    };
+};
+
+export type IPCPluginManagerEvents = {
+    [IPCEventType.pluginList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            plugins: PluginListItem[];
+        };
+    };
+    [IPCEventType.pluginInstallLocal]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: PluginInstallResult;
+    };
+    [IPCEventType.pluginSetEnabled]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+            enabled: boolean;
+        },
+        response: PluginListItem;
+    };
+    [IPCEventType.pluginApprove]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+        },
+        response: PluginApproveResult;
+    };
+    [IPCEventType.pluginUninstall]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+        },
+        response: void;
+    };
+    [IPCEventType.pluginRevoke]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+        },
+        response: PluginListItem;
+    };
+    [IPCEventType.pluginWorkspaceList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            plugins: WorkspacePluginDescriptor[];
+        };
+    };
+    [IPCEventType.pluginReportLoadError]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+            error: string | null;
+        },
+        response: PluginListItem;
     };
 };
 

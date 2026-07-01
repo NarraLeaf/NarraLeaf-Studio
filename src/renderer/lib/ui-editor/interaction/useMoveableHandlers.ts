@@ -762,6 +762,13 @@ export function useMoveableHandlers({
                     horizontal,
                     viewportScale,
                     smartSnap.surfaceId,
+                    {
+                        preserveAspectRatio: initialLayout.lockAspectRatio === true,
+                        aspectRatio:
+                            Math.abs(initialLayout.width) > 0 && Math.abs(initialLayout.height) > 0
+                                ? Math.abs(initialLayout.width) / Math.abs(initialLayout.height)
+                                : undefined,
+                    },
                 );
                 const nx = snapped.layout.x;
                 const ny = snapped.layout.y;

@@ -9,6 +9,8 @@
     --narraleaf-accent-weak: color-mix(in srgb, var(--narraleaf-accent) 60%, transparent);
     --narraleaf-accent-tint: rgba(64, 168, 196, 0.18);
     --narraleaf-accent-tint: color-mix(in srgb, var(--narraleaf-accent) 18%, transparent);
+    --nl-window-titlebar-height: 40px;
+    --nl-window-content-height: calc(100vh - var(--nl-window-titlebar-height));
 }
 
 *, *::before, *::after {
@@ -172,6 +174,14 @@ input[type="radio"]:focus {
 @layer utilities {
     .titlebar-drag { -webkit-app-region: drag; }
     .no-drag { -webkit-app-region: no-drag; }
+
+    .nl-window-content-layer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: var(--nl-window-titlebar-height);
+        bottom: 0;
+    }
 
     /**
      * Global `*` sets -webkit-user-drag: none (prevents accidental image/window drags).

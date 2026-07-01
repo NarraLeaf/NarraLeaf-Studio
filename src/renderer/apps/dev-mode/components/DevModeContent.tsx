@@ -70,6 +70,41 @@ type DevModeContentProps = {
     onDismissSessionError: () => void;
 };
 
+function mergeWidgetRuntimePatch(
+    current: Record<string, Record<string, DevModeWidgetRuntimePatch>>,
+    runtimeScopeId: string,
+    elementId: string,
+    patch: DevModeWidgetRuntimePatch,
+): Record<string, Record<string, DevModeWidgetRuntimePatch>> {
+    return {
+        ...current,
+        [runtimeScopeId]: {
+            ...(current[runtimeScopeId] ?? {}),
+            [elementId]: {
+                ...(current[runtimeScopeId]?.[elementId] ?? {}),
+                ...patch,
+            },
+        },
+    };
+}
+
+function applyWidgetRuntimePatch(input: {
+    setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
+    widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
+    runtimeScopeId: string;
+    elementId: string;
+    patch: DevModeWidgetRuntimePatch;
+}): void {
+    const next = mergeWidgetRuntimePatch(
+        input.widgetPatchesByScopeRef.current,
+        input.runtimeScopeId,
+        input.elementId,
+        input.patch,
+    );
+    input.widgetPatchesByScopeRef.current = next;
+    input.setWidgetPatchesByScope(next);
+}
+
 const staticDevHostAdapter = (surface: UISurface): UIHostAdapter => ({
     host: surface.host,
 });
@@ -351,16 +386,13 @@ function StudioDialogSlotSurface(props: {
             onSkip: skipInGame,
             onSetSentenceSpeed: setSentenceSpeedInGame,
             onWidgetPatch: (elementId, patch) => {
-                setWidgetPatchesByScope(prev => ({
-                    ...prev,
-                    [runtimeScopeId]: {
-                        ...(prev[runtimeScopeId] ?? {}),
-                        [elementId]: {
-                            ...(prev[runtimeScopeId]?.[elementId] ?? {}),
-                            ...patch,
-                        },
-                    },
-                }));
+                applyWidgetRuntimePatch({
+                    setWidgetPatchesByScope,
+                    widgetPatchesByScopeRef,
+                    runtimeScopeId,
+                    elementId,
+                    patch,
+                });
             },
             onElementFlush: (elementId, payload) => {
                 void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
@@ -592,16 +624,13 @@ function DevModeAppSurfaceLayer(props: {
             onSkip: skipInGame,
             onSetSentenceSpeed: setSentenceSpeedInGame,
             onWidgetPatch: (elementId, patch) => {
-                setWidgetPatchesByScope(prev => ({
-                    ...prev,
-                    [runtimeScopeId]: {
-                        ...(prev[runtimeScopeId] ?? {}),
-                        [elementId]: {
-                            ...(prev[runtimeScopeId]?.[elementId] ?? {}),
-                            ...patch,
-                        },
-                    },
-                }));
+                applyWidgetRuntimePatch({
+                    setWidgetPatchesByScope,
+                    widgetPatchesByScopeRef,
+                    runtimeScopeId,
+                    elementId,
+                    patch,
+                });
             },
             onElementFlush: (elementId, payload) => {
                 void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
@@ -1474,16 +1503,13 @@ export function DevModeContent(props: DevModeContentProps) {
             onSkip: skipInGame,
             onSetSentenceSpeed: setSentenceSpeedInGame,
             onWidgetPatch: (elementId, patch) => {
-                setWidgetPatchesByScope(prev => ({
-                    ...prev,
-                    [runtimeScopeId]: {
-                        ...(prev[runtimeScopeId] ?? {}),
-                        [elementId]: {
-                            ...(prev[runtimeScopeId]?.[elementId] ?? {}),
-                            ...patch,
-                        },
-                    },
-                }));
+                applyWidgetRuntimePatch({
+                    setWidgetPatchesByScope,
+                    widgetPatchesByScopeRef,
+                    runtimeScopeId,
+                    elementId,
+                    patch,
+                });
             },
             onElementFlush: (elementId, payload) => {
                 void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
@@ -1652,16 +1678,13 @@ export function DevModeContent(props: DevModeContentProps) {
                     onSkip: skipInGame,
                     onSetSentenceSpeed: setSentenceSpeedInGame,
                     onWidgetPatch: (elementId, patch) => {
-                        setWidgetPatchesByScope(prev => ({
-                            ...prev,
-                            [runtimeScopeId]: {
-                                ...(prev[runtimeScopeId] ?? {}),
-                                [elementId]: {
-                                    ...(prev[runtimeScopeId]?.[elementId] ?? {}),
-                                    ...patch,
-                                },
-                            },
-                        }));
+                        applyWidgetRuntimePatch({
+                            setWidgetPatchesByScope,
+                            widgetPatchesByScopeRef,
+                            runtimeScopeId,
+                            elementId,
+                            patch,
+                        });
                     },
                     onElementFlush: (elementId, payload) => {
                         void nestedHostAdapter?.blueprintRuntime?.dispatchElementBlueprintEvent(
