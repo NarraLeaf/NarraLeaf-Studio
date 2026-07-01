@@ -20,11 +20,14 @@ import { Services } from "@/lib/workspace/services/services";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
+import { isMacPlatform } from "@/lib/app/platform";
 
 interface WorkspaceLayoutProps {
     title: string;
     iconSrc: string;
 }
+
+const MACOS_NATIVE_MENU_GROUP_IDS = ["narraleaf-studio:file", "narraleaf-studio:help"];
 
 // Default sizes (in pixels)
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 320;
@@ -465,13 +468,16 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         };
     }, [context]);
 
+    const isMac = isMacPlatform();
+    const hiddenActionGroupIds = isMac ? MACOS_NATIVE_MENU_GROUP_IDS : undefined;
+
     return (
         <div className="h-screen w-screen flex flex-col bg-[#0f1115] text-gray-200">
             {/* Title Bar with Action Bar and Control Bar */}
             <TitleBar
                 title=""
                 iconSrc={iconSrc}
-                actionBar={<ActionBar />}
+                actionBar={<ActionBar hiddenGroupIds={hiddenActionGroupIds} />}
                 controlBar={
                     <ControlBar
                         leftSidebarVisible={leftSidebarVisible}
@@ -581,4 +587,3 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         </div>
     );
 }
-

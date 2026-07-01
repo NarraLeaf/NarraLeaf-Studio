@@ -1,6 +1,6 @@
 import { RendererInterfaceKey } from "@shared/types/constants";
 import { Namespace } from "@shared/types/ipc";
-import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
+import { IPCEventType, RequestStatus, WorkspaceMenuAction } from "@shared/types/ipcEvents";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
@@ -79,6 +79,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
         onBlueprintNavigateFromPreview: (handler: (payload: PreviewStudioBlueprintOpenPayload) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceBlueprintNavigateFromPreview, handler),
+        onMenuAction: (handler: (action: WorkspaceMenuAction) => void) =>
+            ipcClient.onMessage(IPCEventType.menuAction, (data) => handler(data.action)),
     },
 
     app: {
