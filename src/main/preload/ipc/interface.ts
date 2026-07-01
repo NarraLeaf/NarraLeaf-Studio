@@ -79,6 +79,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
         onBlueprintNavigateFromPreview: (handler: (payload: PreviewStudioBlueprintOpenPayload) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceBlueprintNavigateFromPreview, handler),
+        onMenuAction: (handler: (action: string) => void) =>
+            ipcClient.onMessage(IPCEventType.menuAction, (data) => handler(data.action)),
     },
 
     app: {

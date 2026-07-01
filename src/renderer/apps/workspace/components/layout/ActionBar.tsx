@@ -14,7 +14,7 @@ import type { DevModeStatus } from "@shared/types/devMode";
  * Displays dynamically registered actions in the top-left area
  * Filters actions based on focus context and when conditions
  */
-export function ActionBar() {
+export function ActionBar({ hideGroups }: { hideGroups?: boolean }) {
     const { actions, actionGroups } = useRegistry();
     const { workspace, context } = useWorkspace();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
@@ -58,9 +58,11 @@ export function ActionBar() {
         return hasVisible(items, focusContext);
     });
 
-    if (standaloneActions.length === 0 && visibleActionGroups.length === 0) {
+    if (standaloneActions.length === 0 && (hideGroups || visibleActionGroups.length === 0)) {
         return <div className="flex items-center gap-1" />;
     }
+
+    const groupsToRender = hideGroups ? [] : visibleActionGroups;
 
     const handleActionClick = (action: ActionDefinition) => {
         if (!workspace) {
@@ -73,7 +75,7 @@ export function ActionBar() {
     return (
         <div className="flex items-center gap-0.5">
             {/* Render action groups first */}
-            {visibleActionGroups.map((group) => (
+            {groupsToRender.map((group) => (
                 <ActionDropdown key={group.id} group={group} />
             ))}
 

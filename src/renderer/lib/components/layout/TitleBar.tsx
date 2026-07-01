@@ -5,7 +5,7 @@ import { Minus, Square, X } from "lucide-react";
 import { ReactNode } from "react";
 import { WindowControlPolicy, type WindowControlAbility } from "@shared/types/window";
 
-const MACOS_TRAFFIC_LIGHT_SAFE_AREA = 78;
+const MACOS_TRAFFIC_LIGHT_SAFE_AREA = 90;
 const TITLEBAR_EDGE_GAP = 5;
 
 export interface TitleBarProps {
@@ -37,7 +37,7 @@ export function TitleBar({
     const shouldRenderCustomControls = hasWindowControls && !isMac;
     const leftInset = usesInlineMacControls ? MACOS_TRAFFIC_LIGHT_SAFE_AREA : 0;
     const rightInset = usesInlineMacControls
-        ? (controlBar ? TITLEBAR_EDGE_GAP : MACOS_TRAFFIC_LIGHT_SAFE_AREA)
+        ? (controlBar || iconSrc ? TITLEBAR_EDGE_GAP : MACOS_TRAFFIC_LIGHT_SAFE_AREA)
         : 0;
     const leftSafeAreaStyle = leftInset ? { paddingLeft: leftInset } : undefined;
     const rightSafeAreaStyle = rightInset ? { paddingRight: rightInset } : undefined;
@@ -49,7 +49,7 @@ export function TitleBar({
         <div className={`titlebar-drag relative flex h-10 min-h-10 items-center bg-[#0b0d12] border-b border-white/10 ${className}`}>
             {/* Left side - App Icon and Action Bar */}
             <div className="no-drag flex h-full min-w-0 items-center" style={leftSafeAreaStyle}>
-                {iconSrc && (
+                {!usesInlineMacControls && iconSrc && (
                     <div className="flex h-full shrink-0 items-center px-4">
                         <img
                             src={iconSrc}
@@ -84,6 +84,15 @@ export function TitleBar({
                         <>{controlBar}</>
                     </ErrorBoundary>
                 ) : null}
+                {usesInlineMacControls && iconSrc && (
+                    <div className="flex h-full shrink-0 items-center px-4">
+                        <img
+                            src={iconSrc}
+                            alt="App Icon"
+                            className="w-5 h-5"
+                        />
+                    </div>
+                )}
                 {shouldRenderCustomControls && (
                     <CustomWindowControls initialAbility={initialControlAbility} />
                 )}

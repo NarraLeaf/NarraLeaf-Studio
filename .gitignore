@@ -149,3 +149,4 @@ yarn.lock
 .dev/
 package-lock.json
 .security/
+.DS_Store

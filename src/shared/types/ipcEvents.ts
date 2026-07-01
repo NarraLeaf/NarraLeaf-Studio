@@ -102,6 +102,8 @@ export enum IPCEventType {
     privilegedPermissionRequest = "privileged.permission.request",
     privilegedPermissionRevokePlugin = "privileged.permission.revokePlugin",
     privilegedBashExecute = "privileged.bash.execute",
+
+    menuAction = "app.menu.action",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -243,7 +245,7 @@ export type IPCEvents = {
             path: string;
         };
     };
-} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPrivilegedEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPrivilegedEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -791,5 +793,14 @@ export type IPCPrivilegedEvents = {
         consumer: IPCType.Host,
         data: PrivilegedBashExecutePayload,
         response: PrivilegedBashExecuteResult;
+    };
+};
+
+export type IPCMenuEvents = {
+    [IPCEventType.menuAction]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { action: string },
+        response: never;
     };
 };
