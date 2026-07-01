@@ -68,6 +68,8 @@ export enum IPCEventType {
     workspaceLaunch = "workspace.launch",
     workspaceSelectFolder = "workspace.selectFolder",
     workspaceClose = "workspace.close",
+    workspaceExportProjectPackage = "workspace.projectPackage.export",
+    workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
@@ -513,6 +515,32 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Host,
         data: {},
         response: void;
+    };
+    [IPCEventType.workspaceExportProjectPackage]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            canceled: boolean;
+            packagePath?: string;
+            fileCount?: number;
+            byteLength?: number;
+            skippedCount?: number;
+        };
+    };
+    [IPCEventType.workspaceImportProjectPackage]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            canceled: boolean;
+            projectPath?: string;
+            projectName?: string;
+            fileCount?: number;
+            byteLength?: number;
+        };
     };
     [IPCEventType.workspaceResolveAssetUrl]: {
         type: IPCMessageType.request,

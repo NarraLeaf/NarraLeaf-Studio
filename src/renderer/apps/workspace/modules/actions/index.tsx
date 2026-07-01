@@ -6,6 +6,7 @@ import {
     FileText,
     FolderOpen,
     Save,
+    Archive,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
 import { Workspace } from "@/lib/workspace/workspace";
@@ -167,6 +168,32 @@ export const fileActionGroup: ModuleActionGroup = {
             },
             order: 1,
         },
+        {
+            id: "narraleaf-studio:file-export-project",
+            label: "Export Project",
+            icon: <Archive className="w-4 h-4" />,
+            tooltip: "Export the current project as a package",
+            onClick: (workspace: Workspace) => {
+                void (async () => {
+                    const uiService = workspace.getContext().services.get<UIService>(Services.UI);
+                    uiService.showNotification("Choose a folder for the exported project package.", "info");
+
+                    const projectPath = workspace.getContext().project.getConfig().projectPath;
+                    const result = await getInterface().workspace.exportProjectPackage(projectPath);
+                    if (!result.success) {
+                        uiService.showNotification(result.error || "Failed to export project.", "error");
+                        return;
+                    }
+                    if (result.data.canceled) {
+                        return;
+                    }
+
+                    const fileCount = result.data.fileCount ?? 0;
+                    uiService.showNotification(`Exported project package with ${fileCount} files.`, "success");
+                })();
+            },
+            order: 2,
+        },
         Separator,
         {
             id: "narraleaf-studio:file-save-as",
@@ -176,7 +203,7 @@ export const fileActionGroup: ModuleActionGroup = {
             onClick: () => {
                 getInterface().workspace.close();
             },
-            order: 2,
+            order: 3,
         },
     ],
 };

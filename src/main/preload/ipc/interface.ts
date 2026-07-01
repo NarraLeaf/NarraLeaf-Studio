@@ -68,6 +68,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         launch: (props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean) =>
             ipcClient.invoke(IPCEventType.workspaceLaunch, { props, closeCurrentWindow }),
         close: () => ipcClient.invoke(IPCEventType.workspaceClose, {}),
+        exportProjectPackage: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.workspaceExportProjectPackage, { projectPath }),
+        importProjectPackage: () =>
+            ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, {}),
         onResolveAssetUrl: (handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveAssetUrl, handler),
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
