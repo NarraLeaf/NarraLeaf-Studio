@@ -8,6 +8,7 @@ import type {
     StoryDocument,
     StoryDisplayableTargetKind,
     StoryLiteralValue,
+    StorySceneId,
     StoryTransitionRef,
     StoryTransformRef,
     StoryTransformPreset,
@@ -15,7 +16,7 @@ import type {
     StoryVariableScope,
 } from "@shared/types/story";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image as ImageIcon, Music, Palette, Trash2, Video } from "lucide-react";
+import { Activity, Image as ImageIcon, Music, Palette, Trash2, Video } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
@@ -30,8 +31,12 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
+import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
+import { useRegistry } from "@/apps/workspace/registry";
+import { createStoryMotionEditorTab, openStoryMotionPanel } from "../../story-motion";
+import { getStoryMotionDurationMs } from "../../story-motion/storyMotionTimeline";
 
 const FIELD_LABEL_CLASS = "block text-xs font-medium text-gray-400 mb-1";
 const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-white/10 bg-[#1e1f22] px-3 py-2 text-sm text-gray-300 outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -176,6 +181,7 @@ const CODE_LANGUAGE_OPTIONS: SelectOption[] = [
 export function ActionInspector(props: {
     block: StoryBlock;
     document: StoryDocument;
+    sceneId: StorySceneId;
     characters: Character[];
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onClose: () => void;
@@ -203,6 +209,7 @@ export function ActionInspector(props: {
             <InspectorFields
                 block={block}
                 document={props.document}
+                sceneId={props.sceneId}
                 characters={props.characters}
                 onUpdatePayload={props.onUpdatePayload}
                 onSetDialogueCharacter={props.onSetDialogueCharacter}
@@ -215,6 +222,7 @@ export function ActionInspector(props: {
 function InspectorFields(props: {
     block: StoryBlock;
     document: StoryDocument;
+    sceneId: StorySceneId;
     characters: Character[];
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
@@ -269,6 +277,9 @@ function InspectorFields(props: {
     if (block.kind === "action") {
         return (
             <ActionPayloadFields
+                block={block}
+                document={props.document}
+                sceneId={props.sceneId}
                 payload={block.payload}
                 characters={props.characters}
                 onChange={props.onUpdatePayload}
@@ -313,6 +324,9 @@ function InspectorFields(props: {
 }
 
 function ActionPayloadFields(props: {
+    block: StoryBlock;
+    document: StoryDocument;
+    sceneId: StorySceneId;
     payload: StoryActionPayload;
     characters: Character[];
     onChange: (payload: StoryBlock["payload"]) => void;
@@ -330,6 +344,10 @@ function ActionPayloadFields(props: {
         return (
             <CharacterActionEditor
                 payload={payload}
+                storyId={props.document.id}
+                sceneId={props.sceneId}
+                blockId={props.block.id}
+                storyName={props.document.name}
                 characters={props.characters}
                 onChange={props.onChange}
             />
@@ -408,7 +426,16 @@ function ActionPayloadFields(props: {
                     />
                     <CheckboxField label="Auto fit" checked={Boolean(payload.autoFit)} onChange={autoFit => props.onChange({ ...payload, autoFit })} />
                 </div>
-                <TransformPresetEditor value={payload.transform} onChange={transform => props.onChange({ ...payload, transform })} />
+                <TransformPresetEditor
+                    value={payload.transform}
+                    motionTargetKind="image"
+                    motionLabel={`${payload.objectName || "Image"} ${payload.operation}`}
+                    storyId={props.document.id}
+                    sceneId={props.sceneId}
+                    blockId={props.block.id}
+                    storyName={props.document.name}
+                    onChange={transform => props.onChange({ ...payload, transform })}
+                />
                 <TransitionEditor value={payload.transition} onChange={transition => props.onChange({ ...payload, transition })} />
             </div>
         );
@@ -431,7 +458,16 @@ function ActionPayloadFields(props: {
                         onChange={kind => props.onChange({ ...payload, target: { ...payload.target, kind: String(kind) ? kind as StoryDisplayableTargetKind : undefined } })}
                     />
                 </div>
-                <TransformPresetEditor value={payload.transform} onChange={transform => props.onChange({ ...payload, transform })} />
+                <TransformPresetEditor
+                    value={payload.transform}
+                    motionTargetKind={payload.target.kind ?? "image"}
+                    motionLabel={`${payload.target.name || "Displayable"} ${payload.operation}`}
+                    storyId={props.document.id}
+                    sceneId={props.sceneId}
+                    blockId={props.block.id}
+                    storyName={props.document.name}
+                    onChange={transform => props.onChange({ ...payload, transform })}
+                />
             </div>
         );
     }
@@ -453,7 +489,16 @@ function ActionPayloadFields(props: {
                 {payload.operation === "create" || payload.operation === "setText" ? (
                     <LabeledTextarea label="Text" className="min-h-16" value={payload.text ?? ""} onChange={text => props.onChange({ ...payload, text })} />
                 ) : null}
-                <TransformPresetEditor value={payload.transform} onChange={transform => props.onChange({ ...payload, transform })} />
+                <TransformPresetEditor
+                    value={payload.transform}
+                    motionTargetKind="text"
+                    motionLabel={`${payload.objectName || "Text"} ${payload.operation}`}
+                    storyId={props.document.id}
+                    sceneId={props.sceneId}
+                    blockId={props.block.id}
+                    storyName={props.document.name}
+                    onChange={transform => props.onChange({ ...payload, transform })}
+                />
             </div>
         );
     }
@@ -470,7 +515,16 @@ function ActionPayloadFields(props: {
                     <TextField label="Layer name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
                     <NumberField label="Z-index" value={payload.zIndex} onChange={zIndex => props.onChange({ ...payload, zIndex })} />
                 </div>
-                <TransformPresetEditor value={payload.transform} onChange={transform => props.onChange({ ...payload, transform })} />
+                <TransformPresetEditor
+                    value={payload.transform}
+                    motionTargetKind="layer"
+                    motionLabel={`${payload.objectName || "Layer"} ${payload.operation}`}
+                    storyId={props.document.id}
+                    sceneId={props.sceneId}
+                    blockId={props.block.id}
+                    storyName={props.document.name}
+                    onChange={transform => props.onChange({ ...payload, transform })}
+                />
             </div>
         );
     }
@@ -498,7 +552,16 @@ function ActionPayloadFields(props: {
         return (
             <div className="grid gap-3">
                 <div className="text-sm text-slate-400">Children of this row will run inside NLR NVL mode.</div>
-                <TransformPresetEditor value={payload.transition} onChange={transition => props.onChange({ ...payload, transition })} />
+                <TransformPresetEditor
+                    value={payload.transition}
+                    motionTargetKind="layer"
+                    motionLabel="NVL transition"
+                    storyId={props.document.id}
+                    sceneId={props.sceneId}
+                    blockId={props.block.id}
+                    storyName={props.document.name}
+                    onChange={transition => props.onChange({ ...payload, transition })}
+                />
             </div>
         );
     }
@@ -531,6 +594,10 @@ type CharacterActionPayload = Extract<StoryActionPayload, { action: "character" 
 
 function CharacterActionEditor(props: {
     payload: CharacterActionPayload;
+    storyId: string;
+    sceneId: StorySceneId;
+    blockId: string;
+    storyName: string;
     characters: Character[];
     onChange: (payload: StoryBlock["payload"]) => void;
 }) {
@@ -648,21 +715,21 @@ function CharacterActionEditor(props: {
                     assetId={payload.assetId}
                     onChange={assetId => updatePayload({ ...payload, assetId })}
                 />
-                {payload.operation === "enter" ? (
+                {payload.operation === "enter" && payload.transform?.mode !== "animation" ? (
                     <NumberField
                         label="Zoom"
                         value={showZoom}
                         onChange={updateShowZoom}
                     />
                 ) : null}
-                {payload.operation === "enter" ? (
+                {payload.operation === "enter" && payload.transform?.mode !== "animation" ? (
                     <NumberField
                         label="X Offset"
                         value={showXOffset}
                         onChange={updateShowXOffset}
                     />
                 ) : null}
-                {payload.operation === "enter" ? (
+                {payload.operation === "enter" && payload.transform?.mode !== "animation" ? (
                     <NumberField
                         label="Y Offset"
                         value={showYOffset}
@@ -679,6 +746,12 @@ function CharacterActionEditor(props: {
             ) : null}
             <TransformPresetEditor
                 value={payload.transform}
+                motionTargetKind="character"
+                motionLabel={`${payload.characterId || payload.objectName || "Character"} ${payload.operation}`}
+                storyId={props.storyId}
+                sceneId={props.sceneId}
+                blockId={props.blockId}
+                storyName={props.storyName}
                 onChange={transform => updatePayload({ ...payload, transform })}
             />
             <TransitionEditor
@@ -909,13 +982,117 @@ function AssetField(props: {
 
 function TransformPresetEditor(props: {
     value: StoryTransformRef | undefined;
+    motionTargetKind: StoryDisplayableTargetKind;
+    motionLabel: string;
+    storyId: string;
+    sceneId: StorySceneId;
+    blockId: string;
+    storyName: string;
     onChange: (value: StoryTransformRef | undefined) => void;
 }) {
+    const { context } = useWorkspace();
+    const { openEditorTab } = useRegistry();
+    const storyService = useMemo(
+        () => context ? context.services.get<StoryService>(Services.Story) : null,
+        [context],
+    );
     const value = props.value ?? { preset: "none" as StoryTransformPreset };
     const propsText = formatPropsText(value.props);
+    const [motionSummary, setMotionSummary] = useState<{ name: string; durationMs: number } | null>(null);
+    useEffect(() => {
+        if (!storyService || value.mode !== "animation" || !value.animationId) {
+            setMotionSummary(null);
+            return;
+        }
+        let disposed = false;
+        void storyService.loadAnimationAsset(value.animationId)
+            .then(asset => {
+                if (!disposed) {
+                    setMotionSummary({
+                        name: asset.name,
+                        durationMs: getStoryMotionDurationMs(asset.timeline),
+                    });
+                }
+            })
+            .catch(() => {
+                if (!disposed) {
+                    setMotionSummary(null);
+                }
+            });
+        return () => {
+            disposed = true;
+        };
+    }, [storyService, value.animationId, value.mode]);
+    const openMotionEditor = () => {
+        if (!context) {
+            return;
+        }
+        if (value.mode === "animation" && value.animationId) {
+            openEditorTab(createStoryMotionEditorTab({
+                animationId: value.animationId,
+                actionContext: {
+                    storyId: props.storyId,
+                    sceneId: props.sceneId,
+                    blockId: props.blockId,
+                    storyName: props.storyName,
+                },
+            }));
+            return;
+        }
+        openStoryMotionPanel(context, {
+            storyId: props.storyId,
+            sceneId: props.sceneId,
+            blockId: props.blockId,
+            storyName: props.storyName,
+        });
+    };
+    if (value.mode === "animation") {
+        return (
+            <div className="rounded-lg border border-primary/25 bg-primary/10 p-2">
+                <div className="flex min-w-0 items-center gap-2">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-primary/25 bg-primary/15 text-primary">
+                        <Activity className="h-3.5 w-3.5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-medium text-primary">Motion: {props.motionLabel}</div>
+                        <div className="truncate text-[11px] text-slate-400">
+                            {motionSummary
+                                ? `${motionSummary.name} / ${motionSummary.durationMs}ms`
+                                : value.animationId ? `Asset ${value.animationId}` : "No animation asset selected"}
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        className="h-8 rounded-md border border-primary/30 bg-primary/10 px-2 text-xs text-primary hover:bg-primary/20"
+                        onClick={openMotionEditor}
+                    >
+                        Edit Motion
+                    </button>
+                    <button
+                        type="button"
+                        className="h-8 rounded-md border border-white/10 px-2 text-xs text-slate-400 hover:border-white/20 hover:text-slate-200"
+                        onClick={() => props.onChange({ ...value, mode: "preset", animationId: undefined })}
+                    >
+                        Preset
+                    </button>
+                </div>
+            </div>
+        );
+    }
     return (
         <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
-            <div className="mb-2 text-xs font-medium text-slate-300">Transform</div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-xs font-medium text-slate-300">Transform</div>
+                <button
+                    type="button"
+                    className="inline-flex h-7 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2 text-xs text-slate-300 hover:border-primary/40 hover:text-primary"
+                    onClick={openMotionEditor}
+                    title={`Open Story Motion for ${props.motionTargetKind}`}
+                >
+                    <Activity className="h-3.5 w-3.5" />
+                    Motion
+                </button>
+            </div>
             <div className="grid gap-2 sm:grid-cols-4">
                 <SelectField
                     label="Preset"

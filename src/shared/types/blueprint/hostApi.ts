@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 6 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 7 as const;
 
 export type BlueprintHostApiContractVersion = typeof BLUEPRINT_HOST_API_CONTRACT_VERSION;
 
@@ -184,6 +184,38 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: true,
             input: { storyId: "", sceneId: "" },
             output: undefined,
+        },
+        writeSave: {
+            capabilityId: "game.writeSave",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "" },
+            output: undefined,
+        },
+        loadSave: {
+            capabilityId: "game.loadSave",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "" },
+            output: undefined,
+        },
+        listSaveIds: {
+            capabilityId: "game.listSaveIds",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: [],
+        },
+        getSavePreview: {
+            capabilityId: "game.getSavePreview",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "" },
+            output: null,
         },
     },
     devtools: {

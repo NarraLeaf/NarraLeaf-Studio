@@ -2,7 +2,7 @@ import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/docume
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
-import type { StoryDocument, StoryId, StoryLibraryIndex } from "./story";
+import type { StoryAnimationAsset, StoryAnimationAssetId, StoryDocument, StoryId, StoryLibraryIndex } from "./story";
 
 export type DevModeEntry =
     | {
@@ -54,6 +54,7 @@ export type DevModeStoryLibrary = {
     index: StoryLibraryIndex;
     documents: Record<StoryId, StoryDocument>;
     characters: DevModeCharacterSummary[];
+    animations: Record<StoryAnimationAssetId, StoryAnimationAsset>;
 };
 
 export type DevModeStartStoryRequest = {

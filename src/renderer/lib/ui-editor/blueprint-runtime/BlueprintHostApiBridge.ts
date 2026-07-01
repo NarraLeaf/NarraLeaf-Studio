@@ -180,6 +180,10 @@ export type BlueprintHostApiRuntime = {
     };
     game: {
         startStory: (request: DevModeStartStoryRequest) => Promise<void>;
+        writeSave: (id: string) => Promise<void>;
+        loadSave: (id: string) => Promise<void>;
+        listSaveIds: () => Promise<string[]>;
+        getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
     };
     devtools: {
         log: (level: string, message: string) => void;
@@ -194,6 +198,10 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     frameParams?: Record<string, unknown>;
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
     onStartStory?: (request: DevModeStartStoryRequest) => Promise<void> | void;
+    onWriteSave?: (id: string) => Promise<void> | void;
+    onLoadSave?: (id: string) => Promise<void> | void;
+    onListSaveIds?: () => Promise<string[]> | string[];
+    onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
@@ -755,6 +763,14 @@ function scopedWidgetRuntimeKey(runtimeScopeId: string | undefined, activeSurfac
     return `${runtimeScopeId ?? activeSurfaceId}\0${elementId}`;
 }
 
+function normalizeGameSaveId(operation: string, id: string): string {
+    const safe = String(id ?? "").trim();
+    if (!safe) {
+        throw new Error(`${operation}: save id is required`);
+    }
+    return safe;
+}
+
 /**
  * Unified Host API implementation for Dev Mode (M3-full). Workspace editor does not instantiate this.
  */
@@ -767,6 +783,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         frameParams,
         onFrameEmit,
         onStartStory,
+        onWriteSave,
+        onLoadSave,
+        onListSaveIds,
+        onGetSavePreview,
         emit,
         onOpenSurface,
         onCloseLayer,
@@ -1462,6 +1482,58 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("startStory: game runtime is not available");
                     }
                     await onStartStory({ storyId, sceneId });
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            writeSave: async (id: string) => {
+                const cap = "game.writeSave";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("writeSave", id);
+                    if (!onWriteSave) {
+                        throw new Error("writeSave: game save runtime is not available");
+                    }
+                    await onWriteSave(saveId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            loadSave: async (id: string) => {
+                const cap = "game.loadSave";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("loadSave", id);
+                    if (!onLoadSave) {
+                        throw new Error("loadSave: game save runtime is not available");
+                    }
+                    await onLoadSave(saveId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            listSaveIds: async () => {
+                const cap = "game.listSaveIds";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onListSaveIds) {
+                        throw new Error("listSaveIds: game save runtime is not available");
+                    }
+                    const ids = await onListSaveIds();
+                    return [...ids].map(id => String(id));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSavePreview: async (id: string) => {
+                const cap = "game.getSavePreview";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("getSavePreview", id);
+                    if (!onGetSavePreview) {
+                        throw new Error("getSavePreview: game save runtime is not available");
+                    }
+                    return normalizeBlueprintImageAssetValue(await onGetSavePreview(saveId));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

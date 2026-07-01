@@ -41,9 +41,12 @@ export class App extends BaseApp {
             options: {
                 minWidth: 800,
                 minHeight: 500,
+                maxWidth: 800,
+                maxHeight: 500,
                 width: 800,
                 height: 500,
                 frame: false,
+                resizable: false,
                 maximizable: false,
                 titleBarStyle: 'hidden',
                 show: false,

@@ -6,6 +6,7 @@ import {
     countBlueprintBroadcastListeners,
     dispatchBlueprintElementFlushEvent,
     dispatchBlueprintBroadcastEvent,
+    dispatchSurfaceBlueprintEvent,
     dispatchBlueprintUiEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
@@ -226,6 +227,23 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             return;
         }
         await dispatchElementBlueprintEventNow(elementId, eventName, eventPayload, eventOptions);
+    };
+
+    blueprintRuntime.dispatchSurfaceBlueprintEvent = async (eventName, eventPayload) => {
+        await dispatchSurfaceBlueprintEvent({
+            blueprintDocument,
+            surfaceId: surface.id,
+            runtimeScopeId: effectiveRuntimeScopeId,
+            eventName,
+            eventPayload,
+            hostAdapter: adapter,
+            debug,
+            getSurfaceState: key => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key),
+            setSurfaceState: (key, value) => {
+                hostApi.state.set("surface", key, value);
+            },
+            executionManager,
+        });
     };
 
     blueprintRuntime.dispatchBroadcastEvent = async (eventName, data, sender) => {

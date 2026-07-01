@@ -3,13 +3,13 @@ import { migrateBlueprintDocumentToLatest } from "@shared/blueprint/migrateBluep
 import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlueprintAsset";
 import type { SharedBlueprintAsset } from "@shared/types/blueprint/document";
 import type { DevModeBundle, DevModeCharacterSummary, DevModeStoryLibrary } from "@shared/types/devMode";
-import type { StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
+import type { StoryAnimationAsset, StoryAnimationIndex, StoryDocument, StoryLibraryEntry, StoryLibraryIndex } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { Fs } from "@shared/utils/fs";
 import { decodeProjectConfig, findProjectConfigFileName } from "@shared/utils/nlproj";
-import { isValidStoryId } from "@shared/utils/storyId";
+import { isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
 import type { DevModeBundleLoadContext, DevModeBundleSource } from "./types";
 
 /**
@@ -148,6 +148,7 @@ async function loadStoryLibrary(projectPath: string): Promise<DevModeStoryLibrar
         index: normalizedIndex,
         documents,
         characters: await loadCharacterSummaries(projectPath),
+        animations: await loadStoryAnimations(projectPath),
     };
 }
 
@@ -160,6 +161,29 @@ export function resolveStoryDocumentPathForIndexEntry(projectPath: string, entry
 
 function storyDocumentRelativePath(storyId: string): string {
     return `editor/story/stories/${storyId}/storydoc.json`;
+}
+
+async function loadStoryAnimations(projectPath: string): Promise<Record<string, StoryAnimationAsset>> {
+    const indexPath = path.join(projectPath, "editor", "story", "animations", "index.json");
+    const index = await readOptionalJsonFile<StoryAnimationIndex>(indexPath);
+    if (!index) {
+        return {};
+    }
+    const animations: Record<string, StoryAnimationAsset> = {};
+    const seen = new Set<string>();
+    for (const entry of Array.isArray(index.animations) ? index.animations : []) {
+        if (!isValidStoryEntityId(entry.id) || seen.has(entry.id)) {
+            continue;
+        }
+        seen.add(entry.id);
+        const animationPath = path.join(projectPath, "editor", "story", "animations", `${entry.id}.json`);
+        const animation = await readOptionalJsonFile<StoryAnimationAsset>(animationPath);
+        if (!animation || animation.id !== entry.id) {
+            continue;
+        }
+        animations[entry.id] = animation;
+    }
+    return animations;
 }
 
 async function loadCharacterSummaries(projectPath: string): Promise<DevModeCharacterSummary[]> {

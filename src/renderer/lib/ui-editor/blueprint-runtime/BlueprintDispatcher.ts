@@ -155,6 +155,24 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.call", functionId: "game.startStory" });
                     input.debug.emit({ type: "function.return", functionId: "game.startStory" });
                 },
+                writeSave: async (_id: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.writeSave" });
+                    input.debug.emit({ type: "function.return", functionId: "game.writeSave" });
+                },
+                loadSave: async (_id: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.loadSave" });
+                    input.debug.emit({ type: "function.return", functionId: "game.loadSave" });
+                },
+                listSaveIds: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "game.listSaveIds" });
+                    input.debug.emit({ type: "function.return", functionId: "game.listSaveIds" });
+                    return [];
+                },
+                getSavePreview: async (_id: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.getSavePreview" });
+                    input.debug.emit({ type: "function.return", functionId: "game.getSavePreview" });
+                    return null;
+                },
             },
         },
         state: {

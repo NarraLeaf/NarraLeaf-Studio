@@ -7,6 +7,7 @@ import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbilit
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import { DevModeBundle, DevModeEntry, DevModeStatus } from "./devMode";
+import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type {
     PluginPermissionDecision,
@@ -126,6 +127,20 @@ export interface RendererPreloadedInterface {
         openBlueprintInWorkspace(
             payload: PreviewStudioBlueprintOpenPayload & { projectPath: string },
         ): Promise<RequestStatus<void>>;
+        save: {
+            write(
+                projectRef: DevModeSaveProjectRef,
+                id: string,
+                savedGame: unknown,
+                capture?: string,
+            ): Promise<RequestStatus<void>>;
+            read(
+                projectRef: DevModeSaveProjectRef,
+                id: string,
+            ): Promise<RequestStatus<{ record: DevModeSaveRecord | null }>>;
+            listIds(projectRef: DevModeSaveProjectRef): Promise<RequestStatus<{ ids: string[] }>>;
+            readPreview(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ capture: string | null }>>;
+        };
     };
 
     blueprintPersistence: {

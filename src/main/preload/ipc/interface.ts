@@ -5,6 +5,7 @@ import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
 import type { DevModeEntry, DevModeStatus, DevModeBundle } from "@shared/types/devMode";
+import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
@@ -116,6 +117,16 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
         openBlueprintInWorkspace: (payload: PreviewStudioBlueprintOpenPayload & { projectPath: string }) =>
             ipcClient.invoke(IPCEventType.devModeOpenBlueprintInWorkspace, payload) as Promise<RequestStatus<void>>,
+        save: {
+            write: (projectRef: DevModeSaveProjectRef, id: string, savedGame: unknown, capture?: string) =>
+                ipcClient.invoke(IPCEventType.devModeSaveWrite, { projectRef, id, savedGame, capture }) as Promise<RequestStatus<void>>,
+            read: (projectRef: DevModeSaveProjectRef, id: string) =>
+                ipcClient.invoke(IPCEventType.devModeSaveRead, { projectRef, id }) as Promise<RequestStatus<{ record: DevModeSaveRecord | null }>>,
+            listIds: (projectRef: DevModeSaveProjectRef) =>
+                ipcClient.invoke(IPCEventType.devModeSaveListIds, { projectRef }) as Promise<RequestStatus<{ ids: string[] }>>,
+            readPreview: (projectRef: DevModeSaveProjectRef, id: string) =>
+                ipcClient.invoke(IPCEventType.devModeSaveReadPreview, { projectRef, id }) as Promise<RequestStatus<{ capture: string | null }>>,
+        },
     },
 
     blueprintPersistence: {

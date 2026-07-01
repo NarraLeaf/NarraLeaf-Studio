@@ -5,6 +5,7 @@ export type StoryLibraryIndexVersion = typeof STORY_LIBRARY_INDEX_SCHEMA_VERSION
 export type StoryDocumentVersion = typeof STORY_DOCUMENT_SCHEMA_VERSION;
 
 export type StoryId = string;
+export type StoryAnimationAssetId = string;
 export type StoryChapterId = string;
 export type StorySceneId = string;
 export type StoryBlockId = string;
@@ -343,7 +344,7 @@ export type StoryTransformRef = {
     durationMs?: number;
     easing?: string;
     props?: Record<string, StoryLiteralValue>;
-    animationId?: string;
+    animationId?: StoryAnimationAssetId;
 };
 
 export type StoryTransitionRef = {
@@ -357,6 +358,99 @@ export type StoryDiagnosticsMeta = {
     sourceLine?: number;
     sourceColumn?: number;
     tags?: string[];
+};
+
+export type StoryAnimationIndex = {
+    schemaVersion: StoryDocumentVersion;
+    animations: StoryAnimationIndexEntry[];
+    meta?: StoryMeta;
+};
+
+export type StoryAnimationIndexEntry = {
+    id: StoryAnimationAssetId;
+    name: string;
+    targetKind: StoryDisplayableTargetKind;
+    documentPath: string;
+    createdAt: string;
+    updatedAt: string;
+};
+
+export type StoryAnimationAsset = {
+    schemaVersion: StoryDocumentVersion;
+    id: StoryAnimationAssetId;
+    name: string;
+    targetKind: StoryDisplayableTargetKind;
+    timeline?: StoryAnimationTimeline;
+    sequences: StoryAnimationSequence[];
+    config?: StoryAnimationConfig;
+    meta?: StoryMeta;
+};
+
+export type StoryAnimationConfig = {
+    repeat?: number;
+    repeatDelayMs?: number;
+};
+
+export type StoryAnimationSequence = {
+    id: string;
+    props: StoryTransformSequenceProps;
+    options?: StoryAnimationSequenceOptions;
+};
+
+export type StoryAnimationTimeline = {
+    fps?: number;
+    durationMs?: number;
+    tracks: StoryAnimationTrack[];
+};
+
+export type StoryAnimationTrackProperty = keyof StoryTransformSequenceProps;
+
+export type StoryAnimationTrack = {
+    id: string;
+    property: StoryAnimationTrackProperty;
+    keyframes: StoryAnimationKeyframe[];
+};
+
+export type StoryAnimationKeyframe = {
+    id: string;
+    timeMs: number;
+    value: StoryAnimationKeyframeValue;
+    easing?: string;
+};
+
+export type StoryAnimationKeyframeValue = StoryAlignPositionValue | number | string;
+
+export type StoryTransformSequenceProps = {
+    position?: StoryAlignPositionValue;
+    opacity?: number;
+    zoom?: number;
+    scaleX?: number;
+    scaleY?: number;
+    rotation?: number;
+    fontColor?: string;
+    maskImage?: string;
+    maskSize?: string;
+    maskPosition?: string;
+    maskRepeat?: string;
+    maskMode?: string;
+    clipPath?: string;
+    filter?: string;
+    backdropFilter?: string;
+    mixBlendMode?: string;
+};
+
+export type StoryAlignPositionValue = {
+    xalign?: number;
+    yalign?: number;
+    xoffset?: number;
+    yoffset?: number;
+};
+
+export type StoryAnimationSequenceOptions = {
+    durationMs?: number;
+    easing?: string;
+    delayMs?: number;
+    at?: number | `+${number}` | `-${number}`;
 };
 
 export type StoryPackageCapability = {

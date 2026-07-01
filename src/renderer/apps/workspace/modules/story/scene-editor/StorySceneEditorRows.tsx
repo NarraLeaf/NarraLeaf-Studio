@@ -153,6 +153,7 @@ export function StoryBlockRow(props: {
                     <ActionInspector
                         block={block}
                         document={document}
+                        sceneId={scene.id}
                         characters={characters}
                         onUpdatePayload={props.onUpdatePayload}
                         onClose={props.onCloseInspector}

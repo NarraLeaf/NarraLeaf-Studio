@@ -43,6 +43,9 @@ export const ProjectNameConvention = {
     EditorStoryStories: ["editor", "story", "stories/"],
     EditorStoryIndex: ["editor", "story", "index.json"],
     EditorStoryDocument: (storyId: string) => ["editor", "story", "stories", storyId, "storydoc.json"],
+    EditorStoryAnimations: ["editor", "story", "animations/"],
+    EditorStoryAnimationIndex: ["editor", "story", "animations", "index.json"],
+    EditorStoryAnimationDocument: (animationId: string) => ["editor", "story", "animations", `${animationId}.json`],
 } as const;
 
 /**

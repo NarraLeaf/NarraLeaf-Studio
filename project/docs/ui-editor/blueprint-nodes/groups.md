@@ -149,6 +149,19 @@ Page 节点组默认具有：
 - `blueprint.frame.getParam` - 读取父级 Page 组件传入的参数
 - `blueprint.frame.emit` - 向父级 Page 组件发送事件
 
+## Game
+
+Game 节点组用于控制当前 NarraLeaf 游戏运行时，以及访问当前 Studio 项目隔离的本地普通存档。Game 节点通过 Host API 执行，存档节点均为异步 latent 节点，只用于 `event` 和 `macro` 图。
+
+Game 节点组默认具有：
+- `blueprint.game.startStory` - 启动指定 Story / Scene（尾节点，无执行出口）
+- `blueprint.game.save.write` - 写入当前 live game 存档；`id` 为可 inline literal 的 `string` 输入，同 id 覆盖旧存档
+- `blueprint.game.save.load` - 读取存档并放弃当前游戏进度（尾节点，无执行出口）
+- `blueprint.game.save.listIds` - 列出当前项目本地普通存档 id，输出契约为 `Array<String>` / `string[]`，顺序不保证稳定
+- `blueprint.game.save.getPreview` - 读取存档预览图，输出 `ImageAsset|null`；预览图为当前 Dev Mode 会话内临时图片，不导入项目资源
+
+读取和写入存档依赖当前 Dev Mode 中存在活动 NarraLeaf live game；缺失 runtime、缺失存档或损坏存档会作为蓝图执行错误抛出。
+
 ## Global
 
 只有全局蓝图具有 Global 节点组。
@@ -167,6 +180,7 @@ Global 节点组默认具有：
 Surface 节点组默认具有：
 - `blueprint.event.head.surfaceInit` - 当前 Surface 初始化事件（仅Surface蓝图具有）
 - `blueprint.event.head.surfaceUnmount` - 当前 Surface 卸载事件（仅Surface蓝图具有）
+- `blueprint.event.head.mouseClick` - 当前 Surface 内任意鼠标点击事件，输出 Surface 设计坐标 `x` / `y`
 - `blueprint.event.head.keyDown` - 当前 active Surface 收到运行时窗口指定键按下事件
 - `blueprint.event.head.keyUp` - 当前 active Surface 收到运行时窗口指定键抬起事件
 - `blueprint.event.head.anyKeyDown` - 当前 active Surface 收到运行时窗口任意键按下事件

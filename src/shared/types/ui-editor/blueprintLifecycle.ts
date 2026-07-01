@@ -68,6 +68,13 @@ export const SURFACE_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
         dispatchKind: "lifecycle",
         headNodeTypes: ["blueprint.event.head.surfaceUnmount"],
     },
+    {
+        id: "mouseClick",
+        displayName: "Mouse click",
+        description: "Fires for any mouse click inside the current Page surface.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.mouseClick"],
+    },
     ...KEYBOARD_EVENTS,
 ];
 

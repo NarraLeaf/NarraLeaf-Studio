@@ -28,9 +28,9 @@ export function NavigationLayout({
     const windowControlPolicy = WindowControlPolicy.MacNativeOutsideTitleBar;
 
     return (
-        <div className={`h-screen w-screen text-gray-200 bg-[#0f1115] ${className}`}>
+        <div className={`fixed inset-0 h-[100vh] w-[100vw] overflow-hidden text-gray-200 bg-[#0f1115] ${className}`}>
             <div
-                className="grid h-full"
+                className="grid h-full min-h-0 min-w-0 overflow-hidden"
                 style={{
                     gridTemplateColumns: `${navigationWidth} 1fr`,
                     gridTemplateRows: "1fr",
@@ -41,20 +41,20 @@ export function NavigationLayout({
                     {isMac && windowControlPolicy === WindowControlPolicy.MacNativeOutsideTitleBar && (
                         <div className="titlebar-drag h-10 min-h-10 shrink-0 border-b border-white/5" />
                     )}
-                    <div className="min-h-0 flex-1 overflow-y-auto">
+                    <div className="min-h-0 flex-1 overflow-hidden">
                         {navigation}
                     </div>
                 </aside>
 
                 {/* Right Panel */}
-                <div className="flex flex-col">
+                <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
                     {/* Title Bar - only on right side */}
                     <div className="flex-shrink-0">
                         <TitleBar title={title} iconSrc={iconSrc} windowControlPolicy={windowControlPolicy} />
                     </div>
 
                     {/* Main Content */}
-                    <main className="flex-1 overflow-auto">
+                    <main className="min-h-0 min-w-0 flex-1 overflow-hidden">
                         {children}
                     </main>
                 </div>

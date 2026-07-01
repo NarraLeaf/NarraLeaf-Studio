@@ -15,6 +15,7 @@ import { charactersModule } from "./characters";
 import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
 import { uiEditorSurfacesModule } from "./ui-editor";
 import { storyPanelModule } from "./story";
+import { storyMotionPanelModule } from "./story-motion";
 import {
     localizationPanelModule,
     runningTasksPanelModule,
@@ -30,6 +31,7 @@ export const builtInPanels: PanelModule[] = [
     charactersModule,
     assetsModule,
     localizationPanelModule,
+    storyMotionPanelModule,
     assetsBottomModule,
     propertiesModule,
     consoleModule,
@@ -69,6 +71,7 @@ export { welcomeModule } from "./welcome";
 export { globalActions, globalActionGroups } from "./actions";
 export { uiEditorSurfacesModule } from "./ui-editor";
 export { storyPanelModule } from "./story";
+export { storyMotionPanelModule } from "./story-motion";
 export {
     localizationPanelModule,
     runningTasksPanelModule,

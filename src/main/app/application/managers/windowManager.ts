@@ -23,6 +23,12 @@ import {
     DevModeResolveAssetUrlHandler,
     DevModeResolveImageAssetUrlHandler,
 } from "./window/handlers/devModeAction";
+import {
+    DevModeSaveListIdsHandler,
+    DevModeSaveReadHandler,
+    DevModeSaveReadPreviewHandler,
+    DevModeSaveWriteHandler,
+} from "./window/handlers/devModeSaveAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./window/handlers/pluginPermissionAction";
 import {
     BlueprintPersistenceGetAllHandler,
@@ -118,6 +124,10 @@ export class WindowManager {
         win.registerIPCHandler(new DevModeOpenBlueprintInWorkspaceHandler());
         win.registerIPCHandler(new DevModeResolveAssetUrlHandler());
         win.registerIPCHandler(new DevModeResolveImageAssetUrlHandler());
+        win.registerIPCHandler(new DevModeSaveWriteHandler());
+        win.registerIPCHandler(new DevModeSaveReadHandler());
+        win.registerIPCHandler(new DevModeSaveListIdsHandler());
+        win.registerIPCHandler(new DevModeSaveReadPreviewHandler());
 
         // Register blueprint persistent variable storage handlers
         win.registerIPCHandler(new BlueprintPersistenceGetAllHandler());

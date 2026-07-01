@@ -36,6 +36,11 @@ import {
     SURFACE_WHEEL_ZOOM_DELTA_LIMIT_PX,
 } from "./surfaceWheelInput";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import {
+    constrainPointToAspectRatio,
+    resolveAspectRatio,
+    type SurfacePoint,
+} from "./insertAspectRatio";
 
 const WHEEL_ZOOM_SPEED = 0.003;
 const PINCH_ZOOM_SPEED = 0.006;
@@ -44,6 +49,7 @@ export type InsertToolDragState = {
     active: boolean;
     nodeType: string;
     componentId?: string;
+    aspectRatio?: number | null;
     startClientX: number;
     startClientY: number;
     startSurfaceX: number;
@@ -115,6 +121,14 @@ export function useSurfaceInteractionEvents({
         const updateInsertPreview = (next: InsertPreview | null) => {
             insertPreviewRef.current = next;
             setInsertPreview(next);
+        };
+
+        const constrainInsertPoint = (state: InsertToolDragState, current: SurfacePoint): SurfacePoint => {
+            return constrainPointToAspectRatio(
+                { x: state.startSurfaceX, y: state.startSurfaceY },
+                current,
+                state.aspectRatio ?? null,
+            );
         };
 
         const stopPan = () => {
@@ -213,11 +227,12 @@ export function useSurfaceInteractionEvents({
                 } else {
                     stateService.setSnapGuides(null);
                 }
+                const current = constrainInsertPoint(insertStateRef.current, { x: curX, y: curY });
                 updateInsertPreview({
                     startX: insertStateRef.current.startSurfaceX,
                     startY: insertStateRef.current.startSurfaceY,
-                    currentX: curX,
-                    currentY: curY,
+                    currentX: current.x,
+                    currentY: current.y,
                 });
                 return;
             }
@@ -268,6 +283,14 @@ export function useSurfaceInteractionEvents({
                 event.preventDefault();
                 event.stopPropagation();
                 const surfacePoint = clientToSurfaceCoords(event.clientX, event.clientY);
+                const component = tool.componentId ? documentService.getComponent(tool.componentId) : null;
+                const componentRoot = component ? component.elements[component.rootElementId] : null;
+                const aspectRatio = component
+                    ? resolveAspectRatio(
+                          component.previewMeta?.width ?? componentRoot?.layout.width,
+                          component.previewMeta?.height ?? componentRoot?.layout.height,
+                      )
+                    : null;
                 let primaryElementId: string | null = null;
                 if (selectionData?.surfaceId === surfaceId) {
                     primaryElementId =
@@ -279,6 +302,7 @@ export function useSurfaceInteractionEvents({
                     active: true,
                     nodeType: tool.nodeType,
                     componentId: tool.componentId,
+                    aspectRatio,
                     startClientX: event.clientX,
                     startClientY: event.clientY,
                     startSurfaceX: surfacePoint.x,

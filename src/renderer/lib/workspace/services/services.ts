@@ -47,6 +47,12 @@ import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type {
+    StoryAnimationAsset,
+    StoryAnimationAssetId,
+    StoryAnimationIndex,
+    StoryAnimationIndexEntry,
+    StoryAnimationSequence,
+    StoryAnimationTimeline,
     StoryBlock,
     StoryBlockId,
     StoryChapter,
@@ -598,6 +604,20 @@ interface IStoryService extends IService {
     loadLibrary(): Promise<StoryLibraryIndex>;
     getLibraryIndex(): StoryLibraryIndex;
     onLibraryChanged(handler: (index: StoryLibraryIndex) => void): () => void;
+    loadAnimationIndex(): Promise<StoryAnimationIndex>;
+    getAnimationIndex(): StoryAnimationIndex;
+    listAnimationAssets(): StoryAnimationIndexEntry[];
+    loadAnimationAsset(animationId: StoryAnimationAssetId): Promise<StoryAnimationAsset>;
+    getLoadedAnimationAsset(animationId: StoryAnimationAssetId): StoryAnimationAsset | undefined;
+    createAnimationAsset(input: {
+        name: string;
+        targetKind?: StoryAnimationIndexEntry["targetKind"];
+        timeline?: StoryAnimationTimeline;
+        sequences?: StoryAnimationSequence[];
+    }): Promise<StoryAnimationAsset>;
+    updateAnimationAsset(animationId: StoryAnimationAssetId, updater: (asset: StoryAnimationAsset) => StoryAnimationAsset): StoryAnimationAsset;
+    deleteAnimationAsset(animationId: StoryAnimationAssetId): boolean;
+    onAnimationsChanged(handler: (index: StoryAnimationIndex) => void): () => void;
     registerPluginAction(registration: StoryPluginActionRegistration): () => void;
     unregisterPluginAction(actionId: string): boolean;
     getPluginAction(actionId: string): StoryPluginActionRegistration | undefined;

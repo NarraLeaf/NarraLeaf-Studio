@@ -10,7 +10,7 @@ Self 节点和 Element 节点通常使用不同分类：
 ## Events
 
 Events分类具有：
-- Events节点，包括生命周期、元素交互、列表/滑块事件、Page Event，以及 Global / Surface / 控件的 On Key / Any Key 键盘事件
+- Events节点，包括生命周期、元素交互、Surface 点击、列表/滑块事件、Page Event，以及 Global / Surface / 控件的 On Key / Any Key 键盘事件
 - Broadcast节点
 
 ## Flow
@@ -45,6 +45,12 @@ Displayable 透明度只有一套有效 `opacity`。Appearance Variant 的 `tran
 Page分类具有：
 - Page节点
 - `Go Page` 页面导航尾节点
+
+## Game
+
+Game 分类具有：
+- `Start Game` 游戏启动尾节点
+- 本地存档节点：`Write Save`、`Load Save`、`List Saves`、`Get Save Preview`
 
 ## Data
 

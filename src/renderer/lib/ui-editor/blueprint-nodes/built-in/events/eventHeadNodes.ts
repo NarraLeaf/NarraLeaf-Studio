@@ -313,8 +313,14 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
         displayName: "Mouse Click",
-        keywords: ["click", "mouse", "tap", "press"],
+        keywords: ["click", "mouse", "tap", "press", "surface", "page"],
         pins: [THEN_PIN, PIN_X, PIN_Y],
+        scope: {
+            anyOf: [
+                { ownerKinds: ["surfaceMain"] },
+                { widgetElementTypes: widgetTypesForHead(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK) },
+            ],
+        },
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_DOUBLE_CLICK,

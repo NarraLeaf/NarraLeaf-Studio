@@ -29,6 +29,8 @@ export type UIHostAdapterBlueprintRuntime = {
             instanceKey?: string;
         },
     ) => Promise<void>;
+    /** Dispatch a surface-level event on the current surfaceMain blueprint. */
+    dispatchSurfaceBlueprintEvent?: (eventName: string, payload?: Record<string, unknown>) => Promise<void>;
     dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
     getBroadcastListenerCount?: (eventName: string) => number;
     frame?: {

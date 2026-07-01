@@ -1,6 +1,16 @@
 import {
     STORY_DOCUMENT_SCHEMA_VERSION,
     STORY_LIBRARY_INDEX_SCHEMA_VERSION,
+    StoryAnimationAsset,
+    StoryAnimationAssetId,
+    StoryAnimationIndex,
+    StoryAnimationIndexEntry,
+    StoryAnimationKeyframe,
+    StoryAnimationSequence,
+    StoryAnimationSequenceOptions,
+    StoryAnimationTimeline,
+    StoryAnimationTrack,
+    StoryAnimationTrackProperty,
     StoryBlock,
     StoryBlockId,
     StoryChapter,
@@ -13,8 +23,9 @@ import {
     StorySceneId,
     StoryTextId,
     StoryTextSegment,
+    StoryTransformSequenceProps,
 } from "@shared/types/story";
-import { assertValidStoryEntityId, assertValidStoryId, isValidStoryId } from "@shared/utils/storyId";
+import { assertValidStoryEntityId, assertValidStoryId, isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
 
 export type StoryIdFactory = () => string;
 
@@ -22,6 +33,17 @@ export function createEmptyStoryLibraryIndex(now: string): StoryLibraryIndex {
     return {
         schemaVersion: STORY_LIBRARY_INDEX_SCHEMA_VERSION,
         stories: [],
+        meta: {
+            createdAt: now,
+            updatedAt: now,
+        },
+    };
+}
+
+export function createEmptyStoryAnimationIndex(now: string): StoryAnimationIndex {
+    return {
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        animations: [],
         meta: {
             createdAt: now,
             updatedAt: now,
@@ -42,6 +64,49 @@ export function createStoryLibraryEntry(input: {
         documentPath: input.documentPath,
         createdAt: input.now,
         updatedAt: input.now,
+    };
+}
+
+export function createStoryAnimationIndexEntry(input: {
+    id: StoryAnimationAssetId;
+    name: string;
+    targetKind: StoryAnimationIndexEntry["targetKind"];
+    documentPath: string;
+    now: string;
+}): StoryAnimationIndexEntry {
+    assertValidStoryEntityId(input.id, "Story animation id");
+    return {
+        id: input.id,
+        name: input.name,
+        targetKind: input.targetKind,
+        documentPath: input.documentPath,
+        createdAt: input.now,
+        updatedAt: input.now,
+    };
+}
+
+export function createStoryAnimationAsset(input: {
+    id: StoryAnimationAssetId;
+    name: string;
+    targetKind: StoryAnimationAsset["targetKind"];
+    timeline?: StoryAnimationTimeline;
+    sequences?: StoryAnimationSequence[];
+    now: string;
+}): StoryAnimationAsset {
+    assertValidStoryEntityId(input.id, "Story animation id");
+    const sequences = input.sequences ?? [createDefaultAnimationSequence(input.id)];
+    return {
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        id: input.id,
+        name: input.name,
+        targetKind: input.targetKind,
+        timeline: normalizeAnimationTimeline(input.timeline, sequences, input.id),
+        sequences,
+        config: {},
+        meta: {
+            createdAt: input.now,
+            updatedAt: input.now,
+        },
     };
 }
 
@@ -100,6 +165,11 @@ export function storyDocumentRelativePath(storyId: StoryId): string {
     return `editor/story/stories/${storyId}/storydoc.json`;
 }
 
+export function storyAnimationDocumentRelativePath(animationId: StoryAnimationAssetId): string {
+    assertValidStoryEntityId(animationId, "Story animation id");
+    return `editor/story/animations/${animationId}.json`;
+}
+
 export function assertSupportedStoryLibraryIndex(index: StoryLibraryIndex): void {
     if (index.schemaVersion > STORY_LIBRARY_INDEX_SCHEMA_VERSION) {
         throw new Error("Story library index schema is newer than this Studio version");
@@ -115,6 +185,24 @@ export function assertSupportedStoryDocument(document: StoryDocument): void {
     }
     if (document.schemaVersion !== STORY_DOCUMENT_SCHEMA_VERSION) {
         throw new Error("Story document migration is not implemented");
+    }
+}
+
+export function assertSupportedStoryAnimationIndex(index: StoryAnimationIndex): void {
+    if (index.schemaVersion > STORY_DOCUMENT_SCHEMA_VERSION) {
+        throw new Error("Story animation index schema is newer than this Studio version");
+    }
+    if (index.schemaVersion !== STORY_DOCUMENT_SCHEMA_VERSION) {
+        throw new Error("Story animation index migration is not implemented");
+    }
+}
+
+export function assertSupportedStoryAnimationAsset(asset: StoryAnimationAsset): void {
+    if (asset.schemaVersion > STORY_DOCUMENT_SCHEMA_VERSION) {
+        throw new Error("Story animation asset schema is newer than this Studio version");
+    }
+    if (asset.schemaVersion !== STORY_DOCUMENT_SCHEMA_VERSION) {
+        throw new Error("Story animation asset migration is not implemented");
     }
 }
 
@@ -150,6 +238,37 @@ export function normalizeStoryLibraryIndex(index: StoryLibraryIndex, now: string
     };
 }
 
+export function normalizeStoryAnimationIndex(index: StoryAnimationIndex, now: string): StoryAnimationIndex {
+    assertSupportedStoryAnimationIndex(index);
+    const seen = new Set<string>();
+    const sourceAnimations = Array.isArray(index.animations) ? index.animations : [];
+    const animations = sourceAnimations.flatMap(entry => {
+        if (!entry || typeof entry !== "object") {
+            return [];
+        }
+        if (!isValidStoryEntityId(entry.id) || seen.has(entry.id)) {
+            return [];
+        }
+        seen.add(entry.id);
+        return [{
+            ...entry,
+            name: normalizeOptionalString(entry.name) ?? "Untitled Motion",
+            targetKind: normalizeAnimationTargetKind(entry.targetKind),
+            documentPath: storyAnimationDocumentRelativePath(entry.id),
+            createdAt: entry.createdAt ?? now,
+            updatedAt: entry.updatedAt ?? now,
+        }];
+    });
+    return {
+        ...index,
+        animations,
+        meta: {
+            ...index.meta,
+            updatedAt: index.meta?.updatedAt ?? now,
+        },
+    };
+}
+
 export function normalizeStoryDocument(document: StoryDocument, now: string): StoryDocument {
     assertSupportedStoryDocument(document);
     assertValidStoryId(document.id);
@@ -175,6 +294,29 @@ export function normalizeStoryDocument(document: StoryDocument, now: string): St
         meta: {
             ...document.meta,
             updatedAt: document.meta?.updatedAt ?? now,
+        },
+    };
+}
+
+export function normalizeStoryAnimationAsset(asset: StoryAnimationAsset, now: string): StoryAnimationAsset {
+    assertSupportedStoryAnimationAsset(asset);
+    assertValidStoryEntityId(asset.id, "Story animation id");
+    const sequences = normalizeAnimationSequences(asset.sequences);
+    const normalizedSequences = sequences.length > 0 ? sequences : [createDefaultAnimationSequence(asset.id)];
+    const config = {
+        repeat: normalizeOptionalPositiveNumber(asset.config?.repeat),
+        repeatDelayMs: normalizeOptionalNonNegativeNumber(asset.config?.repeatDelayMs),
+    };
+    return {
+        ...asset,
+        name: normalizeOptionalString(asset.name) ?? "Untitled Motion",
+        targetKind: normalizeAnimationTargetKind(asset.targetKind),
+        timeline: normalizeAnimationTimeline(asset.timeline, normalizedSequences, asset.id),
+        sequences: normalizedSequences,
+        config: Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined)),
+        meta: {
+            ...asset.meta,
+            updatedAt: asset.meta?.updatedAt ?? now,
         },
     };
 }
@@ -335,6 +477,333 @@ function normalizeScene(scene: StoryScene): StoryScene {
 function normalizeOptionalString(value: string | undefined): string | undefined {
     const trimmed = typeof value === "string" ? value.trim() : "";
     return trimmed || undefined;
+}
+
+function normalizeOptionalNonNegativeNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function normalizeOptionalPositiveNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function normalizeAnimationTargetKind(value: unknown): StoryAnimationIndexEntry["targetKind"] {
+    return value === "image" || value === "text" || value === "layer" || value === "character" ? value : "image";
+}
+
+const DEFAULT_ANIMATION_FPS = 30;
+const DEFAULT_ANIMATION_DURATION_MS = 300;
+const ANIMATION_TRACK_PROPERTIES: StoryAnimationTrackProperty[] = [
+    "position",
+    "opacity",
+    "zoom",
+    "scaleX",
+    "scaleY",
+    "rotation",
+    "fontColor",
+    "maskImage",
+    "maskSize",
+    "maskPosition",
+    "maskRepeat",
+    "maskMode",
+    "clipPath",
+    "filter",
+    "backdropFilter",
+    "mixBlendMode",
+];
+const NUMERIC_TRACK_PROPERTIES = new Set<StoryAnimationTrackProperty>(["opacity", "zoom", "scaleX", "scaleY", "rotation"]);
+const STRING_TRACK_PROPERTIES = new Set<StoryAnimationTrackProperty>([
+    "fontColor",
+    "maskImage",
+    "maskSize",
+    "maskPosition",
+    "maskRepeat",
+    "maskMode",
+    "clipPath",
+    "filter",
+    "backdropFilter",
+    "mixBlendMode",
+]);
+
+function normalizeAnimationTimeline(
+    timeline: StoryAnimationTimeline | undefined,
+    fallbackSequences: StoryAnimationSequence[],
+    animationId: string,
+): StoryAnimationTimeline {
+    const migrated = migrateAnimationSequencesToTimeline(fallbackSequences, animationId);
+    if (!timeline || typeof timeline !== "object" || !Array.isArray(timeline.tracks)) {
+        return migrated;
+    }
+    const tracks = timeline.tracks
+        .map((track, index) => normalizeAnimationTrack(track, index))
+        .filter((track): track is StoryAnimationTrack => Boolean(track));
+    const durationMs = Math.max(
+        DEFAULT_ANIMATION_DURATION_MS,
+        normalizeOptionalNonNegativeNumber(timeline.durationMs) ?? 0,
+        ...tracks.flatMap(track => track.keyframes.map(keyframe => keyframe.timeMs)),
+    );
+    return {
+        fps: normalizeOptionalPositiveNumber(timeline.fps) ?? DEFAULT_ANIMATION_FPS,
+        durationMs,
+        tracks: tracks.length > 0 ? tracks : migrated.tracks,
+    };
+}
+
+function normalizeAnimationTrack(track: StoryAnimationTrack | undefined, index: number): StoryAnimationTrack | null {
+    if (!track || typeof track !== "object" || !isAnimationTrackProperty(track.property)) {
+        return null;
+    }
+    const keyframesByTime = new Map<number, StoryAnimationKeyframe>();
+    const sourceKeyframes = Array.isArray(track.keyframes) ? track.keyframes : [];
+    for (let i = 0; i < sourceKeyframes.length; i += 1) {
+        const keyframe = normalizeAnimationKeyframe(track.property, sourceKeyframes[i], i);
+        if (keyframe) {
+            keyframesByTime.set(keyframe.timeMs, keyframe);
+        }
+    }
+    const keyframes = [...keyframesByTime.values()].sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id));
+    if (keyframes.length === 0) {
+        return null;
+    }
+    return {
+        id: normalizeOptionalString(track.id) ?? `track-${track.property}-${index + 1}`,
+        property: track.property,
+        keyframes,
+    };
+}
+
+function normalizeAnimationKeyframe(
+    property: StoryAnimationTrackProperty,
+    keyframe: StoryAnimationKeyframe | undefined,
+    index: number,
+): StoryAnimationKeyframe | null {
+    if (!keyframe || typeof keyframe !== "object") {
+        return null;
+    }
+    const value = normalizeAnimationKeyframeValue(property, keyframe.value);
+    if (value === undefined) {
+        return null;
+    }
+    const timeMs = normalizeOptionalNonNegativeNumber(keyframe.timeMs);
+    return {
+        id: normalizeOptionalString(keyframe.id) ?? `kf-${property}-${timeMs ?? 0}-${index + 1}`,
+        timeMs: timeMs ?? 0,
+        value,
+        easing: normalizeOptionalString(keyframe.easing),
+    };
+}
+
+function normalizeAnimationKeyframeValue(property: StoryAnimationTrackProperty, value: unknown): StoryAnimationKeyframe["value"] | undefined {
+    if (property === "position") {
+        const props = normalizeTransformSequenceProps({ position: value as StoryTransformSequenceProps["position"] });
+        return props.position;
+    }
+    if (NUMERIC_TRACK_PROPERTIES.has(property)) {
+        return normalizeOptionalNumber(value);
+    }
+    if (STRING_TRACK_PROPERTIES.has(property)) {
+        return normalizeOptionalString(typeof value === "string" ? value : undefined);
+    }
+    return undefined;
+}
+
+function isAnimationTrackProperty(value: unknown): value is StoryAnimationTrackProperty {
+    return typeof value === "string" && ANIMATION_TRACK_PROPERTIES.includes(value as StoryAnimationTrackProperty);
+}
+
+function migrateAnimationSequencesToTimeline(sequences: StoryAnimationSequence[], animationId: string): StoryAnimationTimeline {
+    const tracksByProperty = new Map<StoryAnimationTrackProperty, StoryAnimationKeyframe[]>();
+    const spans = buildAnimationSequenceSpans(sequences);
+    spans.forEach(({ sequence, endMs }, sequenceIndex) => {
+        const props = normalizeTransformSequenceProps(sequence.props);
+        for (const [property, value] of Object.entries(props) as [StoryAnimationTrackProperty, unknown][]) {
+            if (!isAnimationTrackProperty(property)) {
+                continue;
+            }
+            const normalizedValue = normalizeAnimationKeyframeValue(property, value);
+            if (normalizedValue === undefined) {
+                continue;
+            }
+            const keyframes = tracksByProperty.get(property) ?? [];
+            keyframes.push({
+                id: `kf-${property}-${Math.round(endMs)}-${sequenceIndex + 1}`,
+                timeMs: Math.max(0, Math.round(endMs)),
+                value: normalizedValue,
+                easing: normalizeOptionalString(sequence.options?.easing),
+            });
+            tracksByProperty.set(property, keyframes);
+        }
+    });
+    const tracks = [...tracksByProperty.entries()].map(([property, keyframes], index) => ({
+        id: `track-${property}-${index + 1}`,
+        property,
+        keyframes: keyframes.sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id)),
+    }));
+    const durationMs = Math.max(DEFAULT_ANIMATION_DURATION_MS, ...spans.map(span => span.endMs));
+    return {
+        fps: DEFAULT_ANIMATION_FPS,
+        durationMs: Math.round(durationMs),
+        tracks: tracks.length > 0 ? tracks : createDefaultAnimationTimeline(animationId).tracks,
+    };
+}
+
+function buildAnimationSequenceSpans(sequences: StoryAnimationSequence[]): {
+    sequence: StoryAnimationSequence;
+    startMs: number;
+    durationMs: number;
+    endMs: number;
+}[] {
+    let cursorMs = 0;
+    return sequences.map(sequence => {
+        const durationMs = sequence.options?.durationMs ?? DEFAULT_ANIMATION_DURATION_MS;
+        const delayMs = sequence.options?.delayMs ?? 0;
+        const at = sequence.options?.at;
+        let startMs = cursorMs;
+        if (typeof at === "number") {
+            startMs = at;
+        } else if (typeof at === "string") {
+            startMs = cursorMs + Number(at);
+        }
+        startMs = Math.max(0, startMs + delayMs);
+        const endMs = Math.max(startMs, startMs + durationMs);
+        cursorMs = Math.max(cursorMs, endMs);
+        return {
+            sequence,
+            startMs,
+            durationMs,
+            endMs,
+        };
+    });
+}
+
+function normalizeAnimationSequences(sequences: StoryAnimationSequence[] | undefined): StoryAnimationSequence[] {
+    if (!Array.isArray(sequences)) {
+        return [];
+    }
+    return sequences
+        .map((sequence, index) => normalizeAnimationSequence(sequence, index))
+        .filter((sequence): sequence is StoryAnimationSequence => Boolean(sequence));
+}
+
+function normalizeAnimationSequence(sequence: StoryAnimationSequence | undefined, index: number): StoryAnimationSequence | null {
+    if (!sequence || typeof sequence !== "object") {
+        return null;
+    }
+    const props = normalizeTransformSequenceProps(sequence.props);
+    return {
+        id: normalizeOptionalString(sequence.id) ?? `step-${index + 1}`,
+        props,
+        options: {
+            durationMs: normalizeOptionalNonNegativeNumber(sequence.options?.durationMs),
+            easing: normalizeOptionalString(sequence.options?.easing),
+            delayMs: normalizeOptionalNonNegativeNumber(sequence.options?.delayMs),
+            at: normalizeSequenceAt(sequence.options?.at),
+        },
+    };
+}
+
+function normalizeTransformSequenceProps(props: StoryTransformSequenceProps | undefined): StoryTransformSequenceProps {
+    if (!props || typeof props !== "object") {
+        return {};
+    }
+    const next: StoryTransformSequenceProps = {};
+    if (props.position && typeof props.position === "object") {
+        const position = {
+            xalign: normalizeOptionalNumber(props.position.xalign),
+            yalign: normalizeOptionalNumber(props.position.yalign),
+            xoffset: normalizeOptionalNumber(props.position.xoffset),
+            yoffset: normalizeOptionalNumber(props.position.yoffset),
+        };
+        if (Object.values(position).some(value => value !== undefined)) {
+            next.position = position;
+        }
+    }
+    assignOptionalNumber(next, "opacity", props.opacity);
+    assignOptionalNumber(next, "zoom", props.zoom);
+    assignOptionalNumber(next, "scaleX", props.scaleX);
+    assignOptionalNumber(next, "scaleY", props.scaleY);
+    assignOptionalNumber(next, "rotation", props.rotation);
+    assignOptionalString(next, "fontColor", props.fontColor);
+    assignOptionalString(next, "maskImage", props.maskImage);
+    assignOptionalString(next, "maskSize", props.maskSize);
+    assignOptionalString(next, "maskPosition", props.maskPosition);
+    assignOptionalString(next, "maskRepeat", props.maskRepeat);
+    assignOptionalString(next, "maskMode", props.maskMode);
+    assignOptionalString(next, "clipPath", props.clipPath);
+    assignOptionalString(next, "filter", props.filter);
+    assignOptionalString(next, "backdropFilter", props.backdropFilter);
+    assignOptionalString(next, "mixBlendMode", props.mixBlendMode);
+    return next;
+}
+
+function normalizeOptionalNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function assignOptionalNumber<K extends keyof StoryTransformSequenceProps>(
+    target: StoryTransformSequenceProps,
+    key: K,
+    value: unknown,
+): void {
+    const normalized = normalizeOptionalNumber(value);
+    if (normalized !== undefined) {
+        (target as Record<string, unknown>)[key] = normalized;
+    }
+}
+
+function assignOptionalString<K extends keyof StoryTransformSequenceProps>(
+    target: StoryTransformSequenceProps,
+    key: K,
+    value: unknown,
+): void {
+    const normalized = normalizeOptionalString(typeof value === "string" ? value : undefined);
+    if (normalized !== undefined) {
+        (target as Record<string, unknown>)[key] = normalized;
+    }
+}
+
+function normalizeSequenceAt(value: unknown): StoryAnimationSequenceOptions["at"] | undefined {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === "string" && /^[+-]\d+(\.\d+)?$/.test(value)) {
+        return value as `+${number}` | `-${number}`;
+    }
+    return undefined;
+}
+
+function createDefaultAnimationSequence(id: string): StoryAnimationSequence {
+    return {
+        id: `${id}-step-1`,
+        props: {
+            opacity: 1,
+        },
+        options: {
+            durationMs: 300,
+            easing: "easeOut",
+        },
+    };
+}
+
+function createDefaultAnimationTimeline(id: string): StoryAnimationTimeline {
+    return {
+        fps: DEFAULT_ANIMATION_FPS,
+        durationMs: DEFAULT_ANIMATION_DURATION_MS,
+        tracks: [
+            {
+                id: `${id}-track-opacity`,
+                property: "opacity",
+                keyframes: [
+                    {
+                        id: `${id}-opacity-${DEFAULT_ANIMATION_DURATION_MS}`,
+                        timeMs: DEFAULT_ANIMATION_DURATION_MS,
+                        value: 1,
+                        easing: "easeOut",
+                    },
+                ],
+            },
+        ],
+    };
 }
 
 function firstSceneId(chapters: StoryChapter[]): StorySceneId | undefined {
