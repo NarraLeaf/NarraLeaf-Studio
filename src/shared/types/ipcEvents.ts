@@ -17,6 +17,16 @@ import type {
     PrivilegedPermissionRequestPayload,
 } from "./privileged";
 
+export const WorkspaceMenuAction = {
+    NewWorkspace: "narraleaf-studio:file-new",
+    OpenWorkspace: "narraleaf-studio:file-open",
+    ExportProject: "narraleaf-studio:file-export-project",
+    CloseWorkspace: "narraleaf-studio:file-close-workspace",
+    OpenWelcome: "narraleaf-studio:open-welcome",
+} as const;
+
+export type WorkspaceMenuAction = typeof WorkspaceMenuAction[keyof typeof WorkspaceMenuAction];
+
 export enum IPCEventType {
     getPlatform = "getPlatform",
     appTerminate = "app.terminate",
@@ -800,7 +810,7 @@ export type IPCMenuEvents = {
     [IPCEventType.menuAction]: {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
-        data: { action: string },
+        data: { action: WorkspaceMenuAction },
         response: never;
     };
 };

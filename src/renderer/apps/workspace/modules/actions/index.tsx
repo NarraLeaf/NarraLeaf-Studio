@@ -5,7 +5,7 @@ import {
     Hammer,
     FileText,
     FolderOpen,
-    Save,
+    X,
     Archive,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
@@ -196,9 +196,9 @@ export const fileActionGroup: ModuleActionGroup = {
         },
         Separator,
         {
-            id: "narraleaf-studio:file-save-as",
+            id: "narraleaf-studio:file-close-workspace",
             label: "Close",
-            icon: <Save className="w-4 h-4" />,
+            icon: <X className="w-4 h-4" />,
             tooltip: "Close the current workspace",
             onClick: () => {
                 getInterface().workspace.close();
@@ -244,4 +244,3 @@ export const globalActions: ModuleAction[] = [devModeAction, debugAction, buildA
  * Array of all action groups that should be registered globally
  */
 export const globalActionGroups: ModuleActionGroup[] = [fileActionGroup, helpActionGroup];
-

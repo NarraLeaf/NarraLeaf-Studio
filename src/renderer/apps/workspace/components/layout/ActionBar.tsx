@@ -8,13 +8,18 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { FocusContext } from "@/lib/workspace/services/ui";
 import type { DevModeStatus } from "@shared/types/devMode";
+import { getActionGroupItems, getVisibleActionMenuItems, isActionVisible } from "../ui/actionMenuModel";
+
+interface ActionBarProps {
+    hiddenGroupIds?: string[];
+}
 
 /**
  * Action bar component
  * Displays dynamically registered actions in the top-left area
  * Filters actions based on focus context and when conditions
  */
-export function ActionBar({ hideGroups }: { hideGroups?: boolean }) {
+export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
     const { actions, actionGroups } = useRegistry();
     const { workspace, context } = useWorkspace();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
@@ -44,25 +49,19 @@ export function ActionBar({ hideGroups }: { hideGroups?: boolean }) {
         };
     }, [context]);
 
-    // Check if an action should be visible based on when condition
-    const shouldShowAction = (action: ActionDefinition): boolean => {
-        if (action.visible === false) return false;
-        if (!action.when || !focusContext) return true;
-        return action.when(focusContext);
-    };
-
     // Filter visible actions that are not part of any group
-    const standaloneActions = actions.filter((action) => !action.group && shouldShowAction(action));
+    const standaloneActions = actions.filter((action) => !action.group && isActionVisible(action, focusContext));
+    const hiddenGroupIdSet = new Set(hiddenGroupIds);
     const visibleActionGroups = actionGroups.filter((group) => {
-        const items = (group.items ?? group.actions) as (ActionDefinition | { items: any[]; })[];
-        return hasVisible(items, focusContext);
+        if (hiddenGroupIdSet.has(group.id)) {
+            return false;
+        }
+        return getVisibleActionMenuItems(getActionGroupItems(group), focusContext).length > 0;
     });
 
-    if (standaloneActions.length === 0 && (hideGroups || visibleActionGroups.length === 0)) {
+    if (standaloneActions.length === 0 && visibleActionGroups.length === 0) {
         return <div className="flex items-center gap-1" />;
     }
-
-    const groupsToRender = hideGroups ? [] : visibleActionGroups;
 
     const handleActionClick = (action: ActionDefinition) => {
         if (!workspace) {
@@ -75,7 +74,7 @@ export function ActionBar({ hideGroups }: { hideGroups?: boolean }) {
     return (
         <div className="flex items-center gap-0.5">
             {/* Render action groups first */}
-            {groupsToRender.map((group) => (
+            {visibleActionGroups.map((group) => (
                 <ActionDropdown key={group.id} group={group} />
             ))}
 
@@ -115,24 +114,3 @@ export function ActionBar({ hideGroups }: { hideGroups?: boolean }) {
         </div>
     );
 }
-
-/**
- * Check if any items in the array should be visible based on when conditions
- */
-function hasVisible(items: (ActionDefinition | { items: any[] })[], focusContext: FocusContext | null): boolean {
-    for (const it of items) {
-        if ((it as ActionDefinition).onClick) {
-            const action = it as ActionDefinition;
-            // Check visible flag
-            if (action.visible === false) continue;
-            // Check when condition
-            if (action.when && focusContext && !action.when(focusContext)) continue;
-            return true;
-        } else {
-            const submenu = it as { items: any[] };
-            if (submenu.items && submenu.items.length > 0 && hasVisible(submenu.items as any, focusContext)) return true;
-        }
-    }
-    return false;
-}
-
