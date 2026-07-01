@@ -1,8 +1,12 @@
 import {
+    BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_NEXT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_SKIP,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
 } from "@shared/types/blueprint/graph";
 import {
@@ -24,6 +28,14 @@ const saveIdIn: BlueprintNodePinDef = {
     label: "Id",
     allowInlineLiteral: true,
 };
+const sentenceSpeedIn: BlueprintNodePinDef = {
+    id: "speed",
+    kind: "input",
+    semantic: "data",
+    valueType: "float",
+    label: "Speed",
+    allowInlineLiteral: true,
+};
 const GRAPH_KINDS = ["event", "macro"] as const;
 
 function resolveSaveId(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): string {
@@ -41,7 +53,47 @@ function resolveSaveId(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>
     return id;
 }
 
+function resolveSentenceSpeed(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): number {
+    const value = resolveDataPinValue(ctx.graph, ctx.node.id, "speed", ctx.params, ctx.blueprintLocals, 10, {
+        hostAdapter: ctx.hostAdapter,
+        eventPayload: ctx.eventPayload,
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
+        executionOwner: ctx.executionOwner,
+    });
+    const speed = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(speed) || speed <= 0) {
+        throw new BlueprintGraphExecutionError("Sentence speed must be a positive number", ctx.node.id);
+    }
+    return speed;
+}
+
 export const gameBlueprintNodes: BlueprintNodeDef[] = [
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+        displayName: "Get Nametag",
+        category: "Game",
+        keywords: ["game", "dialog", "nametag", "speaker", "character", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "nametag",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Nametag",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    nametag: requireHostApi(ctx).game.getNametag(),
+                },
+            };
+        },
+    },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
         displayName: "Start Game",
@@ -80,6 +132,48 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             }
             await requireHostApi(ctx).game.startStory({ storyId, sceneId });
             return { nextPort: undefined };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_NEXT,
+        displayName: "Next",
+        category: "Game",
+        keywords: ["game", "dialog", "next", "advance", "continue", "nlr"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).game.next();
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_SKIP,
+        displayName: "Skip",
+        category: "Game",
+        keywords: ["game", "dialog", "skip", "fast", "nlr"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).game.skip();
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
+        displayName: "Set Sentence Speed",
+        category: "Game",
+        keywords: ["game", "dialog", "sentence", "speed", "cps", "preference", "nlr"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext, sentenceSpeedIn],
+        async execute(ctx) {
+            await requireHostApi(ctx).game.setSentenceSpeed(resolveSentenceSpeed(ctx));
+            return { nextPort: "next" };
         },
     },
     {

@@ -129,15 +129,13 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
         const store = uiService.getStore();
         
         // Close the tab
-        store.closeEditorTabInGroup(tabId, groupId);
+        const focusTarget = store.closeEditorTabInGroup(tabId, groupId);
         
         // If focus was on the closed tab, update focus to new active tab
         if (currentFocus.area === FocusArea.Editor && currentFocus.targetId === tabId) {
-            const layout = store.getEditorLayout();
-            const group = findGroup(layout, groupId);
-            if (group && group.focus) {
+            if (focusTarget) {
                 // Update focus to the new active tab
-                uiService.focus.setFocus(FocusArea.Editor, group.focus);
+                uiService.focus.setFocus(FocusArea.Editor, focusTarget.tabId);
             } else {
                 // No more tabs, clear focus
                 uiService.focus.clearFocus();
@@ -166,7 +164,7 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
             const resolvedGroupId = groupBefore?.id ?? (layoutBefore as EditorGroup).id;
 
             const idSet = new Set(tabIds);
-            store.closeEditorTabsInGroup(tabIds, groupId);
+            const focusTarget = store.closeEditorTabsInGroup(tabIds, groupId);
 
             const layout = store.getEditorLayout();
             const groupAfter = findGroup(layout, groupId);
@@ -176,8 +174,8 @@ export function RegistryProvider({ children }: RegistryProviderProps) {
                 currentFocus.targetId &&
                 idSet.has(currentFocus.targetId)
             ) {
-                if (groupAfter?.focus) {
-                    uiService.focus.setFocus(FocusArea.Editor, groupAfter.focus);
+                if (focusTarget) {
+                    uiService.focus.setFocus(FocusArea.Editor, focusTarget.tabId);
                 } else {
                     uiService.focus.clearFocus();
                 }
@@ -254,4 +252,3 @@ export function useRegistry() {
     }
     return ctx;
 }
-

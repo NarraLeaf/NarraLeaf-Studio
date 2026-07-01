@@ -8,7 +8,7 @@ import {
     type ReactNode,
 } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
-import { Image as ImageIcon, Link2, Minus, Plus, X } from "lucide-react";
+import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Plus, X } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import {
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
@@ -31,6 +31,9 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+    formatBlueprintKeyboardBinding,
+    formatBlueprintKeyboardBindingFromEvent,
+    normalizeBlueprintKeyboardEventKeyName,
 } from "@shared/types/blueprint/graph";
 import {
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
@@ -743,6 +746,161 @@ function variableValueTypeToLiteralMode(valueType: unknown): LiteralEditMode {
     return "string";
 }
 
+const KEYBOARD_MODIFIER_EVENT_KEYS = new Set(["alt", "control", "shift", "meta"]);
+
+function isKeyboardModifierEvent(event: KeyboardEvent): boolean {
+    return KEYBOARD_MODIFIER_EVENT_KEYS.has(normalizeBlueprintKeyboardEventKeyName(event.key));
+}
+
+function KeyboardBindingCardControl({
+    value,
+    onChange,
+}: {
+    value: unknown;
+    onChange: (value: string | undefined) => void;
+}) {
+    const rootRef = useRef<HTMLDivElement | null>(null);
+    const [listening, setListening] = useState(false);
+    const [preview, setPreview] = useState("");
+    const pendingModifierBindingRef = useRef("");
+    const displayValue = formatBlueprintKeyboardBinding(value);
+
+    const stopKeyboardCapture = (event: KeyboardEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+    };
+
+    const commitBinding = useCallback(
+        (binding: string) => {
+            const normalized = formatBlueprintKeyboardBinding(binding);
+            if (!normalized) {
+                return;
+            }
+            onChange(normalized);
+            pendingModifierBindingRef.current = "";
+            setPreview("");
+            setListening(false);
+        },
+        [onChange],
+    );
+
+    useEffect(() => {
+        if (!listening) {
+            pendingModifierBindingRef.current = "";
+            setPreview("");
+            return undefined;
+        }
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            stopKeyboardCapture(event);
+            const binding = formatBlueprintKeyboardBindingFromEvent(event);
+            if (!binding) {
+                return;
+            }
+            setPreview(binding);
+            if (isKeyboardModifierEvent(event)) {
+                pendingModifierBindingRef.current = binding;
+                return;
+            }
+            commitBinding(binding);
+        };
+        const onKeyUp = (event: KeyboardEvent) => {
+            stopKeyboardCapture(event);
+            if (!isKeyboardModifierEvent(event)) {
+                return;
+            }
+            const pending = pendingModifierBindingRef.current;
+            if (pending) {
+                commitBinding(pending);
+            }
+        };
+        const onPointerDown = (event: PointerEvent) => {
+            const target = event.target;
+            if (target instanceof Node && rootRef.current?.contains(target)) {
+                return;
+            }
+            pendingModifierBindingRef.current = "";
+            setListening(false);
+        };
+        const onBlur = () => {
+            pendingModifierBindingRef.current = "";
+            setListening(false);
+        };
+
+        window.addEventListener("keydown", onKeyDown, true);
+        window.addEventListener("keyup", onKeyUp, true);
+        window.addEventListener("pointerdown", onPointerDown, true);
+        window.addEventListener("blur", onBlur);
+        return () => {
+            window.removeEventListener("keydown", onKeyDown, true);
+            window.removeEventListener("keyup", onKeyUp, true);
+            window.removeEventListener("pointerdown", onPointerDown, true);
+            window.removeEventListener("blur", onBlur);
+        };
+    }, [commitBinding, listening]);
+
+    return (
+        <div ref={rootRef} className="nodrag relative min-w-0">
+            {listening ? (
+                <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded border border-cyan-300/35 bg-[#0b1016] px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
+                    <div className="truncate font-mono text-[11px] text-cyan-100">
+                        {preview || "Press a key"}
+                    </div>
+                    <div className="mt-0.5 truncate text-[9px] text-gray-400">Any key or combo</div>
+                </div>
+            ) : null}
+            <button
+                type="button"
+                className={`flex min-h-[26px] w-full min-w-0 items-center gap-1.5 rounded border px-2 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50 ${
+                    listening
+                        ? "border-cyan-300/45 bg-cyan-400/10 text-cyan-100"
+                        : "border-white/15 bg-[#111418] text-gray-200 hover:border-cyan-300/35 hover:bg-white/[0.04]"
+                } ${displayValue ? "pr-7" : ""}`}
+                title={displayValue ? `Bound to ${displayValue}` : "Bind keyboard"}
+                aria-label={displayValue ? `Bound to ${displayValue}` : "Bind keyboard"}
+                aria-pressed={listening}
+                onMouseDown={stopFlowNodePointerBubble}
+                onPointerDown={stopFlowNodePointerBubble}
+                onClick={event => {
+                    event.stopPropagation();
+                    pendingModifierBindingRef.current = "";
+                    setPreview("");
+                    setListening(open => !open);
+                }}
+            >
+                <KeyboardIcon className="h-3.5 w-3.5 shrink-0 text-cyan-300/80" aria-hidden />
+                <span className={`min-w-0 flex-1 truncate font-mono text-[10px] ${displayValue ? "" : "text-gray-500"}`}>
+                    {displayValue || "Unbound"}
+                </span>
+            </button>
+            {displayValue ? (
+                <button
+                    type="button"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-gray-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
+                    title="Clear binding"
+                    aria-label="Clear binding"
+                    onMouseDown={event => {
+                        event.stopPropagation();
+                        event.preventDefault();
+                    }}
+                    onPointerDown={event => {
+                        event.stopPropagation();
+                    }}
+                    onClick={event => {
+                        event.stopPropagation();
+                        pendingModifierBindingRef.current = "";
+                        setListening(false);
+                        onChange(undefined);
+                    }}
+                >
+                    <X className="h-3 w-3" aria-hidden />
+                </button>
+            ) : null}
+        </div>
+    );
+}
+
 function InspectorParamOnCard({
     spec,
     nodeType,
@@ -873,6 +1031,8 @@ function InspectorParamOnCard({
                 <BlueprintColorValueControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "imageAsset" ? (
                 <ImageAssetPickerCard value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
+            ) : spec.kind === "keyboardBinding" ? (
+                <KeyboardBindingCardControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : (
                 <Input
                     className={
