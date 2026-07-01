@@ -20,6 +20,7 @@ import {
     STORY_ACTION_CREATOR_PANEL_ID,
     type StoryActionCreateRequestDetail,
 } from "./storyActionCreatorEvents";
+import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { getTextSegment } from "./storySceneBlockUtils";
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
@@ -338,6 +339,20 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
             sceneName: editor.scene?.name,
         });
     }, [editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
+
+    useEffect(() => {
+        if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+            return;
+        }
+        const uiService = editor.context.services.get<UIService>(Services.UI);
+        uiService.panels.updatePayload(STORY_MOTION_PANEL_ID, {
+            storyId: payload.storyId,
+            sceneId: payload.sceneId,
+            blockId: editor.activeBlockId ?? undefined,
+            storyName: editor.document?.name,
+            sceneName: editor.scene?.name,
+        });
+    }, [editor.activeBlockId, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId]);
 
     useEffect(() => {
         const handleCreateRequest = (event: Event) => {
