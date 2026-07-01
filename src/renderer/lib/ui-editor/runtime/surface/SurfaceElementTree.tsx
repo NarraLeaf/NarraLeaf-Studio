@@ -115,6 +115,7 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
             return undefined;
         }
         const onStateChanged = () => {
+            valueRuntime.refreshAll();
             setBindingTick(tick => tick + 1);
         };
         const disposers = [

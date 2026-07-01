@@ -1,5 +1,8 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 7 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 9 as const;
+
+/** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
+export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
 
 export type BlueprintHostApiContractVersion = typeof BLUEPRINT_HOST_API_CONTRACT_VERSION;
 
@@ -53,7 +56,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { surfaceId: "" },
-            output: undefined,
+            output: null,
         },
         closeLayer: {
             capabilityId: "navigation.closeLayer",
@@ -61,7 +64,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: {},
-            output: undefined,
+            output: null,
         },
     },
     widget: {
@@ -71,7 +74,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: false,
             input: { elementId: "", visible: true },
-            output: undefined,
+            output: null,
         },
         setEnabled: {
             capabilityId: "widget.setEnabled",
@@ -79,7 +82,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: false,
             input: { elementId: "", enabled: true },
-            output: undefined,
+            output: null,
         },
         setVariant: {
             capabilityId: "widget.setVariant",
@@ -87,7 +90,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { elementId: "", variantId: "" },
-            output: undefined,
+            output: null,
         },
         getTextProperties: {
             capabilityId: "widget.getTextProperties",
@@ -103,7 +106,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { elementId: "", patch: {} },
-            output: undefined,
+            output: null,
         },
         getSliderProperties: {
             capabilityId: "widget.getSliderProperties",
@@ -119,7 +122,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { elementId: "", patch: {} },
-            output: undefined,
+            output: null,
         },
     },
     state: {
@@ -129,15 +132,15 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: true,
             async: false,
             input: { scope: "", key: "" },
-            output: undefined,
+            output: null,
         },
         set: {
             capabilityId: "state.set",
             purity: "effectful",
             callableFromBinding: false,
             async: false,
-            input: { scope: "", key: "", value: undefined },
-            output: undefined,
+            input: { scope: "", key: "", value: null },
+            output: null,
         },
     },
     persistence: {
@@ -147,15 +150,15 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: true,
             async: true,
             input: { key: "" },
-            output: undefined,
+            output: null,
         },
         set: {
             capabilityId: "persistence.set",
             purity: "effectful",
             callableFromBinding: false,
             async: true,
-            input: { key: "", value: undefined },
-            output: undefined,
+            input: { key: "", value: null },
+            output: null,
         },
     },
     frame: {
@@ -165,15 +168,15 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: true,
             async: false,
             input: { key: "" },
-            output: undefined,
+            output: null,
         },
         emit: {
             capabilityId: "frame.emit",
             purity: "effectful",
             callableFromBinding: false,
             async: true,
-            input: { event: "", data: undefined },
-            output: undefined,
+            input: { event: "", data: null },
+            output: null,
         },
     },
     game: {
@@ -183,7 +186,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { storyId: "", sceneId: "" },
-            output: undefined,
+            output: null,
         },
         writeSave: {
             capabilityId: "game.writeSave",
@@ -191,7 +194,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { id: "" },
-            output: undefined,
+            output: null,
         },
         loadSave: {
             capabilityId: "game.loadSave",
@@ -199,7 +202,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { id: "" },
-            output: undefined,
+            output: null,
         },
         listSaveIds: {
             capabilityId: "game.listSaveIds",
@@ -217,6 +220,38 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: { id: "" },
             output: null,
         },
+        getNametag: {
+            capabilityId: "game.getNametag",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: null,
+        },
+        next: {
+            capabilityId: "game.next",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        skip: {
+            capabilityId: "game.skip",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        setSentenceSpeed: {
+            capabilityId: "game.setSentenceSpeed",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { speed: 10 },
+            output: null,
+        },
     },
     devtools: {
         log: {
@@ -225,7 +260,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: false,
             input: { level: "info", message: "" },
-            output: undefined,
+            output: null,
         },
     },
 };

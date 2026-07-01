@@ -1,5 +1,8 @@
 import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
-import { BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+} from "@shared/types/blueprint/graph";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
@@ -11,6 +14,7 @@ import { adaptBlueprintGraphIr } from "./adaptBlueprintGraphIr";
 import { acquireBlueprintExecutionLocals } from "./blueprintWidgetLocals";
 
 export const BLUEPRINT_VALUE_EVENT_INIT = "init" as const;
+export const BLUEPRINT_VALUE_EVENT_FLUSH = "flush" as const;
 
 export type BlueprintValueEvaluationResult = {
     returned: boolean;
@@ -38,7 +42,10 @@ export function validateBlueprintValueGraphSafe(ir: BlueprintGraphIr | undefined
 
 function collectValueHeadNodeIds(ir: BlueprintGraphIr | undefined): string[] {
     return Object.entries(ir?.nodes ?? {})
-        .filter(([, node]) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)
+        .filter(([, node]) =>
+            node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT ||
+            node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH
+        )
         .map(([id]) => id)
         .sort();
 }

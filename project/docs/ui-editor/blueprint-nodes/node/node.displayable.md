@@ -8,7 +8,7 @@ Displayable 节点默认读取当前元素。坐标和尺寸均使用当前 Surf
 
 Displayable Self 节点只在可显示控件自己的私有蓝图中出现，创建浮窗中归入 `Displayable` 分类，且没有 Element 输入；执行目标默认就是当前蓝图所属元素。
 
-Displayable Element 派生节点使用 `blueprint.element.displayable.*`，带顶部 generic `element` 输入，创建浮窗中归入 `Element` 分类。只有派生节点允许传入 Element 引用。它们只有在当前图中已有任意 Same-Surface Element Literal 或 Element Flush 时才会显示；同一节点类型只显示一项。若兼容来源唯一，放置时会自动连接对应的 `element` 输入；若有多个兼容来源，则保留 `element` 输入由作者手动选择/连接。读取节点是 pure，可用于 Blueprint Value；写入/动画节点只用于 event/macro。
+Displayable Element 派生节点使用 `blueprint.element.displayable.*`，带顶部 generic `element` 输入，创建浮窗中归入 `Element` 分类。只有派生节点允许传入 Element 引用。它们只有在当前图中已有任意 Same-Surface Element Literal、Element Flush 或 Element Click 时才会显示；同一节点类型只显示一项。若兼容来源唯一，放置时会自动连接对应的 `element` 输入；若有多个兼容来源，则保留 `element` 输入由作者手动选择/连接。读取节点是 pure，可用于 Blueprint Value；写入/动画节点只用于 event/macro。
 
 下文列出的 `blueprint.displayable.*` 均有对应 `blueprint.element.displayable.*` Element 版。
 
