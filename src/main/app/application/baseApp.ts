@@ -58,6 +58,7 @@ export class BaseApp {
     constructor(config: BaseAppConfig) {
         this.config = config;
         this.electronApp = app;
+        this.electronApp.setName("NarraLeaf Studio");
         this.platform = Platform.getInfo(process, this.electronApp.isPackaged);
         this.logger = new Logger("MainProcess");
         this.events = new EventEmitter();
