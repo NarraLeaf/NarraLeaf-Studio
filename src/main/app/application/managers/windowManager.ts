@@ -12,6 +12,7 @@ import {
 } from "./window/handlers/fsAction";
 import { IPCHost } from "./window/ipcHost";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./window/handlers/projectWizardAction";
+import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./window/handlers/projectPackageAction";
 import { WorkspaceLaunchHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler } from "./window/handlers/workspaceAction";
 import {
     DevModeGetStatusHandler,
@@ -106,6 +107,8 @@ export class WindowManager {
         win.registerIPCHandler(new WorkspaceLaunchHandler());
         win.registerIPCHandler(new WorkspaceSelectFolderHandler());
         win.registerIPCHandler(new WorkspaceCloseHandler());
+        win.registerIPCHandler(new WorkspaceExportProjectPackageHandler());
+        win.registerIPCHandler(new WorkspaceImportProjectPackageHandler());
 
         // Register dev mode handlers
         win.registerIPCHandler(new DevModeLaunchHandler());

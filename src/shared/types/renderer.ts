@@ -81,6 +81,20 @@ export interface RendererPreloadedInterface {
         launch(props: WindowProps[WindowAppType.Workspace], closeCurrentWindow?: boolean): Promise<RequestStatus<void>>;
         close(): Promise<RequestStatus<void>>;
         getDefaultProjectDirectory(): Promise<RequestStatus<{ dir: string }>>;
+        exportProjectPackage(projectPath: string): Promise<RequestStatus<{
+            canceled: boolean;
+            packagePath?: string;
+            fileCount?: number;
+            byteLength?: number;
+            skippedCount?: number;
+        }>>;
+        importProjectPackage(): Promise<RequestStatus<{
+            canceled: boolean;
+            projectPath?: string;
+            projectName?: string;
+            fileCount?: number;
+            byteLength?: number;
+        }>>;
         onResolveAssetUrl(handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onResolveImageAssetUrl(handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onBlueprintNavigateFromPreview(handler: (payload: PreviewStudioBlueprintOpenPayload) => void): AppEventToken;
