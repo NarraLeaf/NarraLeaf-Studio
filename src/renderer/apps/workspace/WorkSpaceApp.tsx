@@ -4,6 +4,7 @@ import { WorkspaceLayout } from "./components/layout";
 import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
 import { useWorkspaceEditorSession } from "./hooks/useWorkspaceEditorSession";
+import { useMenuActionHandler } from "./hooks/useMenuActionHandler";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/PreviewBlueprintNavigateBridge";
@@ -16,6 +17,7 @@ function WorkspaceContent() {
     // Load all built-in modules (panels, editors, actions)
     useModuleLoader();
     useWorkspaceEditorSession();
+    useMenuActionHandler();
 
     return (
         <>
