@@ -24,7 +24,6 @@ export const DEFAULT_INSERT_PALETTE_CONFIG = [
     { type: "nl.container" },
     { type: "nl.text" },
     { type: "nl.dialog.sentence", surfaceKinds: ["stageSurface"], stageSlots: ["dialog"] },
-    { type: "nl.dialog.nametag", surfaceKinds: ["stageSurface"], stageSlots: ["dialog"] },
     { type: "nl.image" },
     { type: "nl.button" },
     { type: "nl.slider", placement: "overflow" },

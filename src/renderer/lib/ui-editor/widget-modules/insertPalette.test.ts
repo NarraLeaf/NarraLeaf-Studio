@@ -12,7 +12,6 @@ const DEFAULT_MODULE_TYPES = [
     "nl.container",
     "nl.text",
     "nl.dialog.sentence",
-    "nl.dialog.nametag",
     "nl.image",
     "nl.button",
     "nl.slider",
@@ -90,7 +89,7 @@ describe("insert palette", () => {
         expect(stageEntries.map(entry => entry.module.type)).not.toContain("nl.frame");
     });
 
-    it("shows Dialog private widgets only on Dialog stage surfaces", () => {
+    it("shows Dialog sentence widget only on Dialog stage surfaces", () => {
         const resolver = createResolver(DEFAULT_MODULE_TYPES);
         const dialogTypes = resolveInsertPaletteEntries(
             DEFAULT_INSERT_PALETTE_CONFIG,
@@ -99,7 +98,7 @@ describe("insert palette", () => {
         ).map(entry => entry.module.type);
 
         expect(dialogTypes).toContain("nl.dialog.sentence");
-        expect(dialogTypes).toContain("nl.dialog.nametag");
+        expect(dialogTypes).not.toContain("nl.dialog.nametag");
 
         for (const slotId of ["onStage", "choice", "notification"] as const) {
             const types = resolveInsertPaletteEntries(

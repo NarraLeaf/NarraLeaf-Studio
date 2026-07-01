@@ -37,6 +37,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_IS_NUMBER,
     BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT,
     BLUEPRINT_NODE_TYPE_DATA_IS_STRING,
+    BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_JSON_HAS,
@@ -70,6 +71,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_RANGE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_ALL_PROPERTIES,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_EFFECTS,
@@ -93,6 +95,7 @@ import {
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
@@ -281,7 +284,9 @@ export type DataPinResolveRuntime = {
 function isElementBindingOutput(type: string, portId: string): boolean {
     return (
         portId === "element" &&
-        (type === BLUEPRINT_NODE_TYPE_ELEMENT_REF || type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH)
+        (type === BLUEPRINT_NODE_TYPE_ELEMENT_REF ||
+            type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH ||
+            type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK)
     );
 }
 
@@ -1286,7 +1291,17 @@ function resolveFrameNodeOutput(
         return undefined;
     }
     const key = toBlueprintString(resolveInput(graph, nodeId, "key", params, blueprintLocals, depth, runtime)).trim();
-    return key ? api.frame.getParam(key) : undefined;
+    return key ? api.frame.getParam(key) : null;
+}
+
+function resolveGameNodeOutput(
+    portId: string,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (portId !== "nametag") {
+        return undefined;
+    }
+    return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getNametag() ?? null;
 }
 
 function trackElementDependency(
@@ -2026,7 +2041,10 @@ function resolveDataNodeOutput(
         return isJsonObjectRecord(value);
     }
     if (type === BLUEPRINT_NODE_TYPE_DATA_IS_NULL) {
-        return value === null;
+        return value == null;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_NOT_NULL) {
+        return value != null;
     }
     if (type === BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE) {
         return isEmptyBlueprintValue(value);
@@ -2137,7 +2155,7 @@ function resolveSelfOutput(
         }
     }
     if (isBlueprintEventDispatchHeadType(selfNode.type) && portId !== "then") {
-        return runtime?.eventPayload?.[portId];
+        return runtime?.eventPayload?.[portId] ?? null;
     }
     if (
         (selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP ||
@@ -2180,6 +2198,9 @@ function resolveSelfOutput(
     }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM) {
         return resolveFrameNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
+    }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG) {
+        return resolveGameNodeOutput(portId, runtime);
     }
     const elementTextOutput = resolveElementTextNodeOutput(
         graph,

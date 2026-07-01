@@ -12,7 +12,15 @@ import {
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check } from "lucide-react";
-import { Dialog as NlrDialog, FixedAspectRatioContainer, Game, type LiveGame, type SavedGame } from "narraleaf-react";
+import {
+    Dialog as NlrDialog,
+    FixedAspectRatioContainer,
+    Game,
+    KeyBindingType,
+    useDialog,
+    type LiveGame,
+    type SavedGame,
+} from "narraleaf-react";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UISurface, UIDocument, UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
@@ -47,6 +55,8 @@ import {
     clearDevModeSavePreviewImages,
     registerDevModeSavePreviewImage,
 } from "@/lib/ui-editor/runtime/devModeSavePreviewAssets";
+import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
+import { collectDialogFlushElementIds } from "./dialogFlushTargets";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
@@ -81,6 +91,35 @@ type SurfaceStateAccessors = {
     get: (key: string) => unknown;
     set: (key: string, value: unknown) => void;
 };
+
+type NlrCharacterLike = {
+    state?: {
+        name?: unknown;
+    };
+};
+
+type NlrLiveGameWithLastDialog = LiveGame & {
+    lastDialog?: {
+        speaker?: unknown;
+    } | null;
+};
+
+function coerceNametagValue(value: unknown): string | null {
+    if (value == null) {
+        return null;
+    }
+    const text = String(value);
+    return text.trim().length > 0 ? text : null;
+}
+
+function readNlrCharacterName(character: unknown): string | null {
+    return coerceNametagValue((character as NlrCharacterLike | null | undefined)?.state?.name);
+}
+
+function readNlrLastDialogSpeaker(liveGame: LiveGame | null): string | null {
+    const lastDialog = (liveGame as NlrLiveGameWithLastDialog | null)?.lastDialog;
+    return lastDialog ? coerceNametagValue(lastDialog.speaker) : null;
+}
 
 function keyboardBlueprintPayload(event: KeyboardEvent): Record<string, unknown> {
     return {
@@ -210,6 +249,26 @@ function dialogSlotRuntimeScopeId(sessionId: string, surfaceId: string): string 
     return `nlr:${sessionId}:slot:dialog:${surfaceId}`;
 }
 
+function StudioDialogStateBridge(props: {
+    bpCore: DevModeBlueprintRuntimeCore | null;
+    getCurrentNametag: () => string | null;
+    flushDialogElements: () => void;
+}) {
+    const { bpCore, getCurrentNametag, flushDialogElements } = props;
+    const dialog = useDialog();
+
+    useEffect(() => {
+        if (!bpCore) {
+            return;
+        }
+        const nametag = dialog.isNarrator ? null : getCurrentNametag();
+        bpCore.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
+        flushDialogElements();
+    }, [bpCore, dialog.done, dialog.isNarrator, dialog.text, flushDialogElements, getCurrentNametag]);
+
+    return null;
+}
+
 function StudioDialogSlotSurface(props: {
     sessionId: string;
     bpCore: DevModeBlueprintRuntimeCore | null;
@@ -225,6 +284,11 @@ function StudioDialogSlotSurface(props: {
     loadSaveInGame: (id: string) => Promise<void>;
     listSaveIds: () => Promise<string[]>;
     getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+    getCurrentNametag: () => string | null;
+    nextInGame: () => Promise<void>;
+    skipInGame: () => Promise<void>;
+    setSentenceSpeedInGame: (speed: number) => Promise<void>;
+    setDialogVirtualClickTarget: (target: HTMLElement | null) => void;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -244,6 +308,11 @@ function StudioDialogSlotSurface(props: {
         loadSaveInGame,
         listSaveIds,
         getSavePreview,
+        getCurrentNametag,
+        nextInGame,
+        skipInGame,
+        setSentenceSpeedInGame,
+        setDialogVirtualClickTarget,
         setWidgetPatchesByScope,
         widgetPatchesByScopeRef,
         widgetRuntimeStore,
@@ -251,6 +320,14 @@ function StudioDialogSlotSurface(props: {
     const runtimeScopeId = useMemo(() => dialogSlotRuntimeScopeId(sessionId, surface.id), [sessionId, surface.id]);
     const hostAdapterRef = useRef<UIHostAdapter | null>(null);
     const document = bundle.ui.uidoc;
+    const setVirtualClickTarget = useCallback(
+        (target: HTMLElement | null) => {
+            setDialogVirtualClickTarget(target);
+        },
+        [setDialogVirtualClickTarget],
+    );
+
+    useEffect(() => () => setDialogVirtualClickTarget(null), [setDialogVirtualClickTarget]);
 
     const hostApi = useMemo(() => {
         if (!bpCore) {
@@ -269,6 +346,10 @@ function StudioDialogSlotSurface(props: {
             onLoadSave: loadSaveInGame,
             onListSaveIds: listSaveIds,
             onGetSavePreview: getSavePreview,
+            onGetNametag: getCurrentNametag,
+            onNext: nextInGame,
+            onSkip: skipInGame,
+            onSetSentenceSpeed: setSentenceSpeedInGame,
             onWidgetPatch: (elementId, patch) => {
                 setWidgetPatchesByScope(prev => ({
                     ...prev,
@@ -302,6 +383,10 @@ function StudioDialogSlotSurface(props: {
         loadSaveInGame,
         listSaveIds,
         getSavePreview,
+        getCurrentNametag,
+        nextInGame,
+        skipInGame,
+        setSentenceSpeedInGame,
         surface.id,
         widgetRuntimeStore,
     ]);
@@ -331,6 +416,34 @@ function StudioDialogSlotSurface(props: {
         hostAdapterRef.current = hostAdapter;
     }, [hostAdapter]);
 
+    const dialogFlushElementIds = useMemo(
+        () => collectDialogFlushElementIds({
+            document,
+            blueprintDocument: bundle.ui.localBlueprints,
+            surface,
+        }),
+        [bundle.ui.localBlueprints, document, surface],
+    );
+    const flushDialogElements = useCallback(() => {
+        for (const elementId of dialogFlushElementIds) {
+            const element = document.elements[elementId];
+            if (!element) {
+                continue;
+            }
+            void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
+                elementId,
+                "flush",
+                {
+                    element: {
+                        surfaceId: surface.id,
+                        elementId,
+                        elementType: element.type,
+                    },
+                },
+            );
+        }
+    }, [dialogFlushElementIds, document, surface.id]);
+
     const globalStateReader = useMemo(() => {
         if (!bpCore) {
             return undefined;
@@ -355,7 +468,12 @@ function StudioDialogSlotSurface(props: {
     }, [bpCore, bundle.ui.localBlueprints, globalStateReader, runtimeScopeId]);
 
     return (
-        <NlrDialog style={{ width: "100%", height: "100%", position: "relative" }}>
+        <NlrDialog ref={setVirtualClickTarget} style={{ width: "100%", height: "100%", position: "relative" }}>
+            <StudioDialogStateBridge
+                bpCore={bpCore}
+                getCurrentNametag={getCurrentNametag}
+                flushDialogElements={flushDialogElements}
+            />
             <DevModeSurfaceLifecycleLayer
                 bpCore={bpCore}
                 bundle={bundle}
@@ -405,6 +523,10 @@ function DevModeAppSurfaceLayer(props: {
     loadSaveInGame: (id: string) => Promise<void>;
     listSaveIds: () => Promise<string[]>;
     getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+    getCurrentNametag: () => string | null;
+    nextInGame: () => Promise<void>;
+    skipInGame: () => Promise<void>;
+    setSentenceSpeedInGame: (speed: number) => Promise<void>;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScope: Record<string, Record<string, DevModeWidgetRuntimePatch>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
@@ -432,6 +554,10 @@ function DevModeAppSurfaceLayer(props: {
         loadSaveInGame,
         listSaveIds,
         getSavePreview,
+        getCurrentNametag,
+        nextInGame,
+        skipInGame,
+        setSentenceSpeedInGame,
         setWidgetPatchesByScope,
         widgetPatchesByScope,
         widgetPatchesByScopeRef,
@@ -461,6 +587,10 @@ function DevModeAppSurfaceLayer(props: {
             onLoadSave: loadSaveInGame,
             onListSaveIds: listSaveIds,
             onGetSavePreview: getSavePreview,
+            onGetNametag: getCurrentNametag,
+            onNext: nextInGame,
+            onSkip: skipInGame,
+            onSetSentenceSpeed: setSentenceSpeedInGame,
             onWidgetPatch: (elementId, patch) => {
                 setWidgetPatchesByScope(prev => ({
                     ...prev,
@@ -493,6 +623,10 @@ function DevModeAppSurfaceLayer(props: {
         loadSaveInGame,
         listSaveIds,
         getSavePreview,
+        getCurrentNametag,
+        nextInGame,
+        skipInGame,
+        setSentenceSpeedInGame,
         surface.id,
         uidoc,
         widgetRuntimeStore,
@@ -640,8 +774,15 @@ export function DevModeContent(props: DevModeContentProps) {
     const loadSaveInGameRef = useRef<((id: string) => Promise<void>) | null>(null);
     const listSaveIdsRef = useRef<(() => Promise<string[]>) | null>(null);
     const getSavePreviewRef = useRef<((id: string) => Promise<BlueprintImageAsset | null>) | null>(null);
+    const getCurrentNametagRef = useRef<(() => string | null) | null>(null);
+    const nextInGameRef = useRef<(() => Promise<void>) | null>(null);
+    const skipInGameRef = useRef<(() => Promise<void>) | null>(null);
+    const setSentenceSpeedInGameRef = useRef<((speed: number) => Promise<void>) | null>(null);
     const nlrLiveGameRef = useRef<LiveGame | null>(null);
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
+    const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
+    const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
+    const currentDialogNametagRef = useRef<string | null>(null);
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const lifecycleRef = useRef<SurfaceLifecycleManager>(new SurfaceLifecycleManager());
     const appBootFiredRef = useRef<string | null>(null);
@@ -995,6 +1136,54 @@ export function DevModeContent(props: DevModeContentProps) {
         return nlrLiveGameRef.current;
     }, [nlrSession?.id]);
 
+    const getCurrentNametag = useCallback((): string | null => {
+        const liveGameSpeaker = readNlrLastDialogSpeaker(nlrLiveGameRef.current);
+        return liveGameSpeaker ?? currentDialogNametagRef.current;
+    }, []);
+    getCurrentNametagRef.current = getCurrentNametag;
+
+    const clearCurrentDialogNametag = useCallback(() => {
+        currentDialogNametagRef.current = null;
+        bpCore?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, null);
+    }, [bpCore]);
+
+    const setNlrDialogVirtualClickTarget = useCallback((target: HTMLElement | null): void => {
+        nlrDialogVirtualClickTargetRef.current = target;
+    }, []);
+
+    const nextInGame = useCallback(async (): Promise<void> => {
+        const dialogClickTarget = nlrDialogVirtualClickTargetRef.current;
+        if (dialogClickTarget?.isConnected) {
+            dialogClickTarget.click();
+            return;
+        }
+        const liveGame = requireActiveLiveGame("Next");
+        const gameState = liveGame.getGameState();
+        if (!gameState) {
+            throw new Error("Next: game state is not available");
+        }
+        const clickTarget = gameState.mainContentNode ?? gameState.playerCurrent;
+        if (!clickTarget) {
+            throw new Error("Next: virtual click target is not available");
+        }
+        clickTarget.click();
+    }, [requireActiveLiveGame]);
+    nextInGameRef.current = nextInGame;
+
+    const skipInGame = useCallback(async (): Promise<void> => {
+        requireActiveLiveGame("Skip").skipDialog();
+    }, [requireActiveLiveGame]);
+    skipInGameRef.current = skipInGame;
+
+    const setSentenceSpeedInGame = useCallback(async (speed: number): Promise<void> => {
+        const value = typeof speed === "number" ? speed : Number(speed);
+        if (!Number.isFinite(value) || value <= 0) {
+            throw new Error("Set Sentence Speed: speed must be a positive number");
+        }
+        requireActiveLiveGame("Set Sentence Speed").game.preference.setPreference("cps", value);
+    }, [requireActiveLiveGame]);
+    setSentenceSpeedInGameRef.current = setSentenceSpeedInGame;
+
     const writeSaveInGame = useCallback(async (id: string): Promise<void> => {
         const projectRef = requireSaveProjectRef("Write Save");
         const liveGame = requireActiveLiveGame("Write Save");
@@ -1136,6 +1325,17 @@ export function DevModeContent(props: DevModeContentProps) {
                   getSavePreview: id =>
                       getSavePreviewRef.current?.(id) ??
                       Promise.reject(new Error("Get Save Preview is not available")),
+                  getCurrentNametag: () => getCurrentNametagRef.current?.() ?? null,
+                  nextInGame: () =>
+                      nextInGameRef.current?.() ??
+                      Promise.reject(new Error("Next is not available")),
+                  skipInGame: () =>
+                      skipInGameRef.current?.() ??
+                      Promise.reject(new Error("Skip is not available")),
+                  setSentenceSpeedInGame: speed =>
+                      setSentenceSpeedInGameRef.current?.(speed) ??
+                      Promise.reject(new Error("Set Sentence Speed is not available")),
+                  setDialogVirtualClickTarget: setNlrDialogVirtualClickTarget,
                   setWidgetPatchesByScope,
                   widgetPatchesByScopeRef,
                   widgetRuntimeStore,
@@ -1151,6 +1351,7 @@ export function DevModeContent(props: DevModeContentProps) {
             ...(dialogComponent ? { dialog: dialogComponent, dialogWidth: width, dialogHeight: height } : {}),
         };
         const game = new Game(gameConfig);
+        game.keyMap.setKeyBinding(KeyBindingType.nextAction, null);
 
         const ready = new Promise<void>((resolve, reject) => {
             pendingGameStartsRef.current.set(sessionId, { resolve, reject });
@@ -1197,9 +1398,15 @@ export function DevModeContent(props: DevModeContentProps) {
         if (nlrSession?.id !== sessionId) {
             return;
         }
+        nlrCharacterPromptTokenRef.current?.cancel();
+        nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(({ character }) => {
+            const nametag = readNlrCharacterName(character);
+            currentDialogNametagRef.current = nametag;
+            bpCore?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
+        });
         nlrLiveGameRef.current = liveGame;
         nlrLiveGameSessionIdRef.current = sessionId;
-    }, [nlrSession?.id]);
+    }, [bpCore, nlrSession?.id]);
 
     const handleNlrStageError = useCallback((error: Error) => {
         rejectPendingGameStarts(error);
@@ -1223,18 +1430,26 @@ export function DevModeContent(props: DevModeContentProps) {
         activeStoryRequestRef.current = null;
         activeStoryRevisionRef.current = null;
         rejectPendingGameStarts(new Error("Dev Mode session changed"));
+        nlrCharacterPromptTokenRef.current?.cancel();
+        nlrCharacterPromptTokenRef.current = null;
+        nlrDialogVirtualClickTargetRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
+        clearCurrentDialogNametag();
         clearDevModeSavePreviewImages();
         setNlrSession(null);
         setGameStageVisible(false);
         setStudioPageHiddenForGame(false);
-    }, [bundle?.bundleId, rejectPendingGameStarts, surface?.id]);
+    }, [bundle?.bundleId, clearCurrentDialogNametag, rejectPendingGameStarts, surface?.id]);
 
     useEffect(() => {
+        nlrCharacterPromptTokenRef.current?.cancel();
+        nlrCharacterPromptTokenRef.current = null;
+        nlrDialogVirtualClickTargetRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
-    }, [nlrSession?.id]);
+        clearCurrentDialogNametag();
+    }, [clearCurrentDialogNametag, nlrSession?.id]);
 
     const hostApi = useMemo(() => {
         if (!bpCore || !uiDocument || !activeSurface) {
@@ -1254,6 +1469,10 @@ export function DevModeContent(props: DevModeContentProps) {
             onLoadSave: loadSaveInGame,
             onListSaveIds: listSaveIds,
             onGetSavePreview: getSavePreview,
+            onGetNametag: getCurrentNametag,
+            onNext: nextInGame,
+            onSkip: skipInGame,
+            onSetSentenceSpeed: setSentenceSpeedInGame,
             onWidgetPatch: (elementId, patch) => {
                 setWidgetPatchesByScope(prev => ({
                     ...prev,
@@ -1287,6 +1506,10 @@ export function DevModeContent(props: DevModeContentProps) {
         loadSaveInGame,
         listSaveIds,
         getSavePreview,
+        getCurrentNametag,
+        nextInGame,
+        skipInGame,
+        setSentenceSpeedInGame,
         widgetRuntimeStore,
     ]);
 
@@ -1424,6 +1647,10 @@ export function DevModeContent(props: DevModeContentProps) {
                     onLoadSave: loadSaveInGame,
                     onListSaveIds: listSaveIds,
                     onGetSavePreview: getSavePreview,
+                    onGetNametag: getCurrentNametag,
+                    onNext: nextInGame,
+                    onSkip: skipInGame,
+                    onSetSentenceSpeed: setSentenceSpeedInGame,
                     onWidgetPatch: (elementId, patch) => {
                         setWidgetPatchesByScope(prev => ({
                             ...prev,
@@ -1512,6 +1739,10 @@ export function DevModeContent(props: DevModeContentProps) {
         loadSaveInGame,
         listSaveIds,
         getSavePreview,
+        getCurrentNametag,
+        nextInGame,
+        skipInGame,
+        setSentenceSpeedInGame,
         uiDocument,
         widgetRuntimeStore,
     ]);
@@ -1608,6 +1839,10 @@ export function DevModeContent(props: DevModeContentProps) {
                                               loadSaveInGame={loadSaveInGame}
                                               listSaveIds={listSaveIds}
                                               getSavePreview={getSavePreview}
+                                              getCurrentNametag={getCurrentNametag}
+                                              nextInGame={nextInGame}
+                                              skipInGame={skipInGame}
+                                              setSentenceSpeedInGame={setSentenceSpeedInGame}
                                               setWidgetPatchesByScope={setWidgetPatchesByScope}
                                               widgetPatchesByScope={widgetPatchesByScope}
                                               widgetPatchesByScopeRef={widgetPatchesByScopeRef}

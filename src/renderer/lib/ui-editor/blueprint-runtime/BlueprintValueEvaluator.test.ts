@@ -7,6 +7,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
@@ -126,6 +127,25 @@ describe("Blueprint Value evaluator", () => {
             returned: true,
             value: "literal",
             dependencies: [],
+        });
+    });
+
+    it("evaluates value graphs from an On Flush head", async () => {
+        const graph: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH, params: {} },
+                value: { id: "value", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: "from-flush" } },
+                ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "ret", port: "in" } },
+                { from: { nodeId: "value", port: "value" }, to: { nodeId: "ret", port: "value" } },
+            ],
+        };
+
+        await expect(evalValue(valueDocument(graph))).resolves.toMatchObject({
+            returned: true,
+            value: "from-flush",
         });
     });
 

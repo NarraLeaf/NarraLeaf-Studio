@@ -32,7 +32,7 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP = "blueprint.event.head.keyUp
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN = "blueprint.event.head.anyKeyDown" as const;
 /** Entry for owner-level global keyboard up events without a key filter. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP = "blueprint.event.head.anyKeyUp" as const;
-/** Persisted on On Key event heads: KeyboardEvent.key name to match, case-insensitive. */
+/** Persisted on On Key event heads: keyboard binding string to match, case-insensitive. */
 export const BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME = "key" as const;
 /** Entry for widget `focus` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus" as const;
@@ -40,6 +40,7 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus"
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR = "blueprint.event.head.blur" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH = "blueprint.event.head.flush" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH = "blueprint.event.head.elementFlush" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK = "blueprint.event.head.elementClick" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL = "blueprint.event.head.scroll" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST = "blueprint.event.head.onAnyBroadcast" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST = "blueprint.event.head.onBroadcast" as const;
@@ -79,6 +80,7 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
@@ -112,7 +114,93 @@ export function resolveBlueprintEventHeadTypesForUiSlot(slotId: string, widgetEl
     return [...EVENT_DISPATCH_HEAD_TYPES];
 }
 
-function normalizeKeyboardEventKeyName(raw: unknown): string {
+export type BlueprintKeyboardEventLike = {
+    key?: unknown;
+    altKey?: unknown;
+    ctrlKey?: unknown;
+    shiftKey?: unknown;
+    metaKey?: unknown;
+};
+
+export type BlueprintKeyboardBinding = {
+    key: string;
+    altKey: boolean;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+    metaKey: boolean;
+    /** True when the binding text explicitly includes at least one modifier token. */
+    hasExplicitModifiers: boolean;
+};
+
+type BlueprintKeyboardModifierFlag = "altKey" | "ctrlKey" | "shiftKey" | "metaKey";
+
+const BLUEPRINT_KEYBOARD_MODIFIER_ORDER: BlueprintKeyboardModifierFlag[] = [
+    "ctrlKey",
+    "altKey",
+    "shiftKey",
+    "metaKey",
+];
+
+const BLUEPRINT_KEYBOARD_MODIFIER_LABELS: Record<BlueprintKeyboardModifierFlag, string> = {
+    altKey: "Alt",
+    ctrlKey: "Ctrl",
+    shiftKey: "Shift",
+    metaKey: "Meta",
+};
+
+const BLUEPRINT_KEYBOARD_MODIFIER_ALIASES: Record<string, BlueprintKeyboardModifierFlag> = {
+    alt: "altKey",
+    option: "altKey",
+    ctrl: "ctrlKey",
+    control: "ctrlKey",
+    shift: "shiftKey",
+    meta: "metaKey",
+    cmd: "metaKey",
+    command: "metaKey",
+    win: "metaKey",
+    windows: "metaKey",
+};
+
+const BLUEPRINT_KEYBOARD_MODIFIER_KEYS: Record<string, BlueprintKeyboardModifierFlag> = {
+    alt: "altKey",
+    control: "ctrlKey",
+    shift: "shiftKey",
+    meta: "metaKey",
+};
+
+const BLUEPRINT_KEYBOARD_KEY_ALIASES: Record<string, string> = {
+    " ": "space",
+    spacebar: "space",
+    esc: "escape",
+    return: "enter",
+    del: "delete",
+    plus: "+",
+    add: "+",
+    left: "arrowleft",
+    right: "arrowright",
+    up: "arrowup",
+    down: "arrowdown",
+};
+
+const BLUEPRINT_KEYBOARD_KEY_LABELS: Record<string, string> = {
+    "+": "Plus",
+    " ": "Space",
+    alt: "Alt",
+    arrowdown: "Arrow Down",
+    arrowleft: "Arrow Left",
+    arrowright: "Arrow Right",
+    arrowup: "Arrow Up",
+    control: "Ctrl",
+    delete: "Delete",
+    enter: "Enter",
+    escape: "Escape",
+    meta: "Meta",
+    shift: "Shift",
+    space: "Space",
+    tab: "Tab",
+};
+
+export function normalizeBlueprintKeyboardEventKeyName(raw: unknown): string {
     if (typeof raw !== "string" && typeof raw !== "number") {
         return "";
     }
@@ -120,14 +208,150 @@ function normalizeKeyboardEventKeyName(raw: unknown): string {
     if (text.length > 0 && text.trim().length === 0) {
         return "space";
     }
-    const normalized = text.trim().toLocaleLowerCase();
-    if (normalized === "spacebar") {
-        return "space";
+    const normalized = text.trim().toLowerCase();
+    return BLUEPRINT_KEYBOARD_KEY_ALIASES[normalized] ?? normalized;
+}
+
+function readKeyboardModifierToken(raw: string): BlueprintKeyboardModifierFlag | null {
+    return BLUEPRINT_KEYBOARD_MODIFIER_ALIASES[raw.trim().toLowerCase()] ?? null;
+}
+
+function readKeyboardModifierFlagForKey(key: string): BlueprintKeyboardModifierFlag | null {
+    return BLUEPRINT_KEYBOARD_MODIFIER_KEYS[key] ?? null;
+}
+
+function keyboardModifierKeyForFlag(flag: BlueprintKeyboardModifierFlag): string {
+    switch (flag) {
+        case "altKey":
+            return "alt";
+        case "ctrlKey":
+            return "control";
+        case "shiftKey":
+            return "shift";
+        case "metaKey":
+            return "meta";
     }
-    if (normalized === "esc") {
-        return "escape";
+}
+
+function keyboardBindingDisplayLabelForKey(key: string): string {
+    const label = BLUEPRINT_KEYBOARD_KEY_LABELS[key];
+    if (label) {
+        return label;
     }
-    return normalized;
+    return key.length === 1 ? key.toUpperCase() : key;
+}
+
+function readKeyboardBindingTokens(raw: string): string[] {
+    const trimmed = raw.trim();
+    if (!trimmed && raw.length > 0) {
+        return ["Space"];
+    }
+    if (trimmed === "+") {
+        return ["Plus"];
+    }
+    const tokens = trimmed.split("+").map(part => part.trim()).filter(Boolean);
+    if (trimmed.endsWith("+") && tokens.length > 0) {
+        tokens.push("Plus");
+    }
+    return tokens;
+}
+
+export function parseBlueprintKeyboardBinding(raw: unknown): BlueprintKeyboardBinding | null {
+    if (typeof raw !== "string" && typeof raw !== "number") {
+        return null;
+    }
+    const tokens = readKeyboardBindingTokens(String(raw));
+    if (tokens.length === 0) {
+        return null;
+    }
+
+    const modifiers: Record<BlueprintKeyboardModifierFlag, boolean> = {
+        altKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        metaKey: false,
+    };
+    const modifierTokens: BlueprintKeyboardModifierFlag[] = [];
+    let keyToken: string | null = null;
+
+    for (const token of tokens) {
+        const modifier = readKeyboardModifierToken(token);
+        if (modifier) {
+            modifiers[modifier] = true;
+            modifierTokens.push(modifier);
+            continue;
+        }
+        keyToken = token;
+    }
+
+    if (!keyToken && modifierTokens.length > 0) {
+        keyToken = keyboardModifierKeyForFlag(modifierTokens[modifierTokens.length - 1]);
+    }
+
+    const key = normalizeBlueprintKeyboardEventKeyName(keyToken);
+    if (!key) {
+        return null;
+    }
+
+    return {
+        key,
+        altKey: modifiers.altKey,
+        ctrlKey: modifiers.ctrlKey,
+        shiftKey: modifiers.shiftKey,
+        metaKey: modifiers.metaKey,
+        hasExplicitModifiers: modifierTokens.length > 0,
+    };
+}
+
+export function formatBlueprintKeyboardBinding(raw: unknown): string {
+    const binding = parseBlueprintKeyboardBinding(raw);
+    if (!binding) {
+        return "";
+    }
+    const keyModifier = readKeyboardModifierFlagForKey(binding.key);
+    const parts = BLUEPRINT_KEYBOARD_MODIFIER_ORDER
+        .filter(flag => binding[flag])
+        .map(flag => BLUEPRINT_KEYBOARD_MODIFIER_LABELS[flag]);
+    if (!keyModifier || !binding[keyModifier]) {
+        parts.push(keyboardBindingDisplayLabelForKey(binding.key));
+    }
+    return parts.join("+");
+}
+
+export function formatBlueprintKeyboardBindingFromEvent(event: BlueprintKeyboardEventLike): string {
+    const key = normalizeBlueprintKeyboardEventKeyName(event.key);
+    if (!key) {
+        return "";
+    }
+    const keyModifier = readKeyboardModifierFlagForKey(key);
+    const parts = BLUEPRINT_KEYBOARD_MODIFIER_ORDER
+        .filter(flag => Boolean(event[flag]))
+        .map(flag => BLUEPRINT_KEYBOARD_MODIFIER_LABELS[flag]);
+    if (!keyModifier || !Boolean(event[keyModifier])) {
+        parts.push(keyboardBindingDisplayLabelForKey(key));
+    }
+    return parts.join("+");
+}
+
+export function blueprintKeyboardBindingMatchesEvent(raw: unknown, eventPayload?: BlueprintKeyboardEventLike): boolean {
+    const binding = parseBlueprintKeyboardBinding(raw);
+    if (!binding) {
+        return false;
+    }
+    const eventKey = normalizeBlueprintKeyboardEventKeyName(eventPayload?.key);
+    if (binding.key !== eventKey) {
+        return false;
+    }
+    if (!binding.hasExplicitModifiers) {
+        return true;
+    }
+    const keyModifier = readKeyboardModifierFlagForKey(binding.key);
+    return BLUEPRINT_KEYBOARD_MODIFIER_ORDER.every(flag => {
+        if (flag === keyModifier && binding[flag]) {
+            return true;
+        }
+        return Boolean(eventPayload?.[flag]) === binding[flag];
+    });
 }
 
 function isFilteredKeyboardEventHeadType(nodeType: string): boolean {
@@ -141,11 +365,7 @@ function matchesDispatchPayload(
     if (!isFilteredKeyboardEventHeadType(node.type)) {
         return true;
     }
-    const expected = normalizeKeyboardEventKeyName(node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME]);
-    if (!expected) {
-        return false;
-    }
-    return expected === normalizeKeyboardEventKeyName(eventPayload?.key);
+    return blueprintKeyboardBindingMatchesEvent(node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME], eventPayload);
 }
 
 /** All node type ids that may start an event graph chain (for validation / normalization). */
@@ -255,6 +475,7 @@ export const BLUEPRINT_NODE_TYPE_DATA_IS_BOOLEAN = "blueprint.data.isBoolean" as
 export const BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY = "blueprint.data.isArray" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT = "blueprint.data.isObject" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_IS_NULL = "blueprint.data.isNull" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_NOT_NULL = "blueprint.data.notNull" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE = "blueprint.data.isEmptyValue" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_PARSE_INT = "blueprint.data.parseInt" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_PARSE_FLOAT = "blueprint.data.parseFloat" as const;
@@ -393,6 +614,10 @@ export const BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE = "blueprint.game.save.write" a
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD = "blueprint.game.save.load" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS = "blueprint.game.save.listIds" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW = "blueprint.game.save.getPreview" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG = "blueprint.game.getNametag" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED = "blueprint.game.setSentenceSpeed" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM = "blueprint.frame.getParam" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_EMIT = "blueprint.frame.emit" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE = "blueprint.frameWidget.setTargetPage" as const;

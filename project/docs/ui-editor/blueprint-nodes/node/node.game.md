@@ -1,8 +1,8 @@
 # Game 节点
 
-Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时，以及访问当前 Studio 项目隔离的本地存档。除非额外声明，所有参数均为传入引脚值；标注（传出引脚）的参数为传出值。
+Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog 推进，以及访问当前 Studio 项目隔离的本地存档。除非额外声明，所有参数均为传入引脚值；标注（传出引脚）的参数为传出值。
 
-本页节点均通过 Blueprint Host API 执行。存档相关节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
+本页节点均通过 Blueprint Host API 执行。`Get Nametag` 是纯读取节点，可用于 Blueprint Value；其余 Game 执行节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
 
 ## Start Game
 
@@ -13,6 +13,50 @@ Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时，以及
 - `in` - 执行入口
 - `Story` - 节点参数，目标 Story id
 - `Scene` - 节点参数，目标 Scene id
+
+## Get Nametag
+
+`blueprint.game.getNametag` - Get Nametag
+
+读取当前 NarraLeaf Dialog 的说话人名字。它由 NarraLeaf React `useDialog()` hook 驱动：Dialog flush / 文本状态变化时，Studio 会把当前 `LiveGame.onCharacterPrompt` 捕获到的角色名同步到 Blueprint runtime，并对 Dialog surface 内带 Blueprint Value 或 `On Flush` 逻辑的元素派发 `blueprint.event.head.flush`；旁白、没有说话人、或说话人名为空字符串/空白时返回 `null`。
+
+- `nametag` - `string | null`（传出引脚），当前说话人名字；没有说话人时为 `null`
+
+该节点是 pure 节点，可放入 Blueprint Value 或普通事件图。默认 Dialog 模板会创建普通 `nl.text` Nametag，并在它自己的 widgetMain 蓝图中用 `Init` / `On Flush -> Get Nametag -> Not Null -> If` 自动更新文本与透明度；不再需要特殊私有 `Nametag` widget，也不再依赖 Blueprint Value。Dialog 控件不重新挂载时，游戏推进产生的 Dialog hook 变化仍会触发该 flush 路径。
+
+## Next
+
+`blueprint.game.next` - Next
+
+触发当前 NarraLeaf live game 的 virtual click 路径。Studio Host API 优先点击当前 NarraLeaf Dialog wrapper 暴露的虚拟点击目标，让 NarraLeaf 自己决定“正在打字时完成当前句子、句子已完成时进入下一步”等行为；没有 Dialog 目标时才退回到对 NarraLeaf player/main content 发起 DOM click。该节点不会直接发送 `state.player.skip(false)` 或强制跳过。默认 Dialog 模板把推进逻辑集中在 Dialog Content 蓝图中：Content 自己的 `Mouse Click`、绑定全屏透明 Dialog Interaction Layer、可见 Dialog Panel 与默认内容子控件的 `Element Click`、以及 Space `keyUp` 都连到同一个 `Next`。
+
+- `in` - 执行入口
+- `next` - 推进请求完成后的执行出口
+
+没有活动 game runtime 时执行失败。
+
+## Skip
+
+`blueprint.game.skip` - Skip
+
+调用 NarraLeaf React `LiveGame.skipDialog()` 跳过当前 dialog。该节点用于作者显式提供 Skip 操作；默认 Dialog 模板不自动绑定 Skip。
+
+- `in` - 执行入口
+- `next` - Skip 请求完成后的执行出口
+
+没有活动 game runtime 时执行失败。
+
+## Set Sentence Speed
+
+`blueprint.game.setSentenceSpeed` - Set Sentence Speed
+
+通过 NarraLeaf React Preference API 设置当前游戏的 sentence `cps`（characters per second）偏好，影响 Dialog Sentence 的文字显示速度。
+
+- `in` - 执行入口
+- `speed` - 正数 `float` 输入，写入 `cps` preference key
+- `next` - 偏好写入完成后的执行出口
+
+`speed` 必须是大于 0 的有限数字；没有活动 game runtime 时执行失败。
 
 ## Write Save
 

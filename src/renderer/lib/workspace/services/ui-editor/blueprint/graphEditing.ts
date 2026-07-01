@@ -10,6 +10,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
@@ -101,7 +102,11 @@ export function isBlueprintLiteralNodeType(type: string): boolean {
 }
 
 export function isBlueprintElementBindingNodeType(type: string): boolean {
-    return type === BLUEPRINT_NODE_TYPE_ELEMENT_REF || type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH;
+    return (
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_REF ||
+        type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH ||
+        type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK
+    );
 }
 
 export function isBlueprintElementBindingOutputPin(type: string, port: string): boolean {
@@ -275,7 +280,7 @@ export function createGraphNodeForPalette(type: string, id: string): BlueprintGr
             valueType: "string",
             defaultValue: resolveBlueprintVariableDefaultValue("string"),
         };
-    } else if (type === BLUEPRINT_NODE_TYPE_ELEMENT_REF || type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH) {
+    } else if (isBlueprintElementBindingNodeType(type)) {
         base.params = {};
     } else if (type === BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT) {
         base.params = {
