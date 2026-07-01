@@ -1,10 +1,9 @@
-import { MessageSquareText, UserRound } from "lucide-react";
-import { Nametag, Texts } from "narraleaf-react";
+import { MessageSquareText } from "lucide-react";
+import { Texts } from "narraleaf-react";
 import type { CSSProperties } from "react";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import type { UIWidgetModule, WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
-import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
 import { resolveTextVisualProps } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
@@ -22,7 +21,6 @@ import { defaultTextWidgetProps } from "./text/types";
 import { getTextProps } from "./text/helpers";
 
 const DIALOG_SENTENCE_TYPE = "nl.dialog.sentence";
-const DIALOG_NAMETAG_TYPE = "nl.dialog.nametag";
 type NlrHexColor = `#${string}`;
 
 function isLiveDialogRuntime(props: WidgetRendererProps): boolean {
@@ -35,7 +33,6 @@ function useDialogTextStyles({
 }: Pick<WidgetRendererProps, "element" | "useAppearanceInspectorPreview">): {
     outerStyle: CSSProperties;
     textStyle: CSSProperties;
-    nametagStyle: CSSProperties;
     textAppearanceProps: {
         defaultColor: NlrHexColor;
         fontSize: CSSProperties["fontSize"];
@@ -43,7 +40,6 @@ function useDialogTextStyles({
         fontWeightBold: CSSProperties["fontWeight"];
         fontFamily?: CSSProperties["fontFamily"];
     };
-    defaultColor: NlrHexColor;
 } {
     const flatProps = getTextProps(element);
     const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
@@ -58,7 +54,6 @@ function useDialogTextStyles({
     });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
     const effectTextStyle = composeTextEffectStyle(p.effects);
-    const color = colorValueToCss({ hex: p.color, alpha: 1 });
     const tx = Number.isFinite(p.transformOffsetX) ? p.transformOffsetX : 0;
     const ty = Number.isFinite(p.transformOffsetY) ? p.transformOffsetY : 0;
     const ts = Number.isFinite(p.transformScale) && p.transformScale > 0 ? p.transformScale : 1;
@@ -83,7 +78,6 @@ function useDialogTextStyles({
     const fontWeightBold: CSSProperties["fontWeight"] = p.fontWeight === "normal" ? "bold" : 700;
 
     return {
-        defaultColor,
         outerStyle: {
             width: "100%",
             height: "100%",
@@ -99,13 +93,6 @@ function useDialogTextStyles({
             ...(useEffectShell && effectTextStyle.mixBlendMode ? { mixBlendMode: effectTextStyle.mixBlendMode } : {}),
         },
         textStyle: baseTextStyle,
-        nametagStyle: {
-            ...baseTextStyle,
-            fontSize: p.fontSize,
-            fontWeight: p.fontWeight,
-            color,
-            ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
-        },
         textAppearanceProps: {
             defaultColor,
             fontSize: p.fontSize,
@@ -125,15 +112,6 @@ function LiveSentenceRenderer(props: WidgetRendererProps) {
     );
 }
 
-function LiveNametagRenderer(props: WidgetRendererProps) {
-    const { outerStyle, nametagStyle, defaultColor } = useDialogTextStyles(props);
-    return (
-        <div style={outerStyle}>
-            <Nametag color={defaultColor} style={nametagStyle} />
-        </div>
-    );
-}
-
 function DialogSentenceRenderer(props: WidgetRendererProps) {
     if (!isLiveDialogRuntime(props)) {
         return <TextRenderer {...props} />;
@@ -141,40 +119,32 @@ function DialogSentenceRenderer(props: WidgetRendererProps) {
     return <LiveSentenceRenderer {...props} />;
 }
 
-function DialogNametagRenderer(props: WidgetRendererProps) {
-    if (!isLiveDialogRuntime(props)) {
-        return <TextRenderer {...props} />;
-    }
-    return <LiveNametagRenderer {...props} />;
-}
-
-function createDialogTextDefault(type: typeof DIALOG_SENTENCE_TYPE | typeof DIALOG_NAMETAG_TYPE) {
-    const isSentence = type === DIALOG_SENTENCE_TYPE;
+function createDialogTextDefault() {
     return {
-        type,
-        name: isSentence ? "Sentence" : "Nametag",
+        type: DIALOG_SENTENCE_TYPE,
+        name: "Sentence",
         layout: {
             x: 0,
             y: 0,
-            width: isSentence ? 560 : 220,
-            height: isSentence ? 72 : 36,
+            width: 560,
+            height: 72,
             opacity: 1,
             visible: true,
         },
         props: {
             ...defaultTextWidgetProps,
-            text: isSentence ? "The current line will appear here." : "Speaker",
-            fontSize: isSentence ? 24 : 22,
-            color: isSentence ? "#f8fafc" : "#f8d37a",
-            fontWeight: isSentence ? "normal" : "600",
-            lineHeight: isSentence ? 1.45 : 1.2,
+            text: "The current line will appear here.",
+            fontSize: 24,
+            color: "#f8fafc",
+            fontWeight: "normal",
+            lineHeight: 1.45,
             appearance: createInitialTextAppearance({
                 ...defaultTextWidgetProps,
-                text: isSentence ? "The current line will appear here." : "Speaker",
-                fontSize: isSentence ? 24 : 22,
-                color: isSentence ? "#f8fafc" : "#f8d37a",
-                fontWeight: isSentence ? "normal" : "600",
-                lineHeight: isSentence ? 1.45 : 1.2,
+                text: "The current line will appear here.",
+                fontSize: 24,
+                color: "#f8fafc",
+                fontWeight: "normal",
+                lineHeight: 1.45,
             }),
         },
     } as const;
@@ -185,20 +155,8 @@ export const DialogSentenceWidgetModule: UIWidgetModule = {
     logicApi: getWidgetLogicApi(DIALOG_SENTENCE_TYPE),
     displayName: "Sentence",
     icon: MessageSquareText,
-    createDefaultElement: () => createDialogTextDefault(DIALOG_SENTENCE_TYPE),
+    createDefaultElement: createDialogTextDefault,
     render: DialogSentenceRenderer,
-    createInspector: createTextInspector,
-    createDockerBarItems: createTextDockerBarItems,
-    createMultiSelectDockerBarItems: createTextDockerBarItems,
-};
-
-export const DialogNametagWidgetModule: UIWidgetModule = {
-    type: DIALOG_NAMETAG_TYPE,
-    logicApi: getWidgetLogicApi(DIALOG_NAMETAG_TYPE),
-    displayName: "Nametag",
-    icon: UserRound,
-    createDefaultElement: () => createDialogTextDefault(DIALOG_NAMETAG_TYPE),
-    render: DialogNametagRenderer,
     createInspector: createTextInspector,
     createDockerBarItems: createTextDockerBarItems,
     createMultiSelectDockerBarItems: createTextDockerBarItems,

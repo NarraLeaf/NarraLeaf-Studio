@@ -80,4 +80,4 @@ JSON 节点用于创建、组合、转换和读取结构化 JSON 值，创建浮
 
 `blueprint.data.jsonClone` - 深拷贝 JSON 值
 
-输出输入值的 JSON-safe 深拷贝。`undefined` 会变成 `null`，不可序列化值会转换为安全值。
+输出输入值的 JSON-safe 深拷贝；不可序列化值会转换为 `null` 等安全值。

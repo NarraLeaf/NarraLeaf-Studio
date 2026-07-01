@@ -28,6 +28,7 @@ import { SurfaceList, type SurfaceListGlobalBlueprintCard } from "./panel/Surfac
 import { ComponentLibraryPanel } from "./panel/ComponentLibraryPanel";
 import { getComponentTabId } from "./editors/componentEditorAdapter";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
+import type { BlueprintEntryTabPayload } from "../blueprint-lite/blueprintEntryTabId";
 import { useBlueprintDocumentRevision } from "../blueprint-lite/hooks/useBlueprintDocumentRevision";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { BlueprintNodeCatalogService } from "@/lib/workspace/services/ui-editor/BlueprintNodeCatalogService";
@@ -42,10 +43,11 @@ import {
     CreateSurfaceDialogValue,
 } from "./panel/dialogs/CreateSurfaceDialogContent";
 import { DEFAULT_STAGE_SLOT_ID, GAME_UI_SLOT_OPTIONS, STAGE_SLOT_LABELS, SURFACE_KIND_OPTIONS } from "./panel/constants";
-import type { EditorLayout } from "../../registry/types";
+import type { EditorLayout, EditorTabDefinition } from "../../registry/types";
 import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
+const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
 const getSurfaceTabId = (surfaceId: string) => `${SURFACE_TAB_PREFIX}${surfaceId}`;
 const globalOwnerLabel = getOwnerLabel("globalMain");
 
@@ -54,6 +56,40 @@ function findEditorGroupIdByTabId(layout: EditorLayout, tabId: string): string |
         return layout.tabs.some(tab => tab.id === tabId) ? layout.id : null;
     }
     return findEditorGroupIdByTabId(layout.first, tabId) ?? findEditorGroupIdByTabId(layout.second, tabId);
+}
+
+function isSurfaceBoundBlueprintTab(tab: EditorTabDefinition, surfaceId: string): boolean {
+    if (!tab.id.startsWith(BLUEPRINT_ENTRY_TAB_PREFIX)) {
+        return false;
+    }
+    const payload = tab.payload as Partial<BlueprintEntryTabPayload> | undefined;
+    return payload?.surfaceId === surfaceId && (
+        payload.ownerKind === "surfaceMain" ||
+        payload.ownerKind === "widgetMain" ||
+        payload.ownerKind === "widgetValue"
+    );
+}
+
+function collectSurfaceOwnedEditorTabs(layout: EditorLayout, surfaceId: string): { groupId: string; tabIds: string[] }[] {
+    const surfaceTabId = getSurfaceTabId(surfaceId);
+    const result: { groupId: string; tabIds: string[] }[] = [];
+
+    const visit = (node: EditorLayout) => {
+        if ("tabs" in node) {
+            const tabIds = node.tabs
+                .filter(tab => tab.id === surfaceTabId || isSurfaceBoundBlueprintTab(tab, surfaceId))
+                .map(tab => tab.id);
+            if (tabIds.length > 0) {
+                result.push({ groupId: node.id, tabIds: [...new Set(tabIds)] });
+            }
+            return;
+        }
+        visit(node.first);
+        visit(node.second);
+    };
+
+    visit(layout);
+    return result;
 }
 
 function getSurfaceIdentityLabel(surface: UISurface): string {
@@ -77,7 +113,7 @@ function createSurfaceEditorTab(surface: UISurface) {
 
 export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const { context } = useWorkspace();
-    const { editorLayout, openEditorTab, closeEditorTab } = useRegistry();
+    const { editorLayout, openEditorTab, closeEditorTabs } = useRegistry();
     const [surfaces, setSurfaces] = useState<UISurface[]>([]);
     const [kind, setKind] = useState<UISurfaceKind>("appSurface");
     const { menuState, showMenu, hideMenu } = useContextMenu();
@@ -247,13 +283,16 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         if (!confirmed) {
             return;
         }
+        const tabsToClose = collectSurfaceOwnedEditorTabs(editorLayout, surface.id);
         documentService.deleteSurface(surface.id);
-        closeEditorTab(getSurfaceTabId(surface.id));
+        for (const { groupId, tabIds } of tabsToClose) {
+            closeEditorTabs(tabIds, groupId);
+        }
         const remaining = documentService.getDocument().surfaces.filter(next => next.kind === surface.kind);
         if (remaining.length > 0) {
             handleOpenSurface(remaining[0]);
         }
-    }, [documentService, uiService, handleOpenSurface, closeEditorTab]);
+    }, [documentService, uiService, editorLayout, handleOpenSurface, closeEditorTabs]);
 
     const handleRenameSurface = useCallback(async (surface: UISurface) => {
         if (!documentService || !inputDialog || !uiService) {
