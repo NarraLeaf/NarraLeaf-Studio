@@ -262,7 +262,7 @@ export function WorkspaceEditorQuickSwitch() {
     }
 
     return (
-        <div className="fixed inset-0 z-[45] flex items-start justify-center pt-[12vh] pointer-events-none">
+        <div className="nl-window-content-layer z-[45] flex items-start justify-center pt-[12vh] pointer-events-none">
             <div
                 className="w-[min(560px,calc(100vw-32px))] max-h-[min(480px,70vh)] overflow-hidden rounded-md border border-white/10 bg-[#171a21]/95 shadow-2xl backdrop-blur-sm pointer-events-auto"
                 role="listbox"

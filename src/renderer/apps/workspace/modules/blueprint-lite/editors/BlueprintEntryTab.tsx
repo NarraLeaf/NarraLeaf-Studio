@@ -447,6 +447,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const [uiDocumentRevision, setUiDocumentRevision] = useState(() => uidoc.getRevision());
     const [storyDocumentsById, setStoryDocumentsById] = useState<Record<string, StoryDocument>>({});
     const [storyLibraryRevision, setStoryLibraryRevision] = useState(0);
+    const [dynamicSelectOptionsRevision, setDynamicSelectOptionsRevision] = useState(0);
     const [memberPanelState, setMemberPanelState] = useState<BlueprintEditorMemberPanelState>(() =>
         normalizeBlueprintEditorMemberPanelState(
             panelStateService.getPanelState<Partial<BlueprintEditorMemberPanelState>>(
@@ -455,6 +456,10 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         ),
     );
     useEffect(() => uidoc.onDocumentChanged(() => setUiDocumentRevision(uidoc.getRevision())), [uidoc]);
+    useEffect(
+        () => nodeCatalog.onDynamicSelectOptionsChanged(() => setDynamicSelectOptionsRevision(value => value + 1)),
+        [nodeCatalog],
+    );
     useEffect(() => {
         let disposed = false;
         const refreshLibrary = () => {
@@ -1310,6 +1315,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             surfaces: surfaceOptions,
             stories: storyOptions,
             storyScenes: storySceneOptions,
+            ...nodeCatalog.getDynamicSelectOptions(),
         };
         if (
             (payload.ownerKind === "widgetMain" || payload.ownerKind === "componentWidgetMain") &&
@@ -1342,6 +1348,8 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         storyService,
         storyDocumentsById,
         storyLibraryRevision,
+        nodeCatalog,
+        dynamicSelectOptionsRevision,
     ]);
 
     const [memberPanelFocusContained, setMemberPanelFocusContained] = useState(false);

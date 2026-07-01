@@ -4,6 +4,8 @@ export enum AppHost {
     Public = "public",
     Windows = "windows",
     Fs = "fs",
+    Plugins = "plugins",
+    PluginApi = "plugin-api",
 }
 
 // PersistentState constants

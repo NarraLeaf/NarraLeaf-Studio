@@ -67,6 +67,7 @@ import type {
 import type {
     BlueprintNodeDef,
     BlueprintNodeEditorCatalogEntry,
+    BlueprintInspectorParamSelectOption,
     BlueprintPaletteContext,
 } from "../../ui-editor/blueprint-nodes/types";
 
@@ -221,6 +222,7 @@ interface IUIDocumentService extends IService {
     deleteSurface(surfaceId: string): void;
     renameSurface(surfaceId: string, name: string): void;
     updateSurface(surfaceId: string, updater: (surface: UISurface) => void): void;
+    duplicateSurface(surfaceId: string, name?: string): UISurface | null;
     getComponent(componentId: string): UIComponentDefinition | undefined;
     getComponentUsageCount(componentId: string): number;
     createEmptyComponent(name?: string): UIComponentDefinition;
@@ -523,8 +525,16 @@ interface IUIEditorFontFaceService extends IService {
 interface IBlueprintNodeCatalogService extends IService {
     /** Idempotent: loads core built-in node definitions into the shared registry. */
     ensureBuiltinsRegistered(): void;
-    register(def: BlueprintNodeDef): void;
-    registerMany(defs: BlueprintNodeDef[]): void;
+    register(def: BlueprintNodeDef, options?: { ownerPluginId?: string; replaceExisting?: boolean }): void;
+    registerMany(defs: BlueprintNodeDef[], options?: { ownerPluginId?: string; replaceExisting?: boolean }): void;
+    registerDynamicSelectOptionsSource(
+        sourceId: string,
+        provider: () => BlueprintInspectorParamSelectOption[],
+        options?: { ownerPluginId?: string; replaceExisting?: boolean },
+    ): () => void;
+    getDynamicSelectOptions(): Record<string, BlueprintInspectorParamSelectOption[]>;
+    notifyDynamicSelectOptionsChanged(): void;
+    onDynamicSelectOptionsChanged(handler: () => void): () => void;
     get(type: string): BlueprintNodeDef | undefined;
     getBlueprintNodeEditorCatalogEntry(type: string): BlueprintNodeEditorCatalogEntry | undefined;
     listPaletteEntries(ctx: BlueprintPaletteContext): BlueprintNodeEditorCatalogEntry[];

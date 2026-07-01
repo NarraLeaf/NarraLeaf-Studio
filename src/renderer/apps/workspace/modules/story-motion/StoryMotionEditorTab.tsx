@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { Activity, Pause, Play, Plus, RotateCw, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+import { Activity, Pause, Play, Plus, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import type {
     StoryAlignPositionValue,
     StoryAnimationAsset,
@@ -9,6 +9,7 @@ import type {
     StoryAnimationTimeline,
     StoryAnimationTrack,
     StoryAnimationTrackProperty,
+    StoryDocument,
 } from "@shared/types/story";
 import type { EditorTabComponentProps } from "@/lib/workspace/services/ui/types";
 import type { EditorTabDefinition } from "../../registry/types";
@@ -20,8 +21,6 @@ import type { StoryMotionEditorPayload } from "./storyMotionTypes";
 import {
     STORY_MOTION_FPS,
     STORY_MOTION_PROPERTIES,
-    STORY_MOTION_TEMPLATES,
-    createStoryMotionTemplateTimeline,
     deleteStoryMotionKeyframe,
     ensureStoryMotionTrack,
     formatStoryMotionTime,
@@ -32,6 +31,8 @@ import {
     updateStoryMotionKeyframe,
     upsertStoryMotionKeyframe,
 } from "./storyMotionTimeline";
+import { StoryMotionStagePreview } from "./StoryMotionStagePreview";
+import { resolveStoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
 
 const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded border border-white/10 bg-white/[0.04] px-2 text-xs text-slate-200 hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
 const ICON_BUTTON_CLASS = "inline-grid h-8 w-8 place-items-center rounded border border-white/10 bg-white/[0.04] text-slate-300 hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
@@ -58,6 +59,7 @@ export function StoryMotionEditorTab({ payload }: EditorTabComponentProps<StoryM
         [context, isInitialized],
     );
     const [asset, setAsset] = useState<StoryAnimationAsset | null>(null);
+    const [document, setDocument] = useState<StoryDocument | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [nameDraft, setNameDraft] = useState("");
     const [playheadMs, setPlayheadMs] = useState(0);
@@ -66,9 +68,7 @@ export function StoryMotionEditorTab({ payload }: EditorTabComponentProps<StoryM
     const [autoKey, setAutoKey] = useState(true);
     const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
     const [selectedAddProperty, setSelectedAddProperty] = useState<StoryAnimationTrackProperty>("position");
-    const [selectedTemplate, setSelectedTemplate] = useState<typeof STORY_MOTION_TEMPLATES[number]>("Fade in + slide");
     const [previewOverride, setPreviewOverride] = useState<Partial<ReturnType<typeof sampleStoryMotionPreview>> | null>(null);
-    const previewRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         if (!storyService || !payload?.animationId) {
@@ -100,6 +100,34 @@ export function StoryMotionEditorTab({ payload }: EditorTabComponentProps<StoryM
         setNameDraft(asset?.name ?? "");
     }, [asset?.name]);
 
+    useEffect(() => {
+        if (!storyService || !payload?.actionContext?.storyId) {
+            setDocument(null);
+            return;
+        }
+        let disposed = false;
+        void storyService.loadStory(payload.actionContext.storyId)
+            .then(next => {
+                if (!disposed) {
+                    setDocument(next);
+                }
+            })
+            .catch(() => {
+                if (!disposed) {
+                    setDocument(null);
+                }
+            });
+        const dispose = storyService.onDocumentChanged(event => {
+            if (event.storyId === payload.actionContext?.storyId) {
+                setDocument(event.document);
+            }
+        });
+        return () => {
+            disposed = true;
+            dispose();
+        };
+    }, [payload?.actionContext?.storyId, storyService]);
+
     const timeline = useMemo(() => getStoryMotionTimeline(asset), [asset]);
     const durationMs = getStoryMotionDurationMs(timeline);
     const pxPerMs = 0.18 * zoom;
@@ -110,6 +138,13 @@ export function StoryMotionEditorTab({ payload }: EditorTabComponentProps<StoryM
     const visiblePreview = previewOverride
         ? { ...preview, ...previewOverride, position: previewOverride.position ?? preview.position }
         : preview;
+    const previewTarget = useMemo(() => resolveStoryMotionPreviewTarget({
+        document,
+        sceneId: payload?.actionContext?.sceneId,
+        blockId: payload?.actionContext?.blockId,
+        fallbackKind: asset?.targetKind ?? "image",
+        fallbackLabel: asset?.name ?? "Displayable",
+    }), [asset?.name, asset?.targetKind, document, payload?.actionContext?.blockId, payload?.actionContext?.sceneId]);
 
     useEffect(() => {
         if (!playing) {
@@ -252,16 +287,6 @@ export function StoryMotionEditorTab({ payload }: EditorTabComponentProps<StoryM
         window.addEventListener("pointerup", onUp);
     }, [autoKey, playheadMs, updateTimeline, visiblePreview]);
 
-    const targetStyle = useMemo<CSSProperties>(() => ({
-        left: `calc(${visiblePreview.position.xalign * 100}% + ${visiblePreview.position.xoffset}px)`,
-        top: `calc(${visiblePreview.position.yalign * 100}% + ${visiblePreview.position.yoffset}px)`,
-        opacity: visiblePreview.opacity,
-        transform: `translate(-50%, -50%) rotate(${visiblePreview.rotation}deg) scale(${visiblePreview.zoom * visiblePreview.scaleX}, ${visiblePreview.zoom * visiblePreview.scaleY})`,
-        filter: visiblePreview.filter,
-        clipPath: visiblePreview.clipPath,
-        mixBlendMode: visiblePreview.mixBlendMode as CSSProperties["mixBlendMode"],
-    }), [visiblePreview]);
-
     if (!asset) {
         return (
             <div className="flex h-full items-center justify-center bg-[#101114] text-sm text-slate-400">
@@ -285,24 +310,9 @@ export function StoryMotionEditorTab({ payload }: EditorTabComponentProps<StoryM
                         }
                     }}
                 />
-                <select
-                    className={INPUT_CLASS}
-                    value={asset.targetKind}
-                    onChange={event => updateAsset(current => ({ ...current, targetKind: event.target.value as StoryAnimationAsset["targetKind"] }))}
-                >
-                    <option value="image">Image</option>
-                    <option value="text">Text</option>
-                    <option value="layer">Layer</option>
-                    <option value="character">Character</option>
-                </select>
-                <select className={`${INPUT_CLASS} w-36`} value={selectedTemplate} onChange={event => setSelectedTemplate(event.target.value as typeof STORY_MOTION_TEMPLATES[number])}>
-                    {STORY_MOTION_TEMPLATES.map(template => (
-                        <option key={template} value={template}>{template}</option>
-                    ))}
-                </select>
-                <button className={TOOL_BUTTON_CLASS} type="button" onClick={() => updateTimeline(() => createStoryMotionTemplateTimeline(selectedTemplate))}>
-                    Template
-                </button>
+                <div className="h-8 rounded border border-white/10 bg-white/[0.04] px-2 py-1.5 text-xs text-slate-400">
+                    Preview: {formatTargetKind(asset.targetKind)}
+                </div>
                 <NumberInput
                     className="w-24"
                     value={durationMs}
@@ -340,40 +350,30 @@ export function StoryMotionEditorTab({ payload }: EditorTabComponentProps<StoryM
 
             <div className={selected ? "grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_260px]" : "grid min-h-0 flex-1 grid-cols-1"}>
                 <div className="flex min-h-0 flex-col">
-                    <div className="relative min-h-0 flex-1 overflow-hidden bg-[#15171b]" ref={previewRef}>
-                        <div className="absolute inset-6 rounded border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px)] bg-[length:32px_32px]" />
-                        <div
-                            className="absolute grid h-40 w-28 cursor-move place-items-center rounded border border-primary/40 bg-primary/15 text-xs font-medium text-primary shadow-[0_12px_40px_rgba(0,0,0,.28)]"
-                            style={targetStyle}
-                            onPointerDown={event => startPreviewDrag(event, "position")}
-                        >
-                            {asset.targetKind}
-                            <div
-                                className="absolute -right-2 -bottom-2 h-4 w-4 cursor-nwse-resize rounded border border-white/70 bg-primary"
-                                onPointerDown={event => startPreviewDrag(event, "zoom")}
-                                title="Drag to scale"
-                            />
-                            <div
-                                className="absolute -top-7 left-1/2 grid h-5 w-5 -translate-x-1/2 cursor-ew-resize place-items-center rounded-full border border-white/50 bg-[#1b1d22] text-slate-200"
-                                onPointerDown={event => startPreviewDrag(event, "rotation")}
-                                title="Drag to rotate"
-                            >
-                                <RotateCw className="h-3 w-3" />
-                            </div>
-                        </div>
-                    </div>
+                    <StoryMotionStagePreview
+                        preview={visiblePreview}
+                        target={previewTarget}
+                        onPointerDrag={startPreviewDrag}
+                    />
 
                     <div className="h-64 shrink-0 border-t border-white/10 bg-[#0f1013]">
                         <div className="flex h-9 items-center gap-2 border-b border-white/10 px-3">
-                            <div className="w-[168px] text-xs font-medium text-slate-300">Target layer</div>
+                            <div className="w-[168px] text-xs font-medium text-slate-300">Animated properties</div>
                             <select
                                 className={`${INPUT_CLASS} w-40`}
                                 value={selectedAddProperty}
                                 onChange={event => setSelectedAddProperty(event.target.value as StoryAnimationTrackProperty)}
                             >
-                                {STORY_MOTION_PROPERTIES.filter(item => !tracks.some(track => track.property === item.property)).map(item => (
-                                    <option key={item.property} value={item.property}>{item.label}</option>
-                                ))}
+                                {(["Transform", "Appearance", "Effects"] as const).map(group => {
+                                    const options = STORY_MOTION_PROPERTIES.filter(item => item.group === group && !tracks.some(track => track.property === item.property));
+                                    return options.length > 0 ? (
+                                        <optgroup key={group} label={group}>
+                                            {options.map(item => (
+                                                <option key={item.property} value={item.property}>{item.label}</option>
+                                            ))}
+                                        </optgroup>
+                                    ) : null;
+                                })}
                             </select>
                             <button className={TOOL_BUTTON_CLASS} type="button" onClick={() => updateTimeline(current => ensureStoryMotionTrack(current, selectedAddProperty))}>
                                 <Plus className="h-3.5 w-3.5" />
@@ -382,10 +382,11 @@ export function StoryMotionEditorTab({ payload }: EditorTabComponentProps<StoryM
                         </div>
                         <div className="grid h-[calc(100%-36px)] grid-cols-[180px_minmax(0,1fr)] overflow-hidden">
                             <div className="border-r border-white/10">
-                                <div className="flex h-8 items-center border-b border-white/10 px-3 text-xs font-medium text-slate-300">Layer 1</div>
+                                <div className="flex h-8 items-center border-b border-white/10 px-3 text-xs font-medium text-slate-300">Property</div>
                                 {tracks.map(track => (
-                                    <div key={track.id} className="flex h-[34px] items-center border-b border-white/[0.06] px-5 text-xs text-slate-400">
-                                        {getStoryMotionPropertyMeta(track.property).label}
+                                    <div key={track.id} className="flex h-[34px] items-center justify-between gap-2 border-b border-white/[0.06] px-3 text-xs text-slate-400">
+                                        <span className="truncate">{getStoryMotionPropertyMeta(track.property).label}</span>
+                                        <span className="shrink-0 text-[10px] uppercase text-slate-600">{getStoryMotionPropertyMeta(track.property).group}</span>
                                     </div>
                                 ))}
                             </div>
@@ -589,4 +590,8 @@ function buildTicks(durationMs: number, zoom: number, fps: number): { timeMs: nu
         }
     }
     return ticks;
+}
+
+function formatTargetKind(kind: StoryAnimationAsset["targetKind"]): string {
+    return kind[0].toUpperCase() + kind.slice(1);
 }

@@ -269,6 +269,71 @@ describe("SurfaceElementTree", () => {
         expect(markup).not.toContain('data-ui-element-id="label-b"');
     });
 
+    it("renders no nested Page placeholder when a frame target is cleared", () => {
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "page-a",
+                    name: "Page A",
+                    host: "app",
+                    kind: "appSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root-a",
+                },
+            ],
+            elements: {
+                "root-a": {
+                    id: "root-a",
+                    type: "test.root",
+                    parentId: null,
+                    childrenIds: ["frame-a"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                "frame-a": {
+                    id: "frame-a",
+                    type: UI_FRAME_ELEMENT_TYPE,
+                    parentId: "root-a",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 200, height: 100 },
+                    props: { targetSurfaceId: null, params: {}, navigationMode: "static" },
+                },
+            },
+        };
+        const rendererRegistry = new ElementRendererRegistry([
+            { type: "test.root", render: props => <>{props.children}</> },
+            {
+                type: UI_FRAME_ELEMENT_TYPE,
+                render: props => (
+                    <>
+                        {props.renderSurface?.({
+                            targetSurfaceId: null,
+                            frameElement: props.element,
+                            params: {},
+                        })}
+                    </>
+                ),
+            },
+        ]);
+
+        const markup = renderToStaticMarkup(
+            <>
+                {SurfaceElementTree({
+                    document,
+                    surface: document.surfaces[0]!,
+                    rootElement: document.elements["root-a"]!,
+                    rendererRegistry,
+                    hostAdapter: { host: "app" },
+                })}
+            </>,
+        );
+
+        expect(markup).not.toContain("Select a Page");
+        expect(markup).not.toContain("Missing Page");
+    });
+
     it("renders a placeholder instead of recursing when nested Page targets would loop", () => {
         const document: UIDocument = {
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,

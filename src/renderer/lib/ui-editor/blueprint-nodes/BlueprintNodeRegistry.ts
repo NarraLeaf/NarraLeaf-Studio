@@ -233,8 +233,8 @@ export function isBlueprintNodeAllowedInGraphContext(
 class BlueprintNodeDefinitionsRegistry {
     private readonly byType = new Map<string, BlueprintNodeDef>();
 
-    public register(def: BlueprintNodeDef): void {
-        if (this.byType.has(def.type)) {
+    public register(def: BlueprintNodeDef, options?: { replaceExisting?: boolean }): void {
+        if (this.byType.has(def.type) && !options?.replaceExisting) {
             throw new Error(`[BlueprintNodeRegistry] Duplicate node type: ${def.type}`);
         }
         this.validatePorts(def);
@@ -245,12 +245,12 @@ class BlueprintNodeDefinitionsRegistry {
             type: def.type,
             displayName: def.displayName,
             execute: def.execute,
-        });
+        }, { quietOverwrite: true });
     }
 
-    public registerMany(defs: BlueprintNodeDef[]): void {
+    public registerMany(defs: BlueprintNodeDef[], options?: { replaceExisting?: boolean }): void {
         for (const d of defs) {
-            this.register(d);
+            this.register(d, options);
         }
     }
 

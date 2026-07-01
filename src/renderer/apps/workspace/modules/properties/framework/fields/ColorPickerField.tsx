@@ -22,6 +22,7 @@ import {
     colorValueToCss,
     hexToRgb,
     normalizeHex,
+    normalizeHexInputDraft,
     rgbToHex,
 } from "../utils/colorUtils";
 
@@ -246,6 +247,8 @@ export function ColorPickerTrigger({
     const isDraggingMapRef = useRef(false);
     const [layoutTick, setLayoutTick] = useState(0);
     const [colorState, setColorState] = useState(() => deriveColorState(value));
+    const [hexDraft, setHexDraft] = useState(() => colorState.hex);
+    const [isEditingHex, setIsEditingHex] = useState(false);
     const colorStateRef = useRef(colorState);
     const pendingPushHexRef = useRef<string | null>(null);
     const lastMapPushAtRef = useRef(0);
@@ -314,6 +317,19 @@ export function ColorPickerTrigger({
     useEffect(() => {
         colorStateRef.current = colorState;
     }, [colorState]);
+
+    useEffect(() => {
+        if (activeMode !== "hex") {
+            if (isEditingHex) {
+                setIsEditingHex(false);
+            }
+            setHexDraft(colorState.hex);
+            return;
+        }
+        if (!isEditingHex) {
+            setHexDraft(colorState.hex);
+        }
+    }, [activeMode, colorState.hex, isEditingHex]);
 
     useEffect(() => {
         isDraggingMapRef.current = isDragging;
@@ -621,7 +637,9 @@ export function ColorPickerTrigger({
 
     const handleHexChange = useCallback(
         (next: string) => {
-            const normalized = normalizeHex(next);
+            const draft = normalizeHexInputDraft(next);
+            setHexDraft(draft);
+            const normalized = normalizeHex(draft);
             if (!normalized) return;
             const { r, g, b } = hexToRgb(normalized);
             const { h, s, l } = rgbToHsl(r, g, b);
@@ -633,6 +651,12 @@ export function ColorPickerTrigger({
         },
         [applyColorState]
     );
+
+    const handleHexBlur = useCallback(() => {
+        setIsEditingHex(false);
+        const normalized = normalizeHex(hexDraft);
+        setHexDraft(normalized ?? colorStateRef.current.hex);
+    }, [hexDraft]);
 
     const handleRgbChange = useCallback(
         (channel: "r" | "g" | "b", raw: string) => {
@@ -687,8 +711,10 @@ export function ColorPickerTrigger({
         if (activeMode === "hex") {
             return (
                 <EnhancedInput
-                    value={colorState.hex}
+                    value={hexDraft}
                     onChange={handleHexChange}
+                    onFocus={() => setIsEditingHex(true)}
+                    onBlur={handleHexBlur}
                     inputMode="text"
                     className="mt-3"
                 />

@@ -49,6 +49,7 @@ describe("StorageManager filesystem policy", () => {
 
         const manager = new StorageManager({
             getUserDataDir: () => path.join(tempDir, "user-data"),
+            getBuiltInPluginsDir: () => path.join(tempDir, "app", "dist", "builtin-plugins"),
             logger: {
                 error: vi.fn(),
                 warn: vi.fn(),
@@ -64,6 +65,26 @@ describe("StorageManager filesystem policy", () => {
             window,
             path.join(linkedProject, "editor", "story", "stories", "story-1", "storydoc.json"),
             "write",
+        )).resolves.toBe(true);
+    });
+
+    it("protects installed and built-in plugin directories", async () => {
+        const userData = path.join(tempDir, "user-data");
+        const builtInPlugins = path.join(tempDir, "app", "dist", "builtin-plugins");
+        const manager = new StorageManager({
+            getUserDataDir: () => userData,
+            getBuiltInPluginsDir: () => builtInPlugins,
+            logger: {
+                error: vi.fn(),
+                warn: vi.fn(),
+            },
+        } as any);
+
+        await expect(manager.isPathProtected(
+            path.join(userData, "plugins", "narraleaf.gallery", "main.js"),
+        )).resolves.toBe(true);
+        await expect(manager.isPathProtected(
+            path.join(builtInPlugins, "gallery", "main.js"),
         )).resolves.toBe(true);
     });
 });
