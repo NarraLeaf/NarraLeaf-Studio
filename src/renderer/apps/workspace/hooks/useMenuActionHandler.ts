@@ -1,11 +1,14 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import { isMacPlatform } from "@/lib/app/platform";
 import { useWorkspace } from "../context";
-import { welcomeModule } from "../modules/welcome";
-import { Workspace } from "@/lib/workspace/workspace";
+import { useRegistry } from "../registry";
+import { getActionGroupItems, findActionMenuItemById, isActionVisible } from "../components/ui/actionMenuModel";
+import type { ActionDefinition, ActionGroup } from "../registry/types";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services } from "@/lib/workspace/services/services";
+import type { FocusContext } from "@/lib/workspace/services/ui";
+import { WorkspaceMenuAction } from "@shared/types/ipcEvents";
 
 /**
  * Listens for macOS native menu actions and dispatches
@@ -13,79 +16,71 @@ import { Services } from "@/lib/workspace/services/services";
  * Only registers on macOS.
  */
 export function useMenuActionHandler(): void {
-    const { workspace } = useWorkspace();
+    const { workspace, context } = useWorkspace();
+    const { actions, actionGroups } = useRegistry();
+    const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
+
+    useEffect(() => {
+        if (!context) return;
+
+        const uiService = context.services.get<UIService>(Services.UI);
+        setFocusContext(uiService.focus.getFocus());
+
+        return uiService.focus.onFocusChange((newContext) => {
+            setFocusContext(newContext);
+        });
+    }, [context]);
+
+    const dispatchMenuAction = useCallback(
+        (actionId: WorkspaceMenuAction) => {
+            const action = findRegisteredAction(actionId, actions, actionGroups, focusContext);
+            if (!action) {
+                console.warn(`[MenuAction] Unregistered menu action: ${actionId}`);
+                return;
+            }
+            if (action.disabled) {
+                return;
+            }
+            if (!workspace) {
+                console.warn("[MenuAction] Unhandled menu action: workspace is not initialized");
+                return;
+            }
+
+            action.onClick(workspace);
+        },
+        [actionGroups, actions, focusContext, workspace],
+    );
 
     useEffect(() => {
         if (!isMacPlatform()) return;
 
-        const token = getInterface().workspace.onMenuAction((action: string) => {
-            void handleMenuAction(action, workspace);
+        const token = getInterface().workspace.onMenuAction((action) => {
+            dispatchMenuAction(action);
         });
 
         return () => {
             token.cancel();
         };
-    }, [workspace]);
+    }, [dispatchMenuAction]);
 }
 
-async function handleMenuAction(action: string, workspace: Workspace | null): Promise<void> {
-    switch (action) {
-        case "new-workspace": {
-            const result = await getInterface().app.launchProjectWizard({});
-            if (result.success && result.data?.created) {
-                await getInterface().workspace.launch(
-                    { projectPath: result.data.projectPath },
-                    true
-                );
-            }
-            break;
-        }
-        case "open-workspace": {
-            const result = await getInterface().selectFolder();
-            if (!result.success || !result.data?.path) return;
-            await getInterface().workspace.launch(
-                { projectPath: result.data.path },
-                true
-            );
-            break;
-        }
-        case "preferences": {
-            await getInterface().app.launchSettings({});
-            break;
-        }
-        case "export-project": {
-            if (!workspace) break;
-            const uiService = workspace.getContext().services.get<UIService>(Services.UI);
-            uiService.showNotification("Choose a folder for the exported project package.", "info");
-            const projectPath = workspace.getContext().project.getConfig().projectPath;
-            const result = await getInterface().workspace.exportProjectPackage(projectPath);
-            if (!result.success) {
-                uiService.showNotification(result.error || "Failed to export project.", "error");
-                return;
-            }
-            if (result.data.canceled) return;
-            const fileCount = result.data.fileCount ?? 0;
-            uiService.showNotification(`Exported project package with ${fileCount} files.`, "success");
-            break;
-        }
-        case "close-workspace": {
-            await getInterface().workspace.close();
-            break;
-        }
-        case "open-welcome": {
-            if (!workspace) break;
-            const uiService = workspace.getContext().services.get<UIService>(Services.UI);
-            uiService.editor.open({
-                id: welcomeModule.metadata.id,
-                title: welcomeModule.metadata.title,
-                icon: welcomeModule.metadata.icon,
-                component: welcomeModule.component as any,
-                closable: welcomeModule.metadata.closable,
-                modified: welcomeModule.metadata.modified,
-            });
-            break;
-        }
-        default:
-            break;
+function findRegisteredAction(
+    actionId: WorkspaceMenuAction,
+    actions: ActionDefinition[],
+    actionGroups: ActionGroup[],
+    focusContext: FocusContext | null,
+): ActionDefinition | null {
+    const standalone = actions.find((action) => action.id === actionId && isActionVisible(action, focusContext));
+    if (standalone) {
+        return standalone;
     }
+
+    for (const group of actionGroups) {
+        const action = findActionMenuItemById(getActionGroupItems(group), actionId, focusContext);
+        if (action) {
+            return action;
+        }
+    }
+
+    return null;
 }

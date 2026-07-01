@@ -1,7 +1,7 @@
 import { Menu, MenuItemConstructorOptions, BrowserWindow, shell } from "electron";
 import { BaseApp } from "../baseApp";
-import { IPCEventType } from "@shared/types/ipcEvents";
-import { Namespace } from "@shared/types/ipc";
+import { IPCEventType, WorkspaceMenuAction } from "@shared/types/ipcEvents";
+import { WindowAppType } from "@shared/types/window";
 
 export class MenuManager {
     private static readonly DocumentationUrl = "https://www.narraleaf.com/docs/studio";
@@ -32,18 +32,41 @@ export class MenuManager {
         Menu.setApplicationMenu(menu);
     }
 
-    private sendActionToFocusedWindow(action: string): void {
+    private getFocusedAppWindow() {
         const focusedWindow = BrowserWindow.getFocusedWindow();
-        if (!focusedWindow || focusedWindow.isDestroyed()) return;
+        if (!focusedWindow || focusedWindow.isDestroyed()) return null;
 
-        // Find the corresponding AppWindow and use its IPC proxy
-        const windows = this.app.windowManager.getWindows();
-        for (const win of windows) {
-            if (win.getBrowserWindow() === focusedWindow) {
-                win.sendIpcEvent(IPCEventType.menuAction, { action });
-                break;
-            }
+        return this.app.windowManager
+            .getWindows()
+            .find((win) => !win.isClosed() && win.getBrowserWindow() === focusedWindow);
+    }
+
+    private sendActionToFocusedWindow(action: WorkspaceMenuAction): void {
+        const appWindow = this.getFocusedAppWindow();
+        if (appWindow?.getWindowType() === WindowAppType.Workspace) {
+            appWindow.sendIpcEvent(IPCEventType.menuAction, { action });
         }
+    }
+
+    private openPreferencesForFocusedWindow(): void {
+        const appWindow = this.getFocusedAppWindow();
+        if (!appWindow) {
+            return;
+        }
+
+        void appWindow.getApp().launchSettings(appWindow, {}, {
+            parent: appWindow.win,
+            minWidth: 800,
+            minHeight: 500,
+            width: 1200,
+            height: 800,
+            center: true,
+            x: undefined,
+            y: undefined,
+            backgroundColor: "#0f1115",
+        }).catch((error) => {
+            this.app.logger.error("Failed to open preferences:", error);
+        });
     }
 
     private buildMenuTemplate(): MenuItemConstructorOptions[] {
@@ -62,7 +85,7 @@ export class MenuManager {
                         label: "Preferences\u2026",
                         accelerator: "Cmd+,",
                         click: () => {
-                            this.sendActionToFocusedWindow("preferences");
+                            this.openPreferencesForFocusedWindow();
                         },
                     },
                     { type: "separator" },
@@ -82,14 +105,14 @@ export class MenuManager {
                         label: "New Workspace",
                         accelerator: "Cmd+N",
                         click: () => {
-                            this.sendActionToFocusedWindow("new-workspace");
+                            this.sendActionToFocusedWindow(WorkspaceMenuAction.NewWorkspace);
                         },
                     },
                     {
                         label: "Open Workspace",
                         accelerator: "Cmd+O",
                         click: () => {
-                            this.sendActionToFocusedWindow("open-workspace");
+                            this.sendActionToFocusedWindow(WorkspaceMenuAction.OpenWorkspace);
                         },
                     },
                     { type: "separator" },
@@ -97,15 +120,15 @@ export class MenuManager {
                         label: "Export Project",
                         accelerator: "Cmd+Shift+E",
                         click: () => {
-                            this.sendActionToFocusedWindow("export-project");
+                            this.sendActionToFocusedWindow(WorkspaceMenuAction.ExportProject);
                         },
                     },
                     { type: "separator" },
                     {
                         label: "Close Workspace",
-                        accelerator: "Cmd+W",
+                        accelerator: "Cmd+Shift+W",
                         click: () => {
-                            this.sendActionToFocusedWindow("close-workspace");
+                            this.sendActionToFocusedWindow(WorkspaceMenuAction.CloseWorkspace);
                         },
                     },
                 ],
@@ -142,7 +165,7 @@ export class MenuManager {
                     {
                         label: "Open Welcome",
                         click: () => {
-                            this.sendActionToFocusedWindow("open-welcome");
+                            this.sendActionToFocusedWindow(WorkspaceMenuAction.OpenWelcome);
                         },
                     },
                     { type: "separator" },
