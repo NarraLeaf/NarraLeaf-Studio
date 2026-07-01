@@ -1,5 +1,7 @@
 import { Menu, MenuItemConstructorOptions, BrowserWindow, shell } from "electron";
 import { BaseApp } from "../baseApp";
+import { IPCEventType } from "@shared/types/ipcEvents";
+import { Namespace } from "@shared/types/ipc";
 
 export class MenuManager {
     private static readonly DocumentationUrl = "https://www.narraleaf.com/docs/studio";
@@ -33,7 +35,15 @@ export class MenuManager {
     private sendActionToFocusedWindow(action: string): void {
         const focusedWindow = BrowserWindow.getFocusedWindow();
         if (!focusedWindow || focusedWindow.isDestroyed()) return;
-        focusedWindow.webContents.send("narraleaf-studio:app.menu.action", { action });
+
+        // Find the corresponding AppWindow and use its IPC proxy
+        const windows = this.app.windowManager.getWindows();
+        for (const win of windows) {
+            if (win.getBrowserWindow() === focusedWindow) {
+                win.sendIpcEvent(IPCEventType.menuAction, { action });
+                break;
+            }
+        }
     }
 
     private buildMenuTemplate(): MenuItemConstructorOptions[] {
