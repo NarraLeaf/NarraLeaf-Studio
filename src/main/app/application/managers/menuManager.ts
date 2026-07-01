@@ -2,6 +2,7 @@ import { Menu, MenuItemConstructorOptions, BrowserWindow, shell } from "electron
 import { BaseApp } from "../baseApp";
 import { IPCEventType, WorkspaceMenuAction } from "@shared/types/ipcEvents";
 import { WindowAppType } from "@shared/types/window";
+import { APP_DISPLAY_NAME } from "@shared/constants/app";
 
 export class MenuManager {
     private static readonly DocumentationUrl = "https://www.narraleaf.com/docs/studio";
@@ -76,8 +77,7 @@ export class MenuManager {
 
         return [
             {
-                role: "appMenu",
-                label: "NarraLeaf Studio",
+                label: APP_DISPLAY_NAME,
                 submenu: [
                     { role: "about" },
                     { type: "separator" },

@@ -16,10 +16,57 @@ import type {
     PluginPermissionRequest,
 } from "./pluginPermissions";
 import type {
+    PluginApproveResult,
+    PluginInstallResult,
+    PluginListItem,
+    WorkspacePluginDescriptor,
+} from "./plugins";
+import type {
     PrivilegedActor,
     PrivilegedBashExecuteResult,
 } from "./privileged";
 import { AppEventToken } from "./app";
+
+export interface RendererPrivilegedInterface {
+    fs: {
+        stat(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;
+        list(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat[]>>>;
+        details(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileDetails>>>;
+        requestRead(actor: PrivilegedActor, path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestReadRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestWrite(actor: PrivilegedActor, path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
+        requestWriteRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
+        ensureRegularFile(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
+        writeFileNoFollow(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
+        recoverCorruptedJsonFile(actor: PrivilegedActor, path: string, replacement: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
+        createDir(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
+        deleteFile(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
+        deleteDir(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
+        rename(actor: PrivilegedActor, oldPath: string, newName: string, isDir: boolean): Promise<RequestStatus<FsRequestResult<void>>>;
+        copyFile(actor: PrivilegedActor, src: string, dest: string): Promise<RequestStatus<FsRequestResult<void>>>;
+        copyDir(actor: PrivilegedActor, src: string, dest: string): Promise<RequestStatus<FsRequestResult<void>>>;
+        moveFile(actor: PrivilegedActor, src: string, dest: string): Promise<RequestStatus<FsRequestResult<void>>>;
+        moveDir(actor: PrivilegedActor, src: string, dest: string): Promise<RequestStatus<FsRequestResult<void>>>;
+        isFileExists(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
+        isDirExists(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
+        isFile(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
+        isDir(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
+        hash(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
+    };
+    permissions: {
+        request(actor: PrivilegedActor, request: PluginPermissionRequest): Promise<RequestStatus<PluginPermissionPromptResult>>;
+        revokePlugin(actor: PrivilegedActor, pluginId: string): Promise<RequestStatus<void>>;
+    };
+    bash: {
+        execute(actor: PrivilegedActor, command: string, cwd?: string): Promise<RequestStatus<PrivilegedBashExecuteResult>>;
+    };
+}
+
+export interface RendererPrivilegedBootstrapInterface extends RendererPrivilegedInterface {
+    acquire(): RendererPrivilegedInterface;
+    harden(): void;
+    isHardened(): boolean;
+}
 
 export interface RendererPreloadedInterface {
     // Basic Information
@@ -159,40 +206,18 @@ export interface RendererPreloadedInterface {
         ): Promise<RequestStatus<PluginPermissionGrantResult>>;
     };
 
-    privileged: {
-        fs: {
-            stat(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;
-            list(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat[]>>>;
-            details(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileDetails>>>;
-            requestRead(actor: PrivilegedActor, path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
-            requestReadRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
-            requestWrite(actor: PrivilegedActor, path: string, encoding: BufferEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
-            requestWriteRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
-            ensureRegularFile(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
-            writeFileNoFollow(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
-            recoverCorruptedJsonFile(actor: PrivilegedActor, path: string, replacement: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
-            createDir(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
-            deleteFile(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
-            deleteDir(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
-            rename(actor: PrivilegedActor, oldPath: string, newName: string, isDir: boolean): Promise<RequestStatus<FsRequestResult<void>>>;
-            copyFile(actor: PrivilegedActor, src: string, dest: string): Promise<RequestStatus<FsRequestResult<void>>>;
-            copyDir(actor: PrivilegedActor, src: string, dest: string): Promise<RequestStatus<FsRequestResult<void>>>;
-            moveFile(actor: PrivilegedActor, src: string, dest: string): Promise<RequestStatus<FsRequestResult<void>>>;
-            moveDir(actor: PrivilegedActor, src: string, dest: string): Promise<RequestStatus<FsRequestResult<void>>>;
-            isFileExists(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
-            isDirExists(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
-            isFile(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
-            isDir(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<boolean>>>;
-            hash(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
-        };
-        permissions: {
-            request(actor: PrivilegedActor, request: PluginPermissionRequest): Promise<RequestStatus<PluginPermissionPromptResult>>;
-            revokePlugin(actor: PrivilegedActor, pluginId: string): Promise<RequestStatus<void>>;
-        };
-        bash: {
-            execute(actor: PrivilegedActor, command: string, cwd?: string): Promise<RequestStatus<PrivilegedBashExecuteResult>>;
-        };
+    plugins: {
+        list(): Promise<RequestStatus<{ plugins: PluginListItem[] }>>;
+        installLocal(): Promise<RequestStatus<PluginInstallResult>>;
+        setEnabled(pluginId: string, enabled: boolean): Promise<RequestStatus<PluginListItem>>;
+        approve(pluginId: string): Promise<RequestStatus<PluginApproveResult>>;
+        uninstall(pluginId: string): Promise<RequestStatus<void>>;
+        revoke(pluginId: string): Promise<RequestStatus<PluginListItem>>;
+        getWorkspacePlugins(): Promise<RequestStatus<{ plugins: WorkspacePluginDescriptor[] }>>;
+        reportLoadError(pluginId: string, error: string | null): Promise<RequestStatus<PluginListItem>>;
     };
+
+    privileged: RendererPrivilegedBootstrapInterface;
 }
 
 declare global {

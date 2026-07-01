@@ -1,3 +1,4 @@
+import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
 
 export type FacadeToken = object;
@@ -14,12 +15,13 @@ function createToken(actor: PrivilegedActor): object {
 
 export const defaultFacadeToken: FacadeToken = createToken({ kind: "facade", id: "default" });
 
-export function createPluginFacadeToken(pluginId: string): PluginFacadeToken {
-    const normalized = pluginId.trim();
+export function createPluginFacadeToken(plugin: PluginIdentity | string): PluginFacadeToken {
+    const normalized = (typeof plugin === "string" ? plugin : plugin.id).trim();
     if (!normalized) {
         throw new Error("Plugin id is required");
     }
-    return createToken({ kind: "plugin", pluginId: normalized });
+    const version = typeof plugin === "string" ? undefined : plugin.version?.trim();
+    return createToken({ kind: "plugin", pluginId: normalized, ...(version ? { version } : {}) });
 }
 
 export function resolvePrivilegedActor(token: PrivilegedFacadeToken): PrivilegedActor {

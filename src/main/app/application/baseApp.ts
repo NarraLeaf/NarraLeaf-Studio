@@ -20,7 +20,9 @@ import { StorageManager } from "./managers/storageManager";
 import { WindowManager } from "./managers/windowManager";
 import { GlobalStateManager } from "./managers/storage/globalState";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
+import { PluginManager } from "./managers/pluginManager";
 import { isMainDevMode, parseMainCommandLine } from "./commandLine";
+import { APP_DISPLAY_NAME } from "@shared/constants/app";
 
 export interface AppDependencies {
     protocolManager: ProtocolManager;
@@ -50,6 +52,7 @@ export class BaseApp {
     public readonly storageManager: StorageManager;
     public readonly globalState: GlobalStateManager;
     public readonly pluginPermissionManager: PluginPermissionManager;
+    public readonly pluginManager: PluginManager;
 
     private initialized: boolean = false;
     protected appInfo: AppInfo | null = null;
@@ -58,7 +61,10 @@ export class BaseApp {
     constructor(config: BaseAppConfig) {
         this.config = config;
         this.electronApp = app;
-        this.electronApp.setName("NarraLeaf Studio");
+        this.electronApp.setName(APP_DISPLAY_NAME);
+        this.electronApp.setAboutPanelOptions({
+            applicationName: APP_DISPLAY_NAME,
+        });
         this.platform = Platform.getInfo(process, this.electronApp.isPackaged);
         this.logger = new Logger("MainProcess");
         this.events = new EventEmitter();
@@ -66,13 +72,16 @@ export class BaseApp {
         this.configureCdp();
         this.setupUserDataDir();
 
+        this.globalState = new GlobalStateManager(this.getUserDataDir());
+        this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
+        this.pluginManager = new PluginManager(this.getUserDataDir(), this.pluginPermissionManager, {
+            builtInPluginsDir: this.getBuiltInPluginsDir(),
+        });
+
         this.protocolManager = new ProtocolManager(this);
         this.windowManager = new WindowManager(this);
         this.menuManager = new MenuManager(this);
         this.storageManager = new StorageManager(this);
-
-        this.globalState = new GlobalStateManager(this.getUserDataDir());
-        this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
 
         this.prepare();
     }
@@ -160,6 +169,10 @@ export class BaseApp {
 
     public getDistDir(): string {
         return path.resolve(this.getAppPath(), "dist");
+    }
+
+    public getBuiltInPluginsDir(): string {
+        return path.resolve(this.getDistDir(), "builtin-plugins");
     }
 
     public getPublicDir(): string {
@@ -259,6 +272,7 @@ export class BaseApp {
         this.menuManager.initialize();
         this.storageManager.initialize();
         this.pluginPermissionManager.initialize();
+        this.pluginManager.initialize();
 
         this.electronApp.whenReady().then(async () => {
             // Retrieve app info
@@ -277,9 +291,13 @@ export class BaseApp {
 
             const { WebSocket } = await import("ws");
             const ws = new WebSocket("ws://localhost:5588");
-            ws.onmessage = () => {
+            ws.onmessage = (event) => {
+                const target = this.parseDevReloadTarget(event.data);
                 this.windowManager.getWindows().forEach((w) => {
                     if (w.isClosed()) {
+                        return;
+                    }
+                    if (target === "workspace" && w.getWindowType() !== WindowAppType.Workspace) {
                         return;
                     }
                     // Avoid interrupting an in-flight navigation which causes ERR_ABORTED
@@ -293,6 +311,24 @@ export class BaseApp {
                     }
                 });
             };
+        }
+    }
+
+    private parseDevReloadTarget(data: unknown): "all" | "workspace" {
+        const text = typeof data === "string"
+            ? data
+            : Buffer.isBuffer(data)
+              ? data.toString("utf-8")
+              : "";
+        if (!text || text === "reload") {
+            return "all";
+        }
+
+        try {
+            const parsed = JSON.parse(text) as { target?: unknown };
+            return parsed.target === "workspace" ? "workspace" : "all";
+        } catch {
+            return "all";
         }
     }
 

@@ -180,7 +180,7 @@ export function ActionDropdown({ group }: ActionDropdownProps) {
                 <>
                     {/* Backdrop */}
                     <div
-                        className="fixed inset-0 z-10"
+                        className="nl-window-content-layer z-10"
                         onClick={() => setIsOpen(false)}
                     />
 

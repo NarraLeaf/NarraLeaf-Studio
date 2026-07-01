@@ -286,6 +286,14 @@ export class PrivilegedPermissionRequestHandler extends IPCHandler<IPCEventType.
         if (data.actor.kind === "plugin" && data.request.plugin.id !== data.actor.pluginId) {
             return this.failed("Plugin permission request actor does not match request plugin");
         }
+        if (
+            data.actor.kind === "plugin" &&
+            data.actor.version &&
+            data.request.plugin.version &&
+            data.request.plugin.version !== data.actor.version
+        ) {
+            return this.failed("Plugin permission request version does not match request plugin");
+        }
 
         const existingGrant = window.app.pluginPermissionManager.getExistingGrantResult(data.request);
         if (existingGrant) {

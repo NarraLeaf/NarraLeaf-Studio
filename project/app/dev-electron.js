@@ -13,6 +13,11 @@ const chokidar = require('chokidar');
 const { WebSocketServer } = require('ws');
 const { watchBuild } = require('../build/watch');
 const { postcssPlugin } = require('../build/postCss-plugin');
+const {
+    buildBuiltInPlugins,
+    copyBuiltInPluginsToDevUserData,
+    sourceRoot: builtInPluginsSourceRoot,
+} = require('../build/builtin-plugins');
 
 const forwardedElectronArgs = process.argv.slice(2);
 
@@ -24,9 +29,9 @@ fs.mkdirSync(distWindows, { recursive: true });
 
 // Initialize WebSocketServer
 const wss = new WebSocketServer({ port: 5588 });
-function broadcastReload() {
+function broadcastReload(target = 'all') {
     wss.clients.forEach((client) => {
-        if (client.readyState === 1) client.send('reload');
+        if (client.readyState === 1) client.send(JSON.stringify({ type: 'reload', target }));
     });
 }
 
@@ -40,10 +45,11 @@ function broadcastReload() {
     let initialStylesBuilt = false;
     let initialRenderersBuilt = false;
     let initialPreloadBuilt = false;
+    let initialBuiltInPluginsBuilt = false;
     let restartTimer = null; // Timer for debouncing restarts
 
     function tryStartElectronOnce() {
-        if (!appStarted && initialMainBuilt && initialStylesBuilt && initialRenderersBuilt && initialPreloadBuilt) {
+        if (!appStarted && initialMainBuilt && initialStylesBuilt && initialRenderersBuilt && initialPreloadBuilt && initialBuiltInPluginsBuilt) {
             appStarted = true;
             console.log('[dev] all initial builds completed. starting electron...');
             restartElectron();
@@ -201,6 +207,41 @@ function broadcastReload() {
     // Mark all renderers as built after HTML written
     initialRenderersBuilt = true;
     tryStartElectronOnce();
+
+    async function rebuildBuiltInPluginsForDev() {
+        const results = await buildBuiltInPlugins({ dev: true });
+        await copyBuiltInPluginsToDevUserData();
+        return results;
+    }
+
+    const builtInPluginResults = await rebuildBuiltInPluginsForDev();
+    initialBuiltInPluginsBuilt = true;
+    console.log(`[builtin-plugins] initial build complete (${builtInPluginResults.length}).`);
+    tryStartElectronOnce();
+
+    let builtInPluginRebuildTimer = null;
+    const builtInPluginWatcher = chokidar.watch(builtInPluginsSourceRoot, {
+        ignored: /(^|[\/\\])\../,
+        ignoreInitial: true,
+    });
+
+    builtInPluginWatcher.on('all', () => {
+        if (builtInPluginRebuildTimer) {
+            clearTimeout(builtInPluginRebuildTimer);
+        }
+        builtInPluginRebuildTimer = setTimeout(async () => {
+            try {
+                const results = await rebuildBuiltInPluginsForDev();
+                console.log(`[builtin-plugins] rebuilt (${results.length}).`);
+                if (appStarted) {
+                    console.log('[builtin-plugins] broadcasting workspace reload...');
+                    broadcastReload('workspace');
+                }
+            } catch (error) {
+                console.error('[builtin-plugins] rebuild failed:', error);
+            }
+        }, 150);
+    });
 
     if (!initialStylesBuilt) {
         initialStylesBuilt = true;

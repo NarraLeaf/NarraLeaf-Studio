@@ -11,6 +11,7 @@ import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-mo
 import { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { createDevModeBlueprintHostApi, type DevModeWidgetRuntimePatch } from "./BlueprintHostApiBridge";
 import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
+import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 
 function createDocument(): UIDocument {
     const imageProps = {
@@ -30,13 +31,21 @@ function createDocument(): UIDocument {
                 designSize: { width: 320, height: 180 },
                 rootElementId: "root",
             },
+            {
+                id: "page-b",
+                name: "Page B",
+                host: "app",
+                kind: "appSurface",
+                designSize: { width: 320, height: 180 },
+                rootElementId: "root-b",
+            },
         ],
         elements: {
             root: {
                 id: "root",
                 type: "nl.root",
                 parentId: null,
-                childrenIds: ["slider", "image"],
+                childrenIds: ["slider", "image", "frame"],
                 layout: { x: 0, y: 0, width: 320, height: 180 },
             },
             slider: {
@@ -65,6 +74,25 @@ function createDocument(): UIDocument {
                     ...imageProps,
                     appearance: createInitialImageAppearanceFromProps(imageProps),
                 },
+            },
+            frame: {
+                id: "frame",
+                type: UI_FRAME_ELEMENT_TYPE,
+                parentId: "root",
+                childrenIds: [],
+                layout: { x: 0, y: 132, width: 160, height: 90 },
+                props: {
+                    targetSurfaceId: null,
+                    params: {},
+                    navigationMode: "static",
+                },
+            },
+            "root-b": {
+                id: "root-b",
+                type: "nl.root",
+                parentId: null,
+                childrenIds: [],
+                layout: { x: 0, y: 0, width: 320, height: 180 },
             },
         },
     };
@@ -114,6 +142,26 @@ function createHostApi(options?: {
 }
 
 describe("createDevModeBlueprintHostApi frame scope", () => {
+    it("tracks Frame target page changes as runtime patches so None can clear a runtime page", async () => {
+        const onWidgetPatch = vi.fn();
+        const document = createDocument();
+        const hostApi = createHostApi({ document, onWidgetPatch });
+
+        await hostApi.widget.setFrameProperties("frame", { targetSurfaceId: "page-b" });
+
+        expect(hostApi.widget.getFrameProperties("frame").targetSurfaceId).toBe("page-b");
+        expect(onWidgetPatch).toHaveBeenLastCalledWith("frame", expect.objectContaining({
+            frame: expect.objectContaining({ targetSurfaceId: "page-b" }),
+        }));
+
+        await hostApi.widget.setFrameProperties("frame", { targetSurfaceId: null });
+
+        expect(hostApi.widget.getFrameProperties("frame").targetSurfaceId).toBeNull();
+        expect(onWidgetPatch).toHaveBeenLastCalledWith("frame", expect.objectContaining({
+            frame: expect.objectContaining({ targetSurfaceId: null }),
+        }));
+    });
+
     it("exposes frame params and emits frame events through the parent callback", async () => {
         const onFrameEmit = vi.fn();
         const hostApi = createHostApi({

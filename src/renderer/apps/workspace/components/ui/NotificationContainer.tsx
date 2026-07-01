@@ -141,7 +141,7 @@ export function NotificationContainer() {
     }
 
     return (
-        <div className="fixed top-4 right-4 z-50 flex flex-col gap-3 pointer-events-none">
+        <div className="fixed right-4 top-[calc(var(--nl-window-titlebar-height)+1rem)] z-50 flex flex-col gap-3 pointer-events-none">
             {notifications.map(notification => (
                 <div key={notification.id} className="pointer-events-auto">
                     <NotificationItem
@@ -156,4 +156,3 @@ export function NotificationContainer() {
         </div>
     );
 }
-

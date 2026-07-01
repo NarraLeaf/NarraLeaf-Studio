@@ -445,6 +445,73 @@ describe("compileStudioStoryToNlr", () => {
         ]);
     });
 
+    it("reuses story animation assets across displayable target kinds", async () => {
+        const animation: StoryAnimationAsset = {
+            schemaVersion: 1,
+            id: "00000000-0000-4000-8000-000000000105",
+            name: "Universal pulse",
+            targetKind: "image",
+            sequences: [],
+            timeline: {
+                fps: 30,
+                durationMs: 240,
+                tracks: [
+                    {
+                        id: "track-zoom",
+                        property: "zoom",
+                        keyframes: [
+                            { id: "zoom-end", timeMs: 240, value: 1.1, easing: "easeOut" },
+                        ],
+                    },
+                ],
+            },
+        };
+        const blocks: Record<string, StoryBlock> = {
+            text: {
+                id: "text",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "text",
+                    operation: "create",
+                    objectName: "caption",
+                    text: "Hello",
+                    transform: { mode: "animation", animationId: animation.id },
+                },
+            },
+            layer: {
+                id: "layer",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "layer",
+                    operation: "transform",
+                    objectName: "foreground",
+                    transform: { mode: "animation", animationId: animation.id },
+                },
+            },
+        };
+
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["text", "layer"]),
+            sceneId: "scene-1",
+            animations: { [animation.id]: animation },
+        });
+
+        const byBlock = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story));
+        const textTransform = getDisplayableTransforms(byBlock("text"))[0];
+        const layerTransform = getDisplayableTransforms(byBlock("layer"))[0];
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(textTransform?.sequences?.at(-1)?.props).toEqual(expect.objectContaining({ opacity: 1, zoom: 1.1 }));
+        expect(layerTransform?.sequences?.at(-1)?.props).toEqual(expect.objectContaining({ zoom: 1.1 }));
+        expect(layerTransform?.sequences?.at(-1)?.props).not.toHaveProperty("opacity");
+    });
+
     it("compiles choice, condition, variables, and skips script-only blocks with diagnostics", async () => {
         const optionChild = narrationBlock("option-child", "text-option-child", "Selected");
         optionChild.parentId = "option";

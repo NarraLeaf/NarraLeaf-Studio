@@ -1,5 +1,6 @@
 {
   "name": "narraleaf-studio",
+  "productName": "NarraLeaf Studio",
   "version": "0.0.1",
   "private": true,
   "description": "IDE for NarraLeaf Projects",
@@ -18,10 +19,12 @@
   "author": "NarraLeaf Project",
   "main": "dist/main/index.js",
   "scripts": {
-    "build": "yarn build:main && yarn build:apps",
-    "build:dev": "yarn build:main:dev && yarn build:apps:dev",
+    "build": "yarn build:main && yarn build:apps && yarn build:builtin-plugins",
+    "build:dev": "yarn build:main:dev && yarn build:apps:dev && yarn build:builtin-plugins:dev",
     "build:apps": "node project/build/build-apps.js",
     "build:apps:dev": "node project/build/build-apps.js --dev",
+    "build:builtin-plugins": "node project/build/build-builtin-plugins.js",
+    "build:builtin-plugins:dev": "node project/build/build-builtin-plugins.js --dev",
     "build:main": "node project/build/build-main.js",
     "build:main:dev": "node project/build/build-main.js --dev",
     "build:shared": "tsc --project src/shared/tsconfig.json",

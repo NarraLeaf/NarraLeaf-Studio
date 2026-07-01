@@ -945,7 +945,10 @@ function InspectorParamOnCard({
               ))
             : rawSelectOptions;
     const selectComponentOptions: SelectOption[] | undefined = selectOptions
-        ? [{ value: "", label: "-" }, ...selectOptions.map(opt => ({ value: opt.value, label: opt.label }))]
+        ? [
+              { value: "", label: spec.emptyOptionLabel ?? "-" },
+              ...selectOptions.map(opt => ({ value: opt.value, label: opt.label })),
+          ]
         : undefined;
     const variableComponentOptions: SelectOption[] = [
         { value: "", label: "-" },

@@ -35,6 +35,9 @@ function run(cmd, args = [], opts = {}) {
         console.log('[pack] Building main process (production)...');
         await run('node', ['project/build/build-main.js']);
 
+        console.log('[pack] Building built-in plugins (production)...');
+        await run('node', ['project/build/build-builtin-plugins.js']);
+
         console.log('[pack] Packaging with electron-builder...');
         const extraArgs = process.argv.slice(2);
         // Force output dir to build/ unless user overrides via CLI

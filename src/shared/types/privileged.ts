@@ -14,7 +14,7 @@ export type PrivilegedCapability = typeof PrivilegedCapability[keyof typeof Priv
 
 export type PrivilegedActor =
     | { kind: "facade"; id: "default" }
-    | { kind: "plugin"; pluginId: string };
+    | { kind: "plugin"; pluginId: string; version?: string };
 
 export type PrivilegedFileSystemCall =
     | { operation: "stat"; path: string }

@@ -315,6 +315,21 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         }
     }, [documentService, editorLayout, inputDialog, uiService]);
 
+    const handleDuplicateSurface = useCallback((surface: UISurface) => {
+        if (!documentService || surface.kind !== "appSurface") {
+            return;
+        }
+        const duplicated = documentService.duplicateSurface(surface.id);
+        if (!duplicated) {
+            uiService?.showNotification("Page could not be duplicated.", "warning");
+            return;
+        }
+        void documentService.save(documentService.getDocument()).catch(err => {
+            console.warn("[UISurfacesPanel] failed to save duplicated page", err);
+        });
+        handleOpenSurface(duplicated);
+    }, [documentService, handleOpenSurface, uiService]);
+
     const handleOpenMenu = useCallback(
         (event: MouseEvent<HTMLDivElement | HTMLButtonElement>, surface: UISurface) => {
             event.preventDefault();
@@ -334,6 +349,15 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     },
                 },
             ];
+            if (surface.kind === "appSurface") {
+                items.push({
+                    id: "duplicate-surface",
+                    label: `Duplicate ${label}`,
+                    onClick: () => {
+                        handleDuplicateSurface(surface);
+                    },
+                });
+            }
             if (surface.id !== MAIN_APP_SURFACE_ID) {
                 items.push(
                     {
@@ -352,7 +376,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             setMenuItems(items);
             showMenu(event);
         },
-        [showMenu, handleOpenSurface, handleRenameSurface, handleDeleteSurface],
+        [showMenu, handleOpenSurface, handleRenameSurface, handleDuplicateSurface, handleDeleteSurface],
     );
 
     const promptCreateSurface = useCallback(

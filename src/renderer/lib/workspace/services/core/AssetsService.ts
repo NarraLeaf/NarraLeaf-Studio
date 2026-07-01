@@ -66,6 +66,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      */
     private batchDepth = 0;
     private dirtyTypes = new Set<AssetType>();
+    private assetsMetadataInitializing = false;
 
     public getFileFormatValidator(): FileFormatValidator {
         if (!this.fileFormatValidator) {
@@ -106,7 +107,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
     public markDirty(type: AssetType): void {
         this.dirtyTypes.add(type);
-        if (this.batchDepth === 0) {
+        if (this.batchDepth === 0 && !this.assetsMetadataInitializing) {
             void this.flushPendingWrites();
         }
     }
@@ -136,7 +137,20 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         // Initialize file format validator
         this.fileFormatValidator = new FileFormatValidator();
         
-        this.assetsMetadataManager = await new AssetsMetadataManager(this, ctx).init();
+        const assetsMetadataManager = new AssetsMetadataManager(this, ctx);
+        this.assetsMetadataManager = assetsMetadataManager;
+        this.assetsMetadataInitializing = true;
+        try {
+            await assetsMetadataManager.init();
+        } catch (error) {
+            this.assetsMetadataManager = null;
+            this.dirtyTypes.clear();
+            throw error;
+        } finally {
+            this.assetsMetadataInitializing = false;
+        }
+        await this.flushPendingWrites();
+
         this.groupAssetsManager = await new GroupAssetsManager(this, ctx).init();
         this.localAssetsManager = await new LocalAssetsManager(this, ctx).init();
         this.editorRemoteCacheManager = await new EditorRemoteCacheManager(ctx).init();

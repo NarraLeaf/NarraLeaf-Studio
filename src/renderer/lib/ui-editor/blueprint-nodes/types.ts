@@ -135,6 +135,8 @@ export type BlueprintInspectorParamDef = {
      * Known sources: `"surfaces"` (available App Surfaces).
      */
     dynamicOptionsSource?: string;
+    /** Label for the empty select option. Defaults to "-". */
+    emptyOptionLabel?: string;
     /**
      * Filter dynamic select options by comparing another param value with option metadata.
      * Used for dependent dropdowns such as Story -> Scene.

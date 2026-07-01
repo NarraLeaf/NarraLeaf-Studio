@@ -32,6 +32,7 @@ export async function authorizeActorFileSystemRequest(
 
     const pluginAllowed = window.app.pluginPermissionManager.isPluginFileSystemAllowed(
         actor.pluginId,
+        actor.version,
         fsPath,
         mode,
     );
@@ -70,6 +71,7 @@ export function authorizeActorCapabilityRequest(
 
     const pluginAllowed = window.app.pluginPermissionManager.isPluginCapabilityAllowed(
         actor.pluginId,
+        actor.version,
         capability,
     );
     return {

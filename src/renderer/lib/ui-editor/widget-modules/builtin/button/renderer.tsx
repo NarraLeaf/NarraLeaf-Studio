@@ -6,8 +6,8 @@ import {
     useRef,
     useState,
     type CSSProperties,
+    type ChangeEvent,
     type FocusEvent,
-    type FormEvent,
     type KeyboardEvent,
     type MouseEvent,
 } from "react";
@@ -266,6 +266,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
 
     const commitLabelAndClose = useCallback(
         (nextLabel: string) => {
+            draftRef.current = nextLabel;
             documentService.updateElementProps(element.id, {
                 ...element.props,
                 label: nextLabel,
@@ -297,7 +298,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         el.select();
     }, [isEditing]);
 
-    const handleTextareaInput = useCallback((e: FormEvent<HTMLTextAreaElement>) => {
+    const handleTextareaChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
         draftRef.current = e.currentTarget.value;
     }, []);
 
@@ -352,13 +353,14 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                 }
                 return;
             }
+            draftRef.current = e.currentTarget.value;
             debugUIDoubleClick("ButtonRenderer blur commit", {
                 elementId: element.id,
                 surfaceId: surface.id,
                 openedMsAgo,
                 relatedTarget: describeDoubleClickTarget(relatedTarget),
             });
-            commitLabelAndClose(e.target.value);
+            commitLabelAndClose(e.currentTarget.value);
         },
         [commitLabelAndClose, element.id, surface.id],
     );
@@ -381,7 +383,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                             ...(p.textWrapMode === "nowrap" ? { overflowX: "auto", overflowY: "hidden" } : {}),
                             ...(!editorFontFamily ? { fontFamily: "inherit" } : {}),
                         }}
-                        onInput={handleTextareaInput}
+                        onChange={handleTextareaChange}
                         onBlur={handleTextareaBlur}
                         onKeyDown={handleTextareaKeyDown}
                         onClick={e => e.stopPropagation()}

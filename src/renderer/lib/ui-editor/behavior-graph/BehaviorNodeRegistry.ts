@@ -61,8 +61,8 @@ export type BehaviorNodeDefinition = {
 export class BehaviorNodeRegistry {
     private readonly definitions = new Map<string, BehaviorNodeDefinition>();
 
-    public register(definition: BehaviorNodeDefinition): void {
-        if (this.definitions.has(definition.type)) {
+    public register(definition: BehaviorNodeDefinition, options?: { quietOverwrite?: boolean }): void {
+        if (this.definitions.has(definition.type) && !options?.quietOverwrite) {
             console.warn(`[BehaviorNodeRegistry] Overwriting node definition: ${definition.type}`);
         }
         this.definitions.set(definition.type, definition);

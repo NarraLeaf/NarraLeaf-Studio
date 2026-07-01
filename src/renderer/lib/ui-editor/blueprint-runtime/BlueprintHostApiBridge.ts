@@ -50,6 +50,10 @@ import {
 export type DevModeWidgetRuntimePatch = {
     visible?: boolean;
     enabled?: boolean;
+    frame?: {
+        targetSurfaceId?: string | null;
+        params?: Record<string, unknown>;
+    };
     layout?: Partial<Pick<BlueprintDisplayableProperties["bounds"], "x" | "y" | "width" | "height">> &
         Partial<Pick<BlueprintDisplayableProperties, "rotation" | "opacity">>;
 };
@@ -641,6 +645,21 @@ function readFrameProperties(document: UIDocument, elementId: string): Blueprint
     return {
         targetSurfaceId: p.targetSurfaceId,
         params: cloneJson(p.params ?? {}),
+    };
+}
+
+function readEffectiveFrameProperties(
+    document: UIDocument,
+    runtimePatches: Map<string, DevModeWidgetRuntimePatch>,
+    elementId: string,
+): BlueprintFrameProperties {
+    const current = readFrameProperties(document, elementId);
+    const patch = runtimePatches.get(elementId)?.frame;
+    return {
+        targetSurfaceId: patch && Object.prototype.hasOwnProperty.call(patch, "targetSurfaceId")
+            ? patch.targetSurfaceId ?? null
+            : current.targetSurfaceId,
+        params: cloneJson(patch?.params ?? current.params),
     };
 }
 
@@ -1407,7 +1426,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getFrameProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    return readFrameProperties(document, elementId);
+                    return readEffectiveFrameProperties(document, runtimePatches, elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -1417,7 +1436,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     const el = assertFrameElement(document, elementId);
-                    const current = readFrameProperties(document, elementId);
+                    const current = readEffectiveFrameProperties(document, runtimePatches, elementId);
                     const targetSurfaceId = patch.targetSurfaceId === undefined
                         ? current.targetSurfaceId
                         : normalizeNullableString(patch.targetSurfaceId);
@@ -1430,7 +1449,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         targetSurfaceId,
                         params,
                     };
-                    onWidgetPatch(elementId, {});
+                    const nextPatch: DevModeWidgetRuntimePatch = {
+                        ...(runtimePatches.get(elementId) ?? {}),
+                        frame: {
+                            targetSurfaceId,
+                            params,
+                        },
+                    };
+                    runtimePatches.set(elementId, nextPatch);
+                    onWidgetPatch(elementId, nextPatch);
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");

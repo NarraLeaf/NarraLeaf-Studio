@@ -401,6 +401,7 @@ function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
                     label: "Page",
                     kind: "select",
                     dynamicOptionsSource: "surfaces",
+                    emptyOptionLabel: "None",
                 },
             ],
             execute: async ctx => {

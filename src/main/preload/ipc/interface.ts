@@ -9,10 +9,106 @@ import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/dev
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { PrivilegedActor } from "@shared/types/privileged";
+import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
 
 export const ipcClient = new IPCClient(Namespace.NarraLeafStudio);
+
+let privilegedBridgeHardened = false;
+
+function deniedAfterHarden<T>(): Promise<RequestStatus<T>> {
+    return Promise.resolve({
+        success: false,
+        error: "Privileged renderer IPC is no longer available from the global bridge",
+    });
+}
+
+function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
+    const invoke = <T,>(event: IPCEventType, data: unknown): Promise<RequestStatus<T>> => {
+        if (guarded && privilegedBridgeHardened) {
+            return deniedAfterHarden<T>();
+        }
+        return ipcClient.invoke(event as never, data as never) as Promise<RequestStatus<T>>;
+    };
+
+    return {
+        fs: {
+            stat: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "stat", path }),
+            list: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "list", path }),
+            details: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "details", path }),
+            requestRead: (actor: PrivilegedActor, path: string, encoding: BufferEncoding) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestRead", path, encoding, raw: false }),
+            requestReadRaw: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestRead", path, raw: true }),
+            requestWrite: (actor: PrivilegedActor, path: string, encoding: BufferEncoding) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, encoding, raw: false }),
+            requestWriteRaw: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, raw: true }),
+            ensureRegularFile: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "ensureRegularFile", path, data, encoding }),
+            writeFileNoFollow: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "writeFileNoFollow", path, data, encoding }),
+            recoverCorruptedJsonFile: (actor: PrivilegedActor, path: string, replacement: string, encoding: BufferEncoding = "utf-8") =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "recoverCorruptedJsonFile", path, replacement, encoding }),
+            createDir: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "createDir", path }),
+            deleteFile: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "deleteFile", path }),
+            deleteDir: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "deleteDir", path }),
+            rename: (actor: PrivilegedActor, oldPath: string, newName: string, isDir: boolean) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "rename", oldPath, newName, isDir }),
+            copyFile: (actor: PrivilegedActor, src: string, dest: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "copyFile", src, dest }),
+            copyDir: (actor: PrivilegedActor, src: string, dest: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "copyDir", src, dest }),
+            moveFile: (actor: PrivilegedActor, src: string, dest: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "moveFile", src, dest }),
+            moveDir: (actor: PrivilegedActor, src: string, dest: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "moveDir", src, dest }),
+            isFileExists: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "fileExists", path }),
+            isDirExists: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "dirExists", path }),
+            isFile: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "isFile", path }),
+            isDir: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "isDir", path }),
+            hash: (actor: PrivilegedActor, path: string) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "hash", path }),
+        },
+        permissions: {
+            request: (actor: PrivilegedActor, request: PluginPermissionRequest) =>
+                invoke(IPCEventType.privilegedPermissionRequest, { actor, request }),
+            revokePlugin: (actor: PrivilegedActor, pluginId: string) =>
+                invoke(IPCEventType.privilegedPermissionRevokePlugin, { actor, pluginId }),
+        },
+        bash: {
+            execute: (actor: PrivilegedActor, command: string, cwd?: string) =>
+                invoke(IPCEventType.privilegedBashExecute, { actor, command, cwd }),
+        },
+    };
+}
+
+const privilegedRuntimeBridge = createPrivilegedBridge(false);
+const privilegedBootstrapBridge: RendererPrivilegedBootstrapInterface = {
+    ...createPrivilegedBridge(true),
+    acquire: () => {
+        if (privilegedBridgeHardened) {
+            throw new Error("Privileged renderer IPC has already been hardened");
+        }
+        return privilegedRuntimeBridge;
+    },
+    harden: () => {
+        privilegedBridgeHardened = true;
+    },
+    isHardened: () => privilegedBridgeHardened,
+};
+
 export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     getPlatform: () => ipcClient.invoke(IPCEventType.getPlatform, {}),
     getAppInfo: () => ipcClient.invoke(IPCEventType.appInfo, {}),
@@ -149,66 +245,24 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.pluginPermissionGrant, { request, decision }),
     },
 
-    privileged: {
-        fs: {
-            stat: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "stat", path }) as any,
-            list: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "list", path }) as any,
-            details: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "details", path }) as any,
-            requestRead: (actor: PrivilegedActor, path: string, encoding: BufferEncoding) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestRead", path, encoding, raw: false }) as any,
-            requestReadRaw: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestRead", path, raw: true }) as any,
-            requestWrite: (actor: PrivilegedActor, path: string, encoding: BufferEncoding) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, encoding, raw: false }) as any,
-            requestWriteRaw: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, raw: true }) as any,
-            ensureRegularFile: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "ensureRegularFile", path, data, encoding }) as any,
-            writeFileNoFollow: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "writeFileNoFollow", path, data, encoding }) as any,
-            recoverCorruptedJsonFile: (actor: PrivilegedActor, path: string, replacement: string, encoding: BufferEncoding = "utf-8") =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "recoverCorruptedJsonFile", path, replacement, encoding }) as any,
-            createDir: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "createDir", path }) as any,
-            deleteFile: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "deleteFile", path }) as any,
-            deleteDir: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "deleteDir", path }) as any,
-            rename: (actor: PrivilegedActor, oldPath: string, newName: string, isDir: boolean) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "rename", oldPath, newName, isDir }) as any,
-            copyFile: (actor: PrivilegedActor, src: string, dest: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "copyFile", src, dest }) as any,
-            copyDir: (actor: PrivilegedActor, src: string, dest: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "copyDir", src, dest }) as any,
-            moveFile: (actor: PrivilegedActor, src: string, dest: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "moveFile", src, dest }) as any,
-            moveDir: (actor: PrivilegedActor, src: string, dest: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "moveDir", src, dest }) as any,
-            isFileExists: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "fileExists", path }) as any,
-            isDirExists: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "dirExists", path }) as any,
-            isFile: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "isFile", path }) as any,
-            isDir: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "isDir", path }) as any,
-            hash: (actor: PrivilegedActor, path: string) =>
-                ipcClient.invoke(IPCEventType.privilegedFsCall, { actor, operation: "hash", path }) as any,
-        },
-        permissions: {
-            request: (actor: PrivilegedActor, request: PluginPermissionRequest) =>
-                ipcClient.invoke(IPCEventType.privilegedPermissionRequest, { actor, request }),
-            revokePlugin: (actor: PrivilegedActor, pluginId: string) =>
-                ipcClient.invoke(IPCEventType.privilegedPermissionRevokePlugin, { actor, pluginId }),
-        },
-        bash: {
-            execute: (actor: PrivilegedActor, command: string, cwd?: string) =>
-                ipcClient.invoke(IPCEventType.privilegedBashExecute, { actor, command, cwd }),
-        },
+    plugins: {
+        list: () => ipcClient.invoke(IPCEventType.pluginList, {}),
+        installLocal: () => ipcClient.invoke(IPCEventType.pluginInstallLocal, {}),
+        setEnabled: (pluginId: string, enabled: boolean) =>
+            ipcClient.invoke(IPCEventType.pluginSetEnabled, { pluginId, enabled }),
+        approve: (pluginId: string) =>
+            ipcClient.invoke(IPCEventType.pluginApprove, { pluginId }),
+        uninstall: (pluginId: string) =>
+            ipcClient.invoke(IPCEventType.pluginUninstall, { pluginId }),
+        revoke: (pluginId: string) =>
+            ipcClient.invoke(IPCEventType.pluginRevoke, { pluginId }),
+        getWorkspacePlugins: () =>
+            ipcClient.invoke(IPCEventType.pluginWorkspaceList, {}),
+        reportLoadError: (pluginId: string, error: string | null) =>
+            ipcClient.invoke(IPCEventType.pluginReportLoadError, { pluginId, error }),
     },
+
+    privileged: privilegedBootstrapBridge,
 };
 
 function getPathForFile(file: File): string {

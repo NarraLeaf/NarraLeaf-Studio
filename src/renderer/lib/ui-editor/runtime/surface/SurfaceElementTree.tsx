@@ -215,14 +215,12 @@ function NestedSurfaceRenderer(props: {
     } = props;
     const prefersReducedMotion = useReducedMotion();
     const surfacePathKey = surfacePath.join("\0");
-    const targetSurface = document.surfaces.find(surface => surface.id === targetSurfaceId);
-    const invalidLabel = !targetSurfaceId
-        ? "Select a Page"
-        : !targetSurface
-          ? "Missing Page"
-          : targetSurface.kind !== "appSurface"
+    const targetSurface = targetSurfaceId ? document.surfaces.find(surface => surface.id === targetSurfaceId) : undefined;
+    const invalidLabel = targetSurfaceId && !targetSurface
+        ? "Missing Page"
+        : targetSurface && targetSurface.kind !== "appSurface"
             ? "Target is not a Page"
-            : surfacePath.includes(targetSurface.id)
+            : targetSurface && surfacePath.includes(targetSurface.id)
               ? "Page loop blocked"
               : null;
 
@@ -333,7 +331,7 @@ function NestedSurfaceRenderer(props: {
         return <NestedSurfacePlaceholder label={invalidLabel} />;
     }
 
-    if (!runtimeInput) {
+    if (!runtimeInput && targetSurfaceId) {
         return <NestedSurfacePlaceholder label="Page preview unavailable" />;
     }
 
@@ -489,6 +487,15 @@ function applyWidgetRuntimePatches(element: UIElement, patches: Record<string, D
     }
     if (patch.enabled !== undefined) {
         (next.props as Record<string, unknown>).interactionDisabled = !patch.enabled;
+    }
+    if (element.type === "nl.frame" && patch.frame) {
+        const props = next.props as Record<string, unknown>;
+        if (Object.prototype.hasOwnProperty.call(patch.frame, "targetSurfaceId")) {
+            props.targetSurfaceId = patch.frame.targetSurfaceId ?? null;
+        }
+        if (patch.frame.params !== undefined) {
+            props.params = patch.frame.params;
+        }
     }
     return next;
 }
