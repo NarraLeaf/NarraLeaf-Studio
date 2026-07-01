@@ -10,8 +10,6 @@ import {
     collectEditorQuickSwitchCandidates,
     collectFocusedEditorQuickSwitchKeys,
     getEditorQuickSwitchKey,
-    pruneEditorQuickSwitchMru,
-    recordEditorQuickSwitchMru,
     type EditorQuickSwitchCandidate,
 } from "./editorQuickSwitchModel";
 import type { EditorLayout } from "../../registry/types";
@@ -51,11 +49,15 @@ export function WorkspaceEditorQuickSwitch() {
     useEffect(() => {
         layoutRef.current = editorLayout;
         const { candidates } = collectEditorQuickSwitchCandidates(editorLayout);
-        mruKeysRef.current = pruneEditorQuickSwitchMru(mruKeysRef.current, candidates);
+        mruKeysRef.current = context
+            ? context.services.get<UIService>(Services.UI).getStore().getEditorTabFocusHistoryKeys()
+            : mruKeysRef.current;
 
-        if (!activeKeyRef.current || !candidates.some(candidate => candidate.key === activeKeyRef.current)) {
-            activeKeyRef.current = collectFocusedEditorQuickSwitchKeys(editorLayout)[0] ?? candidates[0]?.key ?? null;
-        }
+        activeKeyRef.current =
+            mruKeysRef.current[0] ??
+            collectFocusedEditorQuickSwitchKeys(editorLayout)[0] ??
+            candidates[0]?.key ??
+            null;
 
         setState(previous => {
             if (!previous.open) {
@@ -80,7 +82,7 @@ export function WorkspaceEditorQuickSwitch() {
                 groupCount: order.groupCount,
             };
         });
-    }, [editorLayout]);
+    }, [context, editorLayout]);
 
     useEffect(() => {
         if (!context) {
@@ -94,19 +96,20 @@ export function WorkspaceEditorQuickSwitch() {
             const layout = store.getEditorLayout();
             layoutRef.current = layout;
             const { candidates } = collectEditorQuickSwitchCandidates(layout);
-            mruKeysRef.current = pruneEditorQuickSwitchMru(mruKeysRef.current, candidates);
-            if (!activeKeyRef.current || !candidates.some(candidate => candidate.key === activeKeyRef.current)) {
-                activeKeyRef.current = collectFocusedEditorQuickSwitchKeys(layout)[0] ?? candidates[0]?.key ?? null;
-            }
+            mruKeysRef.current = store.getEditorTabFocusHistoryKeys();
+            activeKeyRef.current =
+                mruKeysRef.current[0] ??
+                collectFocusedEditorQuickSwitchKeys(layout)[0] ??
+                candidates[0]?.key ??
+                null;
         };
 
         const recordActiveTab = (tabId: string, groupId: string) => {
             const layout = store.getEditorLayout();
             layoutRef.current = layout;
-            const { candidates } = collectEditorQuickSwitchCandidates(layout);
             const key = getEditorQuickSwitchKey(groupId, tabId);
-            activeKeyRef.current = key;
-            mruKeysRef.current = recordEditorQuickSwitchMru(mruKeysRef.current, key, candidates);
+            mruKeysRef.current = store.getEditorTabFocusHistoryKeys();
+            activeKeyRef.current = mruKeysRef.current[0] ?? key;
         };
 
         syncActiveFromLayout();
@@ -143,8 +146,6 @@ export function WorkspaceEditorQuickSwitch() {
             }
 
             activeKeyRef.current = candidate.key;
-            const { candidates } = collectEditorQuickSwitchCandidates(layoutRef.current);
-            mruKeysRef.current = recordEditorQuickSwitchMru(mruKeysRef.current, candidate.key, candidates);
             setActiveEditorTab(candidate.tabId, candidate.groupId);
         },
         [closeSwitcher, setActiveEditorTab]

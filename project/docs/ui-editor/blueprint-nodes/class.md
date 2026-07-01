@@ -5,7 +5,7 @@
 Self 节点和 Element 节点通常使用不同分类：
 - Self 节点操作当前私有蓝图所属控件，不带 Element/ref 输入，显示在对应控件分类中，例如 `Button`、`Slider`、`List`。
 - Element 节点操作显式传入的 Element 引用，带 typed Element 输入，统一显示在 `Element` 分类中。
-- Element 节点只有在当前图里已有兼容的 `Element` 或 `Element Flush` 绑定节点时才会出现在创建浮窗中。同一节点类型在创建浮窗中只显示一项；若兼容来源唯一，创建时会自动连到该来源，若有多个兼容来源则保留目标输入由作者选择。
+- Element 节点只有在当前图里已有兼容的 `Element`、`Element Flush` 或 `Element Click` 绑定节点时才会出现在创建浮窗中。同一节点类型在创建浮窗中只显示一项；若兼容来源唯一，创建时会自动连到该来源，若有多个兼容来源则保留目标输入由作者选择。
 
 ## Events
 
@@ -50,6 +50,7 @@ Page分类具有：
 
 Game 分类具有：
 - `Start Game` 游戏启动尾节点
+- Dialog 节点：`Get Nametag`、`Next`、`Skip`、`Set Sentence Speed`
 - 本地存档节点：`Write Save`、`Load Save`、`List Saves`、`Get Save Preview`
 
 ## Data
@@ -84,7 +85,7 @@ Text分类具有：
 
 Element 分类具有：
 - Element Literal 节点
-- Element Flush 事件节点
+- Element Flush / Element Click 事件节点
 - 所有带 Element/ref 输入的派生控件方法节点
 - Element-targeted Text、Displayable、List、Slider 和通用 Widget Property 节点
 
@@ -104,7 +105,7 @@ Slider分类具有：
 Image分类具有：
 - ImageAsset 字面量卡片
 - 当前 `nl.image` 自己的 Image 节点
-- 由 `nl.image` Element Literal / Element Flush 派生的 Image 节点
+- 由 `nl.image` Element Literal / Element Flush / Element Click 派生的 Image 节点
 
 ## Button / Container / Frame
 

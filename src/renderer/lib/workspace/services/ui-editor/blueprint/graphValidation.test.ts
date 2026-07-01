@@ -5,6 +5,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
@@ -419,6 +420,35 @@ describe("blueprint graph validation", () => {
             edges: [
                 { from: { nodeId: "flush", port: "element" }, to: { nodeId: "getValue", port: "slider" } },
                 { from: { nodeId: "flush", port: "element" }, to: { nodeId: "getNormalized", port: "slider" } },
+            ],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "event",
+            blueprintOwner: { kind: "surfaceMain", surfaceId: "surface" },
+        });
+
+        expect(diagnostics.map(d => d.code)).not.toContain("edge.pin_multiple");
+        expect(diagnostics.map(d => d.code)).not.toContain("node.context_invalid");
+    });
+
+    it("allows Element Click element outputs to feed multiple derived nodes", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                click: {
+                    id: "click",
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+                    params: { surfaceId: "surface", elementId: "slider", elementType: "nl.slider" },
+                },
+                getValue: { id: "getValue", type: BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE },
+                getNormalized: { id: "getNormalized", type: BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE },
+            },
+            edges: [
+                { from: { nodeId: "click", port: "element" }, to: { nodeId: "getValue", port: "slider" } },
+                { from: { nodeId: "click", port: "element" }, to: { nodeId: "getNormalized", port: "slider" } },
             ],
         };
 

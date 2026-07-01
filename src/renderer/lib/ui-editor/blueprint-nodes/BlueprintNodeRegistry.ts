@@ -5,6 +5,7 @@
 
 import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
@@ -91,7 +92,7 @@ function resolveAllowedWidgetEventHeadTypesForPalette(ctx: BlueprintPaletteConte
 
 export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGraphContextDef): boolean {
     if (def.role === "eventHead") {
-        return def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT;
+        return def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT || def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH;
     }
     if (def.role === "valueReturn" || def.type === BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE) {
         return true;
@@ -119,7 +120,8 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
         def.category === "Text" ||
         def.category === "Slider" ||
         def.category === "Displayable" ||
-        def.category === "Element"
+        def.category === "Element" ||
+        def.category === "Game"
     );
 }
 

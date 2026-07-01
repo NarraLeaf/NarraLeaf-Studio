@@ -355,7 +355,6 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     },
     "nl.text": createTextWidgetLogicApi("Text logic"),
     "nl.dialog.sentence": createTextWidgetLogicApi("Sentence logic"),
-    "nl.dialog.nametag": createTextWidgetLogicApi("Nametag logic"),
     "nl.image": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Image logic",

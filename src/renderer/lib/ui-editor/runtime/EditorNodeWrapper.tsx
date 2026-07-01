@@ -265,7 +265,7 @@ export function EditorNodeWrapper({
 
     const onClick = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            dispatchWidgetEvent("mouseClick", e.target, localMousePayload(e));
+            dispatchWidgetEvent("mouseClick", e.target, { ...localMousePayload(e), button: e.button });
         },
         [dispatchWidgetEvent, localMousePayload],
     );

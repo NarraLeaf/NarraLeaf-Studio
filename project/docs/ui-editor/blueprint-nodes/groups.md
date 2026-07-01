@@ -17,20 +17,21 @@ Blueprint Value 节点组只存在于 `widgetValue` 私有蓝图。当前用于 
 
 Blueprint Value 可用节点包括：
 - `blueprint.event.head.init` - 初始求值事件
+- `blueprint.event.head.flush` - 属性刷新求值事件；默认 Dialog Nametag 的普通事件图使用该入口，以支持 Dialog 不重新挂载时随对话推进更新
 - `blueprint.data.returnValue` - 返回当前属性值的无尾执行节点
 - `blueprint.element.ref` - Same-Surface 元素字面量引用
 - Element-targeted Text / Displayable / Slider / List / Widget Property 纯读取节点 - 读取绑定元素属性并记录隐藏刷新依赖
 
 `nl.slider.props.value` 使用 `float` Blueprint Value，返回值表示映射后的值而不是 0-1 normalized 值；运行时会按该 Slider 的 `min` / `max` / `step` clamp 和 snap。
 
-Blueprint Value 只允许安全的数据生产节点：`Init` Head、非 latent Flow、图内注释、纯 Data / Math、本地变量、`Var` 声明、Element Literal，以及纯读取型 Text / Displayable / Slider / List / Widget Property 节点。当前核心目录不提供 surface/global state 读写节点；Blueprint Value 也不允许 Widget 改写、Navigation、Persistent 变量读写、Broadcast、latent 节点和 TypeScript revision。
+Blueprint Value 只允许安全的数据生产节点：`Init` / `On Flush` Head、非 latent Flow、图内注释、纯 Data / Math、本地变量、`Var` 声明、Element Literal，以及纯读取型 Text / Displayable / Slider / List / Widget Property / Game 节点。当前核心目录不提供 surface/global state 读写节点；Blueprint Value 也不允许 Widget 改写、Navigation、Persistent 变量读写、Broadcast、latent 节点和 TypeScript revision。
 
 ## Self 与 Element 方法节点
 
 内建控件方法分为两套节点形态：
 - Self 节点作用于当前私有蓝图所属控件，不带 Element/ref 输入，只在对应控件自己的 `widgetMain` 蓝图中出现，并通过 `executionOwner.elementId` 操作自己。
 - Element 节点作用于显式连入的 Element 引用，带 typed Element 输入，例如 `element:nl.button`、`element:nl.slider`。它们显示在 `Element` 分类下，包括 `blueprint.element.displayable.*` 这类 Displayable 派生节点。
-- Element 节点只有在当前图里已经存在兼容的 `Element` 或 `Element Flush` 绑定节点时才显示。同一节点类型在创建浮窗中去重为唯一项；若兼容来源唯一，添加时会自动连接到该来源的目标输入，若有多个兼容来源则保留目标输入由作者选择。
+- Element 节点只有在当前图里已经存在兼容的 `Element`、`Element Flush` 或 `Element Click` 绑定节点时才显示。同一节点类型在创建浮窗中去重为唯一项；若兼容来源唯一，添加时会自动连接到该来源的目标输入，若有多个兼容来源则保留目标输入由作者选择。
 - 写入节点通过 Host API 修改运行时或元素属性。值确实发生变化并导致重绘时会排队触发 flush；读取节点、CSS 自动样式和滚动请求不触发 flush。
 
 ## Variables
@@ -77,6 +78,7 @@ Element 节点组用于显式引用当前 Surface 内的控件，并放置所有
 Element 节点组默认具有：
 - `blueprint.element.ref` - Same-Surface 元素字面量引用，输出 `element` 或 typed `element:<widgetType>`
 - `blueprint.event.head.elementFlush` - 绑定目标控件并监听该控件的 flush 事件
+- `blueprint.event.head.elementClick` - 绑定目标控件并监听该控件的 click 事件
 - `blueprint.element.text.*` - Text Element 读写节点
 - `blueprint.element.displayable.*` - Displayable Element `Get Property` / `Set Property`、Variant 和属性动画节点
 - `blueprint.element.slider.*` - Slider Element 读写节点
@@ -151,16 +153,20 @@ Page 节点组默认具有：
 
 ## Game
 
-Game 节点组用于控制当前 NarraLeaf 游戏运行时，以及访问当前 Studio 项目隔离的本地普通存档。Game 节点通过 Host API 执行，存档节点均为异步 latent 节点，只用于 `event` 和 `macro` 图。
+Game 节点组用于控制当前 NarraLeaf 游戏运行时、Dialog 推进，以及访问当前 Studio 项目隔离的本地普通存档。Game 节点通过 Host API 执行；除 `Get Nametag` 为 pure 读取节点外，执行节点均为异步 latent 节点，只用于 `event` 和 `macro` 图。
 
 Game 节点组默认具有：
 - `blueprint.game.startStory` - 启动指定 Story / Scene（尾节点，无执行出口）
+- `blueprint.game.getNametag` - 读取当前 Dialog 说话人名字；没有说话人时返回 `null`；pure 节点，可用于 Blueprint Value
+- `blueprint.game.next` - 触发当前 NarraLeaf live game 的 virtual click 路径；默认 Dialog 模板在 Dialog Content 蓝图中用 Content 点击、绑定 Interaction Layer / Panel / 子控件的 Element Click 和 Space `keyUp` 调用
+- `blueprint.game.skip` - 调用 NarraLeaf `LiveGame.skipDialog()` 跳过当前 dialog
+- `blueprint.game.setSentenceSpeed` - 通过 NarraLeaf Preference API 写入 `cps` preference key
 - `blueprint.game.save.write` - 写入当前 live game 存档；`id` 为可 inline literal 的 `string` 输入，同 id 覆盖旧存档
 - `blueprint.game.save.load` - 读取存档并放弃当前游戏进度（尾节点，无执行出口）
 - `blueprint.game.save.listIds` - 列出当前项目本地普通存档 id，输出契约为 `Array<String>` / `string[]`，顺序不保证稳定
 - `blueprint.game.save.getPreview` - 读取存档预览图，输出 `ImageAsset|null`；预览图为当前 Dev Mode 会话内临时图片，不导入项目资源
 
-读取和写入存档依赖当前 Dev Mode 中存在活动 NarraLeaf live game；缺失 runtime、缺失存档或损坏存档会作为蓝图执行错误抛出。
+Dialog 操作、速度设置、读取和写入存档依赖当前 Dev Mode 中存在活动 NarraLeaf live game；缺失 runtime、缺失存档或损坏存档会作为蓝图执行错误抛出。
 
 ## Global
 
@@ -191,7 +197,7 @@ Surface 节点组默认具有：
 
 List 节点组用于 `nl.list` 的运行时内容、选中项、滚动和条目上下文。Array / JSON / Object 处理不放入 List，统一放在 Data 分类。
 
-List Self 节点只在 `nl.list` 自己的私有蓝图中出现，创建浮窗中归入 `List` 分类，且没有 `list` 输入。List Element 节点使用 `blueprint.element.list.*`，带 `element:nl.list` 输入，归入 `Element` 分类；当前图中没有绑定到 `nl.list` 的 Element 或 Element Flush 时不会显示。List item context 读取节点只在 item template 后代元素蓝图中出现。
+List Self 节点只在 `nl.list` 自己的私有蓝图中出现，创建浮窗中归入 `List` 分类，且没有 `list` 输入。List Element 节点使用 `blueprint.element.list.*`，带 `element:nl.list` 输入，归入 `Element` 分类；当前图中没有绑定到 `nl.list` 的 Element、Element Flush 或 Element Click 时不会显示。List item context 读取节点只在 item template 后代元素蓝图中出现。
 
 List 节点组默认具有：
 - `blueprint.event.head.scroll` - 列表滚动事件
@@ -218,7 +224,7 @@ Element 版对应稳定 ID 使用 `blueprint.element.list.*`，方法目录与 S
 
 Slider 节点组用于读取和改写 `nl.slider` 的运行时映射值与范围。`props.value`、Blueprint Value、事件 payload 和 `Get Value` / Set Value 节点都表示映射后的值；0-1 normalized 值只通过专用读节点取得。
 
-Slider Self 节点只在 `nl.slider` 自己的私有蓝图中出现，创建浮窗中归入 `Slider` 分类，且没有 `slider` 输入。Slider Element 节点使用 `blueprint.element.slider.*`，带 `element:nl.slider` 输入，归入 `Element` 分类；当前图中没有绑定到 `nl.slider` 的 Element 或 Element Flush 时不会显示。
+Slider Self 节点只在 `nl.slider` 自己的私有蓝图中出现，创建浮窗中归入 `Slider` 分类，且没有 `slider` 输入。Slider Element 节点使用 `blueprint.element.slider.*`，带 `element:nl.slider` 输入，归入 `Element` 分类；当前图中没有绑定到 `nl.slider` 的 Element、Element Flush 或 Element Click 时不会显示。
 
 Slider 节点组默认具有：
 - `blueprint.event.head.sliderDragStart` - 滑块拖拽开始事件，输出映射值 `value`
@@ -240,7 +246,7 @@ Element 版对应稳定 ID 使用 `blueprint.element.slider.*`，方法目录与
 
 Image 节点组用于读取和改写 `nl.image` 的界面图片资源。它面向应用界面控件，不处理舞台表演图片、角色立绘或剧情演出资源。
 
-Image Self 节点只在 `nl.image` 自己的私有蓝图中出现，创建浮窗中归入 `Image` 分类，且没有 `image` 输入。Image Element 节点使用 `blueprint.element.image.*`，带 `element:nl.image` 输入，归入 `Image` 分类；当前图中没有绑定到 `nl.image` 的 Element 或 Element Flush 时不会显示。
+Image Self 节点只在 `nl.image` 自己的私有蓝图中出现，创建浮窗中归入 `Image` 分类，且没有 `image` 输入。Image Element 节点使用 `blueprint.element.image.*`，带 `element:nl.image` 输入，归入 `Image` 分类；当前图中没有绑定到 `nl.image` 的 Element、Element Flush 或 Element Click 时不会显示。
 
 Image 节点组默认具有：
 - `blueprint.image.assetLiteral` - 图片资产字面量卡片，输出 `ImageAsset`
@@ -291,7 +297,8 @@ Data 节点组默认具有：
 - `blueprint.data.isArray` - 判断值是否为数组
 - `blueprint.data.isObject` - 判断值是否为对象
 - `blueprint.data.isNull` - 判断值是否为 null
-- `blueprint.data.isEmptyValue` - 判断值是否为空字符串、空数组、空对象、null 或 undefined
+- `blueprint.data.notNull` - 判断值是否不是 null
+- `blueprint.data.isEmptyValue` - 判断值是否为空字符串、空数组、空对象或 null
 - `blueprint.data.jsonLiteral` - JSON 常量
 - `blueprint.data.toJson` - 显式转换为 JSON
 - `blueprint.data.parseJson` - 从字符串解析 JSON

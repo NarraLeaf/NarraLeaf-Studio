@@ -17,8 +17,9 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.event.head.anyKeyUp` | `Any Key Up` | `Events` | Entry node for any runtime window keyboard up event. It outputs `key` plus modifier pins. |
 | `blueprint.event.head.init` | `Init` | `Events` | Entry node for widget initialization and Blueprint Value initial evaluation. It is available to widgets that expose the `init` lifecycle event and to `widgetValue` blueprints. |
 | `blueprint.event.head.mouseClick` | `Mouse Click` | `Events` | Entry node for widget mouse click interactions and Surface-level click events. In `surfaceMain` blueprints it fires for any click inside the current Surface and outputs `x` / `y` in Surface design coordinates. |
-| `blueprint.event.head.flush` | `On Flush` | `Events` | Entry node fired on the current widget after explicit Host API element property changes trigger a redraw. It outputs the flushed Element reference. |
+| `blueprint.event.head.flush` | `On Flush` | `Events` | Entry node fired on the current widget after explicit Host API element property changes trigger a redraw. It also acts as a Blueprint Value refresh entry and outputs the flushed Element reference. |
 | `blueprint.event.head.elementFlush` | `Element Flush` | `Events` | Element-bound event head that listens for another same-Surface element's flush event and outputs that Element reference. |
+| `blueprint.event.head.elementClick` | `Element Click` | `Events` | Element-bound event head that listens for another same-Surface element's own mouse click and outputs that Element reference plus click payload. |
 | `blueprint.event.head.scroll` | `Scroll` | `Events` | Entry node for List scroll interactions. It is available to `nl.list` widget private blueprints. |
 | `blueprint.event.head.scrollEnd` | `Scroll End` | `Events` | Entry node fired when a List runtime scrolls from non-end to the scroll end. It is available to `nl.list` widget private blueprints. |
 | `blueprint.event.head.itemRender` | `Item Render` | `Events` | Entry node fired for each rendered List item scope. It is available to `nl.list` widget private blueprints. |
@@ -32,6 +33,10 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.event.head.pageEvent` | `Page Event` | `Events` | Entry node for Page component child-to-parent events. It is available to `nl.frame` widget private blueprints. |
 | `blueprint.page.go` | `Go Page` | `Page` | Terminal exec node that opens a selected Page through the host navigation path. |
 | `blueprint.game.startStory` | `Start Game` | `Game` | Terminal latent node that starts a selected Story / Scene in the NarraLeaf game runtime. |
+| `blueprint.game.getNametag` | `Get Nametag` | `Game` | Pure node that reads the current NarraLeaf Dialog speaker name, returning `null` when none is active; usable in Blueprint Value. |
+| `blueprint.game.next` | `Next` | `Game` | Latent exec node that triggers NarraLeaf's virtual click path for the active live game. |
+| `blueprint.game.skip` | `Skip` | `Game` | Latent exec node that calls NarraLeaf `LiveGame.skipDialog()` for the active game session. |
+| `blueprint.game.setSentenceSpeed` | `Set Sentence Speed` | `Game` | Latent exec node that writes sentence `cps` through the NarraLeaf Preference API. |
 | `blueprint.game.save.write` | `Write Save` | `Game` | Latent node that serializes the active NarraLeaf live game into a project-scoped local save id. |
 | `blueprint.game.save.load` | `Load Save` | `Game` | Terminal latent node that abandons current game progress and deserializes a project-scoped local save. |
 | `blueprint.game.save.listIds` | `List Saves` | `Game` | Latent node that lists project-scoped local save ids as an `Array<String>` / `string[]` contract over the blueprint `array` pin type. |
@@ -55,8 +60,8 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.math.*` | Math utilities | `Math` | Pure arithmetic, modulo, increment/decrement, abs, min/max, rounding, random numbers, boolean logic, strict equality, numeric comparison, and legacy numeric comparison nodes. |
 | `blueprint.boolean.*` | Boolean logic | `Math` | Pure `And`, `Or`, `Not`, and `Xor`; grouped under Math in the palette. |
 | `blueprint.compare.*` | Value comparison | `Math` | Pure strict equality and numeric comparison nodes grouped under Math. `Equal` / `Not Equal` use JavaScript `===` / `!==` semantics. |
-| `blueprint.slider.*` | Slider utilities | `Slider` | Element-derived nodes for a bound `nl.slider` Element Literal or Element Flush, including `Get Value` for mapped values; the derived label appears as `Slider:Get Value`. Derived entries do not auto-connect. |
-| `blueprint.list.*` | List utilities | `List` | Element-derived nodes for a bound `nl.list` Element Literal or Element Flush plus item-template context reads. Derived entries do not auto-connect. |
+| `blueprint.slider.*` | Slider utilities | `Slider` | Element-derived nodes for a bound `nl.slider` Element Literal, Element Flush, or Element Click, including `Get Value` for mapped values; the derived label appears as `Slider:Get Value`. Derived entries do not auto-connect. |
+| `blueprint.list.*` | List utilities | `List` | Element-derived nodes for a bound `nl.list` Element Literal, Element Flush, or Element Click plus item-template context reads. Derived entries do not auto-connect. |
 | `blueprint.flow.comment` | `Comment` | `Debug` | Graph-only multi-line comment box with color, background, and size controls. Background-off comments sit behind other nodes for framing. It does not participate in execution. |
 | `blueprint.log` | `Log` | `Debug` | Exec node that writes a string value to DevTools/browser logs and continues through `next`. |
 
@@ -114,13 +119,13 @@ The variable creation UI includes `JSON` with default `{}` and `Array` with defa
 
 Blueprint Value is a per-property dynamic value provider. A `widgetValue` private owner is keyed as `widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`, and the UI document stores the active binding on the element in `valueBindings`. The current supported targets are `nl.text` -> `props.text`, `nl.button` -> `props.label`, `nl.frame` -> `props.params`, and `nl.slider` -> `props.value`.
 
-Value blueprints are visual graph programs only. They are seeded with one `init` event graph that returns the current literal value through `blueprint.data.returnValue`. `string` values seed a String literal, `json` values seed a JSON literal, and `float` values seed a Float literal. On mount, the value runtime executes `init` once, records Element/property reads made while resolving data pins, and reruns the binding only when those recorded Same-Surface element properties change. Evaluation is serialized per binding so an in-flight run is followed by at most one latest pending rerun.
+Value blueprints are visual graph programs only. They are seeded with one `init` event graph that returns the current literal value through `blueprint.data.returnValue`. `string` values seed a String literal, `json` values seed a JSON literal, and `float` values seed a Float literal. On mount, the value runtime executes the available value head (`init` or `flush`), records Element/property reads made while resolving data pins, and reruns the binding when those recorded Same-Surface element properties change. Host global state changes refresh all started value bindings so pure host reads such as Game `Get Nametag` can update without remounting. Evaluation is serialized per binding so an in-flight run is followed by at most one latest pending rerun.
 
-If a value graph does not execute `returnValue`, the runtime keeps the previous resolved value. If there is no previous resolved value, the widget uses its literal prop from the UI document. String results are coerced to string, and `null` or `undefined` become an empty string. Page `params` expects a JSON object; non-object results fall back to `{}`. Slider `value` expects a finite float and is clamped/snapped against the authored `min` / `max` / `step` range.
+If a value graph does not execute `returnValue`, the runtime keeps the previous resolved value. If there is no previous resolved value, the widget uses its literal prop from the UI document. String results are coerced to string, and `null` becomes an empty string. Page `params` expects a JSON object; non-object results fall back to `{}`. Slider `value` expects a finite float and is clamped/snapped against the authored `min` / `max` / `step` range.
 
 When a Blueprint Value belongs to an element repeated by an `nl.list` item template, evaluation receives the current `listItemScope` and an item-specific `instanceKey`. Pure List item context nodes (`Get List Item Props`, `Index`, `Count`, `Key`) read that scope, and each repeated item keeps a separate runtime value even though the source element id is the same.
 
-The Blueprint Value palette is intentionally restricted to safe value-producing nodes: the `Init` event head, non-latent flow, graph comments, pure Data/Math/List nodes, local variables, Element literals, and pure Element-targeted Text/Displayable/Slider reads. Surface/global state read/write nodes are not part of the core catalog; widget mutations, navigation, Persistent variable reads/writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
+The Blueprint Value palette is intentionally restricted to safe value-producing nodes: the `Init` and `On Flush` event heads, non-latent flow, graph comments, pure Data/Math/List nodes, local variables, Element literals, pure Element-targeted Text/Displayable/Slider reads, and pure Game reads such as `Get Nametag`. Surface/global state read/write nodes are not part of the core catalog; widget mutations, navigation, Persistent variable reads/writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
 
 ## List runtime and item context
 
@@ -409,12 +414,7 @@ const value = resolveDataPinValue(
 );
 ```
 
-If the pin may also have an inline/default param, use the wired value first and then fall back to `ctx.params`.
-
-```ts
-const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals);
-const value = wired !== undefined ? wired : ctx.params.value;
-```
+`resolveDataPinValue` already falls back to the inline/default param stored on the node when no edge is connected. Blueprint-visible empty data should be represented as `null`.
 
 ## Host API nodes
 
@@ -436,7 +436,7 @@ Host API nodes are usually:
 - `isLatent: true` if they await runtime work
 - limited to `event` and `macro` graph kinds
 
-Game save Host API nodes follow the same rules. `Write Save`, `List Saves`, and `Get Save Preview` continue through `next` after the awaited host call, while `Load Save` is terminal because it replaces the active NarraLeaf game state and must not continue the old execution chain.
+Game Host API nodes follow the same rules. `Get Nametag` is pure and can be evaluated from Blueprint Value or event graphs; it returns `null` when no speaker is active. The default Dialog Nametag widgetMain graph uses `Init` / `On Flush` and reads `Get Nametag` separately for the null check and text update, and the NarraLeaf Dialog hook dispatches flush for Dialog elements with Blueprint Value or `On Flush` logic when the dialog text/speaker changes. The default Dialog Content widgetMain graph centralizes advancement: Content `Mouse Click`, `Element Click` bound to the full-screen Dialog Interaction Layer, the visible Dialog Panel, and default content children, and Space `keyUp` all feed one `Next` node. `Next`, `Skip`, `Set Sentence Speed`, `Write Save`, `List Saves`, and `Get Save Preview` continue through `next` after the awaited host call, while `Start Game` and `Load Save` are terminal because they replace or enter the active NarraLeaf game state and must not continue the old execution chain. `Set Sentence Speed` writes the `cps` preference key through the NarraLeaf Preference API.
 
 ## Scoping and palette availability
 

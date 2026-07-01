@@ -12,7 +12,7 @@
 - UI 管理器边栏按 Page / Game UI 创建和浏览界面；Page 创建时可设置画布尺寸，Game UI 固定使用项目分辨率并选择插槽。
 - Dialog Game UI 是 `stageSurface` 的 `dialog` slot。创建时会生成透明背景、底部 dialog panel、`Nametag` 和 `Sentence` 模板；同一 slot 只允许一个 active Game UI。
 - 已有 canvas 编辑、outline、inspector、拖拽/缩放、复制粘贴、分组排列、undo/redo、图片拖放、静态诊断、card preview。
-- 已有 widget module registry 和内置 widget 渲染。插入栏主区包含 Container、Text、Image、Button；Slider、List 和 Page 收在 overflow 菜单。Dialog slot 私有控件 `Sentence`、`Nametag` 只会在 Dialog Game UI 的 insert palette 和右键 Insert 菜单出现。
+- 已有 widget module registry 和内置 widget 渲染。插入栏主区包含 Container、Text、Image、Button；Slider、List 和 Page 收在 overflow 菜单。Dialog slot 私有控件只保留 `Sentence`；说话人名使用普通 Text 配合 Game `Get Nametag` 蓝图节点。
 - 已有 local blueprint document：`UIGraphService` 持久化 `editor/ui/uigraphs.json`，`LocalBlueprintService` 操作 private blueprint。
 - 已有 Blueprint Lite editor，可编辑 Page / Game UI / widget private blueprint 的 event graph、variables、fields、TypeScript module source。
 - 已有 Dev Mode UI runtime，可读取磁盘 bundle、执行最小 blueprint runtime、应用 Host API 变更并展示 debug panel。
@@ -47,7 +47,7 @@
 - Main Page 使用稳定 id，运行时按 id 查找，不按 name 查找。
 - Page 底层为 `appSurface`，host 为 `app`。
 - Game UI 底层为 `stageSurface`，host 为 `player`，插槽为 `onStage`、`dialog`、`notification`、`choice`。
-- Dialog Game UI 私有 widget 类型为 `nl.dialog.sentence` 和 `nl.dialog.nametag`。Workspace preview 中它们使用安全预览文本；Dev Mode NarraLeaf 运行时中，`Sentence` 映射 NarraLeaf React `<Texts />`，`Nametag` 映射 `<Nametag />`，并放在 NarraLeaf `<Dialog>` / `DialogContext` 内渲染。
+- Dialog Game UI 默认模板把推进逻辑集中在 Dialog Content 的 widgetMain 蓝图中：Content 自己的 `Mouse Click`、绑定全屏透明 Dialog Interaction Layer、可见 Dialog Panel 和默认内容子控件的 `Element Click`、以及 Space `keyUp` 都连接到同一个 Game `Next` 节点，触发 NarraLeaf virtual click 路径。全屏透明 `nl.container` 只作为工具控件负责命中面板外点击；Dialog Panel 是视觉壳，Dialog Content 是实际顶层点击区。句子仍使用私有 `nl.dialog.sentence` 映射 NarraLeaf React `<Texts />`；说话人名使用普通 `nl.text`，通过自身 `Init` / `On Flush` 事件图读取 Game `Get Nametag` 并在空值时隐藏，不再提供特殊私有 `Nametag` widget，也不再依赖 Blueprint Value。Dialog hook 在文本/说话人变化时会对带 Blueprint Value 或 `On Flush` 逻辑的 Dialog 元素派发 flush，因此 Dialog 不重新挂载时也会更新。
 - Game UI 不再暴露 link 或 layer 配置；Page 在游戏内作为叠层显示的互通由后续 page/layer API 内部管理。
 - Flow parent 主要包括 `nl.stack`、`nl.scroll`、`nl.listRepeater`。
 - `nl.slider` 是数值映射滑块控件，props 使用 `value` / `min` / `max` / `step` / `orientation`。插入时会创建两个专用 `nl.container` 内部部件：`track` 和 `handle`，并通过 `extra.sliderSlot` 与 `trackElementId` / `handleElementId` 识别。

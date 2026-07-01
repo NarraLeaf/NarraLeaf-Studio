@@ -10,6 +10,7 @@ import {
 import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { createDevModeBlueprintHostApi, type DevModeWidgetRuntimePatch } from "./BlueprintHostApiBridge";
+import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
 
 function createDocument(): UIDocument {
     const imageProps = {
@@ -87,6 +88,10 @@ function createHostApi(options?: {
     frameParams?: Record<string, unknown>;
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
     onWidgetPatch?: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
+    onGetNametag?: () => string | null;
+    onNext?: () => Promise<void> | void;
+    onSkip?: () => Promise<void> | void;
+    onSetSentenceSpeed?: (speed: number) => Promise<void> | void;
     widgetRuntimeStore?: WidgetRuntimeStateStore;
 }) {
     return createDevModeBlueprintHostApi({
@@ -96,6 +101,10 @@ function createHostApi(options?: {
         runtimeScopeId: options?.runtimeScopeId,
         frameParams: options?.frameParams,
         onFrameEmit: options?.onFrameEmit,
+        onGetNametag: options?.onGetNametag,
+        onNext: options?.onNext,
+        onSkip: options?.onSkip,
+        onSetSentenceSpeed: options?.onSetSentenceSpeed,
         emit: () => undefined,
         onOpenSurface: () => undefined,
         onCloseLayer: () => undefined,
@@ -114,7 +123,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
 
         expect(hostApi.frame.getParam("tab")).toBe("audio");
         expect(hostApi.frame.getParam("index")).toBe(2);
-        expect(hostApi.frame.getParam("missing")).toBeUndefined();
+        expect(hostApi.frame.getParam("missing")).toBeNull();
 
         await hostApi.frame.emit(" page:selected ", { id: "settings" });
         await hostApi.frame.emit("   ", { ignored: true });
@@ -134,6 +143,44 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(first.state.get("surface", "count")).toBe(1);
         expect(second.state.get("surface", "count")).toBe(2);
         expect(scope.getSurfaceStore("page").get("count")).toBeUndefined();
+    });
+
+    it("exposes Dialog game controls and nametag reads", async () => {
+        const next = vi.fn();
+        const skip = vi.fn();
+        const speeds: number[] = [];
+        const hostApi = createHostApi({
+            onGetNametag: () => "Alice",
+            onNext: next,
+            onSkip: skip,
+            onSetSentenceSpeed: speed => {
+                speeds.push(speed);
+            },
+        });
+
+        expect(hostApi.game.getNametag()).toBe("Alice");
+        await hostApi.game.next();
+        await hostApi.game.skip();
+        await hostApi.game.setSentenceSpeed(24);
+
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(skip).toHaveBeenCalledTimes(1);
+        expect(speeds).toEqual([24]);
+    });
+
+    it("falls back to global nametag state when no dialog callback is installed", () => {
+        const scope = new ScopeStoreBridge();
+        scope.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, "Narrator");
+        const hostApi = createHostApi({ scope });
+
+        expect(hostApi.game.getNametag()).toBe("Narrator");
+    });
+
+    it("returns null for missing Dialog nametag values", () => {
+        expect(createHostApi().game.getNametag()).toBeNull();
+        expect(createHostApi({ onGetNametag: () => null }).game.getNametag()).toBeNull();
+        expect(createHostApi({ onGetNametag: () => "" }).game.getNametag()).toBeNull();
+        expect(createHostApi({ onGetNametag: () => "   " }).game.getNametag()).toBeNull();
     });
 
     it("routes persistence get/set through the async store adapter", async () => {

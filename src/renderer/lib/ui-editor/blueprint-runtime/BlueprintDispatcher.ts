@@ -1,5 +1,6 @@
 import type { Blueprint, BlueprintDocument, BlueprintEventGraph, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
@@ -172,6 +173,23 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.call", functionId: "game.getSavePreview" });
                     input.debug.emit({ type: "function.return", functionId: "game.getSavePreview" });
                     return null;
+                },
+                getNametag: () => {
+                    input.debug.emit({ type: "function.call", functionId: "game.getNametag" });
+                    input.debug.emit({ type: "function.return", functionId: "game.getNametag" });
+                    return "";
+                },
+                next: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "game.next" });
+                    input.debug.emit({ type: "function.return", functionId: "game.next" });
+                },
+                skip: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "game.skip" });
+                    input.debug.emit({ type: "function.return", functionId: "game.skip" });
+                },
+                setSentenceSpeed: async (_speed: number) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.setSentenceSpeed" });
+                    input.debug.emit({ type: "function.return", functionId: "game.setSentenceSpeed" });
                 },
             },
         },
@@ -441,11 +459,12 @@ function collectSurfaceElementIds(document: UIDocument, surfaceId: string): stri
     return out;
 }
 
-function matchesElementFlushTarget(
+function matchesElementEventTarget(
     node: { type: string; params?: Record<string, unknown> },
     target: BlueprintElementRef,
+    nodeType: string,
 ): boolean {
-    if (node.type !== BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH) {
+    if (node.type !== nodeType) {
         return false;
     }
     const ref = readBlueprintElementRefParams(node.params);
@@ -457,22 +476,24 @@ function matchesElementFlushTarget(
     );
 }
 
-function collectElementFlushHeadNodeIds(
+function collectElementEventHeadNodeIds(
     nodes: Record<string, { type: string; params?: Record<string, unknown> }> | undefined,
     target: BlueprintElementRef,
+    nodeType: string,
 ): string[] {
     const n = nodes ?? {};
     return Object.entries(n)
-        .filter(([, node]) => matchesElementFlushTarget(node, target))
+        .filter(([, node]) => matchesElementEventTarget(node, target, nodeType))
         .map(([id]) => id)
         .sort();
 }
 
-function collectElementFlushTargets(input: {
+function collectElementEventTargets(input: {
     document: UIDocument;
     blueprintDocument: BlueprintDocument;
     surfaceId: string;
     target: BlueprintElementRef;
+    nodeType: string;
 }): Array<{
     elementId?: string;
     blueprintId: string;
@@ -494,7 +515,7 @@ function collectElementFlushTargets(input: {
     if (surfaceBlueprintId && surfaceBlueprint?.program.kind === "graph") {
         for (const eventGraph of Object.values(surfaceBlueprint.program.graphs.events ?? {})) {
             const ir = eventGraph.graph;
-            const headIds = collectElementFlushHeadNodeIds(ir?.nodes, input.target);
+            const headIds = collectElementEventHeadNodeIds(ir?.nodes, input.target, input.nodeType);
             if (ir && headIds.length > 0) {
                 out.push({ blueprintId: surfaceBlueprintId, eventGraph, ir, headIds });
             }
@@ -515,7 +536,7 @@ function collectElementFlushTargets(input: {
         }
         for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
             const ir = eventGraph.graph;
-            const headIds = collectElementFlushHeadNodeIds(ir?.nodes, input.target);
+            const headIds = collectElementEventHeadNodeIds(ir?.nodes, input.target, input.nodeType);
             if (ir && headIds.length > 0) {
                 out.push({ elementId, blueprintId, eventGraph, ir, headIds });
             }
@@ -525,7 +546,7 @@ function collectElementFlushTargets(input: {
     return out;
 }
 
-export async function dispatchBlueprintElementFlushEvent(options: {
+type ElementEventDispatchOptions = {
     document: UIDocument;
     blueprintDocument: BlueprintDocument;
     surfaceId: string;
@@ -537,7 +558,12 @@ export async function dispatchBlueprintElementFlushEvent(options: {
     getSurfaceState: (key: string) => unknown;
     setSurfaceState: (key: string, value: unknown) => void;
     maxSteps?: number;
-} & CancellableDispatchOptions): Promise<void> {
+    nodeType: string;
+    eventId: string;
+    graphIdPrefix: string;
+};
+
+async function dispatchBlueprintElementEvent(options: ElementEventDispatchOptions & CancellableDispatchOptions): Promise<void> {
     const {
         document,
         blueprintDocument,
@@ -547,9 +573,12 @@ export async function dispatchBlueprintElementFlushEvent(options: {
         eventPayload,
         hostAdapter,
         debug,
+        nodeType,
+        eventId,
+        graphIdPrefix,
     } = options;
-    const payload = eventPayload ?? { element: target };
-    const targets = collectElementFlushTargets({ document, blueprintDocument, surfaceId, target });
+    const payload = { ...(eventPayload ?? {}), element: target };
+    const targets = collectElementEventTargets({ document, blueprintDocument, surfaceId, target, nodeType });
 
     for (const listener of targets) {
         const executionId = newExecutionId();
@@ -558,7 +587,7 @@ export async function dispatchBlueprintElementFlushEvent(options: {
             executionId,
             runtimeScopeId,
             blueprintId: listener.blueprintId,
-            eventId: "elementFlush",
+            eventId,
             allowClosedScopeExecution: options.allowClosedScopeExecution,
         });
         debug.emit({ type: "execution.started", executionId, blueprintId: listener.blueprintId });
@@ -573,7 +602,7 @@ export async function dispatchBlueprintElementFlushEvent(options: {
             for (const headId of listener.headIds) {
                 const graph = adaptBlueprintGraphIr(
                     listener.ir,
-                    `elementFlush:${listener.blueprintId}:${listener.eventGraph.id}`,
+                    `${graphIdPrefix}:${listener.blueprintId}:${listener.eventGraph.id}`,
                 );
                 const startNode = graph.nodes[headId];
                 if (!startNode || !isBlueprintEventDispatchHeadType(startNode.type)) {
@@ -593,7 +622,7 @@ export async function dispatchBlueprintElementFlushEvent(options: {
                         executionId,
                         graphId: graph.id,
                         blueprintId: listener.blueprintId,
-                        eventId: "elementFlush",
+                        eventId,
                         emit: e => debug.emit(e),
                     },
                 });
@@ -605,7 +634,7 @@ export async function dispatchBlueprintElementFlushEvent(options: {
                     debug,
                     executionId,
                     blueprintId: listener.blueprintId,
-                    eventId: "elementFlush",
+                    eventId,
                     nodeId: err.nodeId,
                     reason: err.message,
                 });
@@ -617,17 +646,59 @@ export async function dispatchBlueprintElementFlushEvent(options: {
                     executionId,
                     message: err.message,
                     blueprintId: listener.blueprintId,
-                    eventId: "elementFlush",
+                    eventId,
                     nodeId: err.nodeId,
                 });
                 continue;
             }
             const message = err instanceof Error ? err.message : String(err);
-            debug.emit({ type: "execution.error", executionId, message, blueprintId: listener.blueprintId, eventId: "elementFlush" });
+            debug.emit({ type: "execution.error", executionId, message, blueprintId: listener.blueprintId, eventId });
         } finally {
             execution?.finish();
         }
     }
+}
+
+export async function dispatchBlueprintElementFlushEvent(options: {
+    document: UIDocument;
+    blueprintDocument: BlueprintDocument;
+    surfaceId: string;
+    runtimeScopeId?: string;
+    target: BlueprintElementRef;
+    eventPayload?: Record<string, unknown>;
+    hostAdapter: UIHostAdapter;
+    debug: DebugBridge;
+    getSurfaceState: (key: string) => unknown;
+    setSurfaceState: (key: string, value: unknown) => void;
+    maxSteps?: number;
+} & CancellableDispatchOptions): Promise<void> {
+    await dispatchBlueprintElementEvent({
+        ...options,
+        nodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+        eventId: "elementFlush",
+        graphIdPrefix: "elementFlush",
+    });
+}
+
+export async function dispatchBlueprintElementClickEvent(options: {
+    document: UIDocument;
+    blueprintDocument: BlueprintDocument;
+    surfaceId: string;
+    runtimeScopeId?: string;
+    target: BlueprintElementRef;
+    eventPayload?: Record<string, unknown>;
+    hostAdapter: UIHostAdapter;
+    debug: DebugBridge;
+    getSurfaceState: (key: string) => unknown;
+    setSurfaceState: (key: string, value: unknown) => void;
+    maxSteps?: number;
+} & CancellableDispatchOptions): Promise<void> {
+    await dispatchBlueprintElementEvent({
+        ...options,
+        nodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+        eventId: "elementClick",
+        graphIdPrefix: "elementClick",
+    });
 }
 
 function collectBroadcastHeadNodeIds(

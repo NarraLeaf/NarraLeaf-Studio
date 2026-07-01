@@ -56,7 +56,22 @@ import {
 } from "./blueprint/cloneBlueprintForPaste";
 import { registerPrivateBlueprintAsActive } from "./blueprint/ownerRecords";
 import { componentWidgetMainOwnerKey, widgetMainOwnerKey, widgetValueOwnerKey } from "./blueprint/ownerKeys";
-import type { Blueprint } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_GRAPH_IR_META_KIND,
+    BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_FLOW_IF,
+    BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_NEXT,
+    BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
+} from "@shared/types/blueprint/graph";
 import {
     DEFAULT_APP_SURFACE_NAME,
     DEFAULT_UI_DOCUMENT_NAME,
@@ -118,7 +133,15 @@ const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 const COMPONENT_LINKED_LAYOUT_KEYS = new Set<keyof UILayout>(["x", "y", "width", "height", "rotation"]);
 const DEFAULT_COMPONENT_SIZE: UISurfaceDesignSize = { width: 240, height: 120 };
 const DIALOG_SENTENCE_WIDGET_TYPE = "nl.dialog.sentence";
-const DIALOG_NAMETAG_WIDGET_TYPE = "nl.dialog.nametag";
+
+type DialogStageTemplate = {
+    elements: Record<UIElementId, UIElement>;
+    interactionLayerId: UIElementId;
+    panelId: UIElementId;
+    stackId: UIElementId;
+    nametagId: UIElementId;
+    sentenceId: UIElementId;
+};
 
 function getComponentPreviewDesignSize(component: UIComponentDefinition): UISurfaceDesignSize {
     return {
@@ -188,7 +211,6 @@ function ensureElementSerializedAppearance(element: UIElement): boolean {
     }
     const isTextLike =
         element.type === "nl.text" ||
-        element.type === DIALOG_NAMETAG_WIDGET_TYPE ||
         element.type === DIALOG_SENTENCE_WIDGET_TYPE;
     if (isTextLike) {
         const props: TextWidgetProps = {
@@ -1162,16 +1184,20 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                   };
 
         const rootElement = this.createRootElement(rootElementId, designSize);
-        const templateElements =
+        const dialogTemplate =
             kind === "stageSurface" && effectiveMount?.slotId === "dialog"
                 ? this.createDialogStageTemplate(rootElement, designSize)
-                : {};
+                : null;
+        const templateElements = dialogTemplate?.elements ?? {};
 
         this.mutateDocument(document => {
             document.elements[rootElementId] = rootElement;
             Object.assign(document.elements, templateElements);
             document.surfaces.push(surface);
         });
+        if (dialogTemplate) {
+            this.configureDefaultDialogBlueprints(surface.id, dialogTemplate);
+        }
 
         return surface;
     }
@@ -2603,8 +2629,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         };
     }
 
-    private createDialogStageTemplate(rootElement: UIElement, designSize: UISurfaceDesignSize): Record<UIElementId, UIElement> {
+    private createDialogStageTemplate(rootElement: UIElement, designSize: UISurfaceDesignSize): DialogStageTemplate {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const interactionLayerId = uuidService.generate();
         const panelId = uuidService.generate();
         const stackId = uuidService.generate();
         const nametagId = uuidService.generate();
@@ -2614,7 +2641,36 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const panelX = Math.round((designSize.width - panelWidth) / 2);
         const panelY = Math.max(0, designSize.height - panelHeight - Math.round(designSize.height * 0.04));
 
-        rootElement.childrenIds = [panelId];
+        rootElement.childrenIds = [interactionLayerId, panelId];
+
+        const interactionLayer: UIElement = {
+            id: interactionLayerId,
+            type: "nl.container",
+            name: "Dialog Interaction Layer",
+            parentId: rootElement.id,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: designSize.width,
+                height: designSize.height,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createContainerTemplateProps({
+                layoutKind: "free",
+                backgroundColor: "transparent",
+                fillVisible: false,
+                fillOpacity: 0,
+                strokeVisible: false,
+                borderWidth: 0,
+                stackPaddingTop: 0,
+                stackPaddingRight: 0,
+                stackPaddingBottom: 0,
+                stackPaddingLeft: 0,
+                clipContent: false,
+            }),
+        };
 
         const panel: UIElement = {
             id: panelId,
@@ -2634,11 +2690,11 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 layoutKind: "free",
                 backgroundColor: "#0b0d12",
                 fillOpacity: 0.78,
-                borderRadius: 12,
-                borderRadiusTL: 12,
-                borderRadiusTR: 12,
-                borderRadiusBL: 12,
-                borderRadiusBR: 12,
+                borderRadius: 8,
+                borderRadiusTL: 8,
+                borderRadiusTR: 8,
+                borderRadiusBL: 8,
+                borderRadiusBR: 8,
                 borderColor: "#f8fafc",
                 borderWidth: 1,
                 strokeOpacity: 0.18,
@@ -2678,7 +2734,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         const nametag: UIElement = {
             id: nametagId,
-            type: DIALOG_NAMETAG_WIDGET_TYPE,
+            type: "nl.text",
             name: "Nametag",
             parentId: stackId,
             childrenIds: [],
@@ -2723,11 +2779,273 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         };
 
         return {
-            [panel.id]: panel,
-            [stack.id]: stack,
-            [nametag.id]: nametag,
-            [sentence.id]: sentence,
+            elements: {
+                [interactionLayer.id]: interactionLayer,
+                [panel.id]: panel,
+                [stack.id]: stack,
+                [nametag.id]: nametag,
+                [sentence.id]: sentence,
+            },
+            interactionLayerId,
+            panelId,
+            stackId,
+            nametagId,
+            sentenceId,
         };
+    }
+
+    private getOptionalLocalBlueprintService(): LocalBlueprintService | null {
+        try {
+            return this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        } catch {
+            return null;
+        }
+    }
+
+    private createDialogContentNextGraph(
+        surfaceId: UISurfaceId,
+        targets: {
+            interactionLayerId: UIElementId;
+            panelId: UIElementId;
+            nametagId: UIElementId;
+            sentenceId: UIElementId;
+        },
+    ): BlueprintGraphIr {
+        const contentClickHeadId = "dialog.next.contentMouseClick";
+        const spaceHeadId = "dialog.next.spaceKeyUp";
+        const nextId = "dialog.next";
+        const elementClickTargets = [
+            {
+                nodeId: "dialog.next.interactionLayerElementClick",
+                elementId: targets.interactionLayerId,
+                elementType: "nl.container",
+                y: 210,
+            },
+            {
+                nodeId: "dialog.next.panelElementClick",
+                elementId: targets.panelId,
+                elementType: "nl.container",
+                y: 380,
+            },
+            {
+                nodeId: "dialog.next.nametagElementClick",
+                elementId: targets.nametagId,
+                elementType: "nl.text",
+                y: 550,
+            },
+            {
+                nodeId: "dialog.next.sentenceElementClick",
+                elementId: targets.sentenceId,
+                elementType: DIALOG_SENTENCE_WIDGET_TYPE,
+                y: 720,
+            },
+        ] as const;
+        const nodes: Record<string, BlueprintGraphNode> = {
+            [contentClickHeadId]: {
+                id: contentClickHeadId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+                params: {},
+                meta: { editorLayout: { x: 80, y: 40 } },
+            },
+            [spaceHeadId]: {
+                id: spaceHeadId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+                params: {
+                    [BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME]: " ",
+                },
+                meta: { editorLayout: { x: 80, y: 890 } },
+            },
+            [nextId]: {
+                id: nextId,
+                type: BLUEPRINT_NODE_TYPE_GAME_NEXT,
+                params: {},
+                meta: { editorLayout: { x: 560, y: 465 } },
+            },
+        };
+        const edges: NonNullable<BlueprintGraphIr["edges"]> = [
+            {
+                from: { nodeId: contentClickHeadId, port: "then" },
+                to: { nodeId: nextId, port: "in" },
+            },
+            {
+                from: { nodeId: spaceHeadId, port: "then" },
+                to: { nodeId: nextId, port: "in" },
+            },
+        ];
+        for (const target of elementClickTargets) {
+            nodes[target.nodeId] = {
+                id: target.nodeId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+                params: {
+                    surfaceId,
+                    elementId: target.elementId,
+                    elementType: target.elementType,
+                },
+                meta: { editorLayout: { x: 80, y: target.y } },
+            };
+            edges.push({
+                from: { nodeId: target.nodeId, port: "then" },
+                to: { nodeId: nextId, port: "in" },
+            });
+        }
+        return {
+            nodes,
+            edges,
+            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+        };
+    }
+
+    private createNametagUpdateGraph(): BlueprintGraphIr {
+        const initHeadId = "nametag.update.init";
+        const flushHeadId = "nametag.update.flush";
+        const conditionNametagId = "nametag.update.get.condition";
+        const textNametagId = "nametag.update.get.text";
+        const notNullId = "nametag.update.notNull";
+        const ifId = "nametag.update.if";
+        const showId = "nametag.update.show";
+        const setTextId = "nametag.update.setText";
+        const hideId = "nametag.update.hide";
+        return {
+            nodes: {
+                [initHeadId]: {
+                    id: initHeadId,
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+                    params: {},
+                    meta: { editorLayout: { x: 80, y: 60 } },
+                } satisfies BlueprintGraphNode,
+                [flushHeadId]: {
+                    id: flushHeadId,
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+                    params: {},
+                    meta: { editorLayout: { x: 80, y: 190 } },
+                } satisfies BlueprintGraphNode,
+                [conditionNametagId]: {
+                    id: conditionNametagId,
+                    type: BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+                    params: {},
+                    meta: { editorLayout: { x: 300, y: 220 } },
+                } satisfies BlueprintGraphNode,
+                [textNametagId]: {
+                    id: textNametagId,
+                    type: BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+                    params: {},
+                    meta: { editorLayout: { x: 1030, y: 150 } },
+                } satisfies BlueprintGraphNode,
+                [notNullId]: {
+                    id: notNullId,
+                    type: BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
+                    params: {},
+                    meta: { editorLayout: { x: 540, y: 260 } },
+                } satisfies BlueprintGraphNode,
+                [ifId]: {
+                    id: ifId,
+                    type: BLUEPRINT_NODE_TYPE_FLOW_IF,
+                    params: {},
+                    meta: { editorLayout: { x: 780, y: 125 } },
+                } satisfies BlueprintGraphNode,
+                [showId]: {
+                    id: showId,
+                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+                    params: { property: "opacity", value: 100 },
+                    meta: { editorLayout: { x: 1030, y: 70 } },
+                } satisfies BlueprintGraphNode,
+                [setTextId]: {
+                    id: setTextId,
+                    type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
+                    params: {},
+                    meta: { editorLayout: { x: 1270, y: 70 } },
+                } satisfies BlueprintGraphNode,
+                [hideId]: {
+                    id: hideId,
+                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+                    params: { property: "opacity", value: 0 },
+                    meta: { editorLayout: { x: 1030, y: 220 } },
+                } satisfies BlueprintGraphNode,
+            },
+            edges: [
+                {
+                    from: { nodeId: initHeadId, port: "then" },
+                    to: { nodeId: ifId, port: "in" },
+                },
+                {
+                    from: { nodeId: flushHeadId, port: "then" },
+                    to: { nodeId: ifId, port: "in" },
+                },
+                {
+                    from: { nodeId: conditionNametagId, port: "nametag" },
+                    to: { nodeId: notNullId, port: "value" },
+                },
+                {
+                    from: { nodeId: notNullId, port: "result" },
+                    to: { nodeId: ifId, port: "condition" },
+                },
+                {
+                    from: { nodeId: ifId, port: "true" },
+                    to: { nodeId: showId, port: "in" },
+                },
+                {
+                    from: { nodeId: showId, port: "next" },
+                    to: { nodeId: setTextId, port: "in" },
+                },
+                {
+                    from: { nodeId: textNametagId, port: "nametag" },
+                    to: { nodeId: setTextId, port: "text" },
+                },
+                {
+                    from: { nodeId: ifId, port: "false" },
+                    to: { nodeId: hideId, port: "in" },
+                },
+            ],
+            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+        };
+    }
+
+    private configureDefaultDialogBlueprints(surfaceId: UISurfaceId, template: DialogStageTemplate): void {
+        const localBp = this.getOptionalLocalBlueprintService();
+        if (!localBp) {
+            return;
+        }
+
+        const contentBlueprintId = localBp.ensureWidgetMain(
+            surfaceId,
+            template.stackId,
+            "Dialog Content",
+            "nl.container",
+        );
+        const dialogNextEventId = "dialogNext";
+        localBp.applyBlueprintMutation(doc => {
+            const blueprint = doc.blueprints[contentBlueprintId];
+            if (!blueprint || blueprint.program.kind !== "graph") {
+                return;
+            }
+            blueprint.program.graphs.events = {
+                [dialogNextEventId]: {
+                    id: dialogNextEventId,
+                    name: "Dialog Next",
+                    graph: this.createDialogContentNextGraph(surfaceId, {
+                        interactionLayerId: template.interactionLayerId,
+                        panelId: template.panelId,
+                        nametagId: template.nametagId,
+                        sentenceId: template.sentenceId,
+                    }),
+                },
+            };
+        });
+
+        const nametagBlueprintId = localBp.ensureWidgetMain(surfaceId, template.nametagId, "Nametag", "nl.text");
+        localBp.applyBlueprintMutation(doc => {
+            const blueprint = doc.blueprints[nametagBlueprintId];
+            if (!blueprint || blueprint.program.kind !== "graph") {
+                return;
+            }
+            blueprint.program.graphs.events = {
+                nametagUpdate: {
+                    id: "nametagUpdate",
+                    name: "Update Nametag",
+                    graph: this.createNametagUpdateGraph(),
+                },
+            };
+        });
     }
 
     private ensureMainSurface(document: UIDocument): boolean {
