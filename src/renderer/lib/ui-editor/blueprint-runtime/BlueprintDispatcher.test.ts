@@ -705,6 +705,92 @@ describe("BlueprintDispatcher", () => {
         ).toBe("yes");
     });
 
+    it("dispatches surface mouse click event payloads to surface blueprints", async () => {
+        const surfaceBlueprintId = "bp-surface-click";
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [surfaceBlueprintId]: {
+                    id: surfaceBlueprintId,
+                    name: "Surface Click",
+                    owner: { kind: "surfaceMain", surfaceId: "surface" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: {
+                        variables: {
+                            mouseX: { id: "mouseX", name: "mouseX", valueType: "float", defaultValue: 0 },
+                            mouseY: { id: "mouseY", name: "mouseY", valueType: "float", defaultValue: 0 },
+                        },
+                        fields: {},
+                        functions: {},
+                    },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                mouseClick: {
+                                    id: "mouseClick",
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                                            setX: {
+                                                id: "setX",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "mouseX" },
+                                            },
+                                            setY: {
+                                                id: "setY",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "mouseY" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setX", port: "in" } },
+                                            { from: { nodeId: "setX", port: "next" }, to: { nodeId: "setY", port: "in" } },
+                                            { from: { nodeId: "head", port: "x" }, to: { nodeId: "setX", port: "value" } },
+                                            { from: { nodeId: "head", port: "y" }, to: { nodeId: "setY", port: "value" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                "surfaceMain:surface": {
+                    activeBlueprintId: surfaceBlueprintId,
+                    privateBlueprintIds: [surfaceBlueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const debug = new DebugBridge();
+        const hostAdapter: UIHostAdapter = { host: "player" };
+
+        await dispatchSurfaceBlueprintEvent({
+            blueprintDocument,
+            surfaceId: "surface",
+            eventName: "mouseClick",
+            eventPayload: { x: 42, y: 9 },
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+
+        const locals = acquireBlueprintExecutionLocals({
+            blueprintDocument,
+            currentBlueprintId: surfaceBlueprintId,
+            surfaceId: "surface",
+        });
+        expect(locals.mouseX).toBe(42);
+        expect(locals.mouseY).toBe(9);
+    });
+
     it("cancels pending surface graph executions when their runtime scope closes", async () => {
         vi.useFakeTimers();
         try {

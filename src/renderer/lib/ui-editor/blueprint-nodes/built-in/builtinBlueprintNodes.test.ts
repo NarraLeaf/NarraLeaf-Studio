@@ -80,6 +80,10 @@ import {
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
@@ -207,6 +211,10 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 },
                 game: {
                     startStory: async () => undefined,
+                    writeSave: async () => undefined,
+                    loadSave: async () => undefined,
+                    listSaveIds: async () => [],
+                    getSavePreview: async () => null,
                 },
                 devtools: {
                     log: () => undefined,
@@ -268,6 +276,61 @@ function createPageNavigationHostAdapter(
                     startStory: async request => {
                         startedStories.push(request);
                     },
+                    writeSave: async () => undefined,
+                    loadSave: async () => undefined,
+                    listSaveIds: async () => [],
+                    getSavePreview: async () => null,
+                },
+                devtools: {
+                    log: () => undefined,
+                },
+            },
+        },
+    };
+}
+
+function createGameSaveHostAdapter(options: {
+    writtenIds?: string[];
+    loadedIds?: string[];
+    listedIds?: string[];
+    previews?: Record<string, unknown>;
+}): UIHostAdapter {
+    return {
+        host: "player",
+        blueprintRuntime: {
+            surfaceId: "surface",
+            setSurfaceState: () => undefined,
+            getSurfaceState: () => undefined,
+            emitDebug: () => undefined,
+            dispatchElementBlueprintEvent: async () => undefined,
+            hostApi: {
+                navigation: {
+                    openSurface: async () => undefined,
+                    closeLayer: async () => undefined,
+                },
+                widget: {} as any,
+                state: {
+                    get: () => undefined,
+                    set: () => undefined,
+                },
+                persistence: {
+                    get: async () => undefined,
+                    set: async () => undefined,
+                },
+                frame: {
+                    getParam: () => undefined,
+                    emit: async () => undefined,
+                },
+                game: {
+                    startStory: async () => undefined,
+                    writeSave: async (id: string) => {
+                        options.writtenIds?.push(id);
+                    },
+                    loadSave: async (id: string) => {
+                        options.loadedIds?.push(id);
+                    },
+                    listSaveIds: async () => options.listedIds ?? [],
+                    getSavePreview: async (id: string) => options.previews?.[id] as any ?? null,
                 },
                 devtools: {
                     log: () => undefined,
@@ -323,6 +386,10 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_START_STORY)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_EMIT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
@@ -726,6 +793,121 @@ describe("built-in blueprint nodes", () => {
         expect(localsAfterStartGame).not.toHaveProperty("afterStartGame");
     });
 
+    it("executes game save nodes through host APIs", async () => {
+        registerCoreBlueprintNodes();
+
+        const writtenIds: string[] = [];
+        await executeGraph({
+            graph: {
+                id: "writeSave",
+                entries: { main: { start: { nodeId: "write", port: "in" } } },
+                nodes: {
+                    write: {
+                        id: "write",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
+                        params: { id: "slot-a" },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "write", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ writtenIds }),
+        });
+        expect(writtenIds).toEqual(["slot-a"]);
+
+        const localsFromList: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "listSaves",
+                entries: { main: { start: { nodeId: "list", port: "in" } } },
+                nodes: {
+                    list: {
+                        id: "list",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
+                        params: {},
+                    },
+                    capture: {
+                        id: "capture",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "ids" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "list", port: "next" }, to: { nodeId: "capture", port: "in" } },
+                    { from: { nodeId: "list", port: "ids" }, to: { nodeId: "capture", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "list", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ listedIds: ["slot-b", "slot-a"] }),
+            blueprintLocals: localsFromList,
+        });
+        expect(localsFromList.ids).toEqual(["slot-b", "slot-a"]);
+
+        const preview = { kind: "imageAsset", assetId: "dev-mode-save-preview:slot-a" };
+        const localsFromPreview: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "previewSave",
+                entries: { main: { start: { nodeId: "preview", port: "in" } } },
+                nodes: {
+                    preview: {
+                        id: "preview",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
+                        params: { id: "slot-a" },
+                    },
+                    capture: {
+                        id: "capture",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "preview" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "preview", port: "next" }, to: { nodeId: "capture", port: "in" } },
+                    { from: { nodeId: "preview", port: "preview" }, to: { nodeId: "capture", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "preview", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ previews: { "slot-a": preview } }),
+            blueprintLocals: localsFromPreview,
+        });
+        expect(localsFromPreview.preview).toEqual(preview);
+
+        const loadedIds: string[] = [];
+        const localsAfterLoad: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "loadSave",
+                entries: { main: { start: { nodeId: "load", port: "in" } } },
+                nodes: {
+                    load: {
+                        id: "load",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
+                        params: { id: "slot-a" },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterLoad" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "load", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "load", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ loadedIds }),
+            blueprintLocals: localsAfterLoad,
+        });
+        expect(loadedIds).toEqual(["slot-a"]);
+        expect(localsAfterLoad).not.toHaveProperty("afterLoad");
+    });
+
     it("uses class.md palette categories for the new node groups", () => {
         registerCoreBlueprintNodes();
 
@@ -735,6 +917,15 @@ describe("built-in blueprint nodes", () => {
         expect(gameBlueprintNodes.every(def => def.category === "Game")).toBe(true);
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY)?.pins.map(pin => pin.id)).toEqual([
             "in",
+        ]);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "id",
+        ]);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "next",
+            "id",
         ]);
         expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)?.pins.map(pin => pin.id)).toEqual([
             "in",
@@ -2483,6 +2674,7 @@ describe("built-in blueprint nodes", () => {
 
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);

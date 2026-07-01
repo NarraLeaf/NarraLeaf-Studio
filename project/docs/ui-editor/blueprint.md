@@ -16,7 +16,7 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.event.head.anyKeyDown` | `Any Key Down` | `Events` | Entry node for any runtime window keyboard down event. It outputs `key` plus modifier pins. |
 | `blueprint.event.head.anyKeyUp` | `Any Key Up` | `Events` | Entry node for any runtime window keyboard up event. It outputs `key` plus modifier pins. |
 | `blueprint.event.head.init` | `Init` | `Events` | Entry node for widget initialization and Blueprint Value initial evaluation. It is available to widgets that expose the `init` lifecycle event and to `widgetValue` blueprints. |
-| `blueprint.event.head.mouseClick` | `Mouse Click` | `Events` | Entry node for widget mouse click interactions. It is available through the widget logic capability catalog. |
+| `blueprint.event.head.mouseClick` | `Mouse Click` | `Events` | Entry node for widget mouse click interactions and Surface-level click events. In `surfaceMain` blueprints it fires for any click inside the current Surface and outputs `x` / `y` in Surface design coordinates. |
 | `blueprint.event.head.flush` | `On Flush` | `Events` | Entry node fired on the current widget after explicit Host API element property changes trigger a redraw. It outputs the flushed Element reference. |
 | `blueprint.event.head.elementFlush` | `Element Flush` | `Events` | Element-bound event head that listens for another same-Surface element's flush event and outputs that Element reference. |
 | `blueprint.event.head.scroll` | `Scroll` | `Events` | Entry node for List scroll interactions. It is available to `nl.list` widget private blueprints. |
@@ -31,6 +31,11 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.event.head.sliderDragEnd` | `Drag End` | `Events` | Entry node fired when a Slider runtime drag ends. It outputs the mapped `value`. |
 | `blueprint.event.head.pageEvent` | `Page Event` | `Events` | Entry node for Page component child-to-parent events. It is available to `nl.frame` widget private blueprints. |
 | `blueprint.page.go` | `Go Page` | `Page` | Terminal exec node that opens a selected Page through the host navigation path. |
+| `blueprint.game.startStory` | `Start Game` | `Game` | Terminal latent node that starts a selected Story / Scene in the NarraLeaf game runtime. |
+| `blueprint.game.save.write` | `Write Save` | `Game` | Latent node that serializes the active NarraLeaf live game into a project-scoped local save id. |
+| `blueprint.game.save.load` | `Load Save` | `Game` | Terminal latent node that abandons current game progress and deserializes a project-scoped local save. |
+| `blueprint.game.save.listIds` | `List Saves` | `Game` | Latent node that lists project-scoped local save ids as an `Array<String>` / `string[]` contract over the blueprint `array` pin type. |
+| `blueprint.game.save.getPreview` | `Get Save Preview` | `Game` | Latent node that reads a save preview image as a temporary `ImageAsset|null` without importing it into project assets. |
 | `blueprint.frameWidget.setTargetPage` | `Set Frame Page` | `Frame` | Exec node that switches the current `nl.frame` Page control to the selected Page. It is available in `nl.frame` private blueprints. |
 | `blueprint.element.frame.setTargetPage` | `Set Frame Page` | `Element` | Exec node that switches a bound `nl.frame` Element reference to the selected Page. It can be derived from a bound Frame Element reference. |
 | `blueprint.data.returnValue` | `Return Value` | `Data` | Exec sink that returns the produced value from a Blueprint Value graph. It is only available on `widgetValue` blueprints. |
@@ -70,6 +75,7 @@ Event-head nodes are surfaced in the canvas add-node palette for the current Blu
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/index.ts` | Built-in node catalog aggregation. Add a new built-in node here when it should ship in Studio by default. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/events/eventHeadNodes.ts` | Built-in event entry-head nodes, including lifecycle, widget input, scroll, broadcast, and Page Event heads. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/collectionNodes.ts` | Built-in Data / Collection array and object pure nodes. |
+| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/gameNodes.ts` | Built-in Game nodes for starting the NarraLeaf runtime and local save read/list/write/preview operations. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/listNodes.ts` | Built-in List runtime nodes for content, selection, scrolling, and item context reads. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/frameNodes.ts` | Built-in Page navigation plus Page component host nodes for Frame params and child-to-parent Page events. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/sliderNodes.ts` | Built-in Slider widget nodes for value/range reads and runtime value/range writes. |
@@ -78,9 +84,9 @@ Event-head nodes are surfaced in the canvas add-node palette for the current Blu
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/mathNodes.ts` | Built-in basic math and comparison nodes. |
 | `src/shared/types/blueprint/graph.ts` | Shared graph taxonomy and stable node type constants. Use this for node type ids that are persisted or shared across process boundaries. |
 | `src/shared/types/ui-editor/widgetLogic.ts` | Widget logic capability catalog. Event slots here determine what widget event heads can appear for each widget type. |
-| `src/shared/types/ui-editor/blueprintLifecycle.ts` | Global and surface lifecycle event capability catalog for `globalMain` and `surfaceMain` owners. |
+| `src/shared/types/ui-editor/blueprintLifecycle.ts` | Global and surface owner event capability catalog for `globalMain` and `surfaceMain` owners. |
 | `src/shared/types/ui-editor/graph.ts` | Persisted graph IR shape used by UI graph documents. |
-| `src/renderer/lib/ui-editor/blueprint-runtime/BlueprintDispatcher.ts` | Runtime dispatch for widget, broadcast, surface lifecycle, and global lifecycle event graphs. |
+| `src/renderer/lib/ui-editor/blueprint-runtime/BlueprintDispatcher.ts` | Runtime dispatch for widget, broadcast, surface owner, and global owner event graphs. |
 | `src/renderer/lib/ui-editor/behavior-graph/BehaviorNodeRegistry.ts` | Runtime behavior-node registry and execution context type. |
 
 ## Blueprint document concepts
@@ -197,6 +203,7 @@ Recommended category names:
 | `Text` | Text property reads/writes for the current Text owner or explicit Text element references. |
 | `Widget` | UI element mutations and reads. |
 | `Page` | Page navigation, Page component host reads, and child-to-parent Page events. |
+| `Game` | NarraLeaf game runtime control and project-scoped local save operations. |
 | `Slider` | Slider value/range reads and runtime value/range writes for `nl.slider`. |
 | `List` | List runtime content, selection, scroll, and item context nodes for `nl.list`. |
 | `Navigation` | Page and modal navigation. |
@@ -429,6 +436,8 @@ Host API nodes are usually:
 - `isLatent: true` if they await runtime work
 - limited to `event` and `macro` graph kinds
 
+Game save Host API nodes follow the same rules. `Write Save`, `List Saves`, and `Get Save Preview` continue through `next` after the awaited host call, while `Load Save` is terminal because it replaces the active NarraLeaf game state and must not continue the old execution chain.
+
 ## Scoping and palette availability
 
 Use `scope` when a node should only appear for certain owner kinds or widget types.
@@ -471,7 +480,9 @@ To make a widget expose `Init` and `Mouse Click`, its logic API should include t
 
 The current built-in widgets expose event heads through capability catalogs rather than aliases. Do not add duplicate node ids for the same user action; add or update the event capability first, then add the matching event-head node definition.
 
-Owner-level keyboard events are declared in `src/shared/types/ui-editor/blueprintLifecycle.ts`, and widget-level keyboard events are declared in `src/shared/types/ui-editor/widgetLogic.ts`. `On Key Down` / `On Key Up` and `Any Key Down` / `Any Key Up` listen at the runtime window level and dispatch to `globalMain`, the current active `surfaceMain`, and mounted widgets that expose those event heads. `On Key` heads match the card `Key` field against `KeyboardEvent.key` case-insensitively and only output modifier pins; `Any Key` heads also output `key`. Widget listeners are registered while the component is mounted and removed on unmount; they do not depend on element focus or `tabIndex`.
+Owner-level events are declared in `src/shared/types/ui-editor/blueprintLifecycle.ts`, and widget-level events are declared in `src/shared/types/ui-editor/widgetLogic.ts`. Surface `mouseClick` uses the same `blueprint.event.head.mouseClick` node type as widget clicks, but dispatches to the current `surfaceMain` blueprint for any click inside that Surface and outputs `x` / `y` in Surface design coordinates. Nested Page surfaces receive their own Surface click before the event can bubble to the parent Surface.
+
+Owner-level keyboard events (`On Key Down` / `On Key Up` and `Any Key Down` / `Any Key Up`) listen at the runtime window level and dispatch to `globalMain`, the current active `surfaceMain`, and mounted widgets that expose those event heads. `On Key` heads match the card `Key` field against `KeyboardEvent.key` case-insensitively and only output modifier pins; `Any Key` heads also output `key`. Widget listeners are registered while the component is mounted and removed on unmount; they do not depend on element focus or `tabIndex`.
 
 `nl.slider` exposes `Drag Start`, `Value Changed`, and `Drag End` event heads through this catalog. Slider events output the mapped `value`; `Value Changed` also outputs `previousValue`. They do not output normalized 0-1 progress. Use `Get Normalized Value` when a graph needs normalized progress, and `Get Value` when it needs the mapped value.
 

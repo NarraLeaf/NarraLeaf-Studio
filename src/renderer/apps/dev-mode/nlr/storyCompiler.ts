@@ -23,6 +23,12 @@ import { blink, vignette } from "narraleaf-react/built-in";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type {
     StoryActionPayload,
+    StoryAnimationAsset,
+    StoryAnimationKeyframe,
+    StoryAnimationSequence,
+    StoryAnimationTimeline,
+    StoryAnimationTrack,
+    StoryAnimationTrackProperty,
     StoryBlock,
     StoryCharacterVariantSelection,
     StoryConditionRef,
@@ -31,6 +37,7 @@ import type {
     StoryLiteralValue,
     StoryScene,
     StoryTransitionRef,
+    StoryTransformSequenceProps,
     StoryTransformRef,
     StoryVariableRef,
 } from "@shared/types/story";
@@ -83,6 +90,7 @@ type SceneCompileContext = {
     layers: Map<string, Layer>;
     videos: Map<string, Video>;
     sounds: Map<string, Sound>;
+    animations: Map<string, StoryAnimationAsset>;
     resolveAssetUrl: Required<CompileInput>["resolveAssetUrl"];
     assetUrlCache: Map<string, string | null>;
     diagnostics: NlrStoryCompileDiagnostic[];
@@ -94,6 +102,7 @@ type CompileInput = {
     document: StoryDocument;
     sceneId: string;
     characters?: readonly DevModeCharacterSummary[];
+    animations?: Record<string, StoryAnimationAsset>;
     resolveAssetUrl?: (assetId: string, assetType?: StoryAssetKind) => Promise<string | null | undefined> | string | null | undefined;
 };
 
@@ -111,6 +120,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const actionIdBindings: NlrActionIdBinding[] = [];
     const characters = new Map<string, Character>();
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
+    const animations = new Map(Object.entries(input.animations ?? {}));
     const persistentByNamespace = new Map<string, Persistent<Record<string, StoryLiteralValue>>>();
     const assetUrlCache = new Map<string, string | null>();
     let actionIndex = 0;
@@ -144,6 +154,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             layers: new Map(),
             videos: new Map(),
             sounds: new Map(),
+            animations,
             resolveAssetUrl,
             assetUrlCache,
             diagnostics,
@@ -766,6 +777,16 @@ function compileDisplayableOperation(
     ctx: SceneCompileContext,
     blockId: string,
 ): NlrStatement | null {
+    if (transform?.mode === "animation") {
+        const animationTransform = createAnimationTransform(transform, ctx, blockId, operation === "transform" ? "none" : operation);
+        if (operation === "show") {
+            return target.show(animationTransform ?? transformOptions(undefined));
+        }
+        if (operation === "hide") {
+            return target.hide(animationTransform ?? transformOptions(undefined));
+        }
+        return animationTransform ? target.transform(animationTransform) : null;
+    }
     if (operation === "show") {
         if (transform?.preset && !["none", "fadeIn"].includes(transform.preset)) {
             const visible = target.show({ duration: 0, ease: transform.easing });
@@ -785,9 +806,6 @@ function compileDisplayableOperation(
 
 function applyTransformPreset(target: any, transform: StoryTransformRef | undefined, ctx: SceneCompileContext, blockId: string): NlrStatement | null {
     if (!transform || transform.mode === "animation") {
-        if (transform?.mode === "animation") {
-            diagnostic(ctx, "warning", blockId, "Animation editor transforms are reserved but not implemented yet.");
-        }
         return null;
     }
     const preset = transform.preset ?? "none";
@@ -831,6 +849,10 @@ function applyTransformPreset(target: any, transform: StoryTransformRef | undefi
 }
 
 function createShowTransform(transform: StoryTransformRef | undefined, ctx: SceneCompileContext, blockId: string): Transform {
+    if (transform?.mode === "animation") {
+        return createAnimationTransform(transform, ctx, blockId, "show")
+            ?? new Transform({ opacity: 1 } as any, transformOptions(undefined) as any);
+    }
     return new Transform({
         opacity: 1,
         ...getInlineTransformProps(transform, ctx, blockId),
@@ -842,7 +864,6 @@ function getInlineTransformProps(transform: StoryTransformRef | undefined, ctx: 
         return {};
     }
     if (transform.mode === "animation") {
-        diagnostic(ctx, "warning", blockId, "Animation editor transforms are reserved but not implemented yet.");
         return {};
     }
     const preset = transform.preset ?? "none";
@@ -887,6 +908,175 @@ function getInlineTransformProps(transform: StoryTransformRef | undefined, ctx: 
         diagnostic(ctx, "warning", blockId, `${preset} transforms cannot be folded into character show yet.`);
     }
     return inlineProps;
+}
+
+type VisibilityTransformMode = "show" | "hide" | "none";
+
+function createAnimationTransform(
+    transform: StoryTransformRef,
+    ctx: SceneCompileContext,
+    blockId: string,
+    visibility: VisibilityTransformMode,
+): Transform | null {
+    const animationId = transform.animationId?.trim();
+    if (!animationId) {
+        diagnostic(ctx, "warning", blockId, "Animation transform is missing animationId.");
+        return null;
+    }
+    const asset = ctx.animations.get(animationId);
+    if (!asset) {
+        diagnostic(ctx, "warning", blockId, `Story animation not found: ${animationId}`);
+        return null;
+    }
+
+    const sequences = asset.timeline?.tracks.length
+        ? timelineToNlrTransformSequences(asset.timeline)
+        : asset.sequences.length > 0
+            ? asset.sequences.map(sequence => toNlrTransformSequence(sequence))
+            : [{ props: {}, options: { duration: 0 } }];
+    injectVisibilityDefault(sequences, visibility);
+    return new Transform(sequences as any, {
+        repeat: asset.config?.repeat,
+        repeatDelay: asset.config?.repeatDelayMs,
+    } as any);
+}
+
+function timelineToNlrTransformSequences(timeline: StoryAnimationTimeline): { props: Record<string, unknown>; options: Record<string, unknown> }[] {
+    const groups = new Map<string, {
+        startMs: number;
+        durationMs: number;
+        props: Record<string, unknown>;
+        options: Record<string, unknown>;
+    }>();
+    for (const track of timeline.tracks) {
+        const keyframes = [...track.keyframes].sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id));
+        let previousTimeMs = 0;
+        for (const keyframe of keyframes) {
+            const startMs = Math.max(0, previousTimeMs);
+            const endMs = Math.max(startMs, keyframe.timeMs);
+            const durationMs = endMs - startMs;
+            const props = keyframeToTransformProps(track, keyframe);
+            previousTimeMs = endMs;
+            if (Object.keys(props).length === 0) {
+                continue;
+            }
+            const groupKey = `${startMs}:${durationMs}:${keyframe.easing ?? ""}`;
+            const group = groups.get(groupKey) ?? {
+                startMs,
+                durationMs,
+                props: {},
+                options: cleanObject({
+                    duration: durationMs,
+                    ease: keyframe.easing,
+                    at: startMs,
+                }),
+            };
+            group.props = {
+                ...group.props,
+                ...props,
+            };
+            groups.set(groupKey, group);
+        }
+    }
+    const sequences = [...groups.values()]
+        .sort((a, b) => a.startMs - b.startMs || a.durationMs - b.durationMs)
+        .map(group => ({
+            props: group.props,
+            options: group.options,
+        }));
+    return sequences.length > 0 ? sequences : [{ props: {}, options: { duration: 0 } }];
+}
+
+function keyframeToTransformProps(track: StoryAnimationTrack, keyframe: StoryAnimationKeyframe): Record<string, unknown> {
+    const props: StoryTransformSequenceProps = {};
+    if (track.property === "position" && keyframe.value && typeof keyframe.value === "object") {
+        props.position = keyframe.value as StoryTransformSequenceProps["position"];
+    } else if (isNumericTrackProperty(track.property) && typeof keyframe.value === "number") {
+        (props as Record<string, unknown>)[track.property] = keyframe.value;
+    } else if (typeof keyframe.value === "string") {
+        (props as Record<string, unknown>)[track.property] = keyframe.value;
+    }
+    return cleanTransformSequenceProps(props);
+}
+
+function isNumericTrackProperty(property: StoryAnimationTrackProperty): boolean {
+    return property === "opacity"
+        || property === "zoom"
+        || property === "scaleX"
+        || property === "scaleY"
+        || property === "rotation";
+}
+
+function toNlrTransformSequence(sequence: StoryAnimationSequence): { props: Record<string, unknown>; options: Record<string, unknown> } {
+    return {
+        props: cleanTransformSequenceProps(sequence.props),
+        options: cleanTransformSequenceOptions(sequence),
+    };
+}
+
+function cleanTransformSequenceProps(props: StoryTransformSequenceProps): Record<string, unknown> {
+    const next: Record<string, unknown> = {};
+    if (props.position) {
+        const position = cleanObject({
+            xalign: props.position.xalign,
+            yalign: props.position.yalign,
+            xoffset: props.position.xoffset,
+            yoffset: props.position.yoffset,
+        });
+        if (Object.keys(position).length > 0) {
+            next.position = position;
+        }
+    }
+    assignDefined(next, "opacity", props.opacity);
+    assignDefined(next, "zoom", props.zoom);
+    assignDefined(next, "scaleX", props.scaleX);
+    assignDefined(next, "scaleY", props.scaleY);
+    assignDefined(next, "rotation", props.rotation);
+    assignDefined(next, "fontColor", props.fontColor);
+    assignDefined(next, "maskImage", props.maskImage);
+    assignDefined(next, "maskSize", props.maskSize);
+    assignDefined(next, "maskPosition", props.maskPosition);
+    assignDefined(next, "maskRepeat", props.maskRepeat);
+    assignDefined(next, "maskMode", props.maskMode);
+    assignDefined(next, "clipPath", props.clipPath);
+    assignDefined(next, "filter", props.filter);
+    assignDefined(next, "backdropFilter", props.backdropFilter);
+    assignDefined(next, "mixBlendMode", props.mixBlendMode);
+    return next;
+}
+
+function cleanTransformSequenceOptions(sequence: StoryAnimationSequence): Record<string, unknown> {
+    const options = sequence.options ?? {};
+    const next: Record<string, unknown> = {};
+    assignDefined(next, "duration", options.durationMs);
+    assignDefined(next, "ease", options.easing);
+    assignDefined(next, "delay", options.delayMs);
+    assignDefined(next, "at", options.at);
+    return next;
+}
+
+function injectVisibilityDefault(sequences: { props: Record<string, unknown>; options: Record<string, unknown> }[], visibility: VisibilityTransformMode): void {
+    if (visibility === "none" || sequences.length === 0) {
+        return;
+    }
+    const opacity = visibility === "show" ? 1 : 0;
+    const last = sequences[sequences.length - 1];
+    if (last.props.opacity === undefined) {
+        last.props = {
+            ...last.props,
+            opacity,
+        };
+    }
+}
+
+function cleanObject(input: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+}
+
+function assignDefined(target: Record<string, unknown>, key: string, value: unknown): void {
+    if (value !== undefined) {
+        target[key] = value;
+    }
 }
 
 type StoryAlignPosition = {

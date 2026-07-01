@@ -1,6 +1,12 @@
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import {
+    StoryAnimationAsset,
+    StoryAnimationAssetId,
+    StoryAnimationIndex,
+    StoryAnimationIndexEntry,
+    StoryAnimationSequence,
+    StoryAnimationTimeline,
     StoryBlock,
     StoryBlockId,
     StoryChapter,
@@ -25,20 +31,27 @@ import { assertValidStoryId } from "@shared/utils/storyId";
 import {
     createChapter as createStoryChapterModel,
     createEmptyStoryDocument,
+    createEmptyStoryAnimationIndex,
     createEmptyStoryLibraryIndex,
     createScene as createStorySceneModel,
+    createStoryAnimationAsset,
+    createStoryAnimationIndexEntry,
     createStoryLibraryEntry,
     deleteBlockFromScene,
     insertBlockInScene,
     moveBlockInScene,
+    normalizeStoryAnimationAsset,
+    normalizeStoryAnimationIndex,
     normalizeStoryDocument,
     normalizeStoryLibraryIndex,
+    storyAnimationDocumentRelativePath,
     storyDocumentRelativePath,
     updateBlockPayload,
 } from "./storyModel";
 
 type StoryServiceEvents = {
     libraryChanged: StoryLibraryIndex;
+    animationsChanged: StoryAnimationIndex;
     documentChanged: { storyId: StoryId; document: StoryDocument };
     dirtyChanged: boolean;
     pluginActionsChanged: StoryPluginActionRegistration[];
@@ -61,6 +74,8 @@ type StoryAssetLockEntry = {
 
 export class StoryService extends Service<StoryService> implements IStoryService {
     private index: StoryLibraryIndex | null = null;
+    private animationIndex: StoryAnimationIndex | null = null;
+    private readonly animationAssets = new Map<StoryAnimationAssetId, StoryAnimationAsset>();
     private readonly documents = new Map<StoryId, StoryDocument>();
     private readonly events = new EventEmitter<StoryServiceEvents>();
     private dirty = false;
@@ -80,6 +95,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
 
         await this.ensureStoryDirs();
         await this.loadLibrary();
+        await this.loadAnimationIndex();
         await this.syncLibraryAssetLocks();
     }
 
@@ -232,6 +248,10 @@ export class StoryService extends Service<StoryService> implements IStoryService
         await this.writeStoryDocument(document);
         this.markStoryEntrySaved(storyId, document.meta?.updatedAt);
         await this.writeLibraryIndex();
+        await this.writeAnimationIndex();
+        for (const asset of this.animationAssets.values()) {
+            await this.writeAnimationAsset(asset);
+        }
         this.lastSavedRevision = this.revision;
         this.setDirty(false);
     }
@@ -295,6 +315,158 @@ export class StoryService extends Service<StoryService> implements IStoryService
 
     public onLibraryChanged(handler: (index: StoryLibraryIndex) => void): () => void {
         return this.events.on("libraryChanged", handler);
+    }
+
+    public async loadAnimationIndex(): Promise<StoryAnimationIndex> {
+        const fs = this.getFileSystem();
+        await this.ensureStoryDirs();
+        const indexPath = this.getAnimationIndexPath();
+        const exists = await fs.isFileExists(indexPath);
+        if (!exists.ok) {
+            throw new RendererError(exists.error.message || "Failed to access story animation index");
+        }
+        if (!exists.data) {
+            const created = createEmptyStoryAnimationIndex(new Date().toISOString());
+            this.animationIndex = created;
+            await this.writeAnimationIndex();
+            this.events.emit("animationsChanged", created);
+            return created;
+        }
+
+        const result = await fs.readJSON<StoryAnimationIndex>(indexPath);
+        if (!result.ok) {
+            if (result.error.code === FsRejectErrorCode.NOT_FOUND) {
+                const created = createEmptyStoryAnimationIndex(new Date().toISOString());
+                this.animationIndex = created;
+                await this.writeAnimationIndex();
+                this.events.emit("animationsChanged", created);
+                return created;
+            }
+            throw new RendererError(result.error.message);
+        }
+
+        try {
+            this.animationIndex = normalizeStoryAnimationIndex(result.data, new Date().toISOString());
+            this.events.emit("animationsChanged", this.animationIndex);
+            return this.animationIndex;
+        } catch (error) {
+            throw new RendererError(error instanceof Error ? error.message : String(error));
+        }
+    }
+
+    public getAnimationIndex(): StoryAnimationIndex {
+        if (!this.animationIndex) {
+            throw new RendererError("Story animation index not initialized");
+        }
+        return this.animationIndex;
+    }
+
+    public listAnimationAssets(): StoryAnimationIndexEntry[] {
+        return [...this.getAnimationIndex().animations];
+    }
+
+    public async loadAnimationAsset(animationId: StoryAnimationAssetId): Promise<StoryAnimationAsset> {
+        const cached = this.animationAssets.get(animationId);
+        if (cached) {
+            return cached;
+        }
+        const entry = this.getAnimationIndex().animations.find(animation => animation.id === animationId);
+        if (!entry) {
+            throw new RendererError(`Story animation not found: ${animationId}`);
+        }
+        const result = await this.getFileSystem().readJSON<StoryAnimationAsset>(this.getAnimationAssetPath(animationId));
+        if (!result.ok) {
+            throw new RendererError(result.error.message || `Failed to read story animation: ${entry.name}`);
+        }
+        try {
+            const asset = normalizeStoryAnimationAsset(result.data, new Date().toISOString());
+            this.animationAssets.set(animationId, asset);
+            return asset;
+        } catch (error) {
+            throw new RendererError(error instanceof Error ? error.message : String(error));
+        }
+    }
+
+    public getLoadedAnimationAsset(animationId: StoryAnimationAssetId): StoryAnimationAsset | undefined {
+        return this.animationAssets.get(animationId);
+    }
+
+    public async createAnimationAsset(input: {
+        name: string;
+        targetKind?: StoryAnimationIndexEntry["targetKind"];
+        timeline?: StoryAnimationTimeline;
+        sequences?: StoryAnimationSequence[];
+    }): Promise<StoryAnimationAsset> {
+        const now = new Date().toISOString();
+        const animationId = this.generateUniqueAnimationId();
+        const targetKind = input.targetKind ?? "image";
+        const asset = createStoryAnimationAsset({
+            id: animationId,
+            name: this.cleanName(input.name, "Untitled Motion"),
+            targetKind,
+            timeline: input.timeline,
+            sequences: input.sequences,
+            now,
+        });
+        const entry = createStoryAnimationIndexEntry({
+            id: animationId,
+            name: asset.name,
+            targetKind,
+            documentPath: storyAnimationDocumentRelativePath(animationId),
+            now,
+        });
+        this.animationAssets.set(animationId, asset);
+        this.mutateAnimationIndex(index => {
+            index.animations.push(entry);
+        });
+        return asset;
+    }
+
+    public updateAnimationAsset(animationId: StoryAnimationAssetId, updater: (asset: StoryAnimationAsset) => StoryAnimationAsset): StoryAnimationAsset {
+        const asset = this.animationAssets.get(animationId);
+        if (!asset) {
+            throw new RendererError(`Story animation not loaded: ${animationId}`);
+        }
+        const now = new Date().toISOString();
+        const next = normalizeStoryAnimationAsset({
+            ...updater(JSON.parse(JSON.stringify(asset)) as StoryAnimationAsset),
+            id: animationId,
+            schemaVersion: asset.schemaVersion,
+            meta: {
+                ...asset.meta,
+                updatedAt: now,
+            },
+        }, now);
+        this.animationAssets.set(animationId, next);
+        this.mutateAnimationIndex(index => {
+            const entry = index.animations.find(animation => animation.id === animationId);
+            if (entry) {
+                entry.name = next.name;
+                entry.targetKind = next.targetKind;
+                entry.updatedAt = next.meta?.updatedAt ?? now;
+            }
+        });
+        return next;
+    }
+
+    public deleteAnimationAsset(animationId: StoryAnimationAssetId): boolean {
+        const index = this.getAnimationIndex();
+        const existing = index.animations.find(animation => animation.id === animationId);
+        if (!existing) {
+            return false;
+        }
+        this.animationAssets.delete(animationId);
+        this.mutateAnimationIndex(target => {
+            target.animations = target.animations.filter(animation => animation.id !== animationId);
+        });
+        void this.getFileSystem().deleteFile(this.getAnimationAssetPath(animationId)).catch(err => {
+            console.warn("[StoryService] failed to delete story animation", err);
+        });
+        return true;
+    }
+
+    public onAnimationsChanged(handler: (index: StoryAnimationIndex) => void): () => void {
+        return this.events.on("animationsChanged", handler);
     }
 
     public registerPluginAction(registration: StoryPluginActionRegistration): () => void {
@@ -623,6 +795,19 @@ export class StoryService extends Service<StoryService> implements IStoryService
         this.events.emit("libraryChanged", index);
     }
 
+    private mutateAnimationIndex(mutator: (index: StoryAnimationIndex) => void): void {
+        const index = this.getAnimationIndex();
+        mutator(index);
+        index.meta = {
+            ...index.meta,
+            updatedAt: new Date().toISOString(),
+        };
+        this.revision += 1;
+        this.setDirty(true);
+        this.scheduleAutoSave();
+        this.events.emit("animationsChanged", index);
+    }
+
     private mutateDocument(storyId: StoryId, mutator: (document: StoryDocument) => void): void {
         const document = this.getStoryDocument(storyId);
         mutator(document);
@@ -654,6 +839,10 @@ export class StoryService extends Service<StoryService> implements IStoryService
             await this.writeStoryDocument(document);
             this.markStoryEntrySaved(storyId, document.meta?.updatedAt);
         }
+        for (const asset of this.animationAssets.values()) {
+            await this.writeAnimationAsset(asset);
+        }
+        await this.writeAnimationIndex();
         await this.writeLibraryIndex();
         this.lastSavedRevision = this.revision;
         this.setDirty(false);
@@ -674,6 +863,28 @@ export class StoryService extends Service<StoryService> implements IStoryService
         const result = await this.getFileSystem().write(
             this.getStoryDocumentPath(document.id),
             JSON.stringify(document, null, 2),
+            "utf-8",
+        );
+        if (!result.ok) {
+            throw new RendererError(result.error.message);
+        }
+    }
+
+    private async writeAnimationIndex(): Promise<void> {
+        const fs = this.getFileSystem();
+        await this.ensureStoryDirs();
+        const index = this.getAnimationIndex();
+        const result = await fs.write(this.getAnimationIndexPath(), JSON.stringify(index, null, 2), "utf-8");
+        if (!result.ok) {
+            throw new RendererError(result.error.message);
+        }
+    }
+
+    private async writeAnimationAsset(asset: StoryAnimationAsset): Promise<void> {
+        await this.ensureStoryDirs();
+        const result = await this.getFileSystem().write(
+            this.getAnimationAssetPath(asset.id),
+            JSON.stringify(asset, null, 2),
             "utf-8",
         );
         if (!result.ok) {
@@ -710,6 +921,17 @@ export class StoryService extends Service<StoryService> implements IStoryService
             }
         }
         throw new RendererError("Failed to generate a unique story id");
+    }
+
+    private generateUniqueAnimationId(): StoryAnimationAssetId {
+        const uuid = this.getUuidService();
+        for (let attempts = 0; attempts < 10; attempts += 1) {
+            const animationId = uuid.generate();
+            if (!this.getAnimationIndex().animations.some(animation => animation.id === animationId)) {
+                return animationId;
+            }
+        }
+        throw new RendererError("Failed to generate a unique story animation id");
     }
 
     private getSceneOrThrow(document: StoryDocument, sceneId: StorySceneId): StoryScene {
@@ -874,11 +1096,20 @@ export class StoryService extends Service<StoryService> implements IStoryService
         return this.getContext().project.resolve(ProjectNameConvention.EditorStoryDocument(storyId));
     }
 
+    private getAnimationIndexPath(): string {
+        return this.getContext().project.resolve(ProjectNameConvention.EditorStoryAnimationIndex);
+    }
+
+    private getAnimationAssetPath(animationId: StoryAnimationAssetId): string {
+        return this.getContext().project.resolve(ProjectNameConvention.EditorStoryAnimationDocument(animationId));
+    }
+
     private async ensureStoryDirs(): Promise<void> {
         const fs = this.getFileSystem();
         const dirs = [
             this.getContext().project.resolve(ProjectNameConvention.EditorStory),
             this.getContext().project.resolve(ProjectNameConvention.EditorStoryStories),
+            this.getContext().project.resolve(ProjectNameConvention.EditorStoryAnimations),
         ];
         for (const dir of dirs) {
             const exists = await fs.isDirExists(dir);

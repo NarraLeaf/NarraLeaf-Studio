@@ -93,6 +93,8 @@ import {
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
@@ -2140,8 +2142,10 @@ function resolveSelfOutput(
     if (
         (selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP ||
             selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH ||
-            selfNode.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET) &&
-        (portId === "index" || portId === "item" || portId === "value")
+            selfNode.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW) &&
+        (portId === "index" || portId === "item" || portId === "value" || portId === "ids" || portId === "preview")
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }

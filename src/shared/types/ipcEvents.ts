@@ -5,6 +5,7 @@ import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import { DevModeBundle, DevModeEntry, DevModeStatus } from "./devMode";
+import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type { PluginPermissionGrantPayload, PluginPermissionGrantResult, PluginPermissionPromptResult } from "./pluginPermissions";
 import type {
@@ -84,6 +85,10 @@ export enum IPCEventType {
     devModeResolveAssetUrl = "devMode.resolveAssetUrl",
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
     devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
+    devModeSaveWrite = "devMode.save.write",
+    devModeSaveRead = "devMode.save.read",
+    devModeSaveListIds = "devMode.save.listIds",
+    devModeSaveReadPreview = "devMode.save.readPreview",
 
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
@@ -656,6 +661,49 @@ export type IPCDevModeEvents = {
             projectPath: string;
         };
         response: void;
+    };
+    [IPCEventType.devModeSaveWrite]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+            id: string;
+            savedGame: unknown;
+            capture?: string;
+        };
+        response: void;
+    };
+    [IPCEventType.devModeSaveRead]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+            id: string;
+        };
+        response: {
+            record: DevModeSaveRecord | null;
+        };
+    };
+    [IPCEventType.devModeSaveListIds]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+        };
+        response: {
+            ids: string[];
+        };
+    };
+    [IPCEventType.devModeSaveReadPreview]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+            id: string;
+        };
+        response: {
+            capture: string | null;
+        };
     };
 };
 

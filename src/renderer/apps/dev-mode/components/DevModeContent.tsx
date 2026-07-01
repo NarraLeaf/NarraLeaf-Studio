@@ -12,11 +12,13 @@ import {
 } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check } from "lucide-react";
-import { Dialog as NlrDialog, FixedAspectRatioContainer, Game } from "narraleaf-react";
+import { Dialog as NlrDialog, FixedAspectRatioContainer, Game, type LiveGame, type SavedGame } from "narraleaf-react";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UISurface, UIDocument, UIStageSlotId, UIStageSurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
+import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
+import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import { DevModeSurfaceRenderer } from "./DevModeSurfaceRenderer";
@@ -41,6 +43,10 @@ import {
 } from "@/lib/ui-editor/runtime/pageAnimation";
 import { NlrStageLayer, type NlrStageSession } from "../nlr/NlrStageLayer";
 import { compileStudioStoryToNlr } from "../nlr/storyCompiler";
+import {
+    clearDevModeSavePreviewImages,
+    registerDevModeSavePreviewImage,
+} from "@/lib/ui-editor/runtime/devModeSavePreviewAssets";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
@@ -215,6 +221,10 @@ function StudioDialogSlotSurface(props: {
     openSurfaceWithTransition: (surfaceId: string) => Promise<void>;
     closeLayerWithTransition: () => Promise<void>;
     startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
+    writeSaveInGame: (id: string) => Promise<void>;
+    loadSaveInGame: (id: string) => Promise<void>;
+    listSaveIds: () => Promise<string[]>;
+    getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -230,6 +240,10 @@ function StudioDialogSlotSurface(props: {
         openSurfaceWithTransition,
         closeLayerWithTransition,
         startStoryInGame,
+        writeSaveInGame,
+        loadSaveInGame,
+        listSaveIds,
+        getSavePreview,
         setWidgetPatchesByScope,
         widgetPatchesByScopeRef,
         widgetRuntimeStore,
@@ -251,6 +265,10 @@ function StudioDialogSlotSurface(props: {
             onOpenSurface: openSurfaceWithTransition,
             onCloseLayer: closeLayerWithTransition,
             onStartStory: startStoryInGame,
+            onWriteSave: writeSaveInGame,
+            onLoadSave: loadSaveInGame,
+            onListSaveIds: listSaveIds,
+            onGetSavePreview: getSavePreview,
             onWidgetPatch: (elementId, patch) => {
                 setWidgetPatchesByScope(prev => ({
                     ...prev,
@@ -280,6 +298,10 @@ function StudioDialogSlotSurface(props: {
         runtimeScopeId,
         setWidgetPatchesByScope,
         startStoryInGame,
+        writeSaveInGame,
+        loadSaveInGame,
+        listSaveIds,
+        getSavePreview,
         surface.id,
         widgetRuntimeStore,
     ]);
@@ -379,6 +401,10 @@ function DevModeAppSurfaceLayer(props: {
     openSurfaceWithTransition: (surfaceId: string) => Promise<void>;
     closeLayerWithTransition: () => Promise<void>;
     startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
+    writeSaveInGame: (id: string) => Promise<void>;
+    loadSaveInGame: (id: string) => Promise<void>;
+    listSaveIds: () => Promise<string[]>;
+    getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScope: Record<string, Record<string, DevModeWidgetRuntimePatch>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
@@ -402,6 +428,10 @@ function DevModeAppSurfaceLayer(props: {
         openSurfaceWithTransition,
         closeLayerWithTransition,
         startStoryInGame,
+        writeSaveInGame,
+        loadSaveInGame,
+        listSaveIds,
+        getSavePreview,
         setWidgetPatchesByScope,
         widgetPatchesByScope,
         widgetPatchesByScopeRef,
@@ -427,6 +457,10 @@ function DevModeAppSurfaceLayer(props: {
             onOpenSurface: openSurfaceWithTransition,
             onCloseLayer: closeLayerWithTransition,
             onStartStory: startStoryInGame,
+            onWriteSave: writeSaveInGame,
+            onLoadSave: loadSaveInGame,
+            onListSaveIds: listSaveIds,
+            onGetSavePreview: getSavePreview,
             onWidgetPatch: (elementId, patch) => {
                 setWidgetPatchesByScope(prev => ({
                     ...prev,
@@ -455,6 +489,10 @@ function DevModeAppSurfaceLayer(props: {
         runtimeScopeId,
         setWidgetPatchesByScope,
         startStoryInGame,
+        writeSaveInGame,
+        loadSaveInGame,
+        listSaveIds,
+        getSavePreview,
         surface.id,
         uidoc,
         widgetRuntimeStore,
@@ -598,10 +636,28 @@ export function DevModeContent(props: DevModeContentProps) {
     const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
     const activeStoryRevisionRef = useRef<number | null>(null);
     const startStoryInGameRef = useRef<((request: DevModeStartStoryRequest) => Promise<void>) | null>(null);
+    const writeSaveInGameRef = useRef<((id: string) => Promise<void>) | null>(null);
+    const loadSaveInGameRef = useRef<((id: string) => Promise<void>) | null>(null);
+    const listSaveIdsRef = useRef<(() => Promise<string[]>) | null>(null);
+    const getSavePreviewRef = useRef<((id: string) => Promise<BlueprintImageAsset | null>) | null>(null);
+    const nlrLiveGameRef = useRef<LiveGame | null>(null);
+    const nlrLiveGameSessionIdRef = useRef<string | null>(null);
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const lifecycleRef = useRef<SurfaceLifecycleManager>(new SurfaceLifecycleManager());
     const appBootFiredRef = useRef<string | null>(null);
     const persistenceProjectRef = useMemo<BlueprintPersistenceProjectRef | null>(() => {
+        if (!projectPath) {
+            return null;
+        }
+        const rawIdentifier = bundle?.meta?.projectIdentifier;
+        const projectIdentifier =
+            typeof rawIdentifier === "string" && rawIdentifier.trim() ? rawIdentifier.trim() : undefined;
+        return {
+            projectIdentifier,
+            projectPath,
+        };
+    }, [bundle?.meta?.projectIdentifier, projectPath]);
+    const saveProjectRef = useMemo<DevModeSaveProjectRef | null>(() => {
         if (!projectPath) {
             return null;
         }
@@ -925,6 +981,80 @@ export function DevModeContent(props: DevModeContentProps) {
         pendingGameStartsRef.current.clear();
     }, []);
 
+    const requireSaveProjectRef = useCallback((operation: string): DevModeSaveProjectRef => {
+        if (!saveProjectRef) {
+            throw new Error(`${operation}: project is not available`);
+        }
+        return saveProjectRef;
+    }, [saveProjectRef]);
+
+    const requireActiveLiveGame = useCallback((operation: string): LiveGame => {
+        if (!nlrSession?.id || nlrLiveGameSessionIdRef.current !== nlrSession.id || !nlrLiveGameRef.current) {
+            throw new Error(`${operation}: game runtime is not available`);
+        }
+        return nlrLiveGameRef.current;
+    }, [nlrSession?.id]);
+
+    const writeSaveInGame = useCallback(async (id: string): Promise<void> => {
+        const projectRef = requireSaveProjectRef("Write Save");
+        const liveGame = requireActiveLiveGame("Write Save");
+        const savedGame = liveGame.serialize();
+        let capture: string | undefined;
+        try {
+            capture = await liveGame.captureJpeg();
+        } catch (error) {
+            console.warn("[DevMode][Save] Capture failed; writing save without preview", error);
+        }
+        const result = await getInterface().devMode.save.write(projectRef, id, savedGame, capture);
+        if (!result.success) {
+            throw new Error(result.error ?? `Write Save failed: ${id}`);
+        }
+    }, [requireActiveLiveGame, requireSaveProjectRef]);
+    writeSaveInGameRef.current = writeSaveInGame;
+
+    const loadSaveInGame = useCallback(async (id: string): Promise<void> => {
+        const projectRef = requireSaveProjectRef("Load Save");
+        const liveGame = requireActiveLiveGame("Load Save");
+        const result = await getInterface().devMode.save.read(projectRef, id);
+        if (!result.success) {
+            throw new Error(result.error ?? `Load Save failed: ${id}`);
+        }
+        const savedGame = result.data.record?.savedGame;
+        if (!savedGame) {
+            throw new Error(`Load Save: save not found: ${id}`);
+        }
+        liveGame.game.router.clear().cleanHistory();
+        liveGame.newGame().deserialize(savedGame as SavedGame);
+        await liveGame.waitForRouterExit().promise;
+        setGameStageVisible(true);
+        setStudioPageHiddenForGame(true);
+    }, [requireActiveLiveGame, requireSaveProjectRef]);
+    loadSaveInGameRef.current = loadSaveInGame;
+
+    const listSaveIds = useCallback(async (): Promise<string[]> => {
+        const projectRef = requireSaveProjectRef("List Saves");
+        const result = await getInterface().devMode.save.listIds(projectRef);
+        if (!result.success) {
+            throw new Error(result.error ?? "List Saves failed");
+        }
+        return result.data.ids;
+    }, [requireSaveProjectRef]);
+    listSaveIdsRef.current = listSaveIds;
+
+    const getSavePreview = useCallback(async (id: string): Promise<BlueprintImageAsset | null> => {
+        const projectRef = requireSaveProjectRef("Get Save Preview");
+        const result = await getInterface().devMode.save.readPreview(projectRef, id);
+        if (!result.success) {
+            throw new Error(result.error ?? `Get Save Preview failed: ${id}`);
+        }
+        const capture = result.data.capture;
+        if (!capture) {
+            return null;
+        }
+        return toBlueprintImageAsset(registerDevModeSavePreviewImage(id, capture));
+    }, [requireSaveProjectRef]);
+    getSavePreviewRef.current = getSavePreview;
+
     const startStoryInGame = useCallback(async (request: DevModeStartStoryRequest): Promise<void> => {
         if (!bundle?.storyLibrary) {
             throw new Error("Start Game: story library is not available in Dev Mode bundle");
@@ -963,6 +1093,7 @@ export function DevModeContent(props: DevModeContentProps) {
             document: storyDocument,
             sceneId,
             characters: bundle.storyLibrary.characters,
+            animations: bundle.storyLibrary.animations,
             resolveAssetUrl: async (assetId, assetType) => {
                 const result = await getInterface().devMode.resolveAssetUrl(assetId, assetType);
                 if (!result.success || !result.data?.url) {
@@ -993,6 +1124,18 @@ export function DevModeContent(props: DevModeContentProps) {
                   startStoryInGame: request =>
                       startStoryInGameRef.current?.(request) ??
                       Promise.reject(new Error("Start Game is not available")),
+                  writeSaveInGame: id =>
+                      writeSaveInGameRef.current?.(id) ??
+                      Promise.reject(new Error("Write Save is not available")),
+                  loadSaveInGame: id =>
+                      loadSaveInGameRef.current?.(id) ??
+                      Promise.reject(new Error("Load Save is not available")),
+                  listSaveIds: () =>
+                      listSaveIdsRef.current?.() ??
+                      Promise.reject(new Error("List Saves is not available")),
+                  getSavePreview: id =>
+                      getSavePreviewRef.current?.(id) ??
+                      Promise.reject(new Error("Get Save Preview is not available")),
                   setWidgetPatchesByScope,
                   widgetPatchesByScopeRef,
                   widgetRuntimeStore,
@@ -1041,7 +1184,7 @@ export function DevModeContent(props: DevModeContentProps) {
     ]);
     startStoryInGameRef.current = startStoryInGame;
 
-    const handleNlrPreloadedReady = useCallback((sessionId: string) => {
+    const handleNlrFirstSceneReady = useCallback((sessionId: string) => {
         const pending = pendingGameStartsRef.current.get(sessionId);
         if (!pending) {
             return;
@@ -1049,6 +1192,14 @@ export function DevModeContent(props: DevModeContentProps) {
         pendingGameStartsRef.current.delete(sessionId);
         pending.resolve();
     }, []);
+
+    const handleNlrLiveGameReady = useCallback((sessionId: string, liveGame: LiveGame) => {
+        if (nlrSession?.id !== sessionId) {
+            return;
+        }
+        nlrLiveGameRef.current = liveGame;
+        nlrLiveGameSessionIdRef.current = sessionId;
+    }, [nlrSession?.id]);
 
     const handleNlrStageError = useCallback((error: Error) => {
         rejectPendingGameStarts(error);
@@ -1072,10 +1223,18 @@ export function DevModeContent(props: DevModeContentProps) {
         activeStoryRequestRef.current = null;
         activeStoryRevisionRef.current = null;
         rejectPendingGameStarts(new Error("Dev Mode session changed"));
+        nlrLiveGameRef.current = null;
+        nlrLiveGameSessionIdRef.current = null;
+        clearDevModeSavePreviewImages();
         setNlrSession(null);
         setGameStageVisible(false);
         setStudioPageHiddenForGame(false);
     }, [bundle?.bundleId, rejectPendingGameStarts, surface?.id]);
+
+    useEffect(() => {
+        nlrLiveGameRef.current = null;
+        nlrLiveGameSessionIdRef.current = null;
+    }, [nlrSession?.id]);
 
     const hostApi = useMemo(() => {
         if (!bpCore || !uiDocument || !activeSurface) {
@@ -1091,6 +1250,10 @@ export function DevModeContent(props: DevModeContentProps) {
             onOpenSurface: openSurfaceWithTransition,
             onCloseLayer: closeLayerWithTransition,
             onStartStory: startStoryInGame,
+            onWriteSave: writeSaveInGame,
+            onLoadSave: loadSaveInGame,
+            onListSaveIds: listSaveIds,
+            onGetSavePreview: getSavePreview,
             onWidgetPatch: (elementId, patch) => {
                 setWidgetPatchesByScope(prev => ({
                     ...prev,
@@ -1120,6 +1283,10 @@ export function DevModeContent(props: DevModeContentProps) {
         openSurfaceWithTransition,
         closeLayerWithTransition,
         startStoryInGame,
+        writeSaveInGame,
+        loadSaveInGame,
+        listSaveIds,
+        getSavePreview,
         widgetRuntimeStore,
     ]);
 
@@ -1253,6 +1420,10 @@ export function DevModeContent(props: DevModeContentProps) {
                     onOpenSurface: openSurfaceWithTransition,
                     onCloseLayer: closeLayerWithTransition,
                     onStartStory: startStoryInGame,
+                    onWriteSave: writeSaveInGame,
+                    onLoadSave: loadSaveInGame,
+                    onListSaveIds: listSaveIds,
+                    onGetSavePreview: getSavePreview,
                     onWidgetPatch: (elementId, patch) => {
                         setWidgetPatchesByScope(prev => ({
                             ...prev,
@@ -1337,6 +1508,10 @@ export function DevModeContent(props: DevModeContentProps) {
         makeStateAccessors,
         openSurfaceWithTransition,
         startStoryInGame,
+        writeSaveInGame,
+        loadSaveInGame,
+        listSaveIds,
+        getSavePreview,
         uiDocument,
         widgetRuntimeStore,
     ]);
@@ -1402,7 +1577,8 @@ export function DevModeContent(props: DevModeContentProps) {
                             <NlrStageLayer
                                 session={nlrSession}
                                 interactive={gameStageVisible}
-                                onPreloadedReady={handleNlrPreloadedReady}
+                                onFirstSceneReady={handleNlrFirstSceneReady}
+                                onLiveGameReady={handleNlrLiveGameReady}
                                 onError={handleNlrStageError}
                             />
                             <AnimatePresence
@@ -1428,6 +1604,10 @@ export function DevModeContent(props: DevModeContentProps) {
                                               openSurfaceWithTransition={openSurfaceWithTransition}
                                               closeLayerWithTransition={closeLayerWithTransition}
                                               startStoryInGame={startStoryInGame}
+                                              writeSaveInGame={writeSaveInGame}
+                                              loadSaveInGame={loadSaveInGame}
+                                              listSaveIds={listSaveIds}
+                                              getSavePreview={getSavePreview}
                                               setWidgetPatchesByScope={setWidgetPatchesByScope}
                                               widgetPatchesByScope={widgetPatchesByScope}
                                               widgetPatchesByScopeRef={widgetPatchesByScopeRef}

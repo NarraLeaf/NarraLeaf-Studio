@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -56,6 +56,24 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
     const safeScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
     const scaledWidth = surface.designSize.width * safeScale;
     const scaledHeight = surface.designSize.height * safeScale;
+    const dispatchSurfaceBlueprintEvent = hostAdapter.blueprintRuntime?.dispatchSurfaceBlueprintEvent;
+
+    const handleSurfaceClick = useCallback(
+        (event: ReactMouseEvent<HTMLDivElement>) => {
+            if (!dispatchSurfaceBlueprintEvent) {
+                return;
+            }
+            const rect = event.currentTarget.getBoundingClientRect();
+            const scaleX = rect.width > 0 ? surface.designSize.width / rect.width : 1;
+            const scaleY = rect.height > 0 ? surface.designSize.height / rect.height : 1;
+            event.stopPropagation();
+            void dispatchSurfaceBlueprintEvent("mouseClick", {
+                x: (event.clientX - rect.left) * scaleX,
+                y: (event.clientY - rect.top) * scaleY,
+            });
+        },
+        [dispatchSurfaceBlueprintEvent, surface.designSize.height, surface.designSize.width],
+    );
 
     const surfaceShellStyle: CSSProperties = {
         position: "relative",
@@ -80,6 +98,7 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
             data-ui-surface-id={surface.id}
             data-ui-surface-kind={surface.kind}
             style={surfaceShellStyle}
+            onClick={handleSurfaceClick}
         >
             <div style={surfaceStyle}>
                 <SurfaceElementTree
