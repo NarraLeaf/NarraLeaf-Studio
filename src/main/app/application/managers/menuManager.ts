@@ -1,8 +1,5 @@
-import { Menu, MenuItemConstructorOptions, shell } from "electron";
+import { Menu, MenuItemConstructorOptions, BrowserWindow, shell } from "electron";
 import { BaseApp } from "../baseApp";
-
-// type MenuRole = MenuItemConstructorOptions['role'];
-// type MenuItemType = MenuItemConstructorOptions['type'];
 
 export class MenuManager {
     private static readonly DocumentationUrl = "https://www.narraleaf.com/docs/studio";
@@ -33,18 +30,112 @@ export class MenuManager {
         Menu.setApplicationMenu(menu);
     }
 
+    private sendActionToFocusedWindow(action: string): void {
+        const focusedWindow = BrowserWindow.getFocusedWindow();
+        if (!focusedWindow || focusedWindow.isDestroyed()) return;
+        focusedWindow.webContents.send("narraleaf-studio:app.menu.action", { action });
+    }
+
     private buildMenuTemplate(): MenuItemConstructorOptions[] {
         if (process.platform !== "darwin") {
             return [];
         }
 
         return [
-            { role: "appMenu", visible: false },
+            {
+                role: "appMenu",
+                label: "NarraLeaf Studio",
+                submenu: [
+                    { role: "about" },
+                    { type: "separator" },
+                    {
+                        label: "Preferences\u2026",
+                        accelerator: "Cmd+,",
+                        click: () => {
+                            this.sendActionToFocusedWindow("preferences");
+                        },
+                    },
+                    { type: "separator" },
+                    { role: "services" },
+                    { type: "separator" },
+                    { role: "hide" },
+                    { role: "hideOthers" },
+                    { role: "unhide" },
+                    { type: "separator" },
+                    { role: "quit" },
+                ],
+            },
+            {
+                label: "File",
+                submenu: [
+                    {
+                        label: "New Workspace",
+                        accelerator: "Cmd+N",
+                        click: () => {
+                            this.sendActionToFocusedWindow("new-workspace");
+                        },
+                    },
+                    {
+                        label: "Open Workspace",
+                        accelerator: "Cmd+O",
+                        click: () => {
+                            this.sendActionToFocusedWindow("open-workspace");
+                        },
+                    },
+                    { type: "separator" },
+                    {
+                        label: "Export Project",
+                        accelerator: "Cmd+Shift+E",
+                        click: () => {
+                            this.sendActionToFocusedWindow("export-project");
+                        },
+                    },
+                    { type: "separator" },
+                    {
+                        label: "Close Workspace",
+                        accelerator: "Cmd+W",
+                        click: () => {
+                            this.sendActionToFocusedWindow("close-workspace");
+                        },
+                    },
+                ],
+            },
             { role: "editMenu" },
+            {
+                label: "View",
+                submenu: [
+                    { role: "reload" },
+                    { role: "forceReload" },
+                    { role: "toggleDevTools" },
+                    { type: "separator" },
+                    { role: "resetZoom" },
+                    { role: "zoomIn" },
+                    { role: "zoomOut" },
+                    { type: "separator" },
+                    { role: "togglefullscreen" },
+                ],
+            },
+            {
+                role: "windowMenu",
+                label: "Window",
+                submenu: [
+                    { role: "minimize" },
+                    { role: "zoom" },
+                    { type: "separator" },
+                    { role: "front" },
+                ],
+            },
             {
                 role: "help",
                 label: "Help",
                 submenu: [
+                    {
+                        label: "Open Welcome",
+                        click: () => {
+                            this.sendActionToFocusedWindow("open-welcome");
+                        },
+                    },
+                    { type: "separator" },
                     {
                         label: "Documentation",
                         click: () => {
