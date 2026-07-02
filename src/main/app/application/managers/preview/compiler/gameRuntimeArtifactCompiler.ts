@@ -2,6 +2,7 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { assembleDevModeBundleFromProjectPath } from "../../devMode/pipeline/bundleAssembler";
+import { compileAllBlueprintScriptsForProject } from "../../devMode/compiler/blueprint/compileProjectBlueprintScripts";
 import {
     GAME_RUNTIME_PACK_SCHEMA_VERSION,
     type GameRuntimeAssetManifestEntry,
@@ -67,13 +68,19 @@ export async function compileGameRuntimePreviewArtifact(
     await copyRuntimeFiles(input.runtimeDistDir, appDir);
 
     const projectConfig = await readProjectConfig(input.projectPath);
+    const blueprintScripts = await compileAllBlueprintScriptsForProject(input.projectPath);
+    if (!blueprintScripts.ok) {
+        const detail = blueprintScripts.errors.join("\n") || "TypeScript blueprint compile failed";
+        throw new Error(`Blueprint script compile failed:\n${detail}`);
+    }
     const bundleId = crypto.randomUUID();
     const bundle = await assembleDevModeBundleFromProjectPath({
         projectPath: input.projectPath,
         bundleId,
         revision: 1,
-        blueprintCompiledScripts: {},
-        blueprintScriptsCompileOk: true,
+        blueprintCompiledScripts: blueprintScripts.scripts,
+        blueprintScriptsCompileOk: blueprintScripts.ok,
+        blueprintScriptsCompileErrors: blueprintScripts.errors,
     });
     const assetManifest = await copyProjectAssets({
         projectPath: input.projectPath,

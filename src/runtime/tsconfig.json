@@ -22,7 +22,6 @@
   },
   "include": [
     "./**/*",
-    "../renderer/apps/dev-mode/nlr/**/*",
     "../renderer/lib/ui-editor/**/*",
     "../renderer/lib/workspace/hooks/useAssetObjectUrl.ts",
     "../renderer/lib/workspace/hooks/useEditorFontFamily.ts",
