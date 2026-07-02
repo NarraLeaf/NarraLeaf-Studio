@@ -7,6 +7,7 @@ import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbilit
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
+import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
@@ -30,6 +31,7 @@ import { AppEventToken } from "./app";
 
 export interface RendererPrivilegedInterface {
     fs: {
+        selectFile(actor: PrivilegedActor, filters: string[], multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>>;
         stat(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat>>>;
         list(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileStat[]>>>;
         details(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<FileDetails>>>;
@@ -195,6 +197,12 @@ export interface RendererPreloadedInterface {
             readPreview(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ capture: string | null }>>;
             delete(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ deleted: boolean }>>;
         };
+    };
+
+    preview: {
+        launch(projectPath: string, entry: GameRuntimeLaunchEntry): Promise<RequestStatus<{ status: PreviewStatus }>>;
+        stop(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
+        getStatus(projectPath: string): Promise<RequestStatus<{ status: PreviewStatus }>>;
     };
 
     blueprintPersistence: {

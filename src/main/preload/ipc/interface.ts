@@ -5,6 +5,7 @@ import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload } from "@shared/types/devMode";
+import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
@@ -35,6 +36,8 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
 
     return {
         fs: {
+            selectFile: (actor: PrivilegedActor, filters: string[], multiple: boolean) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "selectFile", filters, multiple }),
             stat: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "stat", path }),
             list: (actor: PrivilegedActor, path: string) =>
@@ -246,6 +249,15 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             delete: (projectRef: DevModeSaveProjectRef, id: string) =>
                 ipcClient.invoke(IPCEventType.devModeSaveDelete, { projectRef, id }) as Promise<RequestStatus<{ deleted: boolean }>>,
         },
+    },
+
+    preview: {
+        launch: (projectPath: string, entry: GameRuntimeLaunchEntry) =>
+            ipcClient.invoke(IPCEventType.previewLaunch, { projectPath, entry }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
+        stop: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.previewStop, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
+        getStatus: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.previewGetStatus, { projectPath }) as Promise<RequestStatus<{ status: PreviewStatus }>>,
     },
 
     blueprintPersistence: {

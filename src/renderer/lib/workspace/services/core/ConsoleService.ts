@@ -55,7 +55,7 @@ type ConsoleServiceEvents = {
 };
 
 export const MAX_CONSOLE_ENTRIES_PER_CHANNEL = 500;
-export const MAX_CONSOLE_ENTRY_CHARS = 1024;
+export const MAX_CONSOLE_ENTRY_CHARS = 8192;
 const TRUNCATED_ENTRY_SUFFIX = "... [truncated]";
 
 export const CONSOLE_CHANNELS: readonly ConsoleChannelDefinition[] = [

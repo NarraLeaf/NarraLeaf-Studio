@@ -118,29 +118,33 @@ export function PluginsTab() {
                     </div>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-auto p-2">
+                <div className="min-h-0 flex-1 overflow-auto">
                     {plugins.length === 0 ? (
                         <div className="px-2 py-8 text-center text-xs text-gray-500">No plugins installed</div>
                     ) : (
-                        <div className="space-y-1">
-                            {plugins.map(plugin => (
-                                <button
-                                    key={plugin.pluginId}
-                                    type="button"
-                                    onClick={() => setSelectedId(plugin.pluginId)}
-                                    className={`no-drag w-full rounded-md border px-3 py-2 text-left transition-colors ${
-                                        selected?.pluginId === plugin.pluginId
-                                            ? "border-cyan-400/30 bg-cyan-400/10"
-                                            : "border-transparent bg-white/[0.03] hover:bg-white/[0.06]"
-                                    }`}
-                                >
-                                    <div className="flex min-w-0 items-center justify-between gap-2">
-                                        <div className="truncate text-sm font-medium text-white">{plugin.manifest.name}</div>
-                                        <StatusBadge status={plugin.status} />
-                                    </div>
-                                    <div className="mt-1 truncate font-mono text-[11px] text-gray-500">{plugin.pluginId}</div>
-                                </button>
-                            ))}
+                        <div>
+                            {plugins.map(plugin => {
+                                const isSelected = selected?.pluginId === plugin.pluginId;
+
+                                return (
+                                    <button
+                                        key={plugin.pluginId}
+                                        type="button"
+                                        onClick={() => setSelectedId(plugin.pluginId)}
+                                        className={`no-drag w-full border-b border-l-2 border-b-white/10 px-3 py-2 text-left transition-colors ${
+                                            isSelected
+                                                ? "border-l-primary"
+                                                : "border-l-transparent hover:bg-white/10"
+                                        }`}
+                                    >
+                                        <div className="flex min-w-0 items-center justify-between gap-2">
+                                            <div className="truncate text-sm font-medium text-white">{plugin.manifest.name}</div>
+                                            <StatusBadge status={plugin.status} />
+                                        </div>
+                                        <div className="mt-1 truncate font-mono text-[11px] text-gray-500">{plugin.pluginId}</div>
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -262,7 +266,7 @@ function InfoLine({ label, value, mono = false }: { label: string; value: string
 
 function StatusBadge({ status }: { status: PluginStatus }) {
     return (
-        <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[11px] ${statusClass(status)}`}>
+        <span className={`shrink-0 border px-1.5 py-0.5 text-[11px] ${statusClass(status)}`}>
             {statusText(status)}
         </span>
     );

@@ -31,6 +31,11 @@ import {
     DevModeSaveReadPreviewHandler,
     DevModeSaveWriteHandler,
 } from "./window/handlers/devModeSaveAction";
+import {
+    PreviewGetStatusHandler,
+    PreviewLaunchHandler,
+    PreviewStopHandler,
+} from "./window/handlers/previewAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./window/handlers/pluginPermissionAction";
 import {
     PluginApproveHandler,
@@ -142,6 +147,11 @@ export class WindowManager {
         win.registerIPCHandler(new DevModeSaveListIdsHandler());
         win.registerIPCHandler(new DevModeSaveReadPreviewHandler());
         win.registerIPCHandler(new DevModeSaveDeleteHandler());
+
+        // Register preview runtime handlers
+        win.registerIPCHandler(new PreviewLaunchHandler());
+        win.registerIPCHandler(new PreviewStopHandler());
+        win.registerIPCHandler(new PreviewGetStatusHandler());
 
         // Register blueprint persistent variable storage handlers
         win.registerIPCHandler(new BlueprintPersistenceGetAllHandler());

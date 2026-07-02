@@ -4,6 +4,7 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "baseUrl": ".",
     "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,

@@ -4947,11 +4947,11 @@ describe("built-in blueprint nodes", () => {
             }),
         );
 
-        expect(displayablePatch).toEqual({ x: 64 });
-        expect(displayablePatchCalls.slice(-2)).toEqual([{ x: 0 }, { x: 64 }]);
+        expect(displayablePatch).toEqual({ offsetX: 24 });
         expect(displayableMotion).toMatchObject({
-            target: { x: [-64, 0] },
+            target: { x: [-12, 52] },
             transition: { type: "tween", durationMs: 200, delayMs: 0 },
+            commitLayoutOnComplete: { x: 64 },
         });
 
         const animateLegacyDefaultXNode = {
@@ -4984,15 +4984,16 @@ describe("built-in blueprint nodes", () => {
             }),
         );
 
-        expect(displayablePatch).toEqual({ x: 64 });
-        expect(displayablePatchCalls.slice(legacyDefaultPatchCallCount)).toEqual([{ x: 64 }]);
+        expect(displayablePatch).toEqual({ offsetX: 24 });
+        expect(displayablePatchCalls.slice(legacyDefaultPatchCallCount)).toEqual([]);
         expect(displayableMotion).toMatchObject({
-            target: { x: [-52, 0] },
+            target: { x: [0, 52] },
             transition: { type: "tween", durationMs: 200, delayMs: 0 },
+            commitLayoutOnComplete: { x: 64 },
         });
     });
 
-    it("continues Displayable x animations when requestAnimationFrame is throttled", async () => {
+    it("requests held Displayable x animations without pre-patching layout", async () => {
         vi.useFakeTimers();
         const originalRafDescriptor = Object.getOwnPropertyDescriptor(globalThis, "requestAnimationFrame");
         Object.defineProperty(globalThis, "requestAnimationFrame", {
@@ -5083,10 +5084,11 @@ describe("built-in blueprint nodes", () => {
             }
         }
 
-        expect(displayablePatchCalls).toEqual([{ x: 0 }]);
+        expect(displayablePatchCalls).toEqual([]);
         expect(displayableMotion).toMatchObject({
-            target: { x: [-500, 0] },
+            target: { x: [0, 500] },
             transition: { type: "tween", durationMs: 200, delayMs: 0 },
+            commitLayoutOnComplete: { x: 0 },
         });
         expect(stoppedAnimationIds).toEqual([]);
     });
