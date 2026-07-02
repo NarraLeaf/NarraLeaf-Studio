@@ -530,6 +530,10 @@ function normalizeOpacityInput(value: number): number {
     return Math.max(0, Math.min(1, opacity));
 }
 
+function normalizeOpacityPercentInput(value: number): number {
+    return Math.max(0, Math.min(1, value / 100));
+}
+
 function shouldWaitForVariantTransition(raw: unknown): boolean {
     if (typeof raw === "boolean") {
         return raw;
@@ -707,10 +711,18 @@ async function animateDisplayableProperty(ctx: Parameters<BlueprintNodeDef["exec
         property === "scale" ? 1 :
         0;
     const rawFrom = toOptionalFiniteNumber(ctx.params.from);
-    const rawTo = toFiniteNumber(ctx.params.to, defaultTo);
+    const rawTo = toOptionalFiniteNumber(ctx.params.to);
     const hasExplicitFrom = hasExplicitDisplayableAnimationFrom(ctx.params, property, rawFrom);
-    const from = rawFrom === undefined ? undefined : property === "opacity" ? normalizeOpacityInput(rawFrom) : rawFrom;
-    const to = property === "opacity" ? normalizeOpacityInput(rawTo) : rawTo;
+    const from = rawFrom === undefined
+        ? undefined
+        : property === "opacity"
+            ? normalizeOpacityPercentInput(rawFrom)
+            : rawFrom;
+    const to = property === "opacity"
+        ? rawTo === undefined
+            ? defaultTo
+            : normalizeOpacityPercentInput(rawTo)
+        : rawTo ?? defaultTo;
     const durationMs = Math.max(0, toFiniteNumber(ctx.params.duration, 0.3)) * 1000;
     const delayMs = Math.max(0, toFiniteNumber(ctx.params.delay, 0)) * 1000;
     const easing = toEnumValue(ctx.params.easing, DISPLAYABLE_ANIMATION_EASINGS, "easeOut");

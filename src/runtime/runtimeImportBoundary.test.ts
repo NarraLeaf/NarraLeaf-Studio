@@ -32,8 +32,8 @@ const FORBIDDEN_IMPORTS = [
         reason: "Studio window layout must not be inherited by the game runtime.",
     },
     {
-        pattern: /^@\/apps\/(?!dev-mode\/nlr(?:\/|$))/,
-        reason: "Only the isolated NLR story runtime helpers may be reused from apps/ during Phase 1.",
+        pattern: /^@\/apps(?:\/|$)/,
+        reason: "Runtime renderer must use shared renderer runtime modules instead of app-specific UI code.",
     },
 ];
 

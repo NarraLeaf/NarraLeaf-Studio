@@ -1175,14 +1175,6 @@ function opacityPercentParam(params: Record<string, unknown>, key: string, fallb
     return formatCompactNumber(value > 1 ? value : value * 100);
 }
 
-function optionalOpacityPercentParam(params: Record<string, unknown>, key: string): string {
-    const value = params[key];
-    if (typeof value !== "number" || !Number.isFinite(value)) {
-        return "";
-    }
-    return formatCompactNumber(value > 1 ? value : value * 100);
-}
-
 function CardFieldLabel({ children }: { children: ReactNode }) {
     return <div className="mb-0.5 text-[9px] uppercase tracking-wide text-gray-500">{children}</div>;
 }
@@ -1584,7 +1576,6 @@ function DisplayableAnimatePropertyCard({
     const property = typeof params.property === "string" ? params.property : "opacity";
     const easing = typeof params.easing === "string" ? params.easing : "easeOut";
     const after = typeof params.after === "string" ? params.after : "hold";
-    const isOpacity = property === "opacity";
     const valueUnit = displayableAnimatePropertyUnit(property);
     const toFallback = property === "opacity" ? 100 : property === "scale" ? 1 : 0;
     const isLegacyAbsolutePositionFromDefault =
@@ -1632,8 +1623,6 @@ function DisplayableAnimatePropertyCard({
                         value={
                             isLegacyAbsolutePositionFromDefault
                                 ? ""
-                                : isOpacity
-                                ? optionalOpacityPercentParam(params, "from")
                                 : optionalNumericParam(params, "from")
                         }
                         unit={valueUnit}
@@ -1644,11 +1633,7 @@ function DisplayableAnimatePropertyCard({
                 <div>
                     <CardFieldLabel>To</CardFieldLabel>
                     <CardNumberInput
-                        value={
-                            isOpacity
-                                ? opacityPercentParam(params, "to", toFallback)
-                                : numericParam(params, "to", toFallback)
-                        }
+                        value={numericParam(params, "to", toFallback)}
                         unit={valueUnit}
                         ariaLabel="Animation target value"
                         onCommit={raw => patchNumber("to", raw, toFallback)}

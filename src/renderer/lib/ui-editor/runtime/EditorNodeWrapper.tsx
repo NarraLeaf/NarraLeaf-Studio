@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
-import { motion } from "motion/react";
+import { motion, useAnimationControls, type TargetAndTransition } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import {
@@ -113,6 +113,7 @@ export function EditorNodeWrapper({
     );
     const runtimeElementState = useWidgetRuntimeElementState(element.id, interactionDisabled);
     const displayableMotion = runtimeElementState.displayableMotion;
+    const animationControls = useAnimationControls();
     const [resetMotionId, setResetMotionId] = useState<string | null>(null);
     const blueprintRuntime = hostAdapter?.blueprintRuntime;
     const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
@@ -137,13 +138,14 @@ export function EditorNodeWrapper({
             return undefined;
         }
         const visual = resolveButtonVisualProps(element, appearance, appearanceResolveCtx);
-        const canDispatchClick = Boolean(blueprintRuntime && !interactionDisabled);
+        const canDispatchClick = Boolean(interactive && blueprintRuntime && !interactionDisabled);
         return resolveButtonCursor(visual.cursor, interactionDisabled, canDispatchClick);
     })();
     const layoutOpacity = layout.opacity ?? 1;
     const effectiveOpacity = hasRuntimeOpacityOverride ? layoutOpacity : appearanceOpacity ?? layoutOpacity;
     const baseRotation = layout.rotation ?? 0;
     const isResetPhase = Boolean(displayableMotion?.resetOnComplete && resetMotionId === displayableMotion.id);
+    const motionControlsOpacity = displayableMotion?.target.opacity !== undefined;
 
     useEffect(() => {
         if (resetMotionId !== null && (!displayableMotion || resetMotionId !== displayableMotion.id)) {
@@ -395,7 +397,7 @@ export function EditorNodeWrapper({
             top: isFlow ? 0 : y + offsetY,
             width: normalizedWidth,
             height: normalizedHeight,
-            opacity: effectiveOpacity,
+            opacity: motionControlsOpacity ? undefined : effectiveOpacity,
             pointerEvents: isRoot ? "none" : "auto",
             boxSizing: "border-box",
             display: "flex",
@@ -422,7 +424,7 @@ export function EditorNodeWrapper({
             style.transformOrigin = "center center";
         }
         return style;
-    }, [displayableMotion, effectiveOpacity, layout, isRoot, layoutMode, styleOverrides, wrapperCursor]);
+    }, [displayableMotion, effectiveOpacity, layout, isRoot, layoutMode, motionControlsOpacity, styleOverrides, wrapperCursor]);
 
     const motionAnimate = useMemo(() => {
         if (!displayableMotion) {
@@ -467,6 +469,39 @@ export function EditorNodeWrapper({
         () => (displayableMotion ? toDisplayableMotionTransition(displayableMotion.transition) : undefined),
         [displayableMotion],
     );
+    const motionRunConfigRef = useRef<{
+        animate: Record<string, number | number[]> | undefined;
+        initial: Record<string, number> | false;
+        transition: Record<string, unknown> | undefined;
+    }>({
+        animate: motionAnimate,
+        initial: motionInitial,
+        transition: motionTransition,
+    });
+    const motionRunKey = displayableMotion ? `${displayableMotion.id}:${isResetPhase ? "reset" : "run"}` : null;
+
+    useEffect(() => {
+        motionRunConfigRef.current = {
+            animate: motionAnimate,
+            initial: motionInitial,
+            transition: motionTransition,
+        };
+    }, [motionAnimate, motionInitial, motionTransition]);
+
+    useEffect(() => {
+        const { animate, initial, transition } = motionRunConfigRef.current;
+        if (!motionRunKey || !animate) {
+            animationControls.stop();
+            return;
+        }
+        if (initial && !isResetPhase) {
+            animationControls.set(initial as TargetAndTransition);
+        }
+        void animationControls.start({
+            ...animate,
+            ...(transition ? { transition } : {}),
+        } as TargetAndTransition);
+    }, [animationControls, isResetPhase, motionRunKey]);
 
     const onAnimationComplete = useCallback(() => {
         if (!displayableMotion?.resetOnComplete) {
@@ -485,9 +520,8 @@ export function EditorNodeWrapper({
             data-ui-element-id={interactive ? element.id : undefined}
             className={`${interactive ? "ui-editor-node" : "ui-editor-node-preview"} ${isRoot ? "ui-editor-node-root" : ""}`}
             style={containerStyle}
-            initial={motionInitial}
-            animate={motionAnimate}
-            transition={motionTransition}
+            initial={false}
+            animate={displayableMotion ? animationControls : undefined}
             onAnimationComplete={onAnimationComplete}
             onPointerEnter={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerEnter : undefined}
             onPointerLeave={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerLeave : undefined}

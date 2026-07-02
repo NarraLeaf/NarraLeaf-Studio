@@ -1,18 +1,13 @@
-import { useEffect, useState } from "react";
+import { useCallback } from "react";
+import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { getInterface } from "@/lib/app/bridge";
-import { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
-import { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
-import { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
-import { mountBlueprintCompiledScripts } from "@/lib/ui-editor/blueprint-runtime/mountBlueprintScripts";
-import { BlueprintExecutionManager } from "@/lib/ui-editor/blueprint-runtime/BlueprintExecutionManager";
+import {
+    useBlueprintRuntimeCore,
+    type BlueprintRuntimeCore,
+} from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 
-export type DevModeBlueprintRuntimeCore = {
-    scopeBridge: ScopeStoreBridge;
-    debug: DebugBridge;
-    bindingDebugCoalescer: BindingDebugCoalescer;
-    executionManager: BlueprintExecutionManager;
-};
+export type DevModeBlueprintRuntimeCore = BlueprintRuntimeCore;
 
 /**
  * Per-bundle Dev Mode Blueprint runtime core (scopes + debug bus). Host adapter is built in DevModeContent
@@ -22,35 +17,19 @@ export function useDevModeBlueprintRuntime(
     bundle: DevModeBundle | null,
     projectPath?: string | null,
 ): DevModeBlueprintRuntimeCore | null {
-    const [session, setSession] = useState<DevModeBlueprintRuntimeCore | null>(null);
-
-    useEffect(() => {
-        if (!bundle) {
-            setSession(null);
+    const forwardDebugEvent = useCallback((event: BlueprintDebugEvent) => {
+        if (!projectPath) {
             return;
         }
-        mountBlueprintCompiledScripts(bundle);
-        const nextSession: DevModeBlueprintRuntimeCore = {
-            scopeBridge: new ScopeStoreBridge(),
-            debug: new DebugBridge(),
-            bindingDebugCoalescer: new BindingDebugCoalescer(),
-            executionManager: new BlueprintExecutionManager(),
-        };
-        const unsubscribeForwarding = projectPath
-            ? nextSession.debug.subscribeEvents(event => {
-                try {
-                    getInterface().devMode.forwardBlueprintDebugEvent({ projectPath, event });
-                } catch (error) {
-                    console.warn("[DevMode] failed to forward blueprint debug event", error);
-                }
-            })
-            : () => undefined;
-        setSession(nextSession);
-        return () => {
-            unsubscribeForwarding();
-            nextSession.executionManager.cancelAll("Dev Mode runtime disposed");
-        };
-    }, [bundle?.revision, bundle?.bundleId, projectPath]);
+        try {
+            getInterface().devMode.forwardBlueprintDebugEvent({ projectPath, event });
+        } catch (error) {
+            console.warn("[DevMode] failed to forward blueprint debug event", error);
+        }
+    }, [projectPath]);
 
-    return session;
+    return useBlueprintRuntimeCore(bundle, {
+        onDebugEvent: projectPath ? forwardDebugEvent : undefined,
+        disposeMessage: "Dev Mode runtime disposed",
+    });
 }

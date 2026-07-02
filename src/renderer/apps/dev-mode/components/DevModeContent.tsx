@@ -45,20 +45,23 @@ import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/e
 import { SurfaceLifecycleManager } from "@/lib/ui-editor/blueprint-runtime/SurfaceLifecycleManager";
 import { getInterface } from "@/lib/app/bridge";
 import {
-    getPageAnimationDurationMs,
     resolvePageAnimationMotion,
-    shouldBlockPageAnimationExit,
     type PageAnimationNavigationDirection,
 } from "@/lib/ui-editor/runtime/pageAnimation";
-import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
-import { NlrStageLayer, type NlrStageSession } from "../nlr/NlrStageLayer";
-import { compileStudioStoryToNlr } from "../nlr/storyCompiler";
+import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
+import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import {
     clearDevModeSavePreviewImages,
     registerDevModeSavePreviewImage,
 } from "@/lib/ui-editor/runtime/devModeSavePreviewAssets";
 import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
-import { collectDialogFlushElementIds } from "./dialogFlushTargets";
+import { collectDialogFlushElementIds } from "@/lib/ui-editor/runtime/game/dialogFlushTargets";
+import {
+    createSurfaceNavigationCloseUpdate,
+    createSurfaceNavigationOpenUpdate,
+    type SurfaceNavigationEntry,
+    type SurfaceNavigationPresentation,
+} from "@/lib/ui-editor/runtime/game/surfaceNavigationController";
 import { resolveDevModeViewportSize } from "./devModeViewport";
 
 type DevModeContentProps = {
@@ -117,7 +120,7 @@ const noopHostAdapter: UIHostAdapter = {
 };
 
 type DevModePageProps = Record<string, unknown>;
-type DevModePagePresentation = "appPage" | "gameOverlay";
+type DevModePagePresentation = SurfaceNavigationPresentation;
 type DevModeOpenSurfaceOptions = {
     presentation?: DevModePagePresentation;
 };
@@ -133,15 +136,8 @@ function cloneDevModePageProps(props: DevModePageProps | undefined): DevModePage
     }
 }
 
-type DevModeNavEntry = {
-    key: string;
+type DevModeNavEntry = SurfaceNavigationEntry<DevModePageProps, DevModePagePresentation> & {
     sessionKey: string;
-    surfaceId: string;
-    direction: PageAnimationNavigationDirection;
-    waitForExit: boolean;
-    props: DevModePageProps;
-    presentation: DevModePagePresentation;
-    exitBehind?: boolean;
 };
 
 type DevModeBlueprintRuntimeCore = NonNullable<ReturnType<typeof useDevModeBlueprintRuntime>>;
@@ -651,6 +647,8 @@ function DevModeAppSurfaceLayer(props: {
     widgetRuntimeStore: WidgetRuntimeStateStore;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     reducedMotion: boolean;
+    active: boolean;
+    onInteractionReadyChange: (entryKey: string, ready: boolean) => void;
     onPrepaintReady: (entryKey: string) => void;
     onEnterComplete: (entryKey: string) => void;
 }) {
@@ -690,16 +688,20 @@ function DevModeAppSurfaceLayer(props: {
         widgetRuntimeStore,
         nestedSurfaceRuntime,
         reducedMotion,
+        active,
+        onInteractionReadyChange,
         onPrepaintReady,
         onEnterComplete,
     } = props;
     const runtimeScopeId = entry.key || surface.id;
     const hostAdapterRef = useRef<UIHostAdapter | null>(null);
+    const [surfaceInteractive, setSurfaceInteractive] = useState(false);
     const [surfaceLifecycleSignals, setSurfaceLifecycleSignals] = useState({
         beforeSurfaceExit: 0,
         afterSurfaceEnter: 0,
     });
     const surfaceTransitionStateRef = useRef({ isEntering: true, isExiting: false });
+    const effectiveInteractive = active && surfaceInteractive;
 
     const hostApi = useMemo(() => {
         if (!bpCore) {
@@ -859,20 +861,39 @@ function DevModeAppSurfaceLayer(props: {
             if (entryKey !== entry.key) {
                 return;
             }
+            setSurfaceInteractive(false);
+            widgetRuntimeStore.clearInteractionStateForScope(runtimeScopeId);
+            onInteractionReadyChange(entry.key, false);
             dispatchSurfaceTransitionEvent("beforeSurfaceExit");
         },
-        [dispatchSurfaceTransitionEvent, entry.key],
+        [dispatchSurfaceTransitionEvent, entry.key, onInteractionReadyChange, runtimeScopeId, widgetRuntimeStore],
     );
 
     const handleEnterComplete = useCallback(
         (entryKey: string) => {
             if (entryKey === entry.key) {
                 dispatchSurfaceTransitionEvent("afterSurfaceEnter");
+                setSurfaceInteractive(active);
+                onInteractionReadyChange(entry.key, active);
             }
             onEnterComplete(entryKey);
         },
-        [dispatchSurfaceTransitionEvent, entry.key, onEnterComplete],
+        [active, dispatchSurfaceTransitionEvent, entry.key, onEnterComplete, onInteractionReadyChange],
     );
+
+    useEffect(() => {
+        if (active) {
+            return;
+        }
+        setSurfaceInteractive(false);
+        widgetRuntimeStore.clearInteractionStateForScope(runtimeScopeId);
+        onInteractionReadyChange(entry.key, false);
+    }, [active, entry.key, onInteractionReadyChange, runtimeScopeId, widgetRuntimeStore]);
+
+    useEffect(() => () => {
+        widgetRuntimeStore.clearInteractionStateForScope(runtimeScopeId);
+        onInteractionReadyChange(entry.key, false);
+    }, [entry.key, onInteractionReadyChange, runtimeScopeId, widgetRuntimeStore]);
 
     return (
         <SurfaceAnimationLayer
@@ -882,6 +903,7 @@ function DevModeAppSurfaceLayer(props: {
             className="absolute inset-0 flex items-center justify-center"
             presentZIndex={10 + layerIndex}
             exitZIndex={entry.exitBehind ? 0 : 30 + layerIndex}
+            interactive={effectiveInteractive}
             resolveExit={resolveExit}
             onPrepaintReady={onPrepaintReady}
             onBeforeExit={handleBeforeExit}
@@ -910,6 +932,7 @@ function DevModeAppSurfaceLayer(props: {
                         }
                         nestedSurfaceRuntime={nestedSurfaceRuntime}
                         surfaceLifecycleSignals={surfaceLifecycleSignals}
+                        interactive={effectiveInteractive}
                     />
                 </WidgetRuntimeStateProvider>
             </DevModeSurfaceLifecycleLayer>
@@ -935,7 +958,9 @@ export function DevModeContent(props: DevModeContentProps) {
     const [navStack, setNavStack] = useState<DevModeNavEntry[]>([]);
     const [visibleEntries, setVisibleEntries] = useState<DevModeNavEntry[]>([]);
     const [surfacePresenceMode, setSurfacePresenceMode] = useState<"sync" | "wait">("sync");
+    const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
     const navStackRef = useRef<DevModeNavEntry[]>([]);
+    const visibleEntriesRef = useRef<DevModeNavEntry[]>([]);
     const navEntrySeqRef = useRef(0);
     const activeNavKeyRef = useRef<string | null>(null);
     const activeEntryRef = useRef<DevModeNavEntry | null>(null);
@@ -1039,6 +1064,7 @@ export function DevModeContent(props: DevModeContentProps) {
             pendingRemoveAfterEnterKeyRef.current = null;
             transitionDirectionRef.current = "forward";
             setSurfacePresenceMode("sync");
+            setInteractionReadyKeys(new Set());
             setNavStack([initialEntry]);
             setVisibleEntries([initialEntry]);
             widgetPatchesByScopeRef.current = {};
@@ -1053,6 +1079,10 @@ export function DevModeContent(props: DevModeContentProps) {
     useEffect(() => {
         navStackRef.current = navStack;
     }, [navStack]);
+
+    useEffect(() => {
+        visibleEntriesRef.current = visibleEntries;
+    }, [visibleEntries]);
 
     useEffect(() => {
         studioPageHiddenForGameRef.current = studioPageHiddenForGame;
@@ -1252,9 +1282,25 @@ export function DevModeContent(props: DevModeContentProps) {
         setVisibleEntries([pendingEntry]);
     }, [markExitComplete]);
 
-    const shouldWaitForExit = useCallback((from: UISurface | null): boolean => {
-        return shouldBlockPageAnimationExit(from?.settings?.pageAnimation, prefersReducedMotion === true);
-    }, [prefersReducedMotion]);
+    const handleSurfaceInteractionReadyChange = useCallback((entryKey: string, ready: boolean) => {
+        setInteractionReadyKeys(prev => {
+            const alreadyReady = prev.has(entryKey);
+            if (alreadyReady === ready) {
+                return prev;
+            }
+            const next = new Set(prev);
+            if (ready) {
+                next.add(entryKey);
+            } else {
+                next.delete(entryKey);
+            }
+            return next;
+        });
+    }, []);
+
+    const resetSurfaceInteractionReadiness = useCallback(() => {
+        setInteractionReadyKeys(prev => (prev.size === 0 ? prev : new Set()));
+    }, []);
 
     const createNavEntry = useCallback(
         (
@@ -1293,8 +1339,9 @@ export function DevModeContent(props: DevModeContentProps) {
         pendingUnderlayReadyKeyRef.current = null;
         pendingRemoveAfterEnterKeyRef.current = null;
         setSurfacePresenceMode("sync");
+        resetSurfaceInteractionReadiness();
         completeTransitionWait();
-    }, [completeTransitionWait]);
+    }, [completeTransitionWait, resetSurfaceInteractionReadiness]);
 
     const clearGameHiddenStudioPages = useCallback(() => {
         const emptyKeys = new Set<string>();
@@ -1314,54 +1361,31 @@ export function DevModeContent(props: DevModeContentProps) {
             const target = uiDocument?.surfaces.find(s => s.id === nextSurfaceId) ?? null;
             const currentEntry = activeEntryRef.current;
             const currentHiddenForGame = isGameHiddenEntry(currentEntry);
-            const waitForExit = currentHiddenForGame ? false : shouldWaitForExit(from);
             const presentation =
                 options?.presentation ?? (studioPageHiddenForGameRef.current ? "gameOverlay" : "appPage");
-            const nextEntry = createNavEntry(nextSurfaceId, "forward", waitForExit, props, presentation);
-            transitionDirectionRef.current = "forward";
-            const reduced = prefersReducedMotion === true;
-            const exitDurationMs = currentHiddenForGame
-                ? 0
-                : getPageAnimationDurationMs(from?.settings?.pageAnimation, "exit", reduced);
-            const enterDurationMs = getPageAnimationDurationMs(target?.settings?.pageAnimation, "enter", reduced);
-            const holdCurrentUntilEnterComplete = shouldHoldCurrentSurfaceUntilEnterComplete({
-                waitForExit,
-                hasCurrentSurface: Boolean(currentEntry),
-                exitDurationMs,
-                enterDurationMs,
-                outgoingHidden: currentHiddenForGame,
+            const update = createSurfaceNavigationOpenUpdate({
+                navStack: navStackRef.current,
+                visibleEntries: visibleEntriesRef.current,
+                activeEntry: currentEntry,
+                fromSurface: from,
+                targetSurface: target,
+                currentHiddenForGame,
+                prefersReducedMotion,
+                createNextEntry: waitForExit =>
+                    createNavEntry(nextSurfaceId, "forward", waitForExit, props, presentation),
             });
-            const transitionDuration = currentHiddenForGame
-                ? enterDurationMs
-                : waitForExit
-                    ? exitDurationMs + enterDurationMs
-                    : Math.max(exitDurationMs, enterDurationMs);
+            transitionDirectionRef.current = update.direction;
             const wait = beginTransitionWait(
-                transitionDuration,
-                { waitForEnter: true, waitForExit: !currentHiddenForGame && Boolean(currentEntry) },
+                update.transitionDurationMs,
+                update.transitionWaitOptions,
             );
-            pendingWaitEntryRef.current = waitForExit ? nextEntry : null;
-            pendingUnderlayReadyKeyRef.current =
-                waitForExit || currentHiddenForGame || holdCurrentUntilEnterComplete ? null : nextEntry.key;
-            pendingRemoveAfterEnterKeyRef.current = holdCurrentUntilEnterComplete ? nextEntry.key : null;
-            setSurfacePresenceMode(waitForExit ? "wait" : "sync");
-            setNavStack(prev => [...prev, nextEntry]);
-            if (waitForExit) {
-                setVisibleEntries([]);
-            } else if (currentHiddenForGame) {
-                setVisibleEntries([nextEntry]);
-            } else {
-                setVisibleEntries(prev => {
-                    const currentVisual = currentEntry ?? prev[prev.length - 1] ?? null;
-                    if (!currentVisual || currentVisual.key === nextEntry.key) {
-                        return [nextEntry];
-                    }
-                    if (holdCurrentUntilEnterComplete) {
-                        return [{ ...currentVisual, exitBehind: true }, nextEntry];
-                    }
-                    return [nextEntry, currentVisual];
-                });
-            }
+            resetSurfaceInteractionReadiness();
+            pendingWaitEntryRef.current = update.pendingWaitEntry;
+            pendingUnderlayReadyKeyRef.current = update.pendingUnderlayReadyKey;
+            pendingRemoveAfterEnterKeyRef.current = update.pendingRemoveAfterEnterKey;
+            setSurfacePresenceMode(update.surfacePresenceMode);
+            setNavStack(update.navStack);
+            setVisibleEntries(update.visibleEntries);
             return wait;
         },
         [
@@ -1369,7 +1393,7 @@ export function DevModeContent(props: DevModeContentProps) {
             createNavEntry,
             isGameHiddenEntry,
             prefersReducedMotion,
-            shouldWaitForExit,
+            resetSurfaceInteractionReadiness,
             uiDocument?.surfaces,
         ],
     );
@@ -1379,64 +1403,38 @@ export function DevModeContent(props: DevModeContentProps) {
         if (currentStack.length <= 1) {
             return Promise.resolve();
         }
-        const currentEntry = currentStack[currentStack.length - 1]!;
         const nextEntryBase = currentStack[currentStack.length - 2]!;
         const target = uiDocument?.surfaces.find(s => s.id === nextEntryBase.surfaceId) ?? null;
         const from = activeSurfaceRef.current;
         const targetHiddenForGame = isGameHiddenEntry(nextEntryBase);
-        const waitForExit = targetHiddenForGame ? false : shouldWaitForExit(from);
-        const nextEntry = { ...nextEntryBase, direction: "back" as const, waitForExit };
-        transitionDirectionRef.current = "back";
-        const reduced = prefersReducedMotion === true;
-        const exitDurationMs = getPageAnimationDurationMs(from?.settings?.pageAnimation, "exit", reduced);
-        const enterDurationMs = targetHiddenForGame
-            ? 0
-            : getPageAnimationDurationMs(target?.settings?.pageAnimation, "enter", reduced);
-        const holdCurrentUntilEnterComplete = shouldHoldCurrentSurfaceUntilEnterComplete({
-            waitForExit,
-            hasCurrentSurface: Boolean(currentEntry),
-            exitDurationMs,
-            enterDurationMs,
-            incomingHidden: targetHiddenForGame,
+        const update = createSurfaceNavigationCloseUpdate({
+            navStack: currentStack,
+            fromSurface: from,
+            targetSurface: target,
+            targetHiddenForGame,
+            prefersReducedMotion,
         });
-        const transitionDuration = targetHiddenForGame
-            ? exitDurationMs
-            : waitForExit
-                ? exitDurationMs + enterDurationMs
-                : Math.max(exitDurationMs, enterDurationMs);
-        const wait = beginTransitionWait(
-            transitionDuration,
-            targetHiddenForGame ? { waitForEnter: false, waitForExit: transitionDuration > 0 } : undefined,
-        );
-        pendingWaitEntryRef.current = waitForExit ? nextEntry : null;
-        pendingUnderlayReadyKeyRef.current =
-            waitForExit || targetHiddenForGame || holdCurrentUntilEnterComplete ? null : nextEntry.key;
-        pendingRemoveAfterEnterKeyRef.current = holdCurrentUntilEnterComplete ? nextEntry.key : null;
-        setSurfacePresenceMode(waitForExit ? "wait" : "sync");
-        setNavStack(prev => {
-            if (prev.length <= 1) {
-                return prev;
-            }
-            const next = prev.slice(0, -1);
-            const top = next[next.length - 1]!;
-            next[next.length - 1] = { ...top, direction: "back", waitForExit };
-            return next;
-        });
-        if (waitForExit) {
-            setVisibleEntries([]);
-        } else if (targetHiddenForGame) {
-            setVisibleEntries([]);
-        } else if (holdCurrentUntilEnterComplete) {
-            setVisibleEntries([{ ...currentEntry, exitBehind: true }, nextEntry]);
-        } else {
-            setVisibleEntries([nextEntry, currentEntry]);
+        if (!update) {
+            return Promise.resolve();
         }
+        transitionDirectionRef.current = update.direction;
+        const wait = beginTransitionWait(
+            update.transitionDurationMs,
+            update.transitionWaitOptions,
+        );
+        resetSurfaceInteractionReadiness();
+        pendingWaitEntryRef.current = update.pendingWaitEntry;
+        pendingUnderlayReadyKeyRef.current = update.pendingUnderlayReadyKey;
+        pendingRemoveAfterEnterKeyRef.current = update.pendingRemoveAfterEnterKey;
+        setSurfacePresenceMode(update.surfacePresenceMode);
+        setNavStack(update.navStack);
+        setVisibleEntries(update.visibleEntries);
         return wait;
     }, [
         beginTransitionWait,
         isGameHiddenEntry,
         prefersReducedMotion,
-        shouldWaitForExit,
+        resetSurfaceInteractionReadiness,
         uiDocument?.surfaces,
     ]);
 
@@ -1995,8 +1993,14 @@ export function DevModeContent(props: DevModeContentProps) {
         hostAdapterRef.current = hostAdapter;
     }, [hostAdapter]);
 
+    const activeSurfaceInteractionReady = Boolean(
+        activeEntry &&
+        interactionReadyKeys.has(activeEntry.key) &&
+        (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)),
+    );
+
     useEffect(() => {
-        if (!bpCore || !bundle || !activeSurface || !hostAdapter.blueprintRuntime) {
+        if (!bpCore || !bundle || !activeSurface || !hostAdapter.blueprintRuntime || !activeSurfaceInteractionReady) {
             return undefined;
         }
 
@@ -2050,7 +2054,15 @@ export function DevModeContent(props: DevModeContentProps) {
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
         };
-    }, [activeRuntimeScopeId, activeSurface, bpCore, bundle, hostAdapter, makeStateAccessors]);
+    }, [
+        activeRuntimeScopeId,
+        activeSurface,
+        activeSurfaceInteractionReady,
+        bpCore,
+        bundle,
+        hostAdapter,
+        makeStateAccessors,
+    ]);
 
     // Reset lifecycle tracking on new session
     useEffect(() => {
@@ -2347,6 +2359,8 @@ export function DevModeContent(props: DevModeContentProps) {
                                         widgetRuntimeStore={widgetRuntimeStore}
                                         nestedSurfaceRuntime={nestedSurfaceRuntime}
                                         reducedMotion={reducedMotion}
+                                        active={entry.key === activeEntry?.key}
+                                        onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                         onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                         onEnterComplete={markActiveEnterComplete}
                                     />

@@ -6,11 +6,13 @@ import { GAME_RUNTIME_PACK_SCHEMA_VERSION } from "@shared/types/gameRuntime";
 import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
 import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
+import { BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY } from "@shared/types/blueprint/graph";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { compileGameRuntimePreviewArtifact } from "./gameRuntimeArtifactCompiler";
 
 const ASSET_ID = "00000000-0000-4000-8000-000000000123";
 const REMOTE_ASSET_ID = "00000000-0000-4000-8000-000000000456";
+const DISPLAYABLE_ANIMATION_FROM_EXPLICIT_PARAM = "__displayableAnimationFromExplicit";
 const CURRENT_ICON_PLATFORM = process.platform === "darwin"
     ? "macos"
     : process.platform === "win32"
@@ -140,6 +142,92 @@ describe("game runtime artifact compiler", () => {
             controlToken: "token",
         })).rejects.toThrow(/remote cache "remote-hero\.jpg"/);
     });
+
+    it("preserves authored Animate opacity percent params in the preview pack", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, {
+            assets: {},
+            blueprintDocument: {
+                schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+                blueprints: {
+                    "surface-main-blueprint": {
+                        id: "surface-main-blueprint",
+                        name: "Surface Main",
+                        owner: {
+                            kind: "surfaceMain",
+                            surfaceId: "surface-main",
+                        },
+                        frontend: "visual",
+                        programKind: "graph",
+                        program: {
+                            kind: "graph",
+                            graphs: {
+                                events: {
+                                    "after-enter": {
+                                        id: "after-enter",
+                                        graph: {
+                                            nodes: {
+                                                animate: {
+                                                    id: "animate",
+                                                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+                                                    params: {
+                                                        property: "opacity",
+                                                        from: 0,
+                                                        [DISPLAYABLE_ANIMATION_FROM_EXPLICIT_PARAM]: true,
+                                                        to: 100,
+                                                        duration: 0.3,
+                                                        delay: 0,
+                                                        easing: "linear",
+                                                        after: "hold",
+                                                    },
+                                                },
+                                            },
+                                            edges: [],
+                                        },
+                                    },
+                                },
+                                functions: {},
+                            },
+                        },
+                    },
+                },
+                ownerRecords: {
+                    "surfaceMain:surface-main": {
+                        activeBlueprintId: "surface-main-blueprint",
+                        privateBlueprintIds: ["surface-main-blueprint"],
+                    },
+                },
+                persistentVariables: {},
+            },
+        });
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimePreviewArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: {
+                kind: "surface",
+                surfaceId: "surface-main",
+            },
+            controlPort: 47323,
+            controlToken: "token",
+        });
+
+        const blueprint = result.pack.bundle.ui.localBlueprints.blueprints["surface-main-blueprint"];
+        const nodeParams = blueprint?.program.kind === "graph"
+            ? blueprint.program.graphs.events["after-enter"]?.graph?.nodes?.animate?.params
+            : undefined;
+
+        expect(nodeParams).toMatchObject({
+            property: "opacity",
+            from: 0,
+            [DISPLAYABLE_ANIMATION_FROM_EXPLICIT_PARAM]: true,
+            to: 100,
+        });
+    });
 });
 
 async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
@@ -156,6 +244,7 @@ async function createMinimalProject(
     projectPath: string,
     options: {
         assets?: Record<string, unknown>;
+        blueprintDocument?: Record<string, unknown>;
     } = {},
 ): Promise<void> {
     await fs.mkdir(path.join(projectPath, "editor", "ui"), { recursive: true });
@@ -220,7 +309,7 @@ async function createMinimalProject(
         JSON.stringify({
             schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
             graphs: {},
-            blueprintDocument: {
+            blueprintDocument: options.blueprintDocument ?? {
                 schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
                 blueprints: {},
                 ownerRecords: {},

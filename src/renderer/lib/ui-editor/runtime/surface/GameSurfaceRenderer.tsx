@@ -25,6 +25,8 @@ export type GameSurfaceRendererProps = {
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     surfaceLifecycleSignals?: SurfaceLifecycleSignals;
     blueprintLifecycleReady?: boolean;
+    interactive?: boolean;
+    onRuntimeSubscriptionsReady?: () => void;
 };
 
 export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
@@ -40,6 +42,8 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         nestedSurfaceRuntime,
         surfaceLifecycleSignals,
         blueprintLifecycleReady,
+        interactive = true,
+        onRuntimeSubscriptionsReady,
     } = props;
     const [, setBindingRenderTick] = useState(0);
     const [, setRuntimePatchRenderTick] = useState(0);
@@ -60,6 +64,18 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         return widgetRuntimeStore.subscribeRuntimePatches(() => setRuntimePatchRenderTick(tick => tick + 1));
     }, [widgetRuntimeStore]);
 
+    useEffect(() => {
+        if (!onRuntimeSubscriptionsReady) {
+            return undefined;
+        }
+        if (typeof requestAnimationFrame !== "function") {
+            const timeoutId = setTimeout(onRuntimeSubscriptionsReady, 0);
+            return () => clearTimeout(timeoutId);
+        }
+        const frameId = requestAnimationFrame(() => onRuntimeSubscriptionsReady());
+        return () => cancelAnimationFrame(frameId);
+    }, [onRuntimeSubscriptionsReady]);
+
     const rootElementId = resolveSurfaceRootElementId(document, surface.id);
     if (!rootElementId) {
         return null;
@@ -76,7 +92,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
     const effectiveWidgetRuntimePatches = getWidgetRuntimePatches?.() ?? widgetRuntimePatches;
 
     const handleSurfaceClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-        if (!dispatchSurfaceBlueprintEvent) {
+        if (!interactive || !dispatchSurfaceBlueprintEvent) {
             return;
         }
         const rect = event.currentTarget.getBoundingClientRect();
@@ -87,10 +103,10 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             x: (event.clientX - rect.left) * scaleX,
             y: (event.clientY - rect.top) * scaleY,
         });
-    }, [dispatchSurfaceBlueprintEvent, surface.designSize.height, surface.designSize.width]);
+    }, [dispatchSurfaceBlueprintEvent, interactive, surface.designSize.height, surface.designSize.width]);
 
     const handleSurfaceRightClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-        if (!dispatchSurfaceBlueprintEvent) {
+        if (!interactive || !dispatchSurfaceBlueprintEvent) {
             return;
         }
         const rect = event.currentTarget.getBoundingClientRect();
@@ -102,7 +118,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             x: (event.clientX - rect.left) * scaleX,
             y: (event.clientY - rect.top) * scaleY,
         });
-    }, [dispatchSurfaceBlueprintEvent, surface.designSize.height, surface.designSize.width]);
+    }, [dispatchSurfaceBlueprintEvent, interactive, surface.designSize.height, surface.designSize.width]);
 
     const shellStyle: CSSProperties = {
         position: "relative",
@@ -126,8 +142,8 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             data-ui-surface-id={surface.id}
             data-ui-surface-kind={surface.kind}
             style={shellStyle}
-            onClick={handleSurfaceClick}
-            onContextMenu={handleSurfaceRightClick}
+            onClick={interactive ? handleSurfaceClick : undefined}
+            onContextMenu={interactive ? handleSurfaceRightClick : undefined}
         >
             <div style={surfaceStyle}>
                 <SurfaceElementTree
@@ -141,6 +157,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
                     nestedSurfaceRuntime={nestedSurfaceRuntime}
                     surfaceLifecycleSignals={surfaceLifecycleSignals}
                     blueprintLifecycleReady={blueprintLifecycleReady}
+                    interactive={interactive}
                 />
             </div>
         </div>
