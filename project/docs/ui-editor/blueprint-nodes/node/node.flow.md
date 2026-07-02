@@ -55,18 +55,16 @@ Flow 节点用于控制事件图或宏图中的执行线路。所有 Flow 节点
 
 `blueprint.flow.switchString` - 字符串分流
 
-根据字符串值选择匹配的 Case 出口。没有任何 Case 匹配时，执行 `default` 出口。
+根据字符串值选择匹配的 Case 出口。节点卡片可通过 `Add Case` 追加更多 Case；运行时按固定 Case、追加 Case 的顺序依次匹配，第一个匹配项会进入对应 Case 出口。没有任何 Case 匹配时，执行 `default` 出口。
 
 - `in` - 执行入口
 - `value` - 用于匹配的字符串
 - `case0Value` - 第 1 个 Case 的匹配值
 - `case1Value` - 第 2 个 Case 的匹配值
-- `case2Value` - 第 3 个 Case 的匹配值
-- `case3Value` - 第 4 个 Case 的匹配值
 - `case0` - 第 1 个 Case 匹配时的执行出口
 - `case1` - 第 2 个 Case 匹配时的执行出口
-- `case2` - 第 3 个 Case 匹配时的执行出口
-- `case3` - 第 4 个 Case 匹配时的执行出口
+- `case_N_value` - 第 N 个追加 Case 的匹配值
+- `case_N_output` - 第 N 个追加 Case 匹配时的执行出口
 - `default` - 未匹配任何 Case 时的执行出口
 
 ## For Loop

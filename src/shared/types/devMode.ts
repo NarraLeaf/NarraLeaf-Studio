@@ -1,3 +1,4 @@
+import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
@@ -30,6 +31,20 @@ export type DevModeStatus =
     | "reloading"
     | "error"
     | "stopping";
+
+export type DevModeConsoleLogLevel = "verbose" | "info" | "success" | "warning" | "error";
+
+export type DevModeConsoleLogPayload = {
+    level: DevModeConsoleLogLevel;
+    message: string;
+    source?: string;
+    timestamp?: number;
+};
+
+export type DevModeBlueprintDebugEventPayload = {
+    projectPath: string;
+    event: BlueprintDebugEvent;
+};
 
 export type DevModeCharacterSummary = {
     id: string;

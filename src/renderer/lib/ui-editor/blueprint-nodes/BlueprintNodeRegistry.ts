@@ -14,6 +14,8 @@ import {
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
     resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
@@ -112,7 +114,11 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
     if (!def.isPure || def.isLatent) {
         return false;
     }
-    if (def.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS) {
+    if (
+        def.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS ||
+        def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING ||
+        def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING
+    ) {
         return true;
     }
     return (

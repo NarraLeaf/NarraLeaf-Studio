@@ -38,10 +38,13 @@ import type {
 import type { UISliderRuntimeValue, UISliderWidgetProps } from "@shared/types/ui-editor/slider";
 import { resolveSliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import type { DevModeStartStoryRequest } from "@shared/types/devMode";
-import type {
-    AppearanceFieldTransition,
-    AppearanceModel,
-    AppearanceVariant,
+import {
+    isButtonCursorValue,
+    type AppearanceFieldTransition,
+    type AppearanceModel,
+    type AppearancePropertyGroup,
+    type AppearanceVariant,
+    type ButtonCursorValue,
 } from "@shared/types/ui-editor/appearance";
 import {
     DEFAULT_SYSTEM_INTERACTION_SIGNALS,
@@ -51,6 +54,11 @@ import {
     resolveAppearanceDisplayableOpacity,
     resolveImageDisplayableOpacityKeys,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
+import {
+    createInitialButtonAppearance,
+    ensureButtonAppearanceHasAllKeys,
+    isUsableAppearanceModel,
+} from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 
 export type DevModeWidgetRuntimePatch = {
     display?: boolean;
@@ -132,6 +140,7 @@ export type BlueprintWidgetCommonProperties = {
 
 export type BlueprintButtonProperties = {
     label: string;
+    cursor: ButtonCursorValue;
 };
 
 export type BlueprintContainerProperties = {
@@ -204,8 +213,9 @@ export type BlueprintHostApiRuntime = {
     game: {
         startStory: (request: DevModeStartStoryRequest) => Promise<void>;
         isInGame: () => boolean;
+        isGameOverlay: () => boolean;
         quit: (surfaceId: string) => Promise<void>;
-        writeSave: (id: string, metadata?: unknown) => Promise<void>;
+        writeSave: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
         loadSave: (id: string) => Promise<void>;
         deleteSave: (id: string) => Promise<void>;
         listSaveIds: () => Promise<string[]>;
@@ -217,7 +227,7 @@ export type BlueprintHostApiRuntime = {
         showDialog: () => Promise<void>;
         hideDialog: () => Promise<void>;
         toggleDialogDisplay: () => Promise<void>;
-        setSentenceSpeed: (speed: number) => Promise<void>;
+        setSentenceSpeed: (cps: number) => Promise<void>;
     };
     devtools: {
         log: (level: string, message: string) => void;
@@ -234,8 +244,9 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
     onStartStory?: (request: DevModeStartStoryRequest) => Promise<void> | void;
     onIsInGame?: () => boolean;
+    onIsGameOverlay?: () => boolean;
     onQuitGame?: (surfaceId: string) => Promise<void> | void;
-    onWriteSave?: (id: string, metadata: unknown) => Promise<void> | void;
+    onWriteSave?: (id: string, metadata: unknown, screenshot?: boolean) => Promise<void> | void;
     onLoadSave?: (id: string) => Promise<void> | void;
     onDeleteSave?: (id: string) => Promise<void> | void;
     onListSaveIds?: () => Promise<string[]> | string[];
@@ -247,7 +258,7 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onShowDialog?: () => Promise<void> | void;
     onHideDialog?: () => Promise<void> | void;
     onToggleDialogDisplay?: () => Promise<void> | void;
-    onSetSentenceSpeed?: (speed: number) => Promise<void> | void;
+    onSetSentenceSpeed?: (cps: number) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
@@ -714,8 +725,73 @@ function readCommonProperties(
     };
 }
 
+function readButtonDefaultCursor(appearance: AppearanceModel | null | undefined, fallback: ButtonCursorValue): ButtonCursorValue {
+    if (!isUsableAppearanceModel(appearance)) {
+        return fallback;
+    }
+    const variant =
+        appearance.variants.find(v => v.id === appearance.defaultVariantId) ??
+        appearance.variants[0];
+    const value = variant?.propertyGroups.find(group => group.key === "cursor")?.rows[0]?.value;
+    return isButtonCursorValue(value) ? value : fallback;
+}
+
+function patchButtonDefaultCursorAppearance(
+    appearance: AppearanceModel | null | undefined,
+    flat: ReturnType<typeof getButtonProps>,
+    cursor: ButtonCursorValue,
+): AppearanceModel {
+    const model = isUsableAppearanceModel(appearance)
+        ? ensureButtonAppearanceHasAllKeys(appearance, flat)
+        : createInitialButtonAppearance({ ...flat, cursor });
+    const defaultVariantId = model.variants.some(variant => variant.id === model.defaultVariantId)
+        ? model.defaultVariantId
+        : model.variants[0]?.id;
+    if (!defaultVariantId) {
+        return model;
+    }
+
+    let changed = model !== appearance;
+    const variants = model.variants.map(variant => {
+        if (variant.id !== defaultVariantId) {
+            return variant;
+        }
+        let foundCursorGroup = false;
+        const propertyGroups = variant.propertyGroups.map(group => {
+            if (group.key !== "cursor") {
+                return group;
+            }
+            foundCursorGroup = true;
+            const firstRow = group.rows[0] ?? { conditions: null, value: cursor };
+            if (group.rows[0] && firstRow.value === cursor) {
+                return group;
+            }
+            changed = true;
+            return {
+                ...group,
+                rows: [{ ...firstRow, value: cursor }, ...group.rows.slice(1)],
+            };
+        });
+        if (foundCursorGroup) {
+            return { ...variant, propertyGroups };
+        }
+        changed = true;
+        const cursorGroup: AppearancePropertyGroup = {
+            key: "cursor",
+            rows: [{ conditions: null, value: cursor }],
+        };
+        return { ...variant, propertyGroups: [...propertyGroups, cursorGroup] };
+    });
+    return changed ? { ...model, variants } : model;
+}
+
 function readButtonProperties(document: UIDocument, elementId: string): BlueprintButtonProperties {
-    return { label: getButtonProps(assertButtonElement(document, elementId)).label };
+    const p = getButtonProps(assertButtonElement(document, elementId));
+    const fallbackCursor = isButtonCursorValue(p.cursor) ? p.cursor : "auto";
+    return {
+        label: p.label,
+        cursor: readButtonDefaultCursor(p.appearance, fallbackCursor),
+    };
 }
 
 function readContainerProperties(document: UIDocument, elementId: string): BlueprintContainerProperties {
@@ -959,10 +1035,10 @@ function normalizeGameSaveId(operation: string, id: string): string {
     return safe;
 }
 
-function normalizeSentenceSpeed(speed: unknown): number {
-    const value = typeof speed === "number" ? speed : Number(speed);
+function normalizeSentenceCps(cps: unknown): number {
+    const value = typeof cps === "number" ? cps : Number(cps);
     if (!Number.isFinite(value) || value <= 0) {
-        throw new Error("setSentenceSpeed: speed must be a positive number");
+        throw new Error("setSentenceSpeed: CPS must be a positive number");
     }
     return value;
 }
@@ -981,6 +1057,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onFrameEmit,
         onStartStory,
         onIsInGame,
+        onIsGameOverlay,
         onQuitGame,
         onWriteSave,
         onLoadSave,
@@ -1092,12 +1169,18 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             openSurface: async (surfaceId: string, props?: unknown) => {
                 const cap = "navigation.openSurface";
                 emitHostCall(emit, cap, "call");
-                const target = document.surfaces.find(s => s.id === surfaceId);
+                const targetSurfaceId = String(surfaceId ?? "").trim();
+                if (!targetSurfaceId) {
+                    await onCloseLayer();
+                    emitHostCall(emit, cap, "return");
+                    return;
+                }
+                const target = document.surfaces.find(s => s.id === targetSurfaceId);
                 if (!target) {
                     emitHostCall(emit, cap, "return");
-                    throw new Error(`openSurface: surface not found: ${surfaceId}`);
+                    throw new Error(`openSurface: surface not found: ${targetSurfaceId}`);
                 }
-                await onOpenSurface(surfaceId, normalizeJsonRecord(props));
+                await onOpenSurface(targetSurfaceId, normalizeJsonRecord(props));
                 emitHostCall(emit, cap, "return");
             },
             getPageProps: () => {
@@ -1281,11 +1364,30 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const el = assertButtonElement(document, elementId);
                     const current = readButtonProperties(document, elementId);
-                    const nextLabel = normalizeString(patch.label, current.label);
-                    if (nextLabel === current.label) {
+                    const hasLabelPatch = Object.prototype.hasOwnProperty.call(patch, "label");
+                    const hasCursorPatch = Object.prototype.hasOwnProperty.call(patch, "cursor");
+                    const nextLabel = hasLabelPatch ? normalizeString(patch.label, current.label) : current.label;
+                    const nextCursor =
+                        hasCursorPatch && isButtonCursorValue(patch.cursor)
+                            ? patch.cursor
+                            : current.cursor;
+
+                    let changed = false;
+                    const nextProps = { ...(el.props ?? {}) };
+                    if (hasLabelPatch && nextLabel !== current.label) {
+                        nextProps.label = nextLabel;
+                        changed = true;
+                    }
+                    if (hasCursorPatch && nextCursor !== current.cursor) {
+                        const flat = { ...getButtonProps(el), cursor: nextCursor };
+                        nextProps.cursor = nextCursor;
+                        nextProps.appearance = patchButtonDefaultCursorAppearance(flat.appearance, flat, nextCursor);
+                        changed = true;
+                    }
+                    if (!changed) {
                         return;
                     }
-                    el.props = { ...(el.props ?? {}), label: nextLabel };
+                    el.props = nextProps;
                     emitWidgetPatch(elementId, {});
                     scheduleElementFlush(elementId);
                 } finally {
@@ -1825,6 +1927,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            isGameOverlay: () => {
+                const cap = "game.isGameOverlay";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onIsGameOverlay ? onIsGameOverlay() === true : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             quit: async (surfaceId: string) => {
                 const cap = "game.quit";
                 emitHostCall(emit, cap, "call");
@@ -1841,7 +1952,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
-            writeSave: async (id: string, metadata?: unknown) => {
+            writeSave: async (id: string, metadata?: unknown, screenshot?: boolean) => {
                 const cap = "game.writeSave";
                 emitHostCall(emit, cap, "call");
                 try {
@@ -1849,7 +1960,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!onWriteSave) {
                         throw new Error("writeSave: game save runtime is not available");
                     }
-                    await onWriteSave(saveId, normalizeJsonValue(metadata));
+                    await onWriteSave(saveId, normalizeJsonValue(metadata), screenshot === true);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -1989,15 +2100,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
-            setSentenceSpeed: async (speed: number) => {
+            setSentenceSpeed: async (cps: number) => {
                 const cap = "game.setSentenceSpeed";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const safeSpeed = normalizeSentenceSpeed(speed);
+                    const safeCps = normalizeSentenceCps(cps);
                     if (!onSetSentenceSpeed) {
                         throw new Error("setSentenceSpeed: game runtime is not available");
                     }
-                    await onSetSentenceSpeed(safeSpeed);
+                    await onSetSentenceSpeed(safeCps);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

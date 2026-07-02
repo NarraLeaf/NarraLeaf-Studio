@@ -28,6 +28,10 @@ function cursorGroup(model: AppearanceModel): AppearancePropertyGroup | undefine
     return model.variants[0]?.propertyGroups.find(group => group.key === "cursor");
 }
 
+function textShadowGroup(model: AppearanceModel): AppearancePropertyGroup | undefined {
+    return model.variants[0]?.propertyGroups.find(group => group.key === "effectTextShadow");
+}
+
 describe("button appearance cursor", () => {
     it("seeds new button appearance models with auto cursor", () => {
         const appearance = createInitialButtonAppearance(defaultButtonWidgetProps);
@@ -69,5 +73,59 @@ describe("button appearance cursor", () => {
         });
 
         expect(resolved.cursor).toBe("crosshair");
+    });
+});
+
+describe("button appearance text shadow", () => {
+    it("seeds new button appearance models with text shadow", () => {
+        const appearance = createInitialButtonAppearance(defaultButtonWidgetProps);
+
+        expect(textShadowGroup(appearance)?.rows[0]?.value).toBeNull();
+    });
+
+    it("adds text shadow to older button appearance models", () => {
+        const oldModel = createInitialButtonAppearance(defaultButtonWidgetProps);
+        const withoutTextShadow: AppearanceModel = {
+            ...oldModel,
+            variants: oldModel.variants.map(variant => ({
+                ...variant,
+                propertyGroups: variant.propertyGroups.filter(group => group.key !== "effectTextShadow"),
+            })),
+        };
+
+        const next = ensureButtonAppearanceHasAllKeys(withoutTextShadow, defaultButtonWidgetProps);
+
+        expect(textShadowGroup(next)?.rows[0]?.value).toBeNull();
+    });
+
+    it("resolves text shadow from the active button variant", () => {
+        const shadow = {
+            storage: "layer",
+            layer: {
+                offsetX: 2,
+                offsetY: 3,
+                blur: 4,
+                spread: 0,
+                color: "rgba(0, 0, 0, 0.5)",
+            },
+        };
+        const base = createInitialButtonAppearance(defaultButtonWidgetProps);
+        const appearance: AppearanceModel = {
+            ...base,
+            variants: base.variants.map(variant => ({
+                ...variant,
+                propertyGroups: variant.propertyGroups.map(group =>
+                    group.key === "effectTextShadow"
+                        ? { ...group, rows: [{ conditions: null, value: shadow }] }
+                        : group
+                ),
+            })),
+        };
+
+        const resolved = resolveButtonVisualProps(buttonElement(appearance), appearance, {
+            signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+        });
+
+        expect(resolved.effects.effectTextShadow).toEqual(shadow);
     });
 });

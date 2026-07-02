@@ -10,6 +10,8 @@ import {
     normalizeBlueprintImageAssetValue,
 } from "@shared/types/blueprint/valueTypes";
 import {
+    BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER,
+    BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER,
     BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
     BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_CLEAR_ASSET,
     BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_CROP_RECT,
@@ -36,6 +38,7 @@ import {
     BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_X,
     BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_Y,
 } from "@shared/types/blueprint/graph";
+import { isButtonCursorValue, type ButtonCursorValue } from "@shared/types/ui-editor/appearance";
 import type { ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
@@ -160,6 +163,10 @@ function toNullableString(raw: unknown): string | null {
     }
     const s = String(raw ?? "").trim();
     return s.length > 0 ? s : null;
+}
+
+function toButtonCursorValue(raw: unknown, fallback: ButtonCursorValue): ButtonCursorValue {
+    return isButtonCursorValue(raw) ? raw : fallback;
 }
 
 function toRecordValue(raw: unknown): Record<string, unknown> {
@@ -317,6 +324,7 @@ function commonNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[]
 function buttonNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] {
     const prefix = mode === "element" ? "blueprint.element.button" : "blueprint.button";
     const labelPrefix = mode === "element" ? "Button " : "";
+    const setPointerType = mode === "element" ? BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER : BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER;
     return [
         readNode({
             type: `${prefix}.getLabel`,
@@ -337,6 +345,29 @@ function buttonNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[]
                 await requireHostApi(ctx).widget.setButtonProperties(
                     resolveTargetElementId(ctx, target, mode),
                     { label: String(readPin(ctx, "label") ?? "") },
+                );
+                return { nextPort: "next" };
+            },
+        }),
+        writeNode({
+            type: setPointerType,
+            displayName: `Set ${labelPrefix}Pointer`,
+            keywords: ["button", "pointer", "cursor", "mouse", "set"],
+            target,
+            mode,
+            inspectorParams: [
+                {
+                    key: "cursor",
+                    label: "Pointer",
+                    kind: "buttonCursor",
+                },
+            ],
+            execute: async ctx => {
+                const api = requireHostApi(ctx);
+                const elementId = resolveTargetElementId(ctx, target, mode);
+                await api.widget.setButtonProperties(
+                    elementId,
+                    { cursor: toButtonCursorValue(readPin(ctx, "cursor"), "auto") },
                 );
                 return { nextPort: "next" };
             },

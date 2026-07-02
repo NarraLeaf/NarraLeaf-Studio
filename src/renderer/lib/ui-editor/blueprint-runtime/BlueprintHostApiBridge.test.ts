@@ -4,16 +4,21 @@ import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import {
+    resolveButtonVisualProps,
     resolveImageAppearanceTransitions,
     resolveImageRectangleLike,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
-import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
+import {
+    createInitialButtonAppearance,
+    createInitialImageAppearanceFromProps,
+} from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { createDevModeBlueprintHostApi, type DevModeWidgetRuntimePatch } from "./BlueprintHostApiBridge";
 import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import { displayableMotionFromCurrent } from "@/lib/ui-editor/runtime/displayableMotion";
+import { defaultButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
 
 function createDocument(): UIDocument {
     const imageProps = {
@@ -47,7 +52,7 @@ function createDocument(): UIDocument {
                 id: "root",
                 type: "nl.root",
                 parentId: null,
-                childrenIds: ["slider", "image", "frame"],
+                childrenIds: ["slider", "image", "button", "frame"],
                 layout: { x: 0, y: 0, width: 320, height: 180 },
             },
             slider: {
@@ -75,6 +80,18 @@ function createDocument(): UIDocument {
                 props: {
                     ...imageProps,
                     appearance: createInitialImageAppearanceFromProps(imageProps),
+                },
+            },
+            button: {
+                id: "button",
+                type: "nl.button",
+                parentId: "root",
+                childrenIds: [],
+                layout: { x: 132, y: 48, width: 120, height: 40 },
+                props: {
+                    ...defaultButtonWidgetProps,
+                    label: "Go",
+                    appearance: createInitialButtonAppearance(defaultButtonWidgetProps),
                 },
             },
             frame: {
@@ -121,7 +138,7 @@ function createHostApi(options?: {
     onOpenSurface?: (surfaceId: string, props?: Record<string, unknown>) => Promise<void> | void;
     onQuitApplication?: () => Promise<void> | void;
     onWidgetPatch?: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
-    onWriteSave?: (id: string, metadata: unknown) => Promise<void> | void;
+    onWriteSave?: (id: string, metadata: unknown, screenshot?: boolean) => Promise<void> | void;
     onLoadSave?: (id: string) => Promise<void> | void;
     onDeleteSave?: (id: string) => Promise<void> | void;
     onListSaveIds?: () => Promise<string[]> | string[];
@@ -129,13 +146,15 @@ function createHostApi(options?: {
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
     onGetNametag?: () => string | null;
     onIsInGame?: () => boolean;
+    onIsGameOverlay?: () => boolean;
     onQuitGame?: (surfaceId: string) => Promise<void> | void;
     onNext?: () => Promise<void> | void;
     onSkip?: () => Promise<void> | void;
     onShowDialog?: () => Promise<void> | void;
     onHideDialog?: () => Promise<void> | void;
     onToggleDialogDisplay?: () => Promise<void> | void;
-    onSetSentenceSpeed?: (speed: number) => Promise<void> | void;
+    onSetSentenceSpeed?: (cps: number) => Promise<void> | void;
+    onCloseLayer?: () => Promise<void> | void;
     widgetRuntimeStore?: WidgetRuntimeStateStore;
 }) {
     return createDevModeBlueprintHostApi({
@@ -154,6 +173,7 @@ function createHostApi(options?: {
         onGetSavePreview: options?.onGetSavePreview,
         onGetNametag: options?.onGetNametag,
         onIsInGame: options?.onIsInGame,
+        onIsGameOverlay: options?.onIsGameOverlay,
         onQuitGame: options?.onQuitGame,
         onNext: options?.onNext,
         onSkip: options?.onSkip,
@@ -163,7 +183,7 @@ function createHostApi(options?: {
         onSetSentenceSpeed: options?.onSetSentenceSpeed,
         emit: () => undefined,
         onOpenSurface: options?.onOpenSurface ?? (() => undefined),
-        onCloseLayer: () => undefined,
+        onCloseLayer: options?.onCloseLayer ?? (() => undefined),
         onQuitApplication: options?.onQuitApplication,
         onWidgetPatch: options?.onWidgetPatch ?? (() => undefined),
         widgetRuntimeStore: options?.widgetRuntimeStore ?? new WidgetRuntimeStateStore(),
@@ -211,6 +231,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
 
     it("reads current Page props and passes props through page navigation", async () => {
         const opened: Array<{ surfaceId: string; props?: Record<string, unknown> }> = [];
+        const closed: boolean[] = [];
         const quitApplication = vi.fn();
         const pageProps = { tab: "audio", nested: { muted: true } };
         const hostApi = createHostApi({
@@ -218,6 +239,9 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             onQuitApplication: quitApplication,
             onOpenSurface: (surfaceId, props) => {
                 opened.push({ surfaceId, props });
+            },
+            onCloseLayer: () => {
+                closed.push(true);
             },
         });
 
@@ -228,11 +252,13 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
 
         await hostApi.navigation.openSurface("page-b", { tab: "video", index: 2 });
         await hostApi.navigation.openSurface("page-b");
+        await hostApi.navigation.openSurface("");
 
         expect(opened).toEqual([
             { surfaceId: "page-b", props: { tab: "video", index: 2 } },
             { surfaceId: "page-b", props: {} },
         ]);
+        expect(closed).toEqual([true]);
 
         await hostApi.navigation.quitApplication();
         expect(quitApplication).toHaveBeenCalledTimes(1);
@@ -256,10 +282,11 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         const skip = vi.fn();
         const quit = vi.fn();
         const dialogDisplayCalls: string[] = [];
-        const speeds: number[] = [];
+        const cpsValues: number[] = [];
         const hostApi = createHostApi({
             onGetNametag: () => "Alice",
             onIsInGame: () => true,
+            onIsGameOverlay: () => true,
             onQuitGame: quit,
             onNext: next,
             onSkip: skip,
@@ -272,13 +299,14 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             onToggleDialogDisplay: () => {
                 dialogDisplayCalls.push("toggle");
             },
-            onSetSentenceSpeed: speed => {
-                speeds.push(speed);
+            onSetSentenceSpeed: cps => {
+                cpsValues.push(cps);
             },
         });
 
         expect(hostApi.game.getNametag()).toBe("Alice");
         expect(hostApi.game.isInGame()).toBe(true);
+        expect(hostApi.game.isGameOverlay()).toBe(true);
         await hostApi.game.quit(" page-b ");
         await hostApi.game.next();
         await hostApi.game.skip();
@@ -291,20 +319,22 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(next).toHaveBeenCalledTimes(1);
         expect(skip).toHaveBeenCalledTimes(1);
         expect(dialogDisplayCalls).toEqual(["show", "hide", "toggle"]);
-        expect(speeds).toEqual([24]);
+        expect(cpsValues).toEqual([24]);
     });
 
     it("routes game save operations through callbacks with normalized ids", async () => {
         const writtenIds: string[] = [];
         const writtenMetadata: unknown[] = [];
+        const writtenScreenshots: boolean[] = [];
         const loadedIds: string[] = [];
         const deletedIds: string[] = [];
         const metadata = ["route", { id: "a" }];
         const preview = { kind: "imageAsset" as const, assetId: "dev-mode-save-preview:slot-a" };
         const hostApi = createHostApi({
-            onWriteSave: (id, value) => {
+            onWriteSave: (id, value, screenshot) => {
                 writtenIds.push(id);
                 writtenMetadata.push(value);
+                writtenScreenshots.push(screenshot === true);
             },
             onLoadSave: id => {
                 loadedIds.push(id);
@@ -317,12 +347,13 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             onGetSavePreview: id => id === "slot-a" ? preview : null,
         });
 
-        await hostApi.game.writeSave(" slot-a ", metadata);
+        await hostApi.game.writeSave(" slot-a ", metadata, true);
         await hostApi.game.loadSave(" slot-b ");
         await hostApi.game.deleteSave(" slot-a ");
 
         expect(writtenIds).toEqual(["slot-a"]);
         expect(writtenMetadata).toEqual([metadata]);
+        expect(writtenScreenshots).toEqual([true]);
         expect(loadedIds).toEqual(["slot-b"]);
         expect(deletedIds).toEqual(["slot-a"]);
         expect(await hostApi.game.listSaveIds()).toEqual(["slot-b", "slot-a"]);
@@ -337,6 +368,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
 
         expect(hostApi.game.getNametag()).toBe("Narrator");
         expect(hostApi.game.isInGame()).toBe(false);
+        expect(hostApi.game.isGameOverlay()).toBe(false);
     });
 
     it("returns null for missing Dialog nametag values", () => {
@@ -395,6 +427,24 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             value: 10,
             normalizedValue: 1,
         });
+    });
+
+    it("writes Button pointer changes through the default appearance cursor", async () => {
+        const document = createDocument();
+        const hostApi = createHostApi({ document });
+
+        expect(hostApi.widget.getButtonProperties("button").cursor).toBe("auto");
+
+        await hostApi.widget.setButtonProperties("button", { cursor: "crosshair" });
+
+        const button = document.elements.button!;
+        const appearance = (button.props as { appearance: AppearanceModel }).appearance;
+        const cursorGroup = appearance.variants[0]?.propertyGroups.find(group => group.key === "cursor");
+        expect(hostApi.widget.getButtonProperties("button").cursor).toBe("crosshair");
+        expect(cursorGroup?.rows[0]?.value).toBe("crosshair");
+        expect(resolveButtonVisualProps(button, appearance, {
+            signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+        }).cursor).toBe("crosshair");
     });
 
     it("reads and writes ImageAsset values while accepting legacy assetId patches", async () => {

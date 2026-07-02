@@ -88,6 +88,7 @@ export const BUTTON_KEY_ORDER: ButtonAppearancePropertyKey[] = [
     "effectBlur",
     "effectBackgroundBlur",
     "effectShadow",
+    "effectTextShadow",
     "effectInnerShadow",
     "effectBlend",
     "effectGlow",
@@ -333,19 +334,21 @@ function buttonRowValue(props: ButtonWidgetProps, key: ButtonAppearancePropertyK
             case "transformOpacity":
                 return props.transformOpacity;
             case "effectBlur":
-                return DEFAULT_ELEMENT_EFFECT_VALUES.effectBlur;
+                return props.effects.effectBlur;
             case "effectBackgroundBlur":
-                return DEFAULT_ELEMENT_EFFECT_VALUES.effectBackgroundBlur;
+                return props.effects.effectBackgroundBlur;
             case "effectShadow":
-                return DEFAULT_ELEMENT_EFFECT_VALUES.effectShadow;
+                return props.effects.effectShadow;
+            case "effectTextShadow":
+                return props.effects.effectTextShadow;
             case "effectInnerShadow":
-                return DEFAULT_ELEMENT_EFFECT_VALUES.effectInnerShadow;
+                return props.effects.effectInnerShadow;
             case "effectBlend":
-                return DEFAULT_ELEMENT_EFFECT_VALUES.effectBlend;
+                return props.effects.effectBlend;
             case "effectGlow":
-                return DEFAULT_ELEMENT_EFFECT_VALUES.effectGlow;
+                return props.effects.effectGlow;
             case "effectFilter":
-                return DEFAULT_ELEMENT_EFFECT_VALUES.effectFilter;
+                return props.effects.effectFilter;
             default:
                 return null;
         }

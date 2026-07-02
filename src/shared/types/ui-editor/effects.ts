@@ -224,7 +224,7 @@ export const WIDGET_EFFECT_KINDS_BY_TYPE: Record<string, readonly VisualEffectKi
         "filter",
     ],
     "nl.image": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
-    "nl.button": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
+    "nl.button": ["blur", "backgroundBlur", "shadow", "textShadow", "innerShadow", "blend", "glow", "filter"],
 };
 
 export function getSupportedEffectKindsForWidgetType(type: string): readonly VisualEffectKind[] {

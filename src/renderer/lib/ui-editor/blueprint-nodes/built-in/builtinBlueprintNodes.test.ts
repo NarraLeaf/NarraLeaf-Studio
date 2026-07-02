@@ -6,6 +6,7 @@ import {
     BLUEPRINT_NODE_TYPE_BOOLEAN_NOT,
     BLUEPRINT_NODE_TYPE_BOOLEAN_OR,
     BLUEPRINT_NODE_TYPE_BOOLEAN_XOR,
+    BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER,
     BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT,
     BLUEPRINT_NODE_TYPE_BROADCAST_SEND,
     BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
@@ -48,6 +49,8 @@ import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
     BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY,
@@ -64,7 +67,9 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -77,6 +82,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
@@ -85,11 +91,13 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG,
+    BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
     BLUEPRINT_NODE_TYPE_GAME_QUIT,
@@ -166,6 +174,8 @@ import {
     BLUEPRINT_NODE_TYPE_MATH_ROUND,
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
@@ -257,6 +267,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 game: {
                     startStory: async () => undefined,
                     isInGame: () => false,
+                    isGameOverlay: () => false,
                     quit: async () => undefined,
                     writeSave: async () => undefined,
                     loadSave: async () => undefined,
@@ -354,6 +365,7 @@ function createPageNavigationHostAdapter(
                         startedStories.push(request);
                     },
                     isInGame: () => false,
+                    isGameOverlay: () => false,
                     quit: async () => undefined,
                     writeSave: async () => undefined,
                     loadSave: async () => undefined,
@@ -380,6 +392,7 @@ function createPageNavigationHostAdapter(
 function createGameSaveHostAdapter(options: {
     writtenIds?: string[];
     writtenMetadata?: unknown[];
+    writtenScreenshots?: boolean[];
     loadedIds?: string[];
     deletedIds?: string[];
     listedIds?: string[];
@@ -387,13 +400,14 @@ function createGameSaveHostAdapter(options: {
     previews?: Record<string, unknown>;
     nametag?: string | null;
     isInGame?: boolean;
+    isGameOverlay?: boolean;
     quitSurfaceIds?: string[];
     nextCalls?: boolean[];
     skipCalls?: boolean[];
     showDialogCalls?: boolean[];
     hideDialogCalls?: boolean[];
     toggleDialogDisplayCalls?: boolean[];
-    sentenceSpeeds?: number[];
+    sentenceCpsValues?: number[];
 }): UIHostAdapter {
     return {
         host: "player",
@@ -426,12 +440,14 @@ function createGameSaveHostAdapter(options: {
                 game: {
                     startStory: async () => undefined,
                     isInGame: () => options.isInGame ?? false,
+                    isGameOverlay: () => options.isGameOverlay ?? false,
                     quit: async (surfaceId: string) => {
                         options.quitSurfaceIds?.push(surfaceId);
                     },
-                    writeSave: async (id: string, metadata?: unknown) => {
+                    writeSave: async (id: string, metadata?: unknown, screenshot?: boolean) => {
                         options.writtenIds?.push(id);
                         options.writtenMetadata?.push(metadata ?? {});
+                        options.writtenScreenshots?.push(screenshot === true);
                     },
                     loadSave: async (id: string) => {
                         options.loadedIds?.push(id);
@@ -458,8 +474,8 @@ function createGameSaveHostAdapter(options: {
                     toggleDialogDisplay: async () => {
                         options.toggleDialogDisplayCalls?.push(true);
                     },
-                    setSentenceSpeed: async (speed: number) => {
-                        options.sentenceSpeeds?.push(speed);
+                    setSentenceSpeed: async (cps: number) => {
+                        options.sentenceCpsValues?.push(cps);
                     },
                 },
                 devtools: {
@@ -516,9 +532,12 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_START_STORY)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_QUIT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)).toBe(true);
@@ -527,6 +546,7 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
+        expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)?.hideInPalette).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_EMIT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE)).toBe(true);
@@ -603,6 +623,7 @@ describe("built-in blueprint nodes", () => {
         expect([...types].some(type => type.startsWith("blueprint.persistence."))).toBe(false);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_REF)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY)).toBe(true);
@@ -959,6 +980,27 @@ describe("built-in blueprint nodes", () => {
         expect(openedPageProps).toEqual([{ tab: "audio", index: 2 }]);
         expect(localsAfterGoPage).not.toHaveProperty("afterGoPage");
 
+        openedSurfaceIds.length = 0;
+        openedPageProps.length = 0;
+        await executeGraph({
+            graph: {
+                id: "clearPage",
+                entries: { main: { start: { nodeId: "go", port: "in" } } },
+                nodes: {
+                    go: {
+                        id: "go",
+                        type: BLUEPRINT_NODE_TYPE_PAGE_GO,
+                        params: {},
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "go", port: "in" } },
+            hostAdapter: createPageNavigationHostAdapter(openedSurfaceIds, {}, [], [], openedPageProps),
+        });
+        expect(openedSurfaceIds).toEqual([""]);
+        expect(openedPageProps).toEqual([undefined]);
+
         const quitApplicationCalls: boolean[] = [];
         const localsAfterQuit: Record<string, unknown> = {};
         await executeGraph({
@@ -1013,6 +1055,66 @@ describe("built-in blueprint nodes", () => {
                 { hostAdapter: createPageNavigationHostAdapter([], {}, [], [], [], currentPageProps) },
             ),
         ).toEqual(currentPageProps);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        exiting: {
+                            type: BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
+                            params: {},
+                        },
+                    },
+                },
+                "exiting",
+                "isExiting",
+                {},
+                undefined,
+                0,
+                {
+                    hostAdapter: {
+                        host: "player",
+                        blueprintRuntime: {
+                            surfaceId: "surface",
+                            setSurfaceState: () => undefined,
+                            getSurfaceState: () => undefined,
+                            emitDebug: () => undefined,
+                            dispatchElementBlueprintEvent: async () => undefined,
+                            getSurfaceTransitionState: () => ({ isEntering: false, isExiting: true }),
+                        },
+                    },
+                },
+            ),
+        ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        entering: {
+                            type: BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
+                            params: {},
+                        },
+                    },
+                },
+                "entering",
+                "isEntering",
+                {},
+                undefined,
+                0,
+                {
+                    hostAdapter: {
+                        host: "player",
+                        blueprintRuntime: {
+                            surfaceId: "surface",
+                            setSurfaceState: () => undefined,
+                            getSurfaceState: () => undefined,
+                            emitDebug: () => undefined,
+                            dispatchElementBlueprintEvent: async () => undefined,
+                            getSurfaceTransitionState: () => ({ isEntering: true, isExiting: false }),
+                        },
+                    },
+                },
+            ),
+        ).toBe(true);
 
         const framePatches: FramePatchCall[] = [];
         await executeGraph({
@@ -1192,6 +1294,25 @@ describe("built-in blueprint nodes", () => {
                 { hostAdapter: createGameSaveHostAdapter({ isInGame: true }) },
             ),
         ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        overlay: {
+                            type: BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
+                            params: {},
+                        },
+                    },
+                    edges: [],
+                },
+                "overlay",
+                "isGameOverlay",
+                {},
+                undefined,
+                0,
+                { hostAdapter: createGameSaveHostAdapter({ isGameOverlay: true }) },
+            ),
+        ).toBe(true);
 
         const quitSurfaceIds: string[] = [];
         const localsAfterQuit: Record<string, unknown> = {};
@@ -1348,24 +1469,24 @@ describe("built-in blueprint nodes", () => {
         expect(toggleDialogDisplayCalls).toEqual([true]);
         expect(toggleLocals.toggleDialogDisplayNext).toBe("continued");
 
-        const sentenceSpeeds: number[] = [];
+        const sentenceCpsValues: number[] = [];
         await executeGraph({
             graph: {
                 id: "setSentenceSpeed",
-                entries: { main: { start: { nodeId: "speed", port: "in" } } },
+                entries: { main: { start: { nodeId: "cps", port: "in" } } },
                 nodes: {
-                    speed: {
-                        id: "speed",
+                    cps: {
+                        id: "cps",
                         type: BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
-                        params: { speed: 32 },
+                        params: { cps: 32 },
                     },
                 },
                 edges: [],
             },
-            entry: { start: { nodeId: "speed", port: "in" } },
-            hostAdapter: createGameSaveHostAdapter({ sentenceSpeeds }),
+            entry: { start: { nodeId: "cps", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ sentenceCpsValues }),
         });
-        expect(sentenceSpeeds).toEqual([32]);
+        expect(sentenceCpsValues).toEqual([32]);
     });
 
     it("executes game save nodes through host APIs", async () => {
@@ -1373,6 +1494,7 @@ describe("built-in blueprint nodes", () => {
 
         const writtenIds: string[] = [];
         const writtenMetadata: unknown[] = [];
+        const writtenScreenshots: boolean[] = [];
         const writeMetadata = ["chapter", 3, { route: "true" }];
         await executeGraph({
             graph: {
@@ -1384,14 +1506,22 @@ describe("built-in blueprint nodes", () => {
                         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
                         params: { id: "slot-a", metadata: writeMetadata },
                     },
+                    capture: {
+                        id: "capture",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+                        params: { value: "true" },
+                    },
                 },
-                edges: [],
+                edges: [
+                    { from: { nodeId: "capture", port: "value" }, to: { nodeId: "write", port: "screenshot" } },
+                ],
             },
             entry: { start: { nodeId: "write", port: "in" } },
-            hostAdapter: createGameSaveHostAdapter({ writtenIds, writtenMetadata }),
+            hostAdapter: createGameSaveHostAdapter({ writtenIds, writtenMetadata, writtenScreenshots }),
         });
         expect(writtenIds).toEqual(["slot-a"]);
         expect(writtenMetadata).toEqual([writeMetadata]);
+        expect(writtenScreenshots).toEqual([true]);
 
         const deletedIds: string[] = [];
         const localsAfterDelete: Record<string, unknown> = {};
@@ -1566,6 +1696,9 @@ describe("built-in blueprint nodes", () => {
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)?.pins.map(pin => pin.id)).toEqual([
             "isInGame",
         ]);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)?.pins.map(pin => pin.id)).toEqual([
+            "isGameOverlay",
+        ]);
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_QUIT)?.pins.map(pin => pin.id)).toEqual([
             "in",
         ]);
@@ -1583,21 +1716,27 @@ describe("built-in blueprint nodes", () => {
             "in",
             "next",
         ]);
-        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED)?.pins.map(pin => pin.id)).toEqual([
-            "in",
-            "next",
-            "speed",
-        ]);
+        const setSentenceSpeedNode = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED);
+        expect(setSentenceSpeedNode?.pins.map(pin => pin.id)).toEqual(["in", "next", "cps"]);
+        expect(setSentenceSpeedNode?.pins.find(pin => pin.id === "cps")).toMatchObject({ label: "CPS" });
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)?.pins.map(pin => pin.id)).toEqual([
             "in",
             "id",
         ]);
-        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE)?.pins.map(pin => pin.id)).toEqual([
+        const saveGameNode = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE);
+        expect(saveGameNode?.displayName).toBe("Save Game");
+        expect(saveGameNode?.pins.map(pin => pin.id)).toEqual([
             "in",
             "next",
             "id",
             "metadata",
+            "screenshot",
         ]);
+        expect(saveGameNode?.pins.find(pin => pin.id === "metadata")).toMatchObject({ optional: true });
+        expect(saveGameNode?.pins.find(pin => pin.id === "screenshot")).toMatchObject({
+            label: "Capture",
+            optional: true,
+        });
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA)?.pins.map(pin => pin.id)).toEqual([
             "in",
             "next",
@@ -1616,6 +1755,23 @@ describe("built-in blueprint nodes", () => {
         expect(frameBlueprintNodes
             .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)
             ?.pins.find(pin => pin.id === "props")?.optional).toBe(true);
+        expect(frameBlueprintNodes
+            .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)
+            ?.pins.map(pin => pin.id)).toEqual(["isExiting"]);
+        expect(frameBlueprintNodes
+            .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)
+            ?.pins.map(pin => pin.id)).toEqual(["isEntering"]);
+        expect(frameBlueprintNodes
+            .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)
+            ?.inspectorParams).toEqual([
+                {
+                    key: "surfaceId",
+                    label: "Page",
+                    kind: "select",
+                    dynamicOptionsSource: "surfaces",
+                    emptyOptionLabel: "None",
+                },
+            ]);
         expect(controlFlowBlueprintNodes.every(def => def.category === "Flow")).toBe(true);
         expect(localVariableBlueprintNodes.every(def => def.category === "Variables")).toBe(true);
         expect(persistentVariableBlueprintNodes.every(def => def.category === "Variables")).toBe(true);
@@ -1656,7 +1812,27 @@ describe("built-in blueprint nodes", () => {
             },
         ]);
         expect(elementFrameSetPage?.inspectorParams).toEqual(frameSetPage?.inspectorParams);
+        const buttonSetPointer = widgetPropertyBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER);
+        const elementButtonSetPointer = widgetPropertyBlueprintNodes.find(
+            def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER,
+        );
+        expect(buttonSetPointer?.category).toBe("Button");
+        expect(elementButtonSetPointer?.category).toBe("Element");
+        expect(buttonSetPointer?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
+        expect(elementButtonSetPointer?.pins.map(pin => pin.id)).toEqual(["in", "next", "element"]);
+        expect(buttonSetPointer?.inspectorParams).toEqual([
+            {
+                key: "cursor",
+                label: "Pointer",
+                kind: "buttonCursor",
+            },
+        ]);
+        expect(elementButtonSetPointer?.inspectorParams).toEqual(buttonSetPointer?.inspectorParams);
         expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "next",
+        ]);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)?.pins.map(pin => pin.id)).toEqual([
             "in",
             "next",
         ]);
@@ -1736,6 +1912,72 @@ describe("built-in blueprint nodes", () => {
             },
         ]);
         expect(blueprintLocals.afterBubble).toBe("continued");
+    });
+
+    it("stops the active Element event bubble before a later continue request", async () => {
+        registerCoreBlueprintNodes();
+
+        const bubbleCalls: string[] = [];
+        let stopped = false;
+        const blueprintLocals: Record<string, unknown> = {};
+
+        await executeGraph({
+            graph: {
+                id: "stopEventBubble",
+                entries: { main: { start: { nodeId: "stop", port: "in" } } },
+                nodes: {
+                    stop: {
+                        id: "stop",
+                        type: BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
+                        params: {},
+                    },
+                    bubble: {
+                        id: "bubble",
+                        type: BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
+                        params: {},
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterStop" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "stop", port: "next" }, to: { nodeId: "bubble", port: "in" } },
+                    { from: { nodeId: "bubble", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "stop", port: "in" } },
+            hostAdapter: {
+                host: "player",
+                blueprintRuntime: {
+                    continueElementEventBubble: async (elementId: string) => {
+                        bubbleCalls.push(elementId);
+                        return true;
+                    },
+                },
+            } as unknown as UIHostAdapter,
+            eventName: "mouseClick",
+            eventPayload: { x: 12, y: 34 },
+            eventControl: {
+                stopPropagation: () => {
+                    stopped = true;
+                },
+                isPropagationStopped: () => stopped,
+            },
+            executionOwner: { surfaceId: "surface", elementId: "button" },
+            blueprintLocals,
+        });
+
+        expect(stopped).toBe(true);
+        expect(bubbleCalls).toEqual([]);
+        expect(blueprintLocals.afterStop).toBe("continued");
     });
 
     it("adds Displayable variant and generic property nodes", () => {
@@ -3044,6 +3286,21 @@ describe("built-in blueprint nodes", () => {
         registerCoreBlueprintNodes();
 
         const switchNode = controlFlowBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING)!;
+        const switchCatalog = blueprintNodeRegistry.resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING, {
+            __switchStringCasePins: ["case_1_value", "case_1_output"],
+        });
+        expect(switchCatalog.dynamicInputPinAddLabel).toBe("Add Case");
+        expect(switchCatalog.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "value",
+            "case0Value",
+            "case1Value",
+            "case_1_value",
+            "case0",
+            "case1",
+            "case_1_output",
+            "default",
+        ]);
         expect(
             switchNode.execute({
                 graph: {
@@ -3068,6 +3325,72 @@ describe("built-in blueprint nodes", () => {
                 hostAdapter: { host: "player" },
             }),
         ).toEqual({ nextPort: "case1" });
+        expect(
+            switchNode.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "switch", port: "in" } } },
+                    nodes: {
+                        switch: {
+                            id: "switch",
+                            type: BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
+                            params: { value: "legacy", case3Value: "legacy" },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "switch", port: "in" } },
+                node: {
+                    id: "switch",
+                    type: BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
+                    params: { value: "legacy", case3Value: "legacy" },
+                },
+                params: { value: "legacy", case3Value: "legacy" },
+                hostAdapter: { host: "player" },
+            }),
+        ).toEqual({ nextPort: "case3" });
+        expect(
+            switchNode.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "switch", port: "in" } } },
+                    nodes: {
+                        switch: {
+                            id: "switch",
+                            type: BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
+                            params: {
+                                value: "settings",
+                                case0Value: "title",
+                                case1Value: "menu",
+                                __switchStringCasePins: ["case_1_value", "case_1_output"],
+                                case_1_value: "settings",
+                            },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "switch", port: "in" } },
+                node: {
+                    id: "switch",
+                    type: BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
+                    params: {
+                        value: "settings",
+                        case0Value: "title",
+                        case1Value: "menu",
+                        __switchStringCasePins: ["case_1_value", "case_1_output"],
+                        case_1_value: "settings",
+                    },
+                },
+                params: {
+                    value: "settings",
+                    case0Value: "title",
+                    case1Value: "menu",
+                    __switchStringCasePins: ["case_1_value", "case_1_output"],
+                    case_1_value: "settings",
+                },
+                hostAdapter: { host: "player" },
+            }),
+        ).toEqual({ nextPort: "case_1_output" });
 
         const sequenceEntered: string[] = [];
         await executeGraph({
@@ -3618,10 +3941,13 @@ describe("built-in blueprint nodes", () => {
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_GET)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_SET)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_QUIT)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_NEXT)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_SKIP)).toBe(false);
@@ -3655,8 +3981,10 @@ describe("built-in blueprint nodes", () => {
         expect(byType.get(BLUEPRINT_NODE_TYPE_LOCAL_SET)?.category).toBe("Variables");
         expect(byType.get(BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)?.category).toBe("Game");
         expect(byType.get(BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)?.category).toBe("Game");
+        expect(byType.get(BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)?.category).toBe("Game");
         expect(byType.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
+        expect(byType.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_GAME_QUIT)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_GAME_NEXT)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)).toBe(false);
@@ -3733,10 +4061,15 @@ describe("built-in blueprint nodes", () => {
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(false);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
+        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN)).toBe(true);
@@ -3747,10 +4080,18 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN)).toBe(true);
@@ -3763,8 +4104,12 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS)).toBe(true);
@@ -3780,8 +4125,13 @@ describe("built-in blueprint nodes", () => {
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(false);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE)).toBe(true);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE)).toBe(true);
@@ -3794,21 +4144,34 @@ describe("built-in blueprint nodes", () => {
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT)).toBe(true);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER)).toBe(true);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT)).toBe(true);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(false);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL)).toBe(false);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(false);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
         const frameSetPageEntry = blueprintNodeRegistry
             .listPaletteEntries({
@@ -5137,6 +5500,94 @@ describe("built-in blueprint nodes", () => {
                 { hostAdapter, executionOwner: owner },
             ),
         ).toBe(10);
+    });
+
+    it("executes Button Set Pointer nodes", async () => {
+        registerCoreBlueprintNodes();
+
+        let buttonProps = {
+            label: "Go",
+            cursor: "pointer" as const,
+        };
+        let lastButtonPatchElementId: string | null = null;
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                surfaceId: "surface",
+                setSurfaceState: () => undefined,
+                getSurfaceState: () => undefined,
+                emitDebug: () => undefined,
+                dispatchElementBlueprintEvent: async () => undefined,
+                hostApi: {
+                    widget: {
+                        getButtonProperties: () => buttonProps,
+                        setButtonProperties: async (elementId: string, patch: Partial<typeof buttonProps>) => {
+                            lastButtonPatchElementId = elementId;
+                            buttonProps = { ...buttonProps, ...patch };
+                        },
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+        const owner = { surfaceId: "surface", elementId: "button", blueprintId: "bp" };
+        const executeButtonNode = async (
+            type: string,
+            nodeId: string,
+            params: Record<string, unknown>,
+            graphPatch?: {
+                nodes?: Record<string, { id: string; type: string; params?: Record<string, unknown> }>;
+                edges?: { from: { nodeId: string; port: string }; to: { nodeId: string; port: string } }[];
+            },
+        ) => {
+            const def = widgetPropertyBlueprintNodes.find(node => node.type === type)!;
+            await Promise.resolve(
+                def.execute({
+                    graph: {
+                        id: "graph",
+                        entries: { main: { start: { nodeId, port: "in" } } },
+                        nodes: {
+                            ...(graphPatch?.nodes ?? {}),
+                            [nodeId]: { id: nodeId, type, params },
+                        },
+                        edges: graphPatch?.edges ?? [],
+                    },
+                    entry: { start: { nodeId, port: "in" } },
+                    node: { id: nodeId, type, params },
+                    params,
+                    hostAdapter,
+                    executionOwner: owner,
+                }),
+            );
+        };
+
+        await executeButtonNode(BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER, "setPointerDefault", {});
+        expect(buttonProps.cursor).toBe("auto");
+
+        await executeButtonNode(BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER, "setPointerCrosshair", { cursor: "crosshair" });
+        expect(buttonProps.cursor).toBe("crosshair");
+
+        await executeButtonNode(
+            BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER,
+            "setElementPointer",
+            { cursor: "grab" },
+            {
+                nodes: {
+                    buttonRef: {
+                        id: "buttonRef",
+                        type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                        params: { surfaceId: "surface", elementId: "other-button", elementType: "nl.button" },
+                    },
+                },
+                edges: [
+                    {
+                        from: { nodeId: "buttonRef", port: "element" },
+                        to: { nodeId: "setElementPointer", port: "element" },
+                    },
+                ],
+            },
+        );
+        expect(lastButtonPatchElementId).toBe("other-button");
+        expect(buttonProps.cursor).toBe("grab");
     });
 
     it("executes Image write nodes and resolves Image reads", async () => {

@@ -69,11 +69,32 @@ export const SURFACE_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
         headNodeTypes: ["blueprint.event.head.surfaceUnmount"],
     },
     {
+        id: "beforeSurfaceExit",
+        displayName: "Before surface exit",
+        description: "Fires before the current Page surface starts its exit animation.",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.beforeSurfaceExit"],
+    },
+    {
+        id: "afterSurfaceEnter",
+        displayName: "After surface enter",
+        description: "Fires after the current Page surface finishes its enter animation.",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.afterSurfaceEnter"],
+    },
+    {
         id: "mouseClick",
         displayName: "Mouse click",
         description: "Fires for any mouse click inside the current Page surface.",
         dispatchKind: "interaction",
         headNodeTypes: ["blueprint.event.head.mouseClick"],
+    },
+    {
+        id: "rightClick",
+        displayName: "Right click",
+        description: "Fires for any right click inside the current Page surface.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.rightClick"],
     },
     ...KEYBOARD_EVENTS,
 ];
