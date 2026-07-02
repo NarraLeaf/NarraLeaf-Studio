@@ -84,7 +84,7 @@
 - Page 组件首版为静态目标：props 包含 `targetSurfaceId`、`params`、`navigationMode: "static"`，并预留动画字段；不实现 frame-local push / replace / back。嵌入内容仍会渲染子 Page 内已有 widget / appearance 动画能力。
 - Dev Mode 中每个 Page 组件实例创建独立 `runtimeScopeId`。`surfaceId` 仍用于查找 blueprint owner，`runtimeScopeId` 用于 surface state、widget locals、widget runtime state 和 lifecycle 隔离。
 - 子 Page 在 Frame 实例首次挂载时触发自己的 `surfaceInit`，目标变化或组件卸载时触发 `surfaceUnmount`。同一个目标 Page 被多个 Page 组件引用时，这些 lifecycle 和本地状态互不共享。
-- 子 Page 可通过 Host API `frame.getParam(key)` 读取父级传入参数，并通过 `frame.emit(event, data)` 向父 Page 上的 Page 组件实例发送固定 widget 事件 `pageEvent`；事件 head 输出 `event` 和 `data`。
+- 子 Page 可通过 Page props 读取父级传入参数，并通过 `frame.emit(event, data)` 向父 Page 上的 Page 组件实例发送固定 widget 事件 `pageEvent`；事件 head 输出 `event` 和 `data`。
 - Slider Host API 通过 `widget.getSliderProperties` / `widget.setSliderProperties` 读取和写入运行时值与范围。`Set Slider Value`、`Set Slider Range` 只更新运行时状态，不写回 UIDocument，也不会自动再次派发 Slider 事件。
 
 ## 已知缺口
@@ -93,7 +93,7 @@
 - 共享 Blueprint asset 有读取和 Dev Mode 编译路径，但 Workspace 内创建、搜索、编辑、实例调用共享 blueprint 的产品入口不完整。
 - Function graph service API 存在，但 Workspace UI 暴露不完整。
 - 完整 DevTools、节点高亮、调用栈、局部变量、TS source map 等不是完整闭环。
-- Widget logic command 中 `setText`、`setSource`、`setLabel`、`refreshItems` 等仍是 planned；当前 runtime 主要实现 visible/enabled/variant、state/persistence/navigation/devtools 等能力。
+- Widget logic command 中 `setSource`、`refreshItems` 等仍是 planned；当前 runtime 主要实现 visible/enabled/variant、button label/pointer、state/persistence/navigation/devtools 等能力。
 - `UIBehaviorAction` 类型层基本只有 `noop`，旧 actions 行为绑定没有形成完整动作系统。
 - Page 作为游戏内 layer 的真实运行时 host 语义仍待 page/layer API 完成。
 

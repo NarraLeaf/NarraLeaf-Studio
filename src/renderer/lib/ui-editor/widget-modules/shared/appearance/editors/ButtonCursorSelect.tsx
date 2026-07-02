@@ -12,7 +12,7 @@ import {
     Move,
     TextCursor,
 } from "lucide-react";
-import { Select, type SelectOption } from "@/lib/components/elements/Select";
+import { Select, type SelectOption, type SelectProps } from "@/lib/components/elements/Select";
 import type { ButtonCursorValue } from "@shared/types/ui-editor/appearance";
 import { isButtonCursorValue } from "@shared/types/ui-editor/appearance";
 
@@ -40,14 +40,27 @@ export function normalizeButtonCursorValue(value: unknown): ButtonCursorValue {
 type ButtonCursorSelectProps = {
     value: unknown;
     onChange: (next: ButtonCursorValue) => void;
-};
+} & Pick<SelectProps, "className" | "disabled" | "menuPlacement" | "portalMenu" | "size">;
 
-export function ButtonCursorSelect({ value, onChange }: ButtonCursorSelectProps) {
+export function ButtonCursorSelect({
+    value,
+    onChange,
+    className,
+    disabled,
+    menuPlacement,
+    portalMenu,
+    size,
+}: ButtonCursorSelectProps) {
     return (
         <Select
             value={normalizeButtonCursorValue(value)}
             options={BUTTON_CURSOR_OPTIONS}
             fullWidth
+            className={className}
+            disabled={disabled}
+            menuPlacement={menuPlacement}
+            portalMenu={portalMenu}
+            size={size}
             onChange={next => onChange(normalizeButtonCursorValue(next))}
         />
     );

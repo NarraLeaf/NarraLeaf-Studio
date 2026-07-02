@@ -14,11 +14,15 @@ import {
     toDisplayableMotionTransition,
 } from "@/lib/ui-editor/runtime/displayableMotion";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
+import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
 import {
     type AppearanceResolveContext,
+    resolveButtonCursor,
+    resolveButtonVisualProps,
     resolveAppearanceDisplayableOpacity,
     resolveImageDisplayableOpacityKeys,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
@@ -104,7 +108,10 @@ export function EditorNodeWrapper({
 }: EditorNodeWrapperProps) {
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
-    const runtimeElementState = useWidgetRuntimeElementState(element.id);
+    const interactionDisabled = Boolean(
+        (element.props as { interactionDisabled?: unknown } | undefined)?.interactionDisabled,
+    );
+    const runtimeElementState = useWidgetRuntimeElementState(element.id, interactionDisabled);
     const displayableMotion = runtimeElementState.displayableMotion;
     const [resetMotionId, setResetMotionId] = useState<string | null>(null);
     const blueprintRuntime = hostAdapter?.blueprintRuntime;
@@ -125,6 +132,14 @@ export function EditorNodeWrapper({
             displayableOpacityKeys: displayableOpacityKeysForElement(element, appearance, appearanceResolveCtx),
         },
     );
+    const wrapperCursor: CSSProperties["cursor"] | undefined = (() => {
+        if (element.type !== "nl.button") {
+            return undefined;
+        }
+        const visual = resolveButtonVisualProps(element, appearance, appearanceResolveCtx);
+        const canDispatchClick = Boolean(blueprintRuntime && !interactionDisabled);
+        return resolveButtonCursor(visual.cursor, interactionDisabled, canDispatchClick);
+    })();
     const layoutOpacity = layout.opacity ?? 1;
     const effectiveOpacity = hasRuntimeOpacityOverride ? layoutOpacity : appearanceOpacity ?? layoutOpacity;
     const baseRotation = layout.rotation ?? 0;
@@ -152,28 +167,43 @@ export function EditorNodeWrapper({
     );
 
     const dispatchWidgetEvent = useCallback(
-        (eventName: string, target: EventTarget | null, payload?: Record<string, unknown>) => {
-            if (!interactive || !blueprintRuntime || !isDirectElementEvent(target)) {
+        (
+            eventName: string,
+            target: EventTarget | null,
+            payload?: Record<string, unknown>,
+            eventControl?: BehaviorGraphEventControl,
+        ) => {
+            if (!interactive || !blueprintRuntime || eventControl?.isPropagationStopped() || !isDirectElementEvent(target)) {
                 return false;
             }
             if (!getWidgetLogicEvent(element.type, eventName)) {
                 return false;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName, payload, eventOptions);
+            void blueprintRuntime.dispatchElementBlueprintEvent(
+                element.id,
+                eventName,
+                payload,
+                eventControl ? { ...(eventOptions ?? {}), eventControl } : eventOptions,
+            );
             return true;
         },
         [blueprintRuntime, element.id, element.type, eventOptions, interactive, isDirectElementEvent],
     );
 
     const dispatchMountedWidgetEvent = useCallback(
-        (eventName: string, payload?: Record<string, unknown>) => {
-            if (!interactive || !blueprintRuntime) {
+        (eventName: string, payload?: Record<string, unknown>, eventControl?: BehaviorGraphEventControl) => {
+            if (!interactive || !blueprintRuntime || eventControl?.isPropagationStopped()) {
                 return false;
             }
             if (!getWidgetLogicEvent(element.type, eventName)) {
                 return false;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName, payload, eventOptions);
+            void blueprintRuntime.dispatchElementBlueprintEvent(
+                element.id,
+                eventName,
+                payload,
+                eventControl ? { ...(eventOptions ?? {}), eventControl } : eventOptions,
+            );
             return true;
         },
         [blueprintRuntime, element.id, element.type, eventOptions, interactive],
@@ -190,13 +220,15 @@ export function EditorNodeWrapper({
         }
 
         const onKeyDown = (event: KeyboardEvent) => {
+            const eventControl = getOrCreateDomEventPropagationControl(event);
             if (canDispatchKeyDown) {
-                dispatchMountedWidgetEvent("keyDown", keyboardEventPayload(event));
+                dispatchMountedWidgetEvent("keyDown", keyboardEventPayload(event), eventControl);
             }
         };
         const onKeyUp = (event: KeyboardEvent) => {
+            const eventControl = getOrCreateDomEventPropagationControl(event);
             if (canDispatchKeyUp) {
-                dispatchMountedWidgetEvent("keyUp", keyboardEventPayload(event));
+                dispatchMountedWidgetEvent("keyUp", keyboardEventPayload(event), eventControl);
             }
         };
 
@@ -230,13 +262,13 @@ export function EditorNodeWrapper({
 
     const onPointerEnter = useCallback((e: PointerEvent<HTMLDivElement>) => {
         widgetRuntimeStore?.setHoverTarget(runtimeElementKey);
-        dispatchWidgetEvent("mouseEnter", e.target, localMousePayload(e));
+        dispatchWidgetEvent("mouseEnter", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent));
     }, [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore]);
 
     const onPointerLeave = useCallback(
         (e: PointerEvent<HTMLDivElement>) => {
             if (!widgetRuntimeStore) {
-                dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e));
+                dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent));
                 return;
             }
             const related = e.relatedTarget;
@@ -244,7 +276,7 @@ export function EditorNodeWrapper({
             if (!relatedNode || !e.currentTarget.contains(relatedNode)) {
                 widgetRuntimeStore.clearHoverIf(runtimeElementKey);
                 widgetRuntimeStore.setActivePointerTarget(null);
-                dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e));
+                dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent));
             }
         },
         [dispatchWidgetEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore],
@@ -255,7 +287,12 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setActivePointerTarget(runtimeElementKey);
             }
-            dispatchWidgetEvent("mouseDown", e.target, { ...localMousePayload(e), button: e.button });
+            dispatchWidgetEvent(
+                "mouseDown",
+                e.target,
+                { ...localMousePayload(e), button: e.button },
+                getOrCreateDomEventPropagationControl(e.nativeEvent),
+            );
         },
         [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore],
     );
@@ -265,7 +302,12 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setActivePointerTarget(null);
             }
-            dispatchWidgetEvent("mouseUp", e.target, { ...localMousePayload(e), button: e.button });
+            dispatchWidgetEvent(
+                "mouseUp",
+                e.target,
+                { ...localMousePayload(e), button: e.button },
+                getOrCreateDomEventPropagationControl(e.nativeEvent),
+            );
         },
         [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, widgetRuntimeStore],
     );
@@ -276,28 +318,33 @@ export function EditorNodeWrapper({
 
     const onPointerMove = useCallback(
         (e: PointerEvent<HTMLDivElement>) => {
-            dispatchWidgetEvent("mouseMove", e.target, localMousePayload(e));
+            dispatchWidgetEvent("mouseMove", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, localMousePayload],
     );
 
     const onClick = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            dispatchWidgetEvent("mouseClick", e.target, { ...localMousePayload(e), button: e.button });
+            dispatchWidgetEvent(
+                "mouseClick",
+                e.target,
+                { ...localMousePayload(e), button: e.button },
+                getOrCreateDomEventPropagationControl(e.nativeEvent),
+            );
         },
         [dispatchWidgetEvent, localMousePayload],
     );
 
     const onDoubleClick = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            dispatchWidgetEvent("mouseDoubleClick", e.target, localMousePayload(e));
+            dispatchWidgetEvent("mouseDoubleClick", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, localMousePayload],
     );
 
     const onContextMenu = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            if (dispatchWidgetEvent("rightClick", e.target, localMousePayload(e))) {
+            if (dispatchWidgetEvent("rightClick", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent))) {
                 e.preventDefault();
             }
         },
@@ -310,7 +357,7 @@ export function EditorNodeWrapper({
                 ...localMousePayload(e),
                 deltaX: e.deltaX,
                 deltaY: e.deltaY,
-            });
+            }, getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, localMousePayload],
     );
@@ -320,7 +367,7 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setFocusedTarget(runtimeElementKey);
             }
-            dispatchWidgetEvent("focus", e.target);
+            dispatchWidgetEvent("focus", e.target, undefined, getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, isDirectElementEvent, runtimeElementKey, widgetRuntimeStore],
     );
@@ -330,7 +377,7 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setFocusedTarget(null);
             }
-            dispatchWidgetEvent("blur", e.target);
+            dispatchWidgetEvent("blur", e.target, undefined, getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore],
     );
@@ -363,6 +410,9 @@ export function EditorNodeWrapper({
             isolation: isRoot ? undefined : "isolate",
             ...styleOverrides,
         };
+        if (wrapperCursor) {
+            style.cursor = wrapperCursor;
+        }
         if (rotation && !displayableMotion) {
             const transforms = [];
             if (rotation) {
@@ -372,7 +422,7 @@ export function EditorNodeWrapper({
             style.transformOrigin = "center center";
         }
         return style;
-    }, [displayableMotion, effectiveOpacity, layout, isRoot, layoutMode, styleOverrides]);
+    }, [displayableMotion, effectiveOpacity, layout, isRoot, layoutMode, styleOverrides, wrapperCursor]);
 
     const motionAnimate = useMemo(() => {
         if (!displayableMotion) {

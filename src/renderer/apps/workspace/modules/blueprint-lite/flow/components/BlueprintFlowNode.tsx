@@ -31,6 +31,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
+    BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     formatBlueprintKeyboardBinding,
     formatBlueprintKeyboardBindingFromEvent,
@@ -50,6 +51,7 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useWorkspace } from "@/apps/workspace/context";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
+import { ButtonCursorSelect } from "@/lib/ui-editor/widget-modules/shared/appearance/editors/ButtonCursorSelect";
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 type BlueprintNodeParamPatch = (
@@ -128,6 +130,8 @@ export type BlueprintFlowNodeData = {
 
 const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-white/30 !bg-cyan-500";
 const DATA_HANDLE_CLASS = "!h-2 !w-2 !border border-amber-200/35 !bg-amber-500";
+const PIN_LABEL_CLASS = "text-gray-400";
+const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-gray-500 italic";
 
 const CARD_INPUT =
     "rounded border-white/15 bg-[#111418] px-1.5 py-1 font-mono text-[10px]";
@@ -361,6 +365,10 @@ function pinCaption(pin: CatalogPin, semantic: "exec" | "data"): string {
     return name;
 }
 
+function pinLabelClass(pin: Pick<CatalogPin, "optional">, isWired: boolean): string {
+    return pin.optional === true && !isWired ? OPTIONAL_UNWIRED_PIN_LABEL_CLASS : PIN_LABEL_CLASS;
+}
+
 function DynamicPinLabelInput({
     pin,
     nodeId,
@@ -546,9 +554,8 @@ function InputPinRow({
     dynamicLabelParamKey?: string;
     dynamicLabelValues: Record<string, string>;
 }) {
-    const optionalUnwired = pin.optional === true && !isWired;
     const handleClass = semantic === "exec" ? EXEC_HANDLE_CLASS : DATA_HANDLE_CLASS;
-    const labelClass = optionalUnwired ? "text-gray-500 italic" : "text-gray-400";
+    const labelClass = pinLabelClass(pin, isWired);
     const canInlineLiteral =
         semantic === "data" &&
         Boolean(pin.allowInlineLiteral) &&
@@ -1054,6 +1061,14 @@ function InspectorParamOnCard({
                 <ImageAssetPickerCard value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "keyboardBinding" ? (
                 <KeyboardBindingCardControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
+            ) : spec.kind === "buttonCursor" ? (
+                <ButtonCursorSelect
+                    value={raw}
+                    size="sm"
+                    portalMenu
+                    menuPlacement="below"
+                    onChange={v => onPatchNodeParam(nodeId, spec.key, v)}
+                />
             ) : (
                 <Input
                     className={
@@ -2050,7 +2065,12 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     /** When only one side has pins, that column must span full card width so handles align to the true edge. */
     const onlyRightPins = !hasLeftColumn && rightPins.length > 0;
     const onlyLeftPins = hasLeftColumn && rightPins.length === 0;
-    const offsetRightPinsForIfElse = catalog.type === BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE;
+    const rightPinSpacerRows =
+        catalog.type === BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING
+            ? 2
+            : catalog.type === BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE
+              ? 1
+              : 0;
 
     if (catalog.role === "comment") {
         return (
@@ -2207,7 +2227,9 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                         <div
                             className={`flex min-w-0 flex-col gap-0.5 ${onlyRightPins ? "w-full min-w-0 flex-1" : "shrink-0"}`}
                         >
-                            {offsetRightPinsForIfElse ? <div className="min-h-[20px]" aria-hidden /> : null}
+                            {Array.from({ length: rightPinSpacerRows }).map((_, index) => (
+                                <div key={`right-pin-spacer-${index}`} className="min-h-[20px]" aria-hidden />
+                            ))}
                             {rightPins.map(({ pin, semantic }) => (
                                 <OutputPinRow key={`out-${pin.id}`} pin={pin} semantic={semantic} />
                             ))}

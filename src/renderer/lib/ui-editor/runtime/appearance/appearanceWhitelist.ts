@@ -69,6 +69,7 @@ export const BUTTON_APPEARANCE_KEYS = new Set<ButtonAppearancePropertyKey>([
     "effectBlur",
     "effectBackgroundBlur",
     "effectShadow",
+    "effectTextShadow",
     "effectInnerShadow",
     "effectBlend",
     "effectGlow",

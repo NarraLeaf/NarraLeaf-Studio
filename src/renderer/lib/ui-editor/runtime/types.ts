@@ -4,6 +4,7 @@ import type { BlueprintHostApiContractVersion } from "@shared/types/blueprint/ho
 import type { UIDocument, UIComponentId, UISurfaceId, UIStageSlotId } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 
@@ -20,6 +21,7 @@ export type UIHostAdapterBlueprintRuntime = {
     setSurfaceState: (key: string, value: unknown) => void;
     getSurfaceState: (key: string) => unknown;
     emitDebug: (event: BlueprintDebugEvent) => void;
+    getSurfaceTransitionState?: () => { isEntering: boolean; isExiting: boolean };
     /** Dispatch a widget private event slot (for example `init` or `mouseClick`) on the owner-local blueprint. */
     dispatchElementBlueprintEvent: (
         elementId: string,
@@ -29,6 +31,8 @@ export type UIHostAdapterBlueprintRuntime = {
             listItemScope?: UIListItemScope | null;
             instanceKey?: string;
             componentId?: UIComponentId;
+            eventControl?: BehaviorGraphEventControl;
+            allowClosedScopeExecution?: boolean;
         },
     ) => Promise<void>;
     /** Continue the current widget event from this element to its structural parent. */
@@ -40,6 +44,8 @@ export type UIHostAdapterBlueprintRuntime = {
             listItemScope?: UIListItemScope | null;
             instanceKey?: string;
             componentId?: UIComponentId;
+            eventControl?: BehaviorGraphEventControl;
+            allowClosedScopeExecution?: boolean;
         },
     ) => Promise<boolean>;
     /** Dispatch a surface-level event on the current surfaceMain blueprint. */

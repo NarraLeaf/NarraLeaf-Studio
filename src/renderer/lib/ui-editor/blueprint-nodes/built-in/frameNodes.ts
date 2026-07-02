@@ -7,6 +7,8 @@ import {
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
 } from "@shared/types/blueprint/graph";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
@@ -29,9 +31,6 @@ function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string)
 
 async function goToSurface(ctx: Parameters<BlueprintNodeDef["execute"]>[0], surfaceId: string) {
     const targetSurfaceId = surfaceId.trim();
-    if (!targetSurfaceId) {
-        throw new BlueprintGraphExecutionError("Pick a Page", ctx.node.id);
-    }
     await requireHostApi(ctx).navigation.openSurface(targetSurfaceId, readPin(ctx, "props"));
     return { nextPort: undefined };
 }
@@ -62,6 +61,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
                 label: "Page",
                 kind: "select",
                 dynamicOptionsSource: "surfaces",
+                emptyOptionLabel: "None",
             },
         ],
         execute: ctx => goToSurface(ctx, String(ctx.params.surfaceId ?? "")),
@@ -76,6 +76,32 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         scope: { ownerKinds: ["surfaceMain", "widgetMain", "widgetValue"] },
         pins: [
             { id: "props", kind: "output", semantic: "data", valueType: "json", label: "Props" },
+        ],
+        execute: () => ({}),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
+        displayName: "Is Surface Exiting",
+        category: "Page",
+        keywords: ["page", "surface", "exit", "exiting", "animation", "transition"],
+        graphKinds: ["event", "macro"],
+        isPure: true,
+        scope: { ownerKinds: ["surfaceMain", "widgetMain", "widgetValue"] },
+        pins: [
+            { id: "isExiting", kind: "output", semantic: "data", valueType: "boolean", label: "Is Exiting" },
+        ],
+        execute: () => ({}),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
+        displayName: "Is Surface Entering",
+        category: "Page",
+        keywords: ["page", "surface", "enter", "entering", "animation", "transition"],
+        graphKinds: ["event", "macro"],
+        isPure: true,
+        scope: { ownerKinds: ["surfaceMain", "widgetMain", "widgetValue"] },
+        pins: [
+            { id: "isEntering", kind: "output", semantic: "data", valueType: "boolean", label: "Is Entering" },
         ],
         execute: () => ({}),
     },
@@ -99,6 +125,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         category: "Page",
         keywords: ["page", "frame", "param", "input"],
         graphKinds: ["event", "macro"],
+        hideInPalette: true,
         isPure: true,
         scope: { ownerKinds: ["surfaceMain", "widgetMain"] },
         pins: [

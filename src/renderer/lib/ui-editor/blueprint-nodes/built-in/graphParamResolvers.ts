@@ -99,6 +99,7 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
@@ -148,6 +149,8 @@ import {
     BLUEPRINT_NODE_TYPE_MATH_ROUND,
     BLUEPRINT_NODE_TYPE_MATH_SUBTRACT,
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
     BLUEPRINT_NODE_TYPE_STRING_CAPITALIZE,
     BLUEPRINT_NODE_TYPE_STRING_CHAR_AT,
     BLUEPRINT_NODE_TYPE_STRING_CONCAT,
@@ -1307,10 +1310,16 @@ function resolveFrameNodeOutput(
 }
 
 function resolvePageNodeOutput(portId: string, runtime?: DataPinResolveRuntime): unknown {
-    if (portId !== "props") {
-        return undefined;
+    if (portId === "props") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.navigation.getPageProps() ?? {};
     }
-    return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.navigation.getPageProps() ?? {};
+    if (portId === "isExiting") {
+        return runtime?.hostAdapter?.blueprintRuntime?.getSurfaceTransitionState?.().isExiting === true;
+    }
+    if (portId === "isEntering") {
+        return runtime?.hostAdapter?.blueprintRuntime?.getSurfaceTransitionState?.().isEntering === true;
+    }
+    return undefined;
 }
 
 function resolveGameNodeOutput(
@@ -1322,6 +1331,9 @@ function resolveGameNodeOutput(
     }
     if (portId === "isInGame") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isInGame() === true;
+    }
+    if (portId === "isGameOverlay") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isGameOverlay() === true;
     }
     return undefined;
 }
@@ -2270,12 +2282,17 @@ function resolveSelfOutput(
     if (selfNode.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM) {
         return resolveFrameNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
     }
-    if (selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS) {
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING
+    ) {
         return resolvePageNodeOutput(portId, runtime);
     }
     if (
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG ||
-        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY
     ) {
         return resolveGameNodeOutput(portId, runtime);
     }

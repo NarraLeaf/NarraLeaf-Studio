@@ -6,7 +6,8 @@ import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
-import { DevModeBundle, DevModeEntry, DevModeStatus } from "./devMode";
+import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
+import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type {
@@ -170,6 +171,9 @@ export interface RendererPreloadedInterface {
         onPayloadUpdate(handler: (payload: { bundle: DevModeBundle }) => void): AppEventToken;
         onControlReload(handler: (payload: { revision: number }) => void): AppEventToken;
         onControlError(handler: (payload: { message: string }) => void): AppEventToken;
+        onConsoleLog(handler: (payload: DevModeConsoleLogPayload) => void): AppEventToken;
+        onBlueprintDebugEvent(handler: (event: BlueprintDebugEvent) => void): AppEventToken;
+        forwardBlueprintDebugEvent(payload: DevModeBlueprintDebugEventPayload): void;
         resolveAssetUrl(assetId: string, assetType?: string): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
         openBlueprintInWorkspace(

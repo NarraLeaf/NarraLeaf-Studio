@@ -19,6 +19,7 @@ import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
     BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY,
@@ -91,6 +92,7 @@ import { writeBlueprintNodeOutputValues } from "../nodeOutputValues";
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
 const WRITE_GRAPH_KINDS = ["event", "macro"] as const;
 const TEXT_ELEMENT_TYPE = "nl.text";
+const EVENT_BUBBLE_STOPPED_LOCAL_KEY = "__eventBubbleStopped";
 const DISPLAYABLE_WIDGET_TYPES = ["nl.container", "nl.text", "nl.image", "nl.button", "nl.slider", "nl.list", "nl.frame"];
 const APPEARANCE_VARIANT_WIDGET_TYPES = ["nl.container", "nl.text", "nl.image", "nl.button"];
 const FONT_WEIGHT_VALUES = ["normal", "600", "bold"] as const;
@@ -833,6 +835,9 @@ async function patchTargetText(
 }
 
 async function continueElementEventBubble(ctx: Parameters<BlueprintNodeDef["execute"]>[0]) {
+    if (isElementEventBubbleStopped(ctx)) {
+        return { nextPort: "next" };
+    }
     const runtime = ctx.hostAdapter.blueprintRuntime;
     if (!runtime?.continueElementEventBubble) {
         throw new BlueprintGraphExecutionError("Continue Event Bubble requires a UI event runtime", ctx.node.id);
@@ -849,7 +854,24 @@ async function continueElementEventBubble(ctx: Parameters<BlueprintNodeDef["exec
         listItemScope: ctx.listItemScope,
         instanceKey: ctx.instanceKey,
         componentId: ctx.executionOwner?.componentId,
+        eventControl: ctx.eventControl,
     });
+    return { nextPort: "next" };
+}
+
+function isElementEventBubbleStopped(ctx: Parameters<BlueprintNodeDef["execute"]>[0]): boolean {
+    return Boolean(ctx.eventControl?.isPropagationStopped() || ctx.blueprintLocals?.[EVENT_BUBBLE_STOPPED_LOCAL_KEY]);
+}
+
+function stopElementEventBubble(ctx: Parameters<BlueprintNodeDef["execute"]>[0]) {
+    const eventName = ctx.eventName?.trim();
+    if (!eventName) {
+        throw new BlueprintGraphExecutionError("Stop Event Bubble requires an active event", ctx.node.id);
+    }
+    ctx.eventControl?.stopPropagation();
+    if (ctx.blueprintLocals) {
+        ctx.blueprintLocals[EVENT_BUBBLE_STOPPED_LOCAL_KEY] = true;
+    }
     return { nextPort: "next" };
 }
 
@@ -898,6 +920,17 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         scope: { ownerKinds: ["widgetMain", "componentWidgetMain"] },
         pins: [execIn, execNext],
         execute: continueElementEventBubble,
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
+        displayName: "Stop Event Bubble",
+        category: "Element",
+        keywords: ["element", "event", "bubble", "propagation", "stop", "block"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain", "componentWidgetMain"] },
+        pins: [execIn, execNext],
+        execute: stopElementEventBubble,
     },
     displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION,

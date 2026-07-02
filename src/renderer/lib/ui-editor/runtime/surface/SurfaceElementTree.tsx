@@ -70,6 +70,11 @@ export type NestedSurfaceRuntime = {
     getWidgetRuntimePatches?(input: NestedSurfaceRuntimeInput): Record<string, DevModeWidgetRuntimePatch> | undefined;
 };
 
+export type SurfaceLifecycleSignals = {
+    beforeSurfaceExit: number;
+    afterSurfaceEnter: number;
+};
+
 export type SurfaceElementTreeProps = {
     document: UIDocument;
     surface: UISurface;
@@ -83,6 +88,7 @@ export type SurfaceElementTreeProps = {
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     surfacePath?: string[];
     editorChrome?: boolean;
+    surfaceLifecycleSignals?: SurfaceLifecycleSignals;
 };
 
 /**
@@ -173,6 +179,7 @@ function renderSurfaceElementTreeWithValueRuntime(
         editorChrome,
         valueRuntime,
         [],
+        props.surfaceLifecycleSignals,
     );
 
     return (
@@ -421,18 +428,64 @@ function NestedSurfaceInstance(props: {
         onEnterComplete,
     } = props;
     const [, setBindingTick] = useState(0);
+    const [surfaceLifecycleSignals, setSurfaceLifecycleSignals] = useState<SurfaceLifecycleSignals>({
+        beforeSurfaceExit: 0,
+        afterSurfaceEnter: 0,
+    });
+    const surfaceTransitionStateRef = useRef({ isEntering: true, isExiting: false });
     const { document, targetSurface } = runtimeInput;
     const [, setRuntimePatchRenderTick] = useState(0);
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
-    const hostAdapter = useMemo(
-        () => nestedSurfaceRuntime?.createHostAdapter?.(runtimeInput) ?? parentHostAdapter,
-        [nestedSurfaceRuntime, parentHostAdapter, runtimeInput],
-    );
+    const hostAdapter = useMemo(() => {
+        const getSurfaceTransitionState = () => surfaceTransitionStateRef.current;
+        const nestedHostAdapter = nestedSurfaceRuntime?.createHostAdapter?.(runtimeInput);
+        if (nestedHostAdapter) {
+            if (nestedHostAdapter.blueprintRuntime) {
+                nestedHostAdapter.blueprintRuntime.getSurfaceTransitionState = getSurfaceTransitionState;
+            }
+            return nestedHostAdapter;
+        }
+        if (parentHostAdapter.blueprintRuntime) {
+            return {
+                ...parentHostAdapter,
+                blueprintRuntime: {
+                    ...parentHostAdapter.blueprintRuntime,
+                    getSurfaceTransitionState,
+                },
+            };
+        }
+        return parentHostAdapter;
+    }, [nestedSurfaceRuntime, parentHostAdapter, runtimeInput]);
     const bindingContext = useMemo(
         () => nestedSurfaceRuntime?.createBindingContext?.(runtimeInput) ?? null,
         [nestedSurfaceRuntime, runtimeInput],
     );
     const widgetRuntimePatches = nestedSurfaceRuntime?.getWidgetRuntimePatches?.(runtimeInput);
+    const dispatchSurfaceTransitionEvent = (eventName: "beforeSurfaceExit" | "afterSurfaceEnter") => {
+        surfaceTransitionStateRef.current =
+            eventName === "beforeSurfaceExit"
+                ? { isEntering: false, isExiting: true }
+                : { isEntering: false, isExiting: false };
+        void hostAdapter.blueprintRuntime?.dispatchSurfaceBlueprintEvent?.(eventName);
+        setSurfaceLifecycleSignals(prev => ({
+            ...prev,
+            [eventName]: prev[eventName] + 1,
+        }));
+    };
+
+    const handleBeforeExit = (runtimeScopeId: string) => {
+        if (runtimeScopeId !== runtimeInput.runtimeScopeId) {
+            return;
+        }
+        dispatchSurfaceTransitionEvent("beforeSurfaceExit");
+    };
+
+    const handleEnterComplete = (runtimeScopeId: string) => {
+        if (runtimeScopeId === runtimeInput.runtimeScopeId) {
+            dispatchSurfaceTransitionEvent("afterSurfaceEnter");
+        }
+        onEnterComplete(runtimeScopeId);
+    };
 
     useEffect(() => {
         const store = bindingContext?.surfaceState;
@@ -499,7 +552,8 @@ function NestedSurfaceInstance(props: {
             exitZIndex={runtimeInput.exitBehind ? 0 : 30 + layerIndex}
             resolveExit={resolveExit}
             onPrepaintReady={onPrepaintReady}
-            onEnterComplete={onEnterComplete}
+            onBeforeExit={handleBeforeExit}
+            onEnterComplete={handleEnterComplete}
         >
             <SurfaceElementTree
                 document={document}
@@ -513,6 +567,7 @@ function NestedSurfaceInstance(props: {
                 nestedSurfaceRuntime={nestedSurfaceRuntime}
                 surfacePath={[...surfacePath, targetSurface.id]}
                 editorChrome={Boolean(parentHostAdapter.blueprintRuntime)}
+                surfaceLifecycleSignals={surfaceLifecycleSignals}
             />
         </SurfaceAnimationLayer>
     );
@@ -584,6 +639,7 @@ function renderLinkedComponentInstanceContent(input: {
     instanceKey: string;
     componentPath: string[];
     valueRuntime: BlueprintValueRuntimeStore | null;
+    surfaceLifecycleSignals?: SurfaceLifecycleSignals;
 }): ReactNode | null {
     const link = getUIComponentLink(input.instanceElement);
     if (!link) {
@@ -669,6 +725,7 @@ function renderLinkedComponentInstanceContent(input: {
                     false,
                     input.valueRuntime,
                     [...input.componentPath, component.id],
+                    input.surfaceLifecycleSignals,
                 )}
             </div>
         </div>
@@ -691,6 +748,7 @@ function renderElementTree(
     editorChrome = true,
     valueRuntime: BlueprintValueRuntimeStore | null = null,
     componentPath: string[] = [],
+    surfaceLifecycleSignals?: SurfaceLifecycleSignals,
 ): ReactNode {
     const componentId = componentPath[componentPath.length - 1];
     const runtimePatch = widgetRuntimePatches?.[element.id];
@@ -746,6 +804,7 @@ function renderElementTree(
                 editorChrome,
                 valueRuntime,
                 componentPath,
+                surfaceLifecycleSignals,
             );
         })
         .filter((node): node is ReactNode => node !== null);
@@ -765,6 +824,7 @@ function renderElementTree(
         instanceKey,
         componentPath,
         valueRuntime,
+        surfaceLifecycleSignals,
     });
     const content = linkedComponentContent ?? (renderer
         ? renderer.render({
@@ -839,6 +899,7 @@ function renderElementTree(
                     componentId={componentId}
                     listItemScope={listItemScope}
                     instanceKey={instanceKey || undefined}
+                    surfaceLifecycleSignals={surfaceLifecycleSignals}
                 />
             ) : null}
             {content}

@@ -2,7 +2,7 @@
 
 Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog 推进，以及访问当前 Studio 项目隔离的本地存档。除非额外声明，所有参数均为传入引脚值；标注（传出引脚）的参数为传出值。
 
-本页节点均通过 Blueprint Host API 执行。`Get Nametag` 与 `Is In Game` 是纯读取节点，可用于 Blueprint Value；其余 Game 执行节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
+本页节点均通过 Blueprint Host API 执行。`Get Nametag`、`Is In Game` 与 `Is Game Overlay` 是纯读取节点，可用于 Blueprint Value；其余 Game 执行节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
 
 ## Start Game
 
@@ -33,6 +33,16 @@ Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog
 - `isInGame` - `boolean`（传出引脚），当前是否处于 NarraLeaf 游戏状态
 
 该节点是 pure 节点，可放入 Blueprint Value 或普通事件图，用于在界面中按游戏状态切换文案、可见性或逻辑分支。
+
+## Is Game Overlay
+
+`blueprint.game.isGameOverlay` - Is Game Overlay
+
+读取当前 Page / Game UI Surface runtime scope 是否以游戏上方 UI 叠层身份运行。通过 `Start Game` 或 `Load Save` 进入游戏状态后，继续用 `Go Page` 打开的 Page 会返回 `true`；内建 Game UI Surface（例如 Dialog slot）也返回 `true`；通过 `nl.frame` 嵌入的子 Page 会继承父 Page 的 overlay 状态。普通应用 Page、普通 Page 预览，以及 `Quit Game` 打开的返回 Page 返回 `false`。
+
+- `isGameOverlay` - `boolean`（传出引脚），当前 Surface 实例是否是游戏 UI 叠层
+
+该节点是 pure 节点，可放入 Blueprint Value 或普通事件图。它描述当前 Surface 实例的展示身份，并在 Page 实例创建时锁定；因此暂停菜单执行退出动画时，即使 `Quit Game` 已经开始清理游戏 session，该旧暂停菜单实例仍会返回 `true`。需要判断 live game runtime 是否仍可用时使用 `Is In Game`，需要判断共享 Page 应显示主页控件还是暂停菜单控件时优先使用 `Is Game Overlay`。
 
 ## Quit Game
 
@@ -107,20 +117,21 @@ Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog
 通过 NarraLeaf React Preference API 设置当前游戏的 sentence `cps`（characters per second）偏好，影响 Dialog Sentence 的文字显示速度。
 
 - `in` - 执行入口
-- `speed` - 正数 `float` 输入，写入 `cps` preference key
+- `cps` / `CPS` - 正数 `float` 输入，写入 `cps` preference key
 - `next` - 偏好写入完成后的执行出口
 
-`speed` 必须是大于 0 的有限数字；没有活动 game runtime 时执行失败。
+`CPS` 必须是大于 0 的有限数字；没有活动 game runtime 时执行失败。
 
-## Write Save
+## Save Game
 
-`blueprint.game.save.write` - Write Save
+`blueprint.game.save.write` - Save Game
 
-将当前 NarraLeaf live game 通过 `serialize()` 写入项目级本地存档。同一个 `id` 会覆盖旧存档；写入时会尽力调用 `captureJpeg()` 保存预览图，截图失败不会阻止存档写入。没有活动 game session 时执行失败。
+将当前 NarraLeaf live game 通过 `serialize()` 写入项目级本地存档。同一个 `id` 会覆盖旧存档；当可选 `Capture` 输入为 `true` 时，会调用 NarraLeaf React `capturePng()` 截取 PNG 预览图并保存到该存档 preview。没有活动 game session 时执行失败。
 
 - `in` - 执行入口
 - `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖
-- `metadata` - 存档用户 metadata，蓝图通用 `json` 输入；未提供时写入 `null`
+- `metadata` - 可选存档用户 metadata，蓝图通用 `json` 输入；未提供时写入 `null`
+- `screenshot` / `Capture` - 可选 `boolean` 输入；只有传入 `true` 时写入预览截图
 - `next` - 写入完成后的执行出口
 
 `id` 会 trim，不能为空，且不能包含路径分隔符或控制字符。文件名由安全 hash 派生，真实用户 id 只保存在存档 metadata 中。`metadata` 使用现有 Blueprint JSON pin 类型，可传入 object、array、string、number、boolean 或 `null`，不会创建专用 Save Metadata 数据类型。
@@ -164,7 +175,7 @@ Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog
 
 `blueprint.game.save.getMetadata` - Get Save Metadata
 
-读取指定本地存档的用户 metadata。该节点只读取由 `Write Save` 的 `metadata` pin 写入的通用 JSON 值，不返回系统字段 `id`、`type`、`createdAt`、`updatedAt` 或预览截图。
+读取指定本地存档的用户 metadata。该节点只读取由 `Save Game` 的 `metadata` pin 写入的通用 JSON 值，不返回系统字段 `id`、`type`、`createdAt`、`updatedAt` 或预览截图。
 
 - `in` - 执行入口
 - `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖
