@@ -29,6 +29,7 @@ type SurfaceAnimationLayerProps = {
     contentStyle?: CSSProperties;
     surfaceId?: string;
     surfaceKind?: string;
+    interactive?: boolean;
     presentZIndex?: number;
     exitZIndex?: number;
     resolveExit?: (direction: PageAnimationNavigationDirection) => Record<string, unknown>;
@@ -142,6 +143,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         contentStyle,
         surfaceId,
         surfaceKind,
+        interactive = true,
         presentZIndex = 10,
         exitZIndex = 20,
         resolveExit,
@@ -219,7 +221,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
     const mergedStyle: CSSProperties = {
         ...style,
         zIndex: isPresent ? presentZIndex : exitZIndex,
-        pointerEvents: isPresent && prepaintReady ? style?.pointerEvents : "none",
+        pointerEvents: isPresent && prepaintReady && interactive ? style?.pointerEvents : "none",
     };
     const mergedContentStyle: CSSProperties = {
         ...contentStyle,

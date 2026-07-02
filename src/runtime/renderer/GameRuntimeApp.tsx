@@ -4,16 +4,25 @@ import {
     useMemo,
     useRef,
     useState,
+    type ComponentProps,
     type Dispatch,
     type MutableRefObject,
     type ReactNode,
     type SetStateAction,
 } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
-import { Game, KeyBindingType, type LiveGame, type SavedGame } from "narraleaf-react";
+import {
+    Dialog as NlrDialog,
+    Game,
+    KeyBindingType,
+    useDialog,
+    type LiveGame,
+    type SavedGame,
+} from "narraleaf-react";
+import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeBundle, DevModeStartStoryRequest } from "@shared/types/devMode";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
-import type { UISurface } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIStageSlotId, UIStageSurface, UISurface } from "@shared/types/ui-editor/document";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
@@ -32,43 +41,49 @@ import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackgr
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
-import { registerDevModeSavePreviewImage } from "@/lib/ui-editor/runtime/devModeSavePreviewAssets";
+import {
+    clearDevModeSavePreviewImages,
+    registerDevModeSavePreviewImage,
+} from "@/lib/ui-editor/runtime/devModeSavePreviewAssets";
 import {
     createDevModeBlueprintHostApi,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
-import { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
-import { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
-import { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/BindingDebugCoalescer";
-import { BlueprintExecutionManager } from "@/lib/ui-editor/blueprint-runtime/BlueprintExecutionManager";
-import { mountBlueprintCompiledScripts } from "@/lib/ui-editor/blueprint-runtime/mountBlueprintScripts";
+import {
+    useBlueprintRuntimeCore,
+    type BlueprintRuntimeCore,
+} from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import { SurfaceLifecycleManager } from "@/lib/ui-editor/blueprint-runtime/SurfaceLifecycleManager";
 import {
     dispatchGlobalBlueprintEvent,
     dispatchSurfaceBlueprintEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
-import { compileStudioStoryToNlr } from "@/apps/dev-mode/nlr/storyCompiler";
-import { NlrStageLayer, type NlrStageSession } from "@/apps/dev-mode/nlr/NlrStageLayer";
+import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
+import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
+import { collectDialogFlushElementIds } from "@/lib/ui-editor/runtime/game/dialogFlushTargets";
+import {
+    createSurfaceNavigationCloseUpdate,
+    createSurfaceNavigationOpenUpdate,
+    type SurfaceNavigationEntry,
+    type SurfaceNavigationPresentation,
+} from "@/lib/ui-editor/runtime/game/surfaceNavigationController";
 import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
 } from "./surfaceResourcePreload";
 
-type RuntimeCore = {
-    scopeBridge: ScopeStoreBridge;
-    debug: DebugBridge;
-    bindingDebugCoalescer: BindingDebugCoalescer;
-    executionManager: BlueprintExecutionManager;
+type RuntimeCore = BlueprintRuntimeCore;
+
+type RuntimeNavEntry = SurfaceNavigationEntry<Record<string, unknown>, RuntimePagePresentation> & {
+    runtimeScopeId: string;
 };
 
-type RuntimeNavEntry = {
-    key: string;
-    surfaceId: string;
-    runtimeScopeId: string;
-    props: Record<string, unknown>;
-    direction: PageAnimationNavigationDirection;
+type RuntimePagePresentation = SurfaceNavigationPresentation;
+type RuntimeOpenSurfaceOptions = {
+    presentation?: RuntimePagePresentation;
 };
 
 type RuntimeHostAdapterBundle = {
@@ -135,6 +150,44 @@ function keyboardBlueprintPayload(event: KeyboardEvent): Record<string, unknown>
     };
 }
 
+type SurfaceStateAccessors = {
+    get: (key: string) => unknown;
+    set: (key: string, value: unknown) => void;
+};
+
+type NlrCharacterLike = {
+    state?: {
+        name?: unknown;
+    };
+};
+
+type NlrLiveGameWithLastDialog = LiveGame & {
+    lastDialog?: {
+        speaker?: unknown;
+    } | null;
+};
+
+function coerceNametagValue(value: unknown): string | null {
+    if (value == null) {
+        return null;
+    }
+    const text = String(value);
+    return text.trim().length > 0 ? text : null;
+}
+
+function readNlrCharacterName(character: unknown): string | null {
+    return coerceNametagValue((character as NlrCharacterLike | null | undefined)?.state?.name);
+}
+
+function readNlrLastDialogSpeaker(liveGame: LiveGame | null): string | null {
+    const lastDialog = (liveGame as NlrLiveGameWithLastDialog | null)?.lastDialog;
+    return lastDialog ? coerceNametagValue(lastDialog.speaker) : null;
+}
+
+function waitForAnimationFrame(): Promise<void> {
+    return new Promise(resolve => requestAnimationFrame(() => resolve()));
+}
+
 function findSurface(bundle: DevModeBundle, surfaceId: string | undefined): UISurface | null {
     if (surfaceId) {
         const surface = bundle.ui.uidoc.surfaces.find(item => item.id === surfaceId);
@@ -145,10 +198,33 @@ function findSurface(bundle: DevModeBundle, surfaceId: string | undefined): UISu
     return bundle.ui.uidoc.surfaces.find(surface => surface.kind === "appSurface") ?? bundle.ui.uidoc.surfaces[0] ?? null;
 }
 
+function findStageSurfaceForSlot(document: UIDocument, slotId: UIStageSlotId): UIStageSurface | null {
+    const matches = document.surfaces.filter((surface): surface is UIStageSurface =>
+        surface.kind === "stageSurface" && surface.mount.slotId === slotId
+    );
+    if (matches.length > 1) {
+        console.warn(
+            `[Runtime][GameUI] Multiple active surfaces found for slot "${slotId}". ` +
+            `Using the first surface in document order: ${matches[0]?.id ?? "(unknown)"}.`,
+        );
+    }
+    return matches[0] ?? null;
+}
+
+function dialogSlotRuntimeScopeId(sessionId: string, surfaceId: string): string {
+    return `nlr:${sessionId}:slot:dialog:${surfaceId}`;
+}
+
+const staticRuntimeHostAdapter = (surface: UISurface): UIHostAdapter => ({
+    host: surface.host,
+});
+
 function createNavEntry(
     surfaceId: string,
-    props?: Record<string, unknown>,
     direction: PageAnimationNavigationDirection = "forward",
+    waitForExit = false,
+    props?: Record<string, unknown>,
+    presentation: RuntimePagePresentation = "appPage",
 ): RuntimeNavEntry {
     const key = `${surfaceId}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
     return {
@@ -157,21 +233,9 @@ function createNavEntry(
         runtimeScopeId: key,
         props: cloneProps(props),
         direction,
+        waitForExit,
+        presentation,
     };
-}
-
-function markLastEntryDirection(
-    entries: RuntimeNavEntry[],
-    direction: PageAnimationNavigationDirection,
-): RuntimeNavEntry[] {
-    if (entries.length === 0) {
-        return entries;
-    }
-    const last = entries[entries.length - 1]!;
-    return [
-        ...entries.slice(0, -1),
-        { ...last, direction },
-    ];
 }
 
 function resolveScale(surface: UISurface | null, width: number, height: number): number {
@@ -244,50 +308,35 @@ function useRuntimePack(): {
 }
 
 function useRuntimeCore(pack: GameRuntimePackV1 | null): RuntimeCore | null {
-    const [core, setCore] = useState<RuntimeCore | null>(null);
-
-    useEffect(() => {
-        if (!pack) {
-            setCore(null);
-            return;
-        }
-        const bridge = getGameRuntimeBridge();
+    const bridge = getGameRuntimeBridge();
+    const persistenceAdapter = useMemo(() => {
         if (!bridge) {
-            setCore(null);
+            return null;
+        }
+        return {
+            getAll: async () => bridge.persistence.getAll(),
+            getValue: async (key: string) => bridge.persistence.getValue(key),
+            setValue: async (key: string, value: unknown) => bridge.persistence.setValue(key, value),
+            removeValue: async (key: string) => bridge.persistence.removeValue(key),
+        };
+    }, [bridge]);
+    const onDebugEvent = useCallback((event: BlueprintDebugEvent) => {
+        if (!bridge) {
             return;
         }
+        if (event.type === "execution.error") {
+            bridge.log("error", event.message);
+        } else if (event.type === "devtools.log") {
+            const level = event.level === "error" || event.level === "warning" ? event.level : "info";
+            bridge.log(level, event.message);
+        }
+    }, [bridge]);
 
-        mountBlueprintCompiledScripts(pack.bundle);
-        const nextCore: RuntimeCore = {
-            scopeBridge: new ScopeStoreBridge(),
-            debug: new DebugBridge(),
-            bindingDebugCoalescer: new BindingDebugCoalescer(),
-            executionManager: new BlueprintExecutionManager(),
-        };
-        nextCore.scopeBridge.setPersistenceAdapter({
-            getAll: async () => bridge.persistence.getAll(),
-            getValue: async key => bridge.persistence.getValue(key),
-            setValue: async (key, value) => bridge.persistence.setValue(key, value),
-            removeValue: async key => bridge.persistence.removeValue(key),
-        });
-        const unsubscribeDebug = nextCore.debug.subscribeEvents(event => {
-            if (event.type === "execution.error") {
-                bridge.log("error", event.message);
-            } else if (event.type === "devtools.log") {
-                const level = event.level === "error" || event.level === "warning" ? event.level : "info";
-                bridge.log(level, event.message);
-            }
-        });
-        setCore(nextCore);
-
-        return () => {
-            unsubscribeDebug();
-            nextCore.executionManager.cancelAll("Preview runtime disposed");
-            nextCore.scopeBridge.setPersistenceAdapter(null);
-        };
-    }, [pack]);
-
-    return core;
+    return useBlueprintRuntimeCore(pack?.bundle ?? null, {
+        persistenceAdapter,
+        onDebugEvent,
+        disposeMessage: "Preview runtime disposed",
+    });
 }
 
 function RuntimeErrorScreen(props: { message: string }): ReactNode {
@@ -406,10 +455,390 @@ function RuntimeViewportFrame(props: {
     );
 }
 
+function RuntimeSurfaceLifecycleLayer(props: {
+    core: RuntimeCore | null;
+    pack: GameRuntimePackV1;
+    surface: UISurface;
+    runtimeScopeId: string;
+    hostAdapter: UIHostAdapter;
+    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
+    makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
+    children: ReactNode;
+}) {
+    const { core, pack, surface, runtimeScopeId, hostAdapter, lifecycleRef, makeStateAccessors, children } = props;
+    const latestRuntimeHostAdapterRef = useRef<UIHostAdapter | null>(
+        hostAdapter.blueprintRuntime ? hostAdapter : null,
+    );
+    const hasBlueprintRuntime = Boolean(hostAdapter.blueprintRuntime);
+
+    useEffect(() => {
+        if (hostAdapter.blueprintRuntime) {
+            latestRuntimeHostAdapterRef.current = hostAdapter;
+        }
+    }, [hostAdapter]);
+
+    useEffect(() => {
+        const currentHostAdapter = latestRuntimeHostAdapterRef.current;
+        if (!core || !hasBlueprintRuntime || !currentHostAdapter?.blueprintRuntime) {
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            await waitForAnimationFrame();
+            if (cancelled) {
+                return;
+            }
+            core.executionManager.openScope(runtimeScopeId);
+            if (!lifecycleRef.current.onSurfaceEnter(runtimeScopeId)) {
+                return;
+            }
+            const acc = makeStateAccessors(runtimeScopeId);
+            if (!acc) {
+                return;
+            }
+            void dispatchSurfaceBlueprintEvent({
+                blueprintDocument: pack.bundle.ui.localBlueprints,
+                surfaceId: surface.id,
+                runtimeScopeId,
+                eventName: "surfaceInit",
+                hostAdapter: currentHostAdapter,
+                debug: core.debug,
+                getSurfaceState: acc.get,
+                setSurfaceState: acc.set,
+                executionManager: core.executionManager,
+            });
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [core, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, pack.bundle.ui.localBlueprints, runtimeScopeId, surface.id]);
+
+    useEffect(() => {
+        if (!core || !hasBlueprintRuntime) {
+            return undefined;
+        }
+        const surfaceToUnmount = surface.id;
+        const scopeToUnmount = runtimeScopeId;
+        return () => {
+            const currentHostAdapter = latestRuntimeHostAdapterRef.current;
+            lifecycleRef.current.onSurfaceExit(scopeToUnmount);
+            core.executionManager.closeScope(scopeToUnmount, "Preview surface unmounted");
+            const acc = makeStateAccessors(scopeToUnmount);
+            if (!acc || !currentHostAdapter?.blueprintRuntime) {
+                return;
+            }
+            void dispatchSurfaceBlueprintEvent({
+                blueprintDocument: pack.bundle.ui.localBlueprints,
+                surfaceId: surfaceToUnmount,
+                runtimeScopeId: scopeToUnmount,
+                eventName: "surfaceUnmount",
+                hostAdapter: currentHostAdapter,
+                debug: core.debug,
+                getSurfaceState: acc.get,
+                setSurfaceState: acc.set,
+                executionManager: core.executionManager,
+                allowClosedScopeExecution: true,
+            });
+        };
+    }, [core, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, pack.bundle.ui.localBlueprints, runtimeScopeId, surface.id]);
+
+    return <>{children}</>;
+}
+
+function RuntimeDialogStateBridge(props: {
+    core: RuntimeCore | null;
+    getCurrentNametag: () => string | null;
+    flushDialogElements: () => void;
+}) {
+    const { core, getCurrentNametag, flushDialogElements } = props;
+    const dialog = useDialog();
+
+    useEffect(() => {
+        if (!core) {
+            return;
+        }
+        const nametag = dialog.isNarrator ? null : getCurrentNametag();
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
+        flushDialogElements();
+    }, [core, dialog.done, dialog.isNarrator, dialog.text, flushDialogElements, getCurrentNametag]);
+
+    return null;
+}
+
+function RuntimeDialogSlotSurface(props: {
+    sessionId: string;
+    core: RuntimeCore | null;
+    pack: GameRuntimePackV1;
+    surface: UIStageSurface;
+    rendererRegistry: ElementRendererRegistry;
+    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
+    makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
+    openSurfaceWithTransition: (
+        surfaceId: string,
+        props?: Record<string, unknown>,
+        options?: RuntimeOpenSurfaceOptions,
+    ) => Promise<void>;
+    closeLayerWithTransition: () => Promise<void>;
+    quitApplication: () => Promise<void>;
+    startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
+    writeSaveInGame: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
+    loadSaveInGame: (id: string) => Promise<void>;
+    deleteSaveInGame: (id: string) => Promise<void>;
+    listSaveIds: () => Promise<string[]>;
+    getSaveMetadata: (id: string) => Promise<unknown>;
+    getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
+    getCurrentNametag: () => string | null;
+    isInGame: () => boolean;
+    quitGame: (surfaceId: string) => Promise<void>;
+    nextInGame: () => Promise<void>;
+    skipInGame: () => Promise<void>;
+    showDialogInGame: () => Promise<void>;
+    hideDialogInGame: () => Promise<void>;
+    toggleDialogDisplayInGame: () => Promise<void>;
+    setSentenceSpeedInGame: (cps: number) => Promise<void>;
+    setDialogVirtualClickTarget: (target: HTMLElement | null) => void;
+    setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
+    widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
+    widgetRuntimeStore: WidgetRuntimeStateStore;
+}) {
+    const {
+        sessionId,
+        core,
+        pack,
+        surface,
+        rendererRegistry,
+        lifecycleRef,
+        makeStateAccessors,
+        openSurfaceWithTransition,
+        closeLayerWithTransition,
+        quitApplication,
+        startStoryInGame,
+        writeSaveInGame,
+        loadSaveInGame,
+        deleteSaveInGame,
+        listSaveIds,
+        getSaveMetadata,
+        getSavePreview,
+        getCurrentNametag,
+        isInGame,
+        quitGame,
+        nextInGame,
+        skipInGame,
+        showDialogInGame,
+        hideDialogInGame,
+        toggleDialogDisplayInGame,
+        setSentenceSpeedInGame,
+        setDialogVirtualClickTarget,
+        setWidgetPatchesByScope,
+        widgetPatchesByScopeRef,
+        widgetRuntimeStore,
+    } = props;
+    const runtimeScopeId = useMemo(() => dialogSlotRuntimeScopeId(sessionId, surface.id), [sessionId, surface.id]);
+    const hostAdapterRef = useRef<UIHostAdapter | null>(null);
+    const document = pack.bundle.ui.uidoc;
+
+    useEffect(() => () => setDialogVirtualClickTarget(null), [setDialogVirtualClickTarget]);
+
+    const hostApi = useMemo(() => {
+        if (!core) {
+            return null;
+        }
+        return createDevModeBlueprintHostApi({
+            document,
+            scope: core.scopeBridge,
+            activeSurfaceId: surface.id,
+            runtimeScopeId,
+            pageProps: {},
+            emit: event => core.debug.emit(event),
+            onOpenSurface: openSurfaceWithTransition,
+            onCloseLayer: closeLayerWithTransition,
+            onQuitApplication: quitApplication,
+            onStartStory: startStoryInGame,
+            onWriteSave: writeSaveInGame,
+            onLoadSave: loadSaveInGame,
+            onDeleteSave: deleteSaveInGame,
+            onListSaveIds: listSaveIds,
+            onGetSaveMetadata: getSaveMetadata,
+            onGetSavePreview: getSavePreview,
+            onGetNametag: getCurrentNametag,
+            onIsInGame: isInGame,
+            onIsGameOverlay: () => true,
+            onQuitGame: quitGame,
+            onNext: nextInGame,
+            onSkip: skipInGame,
+            onShowDialog: showDialogInGame,
+            onHideDialog: hideDialogInGame,
+            onToggleDialogDisplay: toggleDialogDisplayInGame,
+            onSetSentenceSpeed: setSentenceSpeedInGame,
+            onWidgetPatch: (elementId, patch) => {
+                applyWidgetRuntimePatch({
+                    setWidgetPatchesByScope,
+                    widgetPatchesByScopeRef,
+                    runtimeScopeId,
+                    elementId,
+                    patch,
+                });
+            },
+            onElementFlush: (elementId, payload) => {
+                void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
+                    elementId,
+                    "flush",
+                    payload,
+                );
+            },
+            widgetRuntimeStore,
+        });
+    }, [
+        core,
+        closeLayerWithTransition,
+        deleteSaveInGame,
+        document,
+        getCurrentNametag,
+        getSaveMetadata,
+        getSavePreview,
+        hideDialogInGame,
+        isInGame,
+        listSaveIds,
+        loadSaveInGame,
+        nextInGame,
+        openSurfaceWithTransition,
+        quitApplication,
+        quitGame,
+        runtimeScopeId,
+        setSentenceSpeedInGame,
+        setWidgetPatchesByScope,
+        showDialogInGame,
+        skipInGame,
+        startStoryInGame,
+        surface.id,
+        toggleDialogDisplayInGame,
+        widgetRuntimeStore,
+        widgetPatchesByScopeRef,
+        writeSaveInGame,
+    ]);
+
+    const hostAdapter = useMemo((): UIHostAdapter => {
+        if (!core || !hostApi) {
+            return {
+                ...staticRuntimeHostAdapter(surface),
+                gameUiRuntime: { slotId: "dialog" },
+            };
+        }
+        return {
+            ...createDevModeBlueprintHostAdapter({
+                bundle: pack.bundle,
+                surface,
+                runtimeScopeId,
+                scopeBridge: core.scopeBridge,
+                debug: core.debug,
+                hostApi,
+                executionManager: core.executionManager,
+            }),
+            gameUiRuntime: { slotId: "dialog" },
+        };
+    }, [core, hostApi, pack.bundle, runtimeScopeId, surface]);
+
+    useEffect(() => {
+        hostAdapterRef.current = hostAdapter;
+    }, [hostAdapter]);
+
+    const dialogFlushElementIds = useMemo(
+        () => collectDialogFlushElementIds({
+            document,
+            blueprintDocument: pack.bundle.ui.localBlueprints,
+            surface,
+        }),
+        [document, pack.bundle.ui.localBlueprints, surface],
+    );
+    const flushDialogElements = useCallback(() => {
+        for (const elementId of dialogFlushElementIds) {
+            const element = document.elements[elementId];
+            if (!element) {
+                continue;
+            }
+            void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
+                elementId,
+                "flush",
+                {
+                    element: {
+                        surfaceId: surface.id,
+                        elementId,
+                        elementType: element.type,
+                    },
+                },
+            );
+        }
+    }, [dialogFlushElementIds, document, surface.id]);
+
+    const globalStateReader = useMemo(() => {
+        if (!core) {
+            return undefined;
+        }
+        return {
+            get: (key: string) => core.scopeBridge.globalGet(key),
+            subscribe: (listener: () => void) => core.scopeBridge.subscribeGlobals(listener),
+        };
+    }, [core]);
+
+    const bindingContext = useMemo(() => {
+        if (!core) {
+            return null;
+        }
+        return {
+            blueprintDocument: pack.bundle.ui.localBlueprints,
+            surfaceState: core.scopeBridge.getSurfaceStore(runtimeScopeId),
+            debug: core.debug,
+            coalescer: core.bindingDebugCoalescer,
+            globalState: globalStateReader,
+        };
+    }, [core, globalStateReader, pack.bundle.ui.localBlueprints, runtimeScopeId]);
+
+    return (
+        <NlrDialog
+            ref={setDialogVirtualClickTarget}
+            style={{ width: "100%", height: "100%", position: "relative" }}
+        >
+            <RuntimeDialogStateBridge
+                core={core}
+                getCurrentNametag={getCurrentNametag}
+                flushDialogElements={flushDialogElements}
+            />
+            <RuntimeSurfaceLifecycleLayer
+                core={core}
+                pack={pack}
+                surface={surface}
+                runtimeScopeId={runtimeScopeId}
+                hostAdapter={hostAdapter}
+                lifecycleRef={lifecycleRef}
+                makeStateAccessors={makeStateAccessors}
+            >
+                <WidgetRuntimeStateProvider externalStore={widgetRuntimeStore}>
+                    <GameSurfaceRenderer
+                        document={document}
+                        surface={surface}
+                        rendererRegistry={rendererRegistry}
+                        scale={1}
+                        hostAdapter={hostAdapter}
+                        blueprintBindingContext={bindingContext}
+                        getWidgetRuntimePatches={() => widgetPatchesByScopeRef.current[runtimeScopeId] ?? {}}
+                    />
+                </WidgetRuntimeStateProvider>
+            </RuntimeSurfaceLifecycleLayer>
+        </NlrDialog>
+    );
+}
+
+function createRuntimeDialogComponent(options: ComponentProps<typeof RuntimeDialogSlotSurface>) {
+    return function RuntimeDialogGameUI() {
+        return <RuntimeDialogSlotSurface {...options} />;
+    };
+}
+
 function RuntimeSurfaceLayer(props: {
     pack: GameRuntimePackV1;
     core: RuntimeCore;
     entry: RuntimeNavEntry;
+    layerIndex: number;
     surface: UISurface;
     rendererRegistry: ElementRendererRegistry;
     scale: number;
@@ -421,12 +850,16 @@ function RuntimeSurfaceLayer(props: {
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     blueprintLifecycleReady: boolean;
     reducedMotion: boolean;
+    active: boolean;
+    onInteractionReadyChange: (entryKey: string, ready: boolean) => void;
     onPrepaintReady: (entryKey: string) => void;
+    onEnterComplete: (entryKey: string) => void;
 }): ReactNode {
     const {
         pack,
         core,
         entry,
+        layerIndex,
         surface,
         rendererRegistry,
         scale,
@@ -438,58 +871,30 @@ function RuntimeSurfaceLayer(props: {
         nestedSurfaceRuntime,
         blueprintLifecycleReady,
         reducedMotion,
+        active,
+        onInteractionReadyChange,
         onPrepaintReady,
+        onEnterComplete,
     } = props;
+    const [surfaceInteractive, setSurfaceInteractive] = useState(false);
+    const [surfaceRuntimeSubscriptionsReadyKey, setSurfaceRuntimeSubscriptionsReadyKey] = useState<string | null>(null);
     const [surfaceLifecycleSignals, setSurfaceLifecycleSignals] = useState({
         beforeSurfaceExit: 0,
         afterSurfaceEnter: 0,
     });
     const transitionStateRef = useRef({ isEntering: true, isExiting: false });
+    const effectiveInteractive = active && surfaceInteractive;
+    const surfaceRuntimeSubscriptionsReady = surfaceRuntimeSubscriptionsReadyKey === entry.key;
+
+    const handleRuntimeSubscriptionsReady = useCallback(() => {
+        setSurfaceRuntimeSubscriptionsReadyKey(entry.key);
+    }, [entry.key]);
 
     useEffect(() => {
         if (hostAdapterBundle.hostAdapter.blueprintRuntime) {
             hostAdapterBundle.hostAdapter.blueprintRuntime.getSurfaceTransitionState = () => transitionStateRef.current;
         }
     }, [hostAdapterBundle.hostAdapter]);
-
-    useEffect(() => {
-        const { runtimeScopeId, hostAdapter } = hostAdapterBundle;
-        if (!blueprintLifecycleReady || !hostAdapter.blueprintRuntime) {
-            return undefined;
-        }
-        core.executionManager.openScope(runtimeScopeId);
-        if (lifecycleRef.current.onSurfaceEnter(runtimeScopeId)) {
-            const surfaceStore = core.scopeBridge.getSurfaceStore(runtimeScopeId);
-            void dispatchSurfaceBlueprintEvent({
-                blueprintDocument: pack.bundle.ui.localBlueprints,
-                surfaceId: surface.id,
-                runtimeScopeId,
-                eventName: "surfaceInit",
-                hostAdapter,
-                debug: core.debug,
-                getSurfaceState: key => surfaceStore.get(key),
-                setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                executionManager: core.executionManager,
-            });
-        }
-        return () => {
-            lifecycleRef.current.onSurfaceExit(runtimeScopeId);
-            core.executionManager.closeScope(runtimeScopeId, "Preview surface unmounted");
-            const surfaceStore = core.scopeBridge.getSurfaceStore(runtimeScopeId);
-            void dispatchSurfaceBlueprintEvent({
-                blueprintDocument: pack.bundle.ui.localBlueprints,
-                surfaceId: surface.id,
-                runtimeScopeId,
-                eventName: "surfaceUnmount",
-                hostAdapter,
-                debug: core.debug,
-                getSurfaceState: key => surfaceStore.get(key),
-                setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                executionManager: core.executionManager,
-                allowClosedScopeExecution: true,
-            });
-        };
-    }, [blueprintLifecycleReady, core, hostAdapterBundle, lifecycleRef, pack.bundle.ui.localBlueprints, surface.id]);
 
     const dispatchSurfaceTransitionEvent = useCallback(
         (eventName: "beforeSurfaceExit" | "afterSurfaceEnter") => {
@@ -504,6 +909,17 @@ function RuntimeSurfaceLayer(props: {
             }));
         },
         [hostAdapterBundle.hostAdapter],
+    );
+
+    const makeStateAccessors = useCallback(
+        (runtimeScopeId: string) => {
+            const store = core.scopeBridge.getSurfaceStore(runtimeScopeId);
+            return {
+                get: (key: string) => store.get(key),
+                set: (key: string, value: unknown) => store.set(key, value),
+            };
+        },
+        [core.scopeBridge],
     );
 
     const pageMotion = useMemo(
@@ -524,39 +940,147 @@ function RuntimeSurfaceLayer(props: {
         [reducedMotion, surface.settings?.pageAnimation],
     );
 
+    const handleBeforeExit = useCallback(
+        (entryKey: string) => {
+            if (entryKey !== entry.key) {
+                return;
+            }
+            setSurfaceInteractive(false);
+            widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
+            onInteractionReadyChange(entry.key, false);
+            dispatchSurfaceTransitionEvent("beforeSurfaceExit");
+        },
+        [
+            dispatchSurfaceTransitionEvent,
+            entry.key,
+            hostAdapterBundle.runtimeScopeId,
+            onInteractionReadyChange,
+            widgetRuntimeStore,
+        ],
+    );
+
+    const handleEnterComplete = useCallback(
+        (entryKey: string) => {
+            if (entryKey === entry.key) {
+                dispatchSurfaceTransitionEvent("afterSurfaceEnter");
+                setSurfaceInteractive(active);
+                onInteractionReadyChange(entry.key, active);
+            }
+            onEnterComplete(entryKey);
+        },
+        [active, dispatchSurfaceTransitionEvent, entry.key, onEnterComplete, onInteractionReadyChange],
+    );
+
+    useEffect(() => {
+        if (active) {
+            return;
+        }
+        setSurfaceInteractive(false);
+        widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
+        onInteractionReadyChange(entry.key, false);
+    }, [
+        active,
+        entry.key,
+        hostAdapterBundle.runtimeScopeId,
+        onInteractionReadyChange,
+        widgetRuntimeStore,
+    ]);
+
+    useEffect(() => () => {
+        widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
+        onInteractionReadyChange(entry.key, false);
+    }, [entry.key, hostAdapterBundle.runtimeScopeId, onInteractionReadyChange, widgetRuntimeStore]);
+
     return (
         <SurfaceAnimationLayer
             prepaintKey={entry.key}
             direction={entry.direction}
             pageMotion={pageMotion}
-            className="absolute inset-0"
+            className="absolute inset-0 flex items-center justify-center"
             style={{ backgroundColor: getSurfaceBackgroundColor(surface) }}
-            presentZIndex={10}
-            exitZIndex={20}
+            presentZIndex={10 + layerIndex}
+            exitZIndex={entry.exitBehind ? 0 : 30 + layerIndex}
             surfaceId={surface.id}
             surfaceKind={surface.kind}
             resolveExit={resolveExit}
+            interactive={effectiveInteractive}
             onPrepaintReady={onPrepaintReady}
-            onBeforeExit={() => dispatchSurfaceTransitionEvent("beforeSurfaceExit")}
-            onEnterComplete={() => dispatchSurfaceTransitionEvent("afterSurfaceEnter")}
+            onBeforeExit={handleBeforeExit}
+            onEnterComplete={handleEnterComplete}
         >
-            <WidgetRuntimeStateProvider externalStore={widgetRuntimeStore}>
-                <GameSurfaceRenderer
-                    document={pack.bundle.ui.uidoc}
-                    surface={surface}
-                    rendererRegistry={rendererRegistry}
-                    scale={scale}
-                    hostAdapter={hostAdapterBundle.hostAdapter}
-                    blueprintBindingContext={hostAdapterBundle.bindingContext}
-                    widgetRuntimePatches={widgetPatchesByScope[entry.runtimeScopeId]}
-                    getWidgetRuntimePatches={() => widgetPatchesByScopeRef.current[entry.runtimeScopeId]}
-                    nestedSurfaceRuntime={nestedSurfaceRuntime}
-                    surfaceLifecycleSignals={surfaceLifecycleSignals}
-                    blueprintLifecycleReady={blueprintLifecycleReady}
-                />
-            </WidgetRuntimeStateProvider>
+            <RuntimeSurfaceLifecycleLayer
+                core={blueprintLifecycleReady && surfaceRuntimeSubscriptionsReady ? core : null}
+                pack={pack}
+                surface={surface}
+                runtimeScopeId={hostAdapterBundle.runtimeScopeId}
+                hostAdapter={hostAdapterBundle.hostAdapter}
+                lifecycleRef={lifecycleRef}
+                makeStateAccessors={makeStateAccessors}
+            >
+                <WidgetRuntimeStateProvider externalStore={widgetRuntimeStore}>
+                    <GameSurfaceRenderer
+                        document={pack.bundle.ui.uidoc}
+                        surface={surface}
+                        rendererRegistry={rendererRegistry}
+                        scale={scale}
+                        hostAdapter={hostAdapterBundle.hostAdapter}
+                        blueprintBindingContext={hostAdapterBundle.bindingContext}
+                        widgetRuntimePatches={
+                            widgetPatchesByScopeRef.current[entry.runtimeScopeId] ??
+                            widgetPatchesByScope[entry.runtimeScopeId] ??
+                            {}
+                        }
+                        getWidgetRuntimePatches={() =>
+                            widgetPatchesByScopeRef.current[entry.runtimeScopeId] ??
+                            widgetPatchesByScope[entry.runtimeScopeId] ??
+                            {}
+                        }
+                        nestedSurfaceRuntime={nestedSurfaceRuntime}
+                        surfaceLifecycleSignals={surfaceLifecycleSignals}
+                        blueprintLifecycleReady={blueprintLifecycleReady}
+                        interactive={effectiveInteractive}
+                        onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
+                    />
+                </WidgetRuntimeStateProvider>
+            </RuntimeSurfaceLifecycleLayer>
         </SurfaceAnimationLayer>
     );
+}
+
+function RuntimeSurfaceLayerWithAdapter(props: {
+    pack: GameRuntimePackV1;
+    core: RuntimeCore;
+    entry: RuntimeNavEntry;
+    layerIndex: number;
+    surface: UISurface;
+    rendererRegistry: ElementRendererRegistry;
+    scale: number;
+    createHostAdapterBundle: (entry: RuntimeNavEntry, surface: UISurface) => RuntimeHostAdapterBundle | null;
+    widgetPatchesByScope: Record<string, Record<string, DevModeWidgetRuntimePatch>>;
+    widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
+    widgetRuntimeStore: WidgetRuntimeStateStore;
+    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
+    nestedSurfaceRuntime?: NestedSurfaceRuntime;
+    blueprintLifecycleReady: boolean;
+    reducedMotion: boolean;
+    active: boolean;
+    onInteractionReadyChange: (entryKey: string, ready: boolean) => void;
+    onPrepaintReady: (entryKey: string) => void;
+    onEnterComplete: (entryKey: string) => void;
+}) {
+    const {
+        entry,
+        surface,
+        createHostAdapterBundle,
+    } = props;
+    const hostAdapterBundle = useMemo(
+        () => createHostAdapterBundle(entry, surface),
+        [createHostAdapterBundle, entry, surface],
+    );
+    if (!hostAdapterBundle) {
+        return null;
+    }
+    return <RuntimeSurfaceLayer {...props} hostAdapterBundle={hostAdapterBundle} />;
 }
 
 export function GameRuntimeApp() {
@@ -569,12 +1093,43 @@ export function GameRuntimeApp() {
     const [widgetPatchesByScope, setWidgetPatchesByScope] = useState<Record<string, Record<string, DevModeWidgetRuntimePatch>>>({});
     const widgetPatchesByScopeRef = useRef(widgetPatchesByScope);
     const [navStack, setNavStack] = useState<RuntimeNavEntry[]>([]);
+    const [visibleEntries, setVisibleEntries] = useState<RuntimeNavEntry[]>([]);
+    const [surfacePresenceMode, setSurfacePresenceMode] = useState<"sync" | "wait">("sync");
     const [prepaintReadyKeys, setPrepaintReadyKeys] = useState<Set<string>>(() => new Set());
+    const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
     const [nlrSession, setNlrSession] = useState<NlrStageSession | null>(null);
-    const liveGameRef = useRef<LiveGame | null>(null);
+    const [gameStageVisible, setGameStageVisible] = useState(false);
+    const [studioPageHiddenForGame, setStudioPageHiddenForGame] = useState(false);
+    const [gameHiddenNavKeys, setGameHiddenNavKeys] = useState<Set<string>>(() => new Set());
+    const navStackRef = useRef<RuntimeNavEntry[]>([]);
+    const visibleEntriesRef = useRef<RuntimeNavEntry[]>([]);
+    const activeNavKeyRef = useRef<string | null>(null);
+    const activeEntryRef = useRef<RuntimeNavEntry | null>(null);
+    const activeSurfaceRef = useRef<UISurface | null>(null);
+    const pendingWaitEntryRef = useRef<RuntimeNavEntry | null>(null);
+    const pendingUnderlayReadyKeyRef = useRef<string | null>(null);
+    const pendingRemoveAfterEnterKeyRef = useRef<string | null>(null);
+    const transitionDirectionRef = useRef<PageAnimationNavigationDirection>("forward");
+    const transitionWaitRef = useRef<{
+        resolve: (() => void) | null;
+        timeoutId: ReturnType<typeof setTimeout> | null;
+        enterDone: boolean;
+        exitDone: boolean;
+    }>({ resolve: null, timeoutId: null, enterDone: true, exitDone: true });
+    const studioPageHiddenForGameRef = useRef(false);
+    const gameHiddenNavKeysRef = useRef(gameHiddenNavKeys);
     const lifecycleRef = useRef(new SurfaceLifecycleManager());
     const appBootFiredRef = useRef<string | null>(null);
     const storyEntryStartedRef = useRef<string | null>(null);
+    const cleanupBundleIdRef = useRef<string | null>(null);
+    const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
+    const activeStoryRevisionRef = useRef<number | null>(null);
+    const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
+    const nlrLiveGameRef = useRef<LiveGame | null>(null);
+    const nlrLiveGameSessionIdRef = useRef<string | null>(null);
+    const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
+    const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
+    const currentDialogNametagRef = useRef<string | null>(null);
     const prefersReducedMotion = useReducedMotion();
 
     useEffect(() => {
@@ -582,18 +1137,56 @@ export function GameRuntimeApp() {
     }, [widgetPatchesByScope]);
 
     useEffect(() => {
+        navStackRef.current = navStack;
+    }, [navStack]);
+
+    useEffect(() => {
+        visibleEntriesRef.current = visibleEntries;
+    }, [visibleEntries]);
+
+    useEffect(() => {
+        studioPageHiddenForGameRef.current = studioPageHiddenForGame;
+    }, [studioPageHiddenForGame]);
+
+    useEffect(() => {
+        gameHiddenNavKeysRef.current = gameHiddenNavKeys;
+    }, [gameHiddenNavKeys]);
+
+    useEffect(() => {
         if (!pack) {
             setNavStack([]);
+            setVisibleEntries([]);
             return;
         }
         const entrySurfaceId = pack.entry.kind === "surface" ? pack.entry.surfaceId : pack.entry.surfaceId;
         const surface = findSurface(pack.bundle, entrySurfaceId);
         setPrepaintReadyKeys(new Set());
-        setNavStack(surface ? [createNavEntry(surface.id)] : []);
+        setInteractionReadyKeys(new Set());
+        pendingWaitEntryRef.current = null;
+        pendingUnderlayReadyKeyRef.current = null;
+        pendingRemoveAfterEnterKeyRef.current = null;
+        transitionDirectionRef.current = "forward";
+        setSurfacePresenceMode("sync");
+        const initial = surface ? createNavEntry(surface.id, "forward", false) : null;
+        setNavStack(initial ? [initial] : []);
+        setVisibleEntries(initial ? [initial] : []);
+        widgetPatchesByScopeRef.current = {};
+        setWidgetPatchesByScope({});
+        gameHiddenNavKeysRef.current = new Set();
+        setGameHiddenNavKeys(new Set());
+        studioPageHiddenForGameRef.current = false;
+        setStudioPageHiddenForGame(false);
+        setGameStageVisible(false);
     }, [pack]);
 
     const activeEntry = navStack[navStack.length - 1] ?? null;
     const activeSurface = pack && activeEntry ? findSurface(pack.bundle, activeEntry.surfaceId) : null;
+
+    useEffect(() => {
+        activeNavKeyRef.current = activeEntry?.key ?? null;
+        activeEntryRef.current = activeEntry;
+        activeSurfaceRef.current = activeSurface;
+    }, [activeEntry, activeSurface]);
     const firstEntry = navStack[0] ?? null;
     const firstSurface = pack && firstEntry ? findSurface(pack.bundle, firstEntry.surfaceId) : activeSurface;
     const preload = useRuntimePackPreload({ pack, firstSurface });
@@ -611,29 +1204,409 @@ export function GameRuntimeApp() {
         });
     }, []);
 
-    const openSurface = useCallback((surfaceId: string, props?: Record<string, unknown>) => {
-        if (!pack) {
-            return;
+    const completeTransitionWait = useCallback(() => {
+        const pending = transitionWaitRef.current;
+        if (pending.timeoutId) {
+            clearTimeout(pending.timeoutId);
         }
-        const surface = findSurface(pack.bundle, surfaceId);
-        if (!surface) {
-            throw new Error(`Open Page: surface not found: ${surfaceId}`);
-        }
-        setNavStack(current => [...current, createNavEntry(surface.id, props, "forward")]);
-    }, [pack]);
-
-    const closeLayer = useCallback(() => {
-        setNavStack(current => current.length > 1 ? markLastEntryDirection(current.slice(0, -1), "back") : current);
+        const resolve = pending.resolve;
+        transitionWaitRef.current = { resolve: null, timeoutId: null, enterDone: true, exitDone: true };
+        resolve?.();
     }, []);
 
+    const tryCompleteTransitionWait = useCallback(() => {
+        const pending = transitionWaitRef.current;
+        if (pending.resolve && pending.enterDone && pending.exitDone) {
+            completeTransitionWait();
+        }
+    }, [completeTransitionWait]);
+
+    const beginTransitionWait = useCallback(
+        (
+            durationMs: number,
+            options?: { waitForEnter?: boolean; waitForExit?: boolean },
+        ): Promise<void> => {
+            completeTransitionWait();
+            const waitForEnter = options?.waitForEnter ?? true;
+            const waitForExit = options?.waitForExit ?? true;
+            if (!waitForEnter && !waitForExit) {
+                return Promise.resolve();
+            }
+            return new Promise(resolve => {
+                const timeoutId = setTimeout(() => {
+                    completeTransitionWait();
+                }, Math.max(0, durationMs) + 1080);
+                transitionWaitRef.current = {
+                    resolve,
+                    timeoutId,
+                    enterDone: !waitForEnter,
+                    exitDone: !waitForExit,
+                };
+            });
+        },
+        [completeTransitionWait],
+    );
+
+    const markActiveEnterComplete = useCallback(
+        (entryKey: string) => {
+            if (entryKey !== activeNavKeyRef.current) {
+                return;
+            }
+            transitionWaitRef.current.enterDone = true;
+            if (pendingRemoveAfterEnterKeyRef.current === entryKey) {
+                pendingRemoveAfterEnterKeyRef.current = null;
+                setVisibleEntries(prev => prev.filter(entry => entry.key === entryKey));
+            }
+            tryCompleteTransitionWait();
+        },
+        [tryCompleteTransitionWait],
+    );
+
+    const markExitComplete = useCallback(() => {
+        transitionWaitRef.current.exitDone = true;
+        tryCompleteTransitionWait();
+    }, [tryCompleteTransitionWait]);
+
+    const handleSurfaceLayerPrepaintReady = useCallback((entryKey: string) => {
+        markSurfacePrepaintReady(entryKey);
+        if (pendingUnderlayReadyKeyRef.current !== entryKey) {
+            return;
+        }
+        pendingUnderlayReadyKeyRef.current = null;
+        setVisibleEntries(prev => prev.filter(entry => entry.key === entryKey));
+    }, [markSurfacePrepaintReady]);
+
+    const handleSurfaceExitComplete = useCallback(() => {
+        markExitComplete();
+        const pendingEntry = pendingWaitEntryRef.current;
+        if (!pendingEntry) {
+            return;
+        }
+        pendingWaitEntryRef.current = null;
+        setSurfacePresenceMode("sync");
+        setVisibleEntries([pendingEntry]);
+    }, [markExitComplete]);
+
+    const handleSurfaceInteractionReadyChange = useCallback((entryKey: string, ready: boolean) => {
+        setInteractionReadyKeys(prev => {
+            const alreadyReady = prev.has(entryKey);
+            if (alreadyReady === ready) {
+                return prev;
+            }
+            const next = new Set(prev);
+            if (ready) {
+                next.add(entryKey);
+            } else {
+                next.delete(entryKey);
+            }
+            return next;
+        });
+    }, []);
+
+    const resetSurfaceInteractionReadiness = useCallback(() => {
+        setInteractionReadyKeys(prev => (prev.size === 0 ? prev : new Set()));
+    }, []);
+
+    const isGameHiddenEntry = useCallback((entry: RuntimeNavEntry | null | undefined): boolean => {
+        return Boolean(entry && studioPageHiddenForGameRef.current && gameHiddenNavKeysRef.current.has(entry.key));
+    }, []);
+
+    const hideCurrentStudioPagesForGame = useCallback(() => {
+        const hiddenKeys = new Set(navStackRef.current.map(entry => entry.key));
+        gameHiddenNavKeysRef.current = hiddenKeys;
+        studioPageHiddenForGameRef.current = true;
+        setGameHiddenNavKeys(hiddenKeys);
+        setStudioPageHiddenForGame(true);
+        setVisibleEntries(prev => prev.filter(entry => !hiddenKeys.has(entry.key)));
+        pendingWaitEntryRef.current = null;
+        pendingUnderlayReadyKeyRef.current = null;
+        pendingRemoveAfterEnterKeyRef.current = null;
+        setSurfacePresenceMode("sync");
+        resetSurfaceInteractionReadiness();
+        completeTransitionWait();
+    }, [completeTransitionWait, resetSurfaceInteractionReadiness]);
+
+    const clearGameHiddenStudioPages = useCallback(() => {
+        const emptyKeys = new Set<string>();
+        gameHiddenNavKeysRef.current = emptyKeys;
+        studioPageHiddenForGameRef.current = false;
+        setGameHiddenNavKeys(emptyKeys);
+        setStudioPageHiddenForGame(false);
+    }, []);
+
+    const openSurface = useCallback((
+        surfaceId: string,
+        props?: Record<string, unknown>,
+        options?: RuntimeOpenSurfaceOptions,
+    ): Promise<void> => {
+        if (!pack) {
+            return Promise.resolve();
+        }
+        const from = activeSurfaceRef.current;
+        const target = findSurface(pack.bundle, surfaceId);
+        const currentEntry = activeEntryRef.current;
+        if (!target) {
+            return Promise.reject(new Error(`Open Page: surface not found: ${surfaceId}`));
+        }
+        const currentHiddenForGame = isGameHiddenEntry(currentEntry);
+        const presentation = options?.presentation ?? (studioPageHiddenForGameRef.current ? "gameOverlay" : "appPage");
+        const update = createSurfaceNavigationOpenUpdate({
+            navStack: navStackRef.current,
+            visibleEntries: visibleEntriesRef.current,
+            activeEntry: currentEntry,
+            fromSurface: from,
+            targetSurface: target,
+            currentHiddenForGame,
+            prefersReducedMotion,
+            createNextEntry: waitForExit => createNavEntry(target.id, "forward", waitForExit, props, presentation),
+        });
+        transitionDirectionRef.current = update.direction;
+        const wait = beginTransitionWait(
+            update.transitionDurationMs,
+            update.transitionWaitOptions,
+        );
+        resetSurfaceInteractionReadiness();
+        pendingWaitEntryRef.current = update.pendingWaitEntry;
+        pendingUnderlayReadyKeyRef.current = update.pendingUnderlayReadyKey;
+        pendingRemoveAfterEnterKeyRef.current = update.pendingRemoveAfterEnterKey;
+        setSurfacePresenceMode(update.surfacePresenceMode);
+        setNavStack(update.navStack);
+        setVisibleEntries(update.visibleEntries);
+        return wait;
+    }, [
+        beginTransitionWait,
+        isGameHiddenEntry,
+        pack,
+        prefersReducedMotion,
+        resetSurfaceInteractionReadiness,
+    ]);
+
+    const closeLayer = useCallback((): Promise<void> => {
+        const currentStack = navStackRef.current;
+        if (!pack || currentStack.length <= 1) {
+            return Promise.resolve();
+        }
+        const nextEntryBase = currentStack[currentStack.length - 2]!;
+        const target = findSurface(pack.bundle, nextEntryBase.surfaceId);
+        const from = activeSurfaceRef.current;
+        const targetHiddenForGame = isGameHiddenEntry(nextEntryBase);
+        const update = createSurfaceNavigationCloseUpdate({
+            navStack: currentStack,
+            fromSurface: from,
+            targetSurface: target,
+            targetHiddenForGame,
+            prefersReducedMotion,
+        });
+        if (!update) {
+            return Promise.resolve();
+        }
+        transitionDirectionRef.current = update.direction;
+        const wait = beginTransitionWait(
+            update.transitionDurationMs,
+            update.transitionWaitOptions,
+        );
+        resetSurfaceInteractionReadiness();
+        pendingWaitEntryRef.current = update.pendingWaitEntry;
+        pendingUnderlayReadyKeyRef.current = update.pendingUnderlayReadyKey;
+        pendingRemoveAfterEnterKeyRef.current = update.pendingRemoveAfterEnterKey;
+        setSurfacePresenceMode(update.surfacePresenceMode);
+        setNavStack(update.navStack);
+        setVisibleEntries(update.visibleEntries);
+        return wait;
+    }, [
+        beginTransitionWait,
+        isGameHiddenEntry,
+        pack,
+        prefersReducedMotion,
+        resetSurfaceInteractionReadiness,
+    ]);
+
+    const makeStateAccessors = useCallback(
+        (runtimeScopeId: string): SurfaceStateAccessors | null => {
+            if (!core) {
+                return null;
+            }
+            const store = core.scopeBridge.getSurfaceStore(runtimeScopeId);
+            return {
+                get: (key: string) => store.get(key),
+                set: (key: string, value: unknown) => store.set(key, value),
+            };
+        },
+        [core],
+    );
+
+    const rejectPendingGameStarts = useCallback((gameError: Error) => {
+        pendingGameStartsRef.current.forEach(pending => pending.reject(gameError));
+        pendingGameStartsRef.current.clear();
+    }, []);
+
+    const clearCurrentDialogNametag = useCallback(() => {
+        currentDialogNametagRef.current = null;
+        core?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, null);
+    }, [core]);
+
+    const getCurrentNametag = useCallback((): string | null => {
+        const liveGameSpeaker = readNlrLastDialogSpeaker(nlrLiveGameRef.current);
+        return liveGameSpeaker ?? currentDialogNametagRef.current;
+    }, []);
+
+    const isInGame = useCallback((): boolean => {
+        return Boolean(gameStageVisible && nlrSession?.id);
+    }, [gameStageVisible, nlrSession?.id]);
+
+    const setNlrDialogVirtualClickTarget = useCallback((target: HTMLElement | null): void => {
+        nlrDialogVirtualClickTargetRef.current = target;
+    }, []);
+
+    const requireActiveLiveGame = useCallback((operation: string): LiveGame => {
+        if (!nlrSession?.id || nlrLiveGameSessionIdRef.current !== nlrSession.id || !nlrLiveGameRef.current) {
+            throw new Error(`${operation}: game runtime is not available`);
+        }
+        return nlrLiveGameRef.current;
+    }, [nlrSession?.id]);
+
+    const nextInGame = useCallback(async (): Promise<void> => {
+        const dialogClickTarget = nlrDialogVirtualClickTargetRef.current;
+        if (dialogClickTarget?.isConnected) {
+            dialogClickTarget.click();
+            return;
+        }
+        const liveGame = requireActiveLiveGame("Next");
+        const gameState = liveGame.getGameState();
+        if (!gameState) {
+            throw new Error("Next: game state is not available");
+        }
+        const clickTarget = gameState.mainContentNode ?? gameState.playerCurrent;
+        if (!clickTarget) {
+            throw new Error("Next: virtual click target is not available");
+        }
+        clickTarget.click();
+    }, [requireActiveLiveGame]);
+
+    const skipInGame = useCallback(async (): Promise<void> => {
+        requireActiveLiveGame("Skip").skipDialog();
+    }, [requireActiveLiveGame]);
+
+    const showDialogInGame = useCallback(async (): Promise<void> => {
+        requireActiveLiveGame("Show Dialog").game.preference.setPreference("showDialog", true);
+    }, [requireActiveLiveGame]);
+
+    const hideDialogInGame = useCallback(async (): Promise<void> => {
+        requireActiveLiveGame("Hide Dialog").game.preference.setPreference("showDialog", false);
+    }, [requireActiveLiveGame]);
+
+    const toggleDialogDisplayInGame = useCallback(async (): Promise<void> => {
+        const preference = requireActiveLiveGame("Toggle Dialog Display").game.preference;
+        preference.setPreference("showDialog", preference.getPreference("showDialog") !== true);
+    }, [requireActiveLiveGame]);
+
+    const setSentenceSpeedInGame = useCallback(async (cps: number): Promise<void> => {
+        const value = typeof cps === "number" ? cps : Number(cps);
+        if (!Number.isFinite(value) || value <= 0) {
+            throw new Error("Set Sentence Speed: CPS must be a positive number");
+        }
+        requireActiveLiveGame("Set Sentence Speed").game.preference.setPreference("cps", value);
+    }, [requireActiveLiveGame]);
+
+    const quitGame = useCallback(async (surfaceId: string): Promise<void> => {
+        const targetSurfaceId = String(surfaceId ?? "").trim();
+        if (!targetSurfaceId) {
+            throw new Error("Quit Game: surfaceId is required");
+        }
+        rejectPendingGameStarts(new Error("Quit Game"));
+        activeStoryRequestRef.current = null;
+        activeStoryRevisionRef.current = null;
+        nlrCharacterPromptTokenRef.current?.cancel();
+        nlrCharacterPromptTokenRef.current = null;
+        nlrDialogVirtualClickTargetRef.current = null;
+        nlrLiveGameRef.current = null;
+        nlrLiveGameSessionIdRef.current = null;
+        clearCurrentDialogNametag();
+        setGameStageVisible(false);
+        await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
+        setNlrSession(null);
+        clearGameHiddenStudioPages();
+    }, [clearCurrentDialogNametag, clearGameHiddenStudioPages, openSurface, rejectPendingGameStarts]);
+
+    const quitApplication = useCallback(async (): Promise<void> => {
+        await bridge?.close();
+    }, [bridge]);
+
+    const writeSave = useCallback(async (id: string, metadata: unknown, screenshot?: boolean) => {
+        if (!bridge) {
+            throw new Error("Save Game: runtime bridge is not available");
+        }
+        const liveGame = requireActiveLiveGame("Save Game");
+        let capture: string | undefined;
+        if (screenshot === true && typeof liveGame.capturePng === "function") {
+            capture = await liveGame.capturePng().catch(() => undefined);
+        }
+        await bridge.save.write(id, liveGame.serialize(), capture, metadata);
+    }, [bridge, requireActiveLiveGame]);
+
+    const loadSave = useCallback(async (id: string) => {
+        if (!bridge) {
+            throw new Error("Load Save: runtime bridge is not available");
+        }
+        const liveGame = requireActiveLiveGame("Load Save");
+        const record = await bridge.save.read(id);
+        if (!record) {
+            throw new Error(`Load Save: save not found: ${id}`);
+        }
+        liveGame.game.router.clear().cleanHistory();
+        liveGame.newGame().deserialize(record.savedGame as SavedGame);
+        await liveGame.waitForRouterExit().promise;
+        setGameStageVisible(true);
+        hideCurrentStudioPagesForGame();
+    }, [bridge, hideCurrentStudioPagesForGame, requireActiveLiveGame]);
+
+    const deleteSave = useCallback(async (id: string) => {
+        if (!bridge) {
+            throw new Error("Delete Save: runtime bridge is not available");
+        }
+        await bridge.save.delete(id);
+    }, [bridge]);
+
+    const listSaveIds = useCallback(async (): Promise<string[]> => {
+        if (!bridge) {
+            return [];
+        }
+        return bridge.save.listIds();
+    }, [bridge]);
+
+    const getSaveMetadata = useCallback(async (id: string): Promise<unknown> => {
+        const record = await bridge?.save.read(id);
+        const metadata = record?.metadata.user;
+        if (metadata === undefined) {
+            return null;
+        }
+        try {
+            const serialized = JSON.stringify(metadata);
+            return serialized === undefined ? null : JSON.parse(serialized);
+        } catch {
+            return null;
+        }
+    }, [bridge]);
+
+    const getSavePreview = useCallback(async (id: string): Promise<BlueprintImageAsset | null> => {
+        const capture = await bridge?.save.readPreview(id);
+        if (!capture) {
+            return null;
+        }
+        return toBlueprintImageAsset(registerDevModeSavePreviewImage(id, capture));
+    }, [bridge]);
+
     const startStoryInGame = useCallback(async (request: DevModeStartStoryRequest): Promise<void> => {
-        if (!pack || !activeSurface) {
+        if (!pack || !activeSurface || !core) {
             throw new Error("Start Game: runtime surface is not available");
         }
         const storyId = String(request.storyId ?? "").trim();
         const sceneId = String(request.sceneId ?? "").trim();
-        if (!storyId || !sceneId) {
-            throw new Error("Start Game: storyId and sceneId are required");
+        if (!storyId) {
+            throw new Error("Start Game: storyId is required");
+        }
+        if (!sceneId) {
+            throw new Error("Start Game: sceneId is required");
         }
         const storyDocument =
             pack.bundle.storyLibrary?.documents[storyId] ??
@@ -658,28 +1631,109 @@ export function GameRuntimeApp() {
             }
         }
 
+        rejectPendingGameStarts(new Error("Start Game superseded by a newer session"));
+        activeStoryRequestRef.current = { storyId, sceneId };
+        activeStoryRevisionRef.current = pack.bundle.revision;
+
         const { width, height } = activeSurface.designSize;
+        const sessionId = `${pack.bundle.bundleId}:${pack.bundle.revision}:${Date.now()}`;
+        const dialogSurface = findStageSurfaceForSlot(pack.bundle.ui.uidoc, "dialog");
+        const dialogComponent = dialogSurface
+            ? createRuntimeDialogComponent({
+                  sessionId,
+                  core,
+                  pack,
+                  surface: dialogSurface,
+                  rendererRegistry,
+                  lifecycleRef,
+                  makeStateAccessors,
+                  openSurfaceWithTransition: openSurface,
+                  closeLayerWithTransition: closeLayer,
+                  quitApplication,
+                  startStoryInGame,
+                  writeSaveInGame: (id, metadata, screenshot) => writeSave(id, metadata, screenshot),
+                  loadSaveInGame: id => loadSave(id),
+                  deleteSaveInGame: id => deleteSave(id),
+                  listSaveIds,
+                  getSaveMetadata,
+                  getSavePreview,
+                  getCurrentNametag,
+                  isInGame,
+                  quitGame,
+                  nextInGame,
+                  skipInGame,
+                  showDialogInGame,
+                  hideDialogInGame,
+                  toggleDialogDisplayInGame,
+                  setSentenceSpeedInGame,
+                  setDialogVirtualClickTarget: setNlrDialogVirtualClickTarget,
+                  setWidgetPatchesByScope,
+                  widgetPatchesByScopeRef,
+                  widgetRuntimeStore,
+              })
+            : undefined;
         const game = new Game({
             app: { debug: false },
             width,
             height,
             aspectRatio: width / height,
             ratioUpdateInterval: 0,
-            contentContainerId: `__nlr_preview_stage_${Date.now()}`,
+            contentContainerId: `__nlr_preview_stage_${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
+            ...(dialogComponent ? { dialog: dialogComponent, dialogWidth: width, dialogHeight: height } : {}),
         });
         game.keyMap.setKeyBinding(KeyBindingType.nextAction, null);
-        liveGameRef.current = null;
+        const ready = new Promise<void>((resolve, reject) => {
+            pendingGameStartsRef.current.set(sessionId, { resolve, reject });
+        });
+        setGameStageVisible(false);
+        clearGameHiddenStudioPages();
+        nlrLiveGameRef.current = null;
         setNlrSession({
-            id: `${pack.bundle.bundleId}:${pack.bundle.revision}:${Date.now()}`,
+            id: sessionId,
             game,
             compiled,
             width,
             height,
         });
-    }, [activeSurface, bridge, pack]);
+        await ready;
+        await waitForAnimationFrame();
+        setGameStageVisible(true);
+        hideCurrentStudioPagesForGame();
+    }, [
+        activeSurface,
+        bridge,
+        clearGameHiddenStudioPages,
+        closeLayer,
+        core,
+        deleteSave,
+        getCurrentNametag,
+        getSaveMetadata,
+        getSavePreview,
+        hideCurrentStudioPagesForGame,
+        hideDialogInGame,
+        isInGame,
+        lifecycleRef,
+        listSaveIds,
+        loadSave,
+        makeStateAccessors,
+        nextInGame,
+        openSurface,
+        pack,
+        quitApplication,
+        quitGame,
+        rejectPendingGameStarts,
+        rendererRegistry,
+        setNlrDialogVirtualClickTarget,
+        setSentenceSpeedInGame,
+        showDialogInGame,
+        skipInGame,
+        toggleDialogDisplayInGame,
+        widgetRuntimeStore,
+        writeSave,
+    ]);
 
     useEffect(() => {
-        if (!runtimeReady || !pack || pack.entry.kind !== "story" || !activeSurface) {
+        if (!runtimeReady || !pack || !core || pack.entry.kind !== "story" || !activeSurface) {
             return;
         }
         if (activeEntry && !prepaintReadyKeys.has(activeEntry.key)) {
@@ -694,118 +1748,41 @@ export function GameRuntimeApp() {
             storyEntryStartedRef.current = null;
             bridge?.log("error", normalizeError(err));
         });
-    }, [activeEntry, activeSurface, bridge, pack, prepaintReadyKeys, runtimeReady, startStoryInGame]);
+    }, [activeEntry, activeSurface, bridge, core, pack, prepaintReadyKeys, runtimeReady, startStoryInGame]);
 
-    const writeSave = useCallback(async (id: string, metadata: unknown, screenshot?: boolean) => {
-        if (!bridge) {
-            throw new Error("Save Game: runtime bridge is not available");
-        }
-        const liveGame = liveGameRef.current;
-        if (!liveGame) {
-            throw new Error("Save Game: active game is not available");
-        }
-        let capture: string | undefined;
-        if (screenshot === true && typeof liveGame.capturePng === "function") {
-            capture = await liveGame.capturePng().catch(() => undefined);
-        }
-        await bridge.save.write(id, liveGame.serialize(), capture, metadata);
-    }, [bridge]);
-
-    const loadSave = useCallback(async (id: string) => {
-        if (!bridge) {
-            throw new Error("Load Save: runtime bridge is not available");
-        }
-        const liveGame = liveGameRef.current;
-        if (!liveGame) {
-            throw new Error("Load Save: active game is not available");
-        }
-        const record = await bridge.save.read(id);
-        if (!record) {
-            throw new Error(`Load Save: save not found: ${id}`);
-        }
-        liveGame.game.router.clear().cleanHistory();
-        liveGame.newGame().deserialize(record.savedGame as SavedGame);
-        await liveGame.waitForRouterExit().promise;
-    }, [bridge]);
-
-    const deleteSave = useCallback(async (id: string) => {
-        if (!bridge) {
-            throw new Error("Delete Save: runtime bridge is not available");
-        }
-        await bridge.save.delete(id);
-    }, [bridge]);
-
-    const listSaveIds = useCallback(async (): Promise<string[]> => {
-        if (!bridge) {
-            return [];
-        }
-        return bridge.save.listIds();
-    }, [bridge]);
-
-    const getSaveMetadata = useCallback(async (id: string): Promise<unknown> => {
-        const record = await bridge?.save.read(id);
-        return record?.metadata.user ?? null;
-    }, [bridge]);
-
-    const getSavePreview = useCallback(async (id: string): Promise<BlueprintImageAsset | null> => {
-        const capture = await bridge?.save.readPreview(id);
-        if (!capture) {
+    const createHostAdapterBundle = useCallback((entry: RuntimeNavEntry, surface: UISurface) => {
+        if (!pack || !core) {
             return null;
         }
-        return toBlueprintImageAsset(registerDevModeSavePreviewImage(id, capture));
-    }, [bridge]);
-
-    const clearGameAndOpenSurface = useCallback(async (surfaceId: string): Promise<void> => {
-        setNlrSession(null);
-        liveGameRef.current = null;
-        await openSurface(surfaceId);
-    }, [openSurface]);
-
-    const hostAdapterBundle = useMemo(() => {
-        if (!pack || !core || !activeSurface || !activeEntry) {
-            return null;
-        }
-        const runtimeScopeId = activeEntry.runtimeScopeId;
+        const runtimeScopeId = entry.runtimeScopeId;
         let hostAdapter: UIHostAdapter | null = null;
         const hostApi = createDevModeBlueprintHostApi({
             document: pack.bundle.ui.uidoc,
             scope: core.scopeBridge,
-            activeSurfaceId: activeSurface.id,
+            activeSurfaceId: surface.id,
             runtimeScopeId,
-            pageProps: activeEntry.props,
+            pageProps: entry.props,
             emit: event => core.debug.emit(event),
             onOpenSurface: openSurface,
             onCloseLayer: closeLayer,
-            onQuitApplication: () => bridge?.close(),
+            onQuitApplication: quitApplication,
             onStartStory: startStoryInGame,
-            onIsInGame: () => liveGameRef.current != null,
-            onIsGameOverlay: () => false,
-            onQuitGame: clearGameAndOpenSurface,
+            onIsInGame: isInGame,
+            onIsGameOverlay: () => entry.presentation === "gameOverlay",
+            onQuitGame: quitGame,
             onWriteSave: writeSave,
             onLoadSave: loadSave,
             onDeleteSave: deleteSave,
             onListSaveIds: listSaveIds,
             onGetSaveMetadata: getSaveMetadata,
             onGetSavePreview: getSavePreview,
-            onGetNametag: () => null,
-            onNext: async () => {
-                const gameState = liveGameRef.current?.getGameState();
-                const clickTarget = gameState?.mainContentNode ?? gameState?.playerCurrent;
-                clickTarget?.click();
-            },
-            onSkip: async () => liveGameRef.current?.skipDialog(),
-            onShowDialog: async () => liveGameRef.current?.game.preference.setPreference("showDialog", true),
-            onHideDialog: async () => liveGameRef.current?.game.preference.setPreference("showDialog", false),
-            onToggleDialogDisplay: async () => {
-                const preference = liveGameRef.current?.game.preference;
-                preference?.setPreference("showDialog", preference.getPreference("showDialog") !== true);
-            },
-            onSetSentenceSpeed: async cps => {
-                const value = typeof cps === "number" ? cps : Number(cps);
-                if (Number.isFinite(value) && value > 0) {
-                    liveGameRef.current?.game.preference.setPreference("cps", value);
-                }
-            },
+            onGetNametag: getCurrentNametag,
+            onNext: nextInGame,
+            onSkip: skipInGame,
+            onShowDialog: showDialogInGame,
+            onHideDialog: hideDialogInGame,
+            onToggleDialogDisplay: toggleDialogDisplayInGame,
+            onSetSentenceSpeed: setSentenceSpeedInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -826,7 +1803,7 @@ export function GameRuntimeApp() {
         });
         hostAdapter = createDevModeBlueprintHostAdapter({
             bundle: pack.bundle,
-            surface: activeSurface,
+            surface,
             runtimeScopeId,
             scopeBridge: core.scopeBridge,
             debug: core.debug,
@@ -849,23 +1826,42 @@ export function GameRuntimeApp() {
             runtimeScopeId,
         } satisfies RuntimeHostAdapterBundle;
     }, [
-        activeEntry,
-        activeSurface,
-        bridge,
-        clearGameAndOpenSurface,
         closeLayer,
         core,
         deleteSave,
+        getCurrentNametag,
         getSaveMetadata,
         getSavePreview,
+        hideDialogInGame,
+        isInGame,
         listSaveIds,
         loadSave,
+        nextInGame,
         openSurface,
         pack,
+        quitApplication,
+        quitGame,
+        setSentenceSpeedInGame,
+        showDialogInGame,
+        skipInGame,
         startStoryInGame,
+        toggleDialogDisplayInGame,
         widgetRuntimeStore,
         writeSave,
     ]);
+
+    const hostAdapterBundle = useMemo(() => {
+        if (!activeEntry || !activeSurface) {
+            return null;
+        }
+        return createHostAdapterBundle(activeEntry, activeSurface);
+    }, [activeEntry, activeSurface, createHostAdapterBundle]);
+
+    const activeSurfaceInteractionReady = Boolean(
+        activeEntry &&
+        interactionReadyKeys.has(activeEntry.key) &&
+        (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)),
+    );
 
     const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
         if (!pack || !core) {
@@ -896,37 +1892,25 @@ export function GameRuntimeApp() {
                     emit: event => core.debug.emit(event),
                     onOpenSurface: openSurface,
                     onCloseLayer: closeLayer,
-                    onQuitApplication: () => bridge?.close(),
+                    onQuitApplication: quitApplication,
                     onStartStory: startStoryInGame,
-                    onIsInGame: () => liveGameRef.current != null,
+                    onIsInGame: isInGame,
                     onIsGameOverlay: () =>
                         input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
-                    onQuitGame: clearGameAndOpenSurface,
+                    onQuitGame: quitGame,
                     onWriteSave: writeSave,
                     onLoadSave: loadSave,
                     onDeleteSave: deleteSave,
                     onListSaveIds: listSaveIds,
                     onGetSaveMetadata: getSaveMetadata,
                     onGetSavePreview: getSavePreview,
-                    onGetNametag: () => null,
-                    onNext: async () => {
-                        const gameState = liveGameRef.current?.getGameState();
-                        const clickTarget = gameState?.mainContentNode ?? gameState?.playerCurrent;
-                        clickTarget?.click();
-                    },
-                    onSkip: async () => liveGameRef.current?.skipDialog(),
-                    onShowDialog: async () => liveGameRef.current?.game.preference.setPreference("showDialog", true),
-                    onHideDialog: async () => liveGameRef.current?.game.preference.setPreference("showDialog", false),
-                    onToggleDialogDisplay: async () => {
-                        const preference = liveGameRef.current?.game.preference;
-                        preference?.setPreference("showDialog", preference.getPreference("showDialog") !== true);
-                    },
-                    onSetSentenceSpeed: async cps => {
-                        const value = typeof cps === "number" ? cps : Number(cps);
-                        if (Number.isFinite(value) && value > 0) {
-                            liveGameRef.current?.game.preference.setPreference("cps", value);
-                        }
-                    },
+                    onGetNametag: getCurrentNametag,
+                    onNext: nextInGame,
+                    onSkip: skipInGame,
+                    onShowDialog: showDialogInGame,
+                    onHideDialog: hideDialogInGame,
+                    onToggleDialogDisplay: toggleDialogDisplayInGame,
+                    onSetSentenceSpeed: setSentenceSpeedInGame,
                     onWidgetPatch: (elementId, patch) => {
                         applyWidgetRuntimePatch({
                             setWidgetPatchesByScope,
@@ -999,18 +1983,26 @@ export function GameRuntimeApp() {
             getWidgetRuntimePatches: input => widgetPatchesByScopeRef.current[input.runtimeScopeId] ?? {},
         };
     }, [
-        bridge,
         closeLayer,
         core,
-        clearGameAndOpenSurface,
         deleteSave,
+        getCurrentNametag,
         getSaveMetadata,
         getSavePreview,
+        hideDialogInGame,
+        isInGame,
         listSaveIds,
         loadSave,
+        nextInGame,
         openSurface,
         pack,
+        quitApplication,
+        quitGame,
+        setSentenceSpeedInGame,
+        showDialogInGame,
+        skipInGame,
         startStoryInGame,
+        toggleDialogDisplayInGame,
         widgetRuntimeStore,
         writeSave,
     ]);
@@ -1020,6 +2012,58 @@ export function GameRuntimeApp() {
         appBootFiredRef.current = null;
         storyEntryStartedRef.current = null;
     }, [pack?.bundle.bundleId, pack?.bundle.revision]);
+
+    useEffect(() => {
+        if (!pack || !activeStoryRequestRef.current) {
+            return;
+        }
+        if (activeStoryRevisionRef.current === pack.bundle.revision) {
+            return;
+        }
+        const request = activeStoryRequestRef.current;
+        void startStoryInGame(request).catch(err => {
+            bridge?.log("error", `[Runtime] Story hot reload restart failed: ${normalizeError(err)}`);
+        });
+    }, [bridge, pack, startStoryInGame]);
+
+    useEffect(() => {
+        const nextBundleId = pack?.bundle.bundleId ?? null;
+        if (cleanupBundleIdRef.current === nextBundleId) {
+            return;
+        }
+        const hadPreviousBundle = cleanupBundleIdRef.current !== null;
+        cleanupBundleIdRef.current = nextBundleId;
+        if (!hadPreviousBundle) {
+            return;
+        }
+        activeStoryRequestRef.current = null;
+        activeStoryRevisionRef.current = null;
+        rejectPendingGameStarts(new Error("Preview runtime session changed"));
+        nlrCharacterPromptTokenRef.current?.cancel();
+        nlrCharacterPromptTokenRef.current = null;
+        nlrDialogVirtualClickTargetRef.current = null;
+        nlrLiveGameRef.current = null;
+        nlrLiveGameSessionIdRef.current = null;
+        clearCurrentDialogNametag();
+        clearDevModeSavePreviewImages();
+        setNlrSession(null);
+        setGameStageVisible(false);
+        clearGameHiddenStudioPages();
+    }, [
+        clearCurrentDialogNametag,
+        clearGameHiddenStudioPages,
+        pack?.bundle.bundleId,
+        rejectPendingGameStarts,
+    ]);
+
+    useEffect(() => {
+        nlrCharacterPromptTokenRef.current?.cancel();
+        nlrCharacterPromptTokenRef.current = null;
+        nlrDialogVirtualClickTargetRef.current = null;
+        nlrLiveGameRef.current = null;
+        nlrLiveGameSessionIdRef.current = null;
+        clearCurrentDialogNametag();
+    }, [clearCurrentDialogNametag, nlrSession?.id]);
 
     useEffect(() => {
         if (!runtimeReady || !pack || !core || !hostAdapterBundle) {
@@ -1046,7 +2090,7 @@ export function GameRuntimeApp() {
     }, [activeEntry, core, hostAdapterBundle, pack, prepaintReadyKeys, runtimeReady]);
 
     useEffect(() => {
-        if (!runtimeReady || !pack || !core || !hostAdapterBundle || !activeSurface) {
+        if (!runtimeReady || !pack || !core || !hostAdapterBundle || !activeSurface || !activeSurfaceInteractionReady) {
             return;
         }
         const dispatchKeyboardEvent = (eventName: "keyDown" | "keyUp", event: KeyboardEvent) => {
@@ -1090,7 +2134,7 @@ export function GameRuntimeApp() {
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
         };
-    }, [activeSurface, bridge, core, hostAdapterBundle, pack, runtimeReady]);
+    }, [activeSurface, activeSurfaceInteractionReady, bridge, core, hostAdapterBundle, pack, runtimeReady]);
 
     if (error) {
         return <RuntimeErrorScreen message={error} />;
@@ -1102,37 +2146,80 @@ export function GameRuntimeApp() {
         return <RuntimeViewportFrame surface={activeSurface} scale={scale} />;
     }
 
+    const visibleSurfaceEntries = pack.bundle.ui.uidoc.surfaces.length > 0
+        ? visibleEntries
+            .filter(entry => !studioPageHiddenForGame || !gameHiddenNavKeys.has(entry.key))
+            .map(entry => {
+                const visibleSurface = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === entry.surfaceId);
+                return visibleSurface ? { entry, surface: visibleSurface } : null;
+            })
+            .filter((item): item is { entry: RuntimeNavEntry; surface: UISurface } => Boolean(item))
+        : [];
+
     return (
         <RuntimeViewportFrame surface={activeSurface} scale={scale}>
             <NlrStageLayer
                 session={nlrSession}
-                interactive={true}
-                onFirstSceneReady={() => undefined}
-                onLiveGameReady={(_sessionId, liveGame) => {
-                    liveGameRef.current = liveGame;
+                interactive={gameStageVisible}
+                onFirstSceneReady={sessionId => {
+                    const pending = pendingGameStartsRef.current.get(sessionId);
+                    if (!pending) {
+                        return;
+                    }
+                    pendingGameStartsRef.current.delete(sessionId);
+                    pending.resolve();
                 }}
-                onError={err => bridge?.log("error", normalizeError(err))}
+                onLiveGameReady={(sessionId, liveGame) => {
+                    if (nlrSession?.id !== sessionId) {
+                        return;
+                    }
+                    nlrCharacterPromptTokenRef.current?.cancel();
+                    nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(({ character }) => {
+                        const nametag = readNlrCharacterName(character);
+                        currentDialogNametagRef.current = nametag;
+                        core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
+                    });
+                    nlrLiveGameRef.current = liveGame;
+                    nlrLiveGameSessionIdRef.current = sessionId;
+                }}
+                onError={err => {
+                    rejectPendingGameStarts(err);
+                    bridge?.log("error", normalizeError(err));
+                }}
             />
-            <div className="absolute inset-0 z-10">
-                <AnimatePresence initial={false} mode="sync">
-                    <RuntimeSurfaceLayer
-                        key={activeEntry.key}
-                        pack={pack}
-                        core={core}
-                        entry={activeEntry}
-                        surface={activeSurface}
-                        rendererRegistry={rendererRegistry}
-                        scale={scale}
-                        hostAdapterBundle={hostAdapterBundle}
-                        widgetPatchesByScope={widgetPatchesByScope}
-                        widgetPatchesByScopeRef={widgetPatchesByScopeRef}
-                        widgetRuntimeStore={widgetRuntimeStore}
-                        lifecycleRef={lifecycleRef}
-                        nestedSurfaceRuntime={nestedSurfaceRuntime}
-                        blueprintLifecycleReady={prepaintReadyKeys.has(activeEntry.key)}
-                        reducedMotion={prefersReducedMotion === true}
-                        onPrepaintReady={markSurfacePrepaintReady}
-                    />
+            <div className="pointer-events-none absolute inset-0 z-10">
+                <AnimatePresence
+                    custom={transitionDirectionRef.current}
+                    initial={false}
+                    mode={surfacePresenceMode}
+                    onExitComplete={handleSurfaceExitComplete}
+                >
+                    {visibleSurfaceEntries.map(({ entry, surface }, layerIndex) => {
+                        return (
+                            <RuntimeSurfaceLayerWithAdapter
+                                key={entry.key}
+                                pack={pack}
+                                core={core}
+                                entry={entry}
+                                layerIndex={layerIndex}
+                                surface={surface}
+                                rendererRegistry={rendererRegistry}
+                                scale={scale}
+                                createHostAdapterBundle={createHostAdapterBundle}
+                                widgetPatchesByScope={widgetPatchesByScope}
+                                widgetPatchesByScopeRef={widgetPatchesByScopeRef}
+                                widgetRuntimeStore={widgetRuntimeStore}
+                                lifecycleRef={lifecycleRef}
+                                nestedSurfaceRuntime={nestedSurfaceRuntime}
+                                blueprintLifecycleReady={prepaintReadyKeys.has(entry.key)}
+                                reducedMotion={prefersReducedMotion === true}
+                                active={entry.key === activeEntry.key}
+                                onInteractionReadyChange={handleSurfaceInteractionReadyChange}
+                                onPrepaintReady={handleSurfaceLayerPrepaintReady}
+                                onEnterComplete={markActiveEnterComplete}
+                            />
+                        );
+                    })}
                 </AnimatePresence>
             </div>
         </RuntimeViewportFrame>

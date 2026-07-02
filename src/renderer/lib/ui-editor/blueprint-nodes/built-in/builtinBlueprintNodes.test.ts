@@ -4888,6 +4888,40 @@ describe("built-in blueprint nodes", () => {
             transition: { type: "tween", durationMs: 300, delayMs: 0 },
         });
 
+        const animateOpacityOnePercentNode = {
+            id: "animateOpacityOnePercent",
+            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+            params: {
+                property: "opacity",
+                from: 0,
+                to: 1,
+                duration: 0.3,
+                delay: 0,
+                easing: "easeOut",
+                after: "hold",
+            },
+        };
+        await Promise.resolve(
+            animateOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "animateOpacityOnePercent", port: "in" } } },
+                    nodes: { animateOpacityOnePercent: animateOpacityOnePercentNode },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "animateOpacityOnePercent", port: "in" } },
+                node: animateOpacityOnePercentNode,
+                params: animateOpacityOnePercentNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayableMotion).toMatchObject({
+            target: { opacity: [0, 0.01] },
+            transition: { type: "tween", durationMs: 300, delayMs: 0 },
+        });
+
         const setOffset = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY)!;
         await Promise.resolve(
             setOffset.execute({
@@ -5323,6 +5357,46 @@ describe("built-in blueprint nodes", () => {
         expect(displayableMotionCall).toMatchObject({
             elementId: "target",
             target: { opacity: { from: "current", to: 0.5 } },
+            transition: { type: "tween", durationMs: 200, delayMs: 0 },
+        });
+
+        const animateOnePercentNode = {
+            id: "animateOnePercent",
+            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+            params: {
+                property: "opacity",
+                from: 0,
+                to: 1,
+                duration: 0.2,
+                delay: 0,
+                easing: "easeOut",
+                after: "hold",
+            },
+        };
+        await Promise.resolve(
+            animateElementOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "animateOnePercent", port: "in" } } },
+                    nodes: { ref: refNode, animateOnePercent: animateOnePercentNode },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "animateOnePercent", port: "element" },
+                        },
+                    ],
+                },
+                entry: { start: { nodeId: "animateOnePercent", port: "in" } },
+                node: animateOnePercentNode,
+                params: animateOnePercentNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayableMotionCall).toMatchObject({
+            elementId: "target",
+            target: { opacity: [0, 0.01] },
             transition: { type: "tween", durationMs: 200, delayMs: 0 },
         });
     });

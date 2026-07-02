@@ -143,6 +143,12 @@ export class WidgetRuntimeStateStore {
         }
     }
 
+    private emitRuntimePatches(): void {
+        for (const fn of this.runtimePatchListeners) {
+            fn();
+        }
+    }
+
     notifyRuntimePatchesChanged(options?: { widgetStateChanged?: boolean }): void {
         if (options?.widgetStateChanged) {
             this.snapshot = this.rebuildSnapshot();
@@ -150,9 +156,7 @@ export class WidgetRuntimeStateStore {
                 fn();
             }
         }
-        for (const fn of this.runtimePatchListeners) {
-            fn();
-        }
+        this.emitRuntimePatches();
     }
 
     private getPrimaryHoverTargetId(): string | null {
@@ -176,6 +180,34 @@ export class WidgetRuntimeStateStore {
             return;
         }
         this.emit();
+    }
+
+    clearInteractionStateForScope(runtimeScopeId?: string | null): void {
+        const prefix = runtimeScopeId ? `${runtimeScopeId}\0` : null;
+        let changed = false;
+        const belongsToScope = (id: string | null): boolean =>
+            id != null && (prefix ? id.startsWith(prefix) : true);
+
+        for (const id of [...this.hoverTargetIds]) {
+            if (belongsToScope(id)) {
+                this.hoverTargetIds.delete(id);
+                changed = true;
+            }
+        }
+
+        if (belongsToScope(this.activePointerId)) {
+            this.activePointerId = null;
+            changed = true;
+        }
+
+        if (belongsToScope(this.focusedId)) {
+            this.focusedId = null;
+            changed = true;
+        }
+
+        if (changed) {
+            this.emit();
+        }
     }
 
     setActivePointerTarget(id: string | null): void {
@@ -292,6 +324,7 @@ export class WidgetRuntimeStateStore {
         };
         this.displayableMotions.set(elementId, next);
         this.emit();
+        this.emitRuntimePatches();
         return next;
     }
 
@@ -305,6 +338,7 @@ export class WidgetRuntimeStateStore {
         }
         if (!options?.silent) {
             this.emit();
+            this.emitRuntimePatches();
         }
         return true;
     }
@@ -316,6 +350,7 @@ export class WidgetRuntimeStateStore {
             }
             this.displayableMotions.delete(elementId);
             this.emit();
+            this.emitRuntimePatches();
             return { elementId, motion };
         }
         return null;
@@ -328,6 +363,7 @@ export class WidgetRuntimeStateStore {
         }
         this.displayableMotions.delete(elementId);
         this.emit();
+        this.emitRuntimePatches();
     }
 
     getSignalsForElement(elementId: string, interactionDisabled: boolean | undefined): SystemInteractionSignals {

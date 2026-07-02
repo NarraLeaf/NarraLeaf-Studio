@@ -407,6 +407,21 @@ function displayableMotionWaitMs(transition: UIDisplayableMotionTransition | nul
     return delay + 300;
 }
 
+function hasExplicitDisplayableMotionKeyframes(target: UIDisplayableMotionTarget): boolean {
+    return Object.values(target).some(value => Array.isArray(value));
+}
+
+function waitForDisplayableMotionStartFrame(): Promise<void> {
+    if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+        return Promise.resolve();
+    }
+    return new Promise(resolve => {
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => resolve());
+        });
+    });
+}
+
 function variantWaitMs(variant: AppearanceVariant | null): number {
     if (!variant) {
         return 0;
@@ -1778,30 +1793,35 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     const heldOpacity = request.resetOnComplete
                         ? undefined
                         : finalDisplayableMotionValue(request.target.opacity);
+                    const waitMs = displayableMotionWaitMs(request.transition) * (request.resetOnComplete ? 2 : 1);
+                    if (waitMs > 0 && hasExplicitDisplayableMotionKeyframes(request.target)) {
+                        await waitForDisplayableMotionStartFrame();
+                    }
                     const motion = widgetRuntimeStore.setDisplayableMotion(
                         scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
                         request,
                     );
-                    if (heldOpacity !== undefined) {
-                        const opacity = normalizeDisplayableOpacity(heldOpacity);
-                        const previousPatch = runtimePatches.get(elementId) ?? {};
-                        const nextPatch: DevModeWidgetRuntimePatch = {
-                            ...previousPatch,
-                            layout: {
-                                ...(previousPatch.layout ?? {}),
-                                opacity,
-                            },
-                        };
-                        runtimePatches.set(elementId, nextPatch);
-                        emitWidgetPatch(elementId, nextPatch);
-                        if (current.opacity !== opacity) {
-                            scheduleElementFlush(elementId);
+                    const waitReason = await waitForDisplayableAnimation(motion.id, waitMs);
+                    if (waitReason === "completed" && heldOpacity !== undefined) {
+                        const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+                        const currentMotion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
+                        if (currentMotion?.id === motion.id) {
+                            const opacity = normalizeDisplayableOpacity(heldOpacity);
+                            const previousPatch = runtimePatches.get(elementId) ?? {};
+                            const nextPatch: DevModeWidgetRuntimePatch = {
+                                ...previousPatch,
+                                layout: {
+                                    ...(previousPatch.layout ?? {}),
+                                    opacity,
+                                },
+                            };
+                            runtimePatches.set(elementId, nextPatch);
+                            emitWidgetPatch(elementId, nextPatch);
+                            if (current.opacity !== opacity) {
+                                scheduleElementFlush(elementId);
+                            }
                         }
                     }
-                    const waitReason = await waitForDisplayableAnimation(
-                        motion.id,
-                        displayableMotionWaitMs(request.transition) * (request.resetOnComplete ? 2 : 1),
-                    );
                     const commitLayoutOnComplete = request.resetOnComplete ? undefined : request.commitLayoutOnComplete;
                     if (waitReason === "completed" && commitLayoutOnComplete) {
                         const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);

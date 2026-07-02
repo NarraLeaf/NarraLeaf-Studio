@@ -636,6 +636,43 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         });
     });
 
+    it("commits held Displayable opacity only after natural animation completion", async () => {
+        vi.useFakeTimers();
+        try {
+            const store = new WidgetRuntimeStateStore();
+            const onWidgetPatch = vi.fn();
+            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope", onWidgetPatch });
+            await hostApi.widget.setDisplayableProperties("image", { opacity: 0 });
+            onWidgetPatch.mockClear();
+
+            const animation = hostApi.widget.animateDisplayable("image", {
+                target: { opacity: [0, 1] },
+                transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
+                resetOnComplete: false,
+            });
+
+            await vi.advanceTimersByTimeAsync(16);
+            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+                target: { opacity: [0, 1] },
+            });
+            expect(onWidgetPatch).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(83);
+            expect(onWidgetPatch).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(1);
+            await expect(animation).resolves.toMatchObject({
+                target: { opacity: [0, 1] },
+            });
+            expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
+                layout: { opacity: 1 },
+            });
+            expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("treats Image Variant fill opacity as Displayable opacity without hiding the inner image fill", async () => {
         const document = createDocument();
         const image = document.elements.image!;
@@ -1016,11 +1053,12 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
                 return result;
             });
 
+            await vi.advanceTimersByTimeAsync(16);
             expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
                 target: { opacity: [0, 1] },
                 transition: { type: "tween", durationMs: 120, delayMs: 30, easing: "linear" },
             });
-            await vi.advanceTimersByTimeAsync(299);
+            await vi.advanceTimersByTimeAsync(283);
             expect(resolved).toBe(false);
             await vi.advanceTimersByTimeAsync(1);
             await expect(animation).resolves.toMatchObject({
@@ -1045,6 +1083,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
                 commitLayoutOnComplete: { x: 100 },
             });
 
+            await vi.advanceTimersByTimeAsync(16);
             expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
                 target: { x: [0, 100] },
             });

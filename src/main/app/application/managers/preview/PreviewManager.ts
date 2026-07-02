@@ -251,13 +251,22 @@ export class PreviewManager {
             return;
         }
         const projectPath = session.projectPath;
+        const uidocPath = path.join(projectPath, "editor", "ui", "uidoc.json");
+        const uigraphsPath = path.join(projectPath, "editor", "ui", "uigraphs.json");
+        const storyRoot = path.join(projectPath, "editor", "story");
+        const characterStorePath = path.join(projectPath, "editor", "services", "character.json");
+        const assetsRoot = path.join(projectPath, "assets");
+        const blueprintMetaPath = path.join(assetsRoot, "assets.metadata.blueprint.json");
+        const assetsContentRoot = path.join(assetsRoot, "content");
         session.watcher = chokidar.watch(
             [
-                path.join(projectPath, "editor", "ui", "uidoc.json"),
-                path.join(projectPath, "editor", "ui", "uigraphs.json"),
-                path.join(projectPath, "editor", "story"),
-                path.join(projectPath, "editor", "services", "character.json"),
-                path.join(projectPath, "assets"),
+                uidocPath,
+                uigraphsPath,
+                storyRoot,
+                characterStorePath,
+                blueprintMetaPath,
+                assetsContentRoot,
+                assetsRoot,
             ],
             { ignoreInitial: true },
         );
