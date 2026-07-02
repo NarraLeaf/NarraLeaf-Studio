@@ -6,7 +6,7 @@
 
 键盘事件由运行时窗口级监听派发，不依赖元素焦点。Global 蓝图、当前 active Surface 蓝图，以及已挂载控件的私有蓝图都会收到对应键盘事件；如果多处都放置事件 Head，它们会分别执行。控件私有蓝图的键盘监听随控件挂载注册，控件卸载时自动移除。
 
-元素事件只从当前元素自己的可交互区域触发，不会冒泡接管子元素事件；控件处于禁用或文本编辑等不可交互状态时不会派发对应 Events Head。
+元素事件只从当前元素自己的可交互区域触发，不会默认冒泡接管子元素事件；控件处于禁用或文本编辑等不可交互状态时不会派发对应 Events Head。需要把当前接入的元素事件继续交给父元素时，在子元素的事件图中使用 Element 分类的 `Continue Event Bubble` 节点；它会沿用当前事件名和原始 payload 派发到结构父元素。
 
 在可视化编辑器中，画布右键 Add Node 菜单会按当前 Blueprint owner 和 widget event slot 显示可用 Events Head。左侧 `Layers > New` 也提供可选的 Event 字段，默认 `-` 表示只创建空图层；只有显式选择事件时才会自动插入对应 Events Head。
 
@@ -83,7 +83,7 @@
 
 `blueprint.event.head.init` - 元素初始化事件
 
-当支持私有蓝图的元素在 Dev Mode runtime 中挂载时触发一次。在 Blueprint Value 中，`init` 作为初始求值入口；后续可以由隐藏的 Element 属性依赖调度，也可以由 `On Flush` 显式刷新入口调度。
+当支持私有蓝图的元素在 Dev Mode runtime 中完成首次渲染并挂载后触发一次；它不是渲染前 hook。Dev Mode bundle revision 刷新导致对应 Surface / 元素 remount 时会再次触发。在 Blueprint Value 中，`init` 作为初始求值入口；后续可以由隐藏的 Element 属性依赖调度，也可以由 `On Flush` 显式刷新入口调度。
 - `then` - 执行出口
 
 ## Mouse Click

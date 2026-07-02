@@ -219,7 +219,7 @@ describe("storyModel", () => {
         ]);
         const positionTrack = normalized.timeline?.tracks.find(track => track.property === "position");
         const zoomTrack = normalized.timeline?.tracks.find(track => track.property === "zoom");
-        expect(normalized.timeline?.fps).toBe(30);
+        expect(normalized.timeline?.fps).toBeUndefined();
         expect(positionTrack?.keyframes).toEqual([
             expect.objectContaining({
                 timeMs: 470,
@@ -247,7 +247,6 @@ describe("storyModel", () => {
             targetKind: "character",
             sequences: [],
             timeline: {
-                fps: 60,
                 durationMs: 500,
                 tracks: [
                     {
@@ -277,7 +276,6 @@ describe("storyModel", () => {
         } as any, now);
 
         expect(normalized.timeline).toEqual({
-            fps: 60,
             durationMs: 500,
             tracks: [
                 {

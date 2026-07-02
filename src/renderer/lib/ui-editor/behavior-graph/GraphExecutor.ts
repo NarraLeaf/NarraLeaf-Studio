@@ -23,6 +23,7 @@ export type ExecuteGraphOptions = {
     maxSteps?: number;
     trace?: BehaviorGraphExecutionTrace;
     blueprintLocals?: Record<string, unknown>;
+    eventName?: string;
     eventPayload?: Record<string, unknown>;
     listItemScope?: BehaviorNodeExecutionContext["listItemScope"];
     instanceKey?: string;
@@ -108,6 +109,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             hostAdapter,
             trace,
             blueprintLocals,
+            eventName: options.eventName,
             eventPayload: options.eventPayload,
             signal: options.signal,
             listItemScope: options.listItemScope,

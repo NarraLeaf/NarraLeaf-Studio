@@ -2,13 +2,13 @@
 
 Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog 推进，以及访问当前 Studio 项目隔离的本地存档。除非额外声明，所有参数均为传入引脚值；标注（传出引脚）的参数为传出值。
 
-本页节点均通过 Blueprint Host API 执行。`Get Nametag` 是纯读取节点，可用于 Blueprint Value；其余 Game 执行节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
+本页节点均通过 Blueprint Host API 执行。`Get Nametag` 与 `Is In Game` 是纯读取节点，可用于 Blueprint Value；其余 Game 执行节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
 
 ## Start Game
 
 `blueprint.game.startStory` - Start Game
 
-启动节点参数中选择的 Story / Scene，并切换到游戏舞台。它是执行尾节点，没有后续执行出口。
+启动节点参数中选择的 Story / Scene，并切换到游戏舞台。游戏首帧 ready 后，当前应用 Page 栈会作为游戏底层隐藏；之后调用 `Go Page` 会把目标 Page 叠加在游戏舞台之上，而不是替换游戏舞台。它是执行尾节点，没有后续执行出口。
 
 - `in` - 执行入口
 - `Story` - 节点参数，目标 Story id
@@ -23,6 +23,27 @@ Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog
 - `nametag` - `string | null`（传出引脚），当前说话人名字；没有说话人时为 `null`
 
 该节点是 pure 节点，可放入 Blueprint Value 或普通事件图。默认 Dialog 模板会创建普通 `nl.text` Nametag，并在它自己的 widgetMain 蓝图中用 `Init` / `On Flush -> Get Nametag -> Not Null -> If` 自动更新文本与透明度；不再需要特殊私有 `Nametag` widget，也不再依赖 Blueprint Value。Dialog 控件不重新挂载时，游戏推进产生的 Dialog hook 变化仍会触发该 flush 路径。
+
+## Is In Game
+
+`blueprint.game.isInGame` - Is In Game
+
+读取当前 Dev Mode 是否处于 NarraLeaf 游戏状态。只要游戏舞台可见并且存在当前 NarraLeaf session 就返回 `true`；即使上方打开了 Page UI 叠层也仍为 `true`。普通 Page 预览、游戏尚未启动、退出游戏后都返回 `false`。
+
+- `isInGame` - `boolean`（传出引脚），当前是否处于 NarraLeaf 游戏状态
+
+该节点是 pure 节点，可放入 Blueprint Value 或普通事件图，用于在界面中按游戏状态切换文案、可见性或逻辑分支。
+
+## Quit Game
+
+`blueprint.game.quit` - Quit Game
+
+退出当前 NarraLeaf 游戏状态，并打开节点卡片中选择的返回 Page。它会清理当前 live game/session 引用、取消仍在等待的游戏启动请求、清空当前 Dialog nametag，同步恢复普通 Page 显示，然后通过 Page 导航打开目标 Page。它是执行尾节点，没有后续执行出口。
+
+- `in` - 执行入口
+- `Page` - 节点参数，退出游戏后返回的 Page id
+
+`Page` 必须选择有效值。该节点不要求作者额外连接 `Go Page`；退出和导航由同一次 Host API 调用完成。
 
 ## Next
 
@@ -43,6 +64,39 @@ Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog
 
 - `in` - 执行入口
 - `next` - Skip 请求完成后的执行出口
+
+没有活动 game runtime 时执行失败。
+
+## Show Dialog
+
+`blueprint.game.showDialog` - Show Dialog
+
+通过 NarraLeaf React Preference API 将 `showDialog` preference 设为 `true`，让当前 Dialog UI 恢复显示。该节点只改写 NarraLeaf runtime preference，不修改 Studio UI 文档，也不推进对话。
+
+- `in` - 执行入口
+- `next` - 显示请求完成后的执行出口
+
+没有活动 game runtime 时执行失败。
+
+## Hide Dialog
+
+`blueprint.game.hideDialog` - Hide Dialog
+
+通过 NarraLeaf React Preference API 将 `showDialog` preference 设为 `false`，隐藏当前 Dialog UI。隐藏后 Dialog wrapper 仍保留 NarraLeaf React 的交互语义；作者可以继续用 `Next`、`Skip` 或再次调用 `Show Dialog` / `Toggle Dialog Display` 控制流程。
+
+- `in` - 执行入口
+- `next` - 隐藏请求完成后的执行出口
+
+没有活动 game runtime 时执行失败。
+
+## Toggle Dialog Display
+
+`blueprint.game.toggleDialogDisplay` - Toggle Dialog Display
+
+读取当前 NarraLeaf React `showDialog` preference 并写入相反值，用于在同一个 UI 控件上切换 Dialog 显示状态。该节点不会改变对话内容、nametag 状态或 sentence speed。
+
+- `in` - 执行入口
+- `next` - 切换请求完成后的执行出口
 
 没有活动 game runtime 时执行失败。
 
@@ -75,7 +129,7 @@ Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog
 
 `blueprint.game.save.load` - Load Save
 
-读取指定本地存档并放弃当前游戏进度，按 NarraLeaf 渲染器语义清理当前 router / history 后创建新游戏实例并 `deserialize(savedGame)`。读取完成后等待当前 router exit，然后停在该节点；它是执行尾节点，没有 `next` 出口。
+读取指定本地存档并放弃当前游戏进度，按 NarraLeaf 渲染器语义清理当前 router / history 后创建新游戏实例并 `deserialize(savedGame)`。读取完成后等待当前 router exit，重新隐藏当前应用 Page 栈并保留游戏舞台作为背景；之后调用 `Go Page` 会打开游戏上方 UI 叠层。该节点停在自身；它是执行尾节点，没有 `next` 出口。
 
 - `in` - 执行入口
 - `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖

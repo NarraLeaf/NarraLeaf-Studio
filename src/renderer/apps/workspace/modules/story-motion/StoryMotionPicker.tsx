@@ -10,6 +10,9 @@ import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import { Select } from "@/lib/components/elements/Select";
+import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
+import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { createStoryMotionEditorTab } from "./StoryMotionEditorTab";
 import type { StoryMotionActionContext } from "./storyMotionTypes";
 import {
@@ -18,11 +21,11 @@ import {
     createStoryMotionTemplateTimeline,
     getStoryMotionDurationMs,
     getStoryMotionPropertyMeta,
+    isStoryMotionEditableProperty,
 } from "./storyMotionTimeline";
 
-const ICON_BUTTON_CLASS = "inline-grid h-8 w-8 place-items-center rounded border border-white/10 bg-white/[0.04] text-slate-300 hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
+const ICON_BUTTON_CLASS = controlButtonClass();
 const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded border border-white/10 bg-white/[0.04] px-2 text-xs text-slate-200 hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
-const INPUT_CLASS = "h-8 rounded border border-white/10 bg-[#17191d] px-2 text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:border-primary/50";
 
 export function StoryMotionPicker(props: {
     value: StoryTransformRef | undefined;
@@ -43,6 +46,10 @@ export function StoryMotionPicker(props: {
     const [pickerOpen, setPickerOpen] = useState(false);
     const [query, setQuery] = useState("");
     const [template, setTemplate] = useState<typeof STORY_MOTION_TEMPLATES[number]>("Fade in + slide");
+    const templateOptions = useMemo(() => STORY_MOTION_TEMPLATES.map(option => ({
+        value: option,
+        label: option,
+    })), []);
 
     useEffect(() => {
         if (!storyService) {
@@ -167,22 +174,22 @@ export function StoryMotionPicker(props: {
             {pickerOpen ? (
                 <div className="mt-2 rounded-lg border border-white/10 bg-[#101216] p-2 shadow-xl">
                     <div className="flex items-center gap-2">
-                        <div className="relative min-w-0 flex-1">
-                            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
-                            <input
-                                className={`${INPUT_CLASS} w-full pl-7`}
-                                value={query}
-                                onChange={event => setQuery(event.target.value)}
-                                placeholder="Search story motions"
-                            />
-                        </div>
-                        <select
-                            className={`${INPUT_CLASS} w-36`}
+                        <EnhancedInput
+                            className="flex-1"
+                            value={query}
+                            onChange={setQuery}
+                            placeholder="Search story motions"
+                            leftIcon={<Search className="h-3.5 w-3.5 text-slate-500" />}
+                        />
+                        <Select
+                            className="w-44"
+                            size="sm"
+                            options={templateOptions}
                             value={template}
-                            onChange={event => setTemplate(event.target.value as typeof STORY_MOTION_TEMPLATES[number])}
-                        >
-                            {STORY_MOTION_TEMPLATES.map(option => <option key={option} value={option}>{option}</option>)}
-                        </select>
+                            onChange={value => setTemplate(value as typeof STORY_MOTION_TEMPLATES[number])}
+                            portalMenu
+                            menuZIndex={80}
+                        />
                         <button className={TOOL_BUTTON_CLASS} type="button" onClick={createAndBind} disabled={!storyService}>
                             <Plus className="h-3.5 w-3.5" />
                             Create
@@ -220,7 +227,7 @@ export function StoryMotionPicker(props: {
 
 function motionSummary(asset: StoryAnimationAsset): string {
     const durationMs = getStoryMotionDurationMs(asset.timeline);
-    const tracks = asset.timeline?.tracks ?? [];
+    const tracks = (asset.timeline?.tracks ?? []).filter(track => isStoryMotionEditableProperty(track.property));
     const labels = tracks
         .slice(0, 3)
         .map(track => getStoryMotionPropertyMeta(track.property).label)

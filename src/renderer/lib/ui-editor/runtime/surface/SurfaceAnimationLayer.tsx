@@ -14,6 +14,7 @@ import type {
 } from "@/lib/ui-editor/runtime/pageAnimation";
 
 export const SURFACE_PREPAINT_TIMEOUT_MS = 900;
+const SURFACE_PREPAINT_FRAME_TIMEOUT_MS = 50;
 
 type SurfaceAnimationLayerProps = {
     prepaintKey: string;
@@ -34,10 +35,26 @@ type SurfaceAnimationLayerProps = {
 };
 
 function waitForAnimationFrame(): Promise<void> {
-    if (typeof requestAnimationFrame !== "function") {
-        return new Promise(resolve => setTimeout(resolve, 0));
-    }
-    return new Promise(resolve => requestAnimationFrame(() => resolve()));
+    return new Promise(resolve => {
+        let resolved = false;
+        const timeoutId = setTimeout(() => {
+            resolved = true;
+            resolve();
+        }, SURFACE_PREPAINT_FRAME_TIMEOUT_MS);
+
+        if (typeof requestAnimationFrame !== "function") {
+            return;
+        }
+
+        requestAnimationFrame(() => {
+            if (resolved) {
+                return;
+            }
+            resolved = true;
+            clearTimeout(timeoutId);
+            resolve();
+        });
+    });
 }
 
 function waitWithTimeout(promise: Promise<unknown>, timeoutMs: number): Promise<void> {

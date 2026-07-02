@@ -15,6 +15,7 @@ import {
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import { createExplicitBlueprintVariableRef } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 import { evaluateBlueprintValue, validateBlueprintValueGraphSafe } from "./BlueprintValueEvaluator";
 
 function returnGraph(value: string): BlueprintGraphIr {
@@ -92,10 +93,12 @@ function hostAdapter(text = "Bound text", onSetText?: () => void, sliderValue = 
                     },
                     getDisplayableProperties: () => ({
                         position: { x: 0, y: 0 },
+                        offset: { x: 0, y: 0 },
                         size: { width: 100, height: 40 },
                         bounds: { x: 0, y: 0, width: 100, height: 40 },
                         rotation: 0,
                         opacity: 1,
+                        display: true,
                         visible: true,
                     }),
                     getSliderProperties: () => ({
@@ -172,21 +175,12 @@ describe("Blueprint Value evaluator", () => {
         });
     });
 
-    it("initializes local variables from Var declaration nodes", async () => {
+    it("initializes accessible variables from non-Value Var declaration nodes", async () => {
+        const surfaceVariableRef = createExplicitBlueprintVariableRef("bp-surface", "title");
         const graph: BlueprintGraphIr = {
             nodes: {
-                declare: {
-                    id: "declare",
-                    type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
-                    params: {
-                        variableId: "title",
-                        name: "Title",
-                        valueType: "string",
-                        defaultValue: "from-default",
-                    },
-                },
                 head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, params: {} },
-                get: { id: "get", type: BLUEPRINT_NODE_TYPE_LOCAL_GET, params: { variableId: "title" } },
+                get: { id: "get", type: BLUEPRINT_NODE_TYPE_LOCAL_GET, params: { variableId: surfaceVariableRef } },
                 ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
             },
             edges: [
@@ -194,8 +188,48 @@ describe("Blueprint Value evaluator", () => {
                 { from: { nodeId: "get", port: "value" }, to: { nodeId: "ret", port: "value" } },
             ],
         };
+        const doc = valueDocument(graph);
+        doc.blueprints["bp-surface"] = {
+            id: "bp-surface",
+            name: "Surface",
+            owner: { kind: "surfaceMain", surfaceId: "surface" },
+            frontend: "visual",
+            programKind: "graph",
+            members: { variables: {}, fields: {}, functions: {} },
+            program: {
+                kind: "graph",
+                graphs: {
+                    events: {
+                        init: {
+                            id: "init",
+                            graph: {
+                                nodes: {
+                                    declare: {
+                                        id: "declare",
+                                        type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                                        params: {
+                                            variableId: "title",
+                                            name: "Title",
+                                            valueType: "string",
+                                            defaultValue: "from-default",
+                                        },
+                                    },
+                                },
+                                edges: [],
+                            },
+                        },
+                    },
+                    functions: {},
+                },
+            },
+        };
+        doc.ownerRecords["surfaceMain:surface"] = {
+            activeBlueprintId: "bp-surface",
+            privateBlueprintIds: ["bp-surface"],
+            initializedFrontend: "visual",
+        };
 
-        await expect(evalValue(valueDocument(graph))).resolves.toMatchObject({
+        await expect(evalValue(doc)).resolves.toMatchObject({
             returned: true,
             value: "from-default",
         });

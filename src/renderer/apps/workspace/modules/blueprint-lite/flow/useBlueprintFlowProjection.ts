@@ -128,6 +128,19 @@ export function applyBlueprintFlowNodeSelection(
     return withSelection.map(n => ({ ...n, zIndex: readBlueprintFlowNodeZIndex(n) }));
 }
 
+export function blueprintElementPreviewsSignature(
+    elementPreviews: Record<string, BlueprintFlowNodeData["elementPreview"]> | undefined,
+): string {
+    return Object.entries(elementPreviews ?? {})
+        .map(([nodeId, item]) =>
+            `${nodeId}:${item?.revisionKey ?? ""}:${item?.name ?? ""}:${item?.type ?? ""}:${item?.text ?? ""}:${
+                item?.layout?.width ?? ""
+            }:${item?.layout?.height ?? ""}`,
+        )
+        .sort()
+        .join("\x1e");
+}
+
 function isDataEdge(
     ir: BlueprintGraphIr,
     e: BlueprintGraphEdge,

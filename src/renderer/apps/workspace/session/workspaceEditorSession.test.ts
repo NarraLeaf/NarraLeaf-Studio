@@ -64,7 +64,7 @@ function createDocument(): UIDocument {
     };
 }
 
-function createRestoreHarness(options: { blueprints?: Record<string, unknown>; storyExists?: boolean } = {}) {
+function createRestoreHarness(options: { blueprints?: Record<string, unknown>; storyExists?: boolean; motionExists?: boolean } = {}) {
     const document = createDocument();
     const services = {
         get: vi.fn((service: Services) => {
@@ -81,6 +81,9 @@ function createRestoreHarness(options: { blueprints?: Record<string, unknown>; s
             if (service === Services.Story) {
                 return {
                     getStoryEntry: () => (options.storyExists ? { id: "story-1", name: "Story" } : undefined),
+                    listAnimationAssets: () => options.motionExists
+                        ? [{ id: "motion-1", name: "Motion", targetKind: "image", updatedAt: "2026-07-01T00:00:00.000Z" }]
+                        : [],
                 };
             }
             throw new Error(`Unexpected service: ${service}`);
@@ -147,6 +150,7 @@ describe("workspace editor session", () => {
     it("restores only tabs that can be resolved in the current project", () => {
         const { context, store, uiService } = createRestoreHarness({
             blueprints: { "blueprint-1": { id: "blueprint-1" } },
+            motionExists: true,
         });
         const session: WorkspaceEditorSessionV1 = {
             version: 1,
@@ -168,14 +172,24 @@ describe("workspace editor session", () => {
                     title: "Missing Story",
                     payload: { storyId: "missing-story", sceneId: "scene-1" },
                 },
+                {
+                    kind: "storyMotion",
+                    title: "Story Motion",
+                    payload: { animationId: "motion-1" },
+                },
             ],
         };
 
-        expect(restoreWorkspaceEditorSession(context, session, uiService as any)).toBe(1);
-        expect(store.openEditorTabInGroup).toHaveBeenCalledTimes(1);
+        expect(restoreWorkspaceEditorSession(context, session, uiService as any)).toBe(2);
+        expect(store.openEditorTabInGroup).toHaveBeenCalledTimes(2);
         expect(store.openEditorTabInGroup.mock.calls[0][0]).toMatchObject({
             id: "blueprint-entry:blueprint-1:surface-1:~:~",
             title: "Surface Logic",
+        });
+        expect(store.openEditorTabInGroup.mock.calls[1][0]).toMatchObject({
+            id: "story-motion:motion-1",
+            title: "Story Motion",
+            payload: { animationId: "motion-1" },
         });
         expect(store.setActiveEditorTabInGroup).toHaveBeenCalledWith(
             "blueprint-entry:blueprint-1:surface-1:~:~",

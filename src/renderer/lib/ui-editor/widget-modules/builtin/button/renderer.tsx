@@ -172,6 +172,14 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     const rl = buttonResolvedVisualToRectangleLike(v);
     const rt = hostAdapter.blueprintRuntime;
     const canDispatchClick = Boolean(rt && !interactionDisabled);
+    const resolvedCursor =
+        interactionDisabled
+            ? "not-allowed"
+            : v.cursor === "auto"
+              ? canDispatchClick
+                  ? "pointer"
+                  : "default"
+              : v.cursor;
     const dispatchClick =
         canDispatchClick && !isEditing
             ? () => {
@@ -426,7 +434,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
             appearanceTransitions={appearanceTransitions}
             rootOpacityFactor={interactionDisabled ? 0.45 : 1}
             extraRootStyle={{
-                cursor: canDispatchClick ? "pointer" : interactionDisabled ? "not-allowed" : "default",
+                cursor: resolvedCursor,
             }}
             extraRootProps={{
                 ...blueprintEventRootProps,

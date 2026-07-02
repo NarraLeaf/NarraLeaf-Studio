@@ -58,6 +58,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
@@ -85,6 +86,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT_VERTICAL_ALIGN,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_WRAP_MODE,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
@@ -93,9 +95,11 @@ import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
+    BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
@@ -143,6 +147,7 @@ import {
     BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER,
     BLUEPRINT_NODE_TYPE_MATH_ROUND,
     BLUEPRINT_NODE_TYPE_MATH_SUBTRACT,
+    BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
     BLUEPRINT_NODE_TYPE_STRING_CAPITALIZE,
     BLUEPRINT_NODE_TYPE_STRING_CHAR_AT,
     BLUEPRINT_NODE_TYPE_STRING_CONCAT,
@@ -212,6 +217,10 @@ import {
     normalizeBlueprintElementRefValue,
     readBlueprintElementRefParams,
 } from "./elementRefUtils";
+import {
+    BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID,
+    createDelayTimerToken,
+} from "./flowTimerTokens";
 
 const MAX_RESOLVE_DEPTH = 32;
 const MAX_REPEAT_COUNT = 10000;
@@ -265,6 +274,7 @@ const COMPARE_OPS: Record<string, "eq" | "ne" | "gt" | "gte" | "lt" | "lte"> = {
 };
 
 export type DataPinGraph = {
+    id?: string;
     edges?: Array<{ from: { nodeId: string; port: string }; to: { nodeId: string; port: string } }>;
     nodes?: Record<string, { type: string; params?: Record<string, unknown> }>;
 };
@@ -278,6 +288,7 @@ export type DataPinResolveRuntime = {
         surfaceId?: string;
         elementId?: string;
         blueprintId?: string;
+        componentId?: string;
     };
     valueExecution?: BehaviorGraphValueExecution;
 };
@@ -1295,14 +1306,24 @@ function resolveFrameNodeOutput(
     return key ? api.frame.getParam(key) : null;
 }
 
+function resolvePageNodeOutput(portId: string, runtime?: DataPinResolveRuntime): unknown {
+    if (portId !== "props") {
+        return undefined;
+    }
+    return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.navigation.getPageProps() ?? {};
+}
+
 function resolveGameNodeOutput(
     portId: string,
     runtime?: DataPinResolveRuntime,
 ): unknown {
-    if (portId !== "nametag") {
-        return undefined;
+    if (portId === "nametag") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getNametag() ?? null;
     }
-    return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getNametag() ?? null;
+    if (portId === "isInGame") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isInGame() === true;
+    }
+    return undefined;
 }
 
 function trackElementDependency(
@@ -1486,6 +1507,9 @@ function resolveElementDisplayableNodeOutput(
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE && portId === "visible") {
         return read("layout.visible", props.visible);
     }
+    if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY && portId === "display") {
+        return read("runtime.display", props.display);
+    }
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT && portId === "variantId") {
         return read("props.appearance.defaultVariantId", api.widget.getCommonProperties(ref.elementId).variantId ?? "");
     }
@@ -1510,6 +1534,10 @@ function resolveElementDisplayableNodeOutput(
                 return read("layout.x", props.position.x);
             case "y":
                 return read("layout.y", props.position.y);
+            case "offsetX":
+                return read("runtime.offsetX", props.offset.x);
+            case "offsetY":
+                return read("runtime.offsetY", props.offset.y);
             case "width":
                 return read("layout.width", props.size.width);
             case "height":
@@ -1540,6 +1568,7 @@ function resolveSelfDisplayableNodeOutput(
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY;
     if (!isDisplayableNode) {
@@ -1574,6 +1603,9 @@ function resolveSelfDisplayableNodeOutput(
     if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE && portId === "visible") {
         return props.visible;
     }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY && portId === "display") {
+        return props.display;
+    }
     if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT && portId === "variantId") {
         try {
             return api.widget.getCommonProperties(elementId).variantId ?? "";
@@ -1594,6 +1626,10 @@ function resolveSelfDisplayableNodeOutput(
                 return props.position.x;
             case "y":
                 return props.position.y;
+            case "offsetX":
+                return props.offset.x;
+            case "offsetY":
+                return props.offset.y;
             case "width":
                 return props.size.width;
             case "height":
@@ -2178,6 +2214,14 @@ function resolveSelfOutput(
     if (isBlueprintEventDispatchHeadType(selfNode.type) && portId !== "then") {
         return runtime?.eventPayload?.[portId] ?? null;
     }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_DELAY && portId === BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID) {
+        return createDelayTimerToken({
+            graphId: graph.id,
+            nodeId,
+            instanceKey: runtime?.instanceKey,
+            executionOwner: runtime?.executionOwner,
+        });
+    }
     if (
         (selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP ||
             selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH ||
@@ -2226,7 +2270,13 @@ function resolveSelfOutput(
     if (selfNode.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM) {
         return resolveFrameNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
     }
-    if (selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG) {
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS) {
+        return resolvePageNodeOutput(portId, runtime);
+    }
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME
+    ) {
         return resolveGameNodeOutput(portId, runtime);
     }
     const elementTextOutput = resolveElementTextNodeOutput(

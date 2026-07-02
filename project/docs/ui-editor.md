@@ -52,6 +52,7 @@
 - Flow parent 主要包括 `nl.stack`、`nl.scroll`、`nl.listRepeater`。
 - `nl.slider` 是数值映射滑块控件，props 使用 `value` / `min` / `max` / `step` / `orientation`。插入时会创建两个专用 `nl.container` 内部部件：`track` 和 `handle`，并通过 `extra.sliderSlot` 与 `trackElementId` / `handleElementId` 识别。
 - Slider 的 `track` / `handle` 可以双击进入后按普通 Container 编辑外观，但它们不是普通用户子元素；运行时布局由 Slider renderer 拥有，`handle` 位置由当前映射值推导。
+- Inspector 的 Position `X` / `Y` 显示当前 Surface 的设计坐标；UIDocument 内部仍保存父级局部 `layout.x` / `layout.y`，编辑器在写入时转换。
 - Editor-only 状态不要写入 UIDocument，例如 viewport、selection、snap、outline collapse、inspector cache。
 
 ## Blueprint 模型

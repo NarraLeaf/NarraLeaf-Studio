@@ -9,42 +9,54 @@ export function StoryMotionStagePreview(props: {
     preview: StoryMotionPreviewState;
     target: StoryMotionPreviewTarget;
     onPointerDrag: (event: ReactPointerEvent<HTMLDivElement>, mode: "position" | "zoom" | "rotation") => void;
+    interactive?: boolean;
+    stageSize?: { width: number; height: number };
+    showLabel?: boolean;
 }) {
     const { url } = useAssetObjectUrl(props.target.assetId ?? null);
+    const interactive = props.interactive ?? true;
+    const fixedStage = props.stageSize && props.stageSize.width > 0 && props.stageSize.height > 0;
+    const showLabel = props.showLabel ?? true;
     const targetStyle = useMemo<CSSProperties>(() => ({
         left: `calc(${props.preview.position.xalign * 100}% + ${props.preview.position.xoffset}px)`,
         top: `calc(${props.preview.position.yalign * 100}% + ${props.preview.position.yoffset}px)`,
         opacity: props.preview.opacity,
         transform: `translate(-50%, -50%) rotate(${props.preview.rotation}deg) scale(${props.preview.zoom * props.preview.scaleX}, ${props.preview.zoom * props.preview.scaleY})`,
-        filter: props.preview.filter,
-        clipPath: props.preview.clipPath,
-        mixBlendMode: props.preview.mixBlendMode as CSSProperties["mixBlendMode"],
     }), [props.preview]);
 
     return (
-        <div className="relative min-h-0 flex-1 overflow-hidden bg-[#15171b]">
-            <div className="absolute inset-6 rounded border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px)] bg-[length:32px_32px]" />
-            <div className="absolute left-6 top-6 rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-slate-400">
-                Stage preview
-            </div>
+        <div
+            className={fixedStage ? "relative shrink-0 overflow-hidden rounded bg-[#15171b]" : "relative min-h-0 flex-1 overflow-hidden bg-[#15171b]"}
+            style={fixedStage ? { width: props.stageSize!.width, height: props.stageSize!.height } : undefined}
+        >
+            <div className={`${fixedStage ? "absolute inset-0" : "absolute inset-6"} rounded border border-white/10 bg-[linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px)] bg-[length:32px_32px]`} />
+            {showLabel ? (
+                <div className={`${fixedStage ? "left-2 top-2" : "left-6 top-6"} absolute rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-slate-400`}>
+                    Stage preview
+                </div>
+            ) : null}
             <div
-                className={targetFrameClass(props.target.kind)}
+                className={targetFrameClass(props.target.kind, interactive)}
                 style={targetStyle}
-                onPointerDown={event => props.onPointerDrag(event, "position")}
+                onPointerDown={interactive ? event => props.onPointerDrag(event, "position") : undefined}
             >
                 <PreviewContent target={props.target} url={url} />
-                <div
-                    className="absolute -right-2 -bottom-2 h-4 w-4 cursor-nwse-resize rounded border border-white/70 bg-primary"
-                    onPointerDown={event => props.onPointerDrag(event, "zoom")}
-                    title="Drag to scale"
-                />
-                <div
-                    className="absolute -top-7 left-1/2 grid h-5 w-5 -translate-x-1/2 cursor-ew-resize place-items-center rounded-full border border-white/50 bg-[#1b1d22] text-slate-200"
-                    onPointerDown={event => props.onPointerDrag(event, "rotation")}
-                    title="Drag to rotate"
-                >
-                    <RotateCw className="h-3 w-3" />
-                </div>
+                {interactive ? (
+                    <>
+                        <div
+                            className="absolute -right-2 -bottom-2 h-4 w-4 cursor-nwse-resize rounded border border-white/70 bg-primary"
+                            onPointerDown={event => props.onPointerDrag(event, "zoom")}
+                            title="Drag to scale"
+                        />
+                        <div
+                            className="absolute -top-7 left-1/2 grid h-5 w-5 -translate-x-1/2 cursor-ew-resize place-items-center rounded-full border border-white/50 bg-[#1b1d22] text-slate-200"
+                            onPointerDown={event => props.onPointerDrag(event, "rotation")}
+                            title="Drag to rotate"
+                        >
+                            <RotateCw className="h-3 w-3" />
+                        </div>
+                    </>
+                ) : null}
             </div>
         </div>
     );
@@ -81,8 +93,8 @@ function PreviewContent(props: { target: StoryMotionPreviewTarget; url: string |
     );
 }
 
-function targetFrameClass(kind: StoryMotionPreviewTarget["kind"]): string {
-    const base = "absolute cursor-move select-none shadow-[0_12px_40px_rgba(0,0,0,.28)]";
+function targetFrameClass(kind: StoryMotionPreviewTarget["kind"], interactive: boolean): string {
+    const base = `absolute select-none shadow-[0_12px_40px_rgba(0,0,0,.28)] ${interactive ? "cursor-move" : "pointer-events-none"}`;
     if (kind === "text") {
         return `${base} min-h-12 min-w-32 max-w-80 rounded border border-primary/30 bg-black/20`;
     }

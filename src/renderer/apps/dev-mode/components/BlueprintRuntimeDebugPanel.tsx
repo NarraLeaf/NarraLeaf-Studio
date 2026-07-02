@@ -131,8 +131,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
     }, [activeSurfaceId, blueprintDocument.blueprints, uiDocument]);
 
     const outputLines = useMemo(() => {
-        const src = filterBlueprintDebugEventsByLogLevel(events, outputLogLevels);
-        return src.slice(-200);
+        return filterBlueprintDebugEventsByLogLevel(events, outputLogLevels);
     }, [events, outputLogLevels]);
 
     const toggleExpanded = useCallback((id: string) => {
@@ -317,7 +316,10 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                 Clear
                             </button>
                         </div>
-                        <div ref={outputScrollRef} className="min-h-0 flex-1 overflow-auto overscroll-contain p-2">
+                        <div
+                            ref={outputScrollRef}
+                            className="nl-selectable-text min-h-0 flex-1 cursor-text overflow-auto overscroll-contain p-2"
+                        >
                             {outputLines.length === 0 ? (
                                 <p className="text-[10px] text-gray-600">No output</p>
                             ) : (

@@ -11,6 +11,7 @@ import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
 import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Plus, X } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import {
+    BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT,
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
     type BlueprintInspectorParamDef,
     type BlueprintInspectorParamSelectOption,
@@ -38,6 +39,7 @@ import {
 import {
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+    BLUEPRINT_VALUE_TYPE_TIMER,
     normalizeBlueprintImageAssetValue,
     type BlueprintImageAsset,
 } from "@shared/types/blueprint/valueTypes";
@@ -106,6 +108,7 @@ export type BlueprintFlowNodeData = {
     nodeDiagnostics?: readonly BlueprintFlowNodeDiagnostic[];
     /** Current UIDocument preview for bound Element Literal nodes. */
     elementPreview?: {
+        revisionKey?: string;
         name: string;
         type: string;
         text?: string;
@@ -543,7 +546,9 @@ function InputPinRow({
     dynamicLabelParamKey?: string;
     dynamicLabelValues: Record<string, string>;
 }) {
+    const optionalUnwired = pin.optional === true && !isWired;
     const handleClass = semantic === "exec" ? EXEC_HANDLE_CLASS : DATA_HANDLE_CLASS;
+    const labelClass = optionalUnwired ? "text-gray-500 italic" : "text-gray-400";
     const canInlineLiteral =
         semantic === "data" &&
         Boolean(pin.allowInlineLiteral) &&
@@ -583,7 +588,7 @@ function InputPinRow({
                 />
             ) : (
                 <span
-                    className="shrink-0 text-[9px] leading-tight text-gray-400"
+                    className={`shrink-0 text-[9px] leading-tight ${labelClass}`}
                     title={pinLabelOnly(pin)}
                 >
                     {pinLabelOnly(pin)}
@@ -652,7 +657,7 @@ function InputPinRow({
             />
         ) : (
             <span
-                className="min-w-0 shrink truncate text-[9px] leading-tight text-gray-400"
+                className={`min-w-0 shrink truncate text-[9px] leading-tight ${labelClass}`}
                 title={pinCaption(pin, semantic)}
             >
                 {pinCaption(pin, semantic)}
@@ -740,7 +745,7 @@ function variableValueTypeToLiteralMode(valueType: unknown): LiteralEditMode {
     if (valueType === "boolean") {
         return "boolean";
     }
-    if (valueType === "json" || valueType === "array" || valueType === "any") {
+    if (valueType === "json" || valueType === "array" || valueType === "any" || valueType === BLUEPRINT_VALUE_TYPE_TIMER) {
         return "json";
     }
     return "string";
@@ -965,8 +970,11 @@ function InspectorParamOnCard({
             label: v.name,
         })),
     ];
+    const isVarDefaultValueParam =
+        spec.kind === "literal" && spec.key === "defaultValue" && nodeType === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR;
+    const isReadonlyAnyDefaultValue = isVarDefaultValueParam && params.valueType === "any";
     const fixedLiteralMode =
-        spec.kind === "literal" && spec.key === "defaultValue" && nodeType === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR
+        isVarDefaultValueParam && !isReadonlyAnyDefaultValue
             ? variableValueTypeToLiteralMode(params.valueType)
             : undefined;
 
@@ -1017,6 +1025,16 @@ function InspectorParamOnCard({
                     portalMenu
                     menuPlacement="below"
                 />
+            ) : isReadonlyAnyDefaultValue ? (
+                <Input
+                    className={`${CARD_INPUT} cursor-not-allowed text-gray-500`}
+                    type="text"
+                    value="null"
+                    size="sm"
+                    fullWidth
+                    disabled
+                    readOnly
+                />
             ) : spec.kind === "literal" ? (
                 <BlueprintLiteralValueControl
                     variant="nodeCard"
@@ -1062,6 +1080,8 @@ const DISPLAYABLE_ANIMATE_PROPERTY_OPTIONS: SelectOption[] = [
     { value: "opacity", label: "Opacity" },
     { value: "offsetX", label: "Offset X" },
     { value: "offsetY", label: "Offset Y" },
+    { value: "x", label: "X" },
+    { value: "y", label: "Y" },
     { value: "scale", label: "Scale" },
     { value: "rotation", label: "Rotation" },
 ];
@@ -1087,6 +1107,8 @@ const DISPLAYABLE_GET_PROPERTY_OPTIONS: SelectOption[] = [
     { value: "bounds", label: "Bounds" },
     { value: "x", label: "X" },
     { value: "y", label: "Y" },
+    { value: "offsetX", label: "Offset X" },
+    { value: "offsetY", label: "Offset Y" },
     { value: "width", label: "Width" },
     { value: "height", label: "Height" },
     { value: "rotation", label: "Rotation" },
@@ -1097,6 +1119,8 @@ const DISPLAYABLE_GET_PROPERTY_OPTIONS: SelectOption[] = [
 const DISPLAYABLE_SET_PROPERTY_OPTIONS: SelectOption[] = [
     { value: "x", label: "X" },
     { value: "y", label: "Y" },
+    { value: "offsetX", label: "Offset X" },
+    { value: "offsetY", label: "Offset Y" },
     { value: "width", label: "Width" },
     { value: "height", label: "Height" },
     { value: "rotation", label: "Rotation" },
@@ -1119,6 +1143,11 @@ function numericParam(params: Record<string, unknown>, key: string, fallback: nu
     return typeof value === "number" && Number.isFinite(value) ? String(value) : String(fallback);
 }
 
+function optionalNumericParam(params: Record<string, unknown>, key: string): string {
+    const value = params[key];
+    return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+}
+
 function formatCompactNumber(value: number): string {
     return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
 }
@@ -1127,6 +1156,14 @@ function opacityPercentParam(params: Record<string, unknown>, key: string, fallb
     const value = params[key];
     if (typeof value !== "number" || !Number.isFinite(value)) {
         return String(fallbackPercent);
+    }
+    return formatCompactNumber(value > 1 ? value : value * 100);
+}
+
+function optionalOpacityPercentParam(params: Record<string, unknown>, key: string): string {
+    const value = params[key];
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return "";
     }
     return formatCompactNumber(value > 1 ? value : value * 100);
 }
@@ -1253,6 +1290,8 @@ function displayableSetPropertyDefaultValue(property: string): number | boolean 
             return true;
         case "x":
         case "y":
+        case "offsetX":
+        case "offsetY":
         case "rotation":
         default:
             return 0;
@@ -1263,6 +1302,8 @@ function displayableSetPropertyUnit(property: string): string | undefined {
     switch (property) {
         case "x":
         case "y":
+        case "offsetX":
+        case "offsetY":
         case "width":
         case "height":
             return "px";
@@ -1281,6 +1322,8 @@ function displayableAnimatePropertyUnit(property: string): string | undefined {
             return "%";
         case "offsetX":
         case "offsetY":
+        case "x":
+        case "y":
             return "px";
         case "scale":
             return "x";
@@ -1528,11 +1571,22 @@ function DisplayableAnimatePropertyCard({
     const after = typeof params.after === "string" ? params.after : "hold";
     const isOpacity = property === "opacity";
     const valueUnit = displayableAnimatePropertyUnit(property);
-    const fromFallback = property === "scale" ? 1 : 0;
     const toFallback = property === "opacity" ? 100 : property === "scale" ? 1 : 0;
+    const isLegacyAbsolutePositionFromDefault =
+        (property === "x" || property === "y") &&
+        params[BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT] !== true &&
+        Number(params.from) === 0;
     const patchNumber = (key: string, raw: string, fallback: number) => {
         const value = Number(raw);
         onPatchNodeParam(nodeId, key, Number.isFinite(value) ? value : fallback, {
+            mergeKey: `animate-property:${nodeId}:${key}`,
+            mergeWindowMs: 600,
+        });
+    };
+    const patchOptionalNumber = (key: string, raw: string) => {
+        const trimmed = raw.trim();
+        const value = trimmed.length > 0 ? Number(trimmed) : undefined;
+        onPatchNodeParam(nodeId, key, value !== undefined && Number.isFinite(value) ? value : undefined, {
             mergeKey: `animate-property:${nodeId}:${key}`,
             mergeWindowMs: 600,
         });
@@ -1561,13 +1615,15 @@ function DisplayableAnimatePropertyCard({
                     <CardFieldLabel>From</CardFieldLabel>
                     <CardNumberInput
                         value={
-                            isOpacity
-                                ? opacityPercentParam(params, "from", fromFallback)
-                                : numericParam(params, "from", fromFallback)
+                            isLegacyAbsolutePositionFromDefault
+                                ? ""
+                                : isOpacity
+                                ? optionalOpacityPercentParam(params, "from")
+                                : optionalNumericParam(params, "from")
                         }
                         unit={valueUnit}
                         ariaLabel="Animation start value"
-                        onCommit={raw => patchNumber("from", raw, fromFallback)}
+                        onCommit={raw => patchOptionalNumber("from", raw)}
                     />
                 </div>
                 <div>

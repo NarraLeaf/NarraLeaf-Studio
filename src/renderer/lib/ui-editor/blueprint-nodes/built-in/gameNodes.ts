@@ -1,6 +1,9 @@
 import {
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG,
+    BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
+    BLUEPRINT_NODE_TYPE_GAME_QUIT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
@@ -8,8 +11,10 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG,
     BLUEPRINT_NODE_TYPE_GAME_SKIP,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+    BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY,
 } from "@shared/types/blueprint/graph";
 import {
     BLUEPRINT_VALUE_TYPE_ARRAY,
@@ -127,6 +132,31 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
+        type: BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
+        displayName: "Is In Game",
+        category: "Game",
+        keywords: ["game", "state", "active", "running", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "isInGame",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "In Game",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    isInGame: requireHostApi(ctx).game.isInGame(),
+                },
+            };
+        },
+    },
+    {
         type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
         displayName: "Start Game",
         category: "Game",
@@ -167,6 +197,32 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         },
     },
     {
+        type: BLUEPRINT_NODE_TYPE_GAME_QUIT,
+        displayName: "Quit Game",
+        category: "Game",
+        keywords: ["game", "quit", "exit", "return", "page", "nlr"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn],
+        inspectorParams: [
+            {
+                key: "surfaceId",
+                label: "Page",
+                kind: "select",
+                dynamicOptionsSource: "surfaces",
+            },
+        ],
+        async execute(ctx) {
+            const surfaceId = String(ctx.params.surfaceId ?? "").trim();
+            if (!surfaceId) {
+                throw new BlueprintGraphExecutionError("Pick a Page", ctx.node.id);
+            }
+            await requireHostApi(ctx).game.quit(surfaceId);
+            return { nextPort: undefined };
+        },
+    },
+    {
         type: BLUEPRINT_NODE_TYPE_GAME_NEXT,
         displayName: "Next",
         category: "Game",
@@ -191,6 +247,48 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         pins: [execIn, execNext],
         async execute(ctx) {
             await requireHostApi(ctx).game.skip();
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG,
+        displayName: "Show Dialog",
+        category: "Game",
+        keywords: ["game", "dialog", "show", "display", "visible", "preference", "nlr"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).game.showDialog();
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG,
+        displayName: "Hide Dialog",
+        category: "Game",
+        keywords: ["game", "dialog", "hide", "display", "invisible", "preference", "nlr"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).game.hideDialog();
+            return { nextPort: "next" };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY,
+        displayName: "Toggle Dialog Display",
+        category: "Game",
+        keywords: ["game", "dialog", "toggle", "display", "visible", "preference", "nlr"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext],
+        async execute(ctx) {
+            await requireHostApi(ctx).game.toggleDialogDisplay();
             return { nextPort: "next" };
         },
     },

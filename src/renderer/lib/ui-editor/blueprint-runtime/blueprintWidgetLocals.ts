@@ -85,8 +85,8 @@ function defineVariableAccessor(target: Record<string, unknown>, key: string, st
 }
 
 /**
- * Mutable per-widget blueprint execution locals: one map per (surface, element, blueprint) until release.
- * Syncs variable ids with the current blueprint definition without wiping values for existing vars.
+ * Mutable blueprint lifecycle locals. Widget owners are released on unmount; owner-level stores stay
+ * keyed by their runtime scope and are reused across event dispatches.
  */
 export function acquireBlueprintWidgetLocals(
     surfaceId: string,

@@ -19,4 +19,22 @@ describe("WidgetRuntimeStateStore", () => {
         expect(store.getSignalsForElement("image", false).hovered).toBe(false);
         expect(store.getSnapshot().hoverTargetId).toBe("container");
     });
+
+    it("notifies dedicated runtime patch subscribers without changing widget interaction state", () => {
+        const store = new WidgetRuntimeStateStore();
+        let calls = 0;
+        const unsubscribe = store.subscribeRuntimePatches(() => {
+            calls += 1;
+        });
+
+        store.notifyRuntimePatchesChanged();
+
+        expect(calls).toBe(1);
+        expect(store.getSnapshot().hoverTargetId).toBeNull();
+
+        unsubscribe();
+        store.notifyRuntimePatchesChanged();
+
+        expect(calls).toBe(1);
+    });
 });

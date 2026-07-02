@@ -16,10 +16,7 @@ import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./ty
 import { uiEditorSurfacesModule } from "./ui-editor";
 import { storyPanelModule } from "./story";
 import { storyMotionPanelModule } from "./story-motion";
-import {
-    localizationPanelModule,
-    runningTasksPanelModule,
-} from "./placeholders/workspacePlaceholderModules";
+import { localizationPanelModule } from "./placeholders/workspacePlaceholderModules";
 
 /**
  * Built-in panel modules
@@ -35,7 +32,6 @@ export const builtInPanels: PanelModule[] = [
     assetsBottomModule,
     propertiesModule,
     consoleModule,
-    runningTasksPanelModule,
 ];
 
 /**
@@ -72,7 +68,4 @@ export { globalActions, globalActionGroups } from "./actions";
 export { uiEditorSurfacesModule } from "./ui-editor";
 export { storyPanelModule } from "./story";
 export { storyMotionPanelModule } from "./story-motion";
-export {
-    localizationPanelModule,
-    runningTasksPanelModule,
-} from "./placeholders/workspacePlaceholderModules";
+export { localizationPanelModule } from "./placeholders/workspacePlaceholderModules";

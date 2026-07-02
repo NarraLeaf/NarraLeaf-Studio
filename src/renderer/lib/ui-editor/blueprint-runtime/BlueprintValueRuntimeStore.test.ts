@@ -249,10 +249,12 @@ function hostAdapterForDocument(
                         const layout = document.elements[elementId]?.layout ?? { x: 0, y: 0, width: 0, height: 0 };
                         return {
                             position: { x: layout.x, y: layout.y },
+                            offset: { x: 0, y: 0 },
                             size: { width: layout.width, height: layout.height },
                             bounds: { x: layout.x, y: layout.y, width: layout.width, height: layout.height },
                             rotation: layout.rotation ?? 0,
                             opacity: layout.opacity ?? 1,
+                            display: true,
                             visible: layout.visible !== false,
                         };
                     },

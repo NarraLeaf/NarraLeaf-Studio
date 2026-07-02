@@ -9,6 +9,8 @@ export const BLUEPRINT_VALUE_TYPE_ELEMENT = "element" as const;
 export const BLUEPRINT_VALUE_TYPE_ARRAY = "array" as const;
 export const BLUEPRINT_VALUE_TYPE_IMAGE_ASSET = "ImageAsset" as const;
 export const BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE = "ImageAsset|null" as const;
+export const BLUEPRINT_VALUE_TYPE_TIMER = "Timer" as const;
+export const BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN = "AnimationToken" as const;
 
 export type BlueprintElementRef = {
     surfaceId: string;
@@ -31,6 +33,16 @@ export type BlueprintRGBAColor = {
 export type BlueprintImageAsset = {
     kind: "imageAsset";
     assetId: string;
+};
+
+export type BlueprintTimerToken = {
+    kind: "timer";
+    id: string;
+};
+
+export type BlueprintAnimationToken = {
+    kind: "animation";
+    id: string;
 };
 
 export function blueprintElementValueType(elementType: string | undefined): string {
@@ -76,6 +88,14 @@ export function isBlueprintNullableImageAssetValueType(valueType: string | undef
     return valueType === BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE;
 }
 
+export function isBlueprintTimerValueType(valueType: string | undefined): boolean {
+    return valueType === BLUEPRINT_VALUE_TYPE_TIMER;
+}
+
+export function isBlueprintAnimationTokenValueType(valueType: string | undefined): boolean {
+    return valueType === BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN;
+}
+
 export function toBlueprintImageAsset(assetId: string | null | undefined): BlueprintImageAsset | null {
     const safe = typeof assetId === "string" ? assetId.trim() : "";
     return safe ? { kind: "imageAsset", assetId: safe } : null;
@@ -100,6 +120,38 @@ export function normalizeBlueprintImageAssetValue(value: unknown): BlueprintImag
 
 export function blueprintImageAssetId(value: unknown): string | null {
     return normalizeBlueprintImageAssetValue(value)?.assetId ?? null;
+}
+
+export function toBlueprintTimerToken(id: string | null | undefined): BlueprintTimerToken | null {
+    const safe = typeof id === "string" ? id.trim() : "";
+    return safe ? { kind: "timer", id: safe } : null;
+}
+
+export function normalizeBlueprintTimerToken(value: unknown): BlueprintTimerToken | null {
+    if (typeof value === "string") {
+        return toBlueprintTimerToken(value);
+    }
+    const record = readRecord(value);
+    if (!record || record.kind !== "timer") {
+        return null;
+    }
+    return toBlueprintTimerToken(typeof record.id === "string" ? record.id : null);
+}
+
+export function toBlueprintAnimationToken(id: string | null | undefined): BlueprintAnimationToken | null {
+    const safe = typeof id === "string" ? id.trim() : "";
+    return safe ? { kind: "animation", id: safe } : null;
+}
+
+export function normalizeBlueprintAnimationToken(value: unknown): BlueprintAnimationToken | null {
+    if (typeof value === "string") {
+        return toBlueprintAnimationToken(value);
+    }
+    const record = readRecord(value);
+    if (!record || record.kind !== "animation") {
+        return null;
+    }
+    return toBlueprintAnimationToken(typeof record.id === "string" ? record.id : null);
 }
 
 const DEFAULT_VECTOR2D: BlueprintVector2D = { x: 0, y: 0 };

@@ -1,3 +1,4 @@
+import { isButtonCursorValue } from "@shared/types/ui-editor/appearance";
 import type {
     AppearanceFieldTransition,
     AppearanceModel,
@@ -47,6 +48,7 @@ export type ButtonResolvedVisualProps = Pick<
     | "paddingX"
     | "paddingY"
     | "clipContent"
+    | "cursor"
     | "transformOffsetX"
     | "transformOffsetY"
     | "transformScale"
@@ -540,6 +542,12 @@ function applyButtonKey(target: ButtonResolvedVisualProps, key: ButtonAppearance
             }
             break;
         }
+        case "cursor": {
+            if (isButtonCursorValue(raw)) {
+                target.cursor = raw;
+            }
+            break;
+        }
         case "transformOffsetX": {
             const n = coerceNumber(raw);
             if (n !== undefined) {
@@ -959,6 +967,7 @@ export function resolveButtonVisualProps(
         paddingX: flat.paddingX,
         paddingY: flat.paddingY,
         clipContent: flat.clipContent,
+        cursor: flat.cursor,
         transformOffsetX: flat.transformOffsetX,
         transformOffsetY: flat.transformOffsetY,
         transformScale: flat.transformScale,

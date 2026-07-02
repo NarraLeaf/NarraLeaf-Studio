@@ -9,6 +9,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
@@ -17,6 +18,8 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+    BLUEPRINT_NODE_TYPE_LOG,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
 import {
@@ -37,6 +40,233 @@ import { BlueprintExecutionManager } from "./BlueprintExecutionManager";
 import { createExplicitBlueprintVariableRef } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 
 describe("BlueprintDispatcher", () => {
+    it("dispatches top-level container init into a Log node", async () => {
+        const blueprintId = "bp-container";
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [blueprintId]: {
+                    id: blueprintId,
+                    name: "Container Logic",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "container" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                init: {
+                                    id: "init",
+                                    graph: {
+                                        nodes: {
+                                            head: {
+                                                id: "head",
+                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+                                            },
+                                            message: {
+                                                id: "message",
+                                                type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                                                params: { value: "init fired" },
+                                            },
+                                            log: {
+                                                id: "log",
+                                                type: BLUEPRINT_NODE_TYPE_LOG,
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                                            { from: { nodeId: "message", port: "value" }, to: { nodeId: "log", port: "value" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                "widgetMain:surface:container": {
+                    activeBlueprintId: blueprintId,
+                    privateBlueprintIds: [blueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["container"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                container: {
+                    id: "container",
+                    type: "nl.container",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 100, height: 32 },
+                },
+            },
+        };
+        const debug = new DebugBridge();
+        const hostAdapter: UIHostAdapter = { host: "player" };
+        const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+        try {
+            await dispatchBlueprintUiEvent({
+                document,
+                blueprintDocument,
+                surfaceId: "surface",
+                elementId: "container",
+                eventName: "init",
+                hostAdapter,
+                debug,
+                getSurfaceState: () => undefined,
+                setSurfaceState: () => undefined,
+            });
+            expect(debug.snapshot().map(e => e.type)).toEqual([
+                "execution.started",
+                "node.enter",
+                "node.exit",
+                "node.enter",
+                "node.exit",
+                "execution.finished",
+            ]);
+            expect(log).toHaveBeenCalledWith("[Blueprint]", "init fired");
+        } finally {
+            log.mockRestore();
+        }
+    });
+
+    it("dispatches widget init on component-owned container blueprints", async () => {
+        const blueprintId = "bp-component-container";
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [blueprintId]: {
+                    id: blueprintId,
+                    name: "Component Container Logic",
+                    owner: { kind: "componentWidgetMain", componentId: "component", elementId: "component-container" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                init: {
+                                    id: "init",
+                                    graph: {
+                                        nodes: {
+                                            head: {
+                                                id: "head",
+                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+                                            },
+                                        },
+                                        edges: [],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                "componentWidgetMain:component:component-container": {
+                    activeBlueprintId: blueprintId,
+                    privateBlueprintIds: [blueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            components: [
+                {
+                    id: "component",
+                    name: "Component",
+                    rootElementId: "component-container",
+                    elements: {
+                        "component-container": {
+                            id: "component-container",
+                            type: "nl.container",
+                            parentId: null,
+                            childrenIds: [],
+                            layout: { x: 0, y: 0, width: 160, height: 80 },
+                        },
+                    },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+            },
+        };
+        const debug = new DebugBridge();
+        const hostAdapter: UIHostAdapter = { host: "player" };
+
+        await dispatchBlueprintUiEvent({
+            document,
+            blueprintDocument,
+            surfaceId: "surface",
+            elementId: "component-container",
+            componentId: "component",
+            eventName: "init",
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+
+        expect(debug.snapshot().map(e => e.type)).toEqual([
+            "execution.started",
+            "node.enter",
+            "node.exit",
+            "execution.finished",
+        ]);
+    });
+
     it("does not emit output when a supported widget event has no event head", async () => {
         const blueprintId = "bp-widget";
         const blueprintDocument: BlueprintDocument = {

@@ -27,6 +27,8 @@ import {
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
@@ -41,6 +43,7 @@ import { blueprintFlowNodeTypes } from "./nodeTypes";
 import {
     applyBlueprintFlowNodeSelection,
     applyFlowPositionsToIr,
+    blueprintElementPreviewsSignature,
     blueprintIrToFlowEdges,
     blueprintIrToFlowNodes,
     blueprintSelectedNodesDependencyKey,
@@ -56,6 +59,7 @@ import {
     readDynamicInputPinLabels,
 } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
 import {
+    BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT,
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
     type BlueprintInspectorParamSelectOption,
     type BlueprintNodeEditorCatalogEntry,
@@ -250,6 +254,10 @@ function BlueprintFlowCanvasInner({
         () => displayableTargetVariantsSignature(displayableTargetVariantsByNodeId),
         [displayableTargetVariantsByNodeId],
     );
+    const elementPreviewsSig = useMemo(
+        () => blueprintElementPreviewsSignature(elementPreviews),
+        [elementPreviews],
+    );
     const variableTypeContext = useMemo<BlueprintGraphVariableTypeInferenceContext>(
         () => ({
             memberVariables: blueprintMemberVariables,
@@ -282,6 +290,17 @@ function BlueprintFlowCanvasInner({
                 delete next[key];
             } else {
                 next[key] = value;
+            }
+            if (
+                key === "from" &&
+                (n.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY ||
+                    n.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)
+            ) {
+                if (value === undefined) {
+                    delete next[BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT];
+                } else {
+                    next[BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT] = true;
+                }
             }
             if (n.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR && key === "valueType") {
                 next.defaultValue = resolveBlueprintVariableDefaultValue(typeof value === "string" ? value : undefined);
@@ -463,6 +482,7 @@ function BlueprintFlowCanvasInner({
         revision: number;
         membersSig: string;
         diagnosticsSig: string;
+        elementPreviewsSig: string;
         displayableTargetVariantsSig: string;
     } | null>(null);
     const lastNodeCatalogRef = useRef(nodeCatalog);
@@ -618,6 +638,7 @@ function BlueprintFlowCanvasInner({
             prevStruct.revision !== revision ||
             prevStruct.membersSig !== blueprintMembersSig ||
             prevStruct.diagnosticsSig !== nodeDiagnosticsSig ||
+            prevStruct.elementPreviewsSig !== elementPreviewsSig ||
             prevStruct.displayableTargetVariantsSig !== displayableTargetVariantsSig;
 
         if (structural) {
@@ -626,6 +647,7 @@ function BlueprintFlowCanvasInner({
                 revision,
                 membersSig: blueprintMembersSig,
                 diagnosticsSig: nodeDiagnosticsSig,
+                elementPreviewsSig,
                 displayableTargetVariantsSig,
             };
             setNodes(prevNodes => {
@@ -709,6 +731,7 @@ function BlueprintFlowCanvasInner({
         nodeDiagnosticsByNodeId,
         nodeDiagnosticsSig,
         elementPreviews,
+        elementPreviewsSig,
         displayableTargetVariantsByNodeId,
         displayableTargetVariantsSig,
         onBindElementLiteral,

@@ -60,6 +60,7 @@ export const BUTTON_APPEARANCE_KEYS = new Set<ButtonAppearancePropertyKey>([
     "paddingX",
     "paddingY",
     "clipContent",
+    "cursor",
     "transformOffsetX",
     "transformOffsetY",
     "transformScale",

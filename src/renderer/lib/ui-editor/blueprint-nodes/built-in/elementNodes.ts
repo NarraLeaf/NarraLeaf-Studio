@@ -6,6 +6,7 @@
 import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
@@ -13,11 +14,14 @@ import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
+    BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
@@ -25,6 +29,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_SIZE,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_DISPLAY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION,
@@ -55,11 +60,15 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_WRAP_MODE,
 } from "@shared/types/blueprint/graph";
 import {
+    BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN,
     BLUEPRINT_VALUE_TYPE_ELEMENT,
     BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
     BLUEPRINT_VALUE_TYPE_VECTOR2D,
     blueprintElementValueType,
     blueprintRGBAColorToCss,
+    normalizeBlueprintAnimationToken,
+    toBlueprintAnimationToken,
+    type BlueprintAnimationToken,
 } from "@shared/types/blueprint/valueTypes";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
@@ -67,10 +76,17 @@ import type {
     BlueprintTextProperties,
     BlueprintTextPropertiesPatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
-import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import {
+    BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT,
+    type BlueprintNodeDef,
+    type BlueprintNodePinDef,
+} from "../types";
 import { requireHostApi } from "./hostApi";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
+import { displayableMotionFromCurrent } from "@/lib/ui-editor/runtime/displayableMotion";
+import type { UIDisplayableMotionValue } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
+import { writeBlueprintNodeOutputValues } from "../nodeOutputValues";
 
 const READ_GRAPH_KINDS = ["event", "function", "macro"] as const;
 const WRITE_GRAPH_KINDS = ["event", "macro"] as const;
@@ -81,7 +97,7 @@ const FONT_WEIGHT_VALUES = ["normal", "600", "bold"] as const;
 const TEXT_ALIGN_VALUES = ["left", "center", "right"] as const;
 const TEXT_VERTICAL_ALIGN_VALUES = ["start", "center", "end"] as const;
 const TEXT_WRAP_MODE_VALUES = ["word", "character", "nowrap"] as const;
-const DISPLAYABLE_ANIMATION_PROPERTIES = ["opacity", "offsetX", "offsetY", "scale", "rotation"] as const;
+const DISPLAYABLE_ANIMATION_PROPERTIES = ["opacity", "offsetX", "offsetY", "x", "y", "scale", "rotation"] as const;
 const DISPLAYABLE_ANIMATION_EASINGS = ["linear", "easeIn", "easeOut", "easeInOut", "circIn", "circOut", "circInOut"] as const;
 const DISPLAYABLE_ANIMATION_AFTER_MODES = ["hold", "reset"] as const;
 const DISPLAYABLE_SET_VARIANT_WAIT_MODES = ["continue", "wait"] as const;
@@ -91,13 +107,18 @@ const DISPLAYABLE_GET_PROPERTIES = [
     "bounds",
     "x",
     "y",
+    "offsetX",
+    "offsetY",
     "width",
     "height",
     "rotation",
     "opacity",
     "visible",
 ] as const;
-const DISPLAYABLE_SET_PROPERTIES = ["x", "y", "width", "height", "rotation", "opacity", "visible"] as const;
+const DISPLAYABLE_SET_PROPERTIES = ["x", "y", "offsetX", "offsetY", "width", "height", "rotation", "opacity", "visible"] as const;
+const DISPLAYABLE_ANIMATION_OUTPUT_PIN_ID = "animation";
+const DISPLAYABLE_ANIMATION_TOKEN_PREFIX = "animation:";
+let displayableAnimationTokenCounter = 0;
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };
 const execNext: BlueprintNodePinDef = { id: "next", kind: "output", semantic: "exec", label: "Next" };
@@ -135,8 +156,11 @@ const dataIn = (
 });
 const stringIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "string", true);
 const floatIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "float", true);
+const booleanIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "boolean");
 const colorIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, BLUEPRINT_VALUE_TYPE_RGBA_COLOR);
 const jsonIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "json");
+const animationTokenIn = (id = DISPLAYABLE_ANIMATION_OUTPUT_PIN_ID, label = "Animation"): BlueprintNodePinDef =>
+    dataIn(id, label, BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN);
 const out = (id: string, label: string, valueType: string): BlueprintNodePinDef => ({
     id,
     kind: "output",
@@ -144,6 +168,8 @@ const out = (id: string, label: string, valueType: string): BlueprintNodePinDef 
     valueType,
     label,
 });
+const animationTokenOut = (id = DISPLAYABLE_ANIMATION_OUTPUT_PIN_ID, label = "Animation"): BlueprintNodePinDef =>
+    out(id, label, BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN);
 
 const textAllPropertyInputs: BlueprintNodePinDef[] = [
     stringIn("text", "Text"),
@@ -299,6 +325,29 @@ function displayableWriteNode(input: {
     };
 }
 
+function displayableAnimationControlNode(input: {
+    type: string;
+    displayName: string;
+    keywords: string[];
+    category: "Displayable" | "Element";
+    execute: BlueprintNodeDef["execute"];
+}): BlueprintNodeDef {
+    return {
+        type: input.type,
+        displayName: input.displayName,
+        category: input.category,
+        keywords: input.keywords,
+        graphKinds: [...WRITE_GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext, animationTokenIn()],
+        scope: input.category === "Displayable"
+            ? { ownerKinds: ["widgetMain"], widgetElementTypes: [...DISPLAYABLE_WIDGET_TYPES] }
+            : undefined,
+        execute: input.execute,
+    };
+}
+
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
     return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
         hostAdapter: ctx.hostAdapter,
@@ -307,6 +356,43 @@ function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string)
         instanceKey: ctx.instanceKey,
         executionOwner: ctx.executionOwner,
         valueExecution: ctx.valueExecution,
+    });
+}
+
+function cleanTokenPart(value: string | undefined): string {
+    return value?.trim() || "-";
+}
+
+function createDisplayableAnimationToken(ctx: Parameters<BlueprintNodeDef["execute"]>[0]): BlueprintAnimationToken {
+    displayableAnimationTokenCounter += 1;
+    const owner = ctx.executionOwner;
+    const parts = [
+        "animation",
+        cleanTokenPart(owner?.blueprintId),
+        cleanTokenPart(owner?.surfaceId),
+        cleanTokenPart(owner?.elementId),
+        cleanTokenPart(owner?.componentId),
+        cleanTokenPart(ctx.instanceKey),
+        cleanTokenPart(ctx.graph.id),
+        cleanTokenPart(ctx.node.id),
+        `${displayableAnimationTokenCounter}`,
+    ];
+    const token = toBlueprintAnimationToken(parts.map(encodeURIComponent).join(":"));
+    if (!token || !token.id.startsWith(DISPLAYABLE_ANIMATION_TOKEN_PREFIX)) {
+        throw new Error("Failed to create Displayable animation token");
+    }
+    return token;
+}
+
+function writeAnimationTokenOutput(
+    ctx: Parameters<BlueprintNodeDef["execute"]>[0],
+    animation: BlueprintAnimationToken,
+): void {
+    if (!ctx.blueprintLocals) {
+        return;
+    }
+    writeBlueprintNodeOutputValues(ctx.blueprintLocals, ctx.node.id, {
+        [DISPLAYABLE_ANIMATION_OUTPUT_PIN_ID]: animation,
     });
 }
 
@@ -375,6 +461,35 @@ function toFiniteNumber(raw: unknown, fallback: number): number {
     return Number.isFinite(n) ? n : fallback;
 }
 
+function toOptionalFiniteNumber(raw: unknown): number | undefined {
+    if (raw === undefined || raw === null) {
+        return undefined;
+    }
+    if (typeof raw === "string" && raw.trim().length === 0) {
+        return undefined;
+    }
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : undefined;
+}
+
+function hasExplicitDisplayableAnimationFrom(
+    params: Record<string, unknown>,
+    property: string,
+    rawFrom: number | undefined,
+): boolean {
+    if (rawFrom === undefined) {
+        return false;
+    }
+    if (
+        (property === "x" || property === "y") &&
+        rawFrom === 0 &&
+        params[BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT] !== true
+    ) {
+        return false;
+    }
+    return true;
+}
+
 function toBooleanValue(raw: unknown, fallback: boolean): boolean {
     if (raw === undefined || raw === null) {
         return fallback;
@@ -441,6 +556,8 @@ function displayableAnimateInspectorParams(): BlueprintNodeDef["inspectorParams"
                 { value: "opacity", label: "Opacity" },
                 { value: "offsetX", label: "Offset X" },
                 { value: "offsetY", label: "Offset Y" },
+                { value: "x", label: "X" },
+                { value: "y", label: "Y" },
                 { value: "scale", label: "Scale" },
                 { value: "rotation", label: "Rotation" },
             ],
@@ -475,6 +592,31 @@ function displayableAnimateInspectorParams(): BlueprintNodeDef["inspectorParams"
     ];
 }
 
+function waitForNextFrame(): Promise<void> {
+    return new Promise(resolve => {
+        let settled = false;
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        const finish = () => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
+            resolve();
+        };
+        if (typeof globalThis.requestAnimationFrame === "function") {
+            // Dev Mode windows can be hidden while CDP/debug automation is active;
+            // hidden Electron renderers may throttle rAF indefinitely.
+            timeoutId = setTimeout(finish, 50);
+            globalThis.requestAnimationFrame(finish);
+            return;
+        }
+        timeoutId = setTimeout(finish, 0);
+    });
+}
+
 function displayableGetPropertyInspectorParams(): BlueprintNodeDef["inspectorParams"] {
     return [
         {
@@ -487,6 +629,8 @@ function displayableGetPropertyInspectorParams(): BlueprintNodeDef["inspectorPar
                 { value: "bounds", label: "Bounds" },
                 { value: "x", label: "X" },
                 { value: "y", label: "Y" },
+                { value: "offsetX", label: "Offset X" },
+                { value: "offsetY", label: "Offset Y" },
                 { value: "width", label: "Width" },
                 { value: "height", label: "Height" },
                 { value: "rotation", label: "Rotation" },
@@ -506,6 +650,8 @@ function displayableSetPropertyInspectorParams(): BlueprintNodeDef["inspectorPar
             options: [
                 { value: "x", label: "X" },
                 { value: "y", label: "Y" },
+                { value: "offsetX", label: "Offset X" },
+                { value: "offsetY", label: "Offset Y" },
                 { value: "width", label: "Width" },
                 { value: "height", label: "Height" },
                 { value: "rotation", label: "Rotation" },
@@ -539,6 +685,8 @@ async function setDisplayableProperty(ctx: Parameters<BlueprintNodeDef["execute"
     const fallback =
         property === "x" ? current.position.x :
         property === "y" ? current.position.y :
+        property === "offsetX" ? current.offset.x :
+        property === "offsetY" ? current.offset.y :
         property === "width" ? current.size.width :
         property === "height" ? current.size.height :
         property === "rotation" ? current.rotation :
@@ -550,45 +698,96 @@ async function setDisplayableProperty(ctx: Parameters<BlueprintNodeDef["execute"
     return { nextPort: "next" };
 }
 
+async function setDisplayableDisplay(ctx: Parameters<BlueprintNodeDef["execute"]>[0], target: "self" | "element") {
+    const api = requireHostApi(ctx);
+    const elementId = resolveDisplayableTargetElementId(ctx, target);
+    const current = api.widget.getDisplayableProperties(elementId);
+    await api.widget.setDisplayableProperties(elementId, {
+        display: toBooleanValue(readPin(ctx, "display"), current.display),
+    });
+    return { nextPort: "next" };
+}
+
 async function animateDisplayableProperty(ctx: Parameters<BlueprintNodeDef["execute"]>[0], target: "self" | "element") {
     const api = requireHostApi(ctx);
     const elementId = resolveDisplayableTargetElementId(ctx, target);
     const current = api.widget.getDisplayableProperties(elementId);
+    const animationToken = createDisplayableAnimationToken(ctx);
+    writeAnimationTokenOutput(ctx, animationToken);
     const property = toEnumValue(ctx.params.property, DISPLAYABLE_ANIMATION_PROPERTIES, "opacity");
     const defaultFrom =
         property === "opacity" ? current.opacity :
+        property === "x" ? current.position.x :
+        property === "y" ? current.position.y :
         property === "rotation" ? current.rotation :
         property === "scale" ? 1 :
         0;
     const defaultTo =
         property === "opacity" ? current.opacity :
+        property === "x" ? current.position.x :
+        property === "y" ? current.position.y :
         property === "rotation" ? current.rotation :
         property === "scale" ? 1 :
         0;
-    const rawFrom = toFiniteNumber(ctx.params.from, defaultFrom);
+    const rawFrom = toOptionalFiniteNumber(ctx.params.from);
     const rawTo = toFiniteNumber(ctx.params.to, defaultTo);
-    const from = property === "opacity" ? normalizeOpacityInput(rawFrom) : rawFrom;
+    const hasExplicitFrom = hasExplicitDisplayableAnimationFrom(ctx.params, property, rawFrom);
+    const from = rawFrom === undefined ? undefined : property === "opacity" ? normalizeOpacityInput(rawFrom) : rawFrom;
     const to = property === "opacity" ? normalizeOpacityInput(rawTo) : rawTo;
     const durationMs = Math.max(0, toFiniteNumber(ctx.params.duration, 0.3)) * 1000;
     const delayMs = Math.max(0, toFiniteNumber(ctx.params.delay, 0)) * 1000;
     const easing = toEnumValue(ctx.params.easing, DISPLAYABLE_ANIMATION_EASINGS, "easeOut");
     const after = toEnumValue(ctx.params.after, DISPLAYABLE_ANIMATION_AFTER_MODES, "hold");
+    const resetOnComplete = after === "reset";
+    const shouldHoldAbsolutePosition = (property === "x" || property === "y") && !resetOnComplete;
+    if (shouldHoldAbsolutePosition) {
+        if (hasExplicitFrom) {
+            await api.widget.setDisplayableProperties(elementId, { [property]: from ?? defaultFrom });
+        }
+        await waitForNextFrame();
+        await api.widget.setDisplayableProperties(elementId, { [property]: to });
+    }
+    const motionValue = (target: number): UIDisplayableMotionValue =>
+        hasExplicitFrom ? [from ?? defaultFrom, target] : displayableMotionFromCurrent(target);
     const targetMotion = (() => {
         switch (property) {
             case "opacity":
-                return { opacity: [from, to] };
+                return { opacity: motionValue(to) };
             case "offsetX":
-                return { x: [from, to] };
+                return { x: motionValue(to) };
             case "offsetY":
-                return { y: [from, to] };
+                return { y: motionValue(to) };
+            case "x": {
+                const base = resetOnComplete ? current.position.x : to;
+                const target = to - base;
+                return {
+                    x: hasExplicitFrom
+                        ? [(from ?? current.position.x) - base, target]
+                        : resetOnComplete
+                            ? displayableMotionFromCurrent(target)
+                            : [current.position.x - base, target],
+                };
+            }
+            case "y": {
+                const base = resetOnComplete ? current.position.y : to;
+                const target = to - base;
+                return {
+                    y: hasExplicitFrom
+                        ? [(from ?? current.position.y) - base, target]
+                        : resetOnComplete
+                            ? displayableMotionFromCurrent(target)
+                            : [current.position.y - base, target],
+                };
+            }
             case "scale":
-                return { scale: [from, to] };
+                return { scale: motionValue(to) };
             case "rotation":
             default:
-                return { rotate: [from, to] };
+                return { rotate: motionValue(to) };
         }
     })();
-    await api.widget.animateDisplayable(elementId, {
+    const motion = await api.widget.animateDisplayable(elementId, {
+        id: animationToken.id,
         target: targetMotion,
         transition: {
             type: "tween",
@@ -596,14 +795,24 @@ async function animateDisplayableProperty(ctx: Parameters<BlueprintNodeDef["exec
             delayMs,
             easing,
         },
-        resetOnComplete: after === "reset",
+        resetOnComplete,
     });
-    return { nextPort: "next" };
+    const outputAnimation = toBlueprintAnimationToken(motion.id) ?? animationToken;
+    return {
+        nextPort: "next",
+        outputValues: {
+            [DISPLAYABLE_ANIMATION_OUTPUT_PIN_ID]: outputAnimation,
+        },
+    };
 }
 
-async function stopDisplayableAnimation(ctx: Parameters<BlueprintNodeDef["execute"]>[0], target: "self" | "element") {
+async function stopDisplayableAnimation(ctx: Parameters<BlueprintNodeDef["execute"]>[0]) {
     const api = requireHostApi(ctx);
-    await api.widget.stopDisplayableAnimation(resolveDisplayableTargetElementId(ctx, target));
+    const animation = normalizeBlueprintAnimationToken(readPin(ctx, DISPLAYABLE_ANIMATION_OUTPUT_PIN_ID));
+    if (!animation || !animation.id.startsWith(DISPLAYABLE_ANIMATION_TOKEN_PREFIX)) {
+        return { nextPort: "next" };
+    }
+    await api.widget.stopDisplayableAnimation(animation.id);
     return { nextPort: "next" };
 }
 
@@ -620,6 +829,27 @@ async function patchTargetText(
     const api = requireHostApi(ctx);
     const elementId = resolveElementId(ctx, TEXT_ELEMENT_TYPE);
     await api.widget.setTextProperties(elementId, patch);
+    return { nextPort: "next" };
+}
+
+async function continueElementEventBubble(ctx: Parameters<BlueprintNodeDef["execute"]>[0]) {
+    const runtime = ctx.hostAdapter.blueprintRuntime;
+    if (!runtime?.continueElementEventBubble) {
+        throw new BlueprintGraphExecutionError("Continue Event Bubble requires a UI event runtime", ctx.node.id);
+    }
+    const elementId = ctx.executionOwner?.elementId;
+    if (!elementId) {
+        throw new BlueprintGraphExecutionError("Continue Event Bubble requires an element event owner", ctx.node.id);
+    }
+    const eventName = ctx.eventName?.trim();
+    if (!eventName) {
+        throw new BlueprintGraphExecutionError("Continue Event Bubble requires an active event", ctx.node.id);
+    }
+    await runtime.continueElementEventBubble(elementId, eventName, ctx.eventPayload, {
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
+        componentId: ctx.executionOwner?.componentId,
+    });
     return { nextPort: "next" };
 }
 
@@ -656,6 +886,18 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         role: "elementLiteral",
         pins: [elementOut],
         execute: () => ({}),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
+        displayName: "Continue Event Bubble",
+        category: "Element",
+        keywords: ["element", "event", "bubble", "propagation", "continue", "parent"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        scope: { ownerKinds: ["widgetMain", "componentWidgetMain"] },
+        pins: [execIn, execNext],
+        execute: continueElementEventBubble,
     },
     displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION,
@@ -706,6 +948,21 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         hideInPalette: true,
     }),
     displayableReadNode({
+        type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY,
+        displayName: "Get Display",
+        keywords: ["displayable", "display", "render", "shown"],
+        pins: [out("display", "Display", "boolean")],
+        target: "self",
+    }),
+    displayableWriteNode({
+        type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY,
+        displayName: "Set Display",
+        keywords: ["displayable", "display", "render", "show", "hide", "set"],
+        pins: [booleanIn("display", "Display")],
+        target: "self",
+        execute: ctx => setDisplayableDisplay(ctx, "self"),
+    }),
+    displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
         displayName: "Get Property",
         keywords: ["displayable", "property", "position", "size", "bounds", "visible"],
@@ -742,16 +999,17 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
         displayName: "Animate Property",
         keywords: ["displayable", "animate", "property", "motion", "transition", "tween"],
+        pins: [animationTokenOut()],
         target: "self",
         inspectorParams: displayableAnimateInspectorParams(),
         execute: ctx => animateDisplayableProperty(ctx, "self"),
     }),
-    displayableWriteNode({
+    displayableAnimationControlNode({
         type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
         displayName: "Stop Animation",
         keywords: ["displayable", "animate", "animation", "motion", "stop"],
-        target: "self",
-        execute: ctx => stopDisplayableAnimation(ctx, "self"),
+        category: "Displayable",
+        execute: ctx => stopDisplayableAnimation(ctx),
     }),
     displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
@@ -802,6 +1060,21 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         hideInPalette: true,
     }),
     displayableReadNode({
+        type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY,
+        displayName: "Get Element Display",
+        keywords: ["element", "displayable", "display", "render", "shown"],
+        pins: [out("display", "Display", "boolean")],
+        target: "element",
+    }),
+    displayableWriteNode({
+        type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_DISPLAY,
+        displayName: "Set Element Display",
+        keywords: ["element", "displayable", "display", "render", "show", "hide", "set"],
+        pins: [booleanIn("display", "Display")],
+        target: "element",
+        execute: ctx => setDisplayableDisplay(ctx, "element"),
+    }),
+    displayableReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
         displayName: "Get Element Property",
         keywords: ["element", "displayable", "property", "position", "size", "bounds", "visible"],
@@ -837,16 +1110,17 @@ export const elementBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
         displayName: "Animate Element Property",
         keywords: ["element", "displayable", "animate", "property", "motion", "transition", "tween"],
+        pins: [animationTokenOut()],
         target: "element",
         inspectorParams: displayableAnimateInspectorParams(),
         execute: ctx => animateDisplayableProperty(ctx, "element"),
     }),
-    displayableWriteNode({
+    displayableAnimationControlNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION,
         displayName: "Stop Element Animation",
         keywords: ["element", "displayable", "animate", "animation", "motion", "stop"],
-        target: "element",
-        execute: ctx => stopDisplayableAnimation(ctx, "element"),
+        category: "Element",
+        execute: ctx => stopDisplayableAnimation(ctx),
     }),
     textReadNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,

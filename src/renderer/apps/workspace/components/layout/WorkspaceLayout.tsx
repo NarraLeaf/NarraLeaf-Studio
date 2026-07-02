@@ -53,6 +53,15 @@ const SETTINGS_KEYS = {
     BOTTOM_PANEL_ACTIVE_PANEL: "ui.bottomPanel.activePanel",
 };
 
+const REMOVED_PANEL_IDS = new Set(["narraleaf-studio:running-tasks"]);
+
+function normalizeStoredPanelId(panelId: string | null | undefined): string | null | undefined {
+    if (panelId && REMOVED_PANEL_IDS.has(panelId)) {
+        return null;
+    }
+    return panelId;
+}
+
 /**
  * Main workspace layout container
  * Provides VSCode/IDEA-like layout with:
@@ -167,14 +176,14 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 const bottomHeight = await settingsService.get<number>(SETTINGS_KEYS.BOTTOM_PANEL_HEIGHT);
 
                 // Load active panels
-                const leftPanel = await settingsService.get<string | null>(SETTINGS_KEYS.LEFT_SIDEBAR_ACTIVE_PANEL);
-                const rightPanel = await settingsService.get<string | null>(SETTINGS_KEYS.RIGHT_SIDEBAR_ACTIVE_PANEL);
-                const bottomPanel = await settingsService.get<string | null>(SETTINGS_KEYS.BOTTOM_PANEL_ACTIVE_PANEL);
+                const leftPanel = normalizeStoredPanelId(await settingsService.get<string | null>(SETTINGS_KEYS.LEFT_SIDEBAR_ACTIVE_PANEL));
+                const rightPanel = normalizeStoredPanelId(await settingsService.get<string | null>(SETTINGS_KEYS.RIGHT_SIDEBAR_ACTIVE_PANEL));
+                const bottomPanel = normalizeStoredPanelId(await settingsService.get<string | null>(SETTINGS_KEYS.BOTTOM_PANEL_ACTIVE_PANEL));
 
                 // Only update if values exist in settings
-                if (leftVisible !== undefined) setLeftSidebarVisible(leftVisible);
-                if (rightVisible !== undefined) setRightSidebarVisible(rightVisible);
-                if (bottomVisible !== undefined) setBottomPanelVisible(bottomVisible);
+                if (leftVisible !== undefined) setLeftSidebarVisible(Boolean(leftVisible && leftPanel !== null));
+                if (rightVisible !== undefined) setRightSidebarVisible(Boolean(rightVisible && rightPanel !== null));
+                if (bottomVisible !== undefined) setBottomPanelVisible(Boolean(bottomVisible && bottomPanel !== null));
                 if (leftWidth !== undefined) {
                     setLeftSidebarWidth(leftWidth);
                     leftSidebarWidthRef.current = leftWidth;

@@ -31,32 +31,40 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.event.head.sliderValueChanged` | `Value Changed` | `Events` | Entry node fired when a Slider runtime value changes by interaction. It outputs mapped `value` and `previousValue`. |
 | `blueprint.event.head.sliderDragEnd` | `Drag End` | `Events` | Entry node fired when a Slider runtime drag ends. It outputs the mapped `value`. |
 | `blueprint.event.head.pageEvent` | `Page Event` | `Events` | Entry node for Page component child-to-parent events. It is available to `nl.frame` widget private blueprints. |
-| `blueprint.page.go` | `Go Page` | `Page` | Terminal exec node that opens a selected Page through the host navigation path. |
-| `blueprint.game.startStory` | `Start Game` | `Game` | Terminal latent node that starts a selected Story / Scene in the NarraLeaf game runtime. |
+| `blueprint.page.go` | `Go Page` | `Page` | Terminal exec node that opens a selected Page through the host navigation path with optional Page props; during an active game it opens the Page as a UI overlay above the game stage. |
+| `blueprint.page.getProps` | `Get Page Props` | `Page` | Pure node that reads the current Page props object. It is available to Page/Widget and Blueprint Value graphs, and is not available in Global blueprints. |
+| `blueprint.page.quit` | `Quit` | `Page` | Terminal latent node that exits the current application runtime. In Studio Dev Mode it stops the Dev Mode session instead of terminating Studio itself. |
+| `blueprint.game.startStory` | `Start Game` | `Game` | Terminal latent node that starts a selected Story / Scene in the NarraLeaf game runtime and hides the current app Page stack behind the game stage. |
 | `blueprint.game.getNametag` | `Get Nametag` | `Game` | Pure node that reads the current NarraLeaf Dialog speaker name, returning `null` when none is active; usable in Blueprint Value. |
+| `blueprint.game.isInGame` | `Is In Game` | `Game` | Pure node that returns whether Dev Mode currently has an active NarraLeaf game stage, including while a Page UI overlay is open; usable in Blueprint Value. |
+| `blueprint.game.quit` | `Quit Game` | `Game` | Terminal latent node that exits the active NarraLeaf game state and opens the selected return Page. |
 | `blueprint.game.next` | `Next` | `Game` | Latent exec node that triggers NarraLeaf's virtual click path for the active live game. |
 | `blueprint.game.skip` | `Skip` | `Game` | Latent exec node that calls NarraLeaf `LiveGame.skipDialog()` for the active game session. |
+| `blueprint.game.showDialog` | `Show Dialog` | `Game` | Latent exec node that sets NarraLeaf React `showDialog` preference to `true`. |
+| `blueprint.game.hideDialog` | `Hide Dialog` | `Game` | Latent exec node that sets NarraLeaf React `showDialog` preference to `false`. |
+| `blueprint.game.toggleDialogDisplay` | `Toggle Dialog Display` | `Game` | Latent exec node that toggles the current NarraLeaf React `showDialog` preference. |
 | `blueprint.game.setSentenceSpeed` | `Set Sentence Speed` | `Game` | Latent exec node that writes sentence `cps` through the NarraLeaf Preference API. |
 | `blueprint.game.save.write` | `Write Save` | `Game` | Latent node that serializes the active NarraLeaf live game into a project-scoped local save id, with optional blueprint `json` metadata. |
-| `blueprint.game.save.load` | `Load Save` | `Game` | Terminal latent node that abandons current game progress and deserializes a project-scoped local save. |
+| `blueprint.game.save.load` | `Load Save` | `Game` | Terminal latent node that abandons current game progress, deserializes a project-scoped local save, and leaves subsequent Page navigation as game-stage UI overlays. |
 | `blueprint.game.save.delete` | `Delete Save` | `Game` | Latent node that deletes a project-scoped local save id and continues even when the target is already absent. |
 | `blueprint.game.save.listIds` | `List Saves` | `Game` | Latent node that lists project-scoped local save ids as an `Array<String>` / `string[]` contract over the blueprint `array` pin type. |
 | `blueprint.game.save.getMetadata` | `Get Save Metadata` | `Game` | Latent node that reads user metadata from a project-scoped local save as the standard blueprint `json` pin type. |
 | `blueprint.game.save.getPreview` | `Get Save Preview` | `Game` | Latent node that reads a save preview image as a temporary `ImageAsset|null` without importing it into project assets. |
-| `blueprint.frameWidget.setTargetPage` | `Set Frame Page` | `Frame` | Exec node that switches the current `nl.frame` Page control to the selected Page. It is available in `nl.frame` private blueprints. |
-| `blueprint.element.frame.setTargetPage` | `Set Frame Page` | `Element` | Exec node that switches a bound `nl.frame` Element reference to the selected Page. It can be derived from a bound Frame Element reference. |
+| `blueprint.frameWidget.setTargetPage` | `Set Frame Page` | `Frame` | Exec node that switches the current `nl.frame` Page control to the selected Page and can optionally write Page props into the Frame params. It is available in `nl.frame` private blueprints. |
+| `blueprint.element.frame.setTargetPage` | `Set Frame Page` | `Element` | Exec node that switches a bound `nl.frame` Element reference to the selected Page and can optionally write Page props into the Frame params. It can be derived from a bound Frame Element reference. |
 | `blueprint.data.returnValue` | `Return Value` | `Data` | Exec sink that returns the produced value from a Blueprint Value graph. It is only available on `widgetValue` blueprints. |
 | `blueprint.element.ref` | `Element` | `Element` | Same-Surface magic element literal. It stores `{ surfaceId, elementId, elementType }`, outputs `element` or `element:<widgetType>`, and can fan out like other literals. |
+| `blueprint.element.continueEventBubble` | `Continue Event Bubble` | `Element` | Latent node for widget event graphs that re-dispatches the active element event to the current element's parent and then continues through `next`. |
 | `blueprint.element.text.*` | Text element nodes | `Text` | Element-targeted Text nodes with a separated top `element:nl.text` input. Read nodes are pure; write nodes remain event/macro only. |
-| `blueprint.element.displayable.*` | Displayable element nodes | `Displayable` | Element-targeted `Get Property` / `Set Property`, `Set Variant`, and property animation. Old fixed Displayable get nodes remain registered for compatibility but are hidden from new authoring. |
-| `blueprint.local.declareVar` | `Var` | `Variables` | Pinless graph declaration node for blueprint-level execution locals. It is available on widget, Blueprint Value, and shared-asset blueprints, not Page or Global blueprints. |
+| `blueprint.element.displayable.*` | Displayable element nodes | `Element` | Element-targeted `Get Element Display` / `Set Element Display`, `Get Element Property` / `Set Element Property`, `Set Element Variant`, property animation, and token-targeted animation stopping. Old fixed Displayable get nodes remain registered for compatibility but are hidden from new authoring. |
+| `blueprint.local.declareVar` | `Var` | `Variables` | Pinless graph declaration node for blueprint-level lifecycle locals. It is available on all blueprint owners except Blueprint Value (`widgetValue`). |
 | `blueprint.local.get` | `Get Var` | `Variables` | Pure data node that reads an execution-local blueprint variable. |
 | `blueprint.local.set` | `Set Var` | `Variables` | Exec node that writes an execution-local blueprint variable and continues through `next`. |
 | `blueprint.persistent.get` | `Get Persistent` | `Variables` | Latent exec node that reads a project-level Persistent variable from host-managed storage and outputs the authored default when no saved value exists. |
 | `blueprint.persistent.set` | `Set Persistent` | `Variables` | Latent exec node that writes a project-level Persistent variable through host-managed storage. |
 | `if` | `If` | `Flow` | Exec branch node that routes execution through `true` or `false` based on a boolean condition. |
 | `blueprint.flow.ifElse` | `If Else` | `Flow` | Exec branch node with addable `If` conditions, matching `Then` outputs, and a final `Else` fallback output. |
-| `blueprint.flow.*` | Flow utilities | `Flow` | `Noop`, `Sequence`, `Switch String`, bounded loops, `Delay`, and `Return`. |
+| `blueprint.flow.*` | Flow utilities | `Flow` | `Noop`, `Sequence`, `Switch String`, bounded loops, `Delay`, `Skip Delay`, and `Return`. |
 | `blueprint.data.*` | Data utilities | `Data` | String, Integer, Float, Boolean, Null, Color, Vector2D, and Rect literals, explicit conversions, JSON helpers, string helpers, parse helpers, and type/empty-value checks. |
 | `blueprint.collection.*` | Collection utilities | `Data` | Pure array/object helpers for length/get/set/push/insert/remove/removeAt/contains/slice/join and object keys/values/merge/set/remove. `arrayFind/filter/map/sort` are reserved planned/disabled ids and are not registered in the palette/runtime. |
 | `blueprint.math.*` | Math utilities | `Math` | Pure arithmetic, modulo, increment/decrement, abs, min/max, rounding, random numbers, boolean logic, strict equality, numeric comparison, and legacy numeric comparison nodes. |
@@ -82,7 +90,7 @@ Event-head nodes are surfaced in the canvas add-node palette for the current Blu
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/index.ts` | Built-in node catalog aggregation. Add a new built-in node here when it should ship in Studio by default. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/events/eventHeadNodes.ts` | Built-in event entry-head nodes, including lifecycle, widget input, scroll, broadcast, and Page Event heads. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/collectionNodes.ts` | Built-in Data / Collection array and object pure nodes. |
-| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/gameNodes.ts` | Built-in Game nodes for starting the NarraLeaf runtime and local save read/list/write/delete/preview operations. |
+| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/gameNodes.ts` | Built-in Game nodes for NarraLeaf runtime state/control, Dialog operations, and local save read/list/write/delete/preview operations. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/listNodes.ts` | Built-in List runtime nodes for content, selection, scrolling, and item context reads. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/frameNodes.ts` | Built-in Page navigation plus Page component host nodes for Frame params and child-to-parent Page events. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/sliderNodes.ts` | Built-in Slider widget nodes for value/range reads and runtime value/range writes. |
@@ -100,7 +108,7 @@ Event-head nodes are surfaced in the canvas add-node palette for the current Blu
 
 A blueprint is not just a node list. The main concepts are:
 
-- **Owner**: where the blueprint belongs. Supported owner kinds include `globalMain`, `surfaceMain`, `widgetMain`, `widgetValue`, and `sharedAsset`.
+- **Owner**: where the blueprint belongs. Supported owner kinds include `globalMain`, `surfaceMain`, `widgetMain`, `widgetValue`, `componentWidgetMain`, and `sharedAsset`.
 - **Program kind**: currently graph-based visual programs and script modules are represented separately.
 - **Graph kind**: each graph declares semantic rules through `event`, `function`, or `macro`.
 - **Members**: blueprint-owned variables, fields, and function signatures.
@@ -111,23 +119,23 @@ When adding a node, make sure you know which owner kinds and graph kinds it shou
 
 ## Variables and JSON-safe defaults
 
-`BlueprintVariable.defaultValue` and `BlueprintPersistentVariable.defaultValue` store JSON-safe recursive values directly. String, numeric, boolean, `null`, JSON object, and Array defaults should be persisted as their real values, not stringified JSON. Execution locals deep-clone default values when a graph dispatch starts so mutating an object or array variable in one dispatch cannot mutate the blueprint member default or another dispatch's locals. Widget, Blueprint Value, and shared-asset blueprint-level variables are declared by `Var` nodes in the graph; legacy `members.variables` entries remain a hidden compatibility fallback. Page and Global variables still live in blueprint members and are edited from the member sidebar. Persistent variable definitions live in the Blueprint document as project-level members; saved values live in host-managed Studio storage under the variable's stable `storageKey`.
+`BlueprintVariable.defaultValue` and `BlueprintPersistentVariable.defaultValue` store JSON-safe recursive values directly. String, numeric, boolean, `null`, JSON object, and Array defaults should be persisted as their real values, not stringified JSON. Blueprint lifecycle variables are initialized from their `Var` defaults the first time that blueprint owner/runtime scope needs a local store, then reused across event chains until that blueprint owner instance is released or remounted. Defaults are deep-cloned at store creation so object/array mutations do not mutate authored defaults. All blueprint owner kinds except `widgetValue` declare blueprint-level variables with graph `Var` nodes; `widgetValue` blueprints cannot declare `Var` nodes and may only read/write accessible Page/Blueprint/Global variables through `Get Var` / `Set Var` when available. Legacy `members.variables` entries remain a hidden compatibility fallback. Persistent variable definitions live in the Blueprint document as project-level members; saved values live in host-managed Studio storage under the variable's stable `storageKey`.
 
 `Get Var` and `Set Var` infer their `value` pin type from the currently selected variable. The editor uses this inferred type for pin labels, connection previews, and graph validation. If a later variable type change makes an existing edge incompatible, the edge remains in the graph and validation reports the type mismatch instead of deleting the connection.
 
-The variable creation UI includes `JSON` with default `{}` and `Array` with default `[]`. The `array` variable/pin type can feed `json` inputs because arrays are JSON values.
+The variable creation UI includes `JSON` with default `{}` and `Array` with default `[]`. The `array` variable/pin type can feed `json` inputs because arrays are JSON values. `Any` variables are initialized to `null`; the Var node shows this as a disabled single-line `null` field because the initial runtime value is intentionally not author-editable.
 
 ## Blueprint Value
 
 Blueprint Value is a per-property dynamic value provider. A `widgetValue` private owner is keyed as `widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`, and the UI document stores the active binding on the element in `valueBindings`. The current supported targets are `nl.text` -> `props.text`, `nl.button` -> `props.label`, `nl.frame` -> `props.params`, and `nl.slider` -> `props.value`.
 
-Value blueprints are visual graph programs only. They are seeded with one `init` event graph that returns the current literal value through `blueprint.data.returnValue`. `string` values seed a String literal, `json` values seed a JSON literal, and `float` values seed a Float literal. On mount, the value runtime executes the available value head (`init` or `flush`), records Element/property reads made while resolving data pins, and reruns the binding when those recorded Same-Surface element properties change. Host global state changes refresh all started value bindings so pure host reads such as Game `Get Nametag` can update without remounting. Evaluation is serialized per binding so an in-flight run is followed by at most one latest pending rerun.
+Value blueprints are visual graph programs only. They are seeded with one `init` event graph that returns the current literal value through `blueprint.data.returnValue`. `string` values seed a String literal, `json` values seed a JSON literal, and `float` values seed a Float literal. On mount, the value runtime executes the available value head (`init` or `flush`), records Element/property reads made while resolving data pins, and reruns the binding when those recorded Same-Surface element properties change. Host global state changes refresh all started value bindings so pure host reads such as Game `Get Nametag` and `Is In Game` can update without remounting. Evaluation is serialized per binding so an in-flight run is followed by at most one latest pending rerun.
 
 If a value graph does not execute `returnValue`, the runtime keeps the previous resolved value. If there is no previous resolved value, the widget uses its literal prop from the UI document. String results are coerced to string, and `null` becomes an empty string. Page `params` expects a JSON object; non-object results fall back to `{}`. Slider `value` expects a finite float and is clamped/snapped against the authored `min` / `max` / `step` range.
 
 When a Blueprint Value belongs to an element repeated by an `nl.list` item template, evaluation receives the current `listItemScope` and an item-specific `instanceKey`. Pure List item context nodes (`Get List Item Props`, `Index`, `Count`, `Key`) read that scope, and each repeated item keeps a separate runtime value even though the source element id is the same.
 
-The Blueprint Value palette is intentionally restricted to safe value-producing nodes: the `Init` and `On Flush` event heads, non-latent flow, graph comments, pure Data/Math/List nodes, local variables, Element literals, pure Element-targeted Text/Displayable/Slider reads, and pure Game reads such as `Get Nametag`. Surface/global state read/write nodes are not part of the core catalog; widget mutations, navigation, Persistent variable reads/writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
+The Blueprint Value palette is intentionally restricted to safe value-producing nodes: the `Init` and `On Flush` event heads, non-latent flow, graph comments, pure Data/Math/List nodes, local variable reads/writes, Element literals, pure Element-targeted Text/Displayable/Slider reads, and pure Game reads such as `Get Nametag` and `Is In Game`. Surface/global state read/write nodes are not part of the core catalog; `Var` declarations, widget mutations, navigation, Persistent variable reads/writes, broadcasts, latent nodes, and TypeScript revisions are blocked for `widgetValue` owners.
 
 ## List runtime and item context
 
@@ -202,11 +210,11 @@ Recommended category names:
 | --- | --- |
 | `Events` | Event entry heads such as `Init`, `Mouse Click`, `On Key Down`, `Any Key Down`, `Surface Init`, `App Boot`, broadcast receivers, and `Page Event`. |
 | `Variables` | Blueprint-level `Var` declarations, local variable reads/writes through `Get Var` / `Set Var`, and project-level Persistent reads/writes through `Get Persistent` / `Set Persistent`. |
-| `Flow` | Branching, string switching, bounded loops, array iteration, and delay. |
+| `Flow` | Branching, string switching, bounded loops, array iteration, delay, and delay skipping. |
 | `Data` | Literals, objects, arrays, Collection nodes, JSON helpers, string helpers, parsing, and type conversion. |
 | `Math` | Numeric calculation, rounding, min/max, random numbers, boolean logic, and comparisons. |
 | `Element` | Magic element literals and same-Surface element references. |
-| `Displayable` | Displayable `Get Property` / `Set Property`, `Set Variant`, and property animation nodes for Self and Element-targeted forms. |
+| `Displayable` | Displayable `Get Display` / `Set Display`, `Get Property` / `Set Property`, `Set Variant`, property animation, and token-targeted animation stopping nodes for Self and Element-targeted forms. |
 | `Text` | Text property reads/writes for the current Text owner or explicit Text element references. |
 | `Widget` | UI element mutations and reads. |
 | `Page` | Page navigation, Page component host reads, and child-to-parent Page events. |
@@ -266,9 +274,11 @@ Common `valueType` strings:
 - `json`
 - `Vector2D`
 - `RGBAColor`
+- `Timer`
+- `AnimationToken`
 - `any`
 
-Connection compatibility is strict by default. `any` is the wildcard type. `integer` outputs may connect to `float` inputs. `integer` and `float` outputs may connect to `string` inputs and are converted to strings when the input is read. `array` outputs may connect to `json` inputs because arrays are JSON values. `json`, `Vector2D`, and `RGBAColor` are not wildcards; use an explicit Data conversion node when a scalar value must feed a JSON input. Collection/List array inputs normalize non-array values to `[]`.
+Connection compatibility is strict by default. `any` is the wildcard type. `integer` outputs may connect to `float` inputs. `integer` and `float` outputs may connect to `string` inputs and are converted to strings when the input is read. `array` outputs may connect to `json` inputs because arrays are JSON values. `json`, `Vector2D`, `RGBAColor`, `Timer`, and `AnimationToken` are not wildcards; use an explicit Data conversion node when a scalar value must feed a JSON input. Collection/List array inputs normalize non-array values to `[]`.
 
 Data input pins accept one incoming edge. Exec input pins may accept multiple incoming exec edges, which lets branches merge back into a shared continuation. Most output pins replace their previous outgoing edge when reconnected, but Data literal output pins may fan out to multiple targets.
 
@@ -279,6 +289,14 @@ pins: [
     { id: "value", kind: "input", semantic: "data", valueType: "json", label: "Value" },
     { id: "result", kind: "output", semantic: "data", valueType: "json", label: "Result" },
 ]
+```
+
+### Optional input pins
+
+Set `optional: true` on input pins that are intentionally nullable or may use a runtime default when unwired. The node card renders an optional unwired input label in gray italic text; once connected, the label returns to the normal style. The input handle keeps the normal exec/data color in both states.
+
+```ts
+{ id: "props", kind: "input", semantic: "data", valueType: "json", label: "Page props", optional: true }
 ```
 
 ### Inline literal pins
@@ -384,7 +402,7 @@ Important context fields:
 | `params` | Current node params. |
 | `hostAdapter` | Runtime host bridge. Host APIs live under `hostAdapter.blueprintRuntime?.hostApi`. |
 | `trace` | Optional debug trace emitter. |
-| `blueprintLocals` | Per-dispatch local variables initialized from blueprint members. |
+| `blueprintLocals` | Blueprint lifecycle variable accessors backed by owner/runtime-scoped stores. |
 | `listItemScope` | Current List item scope when executing an item template descendant graph. |
 | `instanceKey` | Runtime instance key used to isolate repeated List item descendants. |
 
@@ -438,7 +456,9 @@ Host API nodes are usually:
 - `isLatent: true` if they await runtime work
 - limited to `event` and `macro` graph kinds
 
-Game Host API nodes follow the same rules. `Get Nametag` is pure and can be evaluated from Blueprint Value or event graphs; it returns `null` when no speaker is active. The default Dialog Nametag widgetMain graph uses `Init` / `On Flush` and reads `Get Nametag` separately for the null check and text update, and the NarraLeaf Dialog hook dispatches flush for Dialog elements with Blueprint Value or `On Flush` logic when the dialog text/speaker changes. The default Dialog Content widgetMain graph centralizes advancement: Content `Mouse Click`, `Element Click` bound to the full-screen Dialog Interaction Layer, the visible Dialog Panel, and default content children, and Space `keyUp` all feed one `Next` node. `Next`, `Skip`, `Set Sentence Speed`, `Write Save`, `Delete Save`, `List Saves`, and `Get Save Preview` continue through `next` after the awaited host call, while `Start Game` and `Load Save` are terminal because they replace or enter the active NarraLeaf game state and must not continue the old execution chain. `Set Sentence Speed` writes the `cps` preference key through the NarraLeaf Preference API.
+Page Host API nodes use `navigation.openSurface(surfaceId, props?)` for `Go Page`, `navigation.getPageProps()` for `Get Page Props`, `navigation.quitApplication()` for `Quit`, and `frame.getParam(key)` for single-field reads. `Go Page` normalizes missing or non-object props to `{}`. Frame Widget Property `Set Frame Page` keeps its target Page selector in the card, and its optional `Page props` input writes Frame `params`; when that input is not connected, existing params are preserved. `Get Page Props` is scoped to `surfaceMain` / `widgetMain` / `widgetValue` owners and must not appear in `globalMain`. `Quit` is terminal; in Studio Dev Mode its host implementation stops Dev Mode rather than terminating the Studio process.
+
+Game Host API nodes follow the same rules. `Get Nametag` and `Is In Game` are pure and can be evaluated from Blueprint Value or event graphs; `Get Nametag` returns `null` when no speaker is active, and `Is In Game` returns `false` outside an active NarraLeaf game state. Page UI overlays opened above the game stage still count as game state. The default Dialog Nametag widgetMain graph uses `Init` / `On Flush` and reads `Get Nametag` separately for the null check and text update, and the NarraLeaf Dialog hook dispatches flush for Dialog elements with Blueprint Value or `On Flush` logic when the dialog text/speaker changes. The default Dialog Content widgetMain graph centralizes advancement: Content `Mouse Click`, `Element Click` bound to the full-screen Dialog Interaction Layer, the visible Dialog Panel, and default content children, and Space `keyUp` all feed one `Next` node. `Next`, `Skip`, `Show Dialog`, `Hide Dialog`, `Toggle Dialog Display`, `Set Sentence Speed`, `Write Save`, `Delete Save`, `List Saves`, and `Get Save Preview` continue through `next` after the awaited host call, while `Start Game`, `Quit Game`, `Load Save`, and `Go Page` are terminal because they replace, exit, or navigate away from the active execution context and must not continue the old execution chain. After `Start Game` or `Load Save`, `Go Page` keeps the shared Page Surface animation/lifecycle path but renders the target Page as a UI layer over the game stage. Dialog display nodes write or toggle the NarraLeaf React `showDialog` preference, and `Set Sentence Speed` writes the `cps` preference key through the NarraLeaf Preference API.
 
 ## Scoping and palette availability
 
@@ -596,6 +616,7 @@ When adding or changing nodes, test the following:
 - The palette includes the node for allowed graph kinds.
 - The palette excludes the node for disallowed graph kinds and scopes.
 - Pins have unique ids.
+- Optional input pins render as inactive when unwired and return to normal pin styling when wired.
 - Inline literals are only enabled on supported data input pins.
 - Function graphs only show pure, non-latent nodes.
 - Runtime `execute` returns the expected `nextPort`.

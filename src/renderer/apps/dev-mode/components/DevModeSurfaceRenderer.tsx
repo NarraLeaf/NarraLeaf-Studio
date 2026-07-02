@@ -8,6 +8,7 @@ import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/Surfa
 import { SurfaceElementTree } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
+import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 
 type DevModeSurfaceRendererProps = {
     document: UIDocument;
@@ -17,6 +18,7 @@ type DevModeSurfaceRendererProps = {
     hostAdapter: UIHostAdapter;
     blueprintBindingContext?: SurfaceBlueprintBindingContext | null;
     widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>;
+    getWidgetRuntimePatches?: () => Record<string, DevModeWidgetRuntimePatch> | undefined;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
 };
 
@@ -29,10 +31,13 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
         hostAdapter,
         blueprintBindingContext,
         widgetRuntimePatches,
+        getWidgetRuntimePatches,
         nestedSurfaceRuntime,
     } =
         props;
     const [, setBindingRenderTick] = useState(0);
+    const [, setRuntimePatchRenderTick] = useState(0);
+    const widgetRuntimeStore = useWidgetRuntimeStateStore();
     useEffect(() => {
         const store = blueprintBindingContext?.surfaceState;
         if (!store) {
@@ -42,6 +47,14 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
             setBindingRenderTick(n => n + 1);
         });
     }, [blueprintBindingContext?.surfaceState]);
+    useEffect(() => {
+        if (!widgetRuntimeStore) {
+            return undefined;
+        }
+        return widgetRuntimeStore.subscribeRuntimePatches(() => {
+            setRuntimePatchRenderTick(n => n + 1);
+        });
+    }, [widgetRuntimeStore]);
 
     const rootElementId = resolveSurfaceRootElementId(document, surface.id);
     if (!rootElementId) {
@@ -57,6 +70,7 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
     const scaledWidth = surface.designSize.width * safeScale;
     const scaledHeight = surface.designSize.height * safeScale;
     const dispatchSurfaceBlueprintEvent = hostAdapter.blueprintRuntime?.dispatchSurfaceBlueprintEvent;
+    const effectiveWidgetRuntimePatches = getWidgetRuntimePatches?.() ?? widgetRuntimePatches;
 
     const handleSurfaceClick = useCallback(
         (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -108,7 +122,7 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
                     rendererRegistry={rendererRegistry}
                     hostAdapter={hostAdapter}
                     blueprintBindingContext={blueprintBindingContext}
-                    widgetRuntimePatches={widgetRuntimePatches}
+                    widgetRuntimePatches={effectiveWidgetRuntimePatches}
                     nestedSurfaceRuntime={nestedSurfaceRuntime}
                 />
             </div>

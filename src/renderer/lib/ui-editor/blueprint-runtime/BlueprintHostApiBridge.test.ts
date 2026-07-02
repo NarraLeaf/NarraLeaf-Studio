@@ -13,6 +13,7 @@ import { createDevModeBlueprintHostApi, type DevModeWidgetRuntimePatch } from ".
 import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
+import { displayableMotionFromCurrent } from "@/lib/ui-editor/runtime/displayableMotion";
 
 function createDocument(): UIDocument {
     const imageProps = {
@@ -114,8 +115,11 @@ function createHostApi(options?: {
     document?: UIDocument;
     scope?: ScopeStoreBridge;
     runtimeScopeId?: string;
+    pageProps?: Record<string, unknown>;
     frameParams?: Record<string, unknown>;
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
+    onOpenSurface?: (surfaceId: string, props?: Record<string, unknown>) => Promise<void> | void;
+    onQuitApplication?: () => Promise<void> | void;
     onWidgetPatch?: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
     onWriteSave?: (id: string, metadata: unknown) => Promise<void> | void;
     onLoadSave?: (id: string) => Promise<void> | void;
@@ -124,8 +128,13 @@ function createHostApi(options?: {
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
     onGetNametag?: () => string | null;
+    onIsInGame?: () => boolean;
+    onQuitGame?: (surfaceId: string) => Promise<void> | void;
     onNext?: () => Promise<void> | void;
     onSkip?: () => Promise<void> | void;
+    onShowDialog?: () => Promise<void> | void;
+    onHideDialog?: () => Promise<void> | void;
+    onToggleDialogDisplay?: () => Promise<void> | void;
     onSetSentenceSpeed?: (speed: number) => Promise<void> | void;
     widgetRuntimeStore?: WidgetRuntimeStateStore;
 }) {
@@ -134,6 +143,7 @@ function createHostApi(options?: {
         scope: options?.scope ?? new ScopeStoreBridge(),
         activeSurfaceId: "page",
         runtimeScopeId: options?.runtimeScopeId,
+        pageProps: options?.pageProps,
         frameParams: options?.frameParams,
         onFrameEmit: options?.onFrameEmit,
         onWriteSave: options?.onWriteSave,
@@ -143,12 +153,18 @@ function createHostApi(options?: {
         onGetSaveMetadata: options?.onGetSaveMetadata,
         onGetSavePreview: options?.onGetSavePreview,
         onGetNametag: options?.onGetNametag,
+        onIsInGame: options?.onIsInGame,
+        onQuitGame: options?.onQuitGame,
         onNext: options?.onNext,
         onSkip: options?.onSkip,
+        onShowDialog: options?.onShowDialog,
+        onHideDialog: options?.onHideDialog,
+        onToggleDialogDisplay: options?.onToggleDialogDisplay,
         onSetSentenceSpeed: options?.onSetSentenceSpeed,
         emit: () => undefined,
-        onOpenSurface: () => undefined,
+        onOpenSurface: options?.onOpenSurface ?? (() => undefined),
         onCloseLayer: () => undefined,
+        onQuitApplication: options?.onQuitApplication,
         onWidgetPatch: options?.onWidgetPatch ?? (() => undefined),
         widgetRuntimeStore: options?.widgetRuntimeStore ?? new WidgetRuntimeStateStore(),
     });
@@ -193,6 +209,35 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(onFrameEmit).toHaveBeenCalledWith("page:selected", { id: "settings" });
     });
 
+    it("reads current Page props and passes props through page navigation", async () => {
+        const opened: Array<{ surfaceId: string; props?: Record<string, unknown> }> = [];
+        const quitApplication = vi.fn();
+        const pageProps = { tab: "audio", nested: { muted: true } };
+        const hostApi = createHostApi({
+            pageProps,
+            onQuitApplication: quitApplication,
+            onOpenSurface: (surfaceId, props) => {
+                opened.push({ surfaceId, props });
+            },
+        });
+
+        const currentProps = hostApi.navigation.getPageProps();
+        expect(currentProps).toEqual(pageProps);
+        expect(currentProps).not.toBe(pageProps);
+        expect(hostApi.frame.getParam("tab")).toBe("audio");
+
+        await hostApi.navigation.openSurface("page-b", { tab: "video", index: 2 });
+        await hostApi.navigation.openSurface("page-b");
+
+        expect(opened).toEqual([
+            { surfaceId: "page-b", props: { tab: "video", index: 2 } },
+            { surfaceId: "page-b", props: {} },
+        ]);
+
+        await hostApi.navigation.quitApplication();
+        expect(quitApplication).toHaveBeenCalledTimes(1);
+    });
+
     it("uses runtimeScopeId to isolate surface state between Frame instances", () => {
         const scope = new ScopeStoreBridge();
         const first = createHostApi({ scope, runtimeScopeId: "page/frame:first" });
@@ -209,23 +254,43 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
     it("exposes Dialog game controls and nametag reads", async () => {
         const next = vi.fn();
         const skip = vi.fn();
+        const quit = vi.fn();
+        const dialogDisplayCalls: string[] = [];
         const speeds: number[] = [];
         const hostApi = createHostApi({
             onGetNametag: () => "Alice",
+            onIsInGame: () => true,
+            onQuitGame: quit,
             onNext: next,
             onSkip: skip,
+            onShowDialog: () => {
+                dialogDisplayCalls.push("show");
+            },
+            onHideDialog: () => {
+                dialogDisplayCalls.push("hide");
+            },
+            onToggleDialogDisplay: () => {
+                dialogDisplayCalls.push("toggle");
+            },
             onSetSentenceSpeed: speed => {
                 speeds.push(speed);
             },
         });
 
         expect(hostApi.game.getNametag()).toBe("Alice");
+        expect(hostApi.game.isInGame()).toBe(true);
+        await hostApi.game.quit(" page-b ");
         await hostApi.game.next();
         await hostApi.game.skip();
+        await hostApi.game.showDialog();
+        await hostApi.game.hideDialog();
+        await hostApi.game.toggleDialogDisplay();
         await hostApi.game.setSentenceSpeed(24);
 
+        expect(quit).toHaveBeenCalledWith("page-b");
         expect(next).toHaveBeenCalledTimes(1);
         expect(skip).toHaveBeenCalledTimes(1);
+        expect(dialogDisplayCalls).toEqual(["show", "hide", "toggle"]);
         expect(speeds).toEqual([24]);
     });
 
@@ -271,6 +336,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         const hostApi = createHostApi({ scope });
 
         expect(hostApi.game.getNametag()).toBe("Narrator");
+        expect(hostApi.game.isInGame()).toBe(false);
     });
 
     it("returns null for missing Dialog nametag values", () => {
@@ -505,7 +571,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         });
 
         await hostApi.widget.animateDisplayable("image", {
-            target: { opacity: [0, 1] },
+            target: { opacity: displayableMotionFromCurrent(1) },
             transition: { type: "tween", durationMs: 0, easing: "easeOut" },
             resetOnComplete: false,
         });
@@ -515,7 +581,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             layout: { opacity: 1 },
         });
         expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
-            target: { opacity: [0, 1] },
+            target: { opacity: { from: "current", to: 1 } },
             resetOnComplete: false,
         });
     });
@@ -730,13 +796,16 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
     it("stores Displayable property changes as runtime patches", async () => {
         const document = createDocument();
         const onWidgetPatch = vi.fn();
-        const hostApi = createHostApi({ document, onWidgetPatch });
+        const store = new WidgetRuntimeStateStore();
+        const hostApi = createHostApi({ document, onWidgetPatch, widgetRuntimeStore: store, runtimeScopeId: "scope" });
 
         expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
             position: { x: 0, y: 48 },
+            offset: { x: 0, y: 0 },
             size: { width: 120, height: 80 },
             rotation: 0,
             opacity: 1,
+            display: true,
             visible: true,
         });
 
@@ -745,12 +814,14 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             width: 160,
             rotation: 15,
             opacity: 0.5,
+            display: false,
             visible: false,
         });
 
         expect(document.elements.image?.layout).toMatchObject({ x: 0, y: 48, width: 120, height: 80 });
         expect(onWidgetPatch).toHaveBeenCalledWith("image", {
             layout: { x: 12, width: 160, rotation: 15, opacity: 0.5 },
+            display: false,
             visible: false,
         });
         expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
@@ -759,15 +830,111 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             bounds: { x: 12, y: 48, width: 160, height: 80 },
             rotation: 15,
             opacity: 0.5,
+            display: false,
             visible: false,
         });
+
+        await hostApi.widget.setDisplayableProperties("image", {
+            offsetX: 24,
+            offsetY: -12,
+        });
+
+        expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+            target: { x: 24, y: -12 },
+            transition: { type: "tween", durationMs: 0, easing: "linear" },
+            resetOnComplete: false,
+        });
+        expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+            position: { x: 12, y: 48 },
+            offset: { x: 24, y: -12 },
+        });
+    });
+
+    it("reads and writes nested Displayable x/y in surface coordinates", async () => {
+        const document = createDocument();
+        document.elements.root!.childrenIds = ["slider", "panel", "frame"];
+        document.elements.panel = {
+            id: "panel",
+            type: "nl.container",
+            parentId: "root",
+            childrenIds: ["image"],
+            layout: { x: 30, y: 20, width: 200, height: 100 },
+        };
+        document.elements.image!.parentId = "panel";
+        document.elements.image!.layout = { x: 5, y: 7, width: 120, height: 80 };
+        const onWidgetPatch = vi.fn();
+        const hostApi = createHostApi({ document, onWidgetPatch });
+
+        expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+            position: { x: 35, y: 27 },
+            bounds: { x: 35, y: 27, width: 120, height: 80 },
+        });
+
+        await hostApi.widget.setDisplayableProperties("image", { x: 80, y: 90 });
+
+        expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
+            layout: { x: 50, y: 70 },
+        });
+        expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+            position: { x: 80, y: 90 },
+            bounds: { x: 80, y: 90, width: 120, height: 80 },
+        });
+
+        await hostApi.widget.setDisplayableProperties("panel", { x: 42, y: 24 });
+
+        expect(onWidgetPatch).toHaveBeenLastCalledWith("panel", {
+            layout: { x: 42, y: 24 },
+        });
+        expect(hostApi.widget.getDisplayableProperties("image").position).toEqual({ x: 92, y: 94 });
+    });
+
+    it("notifies runtime patch subscribers when Displayable properties change", async () => {
+        const store = new WidgetRuntimeStateStore();
+        const onRuntimePatch = vi.fn();
+        store.subscribeRuntimePatches(onRuntimePatch);
+        const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+
+        await hostApi.widget.setDisplayableProperties("image", { display: false });
+
+        expect(onRuntimePatch).toHaveBeenCalledTimes(1);
+    });
+
+    it("resolves Displayable properties for component definition elements", async () => {
+        const document = createDocument();
+        document.components = [
+            {
+                id: "component",
+                name: "Component",
+                rootElementId: "component-container",
+                elements: {
+                    "component-container": {
+                        id: "component-container",
+                        type: "nl.container",
+                        parentId: null,
+                        childrenIds: [],
+                        layout: { x: 4, y: 8, width: 160, height: 80 },
+                    },
+                },
+            },
+        ];
+        const onWidgetPatch = vi.fn();
+        const hostApi = createHostApi({ document, onWidgetPatch });
+
+        expect(hostApi.widget.getDisplayableProperties("component-container").position).toEqual({ x: 4, y: 8 });
+
+        await hostApi.widget.setDisplayableProperties("component-container", { display: false });
+
+        expect(onWidgetPatch).toHaveBeenLastCalledWith("component-container", expect.objectContaining({
+            display: false,
+        }));
+        expect(hostApi.widget.getDisplayableProperties("component-container").display).toBe(false);
     });
 
     it("stores and clears Displayable animation requests in runtime state", async () => {
         const store = new WidgetRuntimeStateStore();
         const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
 
-        await hostApi.widget.animateDisplayable("image", {
+        const motion = await hostApi.widget.animateDisplayable("image", {
             target: { opacity: [0, 1] },
             transition: { type: "tween", durationMs: 0, easing: "linear" },
             resetOnComplete: true,
@@ -779,7 +946,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             resetOnComplete: true,
         });
 
-        await hostApi.widget.stopDisplayableAnimation("image");
+        await hostApi.widget.stopDisplayableAnimation(motion.id);
 
         expect(store.getDisplayableMotion("scope\0image")).toBeNull();
     });
@@ -803,13 +970,43 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
                 target: { opacity: [0, 1] },
                 transition: { type: "tween", durationMs: 120, delayMs: 30, easing: "linear" },
             });
-            await vi.advanceTimersByTimeAsync(149);
+            await vi.advanceTimersByTimeAsync(299);
             expect(resolved).toBe(false);
             await vi.advanceTimersByTimeAsync(1);
             await expect(animation).resolves.toMatchObject({
                 target: { opacity: [0, 1] },
             });
             expect(resolved).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("stops Displayable animations by animation id and resolves pending waits", async () => {
+        vi.useFakeTimers();
+        try {
+            const store = new WidgetRuntimeStateStore();
+            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+            let resolved = false;
+            const animation = hostApi.widget.animateDisplayable("image", {
+                id: "animation:test",
+                target: { opacity: [0, 1] },
+                transition: { type: "tween", durationMs: 1000, delayMs: 0, easing: "linear" },
+                resetOnComplete: true,
+            }).then(result => {
+                resolved = true;
+                return result;
+            });
+
+            await vi.advanceTimersByTimeAsync(100);
+            expect(resolved).toBe(false);
+            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({ id: "animation:test" });
+
+            await hostApi.widget.stopDisplayableAnimation("animation:test");
+
+            await expect(animation).resolves.toMatchObject({ id: "animation:test" });
+            expect(resolved).toBe(true);
+            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
         } finally {
             vi.useRealTimers();
         }

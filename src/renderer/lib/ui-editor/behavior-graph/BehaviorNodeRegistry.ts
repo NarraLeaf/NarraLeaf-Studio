@@ -39,6 +39,8 @@ export type BehaviorNodeExecutionContext = {
     trace?: BehaviorGraphExecutionTrace;
     /** Per-event execution locals; initialized from blueprint member variables (M4 simplified editor). */
     blueprintLocals?: Record<string, unknown>;
+    /** Runtime event slot currently being handled, for nodes that need to continue event propagation. */
+    eventName?: string;
     eventPayload?: Record<string, unknown>;
     signal?: AbortSignal;
     listItemScope?: UIListItemScope | null;
@@ -47,6 +49,7 @@ export type BehaviorNodeExecutionContext = {
         surfaceId?: string;
         elementId?: string;
         blueprintId?: string;
+        componentId?: string;
     };
     persistentVariables?: Record<string, BlueprintPersistentVariable>;
     valueExecution?: BehaviorGraphValueExecution;

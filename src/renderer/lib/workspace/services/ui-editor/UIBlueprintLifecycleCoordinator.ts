@@ -9,7 +9,7 @@ import {
     widgetMainOwnerKey,
     widgetValueOwnerKey,
 } from "./blueprint/ownerKeys";
-import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 
 /**
  * Keeps local instance BlueprintDocument (in uigraphs.json) aligned with UIDocument surfaces and widgets.
@@ -64,17 +64,14 @@ export class UIBlueprintLifecycleCoordinator
         const validComponentWidgetKeys = new Set<string>();
         for (const surface of doc.surfaces) {
             for (const [elementId, el] of Object.entries(doc.elements)) {
-                if (elementId === surface.rootElementId) {
-                    continue;
-                }
                 if (this.owningSurfaceId(elementId, doc) !== surface.id) {
                     continue;
                 }
                 for (const propPath of Object.keys(el.valueBindings ?? {})) {
                     validWidgetValueKeys.add(widgetValueOwnerKey(surface.id, elementId, propPath));
                 }
-                const mod = widgetModuleRegistry.get(el.type);
-                if (!mod?.logicApi?.supportsPrivateBlueprint) {
+                const logicApi = getWidgetLogicApi(el.type);
+                if (!logicApi?.supportsPrivateBlueprint) {
                     continue;
                 }
                 localBp.ensureWidgetMain(surface.id, elementId, el.name, el.type);
@@ -83,8 +80,8 @@ export class UIBlueprintLifecycleCoordinator
         }
         for (const component of doc.components ?? []) {
             for (const [elementId, el] of Object.entries(component.elements)) {
-                const mod = widgetModuleRegistry.get(el.type);
-                if (!mod?.logicApi?.supportsPrivateBlueprint) {
+                const logicApi = getWidgetLogicApi(el.type);
+                if (!logicApi?.supportsPrivateBlueprint) {
                     continue;
                 }
                 localBp.ensureComponentWidgetMain(component.id, elementId, el.name, el.type);

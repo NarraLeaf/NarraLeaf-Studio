@@ -7,11 +7,13 @@ import {
     type CSSProperties,
     type ChangeEvent,
     type FocusEvent,
+    type FormEvent,
     type KeyboardEvent,
     type MouseEvent,
 } from "react";
 import { motion } from "motion/react";
 import type { AppearanceFieldTransition } from "@shared/types/ui-editor/appearance";
+import type { UIElement } from "@shared/types/ui-editor/document";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -45,6 +47,7 @@ import {
 } from "@/lib/ui-editor/interaction/doubleClickDebug";
 
 const OPENING_BLUR_GRACE_MS = 300;
+const TEXT_VALUE_PROP_PATH = "text";
 
 function assignMotionTransition(
     target: Record<string, unknown>,
@@ -57,19 +60,31 @@ function assignMotionTransition(
     target[property] = toRuntimeMotionTransition(transition);
 }
 
+function commitTextEditValue(documentService: UIDocumentService, element: UIElement, nextText: string): void {
+    const docEl = documentService.getDocument().elements[element.id];
+    if (docEl?.valueBindings?.[TEXT_VALUE_PROP_PATH]?.kind === "blueprintValue") {
+        documentService.clearElementBlueprintValueBinding(element.id, TEXT_VALUE_PROP_PATH);
+    }
+    documentService.updateElementProps(element.id, {
+        text: nextText,
+    });
+}
+
 export function TextRenderer({
     element,
     surface,
-    document,
     hostAdapter,
     useAppearanceInspectorPreview,
 }: WidgetRendererProps) {
     const stateService = hostAdapter.editorStateService ?? UIEditorStateService.getInstance();
-    const documentService = UIDocumentService.getInstance();
+    const documentService = hostAdapter.editorDocumentService ?? UIDocumentService.getInstance();
     useUIDocumentRevision(documentService);
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
     const draftRef = useRef("");
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const editOpenedAtRef = useRef(0);
     const skipBlurCommitRef = useRef(false);
+    const skipOverrideCommitRef = useRef(false);
 
     useEffect(() => {
         return stateService.on("interactionOverrideChanged", payload => {
@@ -97,25 +112,22 @@ export function TextRenderer({
             }
 
             if (isHere && !wasHere) {
-                const docEl = documentService.getDocument().elements[element.id];
-                draftRef.current = docEl ? getTextProps(docEl).text : "";
+                draftRef.current = getTextProps(element).text;
             }
 
             if (wasHere && !isHere) {
                 if (skipBlurCommitRef.current) {
                     skipBlurCommitRef.current = false;
+                } else if (skipOverrideCommitRef.current) {
+                    skipOverrideCommitRef.current = false;
                 } else {
-                    const docEl = documentService.getDocument().elements[element.id];
-                    if (docEl) {
-                        documentService.updateElementProps(element.id, {
-                            ...docEl.props,
-                            text: draftRef.current,
-                        });
-                    }
+                    const currentText = textareaRef.current?.value ?? draftRef.current;
+                    draftRef.current = currentText;
+                    commitTextEditValue(documentService, element, currentText);
                 }
             }
         });
-    }, [stateService, documentService, element.id, surface.id]);
+    }, [stateService, documentService, element, surface.id]);
 
     const isEditing =
         interactionOverride?.kind === "textEdit" &&
@@ -167,23 +179,21 @@ export function TextRenderer({
         if (!isEditing) {
             return;
         }
-        const docEl = documentService.getDocument().elements[element.id];
-        draftRef.current = docEl ? getTextProps(docEl).text : "";
-    }, [isEditing, documentService, element.id]);
+        draftRef.current = getTextProps(element).text;
+    }, [element, isEditing]);
 
-    const liveElement = isEditing ? document.elements[element.id] ?? element : element;
-    const flatProps = getTextProps(liveElement);
+    const flatProps = getTextProps(element);
     const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
     const runtimeState = useWidgetRuntimeElementState(element.id);
     const listScopedVariantId =
-        typeof (liveElement.extra as UIListElementExtra | undefined)?.runtimeVariantOverrideId === "string"
-            ? (liveElement.extra as UIListElementExtra).runtimeVariantOverrideId
+        typeof (element.extra as UIListElementExtra | undefined)?.runtimeVariantOverrideId === "string"
+            ? (element.extra as UIListElementExtra).runtimeVariantOverrideId
             : null;
     const resolveCtx = {
         variantOverrideId: listScopedVariantId ?? runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
         signals: runtimeState.signals,
     };
-    const p = resolveTextVisualProps(liveElement, flatProps.appearance ?? undefined, resolveCtx);
+    const p = resolveTextVisualProps(element, flatProps.appearance ?? undefined, resolveCtx);
     const appearanceTransitions = resolveTextAppearanceTransitions(flatProps.appearance ?? undefined, resolveCtx);
     const color = colorValueToCss({ hex: p.color, alpha: 1 });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
@@ -305,20 +315,14 @@ export function TextRenderer({
         opacity: 1,
     };
 
-    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-    const editOpenedAtRef = useRef(0);
-
     const commitAndClose = useCallback(
         (nextText: string) => {
             draftRef.current = nextText;
-            const docEl = documentService.getDocument().elements[element.id];
-            documentService.updateElementProps(element.id, {
-                ...(docEl?.props ?? element.props),
-                text: nextText,
-            });
+            commitTextEditValue(documentService, element, nextText);
+            skipOverrideCommitRef.current = true;
             stateService.setInteractionOverride(null);
         },
-        [documentService, element.id, element.props, stateService],
+        [documentService, element, stateService],
     );
 
     useEffect(() => {
@@ -344,6 +348,10 @@ export function TextRenderer({
     }, [isEditing]);
 
     const handleTextareaChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
+        draftRef.current = e.currentTarget.value;
+    }, []);
+
+    const handleTextareaInput = useCallback((e: FormEvent<HTMLTextAreaElement>) => {
         draftRef.current = e.currentTarget.value;
     }, []);
 
@@ -427,6 +435,7 @@ export function TextRenderer({
                 ref={textareaRef}
                 defaultValue={p.text}
                 style={textareaStyle}
+                onInput={handleTextareaInput}
                 onChange={handleTextareaChange}
                 onBlur={handleTextareaBlur}
                 onKeyDown={handleTextareaKeyDown}

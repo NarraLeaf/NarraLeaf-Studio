@@ -30,6 +30,7 @@ import { CompactBackgroundAppearance } from "./CompactBackgroundAppearance";
 import { BorderStrokeCompactRows } from "./BorderStrokeCompactRows";
 import { AppearanceFieldMotionButton, ModuleMotionMenuButton } from "./AppearanceMotionControls";
 import { CompactEffectsAppearance } from "./CompactEffectsAppearance";
+import { ButtonCursorSelect } from "../editors/ButtonCursorSelect";
 
 type Props = {
     variant: AppearanceVariant;
@@ -83,6 +84,7 @@ export function CompactButtonAppearance({
 
     const getBorder = (key: ButtonAppearancePropertyKey) => getRowValueForModuleEdit(variant, key, borderMode);
     const getSpacing = (key: ButtonAppearancePropertyKey) => getRowValueForModuleEdit(variant, key, spacingMode);
+    const cursorValue = getRowValueForModuleEdit(variant, "cursor", "default");
 
     const patchBorder = (key: ButtonAppearancePropertyKey, value: unknown) => {
         commitVariant(
@@ -106,6 +108,9 @@ export function CompactButtonAppearance({
                 value as never
             )
         );
+    };
+    const patchCursor = (value: unknown) => {
+        commitVariant(updateRowValueForModuleEditOrEnsure(variant, ["cursor"], "cursor", "default", value as never));
     };
 
     const getTransform = (key: ButtonAppearancePropertyKey) =>
@@ -322,6 +327,10 @@ export function CompactButtonAppearance({
                     />
                     Clip content
                 </label>
+            </CompactModuleCard>
+
+            <CompactModuleCard title="Mouse">
+                <ButtonCursorSelect value={cursorValue} onChange={patchCursor} />
             </CompactModuleCard>
 
             <CompactModuleCard

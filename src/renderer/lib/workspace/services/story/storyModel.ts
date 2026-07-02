@@ -491,8 +491,8 @@ function normalizeAnimationTargetKind(value: unknown): StoryAnimationIndexEntry[
     return value === "image" || value === "text" || value === "layer" || value === "character" ? value : "image";
 }
 
-const DEFAULT_ANIMATION_FPS = 30;
 const DEFAULT_ANIMATION_DURATION_MS = 300;
+const MAX_ANIMATION_DURATION_MS = 300_000;
 const ANIMATION_TRACK_PROPERTIES: StoryAnimationTrackProperty[] = [
     "position",
     "opacity",
@@ -537,13 +537,12 @@ function normalizeAnimationTimeline(
     const tracks = timeline.tracks
         .map((track, index) => normalizeAnimationTrack(track, index))
         .filter((track): track is StoryAnimationTrack => Boolean(track));
-    const durationMs = Math.max(
+    const durationMs = Math.min(MAX_ANIMATION_DURATION_MS, Math.max(
         DEFAULT_ANIMATION_DURATION_MS,
         normalizeOptionalNonNegativeNumber(timeline.durationMs) ?? 0,
         ...tracks.flatMap(track => track.keyframes.map(keyframe => keyframe.timeMs)),
-    );
+    ));
     return {
-        fps: normalizeOptionalPositiveNumber(timeline.fps) ?? DEFAULT_ANIMATION_FPS,
         durationMs,
         tracks: tracks.length > 0 ? tracks : migrated.tracks,
     };
@@ -584,13 +583,17 @@ function normalizeAnimationKeyframe(
     if (value === undefined) {
         return null;
     }
-    const timeMs = normalizeOptionalNonNegativeNumber(keyframe.timeMs);
+    const timeMs = clampAnimationTimeMs(normalizeOptionalNonNegativeNumber(keyframe.timeMs) ?? 0);
     return {
-        id: normalizeOptionalString(keyframe.id) ?? `kf-${property}-${timeMs ?? 0}-${index + 1}`,
-        timeMs: timeMs ?? 0,
+        id: normalizeOptionalString(keyframe.id) ?? `kf-${property}-${timeMs}-${index + 1}`,
+        timeMs,
         value,
         easing: normalizeOptionalString(keyframe.easing),
     };
+}
+
+function clampAnimationTimeMs(timeMs: number): number {
+    return Math.max(0, Math.min(MAX_ANIMATION_DURATION_MS, Math.round(timeMs)));
 }
 
 function normalizeAnimationKeyframeValue(property: StoryAnimationTrackProperty, value: unknown): StoryAnimationKeyframe["value"] | undefined {
@@ -625,9 +628,10 @@ function migrateAnimationSequencesToTimeline(sequences: StoryAnimationSequence[]
                 continue;
             }
             const keyframes = tracksByProperty.get(property) ?? [];
+            const timeMs = clampAnimationTimeMs(endMs);
             keyframes.push({
-                id: `kf-${property}-${Math.round(endMs)}-${sequenceIndex + 1}`,
-                timeMs: Math.max(0, Math.round(endMs)),
+                id: `kf-${property}-${timeMs}-${sequenceIndex + 1}`,
+                timeMs,
                 value: normalizedValue,
                 easing: normalizeOptionalString(sequence.options?.easing),
             });
@@ -639,9 +643,8 @@ function migrateAnimationSequencesToTimeline(sequences: StoryAnimationSequence[]
         property,
         keyframes: keyframes.sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id)),
     }));
-    const durationMs = Math.max(DEFAULT_ANIMATION_DURATION_MS, ...spans.map(span => span.endMs));
+    const durationMs = Math.min(MAX_ANIMATION_DURATION_MS, Math.max(DEFAULT_ANIMATION_DURATION_MS, ...spans.map(span => span.endMs)));
     return {
-        fps: DEFAULT_ANIMATION_FPS,
         durationMs: Math.round(durationMs),
         tracks: tracks.length > 0 ? tracks : createDefaultAnimationTimeline(animationId).tracks,
     };
@@ -787,7 +790,6 @@ function createDefaultAnimationSequence(id: string): StoryAnimationSequence {
 
 function createDefaultAnimationTimeline(id: string): StoryAnimationTimeline {
     return {
-        fps: DEFAULT_ANIMATION_FPS,
         durationMs: DEFAULT_ANIMATION_DURATION_MS,
         tracks: [
             {

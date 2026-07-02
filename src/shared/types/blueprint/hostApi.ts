@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 10 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 15 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -55,11 +55,27 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             purity: "effectful",
             callableFromBinding: false,
             async: true,
-            input: { surfaceId: "" },
+            input: { surfaceId: "", props: {} },
             output: null,
+        },
+        getPageProps: {
+            capabilityId: "navigation.getPageProps",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: {},
         },
         closeLayer: {
             capabilityId: "navigation.closeLayer",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        quitApplication: {
+            capabilityId: "navigation.quitApplication",
             purity: "effectful",
             callableFromBinding: false,
             async: true,
@@ -188,6 +204,22 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             input: { storyId: "", sceneId: "" },
             output: null,
         },
+        isInGame: {
+            capabilityId: "game.isInGame",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: false,
+        },
+        quit: {
+            capabilityId: "game.quit",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { surfaceId: "" },
+            output: null,
+        },
         writeSave: {
             capabilityId: "game.writeSave",
             purity: "effectful",
@@ -254,6 +286,30 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
         },
         skip: {
             capabilityId: "game.skip",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        showDialog: {
+            capabilityId: "game.showDialog",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        hideDialog: {
+            capabilityId: "game.hideDialog",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        toggleDialogDisplay: {
+            capabilityId: "game.toggleDialogDisplay",
             purity: "effectful",
             callableFromBinding: false,
             async: true,

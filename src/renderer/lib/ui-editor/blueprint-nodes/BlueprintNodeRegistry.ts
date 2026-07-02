@@ -9,10 +9,11 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+    BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
-    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
     resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
@@ -100,18 +101,19 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
     if (def.role === "comment") {
         return true;
     }
-    if (
-        def.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR ||
-        def.type === BLUEPRINT_NODE_TYPE_LOCAL_GET ||
-        def.type === BLUEPRINT_NODE_TYPE_LOCAL_SET
-    ) {
+    if (def.type === BLUEPRINT_NODE_TYPE_LOCAL_GET || def.type === BLUEPRINT_NODE_TYPE_LOCAL_SET) {
         return !def.isLatent;
     }
     if (def.category === "Flow") {
-        return !def.isLatent && def.type !== BLUEPRINT_NODE_TYPE_FLOW_DELAY;
+        return !def.isLatent &&
+            def.type !== BLUEPRINT_NODE_TYPE_FLOW_DELAY &&
+            def.type !== BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY;
     }
     if (!def.isPure || def.isLatent) {
         return false;
+    }
+    if (def.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS) {
+        return true;
     }
     return (
         def.category === "Data" ||

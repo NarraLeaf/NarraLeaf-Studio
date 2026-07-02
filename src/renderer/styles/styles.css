@@ -175,6 +175,12 @@ input[type="radio"]:focus {
     .titlebar-drag { -webkit-app-region: drag; }
     .no-drag { -webkit-app-region: no-drag; }
 
+    .nl-selectable-text,
+    .nl-selectable-text * {
+        user-select: text;
+        -webkit-user-select: text;
+    }
+
     .nl-window-content-layer {
         position: fixed;
         left: 0;

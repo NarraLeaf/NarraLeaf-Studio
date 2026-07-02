@@ -108,6 +108,7 @@ describe("UI editor context menus", () => {
         const doc = createDocument();
         const actions = {
             ...noopActions(),
+            copyElementId: vi.fn(),
             pasteIntoParent: vi.fn(),
             expandAllBranches: vi.fn(),
             collapseAllBranches: vi.fn(),
@@ -148,5 +149,42 @@ describe("UI editor context menus", () => {
             expect(findItem(items, id).disabled).toBe(true);
         }
         expect(findItem(items, "arrange").submenu?.every(item => item.disabled)).toBe(true);
+    });
+
+    it("copies the right-clicked outline row element id", () => {
+        const doc = createDocument();
+        const actions = {
+            ...noopActions(),
+            copyElementId: vi.fn(),
+            pasteIntoParent: vi.fn(),
+            expandAllBranches: vi.fn(),
+            collapseAllBranches: vi.fn(),
+            insertChildInOutline: vi.fn(),
+        };
+        const items = buildOutlineContextMenu({
+            document: doc,
+            surfaceId: "surface",
+            rowElement: doc.elements.child,
+            menuSelection: {
+                editor: "ui",
+                surfaceId: "surface",
+                elementIds: ["child"],
+                primaryId: "child",
+            },
+            hasClipboard: false,
+            widgetModules: [{ type: "nl.button", displayName: "Button" } as any],
+            documentService: { updateElementLayout: vi.fn() } as any,
+            actions,
+            canAddToGroup: false,
+            allowAddToComponentLibrary: true,
+            insertParentIdForRow: "child",
+        });
+
+        const item = findItem(items, "copy-element-id");
+        expect(enabled(item)).toBe(true);
+        item.onClick?.();
+
+        expect(actions.hideMenu).toHaveBeenCalledOnce();
+        expect(actions.copyElementId).toHaveBeenCalledWith("child");
     });
 });

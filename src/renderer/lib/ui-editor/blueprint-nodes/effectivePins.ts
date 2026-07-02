@@ -226,6 +226,7 @@ export function resolveEffectiveBlueprintNodePins(
             kind,
             semantic,
             valueType: isDataPin ? template?.valueType ?? cfg.valueType : undefined,
+            optional: template?.optional,
             allowInlineLiteral: kind === "input" && isDataPin
                 ? template?.allowInlineLiteral ?? cfg.allowInlineLiteral
                 : undefined,
@@ -261,6 +262,7 @@ function pinDefToCatalogPin(p: BlueprintNodePinDef, removable: boolean): Effecti
         semantic: p.semantic,
         valueType: p.valueType,
         label: p.label,
+        optional: p.optional,
         allowInlineLiteral: p.allowInlineLiteral,
         removable,
     };
