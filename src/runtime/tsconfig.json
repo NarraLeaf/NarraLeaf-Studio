@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "paths": {
+      "@/*": ["../renderer/*"],
+      "@shared/*": ["../shared/*"],
+      "@services/*": ["../renderer/lib/workspace/services/*"]
+    },
+    "typeRoots": [
+      "../../node_modules/@types",
+      "../shared/types"
+    ],
+    "types": ["node", "react", "react-dom"]
+  },
+  "include": [
+    "./**/*",
+    "../renderer/apps/dev-mode/nlr/**/*",
+    "../renderer/lib/ui-editor/**/*",
+    "../renderer/lib/workspace/hooks/useAssetObjectUrl.ts",
+    "../renderer/lib/workspace/hooks/useEditorFontFamily.ts",
+    "../renderer/styles/**/*",
+    "../shared/**/*"
+  ]
+}

@@ -19,6 +19,8 @@ function createBoundPrivilegedFacade(token: PrivilegedFacadeToken) {
     const privileged = () => getPrivilegedInterface();
     return {
         fs: {
+            selectFile: (filters: string[], multiple: boolean): Promise<RequestStatus<FsRequestResult<string[]>>> =>
+                privileged().fs.selectFile(actor(), filters, multiple),
             stat: (path: string): Promise<RequestStatus<FsRequestResult<FileStat>>> =>
                 privileged().fs.stat(actor(), path),
             list: (path: string): Promise<RequestStatus<FsRequestResult<FileStat[]>>> =>

@@ -17,6 +17,7 @@ import type {
 
 export const SURFACE_PREPAINT_TIMEOUT_MS = 900;
 const SURFACE_PREPAINT_FRAME_TIMEOUT_MS = 50;
+const SURFACE_ENTER_COMPLETE_FALLBACK_MS = 80;
 
 type SurfaceAnimationLayerProps = {
     prepaintKey: string;
@@ -186,6 +187,17 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         if (prepaintReady && isPresent && pageMotion.enterDurationMs <= 0) {
             reportEnterComplete();
         }
+    }, [isPresent, pageMotion.enterDurationMs, prepaintReady, reportEnterComplete]);
+
+    useEffect(() => {
+        if (!prepaintReady || !isPresent || pageMotion.enterDurationMs <= 0) {
+            return undefined;
+        }
+        const timeoutId = setTimeout(
+            reportEnterComplete,
+            pageMotion.enterDurationMs + SURFACE_ENTER_COMPLETE_FALLBACK_MS,
+        );
+        return () => clearTimeout(timeoutId);
     }, [isPresent, pageMotion.enterDurationMs, prepaintReady, reportEnterComplete]);
 
     const variants = useMemo(() => {

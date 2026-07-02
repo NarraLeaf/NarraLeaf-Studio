@@ -23,6 +23,12 @@ const forwardedElectronArgs = process.argv.slice(2);
 
 const styleIn = path.join(rootDir, 'src', 'renderer', 'styles', 'styles.css');
 const styleOut = path.join(distWindows, 'styles.css');
+const runtimeSourceRoots = [
+    path.join(rootDir, 'src', 'runtime'),
+    path.join(rootDir, 'src', 'shared'),
+    path.join(rootDir, 'src', 'renderer', 'apps', 'dev-mode', 'nlr'),
+    path.join(rootDir, 'src', 'renderer', 'lib', 'ui-editor'),
+];
 
 // Ensure dist directory exists
 fs.mkdirSync(distWindows, { recursive: true });
@@ -45,11 +51,23 @@ function broadcastReload(target = 'all') {
     let initialStylesBuilt = false;
     let initialRenderersBuilt = false;
     let initialPreloadBuilt = false;
+    let initialRuntimeBuilt = false;
     let initialBuiltInPluginsBuilt = false;
     let restartTimer = null; // Timer for debouncing restarts
+    let runtimeRebuildTimer = null;
+    let runtimeBuildRunning = false;
+    let runtimeBuildQueued = false;
 
     function tryStartElectronOnce() {
-        if (!appStarted && initialMainBuilt && initialStylesBuilt && initialRenderersBuilt && initialPreloadBuilt && initialBuiltInPluginsBuilt) {
+        if (
+            !appStarted &&
+            initialMainBuilt &&
+            initialStylesBuilt &&
+            initialRenderersBuilt &&
+            initialPreloadBuilt &&
+            initialRuntimeBuilt &&
+            initialBuiltInPluginsBuilt
+        ) {
             appStarted = true;
             console.log('[dev] all initial builds completed. starting electron...');
             restartElectron();
@@ -98,6 +116,65 @@ function broadcastReload(target = 'all') {
             }
         });
     }
+
+    function runNodeScript(args) {
+        return new Promise((resolve, reject) => {
+            const child = spawn(process.execPath, args, {
+                cwd: rootDir,
+                stdio: 'inherit',
+            });
+            child.on('close', code => {
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(new Error(`node ${args.join(' ')} exited with code ${code}`));
+                }
+            });
+            child.on('error', reject);
+        });
+    }
+
+    async function rebuildRuntimeForDev() {
+        if (runtimeBuildRunning) {
+            runtimeBuildQueued = true;
+            return;
+        }
+        runtimeBuildRunning = true;
+        runtimeBuildQueued = false;
+        try {
+            await runNodeScript(['project/build/build-runtime.js', '--dev']);
+            if (!initialRuntimeBuilt) {
+                initialRuntimeBuilt = true;
+                console.log('[runtime] initial build complete.');
+                tryStartElectronOnce();
+            } else {
+                console.log('[runtime] rebuilt.');
+            }
+        } catch (error) {
+            console.error('[runtime] build failed:', error);
+        } finally {
+            runtimeBuildRunning = false;
+            if (runtimeBuildQueued) {
+                void rebuildRuntimeForDev();
+            }
+        }
+    }
+
+    void rebuildRuntimeForDev();
+
+    const runtimeWatcher = chokidar.watch(runtimeSourceRoots, {
+        ignored: /(^|[\/\\])\../,
+        ignoreInitial: true,
+    });
+
+    runtimeWatcher.on('all', () => {
+        if (runtimeRebuildTimer) {
+            clearTimeout(runtimeRebuildTimer);
+        }
+        runtimeRebuildTimer = setTimeout(() => {
+            void rebuildRuntimeForDev();
+        }, 150);
+    });
 
     // Build & watch main process
     const mainEntry = path.join(rootDir, 'src', 'main', 'index.ts');

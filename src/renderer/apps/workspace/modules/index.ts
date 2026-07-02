@@ -18,6 +18,7 @@ export {
     builtInActions,
     builtInActionGroups,
     assetsModule,
+    projectPanelModule,
     charactersModule,
     propertiesModule,
     consoleModule,
@@ -25,4 +26,3 @@ export {
     globalActions,
     globalActionGroups,
 } from "./registry";
-

@@ -1032,6 +1032,68 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         }
     });
 
+    it("commits held Displayable x layout after natural animation completion", async () => {
+        vi.useFakeTimers();
+        try {
+            const store = new WidgetRuntimeStateStore();
+            const onWidgetPatch = vi.fn();
+            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope", onWidgetPatch });
+            const animation = hostApi.widget.animateDisplayable("image", {
+                target: { x: [0, 100] },
+                transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
+                resetOnComplete: false,
+                commitLayoutOnComplete: { x: 100 },
+            });
+
+            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+                target: { x: [0, 100] },
+            });
+            expect(onWidgetPatch).not.toHaveBeenCalled();
+
+            await vi.advanceTimersByTimeAsync(100);
+            await expect(animation).resolves.toMatchObject({
+                target: { x: [0, 100] },
+            });
+
+            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+            expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
+                layout: { x: 100 },
+            });
+            expect(hostApi.widget.getDisplayableProperties("image")).toMatchObject({
+                position: { x: 100, y: 48 },
+                offset: { x: 0, y: 0 },
+            });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("does not commit held Displayable x layout when the animation is stopped", async () => {
+        vi.useFakeTimers();
+        try {
+            const store = new WidgetRuntimeStateStore();
+            const onWidgetPatch = vi.fn();
+            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope", onWidgetPatch });
+            const animation = hostApi.widget.animateDisplayable("image", {
+                id: "animation:x",
+                target: { x: [0, 100] },
+                transition: { type: "tween", durationMs: 1000, delayMs: 0, easing: "linear" },
+                resetOnComplete: false,
+                commitLayoutOnComplete: { x: 100 },
+            });
+
+            await vi.advanceTimersByTimeAsync(100);
+            await hostApi.widget.stopDisplayableAnimation("animation:x");
+            await expect(animation).resolves.toMatchObject({ id: "animation:x" });
+
+            expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+            expect(onWidgetPatch).not.toHaveBeenCalled();
+            expect(hostApi.widget.getDisplayableProperties("image").position.x).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it("stops Displayable animations by animation id and resolves pending waits", async () => {
         vi.useFakeTimers();
         try {

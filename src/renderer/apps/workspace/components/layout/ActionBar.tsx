@@ -6,9 +6,12 @@ import { ActionDefinition } from "../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
+import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
 import { FocusContext } from "@/lib/workspace/services/ui";
 import type { DevModeStatus } from "@shared/types/devMode";
+import type { PreviewStatus } from "@shared/types/gameRuntime";
 import { getActionGroupItems, getVisibleActionMenuItems, isActionVisible } from "../ui/actionMenuModel";
+import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "../../modules/actions/runtimeActionStatus";
 
 interface ActionBarProps {
     hiddenGroupIds?: string[];
@@ -24,6 +27,7 @@ export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
     const { workspace, context } = useWorkspace();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
     const [devModeStatus, setDevModeStatus] = useState<DevModeStatus>("idle");
+    const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
 
     // Subscribe to focus changes
     useEffect(() => {
@@ -44,6 +48,18 @@ export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
         const devModeService = context.services.get<DevModeService>(Services.DevMode);
         setDevModeStatus(devModeService.getStatus());
         const unsub = devModeService.onStatusChanged(setDevModeStatus);
+        return () => {
+            unsub();
+        };
+    }, [context]);
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const previewService = context.services.get<PreviewService>(Services.Preview);
+        setPreviewStatus(previewService.getStatus());
+        const unsub = previewService.onStatusChanged(setPreviewStatus);
         return () => {
             unsub();
         };
@@ -81,13 +97,22 @@ export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
             {/* Render standalone actions */}
             {standaloneActions.map((action) => {
                 const isDevModeAction = action.id === "narraleaf-studio:dev-mode";
+                const isPreviewAction = action.id === "narraleaf-studio:preview";
                 const isDevModeActive =
-                    isDevModeAction && devModeStatus !== "idle" && devModeStatus !== "error";
+                    isDevModeAction && isDevModeRuntimeActive(devModeStatus);
+                const isPreviewActive =
+                    isPreviewAction && isPreviewRuntimeActive(previewStatus);
+                const isRuntimeActionActive = isDevModeActive || isPreviewActive;
                 const stateClasses = action.disabled
                     ? "text-gray-500 cursor-not-allowed"
-                    : isDevModeActive
+                    : isRuntimeActionActive
                         ? "bg-red-600 text-white hover:bg-red-700 hover:text-white"
                         : "text-gray-300 hover:bg-white/10 hover:text-white";
+                const title = isRuntimeActionActive
+                    ? isDevModeAction
+                        ? "Stop Dev Mode"
+                        : "Stop Preview"
+                    : action.tooltip || action.label;
 
                 return (
                     <button
@@ -98,8 +123,9 @@ export function ActionBar({ hiddenGroupIds = [] }: ActionBarProps) {
                             h-8 px-2 rounded-md flex items-center gap-1.5 text-sm transition-colors cursor-default relative
                             ${stateClasses}
                         `}
-                        title={action.tooltip || action.label}
-                        aria-label={action.label}
+                        title={title}
+                        aria-label={title}
+                        aria-pressed={isRuntimeActionActive || undefined}
                     >
                         {action.icon && <span className="w-4 h-4">{action.icon}</span>}
                         {action.label && <span>{String(action.label)}</span>}

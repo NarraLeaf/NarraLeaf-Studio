@@ -86,6 +86,8 @@ export function BlueprintWidgetInitLifecycle({
     const afterSurfaceEnterVersion = surfaceLifecycleSignals?.afterSurfaceEnter ?? 0;
     const seenBeforeSurfaceExitVersionRef = useRef(beforeSurfaceExitVersion);
     const seenAfterSurfaceEnterVersionRef = useRef(afterSurfaceEnterVersion);
+    const dispatchedInitKeyRef = useRef<string | null>(null);
+    const hasBlueprintRuntime = Boolean(rt);
 
     const localsWiringKey = useMemo(() => {
         const ev = behavior?.events;
@@ -110,7 +112,7 @@ export function BlueprintWidgetInitLifecycle({
     });
 
     useEffect(() => {
-        if (!rt || !localsWiringKey) {
+        if (!hasBlueprintRuntime || !localsWiringKey) {
             return;
         }
         const blueprintIds = blueprintIdsFromWiringKey(localsWiringKey);
@@ -119,13 +121,25 @@ export function BlueprintWidgetInitLifecycle({
                 releaseBlueprintWidgetLocals(surfaceId, elementId, blueprintId, runtimeScopeId);
             }
         };
-    }, [surfaceId, runtimeScopeId, elementId, rt, localsWiringKey]);
+    }, [surfaceId, runtimeScopeId, elementId, hasBlueprintRuntime, localsWiringKey]);
 
     useEffect(() => {
         if (!rt || !initSig) {
             return;
         }
+        const initDispatchKey = [
+            runtimeScopeId,
+            elementId,
+            componentId ?? "",
+            instanceKey ?? "",
+            listItemScopeSig,
+            initSig,
+        ].join("|");
+        if (dispatchedInitKeyRef.current === initDispatchKey) {
+            return;
+        }
         const timeoutId = setTimeout(() => {
+            dispatchedInitKeyRef.current = initDispatchKey;
             void rt.dispatchElementBlueprintEvent(elementId, "init", undefined, {
                 componentId,
                 instanceKey,
@@ -133,7 +147,7 @@ export function BlueprintWidgetInitLifecycle({
             });
         }, 0);
         return () => clearTimeout(timeoutId);
-    }, [componentId, elementId, initSig, instanceKey, listItemScopeSig, rt]);
+    }, [componentId, elementId, initSig, instanceKey, listItemScope, listItemScopeSig, rt, runtimeScopeId]);
 
     useEffect(() => {
         if (!rt || beforeSurfaceExitVersion <= seenBeforeSurfaceExitVersionRef.current) {

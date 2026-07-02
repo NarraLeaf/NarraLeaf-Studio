@@ -1,6 +1,6 @@
 import { FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat } from "@shared/utils/fs";
-import { Porject, ProjectConfig } from "../project/project";
+import { Porject, ProjectConfig, ProjectIconConfig, ProjectIconPlatform } from "../project/project";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetData, AssetType } from "./assets/assetTypes";
@@ -46,6 +46,7 @@ import type { UITool } from "../../ui-editor/editor/types";
 import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/snapping/types";
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
+import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
 import type {
     ConsoleAppendInput,
     ConsoleChannelId,
@@ -103,6 +104,7 @@ enum Services {
     LocalBlueprint = "localBlueprint",
     UIBlueprintLifecycle = "uiBlueprintLifecycle",
     DevMode = "devMode",
+    Preview = "preview",
     Console = "console",
     /** Ref-counted FontFace + blob URLs for UI editor widgets */
     UIEditorFontFace = "uiEditorFontFace",
@@ -120,7 +122,6 @@ enum Services {
     // Video = "video",
     // Font = "font",
     // Runtime = "runtime",
-    // Preview = "preview",
     // Build = "build",
     // Debug = "debug",
     // Localization = "localization",
@@ -131,6 +132,17 @@ enum Services {
 // Core Services
 interface IProjectService extends IService {
     getProjectConfig(): ProjectConfig;
+    updateProjectConfig(updater: (config: ProjectConfig) => ProjectConfig): Promise<ProjectConfig>;
+    updateProjectName(name: string): Promise<ProjectConfig>;
+    importProjectIcon(platform: ProjectIconPlatform): Promise<{
+        platform: ProjectIconPlatform;
+        sourcePath: string;
+        projectPath: string;
+        relativePath: string;
+        icon: ProjectIconConfig;
+        bytes: Uint8Array;
+    } | null>;
+    readProjectIcon(platform: ProjectIconPlatform): Promise<Uint8Array | null>;
 }
 
 interface IUuidService extends IService {
@@ -767,7 +779,13 @@ interface IFontService extends IService { }
 // Runtime Services
 interface IRuntimeService extends IService { }
 
-interface IPreviewService extends IService { }
+interface IPreviewService extends IService {
+    getStatus(): PreviewStatus;
+    refreshStatus(): Promise<PreviewStatus>;
+    launch(entry: GameRuntimeLaunchEntry, projectPath?: string): Promise<PreviewStatus>;
+    stop(projectPath?: string): Promise<PreviewStatus>;
+    onStatusChanged(handler: (status: PreviewStatus) => void): () => void;
+}
 
 interface IBuildService extends IService { }
 

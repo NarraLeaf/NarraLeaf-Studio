@@ -89,6 +89,7 @@ export type SurfaceElementTreeProps = {
     surfacePath?: string[];
     editorChrome?: boolean;
     surfaceLifecycleSignals?: SurfaceLifecycleSignals;
+    blueprintLifecycleReady?: boolean;
 };
 
 /**
@@ -180,6 +181,7 @@ function renderSurfaceElementTreeWithValueRuntime(
         valueRuntime,
         [],
         props.surfaceLifecycleSignals,
+        props.blueprintLifecycleReady ?? true,
     );
 
     return (
@@ -640,6 +642,7 @@ function renderLinkedComponentInstanceContent(input: {
     componentPath: string[];
     valueRuntime: BlueprintValueRuntimeStore | null;
     surfaceLifecycleSignals?: SurfaceLifecycleSignals;
+    blueprintLifecycleReady?: boolean;
 }): ReactNode | null {
     const link = getUIComponentLink(input.instanceElement);
     if (!link) {
@@ -726,6 +729,7 @@ function renderLinkedComponentInstanceContent(input: {
                     input.valueRuntime,
                     [...input.componentPath, component.id],
                     input.surfaceLifecycleSignals,
+                    input.blueprintLifecycleReady ?? true,
                 )}
             </div>
         </div>
@@ -749,6 +753,7 @@ function renderElementTree(
     valueRuntime: BlueprintValueRuntimeStore | null = null,
     componentPath: string[] = [],
     surfaceLifecycleSignals?: SurfaceLifecycleSignals,
+    blueprintLifecycleReady = true,
 ): ReactNode {
     const componentId = componentPath[componentPath.length - 1];
     const runtimePatch = widgetRuntimePatches?.[element.id];
@@ -805,6 +810,7 @@ function renderElementTree(
                 valueRuntime,
                 componentPath,
                 surfaceLifecycleSignals,
+                blueprintLifecycleReady,
             );
         })
         .filter((node): node is ReactNode => node !== null);
@@ -825,6 +831,7 @@ function renderElementTree(
         componentPath,
         valueRuntime,
         surfaceLifecycleSignals,
+        blueprintLifecycleReady,
     });
     const content = linkedComponentContent ?? (renderer
         ? renderer.render({
@@ -888,7 +895,7 @@ function renderElementTree(
             listItemScope={listItemScope ?? null}
             instanceKey={instanceKey}
         >
-            {hostAdapter.blueprintRuntime ? (
+            {blueprintLifecycleReady && hostAdapter.blueprintRuntime ? (
                 <BlueprintWidgetInitLifecycle
                     surfaceId={surface.id}
                     elementId={resolved.id}
