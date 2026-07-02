@@ -49,7 +49,10 @@ export type UIDisplayableMotionOverride = {
 };
 
 export type WidgetRuntimeSnapshot = {
+    /** Most recently entered hovered widget, kept for compact debug display and backwards compatibility. */
     hoverTargetId: string | null;
+    /** All widgets whose pointer boundary currently contains the cursor, including ancestors. */
+    hoverTargetIds: ReadonlySet<string>;
     activePointerId: string | null;
     focusedId: string | null;
     /** Copy for external readers; treat as immutable after getSnapshot. */
@@ -66,6 +69,7 @@ export type WidgetRuntimeSnapshot = {
 /** Stable snapshot when no provider is mounted (e.g. Dev Mode without store). */
 export const STATIC_WIDGET_RUNTIME_SNAPSHOT: WidgetRuntimeSnapshot = Object.freeze({
     hoverTargetId: null,
+    hoverTargetIds: new Set<string>(),
     activePointerId: null,
     focusedId: null,
     variantOverrides: new Map<string, string>(),
@@ -81,7 +85,7 @@ export const STATIC_WIDGET_RUNTIME_SNAPSHOT: WidgetRuntimeSnapshot = Object.free
  * Not persisted; not surface blueprint state.
  */
 export class WidgetRuntimeStateStore {
-    private hoverTargetId: string | null = null;
+    private readonly hoverTargetIds = new Set<string>();
     private activePointerId: string | null = null;
     private focusedId: string | null = null;
     private readonly variantOverrides = new Map<string, string>();
@@ -108,7 +112,8 @@ export class WidgetRuntimeStateStore {
 
     private rebuildSnapshot(): WidgetRuntimeSnapshot {
         return {
-            hoverTargetId: this.hoverTargetId,
+            hoverTargetId: this.getPrimaryHoverTargetId(),
+            hoverTargetIds: new Set(this.hoverTargetIds),
             activePointerId: this.activePointerId,
             focusedId: this.focusedId,
             variantOverrides: new Map(this.variantOverrides),
@@ -127,19 +132,26 @@ export class WidgetRuntimeStateStore {
         }
     }
 
+    private getPrimaryHoverTargetId(): string | null {
+        let latest: string | null = null;
+        for (const id of this.hoverTargetIds) {
+            latest = id;
+        }
+        return latest;
+    }
+
     setHoverTarget(id: string): void {
-        if (this.hoverTargetId === id) {
+        if (this.hoverTargetIds.has(id)) {
             return;
         }
-        this.hoverTargetId = id;
+        this.hoverTargetIds.add(id);
         this.emit();
     }
 
     clearHoverIf(id: string): void {
-        if (this.hoverTargetId !== id) {
+        if (!this.hoverTargetIds.delete(id)) {
             return;
         }
-        this.hoverTargetId = null;
         this.emit();
     }
 
@@ -282,7 +294,7 @@ export class WidgetRuntimeStateStore {
 
     getSignalsForElement(elementId: string, interactionDisabled: boolean | undefined): SystemInteractionSignals {
         return {
-            hovered: this.hoverTargetId === elementId,
+            hovered: this.hoverTargetIds.has(elementId),
             active: this.activePointerId === elementId,
             focused: this.focusedId === elementId,
             disabled: Boolean(interactionDisabled),

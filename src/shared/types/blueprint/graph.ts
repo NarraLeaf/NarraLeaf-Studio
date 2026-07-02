@@ -614,6 +614,8 @@ export const BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE = "blueprint.game.save.write" a
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD = "blueprint.game.save.load" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS = "blueprint.game.save.listIds" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW = "blueprint.game.save.getPreview" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE = "blueprint.game.save.delete" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA = "blueprint.game.save.getMetadata" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG = "blueprint.game.getNametag" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;
@@ -747,8 +749,26 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SCROLL_TO_BOTTOM = "blueprint.elem
 
 export const BLUEPRINT_NODE_TYPE_IMAGE_GET_ASSET = "blueprint.image.getImageAsset" as const;
 export const BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET = "blueprint.image.setImageAsset" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_CLEAR_ASSET = "blueprint.image.clearImageAsset" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_GET_FIT_MODE = "blueprint.image.getFitMode" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_SET_FIT_MODE = "blueprint.image.setFitMode" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_GET_CROP_RECT = "blueprint.image.getCropRect" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_SET_CROP_RECT = "blueprint.image.setCropRect" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_X = "blueprint.image.getFlipX" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_X = "blueprint.image.setFlipX" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_Y = "blueprint.image.getFlipY" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_Y = "blueprint.image.setFlipY" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_ASSET = "blueprint.element.image.getImageAsset" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET = "blueprint.element.image.setImageAsset" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_CLEAR_ASSET = "blueprint.element.image.clearImageAsset" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FIT_MODE = "blueprint.element.image.getFitMode" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FIT_MODE = "blueprint.element.image.setFitMode" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_CROP_RECT = "blueprint.element.image.getCropRect" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_CROP_RECT = "blueprint.element.image.setCropRect" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_X = "blueprint.element.image.getFlipX" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_X = "blueprint.element.image.setFlipX" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_Y = "blueprint.element.image.getFlipY" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_Y = "blueprint.element.image.setFlipY" as const;
 
 /** IR meta key for graph kind (string value matches BlueprintGraphKind). */
 export const BLUEPRINT_GRAPH_IR_META_KIND = "graphKind" as const;

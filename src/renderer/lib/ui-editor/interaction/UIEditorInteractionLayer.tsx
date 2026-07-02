@@ -21,9 +21,10 @@ import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/W
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { SnapGuidesOverlay } from "@/lib/ui-editor/snapping/SnapGuidesOverlay";
 import {
-    isUiContainerDrillLockHit,
+    hasSuppressNextCanvasWidgetDoubleClick,
     markSuppressNextCanvasWidgetDoubleClick,
     promoteHitToDirectChildOfSurfaceRoot,
+    resolveUiContainerDrillTarget,
     shouldPromoteToSurfaceRootChild,
 } from "./containerDrillSelection";
 import {
@@ -36,7 +37,7 @@ import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryIns
 import type { FloatingToolbarItem } from "@/lib/ui-editor/widget-modules/types";
 import { resolveFloatingToolbarPosition } from "./floatingToolbarPosition";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
-import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
+import { filterSelectionToTopLevelMovers, selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
@@ -294,7 +295,22 @@ export function UIEditorInteractionLayer({
     const selectionData = isUIElementSelection(selection) ? selection.data : null;
     const selectionIds = selectionData?.elementIds ?? [];
     const primaryId = selectionData?.primaryId ?? selectionIds[selectionIds.length - 1];
-    const isGroupSelection = selectionIds.length > 1;
+    const transformSelectionIds = useMemo(() => {
+        if (!selectionData || selectionData.surfaceId !== surfaceId || selectionData.elementIds.length === 0) {
+            return [];
+        }
+        return filterSelectionToTopLevelMovers(documentService.getDocument(), selectionData);
+    }, [documentRevision, documentService, selectionData, surfaceId]);
+    const transformTargetIds = useMemo(() => new Set(transformSelectionIds), [transformSelectionIds]);
+    const transformTargets = useMemo(
+        () =>
+            selectedTargets.filter(target => {
+                const elementId = target.dataset.uiElementId;
+                return Boolean(elementId && transformTargetIds.has(elementId));
+            }),
+        [selectedTargets, transformTargetIds],
+    );
+    const isGroupSelection = transformSelectionIds.length > 1;
     const transformLocks = useRef(0);
     const [selectionEnabled, setSelectionEnabled] = useState(true);
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
@@ -511,10 +527,20 @@ export function UIEditorInteractionLayer({
 
             const input = e.inputEvent as MouseEvent | PointerEvent | undefined;
             const multiIntent = Boolean(input?.shiftKey || input?.metaKey || input?.ctrlKey);
+            if (
+                !multiIntent &&
+                targetIds.length === 1 &&
+                input?.type === "mousedown" &&
+                e.isDouble &&
+                hasSuppressNextCanvasWidgetDoubleClick()
+            ) {
+                return;
+            }
             const prev = stateService.getSelection();
 
             let elementIds = targetIds;
             let primaryId = targetIds[targetIds.length - 1];
+            let handledDrillSelection = false;
 
             if (
                 !multiIntent &&
@@ -524,22 +550,22 @@ export function UIEditorInteractionLayer({
                 prev.data.elementIds.length === 1
             ) {
                 const hitId = targetIds[0];
+                const drillTargetId = resolveUiContainerDrillTarget(doc, surfaceId, prev.data, hitId);
                 // `useSurfaceInteractionEvents` pointerdown also updates selection; drill lock is applied there too.
                 // Selecto immediate click ends on mousedown (not mouseup); marquee ends on mouseup — only block mousedown.
                 const immediateClickEnd = input?.type === "mousedown";
-                if (
-                    immediateClickEnd &&
-                    !e.isDouble &&
-                    isUiContainerDrillLockHit(doc, surfaceId, prev.data, hitId)
-                ) {
+                if (immediateClickEnd && !e.isDouble && drillTargetId) {
                     return;
                 }
-                if (e.isDouble && isUiContainerDrillLockHit(doc, surfaceId, prev.data, hitId)) {
+                if (e.isDouble && drillTargetId) {
                     markSuppressNextCanvasWidgetDoubleClick();
+                    elementIds = [drillTargetId];
+                    primaryId = drillTargetId;
+                    handledDrillSelection = true;
                 }
             }
 
-            if (!multiIntent && targetIds.length === 1) {
+            if (!multiIntent && targetIds.length === 1 && !handledDrillSelection) {
                 const hitId = targetIds[0];
                 const selData = isUIElementSelection(prev) && prev.data.surfaceId === surfaceId ? prev.data : null;
                 if (shouldPromoteToSurfaceRootChild(doc, selData, surfaceId, hitId)) {
@@ -626,8 +652,9 @@ export function UIEditorInteractionLayer({
 
     const transformController = useTransformController({
         documentService,
-        selectionIds,
-        selectedTargets,
+        selectionIds: transformSelectionIds,
+        snapExcludedElementIds: selectionIds,
+        selectedTargets: transformTargets,
         isGroupSelection,
         viewportScale: viewport.scale,
         scheduleMoveableRectUpdate,

@@ -1,4 +1,4 @@
-import { LoadingScreen } from "./components";
+import { LoadingScreen, MissingProjectConfigScreen } from "./components";
 import { ErrorScreen } from "./components/ErrorScreen";
 import { WorkspaceLayout } from "./components/layout";
 import { WorkspaceProvider, useWorkspace } from "./context";
@@ -9,6 +9,7 @@ import { useWorkspacePlugins } from "./hooks/useWorkspacePlugins";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/PreviewBlueprintNavigateBridge";
+import { isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/workspace/startup/workspaceProjectPreflight";
 
 /**
  * Main workspace application component
@@ -40,6 +41,9 @@ function InitializedWorkspace({ children }: { children: React.ReactNode }) {
 
     // Show error screen if initialization failed
     if (error) {
+        if (isWorkspaceStartupError(error) && error.kind === WorkspaceStartupErrorKind.MissingProjectConfig) {
+            return <MissingProjectConfigScreen projectPath={error.projectPath} />;
+        }
         return <ErrorScreen error={error} />;
     }
 

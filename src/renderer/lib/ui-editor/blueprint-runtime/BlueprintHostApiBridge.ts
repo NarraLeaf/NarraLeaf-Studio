@@ -25,7 +25,8 @@ import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/contai
 import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { getFrameProps } from "@/lib/ui-editor/widget-modules/builtin/frame/helpers";
 import { buildImageFillPropsUpdate } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
-import type { ImageFill } from "@shared/types/ui-editor/imageFill";
+import type { ImageFill, ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
+import { DEFAULT_RECTANGLE_CROP_PLACEMENT } from "@shared/types/ui-editor/rectangleLike";
 import type {
     TextAlign,
     TextVerticalAlign,
@@ -42,9 +43,11 @@ import type {
 } from "@shared/types/ui-editor/appearance";
 import {
     DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+    type SystemInteractionSignals,
 } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
 import {
     resolveAppearanceDisplayableOpacity,
+    resolveImageDisplayableOpacityKeys,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 
 export type DevModeWidgetRuntimePatch = {
@@ -130,6 +133,10 @@ export type BlueprintImageProperties = {
     asset: BlueprintImageAsset | null;
     /** Legacy patch/read alias kept so older saved graph nodes can still run. */
     assetId: string | null;
+    fitMode: ImageFillMode;
+    cropRect: ImageFillCropPlacement;
+    flipX: boolean;
+    flipY: boolean;
 };
 
 export type BlueprintFrameProperties = {
@@ -185,9 +192,11 @@ export type BlueprintHostApiRuntime = {
     };
     game: {
         startStory: (request: DevModeStartStoryRequest) => Promise<void>;
-        writeSave: (id: string) => Promise<void>;
+        writeSave: (id: string, metadata?: unknown) => Promise<void>;
         loadSave: (id: string) => Promise<void>;
+        deleteSave: (id: string) => Promise<void>;
         listSaveIds: () => Promise<string[]>;
+        getSaveMetadata: (id: string) => Promise<unknown>;
         getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
         getNametag: () => string | null;
         next: () => Promise<void>;
@@ -207,9 +216,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     frameParams?: Record<string, unknown>;
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
     onStartStory?: (request: DevModeStartStoryRequest) => Promise<void> | void;
-    onWriteSave?: (id: string) => Promise<void> | void;
+    onWriteSave?: (id: string, metadata: unknown) => Promise<void> | void;
     onLoadSave?: (id: string) => Promise<void> | void;
+    onDeleteSave?: (id: string) => Promise<void> | void;
     onListSaveIds?: () => Promise<string[]> | string[];
+    onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
     onGetNametag?: () => string | null;
     onNext?: () => Promise<void> | void;
@@ -536,8 +547,20 @@ function normalizeDisplayableOpacity(value: number): number {
     return Math.max(0, Math.min(1, value));
 }
 
-function displayableOpacityKeysForElement(document: UIDocument, elementId: string): readonly string[] {
-    return document.elements[elementId]?.type === "nl.image" ? ["fillOpacity", "transformOpacity"] : ["transformOpacity"];
+function displayableOpacityKeysForElement(
+    document: UIDocument,
+    elementId: string,
+    variantId: string | null,
+    signals: SystemInteractionSignals,
+): readonly string[] {
+    const element = document.elements[elementId];
+    if (element?.type !== "nl.image") {
+        return ["transformOpacity"];
+    }
+    return resolveImageDisplayableOpacityKeys(element, readAppearanceModel(document, elementId), {
+        variantOverrideId: variantId,
+        signals,
+    });
 }
 
 function readAppearanceOpacity(
@@ -548,10 +571,13 @@ function readAppearanceOpacity(
     variantId?: string | null,
 ): number | null {
     const appearance = readAppearanceModel(document, elementId);
+    const activeVariantId =
+        variantId === undefined ? widgetRuntimeStore.getVariantOverride(scopedKey) ?? null : variantId;
+    const signals = widgetRuntimeStore.getSignalsForElement(scopedKey, false) ?? DEFAULT_SYSTEM_INTERACTION_SIGNALS;
     return resolveAppearanceDisplayableOpacity(appearance, {
-        variantOverrideId: variantId === undefined ? widgetRuntimeStore.getVariantOverride(scopedKey) : variantId,
-        signals: widgetRuntimeStore.getSignalsForElement(scopedKey, false) ?? DEFAULT_SYSTEM_INTERACTION_SIGNALS,
-        displayableOpacityKeys: displayableOpacityKeysForElement(document, elementId),
+        variantOverrideId: activeVariantId,
+        signals,
+        displayableOpacityKeys: displayableOpacityKeysForElement(document, elementId, activeVariantId, signals),
     });
 }
 
@@ -560,7 +586,12 @@ function variantDisplayableOpacityTransition(
     elementId: string,
     variant: AppearanceVariant | null,
 ): AppearanceFieldTransition | null {
-    for (const key of displayableOpacityKeysForElement(document, elementId)) {
+    for (const key of displayableOpacityKeysForElement(
+        document,
+        elementId,
+        variant?.id ?? null,
+        DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+    )) {
         const transition = variantTransitionForKey(variant, key);
         if (transition) {
             return transition;
@@ -636,8 +667,16 @@ function readContainerProperties(document: UIDocument, elementId: string): Bluep
 
 function readImageProperties(document: UIDocument, elementId: string): BlueprintImageProperties {
     const p = getImageWidgetRectangleProps(assertImageElement(document, elementId));
-    const assetId = p.imageFill?.assetId?.trim() || null;
-    return { asset: toBlueprintImageAsset(assetId), assetId };
+    const fill = p.imageFill ?? null;
+    const assetId = fill?.assetId?.trim() || null;
+    return {
+        asset: toBlueprintImageAsset(assetId),
+        assetId,
+        fitMode: fill?.mode ?? "cover",
+        cropRect: fill?.cropPlacement ?? { ...DEFAULT_RECTANGLE_CROP_PLACEMENT },
+        flipX: p.imageFlipX === true,
+        flipY: p.imageFlipY === true,
+    };
 }
 
 function readFrameProperties(document: UIDocument, elementId: string): BlueprintFrameProperties {
@@ -700,10 +739,50 @@ function normalizeNullableString(raw: unknown): string | null {
     return s.length > 0 ? s : null;
 }
 
+const IMAGE_FILL_MODES: readonly ImageFillMode[] = ["cover", "contain", "stretch", "crop", "tile"];
+
+function normalizeImageFillMode(raw: unknown, fallback: ImageFillMode): ImageFillMode {
+    return IMAGE_FILL_MODES.includes(raw as ImageFillMode) ? raw as ImageFillMode : fallback;
+}
+
+function normalizeImageCropPlacement(
+    raw: unknown,
+    fallback: ImageFillCropPlacement,
+): ImageFillCropPlacement {
+    const obj = raw && typeof raw === "object" && !Array.isArray(raw)
+        ? raw as Partial<Record<keyof ImageFillCropPlacement, unknown>>
+        : {};
+    return {
+        leftPct: finiteNumber(obj.leftPct, fallback.leftPct),
+        topPct: finiteNumber(obj.topPct, fallback.topPct),
+        widthPct: finiteNumber(obj.widthPct, fallback.widthPct),
+        heightPct: finiteNumber(obj.heightPct, fallback.heightPct),
+    };
+}
+
+function imageCropPlacementEqual(a: ImageFillCropPlacement, b: ImageFillCropPlacement): boolean {
+    return a.leftPct === b.leftPct &&
+        a.topPct === b.topPct &&
+        a.widthPct === b.widthPct &&
+        a.heightPct === b.heightPct;
+}
+
 function normalizeRecord(raw: unknown): Record<string, unknown> {
     return raw && typeof raw === "object" && !Array.isArray(raw)
         ? cloneJson(raw as Record<string, unknown>)
         : {};
+}
+
+function normalizeJsonValue(raw: unknown): unknown {
+    if (raw === undefined) {
+        return null;
+    }
+    try {
+        const serialized = JSON.stringify(raw);
+        return serialized === undefined ? null : JSON.parse(serialized);
+    } catch {
+        return null;
+    }
 }
 
 function normalizeColor(raw: unknown, fallback: string): string {
@@ -833,7 +912,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onStartStory,
         onWriteSave,
         onLoadSave,
+        onDeleteSave,
         onListSaveIds,
+        onGetSaveMetadata,
         onGetSavePreview,
         onGetNametag,
         onNext,
@@ -1120,16 +1201,33 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         : patch.assetId === undefined
                           ? current.assetId
                           : normalizeNullableString(patch.assetId);
-                    if (assetId === current.assetId) {
+                    const fitMode = patch.fitMode === undefined
+                        ? current.fitMode
+                        : normalizeImageFillMode(patch.fitMode, current.fitMode);
+                    const cropRect = patch.cropRect === undefined
+                        ? current.cropRect
+                        : normalizeImageCropPlacement(patch.cropRect, current.cropRect);
+                    const flipX = patch.flipX === undefined ? current.flipX : patch.flipX === true;
+                    const flipY = patch.flipY === undefined ? current.flipY : patch.flipY === true;
+                    const fillChanged = assetId !== current.assetId ||
+                        fitMode !== current.fitMode ||
+                        !imageCropPlacementEqual(cropRect, current.cropRect);
+                    const flipChanged = flipX !== current.flipX || flipY !== current.flipY;
+                    if (!fillChanged && !flipChanged) {
                         return;
                     }
-                    const previousFill = getImageWidgetRectangleProps(el).imageFill;
-                    const nextFill: ImageFill = {
-                        ...previousFill,
-                        mode: previousFill?.mode ?? "cover",
-                        assetId,
-                    };
-                    el.props = buildImageFillPropsUpdate(el, nextFill);
+                    let nextProps: Record<string, unknown> = { ...(el.props ?? {}) };
+                    if (fillChanged) {
+                        const previousFill = getImageWidgetRectangleProps(el).imageFill;
+                        const nextFill: ImageFill = {
+                            ...previousFill,
+                            mode: fitMode,
+                            assetId,
+                            cropPlacement: cropRect,
+                        };
+                        nextProps = buildImageFillPropsUpdate(el, nextFill);
+                    }
+                    el.props = { ...nextProps, imageFlipX: flipX, imageFlipY: flipY };
                     onWidgetPatch(elementId, {});
                     scheduleElementFlush(elementId);
                 } finally {
@@ -1547,7 +1645,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
-            writeSave: async (id: string) => {
+            writeSave: async (id: string, metadata?: unknown) => {
                 const cap = "game.writeSave";
                 emitHostCall(emit, cap, "call");
                 try {
@@ -1555,7 +1653,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!onWriteSave) {
                         throw new Error("writeSave: game save runtime is not available");
                     }
-                    await onWriteSave(saveId);
+                    await onWriteSave(saveId, normalizeJsonValue(metadata));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -1573,6 +1671,19 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            deleteSave: async (id: string) => {
+                const cap = "game.deleteSave";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("deleteSave", id);
+                    if (!onDeleteSave) {
+                        throw new Error("deleteSave: game save runtime is not available");
+                    }
+                    await onDeleteSave(saveId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             listSaveIds: async () => {
                 const cap = "game.listSaveIds";
                 emitHostCall(emit, cap, "call");
@@ -1582,6 +1693,19 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     }
                     const ids = await onListSaveIds();
                     return [...ids].map(id => String(id));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSaveMetadata: async (id: string) => {
+                const cap = "game.getSaveMetadata";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("getSaveMetadata", id);
+                    if (!onGetSaveMetadata) {
+                        throw new Error("getSaveMetadata: game save runtime is not available");
+                    }
+                    return normalizeJsonValue(await onGetSaveMetadata(saveId));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

@@ -123,3 +123,31 @@ export function isUiContainerDrillLockHit(
     }
     return isStrictDescendantOf(document, hitElementId, selectedId);
 }
+
+/**
+ * Resolve the next element to select when drilling into the currently selected structural parent.
+ * A deep hit advances one hierarchy level instead of jumping straight to the deepest leaf.
+ */
+export function resolveUiContainerDrillTarget(
+    document: UIDocument,
+    surfaceId: string,
+    selection: UIElementSelection | null,
+    hitElementId: string,
+): string | null {
+    if (!isUiContainerDrillLockHit(document, surfaceId, selection, hitElementId) || !selection) {
+        return null;
+    }
+    const selectedId = selection.elementIds[0];
+    let currentId = hitElementId;
+    for (let guard = 0; guard < 256; guard++) {
+        const element = document.elements[currentId];
+        if (!element?.parentId) {
+            return null;
+        }
+        if (element.parentId === selectedId) {
+            return currentId;
+        }
+        currentId = element.parentId;
+    }
+    return null;
+}

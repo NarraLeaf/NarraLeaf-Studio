@@ -347,7 +347,12 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                         <div>
                             <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Widget</p>
                             <ul className="space-y-0.5 text-[10px] text-gray-400">
-                                <li>hover · {widgetSnap.hoverTargetId ?? "-"}</li>
+                                <li>
+                                    hover ·{" "}
+                                    {widgetSnap.hoverTargetIds.size === 0
+                                        ? "-"
+                                        : [...widgetSnap.hoverTargetIds].map(id => `${id.slice(0, 6)}…`).join(", ")}
+                                </li>
                                 <li>active · {widgetSnap.activePointerId ?? "-"}</li>
                                 <li>focus · {widgetSnap.focusedId ?? "-"}</li>
                                 <li className="break-all">

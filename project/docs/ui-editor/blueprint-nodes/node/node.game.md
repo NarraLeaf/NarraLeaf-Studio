@@ -66,9 +66,10 @@ Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog
 
 - `in` - 执行入口
 - `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖
+- `metadata` - 存档用户 metadata，蓝图通用 `json` 输入；未提供时写入 `null`
 - `next` - 写入完成后的执行出口
 
-`id` 会 trim，不能为空，且不能包含路径分隔符或控制字符。文件名由安全 hash 派生，真实用户 id 只保存在存档 metadata 中。
+`id` 会 trim，不能为空，且不能包含路径分隔符或控制字符。文件名由安全 hash 派生，真实用户 id 只保存在存档 metadata 中。`metadata` 使用现有 Blueprint JSON pin 类型，可传入 object、array、string、number、boolean 或 `null`，不会创建专用 Save Metadata 数据类型。
 
 ## Load Save
 
@@ -81,6 +82,18 @@ Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog
 
 缺失存档、损坏存档或没有活动 game runtime 时执行失败。
 
+## Delete Save
+
+`blueprint.game.save.delete` - Delete Save
+
+删除指定项目级本地存档。删除完成后从 `next` 出口继续执行；目标存档原本不存在时也视为成功完成。该节点只需要当前 Dev Mode 项目的存档命名空间，不要求存在活动 NarraLeaf live game。
+
+- `in` - 执行入口
+- `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖
+- `next` - 删除请求完成后的执行出口
+
+`id` 会 trim，不能为空，且不能包含路径分隔符或控制字符。
+
 ## List Saves
 
 `blueprint.game.save.listIds` - List Saves
@@ -92,6 +105,19 @@ Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog
 - `next` - 读取完成后的执行出口
 
 损坏或不符合普通存档 metadata 的文件会被跳过。
+
+## Get Save Metadata
+
+`blueprint.game.save.getMetadata` - Get Save Metadata
+
+读取指定本地存档的用户 metadata。该节点只读取由 `Write Save` 的 `metadata` pin 写入的通用 JSON 值，不返回系统字段 `id`、`type`、`createdAt`、`updatedAt` 或预览截图。
+
+- `in` - 执行入口
+- `id` - 存档 id，`string` 输入，支持节点卡片 inline literal 或接线覆盖
+- `metadata` - 蓝图通用 `json`（传出引脚）
+- `next` - 读取完成后的执行出口
+
+存档不存在或没有用户 metadata 时，`metadata` 输出 `null`。
 
 ## Get Save Preview
 

@@ -105,6 +105,7 @@ export enum IPCEventType {
     devModeSaveRead = "devMode.save.read",
     devModeSaveListIds = "devMode.save.listIds",
     devModeSaveReadPreview = "devMode.save.readPreview",
+    devModeSaveDelete = "devMode.save.delete",
 
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
@@ -696,6 +697,7 @@ export type IPCDevModeEvents = {
             id: string;
             savedGame: unknown;
             capture?: string;
+            metadata?: unknown;
         };
         response: void;
     };
@@ -729,6 +731,17 @@ export type IPCDevModeEvents = {
         };
         response: {
             capture: string | null;
+        };
+    };
+    [IPCEventType.devModeSaveDelete]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+            id: string;
+        };
+        response: {
+            deleted: boolean;
         };
     };
 };
