@@ -233,9 +233,20 @@ function DevModeSurfaceLifecycleLayer(props: {
     children: ReactNode;
 }) {
     const { bpCore, bundle, surface, runtimeScopeId, hostAdapter, lifecycleRef, makeStateAccessors, children } = props;
+    const latestRuntimeHostAdapterRef = useRef<UIHostAdapter | null>(
+        hostAdapter.blueprintRuntime ? hostAdapter : null,
+    );
+    const hasBlueprintRuntime = Boolean(hostAdapter.blueprintRuntime);
 
     useEffect(() => {
-        if (!bpCore || !hostAdapter.blueprintRuntime) {
+        if (hostAdapter.blueprintRuntime) {
+            latestRuntimeHostAdapterRef.current = hostAdapter;
+        }
+    }, [hostAdapter]);
+
+    useEffect(() => {
+        const currentHostAdapter = latestRuntimeHostAdapterRef.current;
+        if (!bpCore || !hasBlueprintRuntime || !currentHostAdapter?.blueprintRuntime) {
             return;
         }
         bpCore.executionManager.openScope(runtimeScopeId);
@@ -252,25 +263,26 @@ function DevModeSurfaceLifecycleLayer(props: {
             surfaceId: surface.id,
             runtimeScopeId,
             eventName: "surfaceInit",
-            hostAdapter,
+            hostAdapter: currentHostAdapter,
             debug: bpCore.debug,
             getSurfaceState: acc.get,
             setSurfaceState: acc.set,
             executionManager: bpCore.executionManager,
         });
-    }, [bpCore, bundle, hostAdapter, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
+    }, [bpCore, bundle, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
 
     useEffect(() => {
-        if (!bpCore || !hostAdapter.blueprintRuntime) {
+        if (!bpCore || !hasBlueprintRuntime) {
             return undefined;
         }
         const surfaceToUnmount = surface.id;
         const scopeToUnmount = runtimeScopeId;
         return () => {
+            const currentHostAdapter = latestRuntimeHostAdapterRef.current;
             lifecycleRef.current.onSurfaceExit(scopeToUnmount);
             bpCore.executionManager.closeScope(scopeToUnmount, "Surface unmounted");
             const acc = makeStateAccessors(scopeToUnmount);
-            if (!acc) {
+            if (!acc || !currentHostAdapter?.blueprintRuntime) {
                 return;
             }
             void dispatchSurfaceBlueprintEvent({
@@ -278,7 +290,7 @@ function DevModeSurfaceLifecycleLayer(props: {
                 surfaceId: surfaceToUnmount,
                 runtimeScopeId: scopeToUnmount,
                 eventName: "surfaceUnmount",
-                hostAdapter,
+                hostAdapter: currentHostAdapter,
                 debug: bpCore.debug,
                 getSurfaceState: acc.get,
                 setSurfaceState: acc.set,
@@ -286,7 +298,7 @@ function DevModeSurfaceLifecycleLayer(props: {
                 allowClosedScopeExecution: true,
             });
         };
-    }, [bpCore, bundle, hostAdapter, makeStateAccessors, runtimeScopeId, surface.id]);
+    }, [bpCore, bundle, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
 
     return <>{children}</>;
 }

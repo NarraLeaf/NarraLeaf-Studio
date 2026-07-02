@@ -63,7 +63,7 @@ describe("ConsoleService", () => {
         expect(entry.segments[0].text).toBe("watch this");
     });
 
-    it("keeps a bounded 500-line buffer per channel", () => {
+    it("keeps a bounded entry buffer per channel", () => {
         const service = new ConsoleService();
 
         for (let i = 0; i < 2005; i += 1) {
@@ -76,7 +76,7 @@ describe("ConsoleService", () => {
         expect(entries.at(-1)?.segments[0].text).toBe("line-2004");
     });
 
-    it("truncates each entry to 1024 characters", () => {
+    it("truncates each entry to the configured character limit", () => {
         const service = new ConsoleService();
 
         service.log("build", "info", "x".repeat(MAX_CONSOLE_ENTRY_CHARS + 50));

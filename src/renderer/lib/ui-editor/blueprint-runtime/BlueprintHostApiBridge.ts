@@ -130,6 +130,7 @@ export type BlueprintDisplayableMotionRequest = {
     target: UIDisplayableMotionTarget;
     transition: UIDisplayableMotionTransition;
     resetOnComplete?: boolean;
+    commitLayoutOnComplete?: Partial<Pick<BlueprintDisplayablePropertiesPatch, "x" | "y">>;
 };
 
 export type BlueprintWidgetCommonProperties = {
@@ -1085,12 +1086,21 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
     const currentPageProps = normalizeJsonRecord(pageProps);
     const pendingFlushElementIds = new Set<string>();
     const runtimePatches = new Map<string, DevModeWidgetRuntimePatch>();
-    const displayableAnimationWaiters = new Map<string, Set<() => void>>();
+    type DisplayableAnimationWaitReason = "completed" | "stopped";
+
+    const displayableAnimationWaiters = new Map<
+        string,
+        Set<(reason: DisplayableAnimationWaitReason) => void>
+    >();
     let flushScheduled = false;
 
-    const emitWidgetPatch = (elementId: string, patch: DevModeWidgetRuntimePatch) => {
+    const emitWidgetPatch = (
+        elementId: string,
+        patch: DevModeWidgetRuntimePatch,
+        options?: { widgetStateChanged?: boolean },
+    ) => {
         onWidgetPatch(elementId, patch);
-        widgetRuntimeStore.notifyRuntimePatchesChanged();
+        widgetRuntimeStore.notifyRuntimePatchesChanged(options);
     };
 
     const scheduleElementFlush = (elementId: string) => {
@@ -1126,24 +1136,30 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         });
     };
 
-    const notifyDisplayableAnimationDone = (animationId: string): void => {
+    const notifyDisplayableAnimationDone = (
+        animationId: string,
+        reason: DisplayableAnimationWaitReason = "stopped",
+    ): void => {
         const waiters = displayableAnimationWaiters.get(animationId);
         if (!waiters || waiters.size === 0) {
             return;
         }
         displayableAnimationWaiters.delete(animationId);
         for (const resolve of Array.from(waiters)) {
-            resolve();
+            resolve(reason);
         }
     };
 
-    const waitForDisplayableAnimation = async (animationId: string, waitMs: number): Promise<void> => {
+    const waitForDisplayableAnimation = async (
+        animationId: string,
+        waitMs: number,
+    ): Promise<DisplayableAnimationWaitReason> => {
         if (waitMs <= 0) {
-            return;
+            return "completed";
         }
-        await new Promise<void>(resolve => {
+        return new Promise<DisplayableAnimationWaitReason>(resolve => {
             let timeoutId: ReturnType<typeof setTimeout> | undefined;
-            const finish = () => {
+            const finish = (reason: DisplayableAnimationWaitReason) => {
                 if (timeoutId !== undefined) {
                     clearTimeout(timeoutId);
                 }
@@ -1152,16 +1168,61 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 if (waiters?.size === 0) {
                     displayableAnimationWaiters.delete(animationId);
                 }
-                resolve();
+                resolve(reason);
             };
             let waiters = displayableAnimationWaiters.get(animationId);
             if (!waiters) {
-                waiters = new Set<() => void>();
+                waiters = new Set<(reason: DisplayableAnimationWaitReason) => void>();
                 displayableAnimationWaiters.set(animationId, waiters);
             }
             waiters.add(finish);
-            timeoutId = setTimeout(finish, waitMs);
+            timeoutId = setTimeout(() => finish("completed"), waitMs);
         });
+    };
+
+    const createDisplayableLayoutPatch = (
+        elementId: string,
+        patch: BlueprintDisplayablePropertiesPatch,
+    ): NonNullable<DevModeWidgetRuntimePatch["layout"]> => {
+        const layoutPatch: NonNullable<DevModeWidgetRuntimePatch["layout"]> = {};
+        const assignFinite = (value: unknown): number | undefined => {
+            if (typeof value !== "number" || !Number.isFinite(value)) {
+                return undefined;
+            }
+            return value;
+        };
+        const x = assignFinite(patch.x);
+        const y = assignFinite(patch.y);
+        const width = assignFinite(patch.width);
+        const height = assignFinite(patch.height);
+        const rotation = assignFinite(patch.rotation);
+        const opacity = assignFinite(patch.opacity);
+        const currentLayout = readPatchedElementLayout(document, runtimePatches, elementId);
+        const nextWidth = width ?? currentLayout.width;
+        const nextHeight = height ?? currentLayout.height;
+        const parentPosition =
+            x !== undefined || y !== undefined
+                ? readDisplayableParentSurfaceTopLeft(document, runtimePatches, elementId)
+                : null;
+        if (x !== undefined) {
+            layoutPatch.x = x - (parentPosition?.x ?? 0) - Math.min(0, nextWidth);
+        }
+        if (y !== undefined) {
+            layoutPatch.y = y - (parentPosition?.y ?? 0) - Math.min(0, nextHeight);
+        }
+        if (width !== undefined) {
+            layoutPatch.width = width;
+        }
+        if (height !== undefined) {
+            layoutPatch.height = height;
+        }
+        if (rotation !== undefined) {
+            layoutPatch.rotation = rotation;
+        }
+        if (opacity !== undefined) {
+            layoutPatch.opacity = opacity;
+        }
+        return layoutPatch;
     };
 
     return {
@@ -1637,46 +1698,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         activeSurfaceId,
                         elementId,
                     );
-                    const layoutPatch: NonNullable<DevModeWidgetRuntimePatch["layout"]> = {};
                     const assignFinite = (value: unknown): number | undefined => {
                         if (typeof value !== "number" || !Number.isFinite(value)) {
                             return undefined;
                         }
                         return value;
                     };
-                    const x = assignFinite(patch.x);
-                    const y = assignFinite(patch.y);
-                    const width = assignFinite(patch.width);
-                    const height = assignFinite(patch.height);
-                    const rotation = assignFinite(patch.rotation);
-                    const opacity = assignFinite(patch.opacity);
                     const offsetX = assignFinite(patch.offsetX);
                     const offsetY = assignFinite(patch.offsetY);
-                    const currentLayout = readPatchedElementLayout(document, runtimePatches, elementId);
-                    const nextWidth = width ?? currentLayout.width;
-                    const nextHeight = height ?? currentLayout.height;
-                    const parentPosition =
-                        x !== undefined || y !== undefined
-                            ? readDisplayableParentSurfaceTopLeft(document, runtimePatches, elementId)
-                            : null;
-                    if (x !== undefined) {
-                        layoutPatch.x = x - (parentPosition?.x ?? 0) - Math.min(0, nextWidth);
-                    }
-                    if (y !== undefined) {
-                        layoutPatch.y = y - (parentPosition?.y ?? 0) - Math.min(0, nextHeight);
-                    }
-                    if (width !== undefined) {
-                        layoutPatch.width = width;
-                    }
-                    if (height !== undefined) {
-                        layoutPatch.height = height;
-                    }
-                    if (rotation !== undefined) {
-                        layoutPatch.rotation = rotation;
-                    }
-                    if (opacity !== undefined) {
-                        layoutPatch.opacity = opacity;
-                    }
+                    const layoutPatch = createDisplayableLayoutPatch(elementId, patch);
                     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
                     if (offsetX !== undefined || offsetY !== undefined) {
                         widgetRuntimeStore.setDisplayableMotion(scopedKey, {
@@ -1768,10 +1798,58 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                             scheduleElementFlush(elementId);
                         }
                     }
-                    await waitForDisplayableAnimation(
+                    const waitReason = await waitForDisplayableAnimation(
                         motion.id,
                         displayableMotionWaitMs(request.transition) * (request.resetOnComplete ? 2 : 1),
                     );
+                    const commitLayoutOnComplete = request.resetOnComplete ? undefined : request.commitLayoutOnComplete;
+                    if (waitReason === "completed" && commitLayoutOnComplete) {
+                        const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+                        const currentMotion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
+                        if (currentMotion?.id === motion.id) {
+                            const beforeCommit = readEffectiveDisplayableProperties(
+                                document,
+                                widgetRuntimeStore,
+                                runtimePatches,
+                                runtimeScopeId,
+                                activeSurfaceId,
+                                elementId,
+                            );
+                            const layoutPatch = createDisplayableLayoutPatch(elementId, commitLayoutOnComplete);
+                            const previousPatch = runtimePatches.get(elementId) ?? {};
+                            const nextPatch: DevModeWidgetRuntimePatch = {
+                                ...previousPatch,
+                                layout: {
+                                    ...(previousPatch.layout ?? {}),
+                                    ...layoutPatch,
+                                },
+                            };
+                            if (Object.keys(nextPatch.layout ?? {}).length === 0) {
+                                delete nextPatch.layout;
+                            }
+                            runtimePatches.set(elementId, nextPatch);
+                            const motionCleared = widgetRuntimeStore.clearDisplayableMotion(scopedKey, {
+                                silent: true,
+                            });
+                            emitWidgetPatch(elementId, nextPatch, { widgetStateChanged: motionCleared });
+                            const afterCommit = readEffectiveDisplayableProperties(
+                                document,
+                                widgetRuntimeStore,
+                                runtimePatches,
+                                runtimeScopeId,
+                                activeSurfaceId,
+                                elementId,
+                            );
+                            if (
+                                beforeCommit.position.x !== afterCommit.position.x ||
+                                beforeCommit.position.y !== afterCommit.position.y ||
+                                beforeCommit.offset.x !== afterCommit.offset.x ||
+                                beforeCommit.offset.y !== afterCommit.offset.y
+                            ) {
+                                scheduleElementFlush(elementId);
+                            }
+                        }
+                    }
                     return motion;
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -1785,7 +1863,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (cleared) {
                         scheduleElementFlush(elementIdFromScopedWidgetRuntimeKey(cleared.elementId));
                     }
-                    notifyDisplayableAnimationDone(animationId);
+                    notifyDisplayableAnimationDone(animationId, "stopped");
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

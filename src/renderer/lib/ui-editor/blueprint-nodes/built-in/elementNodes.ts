@@ -594,31 +594,6 @@ function displayableAnimateInspectorParams(): BlueprintNodeDef["inspectorParams"
     ];
 }
 
-function waitForNextFrame(): Promise<void> {
-    return new Promise(resolve => {
-        let settled = false;
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        const finish = () => {
-            if (settled) {
-                return;
-            }
-            settled = true;
-            if (timeoutId !== undefined) {
-                clearTimeout(timeoutId);
-            }
-            resolve();
-        };
-        if (typeof globalThis.requestAnimationFrame === "function") {
-            // Dev Mode windows can be hidden while CDP/debug automation is active;
-            // hidden Electron renderers may throttle rAF indefinitely.
-            timeoutId = setTimeout(finish, 50);
-            globalThis.requestAnimationFrame(finish);
-            return;
-        }
-        timeoutId = setTimeout(finish, 0);
-    });
-}
-
 function displayableGetPropertyInspectorParams(): BlueprintNodeDef["inspectorParams"] {
     return [
         {
@@ -741,14 +716,7 @@ async function animateDisplayableProperty(ctx: Parameters<BlueprintNodeDef["exec
     const easing = toEnumValue(ctx.params.easing, DISPLAYABLE_ANIMATION_EASINGS, "easeOut");
     const after = toEnumValue(ctx.params.after, DISPLAYABLE_ANIMATION_AFTER_MODES, "hold");
     const resetOnComplete = after === "reset";
-    const shouldHoldAbsolutePosition = (property === "x" || property === "y") && !resetOnComplete;
-    if (shouldHoldAbsolutePosition) {
-        if (hasExplicitFrom) {
-            await api.widget.setDisplayableProperties(elementId, { [property]: from ?? defaultFrom });
-        }
-        await waitForNextFrame();
-        await api.widget.setDisplayableProperties(elementId, { [property]: to });
-    }
+    const shouldCommitAbsolutePositionOnComplete = (property === "x" || property === "y") && !resetOnComplete;
     const motionValue = (target: number): UIDisplayableMotionValue =>
         hasExplicitFrom ? [from ?? defaultFrom, target] : displayableMotionFromCurrent(target);
     const targetMotion = (() => {
@@ -760,25 +728,25 @@ async function animateDisplayableProperty(ctx: Parameters<BlueprintNodeDef["exec
             case "offsetY":
                 return { y: motionValue(to) };
             case "x": {
-                const base = resetOnComplete ? current.position.x : to;
+                const base = current.position.x;
                 const target = to - base;
                 return {
                     x: hasExplicitFrom
                         ? [(from ?? current.position.x) - base, target]
                         : resetOnComplete
                             ? displayableMotionFromCurrent(target)
-                            : [current.position.x - base, target],
+                            : [0, target],
                 };
             }
             case "y": {
-                const base = resetOnComplete ? current.position.y : to;
+                const base = current.position.y;
                 const target = to - base;
                 return {
                     y: hasExplicitFrom
                         ? [(from ?? current.position.y) - base, target]
                         : resetOnComplete
                             ? displayableMotionFromCurrent(target)
-                            : [current.position.y - base, target],
+                            : [0, target],
                 };
             }
             case "scale":
@@ -798,6 +766,7 @@ async function animateDisplayableProperty(ctx: Parameters<BlueprintNodeDef["exec
             easing,
         },
         resetOnComplete,
+        commitLayoutOnComplete: shouldCommitAbsolutePositionOnComplete ? { [property]: to } : undefined,
     });
     const outputAnimation = toBlueprintAnimationToken(motion.id) ?? animationToken;
     return {

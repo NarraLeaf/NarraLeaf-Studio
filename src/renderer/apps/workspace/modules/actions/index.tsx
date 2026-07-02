@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
     Play,
-    Bug,
     Hammer,
+    Package,
     FileText,
     FolderOpen,
     X,
@@ -17,10 +17,13 @@ import { getInterface } from "@/lib/app/bridge";
 import { Separator } from "../../registry/types";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
+import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
 import { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { DevModeStatus } from "@shared/types/devMode";
+import type { PreviewStatus } from "@shared/types/gameRuntime";
 import { useWorkspace } from "../../context";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
+import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
 
 /**
  * Global toolbar actions
@@ -42,12 +45,7 @@ export const devModeAction: ModuleAction = {
     onClick: (workspace: Workspace) => {
         const devModeService = workspace.getContext().services.get<DevModeService>(Services.DevMode);
         const status = devModeService.getStatus();
-        const sessionActive =
-            status === "running" ||
-            status === "compiling" ||
-            status === "starting" ||
-            status === "reloading";
-        if (sessionActive) {
+        if (isDevModeRuntimeActive(status)) {
             void devModeService.stop();
             return;
         }
@@ -86,7 +84,7 @@ function DevModeActionIcon() {
         if (status === "error") {
             return "#f87171";
         }
-        if (status !== "idle") {
+        if (isDevModeRuntimeActive(status)) {
             return "#ffffff";
         }
         return "rgba(255,255,255,0.6)";
@@ -95,20 +93,53 @@ function DevModeActionIcon() {
     return <Play className="w-4 h-4" color={iconColor} />;
 }
 
-/**
- * Debug project action
- * Starts debugging the current project
- */
-export const debugAction: ModuleAction = {
-    id: "narraleaf-studio:debug",
-    icon: <Bug className="w-4 h-4" />,
-    tooltip: "Debug project",
-    onClick: () => {
-        console.log("Debug clicked");
-        // TODO: Implement debug functionality
+export const previewAction: ModuleAction = {
+    id: "narraleaf-studio:preview",
+    icon: <PreviewActionIcon />,
+    tooltip: "Preview",
+    onClick: (workspace: Workspace) => {
+        const previewService = workspace.getContext().services.get<PreviewService>(Services.Preview);
+        const status = previewService.getStatus();
+        if (isPreviewRuntimeActive(status)) {
+            void previewService.stop();
+            return;
+        }
+        void previewService.launch({
+            kind: "surface",
+            surfaceId: MAIN_APP_SURFACE_ID,
+        });
     },
-    order: 3,
+    order: 2,
 };
+
+function PreviewActionIcon() {
+    const { context } = useWorkspace();
+    const [status, setStatus] = useState<PreviewStatus>("idle");
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const previewService = context.services.get<PreviewService>(Services.Preview);
+        setStatus(previewService.getStatus());
+        const unsub = previewService.onStatusChanged(setStatus);
+        return () => {
+            unsub();
+        };
+    }, [context]);
+
+    const iconColor = useMemo(() => {
+        if (status === "error") {
+            return "#f87171";
+        }
+        if (isPreviewRuntimeActive(status)) {
+            return "#ffffff";
+        }
+        return "rgba(255,255,255,0.6)";
+    }, [status]);
+
+    return <Hammer className="w-4 h-4" color={iconColor} />;
+}
 
 /**
  * Build project action
@@ -116,7 +147,7 @@ export const debugAction: ModuleAction = {
  */
 export const buildAction: ModuleAction = {
     id: "narraleaf-studio:build",
-    icon: <Hammer className="w-4 h-4" />,
+    icon: <Package className="w-4 h-4" />,
     tooltip: "Build project",
     onClick: (workspace: Workspace) => {
         const services = workspace.getContext().services;
@@ -260,7 +291,7 @@ export const helpActionGroup: ModuleActionGroup = {
  * All global actions
  * Array of all actions that should be registered globally
  */
-export const globalActions: ModuleAction[] = [devModeAction, debugAction, buildAction];
+export const globalActions: ModuleAction[] = [devModeAction, previewAction, buildAction];
 
 /**
  * All global action groups

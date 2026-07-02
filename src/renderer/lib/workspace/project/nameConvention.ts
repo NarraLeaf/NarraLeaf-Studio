@@ -18,6 +18,9 @@ export const ProjectNameConvention = {
     EditorConfig: [".nlstudio", "editor.json"],
 
     Assets: ["assets/"],
+    ProjectResources: ["resources/"],
+    ProjectIcons: ["resources", "icons/"],
+    ProjectIcon: (platform: string, ext: string) => ["resources", "icons", `app-icon-${platform}.${ext}` as const],
     /** Reserved logical folder for shared blueprints; M2 persists bytes via {@link AssetsDataShard} like other assets. */
     AssetsBlueprints: ["assets", "blueprints/"],
     AssetsContent: ["assets", "content/"],

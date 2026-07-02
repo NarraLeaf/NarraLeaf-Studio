@@ -143,7 +143,13 @@ export class WidgetRuntimeStateStore {
         }
     }
 
-    notifyRuntimePatchesChanged(): void {
+    notifyRuntimePatchesChanged(options?: { widgetStateChanged?: boolean }): void {
+        if (options?.widgetStateChanged) {
+            this.snapshot = this.rebuildSnapshot();
+            for (const fn of this.listeners) {
+                fn();
+            }
+        }
         for (const fn of this.runtimePatchListeners) {
             fn();
         }
@@ -293,11 +299,14 @@ export class WidgetRuntimeStateStore {
         return this.displayableMotions.get(elementId) ?? null;
     }
 
-    clearDisplayableMotion(elementId: string): void {
+    clearDisplayableMotion(elementId: string, options?: { silent?: boolean }): boolean {
         if (!this.displayableMotions.delete(elementId)) {
-            return;
+            return false;
         }
-        this.emit();
+        if (!options?.silent) {
+            this.emit();
+        }
+        return true;
     }
 
     clearDisplayableMotionById(motionId: string): { elementId: string; motion: UIDisplayableMotionOverride } | null {
