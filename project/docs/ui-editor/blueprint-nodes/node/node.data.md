@@ -63,4 +63,4 @@ Collection 节点归入 Data 分类，用于处理 `array` 与 JSON object。`ar
 - `blueprint.data.isEmptyValue` - 判断 `any` 是否为空字符串、空数组、空对象或 `null`
 
 
-`integer` 输出允许直接连接 `float` 输入。`string` 输入允许直接连接 `integer` / `float` 输出，并会在读取输入时自动转换为字符串。
+`integer` 输出允许直接连接 `float` 输入。`string` 输入允许直接连接 `integer` / `float` 输出，并会在读取输入时自动转换为字符串。`Timer` 和 `AnimationToken` 是独立 pin/变量类型，分别用于表示可跳过的运行时计时器 token 和可停止的 Displayable 动画 token；它们不是 JSON 通配类型，只能连接到同类型输入或 `any` 输入。

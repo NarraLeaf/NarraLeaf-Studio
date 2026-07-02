@@ -24,7 +24,7 @@ import {
 } from "@/apps/workspace/registry/types";
 
 export interface SelectionState {
-    type: "asset" | "character" | "element" | "scene" | null;
+    type: "asset" | "character" | "element" | "scene" | "storyMotionKeyframe" | null;
     data: any | UIElementSelection | null;
 }
 

@@ -15,7 +15,12 @@ type UIListRuntimeScrollRequestInput = UIListRuntimeScrollRequest extends infer 
         : never
     : never;
 
-export type UIDisplayableMotionValue = number | number[];
+export type UIDisplayableMotionFromCurrentValue = {
+    from: "current";
+    to: number;
+};
+
+export type UIDisplayableMotionValue = number | number[] | UIDisplayableMotionFromCurrentValue;
 
 export type UIDisplayableMotionTarget = {
     x?: UIDisplayableMotionValue;
@@ -95,6 +100,7 @@ export class WidgetRuntimeStateStore {
     private readonly listScrollRequests = new Map<string, UIListRuntimeScrollRequest>();
     private readonly displayableMotions = new Map<string, UIDisplayableMotionOverride>();
     private readonly listeners = new Set<() => void>();
+    private readonly runtimePatchListeners = new Set<() => void>();
     private snapshot: WidgetRuntimeSnapshot;
     private listScrollRequestVersion = 0;
     private displayableMotionVersion = 0;
@@ -106,6 +112,11 @@ export class WidgetRuntimeStateStore {
     subscribe = (onStoreChange: () => void): (() => void) => {
         this.listeners.add(onStoreChange);
         return () => this.listeners.delete(onStoreChange);
+    };
+
+    subscribeRuntimePatches = (onStoreChange: () => void): (() => void) => {
+        this.runtimePatchListeners.add(onStoreChange);
+        return () => this.runtimePatchListeners.delete(onStoreChange);
     };
 
     getSnapshot = (): WidgetRuntimeSnapshot => this.snapshot;
@@ -128,6 +139,12 @@ export class WidgetRuntimeStateStore {
     private emit(): void {
         this.snapshot = this.rebuildSnapshot();
         for (const fn of this.listeners) {
+            fn();
+        }
+    }
+
+    notifyRuntimePatchesChanged(): void {
+        for (const fn of this.runtimePatchListeners) {
             fn();
         }
     }
@@ -281,6 +298,18 @@ export class WidgetRuntimeStateStore {
             return;
         }
         this.emit();
+    }
+
+    clearDisplayableMotionById(motionId: string): { elementId: string; motion: UIDisplayableMotionOverride } | null {
+        for (const [elementId, motion] of this.displayableMotions) {
+            if (motion.id !== motionId) {
+                continue;
+            }
+            this.displayableMotions.delete(elementId);
+            this.emit();
+            return { elementId, motion };
+        }
+        return null;
     }
 
     completeDisplayableMotion(elementId: string, motionId: string): void {

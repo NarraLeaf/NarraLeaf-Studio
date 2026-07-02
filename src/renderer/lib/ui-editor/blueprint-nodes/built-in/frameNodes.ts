@@ -5,7 +5,9 @@
 import {
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
+    BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
+    BLUEPRINT_NODE_TYPE_PAGE_QUIT,
 } from "@shared/types/blueprint/graph";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
@@ -30,7 +32,7 @@ async function goToSurface(ctx: Parameters<BlueprintNodeDef["execute"]>[0], surf
     if (!targetSurfaceId) {
         throw new BlueprintGraphExecutionError("Pick a Page", ctx.node.id);
     }
-    await requireHostApi(ctx).navigation.openSurface(targetSurfaceId);
+    await requireHostApi(ctx).navigation.openSurface(targetSurfaceId, readPin(ctx, "props"));
     return { nextPort: undefined };
 }
 
@@ -43,7 +45,17 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: ["event", "macro"],
         isPure: false,
         isLatent: true,
-        pins: [execIn],
+        pins: [
+            execIn,
+            {
+                id: "props",
+                kind: "input",
+                semantic: "data",
+                valueType: "json",
+                label: "Page props",
+                optional: true,
+            },
+        ],
         inspectorParams: [
             {
                 key: "surfaceId",
@@ -53,6 +65,33 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
             },
         ],
         execute: ctx => goToSurface(ctx, String(ctx.params.surfaceId ?? "")),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
+        displayName: "Get Page Props",
+        category: "Page",
+        keywords: ["page", "props", "properties", "input"],
+        graphKinds: ["event", "macro"],
+        isPure: true,
+        scope: { ownerKinds: ["surfaceMain", "widgetMain", "widgetValue"] },
+        pins: [
+            { id: "props", kind: "output", semantic: "data", valueType: "json", label: "Props" },
+        ],
+        execute: () => ({}),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_PAGE_QUIT,
+        displayName: "Quit",
+        category: "Page",
+        keywords: ["page", "quit", "exit", "application", "app"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn],
+        async execute(ctx) {
+            await requireHostApi(ctx).navigation.quitApplication();
+            return { nextPort: undefined };
+        },
     },
     {
         type: BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,

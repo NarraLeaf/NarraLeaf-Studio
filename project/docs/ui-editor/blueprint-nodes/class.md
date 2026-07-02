@@ -32,25 +32,31 @@ Network分类具有：
 ## Displayable
 
 Displayable分类具有：
+- 当前控件自己的 Displayable `Get Display` / `Set Display`
 - 当前控件自己的 Displayable `Get Property` / `Set Property`
 - Appearance Variant 节点：Self `Set Variant` 默认绑定当前控件；派生 `Set Element Variant` 才通过 Element 引用目标控件
-- 属性动画节点：`Animate Property` / `Stop Animation`
+- 属性动画节点：`Animate Property` 输出 `AnimationToken`，`Stop Animation` 接收该 token 停止指定动画
 
-带 Element 输入的 Displayable 派生节点属于 `Element` 分类；`Displayable` 分类只放当前控件自己的 Self 节点。
+带 Element 输入的 Displayable 派生节点属于 `Element` 分类；`Stop Element Animation` 也属于 `Element` 分类，但只接收 `AnimationToken`，不带 Element 输入。`Displayable` 分类只放当前控件自己的 Self 节点。
 
 Displayable 透明度只有一套有效 `opacity`。Appearance Variant 的 `transformOpacity` 会投影到这套值；`nl.image` Variant 中相对 Default 实际改动过的 `fillOpacity` 也会投影到这套值，并且不会再写到内部 `<img>` 的 opacity。`nl.image` 的非 Default Variant 不覆盖 Default 的 `imageFill` / crop / contain 模式。`Set Property` / `Animate Property` 的 opacity 也操作同一份透明度。
+
+Displayable `display` 是运行时渲染开关。`Set Display false` 会给元素应用 CSS `display: none`，元素和子树保持挂载；带 Element 输入的 `Get Element Display` / `Set Element Display` 属于 `Element` 分类。
 
 ## Page
 
 Page分类具有：
 - Page节点
-- `Go Page` 页面导航尾节点
+- `Go Page` 页面导航尾节点，可选传入 Page props；游戏状态中打开的 Page 会叠加在游戏舞台之上
+- `Get Page Props` 读取当前 Page props；Global 蓝图不可用
+- `Quit` 退出当前应用运行时；在 Studio Dev Mode 中停止 Dev Mode 会话，不终止 Studio 主进程
 
 ## Game
 
 Game 分类具有：
 - `Start Game` 游戏启动尾节点
-- Dialog 节点：`Get Nametag`、`Next`、`Skip`、`Set Sentence Speed`
+- 游戏状态节点：`Is In Game`、`Quit Game`
+- Dialog 节点：`Get Nametag`、`Next`、`Skip`、`Show Dialog`、`Hide Dialog`、`Toggle Dialog Display`、`Set Sentence Speed`
 - 本地存档节点：`Write Save`、`Load Save`、`Delete Save`、`List Saves`、`Get Save Metadata`、`Get Save Preview`
 
 ## Data
@@ -86,8 +92,9 @@ Text分类具有：
 Element 分类具有：
 - Element Literal 节点
 - Element Flush / Element Click 事件节点
+- `Continue Event Bubble` 在当前 Widget 事件图中把接入的事件继续派发给父元素
 - 所有带 Element/ref 输入的派生控件方法节点
-- Element-targeted Text、Displayable、List、Slider、Image 和通用 Widget Property 节点
+- Element-targeted Text、Displayable、List、Slider、Image 和通用 Widget Property 节点；其中 Displayable 派生节点包含 `Get Element Display` / `Set Element Display`
 
 ## List
 
@@ -108,4 +115,4 @@ Image分类具有：
 
 ## Button / Container / Frame
 
-这些控件私有分类具有对应控件自己的属性方法节点，例如 `Set Enabled`、`Set Label`。`nl.frame` Self 形态的 `Set Frame Page` 属于 `Frame` 分类；派生 Element 形态和其他派生节点一样属于 `Element` 分类。
+这些控件私有分类具有对应控件自己的属性方法节点，例如 `Set Enabled`、`Set Label`。`nl.frame` Self 形态的 `Set Frame Page` 属于 `Frame` 分类，并可通过可选 `Page props` 输入同时更新目标 Frame 的 params；派生 Element 形态和其他派生节点一样属于 `Element` 分类。

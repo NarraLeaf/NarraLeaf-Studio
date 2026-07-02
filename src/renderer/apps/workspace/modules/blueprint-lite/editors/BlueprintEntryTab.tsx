@@ -1155,7 +1155,9 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             if (!ref || !element || !surface) {
                 continue;
             }
+            const revisionKey = `${node.id}:${ref.surfaceId}:${ref.elementId}:${uiDocumentRevision}`;
             previews[node.id] = {
+                revisionKey,
                 name: element.name?.trim() || element.id,
                 type: element.type,
                 text: typeof element.props?.text === "string" ? element.props.text : undefined,
@@ -1165,7 +1167,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 },
                 preview: (
                     <ElementLiteralSurfacePreview
-                        key={`${node.id}:${ref.surfaceId}:${ref.elementId}:${uiDocumentRevision}`}
+                        key={revisionKey}
                         runtimeBridge={runtimeBridge}
                         document={uiDocument}
                         surface={surface}

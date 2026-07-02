@@ -2,7 +2,7 @@
 
 Flow 节点用于控制事件图或宏图中的执行线路。所有 Flow 节点可用于 `event` 和 `macro` 图，不可用于 `function` 图。
 
-除非额外声明，所有 `in` 参数均为执行入口；`next`、`true`、`false`、`then`、`else`、`then*`、`case*`、`default`、`loop`、`completed` 参数均为执行出口；标注（传出引脚）的参数为传出值，其余数据参数为传入引脚值。
+除非额外声明，所有 `in` 参数均为执行入口；`next`、`true`、`false`、`then`、`else`、`then*`、`case*`、`default`、`loop`、`completed` 参数均为执行出口；标注（传出引脚）的参数为传出值，其余数据参数为传入引脚值。`Timer` 是延迟计时器 token 类型，只能连接到接收 `Timer` 的节点。
 
 循环节点采用当前运行时的单光标执行模型：`loop` 出口连接循环体，循环体末尾需要连接回同一个循环节点的 `in` 入口；节点再次进入时会推进下一轮循环，直到进入 `completed` 出口。
 
@@ -119,6 +119,17 @@ Flow 节点用于控制事件图或宏图中的执行线路。所有 Flow 节点
 - `in` - 执行入口
 - `duration` - 等待时长，单位为秒；例如 `1` 表示等待 1 秒，`0.25` 表示等待 250ms
 - `completed` - 等待完成后的执行出口
+- `token` - 当前 Delay 节点的计时器 token（传出引脚），类型为 `Timer`，可传给 `Skip Delay`
+
+## Skip Delay
+
+`blueprint.flow.skipDelay` - 跳过延迟
+
+传入 `Delay` 节点输出的 `Timer` token，提前完成该 token 对应的 pending Delay，使目标 Delay 进入自己的 `completed` 出口；`Skip Delay` 自己会继续执行 `next`。如果传入的不是 Delay token，或目标 Delay 当前没有 pending 等待，该节点静默 no-op 并继续执行。
+
+- `in` - 执行入口
+- `timer` - 要跳过的 Delay `Timer` token
+- `next` - skip 请求提交后的执行出口
 
 ## Return
 

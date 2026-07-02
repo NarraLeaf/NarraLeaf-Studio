@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { BlueprintDocument } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
     buildAccessibleBlueprintVariableOptions,
     createExplicitBlueprintVariableRef,
+    listEffectiveBlueprintVariables,
 } from "./blueprintVariableRefs";
 
 describe("blueprintVariableRefs", () => {
@@ -131,5 +132,213 @@ describe("blueprintVariableRefs", () => {
             "Global",
         ]);
         expect(options.find(option => option.name === "globalOnly")?.disambiguationLabel).toBeUndefined();
+    });
+
+    it("uses Var declarations for owner blueprints except Blueprint Value", () => {
+        const globalBlueprint: Blueprint = {
+            id: "global",
+            name: "Global",
+            owner: { kind: "globalMain" },
+            frontend: "visual",
+            programKind: "graph",
+            members: { variables: {}, fields: {}, functions: {} },
+            bindings: {},
+            program: {
+                kind: "graph",
+                graphs: {
+                    events: {
+                        init: {
+                            id: "init",
+                            graph: {
+                                nodes: {
+                                    declaredGlobal: {
+                                        id: "declaredGlobal",
+                                        type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                                        params: {
+                                            variableId: "declaredGlobal",
+                                            name: "globalDeclared",
+                                            valueType: "integer",
+                                            defaultValue: 1,
+                                        },
+                                    },
+                                },
+                                edges: [],
+                            },
+                        },
+                    },
+                    functions: {},
+                },
+            },
+        };
+        const surfaceBlueprint: Blueprint = {
+            id: "surface",
+            name: "Surface",
+            owner: { kind: "surfaceMain", surfaceId: "surface" },
+            frontend: "visual",
+            programKind: "graph",
+            members: { variables: {}, fields: {}, functions: {} },
+            bindings: {},
+            program: {
+                kind: "graph",
+                graphs: {
+                    events: {
+                        init: {
+                            id: "init",
+                            graph: {
+                                nodes: {
+                                    declaredSurface: {
+                                        id: "declaredSurface",
+                                        type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                                        params: {
+                                            variableId: "declaredSurface",
+                                            name: "surfaceDeclared",
+                                            valueType: "string",
+                                            defaultValue: "ready",
+                                        },
+                                    },
+                                },
+                                edges: [],
+                            },
+                        },
+                    },
+                    functions: {},
+                },
+            },
+        };
+        const valueBlueprint: Blueprint = {
+            id: "value",
+            name: "Value",
+            owner: { kind: "widgetValue", surfaceId: "surface", elementId: "text", propPath: "props.text" },
+            frontend: "visual",
+            programKind: "graph",
+            members: {
+                variables: {
+                    legacyValue: { id: "legacyValue", name: "legacyValue", defaultValue: "legacy" },
+                },
+                fields: {},
+                functions: {},
+            },
+            bindings: {},
+            program: {
+                kind: "graph",
+                graphs: {
+                    events: {
+                        init: {
+                            id: "init",
+                            graph: {
+                                nodes: {
+                                    declaredValue: {
+                                        id: "declaredValue",
+                                        type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                                        params: {
+                                            variableId: "declaredValue",
+                                            name: "valueDeclared",
+                                            valueType: "string",
+                                            defaultValue: "ignored",
+                                        },
+                                    },
+                                },
+                                edges: [],
+                            },
+                        },
+                    },
+                    functions: {},
+                },
+            },
+        };
+        const doc: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                global: globalBlueprint,
+                surface: surfaceBlueprint,
+                value: valueBlueprint,
+            },
+            ownerRecords: {
+                globalMain: {
+                    activeBlueprintId: "global",
+                    privateBlueprintIds: ["global"],
+                    initializedFrontend: "visual",
+                },
+                "surfaceMain:surface": {
+                    activeBlueprintId: "surface",
+                    privateBlueprintIds: ["surface"],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+
+        expect(listEffectiveBlueprintVariables(globalBlueprint)).toEqual([
+            expect.objectContaining({ id: "declaredGlobal", name: "globalDeclared", defaultValue: 1 }),
+        ]);
+        expect(listEffectiveBlueprintVariables(surfaceBlueprint)).toEqual([
+            expect.objectContaining({ id: "declaredSurface", name: "surfaceDeclared", defaultValue: "ready" }),
+        ]);
+        expect(listEffectiveBlueprintVariables(valueBlueprint).map(variable => variable.id)).toEqual(["legacyValue"]);
+
+        const surfaceOptions = buildAccessibleBlueprintVariableOptions({
+            doc,
+            currentBlueprintId: "surface",
+            surfaceId: "surface",
+        });
+        expect(surfaceOptions.map(option => option.value)).toEqual([
+            "declaredSurface",
+            createExplicitBlueprintVariableRef("global", "declaredGlobal"),
+        ]);
+
+        const valueOptions = buildAccessibleBlueprintVariableOptions({
+            doc,
+            currentBlueprintId: "value",
+            surfaceId: "surface",
+        });
+        expect(valueOptions.map(option => option.value)).toContain("legacyValue");
+        expect(valueOptions.map(option => option.value)).not.toContain("declaredValue");
+    });
+
+    it("normalizes Any Var declaration defaults to null", () => {
+        const blueprint: Blueprint = {
+            id: "widget",
+            name: "Widget",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
+            frontend: "visual",
+            programKind: "graph",
+            members: { variables: {}, fields: {}, functions: {} },
+            bindings: {},
+            program: {
+                kind: "graph",
+                graphs: {
+                    events: {
+                        init: {
+                            id: "init",
+                            graph: {
+                                nodes: {
+                                    anyVar: {
+                                        id: "anyVar",
+                                        type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                                        params: {
+                                            variableId: "anyVar",
+                                            name: "token",
+                                            valueType: "any",
+                                            defaultValue: { stale: true },
+                                        },
+                                    },
+                                },
+                                edges: [],
+                            },
+                        },
+                    },
+                    functions: {},
+                },
+            },
+        };
+
+        expect(listEffectiveBlueprintVariables(blueprint)).toEqual([
+            expect.objectContaining({
+                id: "anyVar",
+                name: "token",
+                valueType: "any",
+                defaultValue: null,
+            }),
+        ]);
     });
 });

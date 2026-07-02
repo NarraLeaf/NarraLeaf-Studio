@@ -93,6 +93,27 @@ export type ContainerAppearancePropertyKey =
     | "effectGlow"
     | "effectFilter";
 
+export const BUTTON_CURSOR_VALUES = [
+    "auto",
+    "default",
+    "pointer",
+    "text",
+    "move",
+    "grab",
+    "grabbing",
+    "crosshair",
+    "help",
+    "wait",
+    "progress",
+    "not-allowed",
+] as const;
+
+export type ButtonCursorValue = (typeof BUTTON_CURSOR_VALUES)[number];
+
+export function isButtonCursorValue(value: unknown): value is ButtonCursorValue {
+    return typeof value === "string" && (BUTTON_CURSOR_VALUES as readonly string[]).includes(value);
+}
+
 /** Whitelisted visual keys for `nl.button`. */
 export type ButtonAppearancePropertyKey =
     | "backgroundColor"
@@ -113,6 +134,7 @@ export type ButtonAppearancePropertyKey =
     | "paddingX"
     | "paddingY"
     | "clipContent"
+    | "cursor"
     | "transformOffsetX"
     | "transformOffsetY"
     | "transformScale"

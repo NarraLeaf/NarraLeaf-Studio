@@ -366,8 +366,9 @@ export function UISurfaceEditorTab({ tabId, payload }: EditorComponentProps<{ su
         return {
             host: surface?.host ?? "app",
             editorStateService: stateService ?? undefined,
+            editorDocumentService: documentService ?? undefined,
         };
-    }, [stateService, surface?.host]);
+    }, [documentService, stateService, surface?.host]);
 
     const surfaceContent = useMemo(() => {
         if (!surfaceId || !runtimeBridge || !documentService) {

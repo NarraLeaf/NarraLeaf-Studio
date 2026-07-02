@@ -7,7 +7,7 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { truncateDebugEventMessage } from "./DebugBridge";
 import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
-import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
 import type {
     UIDisplayableMotionOverride,
@@ -17,6 +17,8 @@ import type {
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import type { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { isAppearanceCapableElementType } from "./appearanceCapableWidgets";
+import { finalDisplayableMotionValue } from "@/lib/ui-editor/runtime/displayableMotion";
+import { getElementSurfaceTopLeftEx } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helpers";
 import { getSliderProps } from "@/lib/ui-editor/widget-modules/builtin/slider/helpers";
 import { getListProps } from "@/lib/ui-editor/widget-modules/builtin/list/helpers";
@@ -51,6 +53,7 @@ import {
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 
 export type DevModeWidgetRuntimePatch = {
+    display?: boolean;
     visible?: boolean;
     enabled?: boolean;
     frame?: {
@@ -92,24 +95,30 @@ export type BlueprintListProperties = {
 
 export type BlueprintDisplayableProperties = {
     position: { x: number; y: number };
+    offset: { x: number; y: number };
     size: { width: number; height: number };
     bounds: { x: number; y: number; width: number; height: number };
     rotation: number;
     opacity: number;
+    display: boolean;
     visible: boolean;
 };
 
 export type BlueprintDisplayablePropertiesPatch = Partial<{
     x: number;
     y: number;
+    offsetX: number;
+    offsetY: number;
     width: number;
     height: number;
     rotation: number;
     opacity: number;
+    display: boolean;
     visible: boolean;
 }>;
 
 export type BlueprintDisplayableMotionRequest = {
+    id?: string;
     target: UIDisplayableMotionTarget;
     transition: UIDisplayableMotionTransition;
     resetOnComplete?: boolean;
@@ -146,8 +155,10 @@ export type BlueprintFrameProperties = {
 
 export type BlueprintHostApiRuntime = {
     navigation: {
-        openSurface: (surfaceId: string) => Promise<void>;
+        openSurface: (surfaceId: string, props?: unknown) => Promise<void>;
+        getPageProps: () => Record<string, unknown>;
         closeLayer: () => Promise<void>;
+        quitApplication: () => Promise<void>;
     };
     widget: {
         setVisible: (elementId: string, visible: boolean) => Promise<void>;
@@ -174,7 +185,7 @@ export type BlueprintHostApiRuntime = {
         getDisplayableProperties: (elementId: string) => BlueprintDisplayableProperties;
         setDisplayableProperties: (elementId: string, patch: BlueprintDisplayablePropertiesPatch) => Promise<void>;
         animateDisplayable: (elementId: string, request: BlueprintDisplayableMotionRequest) => Promise<UIDisplayableMotionOverride>;
-        stopDisplayableAnimation: (elementId: string) => Promise<void>;
+        stopDisplayableAnimation: (animationId: string) => Promise<void>;
         getFrameProperties: (elementId: string) => BlueprintFrameProperties;
         setFrameProperties: (elementId: string, patch: Partial<BlueprintFrameProperties>) => Promise<void>;
     };
@@ -192,6 +203,8 @@ export type BlueprintHostApiRuntime = {
     };
     game: {
         startStory: (request: DevModeStartStoryRequest) => Promise<void>;
+        isInGame: () => boolean;
+        quit: (surfaceId: string) => Promise<void>;
         writeSave: (id: string, metadata?: unknown) => Promise<void>;
         loadSave: (id: string) => Promise<void>;
         deleteSave: (id: string) => Promise<void>;
@@ -201,6 +214,9 @@ export type BlueprintHostApiRuntime = {
         getNametag: () => string | null;
         next: () => Promise<void>;
         skip: () => Promise<void>;
+        showDialog: () => Promise<void>;
+        hideDialog: () => Promise<void>;
+        toggleDialogDisplay: () => Promise<void>;
         setSentenceSpeed: (speed: number) => Promise<void>;
     };
     devtools: {
@@ -213,9 +229,12 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     scope: ScopeStoreBridge;
     activeSurfaceId: string;
     runtimeScopeId?: string;
+    pageProps?: Record<string, unknown>;
     frameParams?: Record<string, unknown>;
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
     onStartStory?: (request: DevModeStartStoryRequest) => Promise<void> | void;
+    onIsInGame?: () => boolean;
+    onQuitGame?: (surfaceId: string) => Promise<void> | void;
     onWriteSave?: (id: string, metadata: unknown) => Promise<void> | void;
     onLoadSave?: (id: string) => Promise<void> | void;
     onDeleteSave?: (id: string) => Promise<void> | void;
@@ -225,10 +244,14 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onGetNametag?: () => string | null;
     onNext?: () => Promise<void> | void;
     onSkip?: () => Promise<void> | void;
+    onShowDialog?: () => Promise<void> | void;
+    onHideDialog?: () => Promise<void> | void;
+    onToggleDialogDisplay?: () => Promise<void> | void;
     onSetSentenceSpeed?: (speed: number) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
-    onOpenSurface: (surfaceId: string) => void | Promise<void>;
+    onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
+    onQuitApplication?: () => void | Promise<void>;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
     onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
     widgetRuntimeStore: WidgetRuntimeStateStore;
@@ -236,11 +259,82 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     componentDefinitionMode?: boolean;
 };
 
-function assertAppearanceVariantId(document: UIDocument, elementId: string, variantId: string | null): void {
-    const el = document.elements[elementId];
-    if (!el) {
-        throw new Error(`setVariant: element not found: ${elementId}`);
+function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
+    const element = document.elements[elementId];
+    if (element) {
+        return element;
     }
+    for (const component of document.components ?? []) {
+        const componentElement = component.elements[elementId];
+        if (componentElement) {
+            return componentElement;
+        }
+    }
+    return undefined;
+}
+
+function requireDocumentElement(document: UIDocument, elementId: string, label: string): UIElement {
+    const element = readDocumentElement(document, elementId);
+    if (!element) {
+        throw new Error(`${label}: element not found: ${elementId}`);
+    }
+    return element;
+}
+
+function readPatchedDocumentElement(
+    document: UIDocument,
+    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+    elementId: string,
+): UIElement | undefined {
+    const element = readDocumentElement(document, elementId);
+    const layoutPatch = runtimePatches?.get(elementId)?.layout;
+    if (!element || !layoutPatch) {
+        return element;
+    }
+    return {
+        ...element,
+        layout: {
+            ...element.layout,
+            ...layoutPatch,
+        },
+    };
+}
+
+function readPatchedElementLayout(
+    document: UIDocument,
+    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+    elementId: string,
+): UIElement["layout"] {
+    const element = requireDocumentElement(document, elementId, "displayable");
+    return {
+        ...element.layout,
+        ...(runtimePatches?.get(elementId)?.layout ?? {}),
+    };
+}
+
+function readDisplayableSurfaceTopLeft(
+    document: UIDocument,
+    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+    elementId: string,
+): { x: number; y: number } {
+    requireDocumentElement(document, elementId, "displayable");
+    return getElementSurfaceTopLeftEx(id => readPatchedDocumentElement(document, runtimePatches, id), elementId);
+}
+
+function readDisplayableParentSurfaceTopLeft(
+    document: UIDocument,
+    runtimePatches: ReadonlyMap<string, DevModeWidgetRuntimePatch> | undefined,
+    elementId: string,
+): { x: number; y: number } {
+    const element = requireDocumentElement(document, elementId, "displayable");
+    if (!element.parentId) {
+        return { x: 0, y: 0 };
+    }
+    return getElementSurfaceTopLeftEx(id => readPatchedDocumentElement(document, runtimePatches, id), element.parentId);
+}
+
+function assertAppearanceVariantId(document: UIDocument, elementId: string, variantId: string | null): void {
+    const el = requireDocumentElement(document, elementId, "setVariant");
     if (!isAppearanceCapableElementType(el.type)) {
         throw new Error(`setVariant: element type does not support appearance variants: ${el.type}`);
     }
@@ -261,7 +355,7 @@ function assertAppearanceVariantId(document: UIDocument, elementId: string, vari
 }
 
 function readAppearanceModel(document: UIDocument, elementId: string): AppearanceModel | null {
-    const raw = (document.elements[elementId]?.props as Record<string, unknown> | undefined)?.appearance;
+    const raw = (readDocumentElement(document, elementId)?.props as Record<string, unknown> | undefined)?.appearance;
     if (!raw || typeof raw !== "object") {
         return null;
     }
@@ -335,10 +429,7 @@ function sleepMs(durationMs: number): Promise<void> {
 }
 
 function assertTextElement(document: UIDocument, elementId: string) {
-    const el = document.elements[elementId];
-    if (!el) {
-        throw new Error(`text: element not found: ${elementId}`);
-    }
+    const el = requireDocumentElement(document, elementId, "text");
     if (el.type !== "nl.text") {
         throw new Error(`text: element is not a Text widget: ${el.type}`);
     }
@@ -346,10 +437,7 @@ function assertTextElement(document: UIDocument, elementId: string) {
 }
 
 function assertSliderElement(document: UIDocument, elementId: string) {
-    const el = document.elements[elementId];
-    if (!el) {
-        throw new Error(`slider: element not found: ${elementId}`);
-    }
+    const el = requireDocumentElement(document, elementId, "slider");
     if (el.type !== "nl.slider") {
         throw new Error(`slider: element is not a Slider widget: ${el.type}`);
     }
@@ -357,10 +445,7 @@ function assertSliderElement(document: UIDocument, elementId: string) {
 }
 
 function assertListElement(document: UIDocument, elementId: string) {
-    const el = document.elements[elementId];
-    if (!el) {
-        throw new Error(`list: element not found: ${elementId}`);
-    }
+    const el = requireDocumentElement(document, elementId, "list");
     if (el.type !== "nl.list") {
         throw new Error(`list: element is not a List widget: ${el.type}`);
     }
@@ -368,10 +453,7 @@ function assertListElement(document: UIDocument, elementId: string) {
 }
 
 function assertButtonElement(document: UIDocument, elementId: string) {
-    const el = document.elements[elementId];
-    if (!el) {
-        throw new Error(`button: element not found: ${elementId}`);
-    }
+    const el = requireDocumentElement(document, elementId, "button");
     if (el.type !== "nl.button") {
         throw new Error(`button: element is not a Button widget: ${el.type}`);
     }
@@ -379,10 +461,7 @@ function assertButtonElement(document: UIDocument, elementId: string) {
 }
 
 function assertContainerElement(document: UIDocument, elementId: string) {
-    const el = document.elements[elementId];
-    if (!el) {
-        throw new Error(`container: element not found: ${elementId}`);
-    }
+    const el = requireDocumentElement(document, elementId, "container");
     if (el.type !== "nl.container") {
         throw new Error(`container: element is not a Container widget: ${el.type}`);
     }
@@ -390,10 +469,7 @@ function assertContainerElement(document: UIDocument, elementId: string) {
 }
 
 function assertImageElement(document: UIDocument, elementId: string) {
-    const el = document.elements[elementId];
-    if (!el) {
-        throw new Error(`image: element not found: ${elementId}`);
-    }
+    const el = requireDocumentElement(document, elementId, "image");
     if (el.type !== "nl.image") {
         throw new Error(`image: element is not an Image widget: ${el.type}`);
     }
@@ -401,10 +477,7 @@ function assertImageElement(document: UIDocument, elementId: string) {
 }
 
 function assertFrameElement(document: UIDocument, elementId: string) {
-    const el = document.elements[elementId];
-    if (!el) {
-        throw new Error(`frame: element not found: ${elementId}`);
-    }
+    const el = requireDocumentElement(document, elementId, "frame");
     if (el.type !== "nl.frame") {
         throw new Error(`frame: element is not a Frame widget: ${el.type}`);
     }
@@ -481,7 +554,8 @@ function readListProperties(
     assertListElement(document, elementId);
     const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
     const items = widgetRuntimeStore.getListItems(scopedKey) ?? readListItemsFallback(document, scope, stateScopeId, elementId);
-    const selectedIndex = widgetRuntimeStore.getListSelectedIndex(scopedKey) ?? getListProps(document.elements[elementId]!).selectedIndex;
+    const selectedIndex = widgetRuntimeStore.getListSelectedIndex(scopedKey) ??
+        getListProps(requireDocumentElement(document, elementId, "list")).selectedIndex;
     return {
         items,
         selectedIndex,
@@ -500,47 +574,28 @@ function readSliderProperties(
     return widgetRuntimeStore.getSliderProperties(scopedKey) ?? resolveSliderRuntimeValue(authored);
 }
 
-function readDisplayableProperties(document: UIDocument, elementId: string): BlueprintDisplayableProperties {
-    const el = document.elements[elementId];
-    if (!el) {
-        throw new Error(`displayable: element not found: ${elementId}`);
-    }
-    const layout = el.layout;
+function readDisplayableProperties(
+    document: UIDocument,
+    elementId: string,
+    runtimePatches?: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+): BlueprintDisplayableProperties {
+    const layout = readPatchedElementLayout(document, runtimePatches, elementId);
+    const patch = runtimePatches?.get(elementId);
+    const position = readDisplayableSurfaceTopLeft(document, runtimePatches, elementId);
     return {
-        position: { x: layout.x, y: layout.y },
+        position,
+        offset: { x: 0, y: 0 },
         size: { width: layout.width, height: layout.height },
-        bounds: { x: layout.x, y: layout.y, width: layout.width, height: layout.height },
+        bounds: { x: position.x, y: position.y, width: layout.width, height: layout.height },
         rotation: layout.rotation ?? 0,
         opacity: layout.opacity ?? 1,
-        visible: layout.visible !== false,
-    };
-}
-
-function mergeDisplayableRuntimePatch(
-    props: BlueprintDisplayableProperties,
-    patch: DevModeWidgetRuntimePatch | undefined,
-): BlueprintDisplayableProperties {
-    const x = patch?.layout?.x ?? props.position.x;
-    const y = patch?.layout?.y ?? props.position.y;
-    const width = patch?.layout?.width ?? props.size.width;
-    const height = patch?.layout?.height ?? props.size.height;
-    return {
-        position: { x, y },
-        size: { width, height },
-        bounds: { x, y, width, height },
-        rotation: patch?.layout?.rotation ?? props.rotation,
-        opacity: patch?.layout?.opacity ?? props.opacity,
-        visible: patch?.visible ?? props.visible,
+        display: patch?.display ?? true,
+        visible: patch?.visible ?? layout.visible !== false,
     };
 }
 
 function hasRuntimeOpacityPatch(patch: DevModeWidgetRuntimePatch | undefined): boolean {
     return Boolean(patch?.layout && Object.prototype.hasOwnProperty.call(patch.layout, "opacity"));
-}
-
-function lastFiniteMotionValue(value: number | number[] | undefined): number | undefined {
-    const raw = Array.isArray(value) ? value[value.length - 1] : value;
-    return typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
 }
 
 function normalizeDisplayableOpacity(value: number): number {
@@ -553,7 +608,7 @@ function displayableOpacityKeysForElement(
     variantId: string | null,
     signals: SystemInteractionSignals,
 ): readonly string[] {
-    const element = document.elements[elementId];
+    const element = readDocumentElement(document, elementId);
     if (element?.type !== "nl.image") {
         return ["transformOpacity"];
     }
@@ -609,9 +664,14 @@ function readEffectiveDisplayableProperties(
     elementId: string,
 ): BlueprintDisplayableProperties {
     const patch = runtimePatches.get(elementId);
-    const merged = mergeDisplayableRuntimePatch(readDisplayableProperties(document, elementId), patch);
+    const merged = readDisplayableProperties(document, elementId, runtimePatches);
+    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+    const motion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
+    merged.offset = {
+        x: finalDisplayableMotionValue(motion?.target.x) ?? 0,
+        y: finalDisplayableMotionValue(motion?.target.y) ?? 0,
+    };
     if (!hasRuntimeOpacityPatch(patch)) {
-        const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
         const appearanceOpacity = readAppearanceOpacity(document, widgetRuntimeStore, scopedKey, elementId);
         if (appearanceOpacity !== null) {
             merged.opacity = appearanceOpacity;
@@ -625,7 +685,7 @@ function readVariantId(document: UIDocument, widgetRuntimeStore: WidgetRuntimeSt
     if (override) {
         return override;
     }
-    const el = document.elements[elementId];
+    const el = readDocumentElement(document, elementId);
     const appearance = (el?.props as Record<string, unknown> | undefined)?.appearance as
         | { defaultVariantId?: unknown; variants?: Array<{ id?: unknown }> }
         | undefined;
@@ -644,10 +704,7 @@ function readCommonProperties(
     scopedKey: string,
     elementId: string,
 ): BlueprintWidgetCommonProperties {
-    const el = document.elements[elementId];
-    if (!el) {
-        throw new Error(`widget: element not found: ${elementId}`);
-    }
+    const el = requireDocumentElement(document, elementId, "widget");
     const patch = runtimePatches.get(elementId);
     const props = (el.props ?? {}) as Record<string, unknown>;
     return {
@@ -785,6 +842,13 @@ function normalizeJsonValue(raw: unknown): unknown {
     }
 }
 
+function normalizeJsonRecord(raw: unknown): Record<string, unknown> {
+    const value = normalizeJsonValue(raw);
+    return value && typeof value === "object" && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+}
+
 function normalizeColor(raw: unknown, fallback: string): string {
     const s = String(raw ?? "").trim();
     return s.length > 0 ? s : fallback;
@@ -882,6 +946,11 @@ function scopedWidgetRuntimeKey(runtimeScopeId: string | undefined, activeSurfac
     return `${runtimeScopeId ?? activeSurfaceId}\0${elementId}`;
 }
 
+function elementIdFromScopedWidgetRuntimeKey(scopedKey: string): string {
+    const separatorIndex = scopedKey.indexOf("\0");
+    return separatorIndex >= 0 ? scopedKey.slice(separatorIndex + 1) : scopedKey;
+}
+
 function normalizeGameSaveId(operation: string, id: string): string {
     const safe = String(id ?? "").trim();
     if (!safe) {
@@ -907,9 +976,12 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         scope,
         activeSurfaceId,
         runtimeScopeId,
+        pageProps,
         frameParams,
         onFrameEmit,
         onStartStory,
+        onIsInGame,
+        onQuitGame,
         onWriteSave,
         onLoadSave,
         onDeleteSave,
@@ -919,25 +991,36 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetNametag,
         onNext,
         onSkip,
+        onShowDialog,
+        onHideDialog,
+        onToggleDialogDisplay,
         onSetSentenceSpeed,
         emit,
         onOpenSurface,
         onCloseLayer,
+        onQuitApplication,
         onWidgetPatch,
         onElementFlush,
         widgetRuntimeStore,
     } =
         options;
     const stateScopeId = runtimeScopeId ?? activeSurfaceId;
+    const currentPageProps = normalizeJsonRecord(pageProps);
     const pendingFlushElementIds = new Set<string>();
     const runtimePatches = new Map<string, DevModeWidgetRuntimePatch>();
+    const displayableAnimationWaiters = new Map<string, Set<() => void>>();
     let flushScheduled = false;
+
+    const emitWidgetPatch = (elementId: string, patch: DevModeWidgetRuntimePatch) => {
+        onWidgetPatch(elementId, patch);
+        widgetRuntimeStore.notifyRuntimePatchesChanged();
+    };
 
     const scheduleElementFlush = (elementId: string) => {
         if (!onElementFlush) {
             return;
         }
-        const el = document.elements[elementId];
+        const el = readDocumentElement(document, elementId);
         if (!el) {
             return;
         }
@@ -951,7 +1034,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             const elementIds = [...pendingFlushElementIds];
             pendingFlushElementIds.clear();
             for (const id of elementIds) {
-                const target = document.elements[id];
+                const target = readDocumentElement(document, id);
                 if (!target) {
                     continue;
                 }
@@ -966,9 +1049,47 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         });
     };
 
+    const notifyDisplayableAnimationDone = (animationId: string): void => {
+        const waiters = displayableAnimationWaiters.get(animationId);
+        if (!waiters || waiters.size === 0) {
+            return;
+        }
+        displayableAnimationWaiters.delete(animationId);
+        for (const resolve of Array.from(waiters)) {
+            resolve();
+        }
+    };
+
+    const waitForDisplayableAnimation = async (animationId: string, waitMs: number): Promise<void> => {
+        if (waitMs <= 0) {
+            return;
+        }
+        await new Promise<void>(resolve => {
+            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            const finish = () => {
+                if (timeoutId !== undefined) {
+                    clearTimeout(timeoutId);
+                }
+                const waiters = displayableAnimationWaiters.get(animationId);
+                waiters?.delete(finish);
+                if (waiters?.size === 0) {
+                    displayableAnimationWaiters.delete(animationId);
+                }
+                resolve();
+            };
+            let waiters = displayableAnimationWaiters.get(animationId);
+            if (!waiters) {
+                waiters = new Set<() => void>();
+                displayableAnimationWaiters.set(animationId, waiters);
+            }
+            waiters.add(finish);
+            timeoutId = setTimeout(finish, waitMs);
+        });
+    };
+
     return {
         navigation: {
-            openSurface: async (surfaceId: string) => {
+            openSurface: async (surfaceId: string, props?: unknown) => {
                 const cap = "navigation.openSurface";
                 emitHostCall(emit, cap, "call");
                 const target = document.surfaces.find(s => s.id === surfaceId);
@@ -976,8 +1097,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                     throw new Error(`openSurface: surface not found: ${surfaceId}`);
                 }
-                await onOpenSurface(surfaceId);
+                await onOpenSurface(surfaceId, normalizeJsonRecord(props));
                 emitHostCall(emit, cap, "return");
+            },
+            getPageProps: () => {
+                const cap = "navigation.getPageProps";
+                emitHostCall(emit, cap, "call");
+                const props = normalizeJsonRecord(currentPageProps);
+                emitHostCall(emit, cap, "return");
+                return props;
             },
             closeLayer: async () => {
                 const cap = "navigation.closeLayer";
@@ -985,13 +1113,24 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 await onCloseLayer();
                 emitHostCall(emit, cap, "return");
             },
+            quitApplication: async () => {
+                const cap = "navigation.quitApplication";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onQuitApplication) {
+                        throw new Error("quitApplication: application runtime is not available");
+                    }
+                    await onQuitApplication();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
         },
         widget: {
             setVisible: async (elementId: string, visible: boolean) => {
                 const cap = "widget.setVisible";
                 emitHostCall(emit, cap, "call");
-                const el = document.elements[elementId];
-                if (!el) {
+                if (!readDocumentElement(document, elementId)) {
                     emitHostCall(emit, cap, "return");
                     throw new Error(`setVisible: element not found: ${elementId}`);
                 }
@@ -1006,7 +1145,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     ...(runtimePatches.get(elementId) ?? {}),
                     visible,
                 });
-                onWidgetPatch(elementId, { visible });
+                emitWidgetPatch(elementId, { visible });
                 if (previous !== visible) {
                     scheduleElementFlush(elementId);
                 }
@@ -1015,8 +1154,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             setEnabled: async (elementId: string, enabled: boolean) => {
                 const cap = "widget.setEnabled";
                 emitHostCall(emit, cap, "call");
-                const el = document.elements[elementId];
-                if (!el) {
+                if (!readDocumentElement(document, elementId)) {
                     emitHostCall(emit, cap, "return");
                     throw new Error(`setEnabled: element not found: ${elementId}`);
                 }
@@ -1031,7 +1169,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     ...(runtimePatches.get(elementId) ?? {}),
                     enabled,
                 });
-                onWidgetPatch(elementId, { enabled });
+                emitWidgetPatch(elementId, { enabled });
                 if (previous !== enabled) {
                     scheduleElementFlush(elementId);
                 }
@@ -1066,7 +1204,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         layout,
                     };
                     runtimePatches.set(elementId, nextPatch);
-                    onWidgetPatch(elementId, nextPatch);
+                    emitWidgetPatch(elementId, nextPatch);
                 }
                 const opacityTransition = variantDisplayableOpacityTransition(document, elementId, targetVariant);
                 if (opacityTransition && before.opacity !== targetOpacity) {
@@ -1122,7 +1260,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         ...(el.props ?? {}),
                         ...normalized,
                     };
-                    onWidgetPatch(elementId, {});
+                    emitWidgetPatch(elementId, {});
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -1148,7 +1286,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         return;
                     }
                     el.props = { ...(el.props ?? {}), label: nextLabel };
-                    onWidgetPatch(elementId, {});
+                    emitWidgetPatch(elementId, {});
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -1174,7 +1312,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         return;
                     }
                     el.props = { ...(el.props ?? {}), clipContent };
-                    onWidgetPatch(elementId, {});
+                    emitWidgetPatch(elementId, {});
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -1228,7 +1366,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         nextProps = buildImageFillPropsUpdate(el, nextFill);
                     }
                     el.props = { ...nextProps, imageFlipX: flipX, imageFlipY: flipY };
-                    onWidgetPatch(elementId, {});
+                    emitWidgetPatch(elementId, {});
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -1410,11 +1548,20 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     const height = assignFinite(patch.height);
                     const rotation = assignFinite(patch.rotation);
                     const opacity = assignFinite(patch.opacity);
+                    const offsetX = assignFinite(patch.offsetX);
+                    const offsetY = assignFinite(patch.offsetY);
+                    const currentLayout = readPatchedElementLayout(document, runtimePatches, elementId);
+                    const nextWidth = width ?? currentLayout.width;
+                    const nextHeight = height ?? currentLayout.height;
+                    const parentPosition =
+                        x !== undefined || y !== undefined
+                            ? readDisplayableParentSurfaceTopLeft(document, runtimePatches, elementId)
+                            : null;
                     if (x !== undefined) {
-                        layoutPatch.x = x;
+                        layoutPatch.x = x - (parentPosition?.x ?? 0) - Math.min(0, nextWidth);
                     }
                     if (y !== undefined) {
-                        layoutPatch.y = y;
+                        layoutPatch.y = y - (parentPosition?.y ?? 0) - Math.min(0, nextHeight);
                     }
                     if (width !== undefined) {
                         layoutPatch.width = width;
@@ -1428,6 +1575,17 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (opacity !== undefined) {
                         layoutPatch.opacity = opacity;
                     }
+                    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
+                    if (offsetX !== undefined || offsetY !== undefined) {
+                        widgetRuntimeStore.setDisplayableMotion(scopedKey, {
+                            target: {
+                                x: offsetX ?? current.offset.x,
+                                y: offsetY ?? current.offset.y,
+                            },
+                            transition: { type: "tween", durationMs: 0, delayMs: 0, easing: "linear" },
+                            resetOnComplete: false,
+                        });
+                    }
                     const previousPatch = runtimePatches.get(elementId) ?? {};
                     const nextPatch: DevModeWidgetRuntimePatch = {
                         ...previousPatch,
@@ -1439,11 +1597,14 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (patch.visible !== undefined) {
                         nextPatch.visible = patch.visible;
                     }
+                    if (patch.display !== undefined) {
+                        nextPatch.display = patch.display;
+                    }
                     if (Object.keys(nextPatch.layout ?? {}).length === 0) {
                         delete nextPatch.layout;
                     }
                     runtimePatches.set(elementId, nextPatch);
-                    onWidgetPatch(elementId, nextPatch);
+                    emitWidgetPatch(elementId, nextPatch);
                     const next = readEffectiveDisplayableProperties(
                         document,
                         widgetRuntimeStore,
@@ -1459,6 +1620,9 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         current.size.height !== next.size.height ||
                         current.rotation !== next.rotation ||
                         current.opacity !== next.opacity ||
+                        current.offset.x !== next.offset.x ||
+                        current.offset.y !== next.offset.y ||
+                        current.display !== next.display ||
                         current.visible !== next.visible
                     ) {
                         scheduleElementFlush(elementId);
@@ -1481,7 +1645,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     );
                     const heldOpacity = request.resetOnComplete
                         ? undefined
-                        : lastFiniteMotionValue(request.target.opacity);
+                        : finalDisplayableMotionValue(request.target.opacity);
                     const motion = widgetRuntimeStore.setDisplayableMotion(
                         scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
                         request,
@@ -1497,25 +1661,29 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                             },
                         };
                         runtimePatches.set(elementId, nextPatch);
-                        onWidgetPatch(elementId, nextPatch);
+                        emitWidgetPatch(elementId, nextPatch);
                         if (current.opacity !== opacity) {
                             scheduleElementFlush(elementId);
                         }
                     }
-                    await sleepMs(displayableMotionWaitMs(request.transition));
+                    await waitForDisplayableAnimation(
+                        motion.id,
+                        displayableMotionWaitMs(request.transition) * (request.resetOnComplete ? 2 : 1),
+                    );
                     return motion;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
             },
-            stopDisplayableAnimation: async (elementId: string) => {
+            stopDisplayableAnimation: async (animationId: string) => {
                 const cap = "widget.stopDisplayableAnimation";
                 emitHostCall(emit, cap, "call");
                 try {
-                    readDisplayableProperties(document, elementId);
-                    widgetRuntimeStore.clearDisplayableMotion(
-                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
-                    );
+                    const cleared = widgetRuntimeStore.clearDisplayableMotionById(animationId);
+                    if (cleared) {
+                        scheduleElementFlush(elementIdFromScopedWidgetRuntimeKey(cleared.elementId));
+                    }
+                    notifyDisplayableAnimationDone(animationId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -1555,7 +1723,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         },
                     };
                     runtimePatches.set(elementId, nextPatch);
-                    onWidgetPatch(elementId, nextPatch);
+                    emitWidgetPatch(elementId, nextPatch);
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -1610,7 +1778,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         frame: {
             getParam: (key: string) => {
                 emitHostCall(emit, "frame.getParam", "call");
-                const value = frameParams?.[key];
+                const source = frameParams && Object.prototype.hasOwnProperty.call(frameParams, key)
+                    ? frameParams
+                    : currentPageProps;
+                const value = source[key];
                 emitHostCall(emit, "frame.getParam", "return");
                 return toBlueprintVisibleValue(value);
             },
@@ -1641,6 +1812,31 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("startStory: game runtime is not available");
                     }
                     await onStartStory({ storyId, sceneId });
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isInGame: () => {
+                const cap = "game.isInGame";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onIsInGame ? onIsInGame() === true : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            quit: async (surfaceId: string) => {
+                const cap = "game.quit";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const targetSurfaceId = String(surfaceId ?? "").trim();
+                    if (!targetSurfaceId) {
+                        throw new Error("quit: surfaceId is required");
+                    }
+                    if (!onQuitGame) {
+                        throw new Error("quit: game runtime is not available");
+                    }
+                    await onQuitGame(targetSurfaceId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -1753,6 +1949,42 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("skip: game runtime is not available");
                     }
                     await onSkip();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            showDialog: async () => {
+                const cap = "game.showDialog";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onShowDialog) {
+                        throw new Error("showDialog: game runtime is not available");
+                    }
+                    await onShowDialog();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            hideDialog: async () => {
+                const cap = "game.hideDialog";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onHideDialog) {
+                        throw new Error("hideDialog: game runtime is not available");
+                    }
+                    await onHideDialog();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            toggleDialogDisplay: async () => {
+                const cap = "game.toggleDialogDisplay";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onToggleDialogDisplay) {
+                        throw new Error("toggleDialogDisplay: game runtime is not available");
+                    }
+                    await onToggleDialogDisplay();
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

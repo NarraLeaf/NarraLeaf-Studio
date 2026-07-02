@@ -1,6 +1,8 @@
 import { useEffect, useMemo } from "react";
 import type { UIBehaviorBinding } from "@shared/types/ui-editor/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
+import type { UIComponentId } from "@shared/types/ui-editor/document";
+import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { releaseBlueprintWidgetLocals } from "@/lib/ui-editor/blueprint-runtime/blueprintWidgetLocals";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
@@ -12,6 +14,9 @@ type Props = {
     behavior: UIElement["behavior"] | undefined;
     initBinding: UIBehaviorBinding | undefined;
     hostAdapter: UIHostAdapter;
+    componentId?: UIComponentId;
+    listItemScope?: UIListItemScope | null;
+    instanceKey?: string;
 };
 
 function blueprintIdsFromWiringKey(key: string): string[] {
@@ -35,7 +40,17 @@ function blueprintIdsFromWiringKey(key: string): string[] {
  *
  * Supports both legacy behavior.events.init binding and the new WidgetLogicApi owner-local blueprint.
  */
-export function BlueprintWidgetInitLifecycle({ surfaceId, elementId, elementType, behavior, initBinding, hostAdapter }: Props) {
+export function BlueprintWidgetInitLifecycle({
+    surfaceId,
+    elementId,
+    elementType,
+    behavior,
+    initBinding,
+    hostAdapter,
+    componentId,
+    listItemScope,
+    instanceKey,
+}: Props) {
     const rt = hostAdapter.blueprintRuntime;
     const runtimeScopeId = rt?.runtimeScopeId ?? surfaceId;
 
@@ -48,6 +63,9 @@ export function BlueprintWidgetInitLifecycle({ surfaceId, elementId, elementType
             : hasLogicApiInit
               ? `logicApi:${elementType}:init`
               : "";
+    const listItemScopeSig = listItemScope
+        ? `${listItemScope.index}:${listItemScope.count}:${listItemScope.key}`
+        : "";
 
     const localsWiringKey = useMemo(() => {
         const ev = behavior?.events;
@@ -77,8 +95,15 @@ export function BlueprintWidgetInitLifecycle({ surfaceId, elementId, elementType
         if (!rt || !initSig) {
             return;
         }
-        void rt.dispatchElementBlueprintEvent(elementId, "init");
-    }, [elementId, initSig, rt]);
+        const timeoutId = setTimeout(() => {
+            void rt.dispatchElementBlueprintEvent(elementId, "init", undefined, {
+                componentId,
+                instanceKey,
+                listItemScope,
+            });
+        }, 0);
+        return () => clearTimeout(timeoutId);
+    }, [componentId, elementId, initSig, instanceKey, listItemScopeSig, rt]);
 
     return null;
 }
