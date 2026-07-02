@@ -10,7 +10,7 @@ import {
     isBlueprintEventDispatchHeadType,
 } from "@shared/types/blueprint/graph";
 import type { BlueprintElementRef } from "@shared/types/blueprint/valueTypes";
-import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { getWidgetLogicEvent, getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph";
@@ -27,6 +27,7 @@ import { acquireBlueprintExecutionLocals } from "./blueprintWidgetLocals";
 import type { DebugBridge } from "./DebugBridge";
 import { truncateDebugEventMessage } from "./DebugBridge";
 import {
+    componentWidgetMainOwnerKey,
     widgetMainOwnerKey,
     surfaceMainOwnerKey,
     GLOBAL_MAIN_OWNER_KEY,
@@ -39,6 +40,16 @@ type CancellableDispatchOptions = {
     executionManager?: BlueprintExecutionManager;
     allowClosedScopeExecution?: boolean;
 };
+
+function readDispatchElement(document: UIDocument, elementId: string, componentId?: string): UIElement | undefined {
+    if (componentId) {
+        const componentElement = document.components?.find(component => component.id === componentId)?.elements[elementId];
+        if (componentElement) {
+            return componentElement;
+        }
+    }
+    return document.elements[elementId];
+}
 
 function beginTrackedExecution(input: {
     executionManager?: BlueprintExecutionManager;
@@ -88,6 +99,7 @@ function createScriptExecutionContext(input: {
     debug: DebugBridge;
     getSurfaceState: (key: string) => unknown;
     setSurfaceState: (key: string, value: unknown) => void;
+    eventName?: string;
     eventPayload?: Record<string, unknown>;
     signal?: AbortSignal;
 }): Record<string, unknown> {
@@ -95,6 +107,7 @@ function createScriptExecutionContext(input: {
     if (api) {
         return {
             event: input.eventPayload ?? {},
+            eventName: input.eventName,
             runtime: {
                 signal: input.signal,
                 isCancelled: () => input.signal?.aborted === true,
@@ -130,6 +143,7 @@ function createScriptExecutionContext(input: {
     }
     return {
         event: input.eventPayload ?? {},
+        eventName: input.eventName,
         runtime: {
             signal: input.signal,
             isCancelled: () => input.signal?.aborted === true,
@@ -146,15 +160,37 @@ function createScriptExecutionContext(input: {
                 },
             },
             navigation: {
-                openSurface: async (_surfaceId: string) => {
+                openSurface: async (_surfaceId: string, _props?: unknown) => {
                     input.debug.emit({ type: "function.call", functionId: "navigation.openSurface" });
                     input.debug.emit({ type: "function.return", functionId: "navigation.openSurface" });
+                },
+                getPageProps: () => {
+                    input.debug.emit({ type: "function.call", functionId: "navigation.getPageProps" });
+                    input.debug.emit({ type: "function.return", functionId: "navigation.getPageProps" });
+                    return {};
+                },
+                closeLayer: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "navigation.closeLayer" });
+                    input.debug.emit({ type: "function.return", functionId: "navigation.closeLayer" });
+                },
+                quitApplication: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "navigation.quitApplication" });
+                    input.debug.emit({ type: "function.return", functionId: "navigation.quitApplication" });
                 },
             },
             game: {
                 startStory: async (_request: { storyId: string; sceneId: string }) => {
                     input.debug.emit({ type: "function.call", functionId: "game.startStory" });
                     input.debug.emit({ type: "function.return", functionId: "game.startStory" });
+                },
+                isInGame: () => {
+                    input.debug.emit({ type: "function.call", functionId: "game.isInGame" });
+                    input.debug.emit({ type: "function.return", functionId: "game.isInGame" });
+                    return false;
+                },
+                quit: async (_surfaceId: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.quit" });
+                    input.debug.emit({ type: "function.return", functionId: "game.quit" });
                 },
                 writeSave: async (_id: string, _metadata?: unknown) => {
                     input.debug.emit({ type: "function.call", functionId: "game.writeSave" });
@@ -195,6 +231,18 @@ function createScriptExecutionContext(input: {
                 skip: async () => {
                     input.debug.emit({ type: "function.call", functionId: "game.skip" });
                     input.debug.emit({ type: "function.return", functionId: "game.skip" });
+                },
+                showDialog: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "game.showDialog" });
+                    input.debug.emit({ type: "function.return", functionId: "game.showDialog" });
+                },
+                hideDialog: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "game.hideDialog" });
+                    input.debug.emit({ type: "function.return", functionId: "game.hideDialog" });
+                },
+                toggleDialogDisplay: async () => {
+                    input.debug.emit({ type: "function.call", functionId: "game.toggleDialogDisplay" });
+                    input.debug.emit({ type: "function.return", functionId: "game.toggleDialogDisplay" });
                 },
                 setSentenceSpeed: async (_speed: number) => {
                     input.debug.emit({ type: "function.call", functionId: "game.setSentenceSpeed" });
@@ -241,6 +289,7 @@ export async function dispatchBlueprintUiEvent(options: {
     eventPayload?: Record<string, unknown>;
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
+    componentId?: string;
     maxSteps?: number;
 } & CancellableDispatchOptions): Promise<void> {
     const {
@@ -257,13 +306,18 @@ export async function dispatchBlueprintUiEvent(options: {
         eventPayload,
         listItemScope,
         instanceKey,
+        componentId,
     } = options;
-    const el = document.elements[elementId];
+    const el = readDispatchElement(document, elementId, componentId);
     if (!el) {
         return;
     }
     const widgetLogicApi = getWidgetLogicApi(el.type);
-    const widgetOwnerKey = widgetLogicApi?.supportsPrivateBlueprint ? widgetMainOwnerKey(surfaceId, elementId) : undefined;
+    const widgetOwnerKey = widgetLogicApi?.supportsPrivateBlueprint
+        ? componentId
+            ? componentWidgetMainOwnerKey(componentId, elementId)
+            : widgetMainOwnerKey(surfaceId, elementId)
+        : undefined;
     const activeWidgetBlueprintId = widgetOwnerKey ? blueprintDocument.ownerRecords[widgetOwnerKey]?.activeBlueprintId : undefined;
     const widgetPrivateEventSupported = Boolean(getWidgetLogicEvent(el.type, eventName));
     const legacyBinding = el.behavior?.events?.[eventName];
@@ -304,6 +358,7 @@ export async function dispatchBlueprintUiEvent(options: {
             debug,
             getSurfaceState,
             setSurfaceState,
+            eventName,
             eventPayload,
             signal: execution?.signal,
         });
@@ -393,10 +448,11 @@ export async function dispatchBlueprintUiEvent(options: {
                     entry,
                     hostAdapter,
                     blueprintLocals,
+                    eventName,
                     eventPayload,
                     listItemScope,
                     instanceKey,
-                    executionOwner: { surfaceId, elementId, blueprintId },
+                    executionOwner: { surfaceId, elementId, blueprintId, componentId },
                     persistentVariables: blueprintDocument.persistentVariables,
                     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
                     signal: execution?.signal,
@@ -622,6 +678,7 @@ async function dispatchBlueprintElementEvent(options: ElementEventDispatchOption
                     entry: { start: { nodeId: headId, port: "then" as const } },
                     hostAdapter,
                     blueprintLocals,
+                    eventName: eventId,
                     eventPayload: payload,
                     executionOwner: { surfaceId, elementId: listener.elementId, blueprintId: listener.blueprintId },
                     persistentVariables: blueprintDocument.persistentVariables,
@@ -865,6 +922,7 @@ export async function dispatchBlueprintBroadcastEvent(options: {
                     entry: { start: { nodeId: headId, port: "then" as const } },
                     hostAdapter,
                     blueprintLocals,
+                    eventName,
                     eventPayload,
                     executionOwner: { surfaceId, elementId: target.elementId, blueprintId: target.blueprintId },
                     persistentVariables: blueprintDocument.persistentVariables,
@@ -975,6 +1033,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
             debug,
             getSurfaceState,
             setSurfaceState,
+            eventName,
             eventPayload: eventPayload ?? {},
             signal: execution?.signal,
         });
@@ -1058,6 +1117,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
                     entry,
                     hostAdapter,
                     blueprintLocals,
+                    eventName,
                     eventPayload: eventPayload ?? {},
                     executionOwner: { surfaceId, blueprintId },
                     persistentVariables: blueprintDocument.persistentVariables,
@@ -1154,6 +1214,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
             debug,
             getSurfaceState,
             setSurfaceState,
+            eventName,
             eventPayload: eventPayload ?? {},
             signal: execution?.signal,
         });
@@ -1234,6 +1295,7 @@ export async function dispatchGlobalBlueprintEvent(options: {
                     entry,
                     hostAdapter,
                     blueprintLocals,
+                    eventName,
                     eventPayload: eventPayload ?? {},
                     executionOwner: { blueprintId },
                     persistentVariables: blueprintDocument.persistentVariables,

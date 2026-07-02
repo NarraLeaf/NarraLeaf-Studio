@@ -5,6 +5,7 @@ import type { UIDocument, UIComponentId, UISurfaceId, UIStageSlotId } from "@sha
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 
 export type UIHost = "app" | "player";
 
@@ -27,8 +28,20 @@ export type UIHostAdapterBlueprintRuntime = {
         options?: {
             listItemScope?: UIListItemScope | null;
             instanceKey?: string;
+            componentId?: UIComponentId;
         },
     ) => Promise<void>;
+    /** Continue the current widget event from this element to its structural parent. */
+    continueElementEventBubble?: (
+        elementId: string,
+        eventName: string,
+        payload?: Record<string, unknown>,
+        options?: {
+            listItemScope?: UIListItemScope | null;
+            instanceKey?: string;
+            componentId?: UIComponentId;
+        },
+    ) => Promise<boolean>;
     /** Dispatch a surface-level event on the current surfaceMain blueprint. */
     dispatchSurfaceBlueprintEvent?: (eventName: string, payload?: Record<string, unknown>) => Promise<void>;
     dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
@@ -61,6 +74,8 @@ export type UIHostAdapter = {
     blueprintRuntime?: UIHostAdapterBlueprintRuntime;
     /** Editor preview: use the active workspace service instance for canvas-local interaction overrides. */
     editorStateService?: UIEditorStateService;
+    /** Editor preview: use the active document service, including component-editor adapters. */
+    editorDocumentService?: UIDocumentService;
 };
 
 export type RenderSurfaceOptions = {

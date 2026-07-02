@@ -16,6 +16,8 @@ import {
     getStorySceneEditorTabId,
     type StorySceneEditorTabPayload,
 } from "@/apps/workspace/modules/story/scene-editor/storySceneEditorTabId";
+import { createStoryMotionEditorTab } from "@/apps/workspace/modules/story-motion/StoryMotionEditorTab";
+import type { StoryMotionEditorPayload } from "@/apps/workspace/modules/story-motion/storyMotionTypes";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -37,6 +39,7 @@ const CHARACTER_TAB_PREFIX = "narraleaf-studio:character-editor-";
 const IMAGE_PREVIEW_PREFIX = "narraleaf-studio:assets:image-preview-";
 const AUDIO_PREVIEW_PREFIX = "narraleaf-studio:assets:audio-preview-";
 const STORY_SCENE_TAB_PREFIX = "story:scene:";
+const STORY_MOTION_TAB_PREFIX = "story-motion:";
 const BLUEPRINT_ENTRY_OWNER_KINDS = new Set([
     "globalMain",
     "surfaceMain",
@@ -52,7 +55,8 @@ export type SerializedTab =
     | { kind: "character"; characterId: string }
     | { kind: "assetImage"; assetId: string; title: string }
     | { kind: "assetAudio"; assetId: string; title: string }
-    | { kind: "storyScene"; title: string; payload: StorySceneEditorTabPayload };
+    | { kind: "storyScene"; title: string; payload: StorySceneEditorTabPayload }
+    | { kind: "storyMotion"; title: string; payload: StoryMotionEditorPayload };
 
 export type WorkspaceEditorSessionV1 = {
     version: 1;
@@ -133,6 +137,40 @@ function isStorySceneEditorPayload(value: unknown): value is StorySceneEditorTab
     return typeof o.storyId === "string" && o.storyId.length > 0 && typeof o.sceneId === "string" && o.sceneId.length > 0;
 }
 
+function isStoryMotionEditorPayload(value: unknown): value is StoryMotionEditorPayload {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+    const o = value as Record<string, unknown>;
+    if (typeof o.animationId !== "string" || o.animationId.length === 0) {
+        return false;
+    }
+    if (o.actionContext === undefined) {
+        return true;
+    }
+    if (!o.actionContext || typeof o.actionContext !== "object") {
+        return false;
+    }
+    const actionContext = o.actionContext as Record<string, unknown>;
+    if (
+        typeof actionContext.storyId !== "string" ||
+        actionContext.storyId.length === 0 ||
+        typeof actionContext.sceneId !== "string" ||
+        actionContext.sceneId.length === 0 ||
+        typeof actionContext.blockId !== "string" ||
+        actionContext.blockId.length === 0
+    ) {
+        return false;
+    }
+    if (actionContext.storyName !== undefined && typeof actionContext.storyName !== "string") {
+        return false;
+    }
+    if (actionContext.sceneName !== undefined && typeof actionContext.sceneName !== "string") {
+        return false;
+    }
+    return true;
+}
+
 /**
  * If a tab has no supported serialization strategy, returns null (tab is dropped from session).
  */
@@ -173,6 +211,9 @@ export function trySerializeTab(tab: EditorTabDefinition): SerializedTab | null 
     }
     if (tab.id.startsWith(STORY_SCENE_TAB_PREFIX) && isStorySceneEditorPayload(tab.payload)) {
         return { kind: "storyScene", title: tab.title, payload: tab.payload };
+    }
+    if (tab.id.startsWith(STORY_MOTION_TAB_PREFIX) && isStoryMotionEditorPayload(tab.payload)) {
+        return { kind: "storyMotion", title: tab.title, payload: tab.payload };
     }
     return null;
 }
@@ -242,6 +283,9 @@ function isSerializedTab(value: unknown): value is SerializedTab {
         return true;
     }
     if (kind === "storyScene" && typeof o.title === "string" && isStorySceneEditorPayload(o.payload)) {
+        return true;
+    }
+    if (kind === "storyMotion" && typeof o.title === "string" && isStoryMotionEditorPayload(o.payload)) {
         return true;
     }
     return false;
@@ -427,6 +471,16 @@ function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): Editor
             component: StorySceneEditorTab,
             closable: true,
             payload: entry.payload,
+        };
+    }
+    if (entry.kind === "storyMotion") {
+        const storyService = ctx.services.get<StoryService>(Services.Story);
+        if (!storyService.listAnimationAssets().some(animation => animation.id === entry.payload.animationId)) {
+            return null;
+        }
+        return {
+            ...createStoryMotionEditorTab(entry.payload),
+            title: entry.title,
         };
     }
     return null;

@@ -80,6 +80,10 @@ const boolIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, la
 const floatIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "float", true);
 const stringIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "string", true);
 const jsonIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "json");
+const optionalJsonIn = (id: string, label: string): BlueprintNodePinDef => ({
+    ...jsonIn(id, label),
+    optional: true,
+});
 const imageAssetNullableIn = (id: string, label: string): BlueprintNodePinDef =>
     dataIn(id, label, BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE, true);
 const out = (id: string, label: string, valueType: string): BlueprintNodePinDef => ({
@@ -156,6 +160,15 @@ function toNullableString(raw: unknown): string | null {
     }
     const s = String(raw ?? "").trim();
     return s.length > 0 ? s : null;
+}
+
+function toRecordValue(raw: unknown): Record<string, unknown> {
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+}
+
+function readOptionalFramePropsPatch(ctx: Parameters<BlueprintNodeDef["execute"]>[0]): { params?: Record<string, unknown> } {
+    const props = readPin(ctx, "props");
+    return props === undefined ? {} : { params: toRecordValue(props) };
 }
 
 function readNode(input: {
@@ -599,6 +612,7 @@ function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
             type: setPageType,
             displayName: "Set Frame Page",
             keywords: ["frame", "page", "surface", "target", "set", "set frame page"],
+            pins: [optionalJsonIn("props", "Page props")],
             target,
             mode,
             inspectorParams: [
@@ -613,7 +627,10 @@ function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
             execute: async ctx => {
                 await requireHostApi(ctx).widget.setFrameProperties(
                     resolveTargetElementId(ctx, target, mode),
-                    { targetSurfaceId: toNullableString(readPin(ctx, "targetSurfaceId")) },
+                    {
+                        targetSurfaceId: toNullableString(readPin(ctx, "targetSurfaceId")),
+                        ...readOptionalFramePropsPatch(ctx),
+                    },
                 );
                 return { nextPort: "next" };
             },
@@ -637,7 +654,7 @@ function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
                 const params = readPin(ctx, "params");
                 await requireHostApi(ctx).widget.setFrameProperties(
                     resolveTargetElementId(ctx, target, mode),
-                    { params: params && typeof params === "object" && !Array.isArray(params) ? params as Record<string, unknown> : {} },
+                    { params: toRecordValue(params) },
                 );
                 return { nextPort: "next" };
             },

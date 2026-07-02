@@ -23,6 +23,34 @@ const ROOT_WIDGET_TYPE = "nl.root";
 
 export type OutlinePanelMenuActions = BuildOutlineContextMenuInput["actions"];
 
+async function writeTextToClipboard(text: string): Promise<void> {
+    const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : null;
+    if (clipboard?.writeText) {
+        await clipboard.writeText(text);
+        return;
+    }
+
+    if (typeof document === "undefined") {
+        throw new Error("Clipboard API is not available.");
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        if (!document.execCommand("copy")) {
+            throw new Error("Copy command was rejected.");
+        }
+    } finally {
+        textarea.remove();
+    }
+}
+
 export function createOutlinePanelMenuActions(params: {
     documentService: UIDocumentService;
     stateService: UIEditorStateService;
@@ -84,6 +112,16 @@ export function createOutlinePanelMenuActions(params: {
         },
         pasteIntoParent: parentId => {
             uiEditorPasteIntoParent(documentService, localBlueprint, stateService, surfaceId, parentId, null);
+        },
+        copyElementId: elementId => {
+            void writeTextToClipboard(elementId)
+                .then(() => {
+                    uiService?.showNotification("Element ID copied.", "success");
+                })
+                .catch(error => {
+                    uiService?.showNotification("Failed to copy Element ID.", "error");
+                    console.error(error);
+                });
         },
         copy: () => uiEditorCopySelection(documentService, localBlueprint, surfaceId, menuSel),
         cut: () => uiEditorCutSelection(documentService, localBlueprint, stateService, surfaceId, menuSel, uiService),

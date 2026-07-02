@@ -3,6 +3,7 @@ import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 export type DebugEventListener = () => void;
 
 export const MAX_DEBUG_EVENT_MESSAGE_CHARS = 4096;
+export const MAX_DEBUG_EVENT_BUFFER_LENGTH = 2000;
 const TRUNCATED_DEBUG_EVENT_MESSAGE_SUFFIX = "… [truncated]";
 
 export function truncateDebugEventMessage(message: string): string {
@@ -28,13 +29,12 @@ export function sanitizeBlueprintDebugEvent(event: BlueprintDebugEvent): Bluepri
 export class DebugBridge {
     private readonly listeners = new Set<DebugEventListener>();
     private readonly buffer: BlueprintDebugEvent[] = [];
-    private readonly maxBuffer = 200;
     private notifyScheduled = false;
 
     public emit(event: BlueprintDebugEvent): void {
         this.buffer.push(sanitizeBlueprintDebugEvent(event));
-        if (this.buffer.length > this.maxBuffer) {
-            this.buffer.splice(0, this.buffer.length - this.maxBuffer);
+        if (this.buffer.length > MAX_DEBUG_EVENT_BUFFER_LENGTH) {
+            this.buffer.splice(0, this.buffer.length - MAX_DEBUG_EVENT_BUFFER_LENGTH);
         }
         this.scheduleNotifyListeners();
     }

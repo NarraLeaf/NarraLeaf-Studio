@@ -9,41 +9,34 @@ import type {
     StoryDisplayableTargetKind,
 } from "@shared/types/story";
 
-export const STORY_MOTION_FPS = 30;
+export const STORY_MOTION_FPS = 60;
 export const STORY_MOTION_DEFAULT_DURATION_MS = 420;
+export const STORY_MOTION_MAX_DURATION_MS = 300_000;
 
 export const STORY_MOTION_TEMPLATES = [
     "Fade in + slide",
     "Center pop",
     "Look around",
     "Flash",
-    "Circle reveal",
-    "Wipe",
 ] as const;
 
 export type StoryMotionTemplateName = typeof STORY_MOTION_TEMPLATES[number];
+export type StoryMotionEditableTrackProperty = Extract<
+    StoryAnimationTrackProperty,
+    "position" | "scaleX" | "scaleY" | "zoom" | "rotation" | "opacity"
+>;
 
 export const STORY_MOTION_PROPERTIES: {
-    property: StoryAnimationTrackProperty;
+    property: StoryMotionEditableTrackProperty;
     label: string;
-    group: "Transform" | "Appearance" | "Effects";
-    valueKind: "position" | "number" | "text";
+    valueKind: "position" | "number";
 }[] = [
-    { property: "position", label: "Position", group: "Transform", valueKind: "position" },
-    { property: "opacity", label: "Opacity", group: "Appearance", valueKind: "number" },
-    { property: "zoom", label: "Zoom / Scale", group: "Transform", valueKind: "number" },
-    { property: "scaleX", label: "Scale X", group: "Transform", valueKind: "number" },
-    { property: "scaleY", label: "Scale Y", group: "Transform", valueKind: "number" },
-    { property: "rotation", label: "Rotation", group: "Transform", valueKind: "number" },
-    { property: "filter", label: "Filter", group: "Effects", valueKind: "text" },
-    { property: "clipPath", label: "Clip path", group: "Effects", valueKind: "text" },
-    { property: "maskImage", label: "Mask image", group: "Effects", valueKind: "text" },
-    { property: "maskSize", label: "Mask size", group: "Effects", valueKind: "text" },
-    { property: "maskPosition", label: "Mask position", group: "Effects", valueKind: "text" },
-    { property: "maskRepeat", label: "Mask repeat", group: "Effects", valueKind: "text" },
-    { property: "maskMode", label: "Mask mode", group: "Effects", valueKind: "text" },
-    { property: "mixBlendMode", label: "Blend mode", group: "Effects", valueKind: "text" },
-    { property: "fontColor", label: "Font color", group: "Appearance", valueKind: "text" },
+    { property: "position", label: "Position", valueKind: "position" },
+    { property: "scaleX", label: "Scale X", valueKind: "number" },
+    { property: "scaleY", label: "Scale Y", valueKind: "number" },
+    { property: "zoom", label: "Zoom", valueKind: "number" },
+    { property: "rotation", label: "Rotation", valueKind: "number" },
+    { property: "opacity", label: "Opacity", valueKind: "number" },
 ];
 
 export type StoryMotionPreviewState = {
@@ -53,9 +46,6 @@ export type StoryMotionPreviewState = {
     scaleX: number;
     scaleY: number;
     rotation: number;
-    filter?: string;
-    clipPath?: string;
-    mixBlendMode?: string;
 };
 
 const DEFAULT_PREVIEW_STATE: StoryMotionPreviewState = {
@@ -76,9 +66,17 @@ export function getStoryMotionPropertyMeta(property: StoryAnimationTrackProperty
     return STORY_MOTION_PROPERTIES.find(item => item.property === property) ?? STORY_MOTION_PROPERTIES[0];
 }
 
+export function isStoryMotionEditableProperty(property: StoryAnimationTrackProperty): property is StoryMotionEditableTrackProperty {
+    return STORY_MOTION_PROPERTIES.some(item => item.property === property);
+}
+
 export function getStoryMotionDurationMs(timeline: StoryAnimationTimeline | undefined): number {
     const keyframeDuration = Math.max(0, ...(timeline?.tracks ?? []).flatMap(track => track.keyframes.map(keyframe => keyframe.timeMs)));
-    return Math.max(STORY_MOTION_DEFAULT_DURATION_MS, timeline?.durationMs ?? 0, keyframeDuration);
+    return clampStoryMotionTimeMs(Math.max(STORY_MOTION_DEFAULT_DURATION_MS, timeline?.durationMs ?? 0, keyframeDuration));
+}
+
+export function clampStoryMotionTimeMs(timeMs: number): number {
+    return Math.max(0, Math.min(STORY_MOTION_MAX_DURATION_MS, Math.round(timeMs)));
 }
 
 export function formatStoryMotionTime(ms: number, fps = STORY_MOTION_FPS): string {
@@ -120,24 +118,6 @@ export function createStoryMotionTemplateTimeline(template: StoryMotionTemplateN
                     keyframe("opacity", 80, 1, "linear"),
                     keyframe("opacity", 150, 0.2, "linear"),
                     keyframe("opacity", 280, 1, "easeOut"),
-                ]),
-            ]);
-        case "Circle reveal":
-            return timeline(520, [
-                track("clipPath", [
-                    keyframe("clipPath", 0, "circle(0% at 50% 50%)", "easeOut"),
-                    keyframe("clipPath", 520, "circle(75% at 50% 50%)", "easeOut"),
-                ]),
-                track("opacity", [
-                    keyframe("opacity", 0, 0, "easeOut"),
-                    keyframe("opacity", 160, 1, "easeOut"),
-                ]),
-            ]);
-        case "Wipe":
-            return timeline(420, [
-                track("clipPath", [
-                    keyframe("clipPath", 0, "inset(0 100% 0 0)", "easeOut"),
-                    keyframe("clipPath", 420, "inset(0 0 0 0)", "easeOut"),
                 ]),
             ]);
         case "Fade in + slide":
@@ -185,12 +165,6 @@ export function sampleStoryMotionPreview(timeline: StoryAnimationTimeline | unde
             state.scaleY = value;
         } else if (track.property === "rotation" && typeof value === "number") {
             state.rotation = value;
-        } else if (track.property === "filter" && typeof value === "string") {
-            state.filter = value;
-        } else if (track.property === "clipPath" && typeof value === "string") {
-            state.clipPath = value;
-        } else if (track.property === "mixBlendMode" && typeof value === "string") {
-            state.mixBlendMode = value;
         }
     }
     return state;
@@ -204,7 +178,7 @@ export function upsertStoryMotionKeyframe(
     easing = "easeOut",
 ): StoryAnimationTimeline {
     const next = cloneTimeline(timeline);
-    const roundedTime = Math.max(0, Math.round(timeMs));
+    const roundedTime = clampStoryMotionTimeMs(timeMs);
     let track = next.tracks.find(item => item.property === property);
     if (!track) {
         track = {
@@ -241,6 +215,7 @@ export function updateStoryMotionKeyframe(
         const index = track.keyframes.findIndex(keyframe => keyframe.id === keyframeId);
         if (index >= 0) {
             track.keyframes[index] = updater(track.keyframes[index], track);
+            track.keyframes[index].timeMs = clampStoryMotionTimeMs(track.keyframes[index].timeMs);
             track.keyframes.sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id));
             next.durationMs = getStoryMotionDurationMs(next);
             return next;
@@ -257,6 +232,13 @@ export function deleteStoryMotionKeyframe(timeline: StoryAnimationTimeline, keyf
             keyframes: track.keyframes.filter(keyframe => keyframe.id !== keyframeId),
         }))
         .filter(track => track.keyframes.length > 0);
+    next.durationMs = getStoryMotionDurationMs(next);
+    return next;
+}
+
+export function deleteStoryMotionTrack(timeline: StoryAnimationTimeline, trackId: string): StoryAnimationTimeline {
+    const next = cloneTimeline(timeline);
+    next.tracks = next.tracks.filter(track => track.id !== trackId);
     next.durationMs = getStoryMotionDurationMs(next);
     return next;
 }
@@ -308,16 +290,11 @@ function defaultValueForProperty(property: StoryAnimationTrackProperty): StoryAn
     if (property === "scaleX") return DEFAULT_PREVIEW_STATE.scaleX;
     if (property === "scaleY") return DEFAULT_PREVIEW_STATE.scaleY;
     if (property === "rotation") return DEFAULT_PREVIEW_STATE.rotation;
-    if (property === "clipPath") return "inset(0 0 0 0)";
-    if (property === "filter") return "none";
-    if (property === "mixBlendMode") return "normal";
-    if (property === "fontColor") return "#ffffff";
-    return "";
+    return DEFAULT_PREVIEW_STATE.opacity;
 }
 
 function timeline(durationMs: number, tracks: StoryAnimationTrack[]): StoryAnimationTimeline {
     return {
-        fps: STORY_MOTION_FPS,
         durationMs,
         tracks,
     };

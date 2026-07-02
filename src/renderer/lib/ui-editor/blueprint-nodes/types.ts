@@ -28,6 +28,8 @@ export type BlueprintPinInlineLiteralValueType = (typeof BLUEPRINT_PIN_INLINE_LI
 export const BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY = "__inlineLiteralPins" as const;
 /** Persisted on node.params: show the manually wired Element target pin for a derived palette instance. */
 export const BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN = "__showMagicElementTargetPin" as const;
+/** Persisted on Animate Property nodes when the user explicitly edits the optional From field. */
+export const BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT = "__displayableAnimationFromExplicit" as const;
 
 /**
  * Persisted on node.params: ordered list of extra data input pin ids (beyond fixedDataInputIds).
@@ -42,6 +44,8 @@ export type BlueprintNodePinDef = {
     /** Loose type tag for data pins (e.g. boolean, string) */
     valueType?: string;
     label?: string;
+    /** Optional inputs render as inactive until wired and resolve to runtime default/undefined when omitted. */
+    optional?: boolean;
     /**
      * When true, the flow node may show a hover-only control to open an on-card input for this pin
      * when it is unwired. Only valid with kind=input, semantic=data, and valueType string|integer|float.
@@ -72,6 +76,7 @@ export type BlueprintNodeDynamicInputPinsConfig = {
         kind?: "input" | "output";
         semantic?: BlueprintPinSemantic;
         valueType?: string;
+        optional?: boolean;
         allowInlineLiteral?: boolean;
     }[];
     /** When dynamic output pins exist, insert them before this static output pin id. */
@@ -266,6 +271,7 @@ export type BlueprintNodeEditorCatalogEntry = {
         semantic: BlueprintPinSemantic;
         valueType?: string;
         label?: string;
+        optional?: boolean;
         allowInlineLiteral?: boolean;
         /** True for user-added dynamic inputs; show remove control on the node card. */
         removable?: boolean;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { Activity, Check, Copy, Edit3, Plus, Search, Trash2 } from "lucide-react";
 import type {
     StoryAnimationAsset,
@@ -6,31 +6,54 @@ import type {
     StoryDocument,
     StoryTransformRef,
 } from "@shared/types/story";
+import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
+import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { PanelComponentProps } from "../types";
+import type { EditorLayout } from "../../registry/types";
+import {
+    SurfaceEditorToolbarButtonGroup,
+    SurfaceEditorToolbarSegButton,
+} from "../ui-editor/editors/SurfaceEditorToolbarButtonGroup";
+import { Button } from "@/lib/components/elements/Button";
+import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
 import { createStoryMotionEditorTab } from "./StoryMotionEditorTab";
 import { getStoryMotionDescriptor } from "./storyMotionAction";
-import type { StoryMotionActionContext, StoryMotionPanelPayload } from "./storyMotionTypes";
 import {
+    STORY_MOTION_KEYFRAME_SELECTION_TYPE,
+    isStoryMotionKeyframeSelectionData,
+    type StoryMotionActionContext,
+    type StoryMotionPanelPayload,
+} from "./storyMotionTypes";
+import {
+    STORY_MOTION_FPS,
     STORY_MOTION_TEMPLATES,
     createStoryMotionName,
     createStoryMotionTemplateTimeline,
     getStoryMotionDurationMs,
-    getStoryMotionPropertyMeta,
+    sampleStoryMotionPreview,
 } from "./storyMotionTimeline";
+import { StoryMotionStagePreview } from "./StoryMotionStagePreview";
+import { resolveStoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
 
-const TOOL_BUTTON_CLASS = "inline-flex h-8 items-center gap-1.5 rounded border border-white/10 bg-white/[0.04] px-2 text-xs text-slate-200 hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
-const ICON_BUTTON_CLASS = "inline-grid h-8 w-8 place-items-center rounded border border-white/10 bg-white/[0.04] text-slate-300 hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40";
-const INPUT_CLASS = "h-8 rounded border border-white/10 bg-[#17191d] px-2 text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:border-primary/50";
+const ICON_BUTTON_CLASS = controlButtonClass();
+const PREVIEW_LOOP_GAP_MS = 2000;
+const PREVIEW_FRAME_MS = 1000 / STORY_MOTION_FPS;
 
 export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPanelPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
+    const { menuState, showMenu, hideMenu } = useContextMenu();
     const storyService = useMemo(
         () => context && isInitialized ? context.services.get<StoryService>(Services.Story) : null,
+        [context, isInitialized],
+    );
+    const uiService = useMemo(
+        () => context && isInitialized ? context.services.get<UIService>(Services.UI) : null,
         [context, isInitialized],
     );
     const actionContext = useMemo(() => normalizeActionContext(payload), [payload]);
@@ -38,9 +61,9 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedAsset, setSelectedAsset] = useState<StoryAnimationAsset | null>(null);
     const [query, setQuery] = useState("");
-    const [template, setTemplate] = useState<typeof STORY_MOTION_TEMPLATES[number]>("Fade in + slide");
     const [document, setDocument] = useState<StoryDocument | null>(null);
     const [renameDraft, setRenameDraft] = useState("");
+    const [previewTimeMs, setPreviewTimeMs] = useState(0);
 
     useEffect(() => {
         if (!storyService) {
@@ -131,18 +154,42 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
             || asset.targetKind.toLowerCase().includes(needle));
     }, [assets, query]);
 
-    const createMotion = useCallback(async () => {
+    const createMotion = useCallback(async (templateName?: typeof STORY_MOTION_TEMPLATES[number]) => {
         if (!storyService) {
             return;
         }
         const targetKind = descriptor?.targetKind ?? "image";
         const asset = await storyService.createAnimationAsset({
-            name: createStoryMotionName(targetKind, template),
+            name: createStoryMotionName(targetKind, templateName),
             targetKind,
-            timeline: createStoryMotionTemplateTimeline(template),
+            timeline: createStoryMotionTemplateTimeline(templateName),
         });
         setSelectedId(asset.id);
-    }, [descriptor?.targetKind, storyService, template]);
+    }, [descriptor?.targetKind, storyService]);
+
+    const openCreateMenu = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+        event.stopPropagation();
+        showMenu(event);
+    }, [showMenu]);
+
+    const createMenuItems = useMemo<ContextMenuDef>(() => [
+        {
+            id: "new-motion",
+            label: "New Motion",
+            icon: <Plus className="h-4 w-4" />,
+            onClick: () => {
+                void createMotion();
+            },
+        },
+        ...STORY_MOTION_TEMPLATES.map(templateName => ({
+            id: `preset-${templateName}`,
+            label: templateName,
+            icon: <Activity className="h-4 w-4" />,
+            onClick: () => {
+                void createMotion(templateName);
+            },
+        })),
+    ], [createMotion]);
 
     const duplicateMotion = useCallback(async () => {
         if (!storyService || !selectedAsset) {
@@ -157,17 +204,24 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
         setSelectedId(asset.id);
     }, [selectedAsset, storyService]);
 
-    const deleteMotion = useCallback(() => {
-        if (!storyService || !selectedAsset) {
+    const deleteMotion = useCallback(async () => {
+        if (!storyService || !uiService || !selectedAsset) {
             return;
         }
-        if (!window.confirm(`Delete motion "${selectedAsset.name}"?`)) {
+        const confirmed = await uiService.showConfirm(
+            `Delete motion "${selectedAsset.name}"?`,
+            "This removes the motion asset and closes related editors.",
+        );
+        if (!confirmed) {
             return;
         }
-        storyService.deleteAnimationAsset(selectedAsset.id);
+        const animationId = selectedAsset.id;
+        storyService.deleteAnimationAsset(animationId);
+        clearStoryMotionSelectionForAnimation(uiService, animationId);
+        closeStoryMotionEditorTabs(uiService, animationId);
         setSelectedId(null);
         setSelectedAsset(null);
-    }, [selectedAsset, storyService]);
+    }, [selectedAsset, storyService, uiService]);
 
     const commitRename = useCallback(() => {
         if (!storyService || !selectedAsset) {
@@ -204,126 +258,159 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
         }));
     }, [actionContext, openEditorTab, selectedAsset]);
 
+    const previewTimeline = useMemo(() => {
+        return selectedAsset?.timeline ?? createStoryMotionTemplateTimeline("Fade in + slide");
+    }, [selectedAsset?.timeline]);
+    const previewDurationMs = useMemo(() => getStoryMotionDurationMs(previewTimeline), [previewTimeline]);
+    useEffect(() => {
+        if (!selectedAsset) {
+            setPreviewTimeMs(0);
+            return;
+        }
+        let frame = 0;
+        let startedAt: number | null = null;
+        let lastPaint = 0;
+        const duration = Math.max(1, previewDurationMs);
+        const cycleDuration = duration + PREVIEW_LOOP_GAP_MS;
+        const tick = (time: number) => {
+            if (startedAt === null) {
+                startedAt = time;
+            }
+            if (lastPaint === 0 || time - lastPaint >= PREVIEW_FRAME_MS) {
+                const elapsed = (time - startedAt) % cycleDuration;
+                setPreviewTimeMs(Math.round(Math.min(elapsed, duration)));
+                lastPaint = time;
+            }
+            frame = requestAnimationFrame(tick);
+        };
+        frame = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(frame);
+    }, [previewDurationMs, selectedAsset?.id]);
+    const preview = useMemo(() => {
+        return sampleStoryMotionPreview(previewTimeline, previewTimeMs);
+    }, [previewTimeMs, previewTimeline]);
+    const previewTarget = useMemo(() => resolveStoryMotionPreviewTarget({
+        document,
+        sceneId: actionContext?.sceneId,
+        blockId: actionContext?.blockId,
+        fallbackKind: selectedAsset?.targetKind ?? descriptor?.targetKind ?? "image",
+        fallbackLabel: selectedAsset?.name ?? "Motion",
+    }), [actionContext?.blockId, actionContext?.sceneId, descriptor?.targetKind, document, selectedAsset?.name, selectedAsset?.targetKind]);
+    const ignorePreviewDrag = useCallback(() => undefined, []);
+
     return (
         <div className="flex h-full min-h-0 bg-[#101114] text-slate-200">
-            <aside className="flex w-80 shrink-0 flex-col border-r border-white/10">
-                <div className="flex h-10 items-center gap-2 border-b border-white/10 px-3">
-                    <Activity className="h-4 w-4 text-primary" />
-                    <div className="min-w-0 flex-1 text-sm font-medium">Story Motion Library</div>
-                    <button className={ICON_BUTTON_CLASS} type="button" onClick={createMotion} title="Create motion">
+            <aside className="flex w-64 shrink-0 flex-col border-r border-white/10">
+                <div className="flex items-center gap-2 border-b border-white/10 p-2">
+                    <EnhancedInput
+                        className="flex-1"
+                        value={query}
+                        onChange={setQuery}
+                        placeholder="Search motions"
+                        leftIcon={<Search className="h-3.5 w-3.5 text-slate-500" />}
+                    />
+                    <button className={ICON_BUTTON_CLASS} type="button" onClick={openCreateMenu} title="Create motion" aria-label="Create motion">
                         <Plus className="h-4 w-4" />
                     </button>
                 </div>
-                <div className="grid gap-2 border-b border-white/10 p-2">
-                    <div className="relative">
-                        <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
-                        <input
-                            className={`${INPUT_CLASS} w-full pl-7`}
-                            value={query}
-                            onChange={event => setQuery(event.target.value)}
-                            placeholder="Search motions"
-                        />
-                    </div>
-                    <div className="flex gap-2">
-                        <select
-                            className={`${INPUT_CLASS} min-w-0 flex-1`}
-                            value={template}
-                            onChange={event => setTemplate(event.target.value as typeof STORY_MOTION_TEMPLATES[number])}
-                        >
-                            {STORY_MOTION_TEMPLATES.map(option => <option key={option} value={option}>{option}</option>)}
-                        </select>
-                        <button className={TOOL_BUTTON_CLASS} type="button" onClick={createMotion}>
-                            <Plus className="h-3.5 w-3.5" />
-                            New
-                        </button>
-                    </div>
-                </div>
-                <div className="min-h-0 flex-1 overflow-auto">
+                <div className="min-h-0 flex-1 overflow-auto py-1">
                     {filteredAssets.length === 0 ? (
-                        <div className="p-4 text-sm text-slate-500">No story motions yet.</div>
+                        <div className="px-3 py-4 text-center text-xs text-gray-500">No motions.</div>
                     ) : filteredAssets.map(asset => (
                         <button
                             key={asset.id}
                             type="button"
                             className={[
-                                "flex w-full items-center gap-3 border-b border-white/[0.06] px-3 py-2 text-left",
-                                selectedId === asset.id ? "bg-primary/10" : "hover:bg-white/[0.04]",
+                                "flex w-full cursor-default items-center gap-2 border-l-2 border-transparent px-3 py-1.5 text-left hover:bg-gray-600/30",
+                                selectedId === asset.id ? "border-primary bg-primary/20" : "",
                             ].join(" ")}
                             onClick={() => setSelectedId(asset.id)}
+                            title={asset.name}
                         >
-                            <span className="grid h-8 w-8 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.04] text-primary">
-                                <Activity className="h-3.5 w-3.5" />
-                            </span>
-                            <span className="min-w-0 flex-1">
-                                <span className="block truncate text-sm text-slate-200">{asset.name}</span>
-                                <span className="block truncate text-[11px] text-slate-500">Preview: {formatTargetKind(asset.targetKind)}</span>
-                            </span>
-                            {actionAnimationId === asset.id ? <Check className="h-4 w-4 text-primary" /> : null}
+                            <Activity className="h-4 w-4 shrink-0 text-gray-400" />
+                            <span className="min-w-0 flex-1 truncate text-sm text-gray-100">{asset.name}</span>
                         </button>
                     ))}
                 </div>
+                <ContextMenu
+                    items={createMenuItems}
+                    position={menuState.position}
+                    visible={menuState.visible}
+                    onClose={hideMenu}
+                    iconsEnabled
+                />
             </aside>
 
             <main className="min-w-0 flex-1 p-4">
                 {selectedAsset ? (
-                    <div className="mx-auto grid max-w-4xl gap-4">
-                        <section className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
-                            <div className="flex min-w-0 items-start gap-3">
-                                <div className="grid h-12 w-12 shrink-0 place-items-center rounded border border-primary/25 bg-primary/10 text-primary">
-                                    <Activity className="h-5 w-5" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                    <input
-                                        className={`${INPUT_CLASS} w-full max-w-md font-medium`}
-                                        value={renameDraft}
-                                        onChange={event => setRenameDraft(event.target.value)}
-                                        onBlur={commitRename}
-                                        onKeyDown={event => {
-                                            if (event.key === "Enter") event.currentTarget.blur();
-                                        }}
-                                    />
-                                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
-                                        <span>{getStoryMotionDurationMs(selectedAsset.timeline)}ms</span>
-                                        <span>{selectedAsset.timeline?.fps ?? 30}fps</span>
-                                        <span>Preview: {formatTargetKind(selectedAsset.targetKind)}</span>
-                                    </div>
-                                </div>
-                                <div className="flex shrink-0 gap-2">
-                                    <button className={TOOL_BUTTON_CLASS} type="button" onClick={openFullEditor}>
-                                        <Edit3 className="h-3.5 w-3.5" />
-                                        Edit
-                                    </button>
-                                    <button className={ICON_BUTTON_CLASS} type="button" onClick={duplicateMotion} title="Duplicate">
-                                        <Copy className="h-4 w-4" />
-                                    </button>
-                                    <button className={ICON_BUTTON_CLASS} type="button" onClick={deleteMotion} title="Delete">
-                                        <Trash2 className="h-4 w-4" />
-                                    </button>
-                                </div>
-                            </div>
-                        </section>
-
-                        <section className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
-                            <div className="mb-2 text-xs font-medium text-slate-300">Tracks</div>
-                            <TrackPills asset={selectedAsset} />
-                        </section>
-
-                        {actionContext && descriptor ? (
-                            <section className="rounded-lg border border-primary/20 bg-primary/10 p-3">
-                                <div className="flex min-w-0 items-center gap-3">
-                                    <div className="min-w-0 flex-1">
-                                        <div className="truncate text-xs font-medium text-primary">{descriptor.label}</div>
-                                        <div className="mt-1 truncate text-[11px] text-slate-400">
-                                            {actionAnimationId ? `Current action uses ${actionAnimationId}` : "Current action has no motion asset"}
-                                        </div>
-                                    </div>
-                                    <button className={TOOL_BUTTON_CLASS} type="button" onClick={bindToAction}>
-                                        <Check className="h-3.5 w-3.5" />
-                                        Bind to action
-                                    </button>
+                    <div className="grid h-full min-h-0 grid-cols-[minmax(240px,3fr)_minmax(0,7fr)] gap-4">
+                        <div className="min-h-0 overflow-auto">
+                            <section className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+                                <div className="grid gap-4">
+                                    <label className="grid min-w-0 gap-1.5">
+                                        <span className="text-xs font-medium text-slate-500">Name</span>
+                                        <EnhancedInput
+                                            className="transition-colors focus-within:ring-0"
+                                            value={renameDraft}
+                                            onChange={setRenameDraft}
+                                            onBlur={commitRename}
+                                            onKeyDown={event => {
+                                                if (event.key === "Enter") event.currentTarget.blur();
+                                            }}
+                                            inputClassName="font-medium"
+                                        />
+                                    </label>
+                                    <SurfaceEditorToolbarButtonGroup aria-label="Motion actions" className="w-full">
+                                        <SurfaceEditorToolbarSegButton
+                                            className="!w-auto flex-1 gap-1.5 px-3"
+                                            type="button"
+                                            onClick={openFullEditor}
+                                            title="Edit motion"
+                                        >
+                                            <Edit3 className="h-3.5 w-3.5" />
+                                            <span>Edit</span>
+                                        </SurfaceEditorToolbarSegButton>
+                                        <SurfaceEditorToolbarSegButton type="button" onClick={duplicateMotion} title="Duplicate" aria-label="Duplicate">
+                                            <Copy className="h-4 w-4" />
+                                        </SurfaceEditorToolbarSegButton>
+                                        <SurfaceEditorToolbarSegButton type="button" onClick={() => void deleteMotion()} title="Delete" aria-label="Delete">
+                                            <Trash2 className="h-4 w-4" />
+                                        </SurfaceEditorToolbarSegButton>
+                                    </SurfaceEditorToolbarButtonGroup>
                                 </div>
                             </section>
-                        ) : null}
+
+                            {actionContext && descriptor ? (
+                                <section className="mt-4 rounded-lg border border-primary/20 bg-primary/10 p-3">
+                                    <div className="grid gap-3">
+                                        <div className="min-w-0">
+                                            <div className="truncate text-xs font-medium text-primary">{descriptor.label}</div>
+                                            <div className="mt-1 truncate text-[11px] text-slate-400">
+                                                {actionAnimationId ? `Current action uses ${actionAnimationId}` : "Current action has no motion asset"}
+                                            </div>
+                                        </div>
+                                        <Button
+                                            variant="secondary"
+                                            size="md"
+                                            type="button"
+                                            onClick={bindToAction}
+                                            className="h-9 justify-center"
+                                        >
+                                            <Check className="h-3.5 w-3.5" />
+                                            Bind to action
+                                        </Button>
+                                    </div>
+                                </section>
+                            ) : null}
+                        </div>
+                        <section className="flex min-h-0 overflow-hidden rounded-lg border border-white/10">
+                            <StoryMotionStagePreview
+                                preview={preview}
+                                target={previewTarget}
+                                onPointerDrag={ignorePreviewDrag}
+                                interactive={false}
+                            />
+                        </section>
                     </div>
                 ) : (
                     <div className="flex h-full items-center justify-center text-sm text-slate-500">
@@ -331,25 +418,6 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                     </div>
                 )}
             </main>
-        </div>
-    );
-}
-
-function TrackPills(props: { asset: StoryAnimationAsset }) {
-    const tracks = props.asset.timeline?.tracks ?? [];
-    if (tracks.length === 0) {
-        return <div className="text-sm text-slate-500">No tracks yet. Open the editor to add animated properties.</div>;
-    }
-    return (
-        <div className="flex flex-wrap gap-2">
-            {tracks.map(track => {
-                const meta = getStoryMotionPropertyMeta(track.property);
-                return (
-                    <span key={track.id} className="rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-xs text-slate-300">
-                        {meta.group} / {meta.label} · {track.keyframes.length}
-                    </span>
-                );
-            })}
         </div>
     );
 }
@@ -367,10 +435,45 @@ function normalizeActionContext(payload: StoryMotionPanelPayload | undefined): S
     };
 }
 
-function clone<T>(value: T): T {
-    return JSON.parse(JSON.stringify(value)) as T;
+function clearStoryMotionSelectionForAnimation(uiService: UIService, animationId: string): void {
+    const selection = uiService.getStore().getSelection();
+    if (
+        selection.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE
+        && isStoryMotionKeyframeSelectionData(selection.data)
+        && selection.data.animationId === animationId
+    ) {
+        uiService.getStore().setSelection({ type: null, data: null });
+    }
 }
 
-function formatTargetKind(kind: StoryAnimationAsset["targetKind"]): string {
-    return kind[0].toUpperCase() + kind.slice(1);
+function closeStoryMotionEditorTabs(uiService: UIService, animationId: string): void {
+    const tabs: Array<{ tabId: string; groupId: string }> = [];
+    collectStoryMotionEditorTabs(uiService.getStore().getEditorLayout(), animationId, tabs);
+    for (const tab of tabs) {
+        uiService.getStore().closeEditorTabInGroup(tab.tabId, tab.groupId);
+    }
+}
+
+function collectStoryMotionEditorTabs(
+    layout: Readonly<EditorLayout>,
+    animationId: string,
+    acc: Array<{ tabId: string; groupId: string }>,
+): void {
+    if ("tabs" in layout) {
+        for (const tab of layout.tabs) {
+            const payload = tab.payload as Partial<{ animationId: string }> | undefined;
+            const related = tab.id === `story-motion:${animationId}`
+                || (payload && typeof payload === "object" && payload.animationId === animationId);
+            if (related) {
+                acc.push({ tabId: tab.id, groupId: layout.id });
+            }
+        }
+        return;
+    }
+    collectStoryMotionEditorTabs(layout.first, animationId, acc);
+    collectStoryMotionEditorTabs(layout.second, animationId, acc);
+}
+
+function clone<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value)) as T;
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
 import { motion } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
@@ -8,7 +8,11 @@ import {
     useWidgetRuntimeElementKey,
     useWidgetRuntimeStateStore,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
-import { toDisplayableMotionTransition } from "@/lib/ui-editor/runtime/displayableMotion";
+import {
+    buildDisplayableMotionAnimateTarget,
+    buildDisplayableMotionInitialTarget,
+    toDisplayableMotionTransition,
+} from "@/lib/ui-editor/runtime/displayableMotion";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
@@ -74,13 +78,6 @@ function keyboardEventPayload(event: KeyboardEvent): Record<string, unknown> {
     };
 }
 
-function firstMotionValue(value: number | number[] | undefined, fallback: number): number {
-    if (Array.isArray(value)) {
-        return value.length > 0 ? Number(value[0]) : fallback;
-    }
-    return value ?? fallback;
-}
-
 function displayableOpacityKeysForElement(
     element: UIElement,
     appearance: AppearanceModel | null | undefined,
@@ -109,6 +106,7 @@ export function EditorNodeWrapper({
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
     const runtimeElementState = useWidgetRuntimeElementState(element.id);
     const displayableMotion = runtimeElementState.displayableMotion;
+    const [resetMotionId, setResetMotionId] = useState<string | null>(null);
     const blueprintRuntime = hostAdapter?.blueprintRuntime;
     const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
     const appearance = (element.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
@@ -127,6 +125,16 @@ export function EditorNodeWrapper({
             displayableOpacityKeys: displayableOpacityKeysForElement(element, appearance, appearanceResolveCtx),
         },
     );
+    const layoutOpacity = layout.opacity ?? 1;
+    const effectiveOpacity = hasRuntimeOpacityOverride ? layoutOpacity : appearanceOpacity ?? layoutOpacity;
+    const baseRotation = layout.rotation ?? 0;
+    const isResetPhase = Boolean(displayableMotion?.resetOnComplete && resetMotionId === displayableMotion.id);
+
+    useEffect(() => {
+        if (resetMotionId !== null && (!displayableMotion || resetMotionId !== displayableMotion.id)) {
+            setResetMotionId(null);
+        }
+    }, [displayableMotion, resetMotionId]);
     const eventOptions = useMemo(
         () =>
             listItemScope || instanceKey
@@ -328,8 +336,7 @@ export function EditorNodeWrapper({
     );
 
     const containerStyle = useMemo<CSSProperties>(() => {
-        const { x, y, width, height, rotation, opacity = 1 } = layout;
-        const effectiveOpacity = hasRuntimeOpacityOverride ? opacity : appearanceOpacity ?? opacity;
+        const { x, y, width, height, rotation } = layout;
         const normalizedWidth = Math.abs(width);
         const normalizedHeight = Math.abs(height);
         const offsetX = Math.min(0, width);
@@ -365,36 +372,46 @@ export function EditorNodeWrapper({
             style.transformOrigin = "center center";
         }
         return style;
-    }, [appearanceOpacity, displayableMotion, hasRuntimeOpacityOverride, layout, isRoot, layoutMode, styleOverrides]);
+    }, [displayableMotion, effectiveOpacity, layout, isRoot, layoutMode, styleOverrides]);
 
     const motionAnimate = useMemo(() => {
         if (!displayableMotion) {
             return undefined;
         }
-        const baseOpacity = layout.opacity ?? 1;
-        const baseRotation = layout.rotation ?? 0;
+        if (isResetPhase) {
+            return {
+                x: 0,
+                y: 0,
+                scale: 1,
+                rotate: baseRotation,
+                opacity: effectiveOpacity,
+            };
+        }
         const target = displayableMotion.target;
-        return {
-            x: target.x ?? 0,
-            y: target.y ?? 0,
-            scale: target.scale ?? 1,
-            rotate: target.rotate ?? baseRotation,
-            opacity: target.opacity ?? baseOpacity,
-        };
-    }, [displayableMotion, layout.opacity, layout.rotation]);
+        return buildDisplayableMotionAnimateTarget(target, {
+            x: 0,
+            y: 0,
+            scale: 1,
+            rotate: baseRotation,
+            opacity: effectiveOpacity,
+        });
+    }, [baseRotation, displayableMotion, effectiveOpacity, isResetPhase]);
 
     const motionInitial = useMemo(() => {
         if (!displayableMotion) {
             return false;
         }
-        return {
-            x: firstMotionValue(displayableMotion.target.x, 0),
-            y: firstMotionValue(displayableMotion.target.y, 0),
-            scale: firstMotionValue(displayableMotion.target.scale, 1),
-            rotate: firstMotionValue(displayableMotion.target.rotate, layout.rotation ?? 0),
-            opacity: firstMotionValue(displayableMotion.target.opacity, layout.opacity ?? 1),
-        };
-    }, [displayableMotion, layout.opacity, layout.rotation]);
+        if (isResetPhase) {
+            return false;
+        }
+        return buildDisplayableMotionInitialTarget(displayableMotion.target, {
+            x: 0,
+            y: 0,
+            scale: 1,
+            rotate: baseRotation,
+            opacity: effectiveOpacity,
+        });
+    }, [baseRotation, displayableMotion, effectiveOpacity, isResetPhase]);
 
     const motionTransition = useMemo(
         () => (displayableMotion ? toDisplayableMotionTransition(displayableMotion.transition) : undefined),
@@ -405,8 +422,13 @@ export function EditorNodeWrapper({
         if (!displayableMotion?.resetOnComplete) {
             return;
         }
+        if (!isResetPhase) {
+            setResetMotionId(displayableMotion.id);
+            return;
+        }
         widgetRuntimeStore?.completeDisplayableMotion(runtimeElementKey, displayableMotion.id);
-    }, [displayableMotion, runtimeElementKey, widgetRuntimeStore]);
+        setResetMotionId(null);
+    }, [displayableMotion, isResetPhase, runtimeElementKey, widgetRuntimeStore]);
 
     return (
         <motion.div

@@ -70,7 +70,7 @@ function normalizeLiteralValue(value: unknown): LiteralValue | undefined {
 }
 
 function blueprintSupportsDeclaredVariables(blueprint: Blueprint): boolean {
-    return blueprint.owner.kind !== "globalMain" && blueprint.owner.kind !== "surfaceMain";
+    return blueprint.owner.kind !== "widgetValue";
 }
 
 function listBlueprintGraphNodes(blueprint: Blueprint): BlueprintGraphNode[] {
@@ -94,7 +94,9 @@ function variableFromDeclareNode(node: BlueprintGraphNode): BlueprintVariable | 
     const name = readParamString(params, "name") ?? `var_${id.slice(0, 8)}`;
     const valueType = readParamString(params, "valueType");
     const defaultValue =
-        normalizeLiteralValue(params.defaultValue) ?? resolveBlueprintVariableDefaultValue(valueType);
+        valueType === "any"
+            ? null
+            : normalizeLiteralValue(params.defaultValue) ?? resolveBlueprintVariableDefaultValue(valueType);
     return {
         id,
         name,
@@ -175,9 +177,7 @@ export function parseBlueprintVariableRef(raw: unknown, currentBlueprintId: stri
 }
 
 function variablesForGroup(group: VariableGroupInput): BlueprintVariable[] {
-    return group.scopeKind === "blueprint"
-        ? listEffectiveBlueprintVariables(group.blueprint)
-        : Object.values(group.blueprint.members?.variables ?? {});
+    return listEffectiveBlueprintVariables(group.blueprint);
 }
 
 function sortedVariables(group: VariableGroupInput): BlueprintVariable[] {

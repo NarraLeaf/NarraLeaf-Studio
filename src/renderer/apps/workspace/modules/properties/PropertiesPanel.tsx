@@ -17,6 +17,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
+import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { AssetData } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { Character } from "@/lib/workspace/services/character/Character";
@@ -45,11 +46,18 @@ import type { UIInspectorData } from "../ui-editor/inspector/registry";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { pairLayoutDimensionsForLock } from "@/lib/ui-editor/layout/aspectRatioLock";
+import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import {
     createComponentDocumentServiceAdapter,
     parseComponentEditorSurfaceId,
 } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
+import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
+import {
+    STORY_MOTION_KEYFRAME_SELECTION_TYPE,
+    isStoryMotionKeyframeSelectionData,
+    type StoryMotionKeyframeSelection,
+} from "../story-motion/storyMotionTypes";
 
 function createLayoutInspectorSchema(
     elements: UIElement[],
@@ -82,6 +90,26 @@ function createLayoutInspectorSchema(
     };
 
     const getPrimaryLayout = (data: UIInspectorData) => data.elements[0]?.layout;
+    const readElementSurfaceTopLeft = (element: UIElement) => {
+        const document = documentService.getDocument();
+        return document.elements[element.id] ? getElementSurfaceTopLeft(document, element.id) : element.layout;
+    };
+    const applySurfacePositionPatch = (axis: "x" | "y", surfaceValue: number) => {
+        const document = documentService.getDocument();
+        const patches: Record<string, Partial<UIElement["layout"]>> = {};
+        elements.forEach(element => {
+            const current = document.elements[element.id] ?? element;
+            const parentTopLeft =
+                current.parentId && document.elements[current.parentId]
+                    ? getElementSurfaceTopLeft(document, current.parentId)
+                    : { x: 0, y: 0 };
+            const size = axis === "x" ? current.layout.width : current.layout.height;
+            patches[element.id] = {
+                [axis]: surfaceValue - parentTopLeft[axis] - Math.min(0, size),
+            };
+        });
+        documentService.updateElementLayouts(patches);
+    };
 
     const createDefaultSizeField = (): FieldDefinition<UIInspectorData> => {
         const items = [
@@ -225,13 +253,16 @@ function createLayoutInspectorSchema(
                     icon: <MoveHorizontal className="w-4 h-4 text-gray-400" />,
                     type: "number",
                     precision: 2,
-                    getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.x ?? 0),
+                    getValue: (data: UIInspectorData) => {
+                        const element = data.elements[0];
+                        return String(element ? readElementSurfaceTopLeft(element).x : 0);
+                    },
                     setValue: (_data: UIInspectorData, raw: string) => {
                         const number = toNumber(raw);
                         if (number === null) {
                             return;
                         }
-                        applyLayoutPatch({ x: number });
+                        applySurfacePositionPatch("x", number);
                     },
                     selectAllOnFocus: true,
                 },
@@ -241,13 +272,16 @@ function createLayoutInspectorSchema(
                     icon: <MoveVertical className="w-4 h-4 text-gray-400" />,
                     type: "number",
                     precision: 2,
-                    getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.y ?? 0),
+                    getValue: (data: UIInspectorData) => {
+                        const element = data.elements[0];
+                        return String(element ? readElementSurfaceTopLeft(element).y : 0);
+                    },
                     setValue: (_data: UIInspectorData, raw: string) => {
                         const number = toNumber(raw);
                         if (number === null) {
                             return;
                         }
-                        applyLayoutPatch({ y: number });
+                        applySurfacePositionPatch("y", number);
                     },
                     selectAllOnFocus: true,
                 },
@@ -507,6 +541,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const [characterVersion, setCharacterVersion] = useState(0);
     const [uiSelection, setUISelection] = useState<UIElementSelection | null>(null);
     const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
+    const [storyMotionSelection, setStoryMotionSelection] = useState<StoryMotionKeyframeSelection | null>(null);
     const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
     
     // Track the current thumbnail URL and its associated thumbnailId to avoid revoking URLs still in use
@@ -524,6 +559,16 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const serviceAssets = useMemo(() => {
         if (!context || !isInitialized) return null;
         return context.services.get<ServiceAssetsService>(Services.ServiceAssets);
+    }, [context, isInitialized]);
+
+    const uiService = useMemo(() => {
+        if (!context || !isInitialized) return null;
+        return context.services.get<UIService>(Services.UI);
+    }, [context, isInitialized]);
+
+    const storyService = useMemo(() => {
+        if (!context || !isInitialized) return null;
+        return context.services.get<StoryService>(Services.Story);
     }, [context, isInitialized]);
 
     const documentService = useMemo<UIDocumentService | null>(() => {
@@ -572,14 +617,18 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         };
     }, [activeSceneSurface, documentService, documentVersion]);
 
-    const panelTitle = activeSceneSurface
+    const panelTitle = storyMotionSelection
+        ? "Motion Keyframe"
+        : activeSceneSurface
         ? activeSceneSurface.name
         : activeCharacter
         ? activeCharacter.profile.getProfile().name
         : activeAsset
         ? activeAsset.name
         : "Properties";
-    const panelSubtitle = activeSceneSurface
+    const panelSubtitle = storyMotionSelection
+        ? "Story Motion"
+        : activeSceneSurface
         ? "Scene"
         : activeCharacter
         ? "Character"
@@ -587,23 +636,27 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
     // Listen to selection changes
     useEffect(() => {
-        if (!context) return;
-        const uiService = context.services.get<UIService>(Services.UI);
+        if (!uiService) return;
         const store = uiService.getStore();
 
-    const setSelectionState = (selection: SelectionState) => {
-        setActiveAsset(selection.type === "asset" ? (selection.data as Asset) : null);
-        setActiveCharacter(selection.type === "character" ? (selection.data as Character) : null);
-        setAssetMetadata(null);
-        setUISelection(isUIElementSelection(selection) ? (selection.data as UIElementSelection) : null);
-        const sceneId =
-            selection.type === "scene"
-                ? typeof selection.data === "string"
+        const setSelectionState = (selection: SelectionState) => {
+            const motionSelection =
+                selection.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE && isStoryMotionKeyframeSelectionData(selection.data)
                     ? selection.data
-                    : selection.data?.id ?? null
-                : null;
-        setActiveSceneId(sceneId);
-    };
+                    : null;
+            setStoryMotionSelection(motionSelection);
+            setActiveAsset(!motionSelection && selection.type === "asset" ? (selection.data as Asset) : null);
+            setActiveCharacter(!motionSelection && selection.type === "character" ? (selection.data as Character) : null);
+            setAssetMetadata(null);
+            setUISelection(!motionSelection && isUIElementSelection(selection) ? (selection.data as UIElementSelection) : null);
+            const sceneId =
+                !motionSelection && selection.type === "scene"
+                    ? typeof selection.data === "string"
+                        ? selection.data
+                        : selection.data?.id ?? null
+                    : null;
+            setActiveSceneId(sceneId);
+        };
 
         setSelectionState(store.getSelection());
 
@@ -614,7 +667,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         });
 
         return unsub;
-    }, [context]);
+    }, [uiService]);
 
     const uiInspectorContent = useMemo(() => {
         if (!deferredUiSelection || !documentService) {
@@ -897,6 +950,15 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
     // Render appropriate property editor
     const renderPropertyEditor = () => {
+        if (storyMotionSelection && storyService && uiService) {
+            return (
+                <StoryMotionKeyframeProperties
+                    selection={storyMotionSelection}
+                    storyService={storyService}
+                    uiService={uiService}
+                />
+            );
+        }
         if (uiInspectorContent) {
             return (
                 <>
@@ -909,7 +971,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return <PropertyEditor schema={scenePropertySchema} data={sceneEditorContext} />;
         }
         // No selection
-        if (!activeAsset && !activeCharacter && !sceneEditorContext) {
+        if (!activeAsset && !activeCharacter && !sceneEditorContext && !storyMotionSelection) {
             return (
                 <div className="flex-1 flex items-center justify-center p-4">
                     <div className="text-center text-gray-500 py-8">

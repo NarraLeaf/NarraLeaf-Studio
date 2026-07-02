@@ -79,6 +79,7 @@ export const BUTTON_KEY_ORDER: ButtonAppearancePropertyKey[] = [
     "paddingX",
     "paddingY",
     "clipContent",
+    "cursor",
     "transformOffsetX",
     "transformOffsetY",
     "transformScale",
@@ -319,6 +320,8 @@ function buttonRowValue(props: ButtonWidgetProps, key: ButtonAppearancePropertyK
                 return props.paddingY;
             case "clipContent":
                 return props.clipContent;
+            case "cursor":
+                return props.cursor;
             case "transformOffsetX":
                 return props.transformOffsetX;
             case "transformOffsetY":

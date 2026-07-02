@@ -1,5 +1,5 @@
 /**
- * Blueprint execution locals (per event dispatch), backed by blueprint.members.variables defaults.
+ * Blueprint lifecycle locals declared by in-graph Var nodes.
  */
 
 import type { BlueprintNodeDef } from "../types";
@@ -24,7 +24,7 @@ export const localVariableBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["var", "declare", "definition", "local", "variable", "default"],
         graphKinds: ["event", "function", "macro"],
         isPure: true,
-        scope: { ownerKinds: ["widgetMain", "widgetValue", "sharedAsset"] },
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain", "componentWidgetMain", "sharedAsset"] },
         pins: [],
         inspectorParams: [
             { key: "name", label: "Name", kind: "string" },

@@ -1,4 +1,4 @@
-import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
+import type { AppearanceModel, ButtonCursorValue } from "@shared/types/ui-editor/appearance";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { TextAlign, TextVerticalAlign, TextWrapMode } from "../text/types";
 
@@ -29,6 +29,7 @@ export type ButtonWidgetProps = {
     paddingX: number;
     paddingY: number;
     clipContent: boolean;
+    cursor: ButtonCursorValue;
 
     transformOffsetX: number;
     transformOffsetY: number;
@@ -68,6 +69,7 @@ export const defaultButtonWidgetProps: ButtonWidgetProps = {
     paddingX: 16,
     paddingY: 10,
     clipContent: true,
+    cursor: "auto",
 
     transformOffsetX: 0,
     transformOffsetY: 0,

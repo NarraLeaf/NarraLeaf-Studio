@@ -1,4 +1,4 @@
-import type { UISurface } from "@shared/types/ui-editor/document";
+import type { UIComponentId, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { BLUEPRINT_HOST_API_CONTRACT_VERSION } from "@shared/types/blueprint/hostApi";
 import type { UIHostAdapter, UIHostAdapterBlueprintRuntime } from "../types";
@@ -46,6 +46,13 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
     let flushDraining = false;
     let flushCascadeRounds = 0;
 
+    const readRuntimeElement = (elementId: string, componentId?: UIComponentId): UIElement | undefined => {
+        if (componentId) {
+            return document.components?.find(component => component.id === componentId)?.elements[elementId];
+        }
+        return document.elements[elementId];
+    };
+
     const blueprintRuntime: UIHostAdapterBlueprintRuntime = {
         surfaceId: surface.id,
         runtimeScopeId: effectiveRuntimeScopeId,
@@ -76,8 +83,8 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         eventPayload,
         eventOptions,
     ) => {
-        const flushedElement = eventName === "flush" ? document.elements[elementId] : undefined;
-        const clickedElement = eventName === "mouseClick" ? document.elements[elementId] : undefined;
+        const flushedElement = eventName === "flush" ? readRuntimeElement(elementId, eventOptions?.componentId) : undefined;
+        const clickedElement = eventName === "mouseClick" ? readRuntimeElement(elementId, eventOptions?.componentId) : undefined;
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
@@ -88,6 +95,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             eventPayload,
             listItemScope: eventOptions?.listItemScope,
             instanceKey: eventOptions?.instanceKey,
+            componentId: eventOptions?.componentId,
             hostAdapter: adapter,
             debug,
             getSurfaceState: key => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key),
@@ -251,6 +259,16 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             return;
         }
         await dispatchElementBlueprintEventNow(elementId, eventName, eventPayload, eventOptions);
+    };
+
+    blueprintRuntime.continueElementEventBubble = async (elementId, eventName, eventPayload, eventOptions) => {
+        const current = readRuntimeElement(elementId, eventOptions?.componentId);
+        const parentId = current?.parentId ?? null;
+        if (!parentId) {
+            return false;
+        }
+        await blueprintRuntime.dispatchElementBlueprintEvent(parentId, eventName, eventPayload, eventOptions);
+        return true;
     };
 
     blueprintRuntime.dispatchSurfaceBlueprintEvent = async (eventName, eventPayload) => {

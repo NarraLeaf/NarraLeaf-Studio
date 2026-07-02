@@ -113,6 +113,14 @@ export function buildOutlineContextMenu(input: BuildOutlineContextMenuInput): Co
 
     items.push(
         {
+            id: "copy-element-id",
+            label: "Copy Element ID",
+            onClick: () => {
+                actions.hideMenu();
+                actions.copyElementId(rowElement.id);
+            },
+        },
+        {
             id: "copy",
             label: "Copy",
             disabled: !hasEditable,
