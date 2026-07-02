@@ -47,6 +47,12 @@ import type { ActiveSnapGuides, SmartSnapDetailSettings } from "../../ui-editor/
 import type { SelectionState } from "./ui/UIStore";
 import type { DevModeEntry, DevModeStatus } from "@shared/types/devMode";
 import type {
+    ConsoleAppendInput,
+    ConsoleChannelId,
+    ConsoleEntry,
+    ConsoleLogLevel,
+} from "./core/ConsoleService";
+import type {
     StoryAnimationAsset,
     StoryAnimationAssetId,
     StoryAnimationIndex,
@@ -97,6 +103,7 @@ enum Services {
     LocalBlueprint = "localBlueprint",
     UIBlueprintLifecycle = "uiBlueprintLifecycle",
     DevMode = "devMode",
+    Console = "console",
     /** Ref-counted FontFace + blob URLs for UI editor widgets */
     UIEditorFontFace = "uiEditorFontFace",
     /** Blueprint node definitions (built-ins + plugin extensions); editor + runtime registry */
@@ -587,6 +594,24 @@ interface IDevModeService extends IService {
     onStatusChanged(handler: (status: DevModeStatus) => void): () => void;
 }
 
+interface IConsoleService extends IService {
+    getEntries(channel: ConsoleChannelId): ConsoleEntry[];
+    append(channel: ConsoleChannelId, input: ConsoleAppendInput): ConsoleEntry;
+    log(
+        channel: ConsoleChannelId,
+        level: ConsoleLogLevel,
+        message: string,
+        options?: Omit<ConsoleAppendInput, "level" | "message" | "segments">,
+    ): ConsoleEntry;
+    clear(channel?: ConsoleChannelId): void;
+    onEntriesChanged(handler: (event: {
+        channel: ConsoleChannelId;
+        entries: ConsoleEntry[];
+        reason: "append" | "clear";
+        entry?: ConsoleEntry;
+    }) => void): () => void;
+}
+
 // Editor Services
 interface IEditorService extends IService { }
 
@@ -763,7 +788,7 @@ export {
     IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
-    IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, UIEditorStateEvents,
+    IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     Services, WorkspaceContext
 };
 

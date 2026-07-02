@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
     blueprintKeyboardBindingMatchesEvent,
+    collectBlueprintEventHeadNodeIdsForDispatch,
+    collectSurfaceEventHeadNodeIdsForDispatch,
     formatBlueprintKeyboardBinding,
     formatBlueprintKeyboardBindingFromEvent,
     parseBlueprintKeyboardBinding,
@@ -37,5 +43,34 @@ describe("blueprint keyboard bindings", () => {
         expect(blueprintKeyboardBindingMatchesEvent("Ctrl+S", { key: "s", ctrlKey: true, shiftKey: true })).toBe(
             false,
         );
+    });
+});
+
+describe("blueprint event head dispatch resolution", () => {
+    it("matches new surface event heads", () => {
+        const nodes = {
+            before: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT },
+            after: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER },
+            right: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK },
+            unmount: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT },
+        };
+
+        expect(collectSurfaceEventHeadNodeIdsForDispatch(nodes, "beforeSurfaceExit")).toEqual(["before"]);
+        expect(collectSurfaceEventHeadNodeIdsForDispatch(nodes, "afterSurfaceEnter")).toEqual(["after"]);
+        expect(collectSurfaceEventHeadNodeIdsForDispatch(nodes, "rightClick")).toEqual(["right"]);
+        expect(collectSurfaceEventHeadNodeIdsForDispatch(nodes, "unmount")).toEqual([]);
+    });
+
+    it("matches mounted widget lifecycle event heads", () => {
+        const nodes = {
+            before: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT },
+            after: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER },
+            unmount: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT },
+        };
+
+        expect(collectBlueprintEventHeadNodeIdsForDispatch(nodes, "beforeSurfaceExit", "nl.button")).toEqual(["before"]);
+        expect(collectBlueprintEventHeadNodeIdsForDispatch(nodes, "afterSurfaceEnter", "nl.button")).toEqual(["after"]);
+        expect(collectBlueprintEventHeadNodeIdsForDispatch(nodes, "unmount", "nl.button")).toEqual(["unmount"]);
+        expect(collectBlueprintEventHeadNodeIdsForDispatch(nodes, "unmount", "nl.root")).toEqual([]);
     });
 });

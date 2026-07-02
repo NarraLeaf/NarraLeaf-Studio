@@ -5,9 +5,11 @@
 
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
@@ -40,6 +42,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_VALUE_TYPE_ELEMENT } from "@shared/types/blueprint/valueTypes";
 import { BUILTIN_WIDGET_LOGIC_APIS } from "@shared/types/ui-editor/widgetLogic";
@@ -274,6 +277,28 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
         pins: [THEN_PIN],
         execute: eventHeadExecute,
     },
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
+        displayName: "Before Surface Exit",
+        keywords: ["surface", "page", "before", "exit", "animation", "leave", "widget"],
+        scope: {
+            anyOf: [
+                { ownerKinds: ["surfaceMain"] },
+                { widgetElementTypes: widgetTypesForHead(BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT) },
+            ],
+        },
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER,
+        displayName: "After Surface Enter",
+        keywords: ["surface", "page", "after", "enter", "animation", "open", "widget"],
+        scope: {
+            anyOf: [
+                { ownerKinds: ["surfaceMain"] },
+                { widgetElementTypes: widgetTypesForHead(BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER) },
+            ],
+        },
+    }),
     keyboardEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
         displayName: "On Key Down",
@@ -368,8 +393,14 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
         displayName: "Right Click",
-        keywords: ["right", "click", "context", "menu", "mouse"],
+        keywords: ["right", "click", "context", "menu", "mouse", "surface", "page"],
         pins: [THEN_PIN, PIN_X, PIN_Y],
+        scope: {
+            anyOf: [
+                { ownerKinds: ["surfaceMain"] },
+                { widgetElementTypes: widgetTypesForHead(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK) },
+            ],
+        },
     }),
     widgetEventHead({
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
@@ -392,6 +423,11 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
             ],
         },
         pins: [THEN_PIN, PIN_ELEMENT],
+    }),
+    widgetEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
+        displayName: "Unmount",
+        keywords: ["unmount", "remove", "destroy", "widget", "element", "cleanup"],
     }),
     {
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,

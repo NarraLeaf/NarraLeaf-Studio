@@ -17,6 +17,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOG,
@@ -1392,6 +1393,147 @@ describe("BlueprintDispatcher", () => {
                 surfaceId: "surface",
             }).lastKey,
         ).toBe(" ");
+    });
+
+    it("stops keyboard propagation before dispatching the surface event", async () => {
+        const globalBlueprintId = "bp-global-stop-keyboard";
+        const surfaceBlueprintId = "bp-surface-after-stop";
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [globalBlueprintId]: {
+                    id: globalBlueprintId,
+                    name: "Global Stop Keyboard",
+                    owner: { kind: "globalMain" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                keyDown: {
+                                    id: "keyDown",
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN },
+                                            stop: { id: "stop", type: BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "stop", port: "in" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+                [surfaceBlueprintId]: {
+                    id: surfaceBlueprintId,
+                    name: "Surface Keyboard",
+                    owner: { kind: "surfaceMain", surfaceId: "surface" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: {
+                        variables: {
+                            lastKey: { id: "lastKey", name: "lastKey", valueType: "string", defaultValue: "" },
+                        },
+                        fields: {},
+                        functions: {},
+                    },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                keyDown: {
+                                    id: "keyDown",
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN },
+                                            setKey: {
+                                                id: "setKey",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "lastKey" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
+                                            { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                globalMain: {
+                    activeBlueprintId: globalBlueprintId,
+                    privateBlueprintIds: [globalBlueprintId],
+                    initializedFrontend: "visual",
+                },
+                "surfaceMain:surface": {
+                    activeBlueprintId: surfaceBlueprintId,
+                    privateBlueprintIds: [surfaceBlueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const debug = new DebugBridge();
+        const hostAdapter: UIHostAdapter = { host: "player" };
+        let stopped = false;
+        const eventControl = {
+            stopPropagation: () => {
+                stopped = true;
+            },
+            isPropagationStopped: () => stopped,
+        };
+        const eventPayload = {
+            key: " ",
+            code: "Space",
+            repeat: false,
+            altKey: false,
+            ctrlKey: false,
+            shiftKey: false,
+            metaKey: false,
+        };
+
+        await dispatchGlobalBlueprintEvent({
+            blueprintDocument,
+            eventName: "keyDown",
+            eventPayload,
+            eventControl,
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+        await dispatchSurfaceBlueprintEvent({
+            blueprintDocument,
+            surfaceId: "surface",
+            eventName: "keyDown",
+            eventPayload,
+            eventControl,
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+
+        expect(stopped).toBe(true);
+        expect(
+            acquireBlueprintExecutionLocals({
+                blueprintDocument,
+                currentBlueprintId: surfaceBlueprintId,
+                surfaceId: "surface",
+            }).lastKey,
+        ).toBe("");
     });
 
     it("filters On Key event heads case-insensitively", async () => {

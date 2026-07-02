@@ -39,6 +39,9 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus"
 /** Entry for widget `blur` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR = "blueprint.event.head.blur" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH = "blueprint.event.head.flush" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT = "blueprint.event.head.unmount" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT = "blueprint.event.head.beforeSurfaceExit" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER = "blueprint.event.head.afterSurfaceEnter" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH = "blueprint.event.head.elementFlush" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK = "blueprint.event.head.elementClick" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL = "blueprint.event.head.scroll" as const;
@@ -79,6 +82,9 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
@@ -464,6 +470,7 @@ export const BLUEPRINT_NODE_TYPE_LITERAL_RECT = "blueprint.data.rectLiteral" as 
 export const BLUEPRINT_NODE_TYPE_LITERAL_JSON = "blueprint.data.jsonLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_REF = "blueprint.element.ref" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE = "blueprint.element.continueEventBubble" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE = "blueprint.element.stopEventBubble" as const;
 export const BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL = "blueprint.image.assetLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE = "blueprint.data.returnValue" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT = "blueprint.data.toFloat" as const;
@@ -612,9 +619,12 @@ export const BLUEPRINT_NODE_TYPE_BROADCAST_SEND = "blueprint.broadcast.send" as 
 export const BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT = "blueprint.broadcast.getListenerCount" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS = "blueprint.page.getProps" as const;
+export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING = "blueprint.page.isSurfaceExiting" as const;
+export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING = "blueprint.page.isSurfaceEntering" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_QUIT = "blueprint.page.quit" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_START_STORY = "blueprint.game.startStory" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME = "blueprint.game.isInGame" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY = "blueprint.game.isGameOverlay" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_QUIT = "blueprint.game.quit" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE = "blueprint.game.save.write" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD = "blueprint.game.save.load" as const;
@@ -782,6 +792,9 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_X = "blueprint.element.i
 export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_X = "blueprint.element.image.setFlipX" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_Y = "blueprint.element.image.getFlipY" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_Y = "blueprint.element.image.setFlipY" as const;
+
+export const BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER = "blueprint.button.setPointer" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER = "blueprint.element.button.setPointer" as const;
 
 /** IR meta key for graph kind (string value matches BlueprintGraphKind). */
 export const BLUEPRINT_GRAPH_IR_META_KIND = "graphKind" as const;

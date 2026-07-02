@@ -17,6 +17,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { Separator } from "../../registry/types";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
+import { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { DevModeStatus } from "@shared/types/devMode";
 import { useWorkspace } from "../../context";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
@@ -117,9 +118,31 @@ export const buildAction: ModuleAction = {
     id: "narraleaf-studio:build",
     icon: <Hammer className="w-4 h-4" />,
     tooltip: "Build project",
-    onClick: () => {
-        console.log("Build clicked");
-        // TODO: Implement build functionality
+    onClick: (workspace: Workspace) => {
+        const services = workspace.getContext().services;
+        const consoleService = services.get<ConsoleService>(Services.Console);
+        const uiService = services.get<UIService>(Services.UI);
+        const projectPath = workspace.getContext().project.getConfig().projectPath;
+        const projectName = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "project";
+
+        uiService.panels.show("narraleaf-studio:console");
+        consoleService.append("build", {
+            level: "info",
+            source: "Build",
+            segments: [
+                { text: "Build requested for ", color: "#8b949e" },
+                { text: projectName, bold: true },
+                { text: "." },
+            ],
+        });
+        consoleService.append("build", {
+            level: "warning",
+            source: "Build",
+            segments: [
+                { text: "Project build pipeline is not wired to the toolbar yet.", bold: true },
+                { text: " Packaging output will stream here once the build runner is connected.", italic: true },
+            ],
+        });
     },
     order: 4,
 };

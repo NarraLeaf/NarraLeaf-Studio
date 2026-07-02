@@ -34,6 +34,10 @@ const DEFAULT_MAX_ITERATIONS = 1000;
 const IF_ELSE_DYNAMIC_BRANCH_PINS_KEY = "__ifElseBranchPins";
 const IF_ELSE_CONDITION_SUFFIX = "_condition";
 const IF_ELSE_THEN_SUFFIX = "_then";
+const SWITCH_STRING_DYNAMIC_CASE_PINS_KEY = "__switchStringCasePins";
+const SWITCH_STRING_DYNAMIC_CASE_VALUE_SUFFIX = "_value";
+const SWITCH_STRING_DYNAMIC_CASE_OUTPUT_SUFFIX = "_output";
+const SWITCH_STRING_LEGACY_CASE_COUNT = 4;
 
 type LoopState =
     | {
@@ -341,10 +345,25 @@ function executeIfElse(ctx: BehaviorNodeExecutionContext) {
 
 function executeSwitchStringLike(ctx: BehaviorNodeExecutionContext) {
     const value = toBlueprintString(resolveInput(ctx, "value", ""));
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < SWITCH_STRING_LEGACY_CASE_COUNT; i += 1) {
         const caseValue = resolveInput(ctx, `case${i}Value`);
         if (caseValue !== undefined && value === toBlueprintString(caseValue)) {
             return { nextPort: `case${i}` };
+        }
+    }
+    const dynamicCasePins = readDynamicInputPinIds(ctx.params, SWITCH_STRING_DYNAMIC_CASE_PINS_KEY);
+    const dynamicCasePinSet = new Set(dynamicCasePins);
+    for (const valuePinId of dynamicCasePins) {
+        if (!valuePinId.endsWith(SWITCH_STRING_DYNAMIC_CASE_VALUE_SUFFIX)) {
+            continue;
+        }
+        const outputPinId = `${valuePinId.slice(0, -SWITCH_STRING_DYNAMIC_CASE_VALUE_SUFFIX.length)}${SWITCH_STRING_DYNAMIC_CASE_OUTPUT_SUFFIX}`;
+        if (!dynamicCasePinSet.has(outputPinId)) {
+            continue;
+        }
+        const caseValue = resolveInput(ctx, valuePinId);
+        if (caseValue !== undefined && value === toBlueprintString(caseValue)) {
+            return { nextPort: outputPinId };
         }
     }
     return { nextPort: "default" };
@@ -447,15 +466,37 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
             { id: "in", kind: "input", semantic: "exec", label: "In" },
             { id: "case0", kind: "output", semantic: "exec", label: "Case 0" },
             { id: "case1", kind: "output", semantic: "exec", label: "Case 1" },
-            { id: "case2", kind: "output", semantic: "exec", label: "Case 2" },
-            { id: "case3", kind: "output", semantic: "exec", label: "Case 3" },
             { id: "default", kind: "output", semantic: "exec", label: "Default" },
             { id: "value", kind: "input", semantic: "data", valueType: "string", label: "Value", allowInlineLiteral: true },
             { id: "case0Value", kind: "input", semantic: "data", valueType: "string", label: "Case 0", allowInlineLiteral: true },
             { id: "case1Value", kind: "input", semantic: "data", valueType: "string", label: "Case 1", allowInlineLiteral: true },
-            { id: "case2Value", kind: "input", semantic: "data", valueType: "string", label: "Case 2", allowInlineLiteral: true },
-            { id: "case3Value", kind: "input", semantic: "data", valueType: "string", label: "Case 3", allowInlineLiteral: true },
         ],
+        dynamicInputPins: {
+            storageKey: SWITCH_STRING_DYNAMIC_CASE_PINS_KEY,
+            fixedDataInputIds: ["value", "case0Value", "case1Value"],
+            generatedIdPrefix: "case",
+            valueType: "string",
+            allowInlineLiteral: true,
+            labelPrefix: "Case",
+            addButtonLabel: "Add Case",
+            outputInsertBeforePinId: "default",
+            generatedPinTemplates: [
+                {
+                    idSuffix: "value",
+                    label: "Case",
+                    kind: "input",
+                    semantic: "data",
+                    valueType: "string",
+                    allowInlineLiteral: true,
+                },
+                {
+                    idSuffix: "output",
+                    label: "Case",
+                    kind: "output",
+                    semantic: "exec",
+                },
+            ],
+        },
         execute: executeSwitchStringLike,
     },
     {

@@ -176,6 +176,79 @@ describe("SurfaceElementTree", () => {
         expect(buttonWrapper?.props.hostAdapter).toBe(hostAdapter);
     });
 
+    it("applies runtime button cursor to the authored wrapper bounds", () => {
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["button"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                button: {
+                    id: "button",
+                    type: "nl.button",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 8, y: 8, width: 120, height: 40 },
+                    props: {
+                        label: "Start",
+                        paddingX: 0,
+                        paddingY: 0,
+                        textAlign: "center",
+                        cursor: "auto",
+                    },
+                },
+            },
+        };
+        const surface = document.surfaces[0]!;
+        const hostAdapter: UIHostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                surfaceId: surface.id,
+                setSurfaceState: () => undefined,
+                getSurfaceState: () => undefined,
+                emitDebug: () => undefined,
+                dispatchElementBlueprintEvent: async () => undefined,
+            },
+        };
+        const rendererRegistry = new ElementRendererRegistry([
+            { type: "nl.root", render: props => <>{props.children}</> },
+            { type: "nl.button", render: () => <span>Start</span> },
+        ]);
+
+        const markup = renderToStaticMarkup(
+            <>
+                {SurfaceElementTree({
+                    document,
+                    surface,
+                    rootElement: document.elements.root!,
+                    rendererRegistry,
+                    hostAdapter,
+                })}
+            </>,
+        );
+
+        expect(markup).toMatch(
+            /data-ui-element-id="button"[^>]+style="[^"]*width:120px[^"]*height:40px[^"]*cursor:pointer/,
+        );
+    });
+
     it("keeps runtime display disabled elements mounted with display none", () => {
         const document: UIDocument = {
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,

@@ -50,6 +50,31 @@ const INIT_EVENT: WidgetLogicEventDef = {
     headNodeTypes: ["blueprint.event.head.init"],
 };
 
+const SURFACE_LIFECYCLE_EVENTS: readonly WidgetLogicEventDef[] = [
+    {
+        id: "beforeSurfaceExit",
+        displayName: "Before surface exit",
+        description: "Fires before the current Surface starts its exit animation while the element is still mounted.",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.beforeSurfaceExit"],
+    },
+    {
+        id: "afterSurfaceEnter",
+        displayName: "After surface enter",
+        description: "Fires after the current Surface finishes its enter animation while the element is still mounted.",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.afterSurfaceEnter"],
+    },
+];
+
+const UNMOUNT_EVENT: WidgetLogicEventDef = {
+    id: "unmount",
+    displayName: "Unmount",
+    description: "Fires when the element is unmounted from the runtime tree.",
+    dispatchKind: "lifecycle",
+    headNodeTypes: ["blueprint.event.head.unmount"],
+};
+
 const KEYBOARD_EVENTS: readonly WidgetLogicEventDef[] = [
     {
         id: "keyDown",
@@ -209,6 +234,8 @@ const BROADCAST_EVENTS: readonly WidgetLogicEventDef[] = [
 const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     FLUSH_EVENT,
+    ...SURFACE_LIFECYCLE_EVENTS,
+    UNMOUNT_EVENT,
     {
         id: "pageEvent",
         displayName: "Page event",
@@ -222,6 +249,8 @@ const FRAME_EVENTS: readonly WidgetLogicEventDef[] = [
 const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     FLUSH_EVENT,
+    ...SURFACE_LIFECYCLE_EVENTS,
+    UNMOUNT_EVENT,
     {
         id: "dragStart",
         displayName: "Drag start",
@@ -247,6 +276,8 @@ const SLIDER_EVENTS: readonly WidgetLogicEventDef[] = [
 const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     FLUSH_EVENT,
+    ...SURFACE_LIFECYCLE_EVENTS,
+    UNMOUNT_EVENT,
     ...LIST_ITEM_CONTEXT_EVENTS,
     ...DISPLAYABLE_EVENTS,
     ...BROADCAST_EVENTS,
@@ -255,6 +286,8 @@ const DISPLAYABLE_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
 const COLLECTION_WIDGET_EVENTS: readonly WidgetLogicEventDef[] = [
     INIT_EVENT,
     FLUSH_EVENT,
+    ...SURFACE_LIFECYCLE_EVENTS,
+    UNMOUNT_EVENT,
     SCROLL_EVENT,
     ...LIST_ITEM_EVENTS,
     ...KEYBOARD_EVENTS,
@@ -383,7 +416,14 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             {
                 id: "setLabel",
                 displayName: "Set label",
-                availability: "planned",
+                capabilityId: "widget.setButtonProperties",
+                availability: "available",
+            },
+            {
+                id: "setPointer",
+                displayName: "Set pointer",
+                capabilityId: "widget.setButtonProperties",
+                availability: "available",
             },
         ],
         readableState: [
@@ -391,10 +431,12 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { id: "enabled", displayName: "Enabled" },
             { id: "label", displayName: "Label" },
             { id: "variant", displayName: "Variant" },
+            { id: "cursor", displayName: "Pointer" },
         ],
         writableProps: [
             { propPath: "variant", displayName: "Variant" },
             { propPath: "label", displayName: "Label" },
+            { propPath: "cursor", displayName: "Pointer" },
             { propPath: "appearance", displayName: "Appearance" },
             { propPath: "interactionDisabled", displayName: "Interaction disabled" },
         ],

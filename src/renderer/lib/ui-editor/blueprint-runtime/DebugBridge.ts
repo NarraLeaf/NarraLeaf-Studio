@@ -1,6 +1,7 @@
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 
 export type DebugEventListener = () => void;
+export type DebugEventObserver = (event: BlueprintDebugEvent) => void;
 
 export const MAX_DEBUG_EVENT_MESSAGE_CHARS = 4096;
 export const MAX_DEBUG_EVENT_BUFFER_LENGTH = 2000;
@@ -28,14 +29,17 @@ export function sanitizeBlueprintDebugEvent(event: BlueprintDebugEvent): Bluepri
  */
 export class DebugBridge {
     private readonly listeners = new Set<DebugEventListener>();
+    private readonly eventObservers = new Set<DebugEventObserver>();
     private readonly buffer: BlueprintDebugEvent[] = [];
     private notifyScheduled = false;
 
     public emit(event: BlueprintDebugEvent): void {
-        this.buffer.push(sanitizeBlueprintDebugEvent(event));
+        const sanitized = sanitizeBlueprintDebugEvent(event);
+        this.buffer.push(sanitized);
         if (this.buffer.length > MAX_DEBUG_EVENT_BUFFER_LENGTH) {
             this.buffer.splice(0, this.buffer.length - MAX_DEBUG_EVENT_BUFFER_LENGTH);
         }
+        this.notifyEventObservers(sanitized);
         this.scheduleNotifyListeners();
     }
 
@@ -46,6 +50,13 @@ export class DebugBridge {
         };
     }
 
+    public subscribeEvents(observer: DebugEventObserver): () => void {
+        this.eventObservers.add(observer);
+        return () => {
+            this.eventObservers.delete(observer);
+        };
+    }
+
     public snapshot(): BlueprintDebugEvent[] {
         return [...this.buffer];
     }
@@ -53,6 +64,12 @@ export class DebugBridge {
     public clear(): void {
         this.buffer.length = 0;
         this.scheduleNotifyListeners();
+    }
+
+    private notifyEventObservers(event: BlueprintDebugEvent): void {
+        for (const observer of this.eventObservers) {
+            observer(event);
+        }
     }
 
     private scheduleNotifyListeners(): void {

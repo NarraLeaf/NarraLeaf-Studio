@@ -12,6 +12,7 @@ import {
     type MouseEvent,
 } from "react";
 import { motion } from "motion/react";
+import { effectShadowStoredToCss } from "@shared/types/ui-editor/effects";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
@@ -24,6 +25,7 @@ import {
 } from "@/lib/ui-editor/widget-modules/shared/text/textLayoutCss";
 import {
     buttonResolvedVisualToRectangleLike,
+    resolveButtonCursor,
     resolveButtonAppearanceTransitions,
     resolveButtonVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
@@ -172,14 +174,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     const rl = buttonResolvedVisualToRectangleLike(v);
     const rt = hostAdapter.blueprintRuntime;
     const canDispatchClick = Boolean(rt && !interactionDisabled);
-    const resolvedCursor =
-        interactionDisabled
-            ? "not-allowed"
-            : v.cursor === "auto"
-              ? canDispatchClick
-                  ? "pointer"
-                  : "default"
-              : v.cursor;
+    const resolvedCursor = resolveButtonCursor(v.cursor, interactionDisabled, canDispatchClick);
     const dispatchClick =
         canDispatchClick && !isEditing
             ? () => {
@@ -244,6 +239,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
 
     const color = colorValueToCss({ hex: p.color, alpha: 1 });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
+    const labelTextShadow = effectShadowStoredToCss(v.effects.effectTextShadow, "outer");
     const labelTypography: CSSProperties = {
         margin: 0,
         width: "100%",
@@ -254,9 +250,19 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         textAlign: p.textAlign,
         lineHeight: p.lineHeight,
         ...lineWrapCss(p.textWrapMode),
-        overflow: "hidden",
+        overflow: labelTextShadow ? "visible" : "hidden",
+        ...(labelTextShadow ? { textShadow: labelTextShadow } : {}),
         ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
     };
+
+    const labelTextShadowTransition = firstTransitionForKeys(appearanceTransitions, ["effectTextShadow"]);
+    const labelTextAnimate: Record<string, string> = {};
+    const labelTextTransition: Record<string, unknown> = {};
+    if (labelTextShadowTransition) {
+        labelTextAnimate.textShadow = labelTextShadow || "none";
+        labelTextTransition.textShadow = toRuntimeMotionTransition(labelTextShadowTransition);
+    }
+    const labelTextMotionActive = Object.keys(labelTextTransition).length > 0;
 
     const labelColumnStyle: CSSProperties = {
         flex: 1,
@@ -397,6 +403,15 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                         onClick={e => e.stopPropagation()}
                         onMouseDown={e => e.stopPropagation()}
                     />
+                ) : labelTextMotionActive ? (
+                    <motion.p
+                        style={{ ...labelTypography, flexShrink: 0 }}
+                        initial={false}
+                        animate={labelTextAnimate}
+                        transition={labelTextTransition}
+                    >
+                        {p.label}
+                    </motion.p>
                 ) : (
                     <p style={{ ...labelTypography, flexShrink: 0 }}>{p.label}</p>
                 )}
@@ -434,6 +449,8 @@ export function ButtonRenderer(props: WidgetRendererProps) {
             appearanceTransitions={appearanceTransitions}
             rootOpacityFactor={interactionDisabled ? 0.45 : 1}
             extraRootStyle={{
+                position: "absolute",
+                inset: 0,
                 cursor: resolvedCursor,
             }}
             extraRootProps={{

@@ -14,6 +14,7 @@ import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
 } from "@shared/types/blueprint/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
@@ -148,8 +149,70 @@ function migrateBlueprintTimingUnitsToSeconds(doc: BlueprintDocument): Blueprint
     return doc;
 }
 
+function migrateSentenceCpsPinsForNode(node: BlueprintGraphNode): void {
+    if (node.type !== BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED) {
+        return;
+    }
+    if (node.params && Object.prototype.hasOwnProperty.call(node.params, "speed")) {
+        if (!Object.prototype.hasOwnProperty.call(node.params, "cps")) {
+            node.params.cps = node.params.speed;
+        }
+        delete node.params.speed;
+    }
+    const ports = node.ports;
+    const legacySpeedPort = ports?.speed;
+    if (ports && legacySpeedPort) {
+        if (!ports.cps) {
+            ports.cps = {
+                ...legacySpeedPort,
+                label: legacySpeedPort.label === "Speed" ? "CPS" : legacySpeedPort.label,
+            };
+        }
+        delete ports.speed;
+    }
+}
+
+function migrateSentenceCpsPinsForGraph(graph: BlueprintGraphIr | undefined): void {
+    if (!graph?.nodes) {
+        return;
+    }
+    const sentenceSpeedNodeIds = new Set<string>();
+    for (const node of Object.values(graph.nodes)) {
+        if (node.type === BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED) {
+            sentenceSpeedNodeIds.add(node.id);
+            migrateSentenceCpsPinsForNode(node);
+        }
+    }
+    for (const edge of graph.edges ?? []) {
+        if (sentenceSpeedNodeIds.has(edge.to.nodeId) && edge.to.port === "speed") {
+            edge.to.port = "cps";
+        }
+    }
+}
+
+function migrateBlueprintSentenceSpeedToCps(doc: BlueprintDocument): BlueprintDocument {
+    for (const bp of Object.values(doc.blueprints)) {
+        if (bp.program.kind !== "graph") {
+            continue;
+        }
+        const graphs = bp.program.graphs;
+        for (const eventGraph of Object.values(graphs.events ?? {})) {
+            migrateSentenceCpsPinsForGraph(eventGraph.graph);
+        }
+        for (const functionGraph of Object.values(graphs.functions ?? {})) {
+            migrateSentenceCpsPinsForGraph(functionGraph.graph);
+        }
+        for (const macroGraph of Object.values(graphs.macros ?? {})) {
+            migrateSentenceCpsPinsForGraph(macroGraph.graph);
+        }
+    }
+    return doc;
+}
+
 function finalizeLegacyBlueprintDocument(doc: BlueprintDocument): BlueprintDocument {
-    return migrateBlueprintTimingUnitsToSeconds(ensurePersistentVariables(migrateLegacyDeclarationsToFields(doc)));
+    return migrateBlueprintSentenceSpeedToCps(
+        migrateBlueprintTimingUnitsToSeconds(ensurePersistentVariables(migrateLegacyDeclarationsToFields(doc))),
+    );
 }
 
 /**
@@ -161,7 +224,9 @@ export function migrateBlueprintDocumentToLatest(raw: unknown): BlueprintDocumen
     }
     const sv = raw.schemaVersion;
     if (sv === BLUEPRINT_DOCUMENT_SCHEMA_VERSION) {
-        return ensurePersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument));
+        return migrateBlueprintSentenceSpeedToCps(
+            ensurePersistentVariables(migrateLegacyDeclarationsToFields(raw as BlueprintDocument)),
+        );
     }
     if ((sv === 5 || sv === 6 || sv === 7) && isRecord(raw.blueprints)) {
         const migrated = finalizeLegacyBlueprintDocument(raw as BlueprintDocument);

@@ -1,4 +1,6 @@
 import type { AppearanceModel, ButtonCursorValue } from "@shared/types/ui-editor/appearance";
+import type { ElementEffectValues } from "@shared/types/ui-editor/effects";
+import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import type { TextAlign, TextVerticalAlign, TextWrapMode } from "../text/types";
 
@@ -36,6 +38,9 @@ export type ButtonWidgetProps = {
     transformScale: number;
     transformRotation: number;
     transformOpacity: number;
+
+    /** Static baseline effects; appearance overlays may override per variant / state. */
+    effects: ElementEffectValues;
 
     /** Dev Mode / runtime: disables interaction without mutating saved props */
     interactionDisabled?: boolean;
@@ -76,4 +81,5 @@ export const defaultButtonWidgetProps: ButtonWidgetProps = {
     transformScale: 1,
     transformRotation: 0,
     transformOpacity: 1,
+    effects: { ...DEFAULT_ELEMENT_EFFECT_VALUES },
 };

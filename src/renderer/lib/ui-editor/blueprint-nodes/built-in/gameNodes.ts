@@ -1,6 +1,7 @@
 import {
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG,
+    BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
     BLUEPRINT_NODE_TYPE_GAME_QUIT,
@@ -41,13 +42,22 @@ const saveMetadataIn: BlueprintNodePinDef = {
     semantic: "data",
     valueType: "json",
     label: "Metadata",
+    optional: true,
 };
-const sentenceSpeedIn: BlueprintNodePinDef = {
-    id: "speed",
+const saveScreenshotIn: BlueprintNodePinDef = {
+    id: "screenshot",
+    kind: "input",
+    semantic: "data",
+    valueType: "boolean",
+    label: "Capture",
+    optional: true,
+};
+const sentenceCpsIn: BlueprintNodePinDef = {
+    id: "cps",
     kind: "input",
     semantic: "data",
     valueType: "float",
-    label: "Speed",
+    label: "CPS",
     allowInlineLiteral: true,
 };
 const GRAPH_KINDS = ["event", "macro"] as const;
@@ -90,19 +100,38 @@ function resolveSaveMetadata(ctx: Parameters<NonNullable<BlueprintNodeDef["execu
     return cloneJsonValue(value);
 }
 
-function resolveSentenceSpeed(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): number {
-    const value = resolveDataPinValue(ctx.graph, ctx.node.id, "speed", ctx.params, ctx.blueprintLocals, 10, {
+function resolveSaveScreenshot(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): boolean {
+    const value = resolveDataPinValue(ctx.graph, ctx.node.id, "screenshot", ctx.params, ctx.blueprintLocals, 0, {
         hostAdapter: ctx.hostAdapter,
         eventPayload: ctx.eventPayload,
         listItemScope: ctx.listItemScope,
         instanceKey: ctx.instanceKey,
         executionOwner: ctx.executionOwner,
     });
-    const speed = typeof value === "number" ? value : Number(value);
-    if (!Number.isFinite(speed) || speed <= 0) {
-        throw new BlueprintGraphExecutionError("Sentence speed must be a positive number", ctx.node.id);
+    return value === true;
+}
+
+function hasDataInputValue(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0], portId: string): boolean {
+    return (
+        Object.prototype.hasOwnProperty.call(ctx.params, portId) ||
+        ctx.graph.edges?.some(edge => edge.to.nodeId === ctx.node.id && edge.to.port === portId) === true
+    );
+}
+
+function resolveSentenceCps(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): number {
+    const portId = hasDataInputValue(ctx, "cps") || !hasDataInputValue(ctx, "speed") ? "cps" : "speed";
+    const value = resolveDataPinValue(ctx.graph, ctx.node.id, portId, ctx.params, ctx.blueprintLocals, 10, {
+        hostAdapter: ctx.hostAdapter,
+        eventPayload: ctx.eventPayload,
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
+        executionOwner: ctx.executionOwner,
+    });
+    const cps = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(cps) || cps <= 0) {
+        throw new BlueprintGraphExecutionError("CPS must be a positive number", ctx.node.id);
     }
-    return speed;
+    return cps;
 }
 
 export const gameBlueprintNodes: BlueprintNodeDef[] = [
@@ -152,6 +181,31 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             return {
                 outputValues: {
                     isInGame: requireHostApi(ctx).game.isInGame(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
+        displayName: "Is Game Overlay",
+        category: "Game",
+        keywords: ["game", "overlay", "layer", "page", "surface", "pause", "menu"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "isGameOverlay",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Game Overlay",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    isGameOverlay: requireHostApi(ctx).game.isGameOverlay(),
                 },
             };
         },
@@ -300,23 +354,23 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn, execNext, sentenceSpeedIn],
+        pins: [execIn, execNext, sentenceCpsIn],
         async execute(ctx) {
-            await requireHostApi(ctx).game.setSentenceSpeed(resolveSentenceSpeed(ctx));
+            await requireHostApi(ctx).game.setSentenceSpeed(resolveSentenceCps(ctx));
             return { nextPort: "next" };
         },
     },
     {
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
-        displayName: "Write Save",
+        displayName: "Save Game",
         category: "Game",
-        keywords: ["game", "save", "write", "slot", "storage"],
+        keywords: ["game", "save", "write", "slot", "storage", "screenshot", "preview"],
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn, execNext, saveIdIn, saveMetadataIn],
+        pins: [execIn, execNext, saveIdIn, saveMetadataIn, saveScreenshotIn],
         async execute(ctx) {
-            await requireHostApi(ctx).game.writeSave(resolveSaveId(ctx), resolveSaveMetadata(ctx));
+            await requireHostApi(ctx).game.writeSave(resolveSaveId(ctx), resolveSaveMetadata(ctx), resolveSaveScreenshot(ctx));
             return { nextPort: "next" };
         },
     },

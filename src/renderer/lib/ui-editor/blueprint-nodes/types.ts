@@ -114,7 +114,8 @@ export type BlueprintInspectorParamKind =
     | "variableRef"
     | "persistentVariableRef"
     | "select"
-    | "imageAsset";
+    | "imageAsset"
+    | "buttonCursor";
 
 export type BlueprintInspectorParamSelectOption = {
     value: string;

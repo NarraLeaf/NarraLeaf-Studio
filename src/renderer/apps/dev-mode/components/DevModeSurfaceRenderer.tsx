@@ -3,8 +3,11 @@ import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
-import type { SurfaceBlueprintBindingContext } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
-import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
+import type {
+    NestedSurfaceRuntime,
+    SurfaceBlueprintBindingContext,
+    SurfaceLifecycleSignals,
+} from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import { SurfaceElementTree } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
@@ -20,6 +23,7 @@ type DevModeSurfaceRendererProps = {
     widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>;
     getWidgetRuntimePatches?: () => Record<string, DevModeWidgetRuntimePatch> | undefined;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
+    surfaceLifecycleSignals?: SurfaceLifecycleSignals;
 };
 
 export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
@@ -33,6 +37,7 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
         widgetRuntimePatches,
         getWidgetRuntimePatches,
         nestedSurfaceRuntime,
+        surfaceLifecycleSignals,
     } =
         props;
     const [, setBindingRenderTick] = useState(0);
@@ -89,6 +94,24 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
         [dispatchSurfaceBlueprintEvent, surface.designSize.height, surface.designSize.width],
     );
 
+    const handleSurfaceRightClick = useCallback(
+        (event: ReactMouseEvent<HTMLDivElement>) => {
+            if (!dispatchSurfaceBlueprintEvent) {
+                return;
+            }
+            const rect = event.currentTarget.getBoundingClientRect();
+            const scaleX = rect.width > 0 ? surface.designSize.width / rect.width : 1;
+            const scaleY = rect.height > 0 ? surface.designSize.height / rect.height : 1;
+            event.stopPropagation();
+            event.preventDefault();
+            void dispatchSurfaceBlueprintEvent("rightClick", {
+                x: (event.clientX - rect.left) * scaleX,
+                y: (event.clientY - rect.top) * scaleY,
+            });
+        },
+        [dispatchSurfaceBlueprintEvent, surface.designSize.height, surface.designSize.width],
+    );
+
     const surfaceShellStyle: CSSProperties = {
         position: "relative",
         width: scaledWidth,
@@ -113,6 +136,7 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
             data-ui-surface-kind={surface.kind}
             style={surfaceShellStyle}
             onClick={handleSurfaceClick}
+            onContextMenu={handleSurfaceRightClick}
         >
             <div style={surfaceStyle}>
                 <SurfaceElementTree
@@ -124,6 +148,7 @@ export function DevModeSurfaceRenderer(props: DevModeSurfaceRendererProps) {
                     blueprintBindingContext={blueprintBindingContext}
                     widgetRuntimePatches={effectiveWidgetRuntimePatches}
                     nestedSurfaceRuntime={nestedSurfaceRuntime}
+                    surfaceLifecycleSignals={surfaceLifecycleSignals}
                 />
             </div>
         </div>

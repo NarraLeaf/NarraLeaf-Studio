@@ -41,6 +41,7 @@ import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostA
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { dispatchSurfaceBlueprintEvent, dispatchGlobalBlueprintEvent } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
+import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import { SurfaceLifecycleManager } from "@/lib/ui-editor/blueprint-runtime/SurfaceLifecycleManager";
 import { getInterface } from "@/lib/app/bridge";
 import {
@@ -58,6 +59,7 @@ import {
 } from "@/lib/ui-editor/runtime/devModeSavePreviewAssets";
 import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
 import { collectDialogFlushElementIds } from "./dialogFlushTargets";
+import { resolveDevModeViewportSize } from "./devModeViewport";
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
@@ -115,6 +117,10 @@ const noopHostAdapter: UIHostAdapter = {
 };
 
 type DevModePageProps = Record<string, unknown>;
+type DevModePagePresentation = "appPage" | "gameOverlay";
+type DevModeOpenSurfaceOptions = {
+    presentation?: DevModePagePresentation;
+};
 
 function cloneDevModePageProps(props: DevModePageProps | undefined): DevModePageProps {
     if (!props) {
@@ -134,6 +140,7 @@ type DevModeNavEntry = {
     direction: PageAnimationNavigationDirection;
     waitForExit: boolean;
     props: DevModePageProps;
+    presentation: DevModePagePresentation;
     exitBehind?: boolean;
 };
 
@@ -329,11 +336,15 @@ function StudioDialogSlotSurface(props: {
     rendererRegistry: ElementRendererRegistry;
     lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
     makeStateAccessors: (surfaceId: string) => SurfaceStateAccessors | null;
-    openSurfaceWithTransition: (surfaceId: string, props?: DevModePageProps) => Promise<void>;
+    openSurfaceWithTransition: (
+        surfaceId: string,
+        props?: DevModePageProps,
+        options?: DevModeOpenSurfaceOptions,
+    ) => Promise<void>;
     closeLayerWithTransition: () => Promise<void>;
     quitApplication: () => Promise<void>;
     startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
-    writeSaveInGame: (id: string, metadata?: unknown) => Promise<void>;
+    writeSaveInGame: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
     loadSaveInGame: (id: string) => Promise<void>;
     deleteSaveInGame: (id: string) => Promise<void>;
     listSaveIds: () => Promise<string[]>;
@@ -347,7 +358,7 @@ function StudioDialogSlotSurface(props: {
     showDialogInGame: () => Promise<void>;
     hideDialogInGame: () => Promise<void>;
     toggleDialogDisplayInGame: () => Promise<void>;
-    setSentenceSpeedInGame: (speed: number) => Promise<void>;
+    setSentenceSpeedInGame: (cps: number) => Promise<void>;
     setDialogVirtualClickTarget: (target: HTMLElement | null) => void;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
@@ -420,6 +431,7 @@ function StudioDialogSlotSurface(props: {
             onGetSavePreview: getSavePreview,
             onGetNametag: getCurrentNametag,
             onIsInGame: isInGame,
+            onIsGameOverlay: () => true,
             onQuitGame: quitGame,
             onNext: nextInGame,
             onSkip: skipInGame,
@@ -598,11 +610,15 @@ function DevModeAppSurfaceLayer(props: {
     scale: number;
     lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
     makeStateAccessors: (surfaceId: string) => SurfaceStateAccessors | null;
-    openSurfaceWithTransition: (surfaceId: string, props?: DevModePageProps) => Promise<void>;
+    openSurfaceWithTransition: (
+        surfaceId: string,
+        props?: DevModePageProps,
+        options?: DevModeOpenSurfaceOptions,
+    ) => Promise<void>;
     closeLayerWithTransition: () => Promise<void>;
     quitApplication: () => Promise<void>;
     startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
-    writeSaveInGame: (id: string, metadata?: unknown) => Promise<void>;
+    writeSaveInGame: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
     loadSaveInGame: (id: string) => Promise<void>;
     deleteSaveInGame: (id: string) => Promise<void>;
     listSaveIds: () => Promise<string[]>;
@@ -616,7 +632,7 @@ function DevModeAppSurfaceLayer(props: {
     showDialogInGame: () => Promise<void>;
     hideDialogInGame: () => Promise<void>;
     toggleDialogDisplayInGame: () => Promise<void>;
-    setSentenceSpeedInGame: (speed: number) => Promise<void>;
+    setSentenceSpeedInGame: (cps: number) => Promise<void>;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScope: Record<string, Record<string, DevModeWidgetRuntimePatch>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
@@ -667,6 +683,11 @@ function DevModeAppSurfaceLayer(props: {
     } = props;
     const runtimeScopeId = entry.key || surface.id;
     const hostAdapterRef = useRef<UIHostAdapter | null>(null);
+    const [surfaceLifecycleSignals, setSurfaceLifecycleSignals] = useState({
+        beforeSurfaceExit: 0,
+        afterSurfaceEnter: 0,
+    });
+    const surfaceTransitionStateRef = useRef({ isEntering: true, isExiting: false });
 
     const hostApi = useMemo(() => {
         if (!bpCore) {
@@ -691,6 +712,7 @@ function DevModeAppSurfaceLayer(props: {
             onGetSavePreview: getSavePreview,
             onGetNametag: getCurrentNametag,
             onIsInGame: isInGame,
+            onIsGameOverlay: () => entry.presentation === "gameOverlay",
             onQuitGame: quitGame,
             onNext: nextInGame,
             onSkip: skipInGame,
@@ -720,6 +742,7 @@ function DevModeAppSurfaceLayer(props: {
         bpCore,
         closeLayerWithTransition,
         entry.props,
+        entry.presentation,
         openSurfaceWithTransition,
         quitApplication,
         runtimeScopeId,
@@ -746,18 +769,22 @@ function DevModeAppSurfaceLayer(props: {
     ]);
 
     const hostAdapter = useMemo((): UIHostAdapter => {
-        if (!bpCore || !hostApi) {
-            return staticDevHostAdapter(surface);
+        const adapter =
+            !bpCore || !hostApi
+                ? staticDevHostAdapter(surface)
+                : createDevModeBlueprintHostAdapter({
+                      bundle,
+                      surface,
+                      runtimeScopeId,
+                      scopeBridge: bpCore.scopeBridge,
+                      debug: bpCore.debug,
+                      hostApi,
+                      executionManager: bpCore.executionManager,
+                  });
+        if (adapter.blueprintRuntime) {
+            adapter.blueprintRuntime.getSurfaceTransitionState = () => surfaceTransitionStateRef.current;
         }
-        return createDevModeBlueprintHostAdapter({
-            bundle,
-            surface,
-            runtimeScopeId,
-            scopeBridge: bpCore.scopeBridge,
-            debug: bpCore.debug,
-            hostApi,
-            executionManager: bpCore.executionManager,
-        });
+        return adapter;
     }, [bpCore, bundle, hostApi, runtimeScopeId, surface]);
 
     useEffect(() => {
@@ -800,6 +827,41 @@ function DevModeAppSurfaceLayer(props: {
         [reducedMotion, surface.settings?.pageAnimation],
     );
 
+    const dispatchSurfaceTransitionEvent = useCallback(
+        (eventName: "beforeSurfaceExit" | "afterSurfaceEnter") => {
+            surfaceTransitionStateRef.current =
+                eventName === "beforeSurfaceExit"
+                    ? { isEntering: false, isExiting: true }
+                    : { isEntering: false, isExiting: false };
+            void hostAdapter.blueprintRuntime?.dispatchSurfaceBlueprintEvent?.(eventName);
+            setSurfaceLifecycleSignals(prev => ({
+                ...prev,
+                [eventName]: prev[eventName] + 1,
+            }));
+        },
+        [hostAdapter],
+    );
+
+    const handleBeforeExit = useCallback(
+        (entryKey: string) => {
+            if (entryKey !== entry.key) {
+                return;
+            }
+            dispatchSurfaceTransitionEvent("beforeSurfaceExit");
+        },
+        [dispatchSurfaceTransitionEvent, entry.key],
+    );
+
+    const handleEnterComplete = useCallback(
+        (entryKey: string) => {
+            if (entryKey === entry.key) {
+                dispatchSurfaceTransitionEvent("afterSurfaceEnter");
+            }
+            onEnterComplete(entryKey);
+        },
+        [dispatchSurfaceTransitionEvent, entry.key, onEnterComplete],
+    );
+
     return (
         <SurfaceAnimationLayer
             prepaintKey={entry.key}
@@ -810,7 +872,8 @@ function DevModeAppSurfaceLayer(props: {
             exitZIndex={entry.exitBehind ? 0 : 30 + layerIndex}
             resolveExit={resolveExit}
             onPrepaintReady={onPrepaintReady}
-            onEnterComplete={onEnterComplete}
+            onBeforeExit={handleBeforeExit}
+            onEnterComplete={handleEnterComplete}
         >
             <DevModeSurfaceLifecycleLayer
                 bpCore={bpCore}
@@ -834,6 +897,7 @@ function DevModeAppSurfaceLayer(props: {
                             widgetPatchesByScopeRef.current[runtimeScopeId] ?? widgetPatchesByScope[runtimeScopeId] ?? {}
                         }
                         nestedSurfaceRuntime={nestedSurfaceRuntime}
+                        surfaceLifecycleSignals={surfaceLifecycleSignals}
                     />
                 </WidgetRuntimeStateProvider>
             </DevModeSurfaceLifecycleLayer>
@@ -854,7 +918,7 @@ export function DevModeContent(props: DevModeContentProps) {
         onDismissSessionError,
     } = props;
     const uiDocument: UIDocument | null = bundle?.ui.uidoc ?? null;
-    const bpCore = useDevModeBlueprintRuntime(bundle);
+    const bpCore = useDevModeBlueprintRuntime(bundle, projectPath);
     const prefersReducedMotion = useReducedMotion();
     const [navStack, setNavStack] = useState<DevModeNavEntry[]>([]);
     const [visibleEntries, setVisibleEntries] = useState<DevModeNavEntry[]>([]);
@@ -891,7 +955,7 @@ export function DevModeContent(props: DevModeContentProps) {
     const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
     const activeStoryRevisionRef = useRef<number | null>(null);
     const startStoryInGameRef = useRef<((request: DevModeStartStoryRequest) => Promise<void>) | null>(null);
-    const writeSaveInGameRef = useRef<((id: string, metadata?: unknown) => Promise<void>) | null>(null);
+    const writeSaveInGameRef = useRef<((id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>) | null>(null);
     const loadSaveInGameRef = useRef<((id: string) => Promise<void>) | null>(null);
     const deleteSaveInGameRef = useRef<((id: string) => Promise<void>) | null>(null);
     const listSaveIdsRef = useRef<(() => Promise<string[]>) | null>(null);
@@ -906,7 +970,7 @@ export function DevModeContent(props: DevModeContentProps) {
     const showDialogInGameRef = useRef<(() => Promise<void>) | null>(null);
     const hideDialogInGameRef = useRef<(() => Promise<void>) | null>(null);
     const toggleDialogDisplayInGameRef = useRef<(() => Promise<void>) | null>(null);
-    const setSentenceSpeedInGameRef = useRef<((speed: number) => Promise<void>) | null>(null);
+    const setSentenceSpeedInGameRef = useRef<((cps: number) => Promise<void>) | null>(null);
     const nlrLiveGameRef = useRef<LiveGame | null>(null);
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
@@ -956,6 +1020,7 @@ export function DevModeContent(props: DevModeContentProps) {
                 direction: "forward",
                 waitForExit: false,
                 props: {},
+                presentation: "appPage",
             };
             pendingWaitEntryRef.current = null;
             pendingUnderlayReadyKeyRef.current = null;
@@ -1118,13 +1183,13 @@ export function DevModeContent(props: DevModeContentProps) {
             completeTransitionWait();
             const waitForEnter = options?.waitForEnter ?? true;
             const waitForExit = options?.waitForExit ?? true;
-            if (durationMs <= 0 || (!waitForEnter && !waitForExit)) {
+            if (!waitForEnter && !waitForExit) {
                 return Promise.resolve();
             }
             return new Promise(resolve => {
                 const timeoutId = setTimeout(() => {
                     completeTransitionWait();
-                }, durationMs + SURFACE_PREPAINT_TIMEOUT_MS + 180);
+                }, Math.max(0, durationMs) + SURFACE_PREPAINT_TIMEOUT_MS + 180);
                 transitionWaitRef.current = {
                     resolve,
                     timeoutId,
@@ -1185,6 +1250,7 @@ export function DevModeContent(props: DevModeContentProps) {
             direction: PageAnimationNavigationDirection,
             waitForExit: boolean,
             props?: DevModePageProps,
+            presentation: DevModePagePresentation = "appPage",
         ): DevModeNavEntry => {
             navEntrySeqRef.current += 1;
             return {
@@ -1194,6 +1260,7 @@ export function DevModeContent(props: DevModeContentProps) {
                 direction,
                 waitForExit,
                 props: cloneDevModePageProps(props),
+                presentation,
             };
         },
         [runtimeSessionKey],
@@ -1226,13 +1293,19 @@ export function DevModeContent(props: DevModeContentProps) {
     }, []);
 
     const openSurfaceWithTransition = useCallback(
-        (nextSurfaceId: string, props?: DevModePageProps): Promise<void> => {
+        (
+            nextSurfaceId: string,
+            props?: DevModePageProps,
+            options?: DevModeOpenSurfaceOptions,
+        ): Promise<void> => {
             const from = activeSurfaceRef.current;
             const target = uiDocument?.surfaces.find(s => s.id === nextSurfaceId) ?? null;
             const currentEntry = activeEntryRef.current;
             const currentHiddenForGame = isGameHiddenEntry(currentEntry);
             const waitForExit = currentHiddenForGame ? false : shouldWaitForExit(from);
-            const nextEntry = createNavEntry(nextSurfaceId, "forward", waitForExit, props);
+            const presentation =
+                options?.presentation ?? (studioPageHiddenForGameRef.current ? "gameOverlay" : "appPage");
+            const nextEntry = createNavEntry(nextSurfaceId, "forward", waitForExit, props, presentation);
             transitionDirectionRef.current = "forward";
             const reduced = prefersReducedMotion === true;
             const exitDurationMs = currentHiddenForGame
@@ -1451,10 +1524,10 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [requireActiveLiveGame]);
     toggleDialogDisplayInGameRef.current = toggleDialogDisplayInGame;
 
-    const setSentenceSpeedInGame = useCallback(async (speed: number): Promise<void> => {
-        const value = typeof speed === "number" ? speed : Number(speed);
+    const setSentenceSpeedInGame = useCallback(async (cps: number): Promise<void> => {
+        const value = typeof cps === "number" ? cps : Number(cps);
         if (!Number.isFinite(value) || value <= 0) {
-            throw new Error("Set Sentence Speed: speed must be a positive number");
+            throw new Error("Set Sentence Speed: CPS must be a positive number");
         }
         requireActiveLiveGame("Set Sentence Speed").game.preference.setPreference("cps", value);
     }, [requireActiveLiveGame]);
@@ -1474,11 +1547,11 @@ export function DevModeContent(props: DevModeContentProps) {
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         clearCurrentDialogNametag();
-        setNlrSession(null);
+        // Keep the Player mounted as a visual underlay until the return Page is ready in front.
         setGameStageVisible(false);
-        const wait = openSurfaceWithTransition(targetSurfaceId);
+        await openSurfaceWithTransition(targetSurfaceId, undefined, { presentation: "appPage" });
+        setNlrSession(null);
         clearGameHiddenStudioPages();
-        await wait;
     }, [clearCurrentDialogNametag, clearGameHiddenStudioPages, openSurfaceWithTransition, rejectPendingGameStarts]);
     quitGameRef.current = quitGame;
 
@@ -1490,19 +1563,17 @@ export function DevModeContent(props: DevModeContentProps) {
     }, []);
     quitApplicationRef.current = quitApplication;
 
-    const writeSaveInGame = useCallback(async (id: string, metadata?: unknown): Promise<void> => {
-        const projectRef = requireSaveProjectRef("Write Save");
-        const liveGame = requireActiveLiveGame("Write Save");
+    const writeSaveInGame = useCallback(async (id: string, metadata?: unknown, screenshot?: boolean): Promise<void> => {
+        const projectRef = requireSaveProjectRef("Save Game");
+        const liveGame = requireActiveLiveGame("Save Game");
         const savedGame = liveGame.serialize();
         let capture: string | undefined;
-        try {
-            capture = await liveGame.captureJpeg();
-        } catch (error) {
-            console.warn("[DevMode][Save] Capture failed; writing save without preview", error);
+        if (screenshot === true) {
+            capture = await liveGame.capturePng();
         }
         const result = await getInterface().devMode.save.write(projectRef, id, savedGame, capture, metadata);
         if (!result.success) {
-            throw new Error(result.error ?? `Write Save failed: ${id}`);
+            throw new Error(result.error ?? `Save Game failed: ${id}`);
         }
     }, [requireActiveLiveGame, requireSaveProjectRef]);
     writeSaveInGameRef.current = writeSaveInGame;
@@ -1654,9 +1725,9 @@ export function DevModeContent(props: DevModeContentProps) {
                   startStoryInGame: request =>
                       startStoryInGameRef.current?.(request) ??
                       Promise.reject(new Error("Start Game is not available")),
-                  writeSaveInGame: (id, metadata) =>
-                      writeSaveInGameRef.current?.(id, metadata) ??
-                      Promise.reject(new Error("Write Save is not available")),
+                  writeSaveInGame: (id, metadata, screenshot) =>
+                      writeSaveInGameRef.current?.(id, metadata, screenshot) ??
+                      Promise.reject(new Error("Save Game is not available")),
                   loadSaveInGame: id =>
                       loadSaveInGameRef.current?.(id) ??
                       Promise.reject(new Error("Load Save is not available")),
@@ -1692,8 +1763,8 @@ export function DevModeContent(props: DevModeContentProps) {
                   toggleDialogDisplayInGame: () =>
                       toggleDialogDisplayInGameRef.current?.() ??
                       Promise.reject(new Error("Toggle Dialog Display is not available")),
-                  setSentenceSpeedInGame: speed =>
-                      setSentenceSpeedInGameRef.current?.(speed) ??
+                  setSentenceSpeedInGame: cps =>
+                      setSentenceSpeedInGameRef.current?.(cps) ??
                       Promise.reject(new Error("Set Sentence Speed is not available")),
                   setDialogVirtualClickTarget: setNlrDialogVirtualClickTarget,
                   setWidgetPatchesByScope,
@@ -1835,6 +1906,7 @@ export function DevModeContent(props: DevModeContentProps) {
             onGetSavePreview: getSavePreview,
             onGetNametag: getCurrentNametag,
             onIsInGame: isInGame,
+            onIsGameOverlay: () => activeEntry?.presentation === "gameOverlay",
             onQuitGame: quitGame,
             onNext: nextInGame,
             onSkip: skipInGame,
@@ -1863,6 +1935,7 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [
         activeRuntimeScopeId,
         activeEntry?.props,
+        activeEntry?.presentation,
         bpCore,
         uiDocument,
         activeSurface,
@@ -1922,23 +1995,32 @@ export function DevModeContent(props: DevModeContentProps) {
                 return;
             }
             const eventPayload = keyboardBlueprintPayload(event);
+            const eventControl = getOrCreateDomEventPropagationControl(event);
+            if (eventControl.isPropagationStopped()) {
+                return;
+            }
             void (async () => {
                 await dispatchGlobalBlueprintEvent({
                     blueprintDocument: bundle.ui.localBlueprints,
                     eventName,
                     eventPayload,
+                    eventControl,
                     hostAdapter,
                     debug: bpCore.debug,
                     getSurfaceState: acc.get,
                     setSurfaceState: acc.set,
                     executionManager: bpCore.executionManager,
                 });
+                if (eventControl.isPropagationStopped()) {
+                    return;
+                }
                 await dispatchSurfaceBlueprintEvent({
                     blueprintDocument: bundle.ui.localBlueprints,
                     surfaceId: activeSurface.id,
                     runtimeScopeId,
                     eventName,
                     eventPayload,
+                    eventControl,
                     hostAdapter,
                     debug: bpCore.debug,
                     getSurfaceState: acc.get,
@@ -2028,6 +2110,8 @@ export function DevModeContent(props: DevModeContentProps) {
                     onGetSavePreview: getSavePreview,
                     onGetNametag: getCurrentNametag,
                     onIsInGame: isInGame,
+                    onIsGameOverlay: () =>
+                        input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
                     onQuitGame: quitGame,
                     onNext: nextInGame,
                     onSkip: skipInGame,
@@ -2169,8 +2253,12 @@ export function DevModeContent(props: DevModeContentProps) {
         );
     }
 
-    const aspectRatio = activeSurface.designSize.width / activeSurface.designSize.height;
-    const baseWidth = activeSurface.designSize.width;
+    const viewportSize = resolveDevModeViewportSize({
+        activeSurfaceDesignSize: activeSurface.designSize,
+        gameViewport: nlrSession ? { width: nlrSession.width, height: nlrSession.height } : null,
+    });
+    const aspectRatio = viewportSize.width / viewportSize.height;
+    const baseWidth = viewportSize.width;
 
     const uidoc = uiDocument!;
     const reducedMotion = prefersReducedMotion === true;

@@ -4,6 +4,7 @@ import type { UIGraph, UIGraphEntry } from "@shared/types/ui-editor/graph";
 import { registerCoreBlueprintNodes } from "../blueprint-nodes/registerCoreBlueprintNodes";
 import { behaviorNodeRegistry } from "./BehaviorNodeRegistry";
 import type {
+    BehaviorGraphEventControl,
     BehaviorGraphExecutionTrace,
     BehaviorNodeExecuteResult,
     BehaviorNodeExecutionContext,
@@ -25,6 +26,7 @@ export type ExecuteGraphOptions = {
     blueprintLocals?: Record<string, unknown>;
     eventName?: string;
     eventPayload?: Record<string, unknown>;
+    eventControl?: BehaviorGraphEventControl;
     listItemScope?: BehaviorNodeExecutionContext["listItemScope"];
     instanceKey?: string;
     executionOwner?: BehaviorNodeExecutionContext["executionOwner"];
@@ -111,6 +113,7 @@ export async function executeGraph(options: ExecuteGraphOptions): Promise<Execut
             blueprintLocals,
             eventName: options.eventName,
             eventPayload: options.eventPayload,
+            eventControl: options.eventControl,
             signal: options.signal,
             listItemScope: options.listItemScope,
             instanceKey: options.instanceKey,

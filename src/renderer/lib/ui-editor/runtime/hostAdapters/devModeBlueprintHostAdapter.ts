@@ -96,6 +96,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             listItemScope: eventOptions?.listItemScope,
             instanceKey: eventOptions?.instanceKey,
             componentId: eventOptions?.componentId,
+            eventControl: eventOptions?.eventControl,
             hostAdapter: adapter,
             debug,
             getSurfaceState: key => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key),
@@ -103,7 +104,11 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 hostApi.state.set("surface", key, value);
             },
             executionManager,
+            allowClosedScopeExecution: eventOptions?.allowClosedScopeExecution,
         });
+        if (eventOptions?.eventControl?.isPropagationStopped()) {
+            return;
+        }
         if (eventName === "flush" && flushedElement) {
             const target = {
                 surfaceId: surface.id,

@@ -30,6 +30,11 @@ export type BehaviorGraphValueExecution = {
     trackDependency?(dependency: BlueprintValueDependency): void;
 };
 
+export type BehaviorGraphEventControl = {
+    stopPropagation(): void;
+    isPropagationStopped(): boolean;
+};
+
 export type BehaviorNodeExecutionContext = {
     graph: UIGraph;
     entry: UIGraphEntry;
@@ -42,6 +47,7 @@ export type BehaviorNodeExecutionContext = {
     /** Runtime event slot currently being handled, for nodes that need to continue event propagation. */
     eventName?: string;
     eventPayload?: Record<string, unknown>;
+    eventControl?: BehaviorGraphEventControl;
     signal?: AbortSignal;
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;

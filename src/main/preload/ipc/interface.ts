@@ -4,7 +4,8 @@ import { IPCEventType, RequestStatus, WorkspaceMenuAction } from "@shared/types/
 import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults } from "@shared/types/window";
-import type { DevModeEntry, DevModeStatus, DevModeBundle } from "@shared/types/devMode";
+import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload } from "@shared/types/devMode";
+import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { DevModeSaveProjectRef, DevModeSaveRecord } from "@shared/types/devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
@@ -209,6 +210,12 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onMessage(IPCEventType.devModeControlReload, handler),
         onControlError: (handler: (payload: { message: string }) => void) =>
             ipcClient.onMessage(IPCEventType.devModeControlError, handler),
+        onConsoleLog: (handler: (payload: DevModeConsoleLogPayload) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceDevModeConsoleLog, handler),
+        onBlueprintDebugEvent: (handler: (event: BlueprintDebugEvent) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceBlueprintDebugEvent, handler),
+        forwardBlueprintDebugEvent: (payload: DevModeBlueprintDebugEventPayload) =>
+            ipcClient.send(IPCEventType.devModeForwardBlueprintDebugEvent, payload),
         resolveAssetUrl: (assetId: string, assetType?: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>

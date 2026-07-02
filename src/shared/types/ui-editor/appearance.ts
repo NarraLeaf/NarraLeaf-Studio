@@ -143,6 +143,7 @@ export type ButtonAppearancePropertyKey =
     | "effectBlur"
     | "effectBackgroundBlur"
     | "effectShadow"
+    | "effectTextShadow"
     | "effectInnerShadow"
     | "effectBlend"
     | "effectGlow"

@@ -22,6 +22,7 @@ import {
     DevModeStopHandler,
     DevModeResolveAssetUrlHandler,
     DevModeResolveImageAssetUrlHandler,
+    DevModeForwardBlueprintDebugEventHandler,
 } from "./window/handlers/devModeAction";
 import {
     DevModeSaveDeleteHandler,
@@ -133,6 +134,7 @@ export class WindowManager {
         win.registerIPCHandler(new DevModeReloadHandler());
         win.registerIPCHandler(new DevModeGetStatusHandler());
         win.registerIPCHandler(new DevModeOpenBlueprintInWorkspaceHandler());
+        win.registerIPCHandler(new DevModeForwardBlueprintDebugEventHandler());
         win.registerIPCHandler(new DevModeResolveAssetUrlHandler());
         win.registerIPCHandler(new DevModeResolveImageAssetUrlHandler());
         win.registerIPCHandler(new DevModeSaveWriteHandler());

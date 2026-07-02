@@ -1,5 +1,7 @@
 import {
+    useCallback,
     useEffect,
+    useLayoutEffect,
     useMemo,
     useRef,
     useState,
@@ -30,6 +32,7 @@ type SurfaceAnimationLayerProps = {
     exitZIndex?: number;
     resolveExit?: (direction: PageAnimationNavigationDirection) => Record<string, unknown>;
     onPrepaintReady?: (key: string) => void;
+    onBeforeExit?: (key: string) => void;
     onEnterComplete?: (key: string) => void;
     children: ReactNode;
 };
@@ -142,18 +145,48 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
         exitZIndex = 20,
         resolveExit,
         onPrepaintReady,
+        onBeforeExit,
         onEnterComplete,
         children,
     } = props;
     const contentRef = useRef<HTMLDivElement | null>(null);
+    const beforeExitReportedRef = useRef<string | null>(null);
+    const enterCompleteReportedRef = useRef<string | null>(null);
     const isPresent = useIsPresent();
     const prepaintReady = useSurfacePrepaint(prepaintKey, contentRef);
+
+    const reportEnterComplete = useCallback(() => {
+        if (enterCompleteReportedRef.current === prepaintKey) {
+            return;
+        }
+        enterCompleteReportedRef.current = prepaintKey;
+        onEnterComplete?.(prepaintKey);
+    }, [onEnterComplete, prepaintKey]);
+
+    useEffect(() => {
+        beforeExitReportedRef.current = null;
+        enterCompleteReportedRef.current = null;
+    }, [prepaintKey]);
+
+    useLayoutEffect(() => {
+        if (isPresent || beforeExitReportedRef.current === prepaintKey) {
+            return;
+        }
+        beforeExitReportedRef.current = prepaintKey;
+        onBeforeExit?.(prepaintKey);
+    }, [isPresent, onBeforeExit, prepaintKey]);
 
     useEffect(() => {
         if (prepaintReady) {
             onPrepaintReady?.(prepaintKey);
         }
     }, [onPrepaintReady, prepaintKey, prepaintReady]);
+
+    useEffect(() => {
+        if (prepaintReady && isPresent && pageMotion.enterDurationMs <= 0) {
+            reportEnterComplete();
+        }
+    }, [isPresent, pageMotion.enterDurationMs, prepaintReady, reportEnterComplete]);
 
     const variants = useMemo(() => {
         const prepaintTarget = {
@@ -195,7 +228,7 @@ export function SurfaceAnimationLayer(props: SurfaceAnimationLayerProps) {
             data-ui-surface-prepaint={prepaintReady ? "ready" : "pending"}
             onAnimationComplete={definition => {
                 if (definition === "animate" && prepaintReady && isPresent) {
-                    onEnterComplete?.(prepaintKey);
+                    reportEnterComplete();
                 }
             }}
         >

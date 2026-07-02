@@ -1,4 +1,4 @@
-import { isButtonCursorValue } from "@shared/types/ui-editor/appearance";
+import { isButtonCursorValue, type ButtonCursorValue } from "@shared/types/ui-editor/appearance";
 import type {
     AppearanceFieldTransition,
     AppearanceModel,
@@ -70,6 +70,20 @@ export type AppearanceResolveContext = {
 };
 
 export type TextResolvedVisualProps = Omit<TextWidgetProps, "appearance">;
+
+export function resolveButtonCursor(
+    cursor: ButtonCursorValue,
+    interactionDisabled: boolean,
+    canDispatchClick: boolean,
+): ButtonCursorValue {
+    if (interactionDisabled) {
+        return "not-allowed";
+    }
+    if (cursor === "auto") {
+        return canDispatchClick ? "pointer" : "default";
+    }
+    return cursor;
+}
 
 function pickLastMatchingRowValue(rows: AppearanceValueRow[], signals: SystemInteractionSignals): unknown {
     return pickLastMatchingRow(rows, signals)?.value;
@@ -601,6 +615,13 @@ function applyButtonKey(target: ButtonResolvedVisualProps, key: ButtonAppearance
             target.effects = {
                 ...target.effects,
                 effectShadow: normalizeElementEffectValues({ effectShadow: raw }).effectShadow,
+            };
+            break;
+        }
+        case "effectTextShadow": {
+            target.effects = {
+                ...target.effects,
+                effectTextShadow: normalizeElementEffectValues({ effectTextShadow: raw }).effectTextShadow,
             };
             break;
         }

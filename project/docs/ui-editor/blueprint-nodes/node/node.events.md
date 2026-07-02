@@ -2,11 +2,11 @@
 
 除非额外声明，所有参数均为传出引脚值。事件 Head 节点没有执行入口，统一通过 `then` 执行出口继续后续逻辑。
 
-鼠标坐标使用当前元素的本地设计坐标系。Broadcast、Page Event、键盘事件与鼠标事件的传出值均来自当前运行时事件 payload；没有对应 payload 时传出值按 `null` 处理。
+元素鼠标事件坐标使用当前元素的本地设计坐标系；Surface 鼠标事件坐标使用当前 Surface 的设计坐标系。Broadcast、Page Event、键盘事件与鼠标事件的传出值均来自当前运行时事件 payload；没有对应 payload 时传出值按 `null` 处理。
 
 键盘事件由运行时窗口级监听派发，不依赖元素焦点。Global 蓝图、当前 active Surface 蓝图，以及已挂载控件的私有蓝图都会收到对应键盘事件；如果多处都放置事件 Head，它们会分别执行。控件私有蓝图的键盘监听随控件挂载注册，控件卸载时自动移除。
 
-元素事件只从当前元素自己的可交互区域触发，不会默认冒泡接管子元素事件；控件处于禁用或文本编辑等不可交互状态时不会派发对应 Events Head。需要把当前接入的元素事件继续交给父元素时，在子元素的事件图中使用 Element 分类的 `Continue Event Bubble` 节点；它会沿用当前事件名和原始 payload 派发到结构父元素。
+元素事件只从当前元素自己的可交互区域触发，不会默认冒泡接管子元素事件；控件处于禁用或文本编辑等不可交互状态时不会派发对应 Events Head。需要把当前接入的元素事件继续交给父元素时，在子元素的事件图中使用 Element 分类的 `Continue Event Bubble` 节点；它会沿用当前事件名和原始 payload 派发到结构父元素。需要在当前层吃掉事件时，使用 `Stop Event Bubble`；例如叠层 Page 拦截 Space 后，可阻止该按键继续影响背景游戏。
 
 在可视化编辑器中，画布右键 Add Node 菜单会按当前 Blueprint owner 和 widget event slot 显示可用 Events Head。左侧 `Layers > New` 也提供可选的 Event 字段，默认 `-` 表示只创建空图层；只有显式选择事件时才会自动插入对应 Events Head。
 
@@ -29,6 +29,20 @@
 `blueprint.event.head.surfaceUnmount` - 当前 Surface 卸载事件
 
 当 Page 或 Game UI Surface 离开当前运行时 scope、被替换，或 Page 组件实例卸载时触发。
+- `then` - 执行出口
+
+## Before Surface Exit
+
+`blueprint.event.head.beforeSurfaceExit` - Surface 退出动画开始前事件
+
+当当前 Page 或 Page 组件嵌入的子 Page 即将开始退出动画时触发。该事件可用于 Surface 蓝图；也可用于元素私有蓝图，但只有元素蓝图和对应元素在该时刻已挂载且仍存活时才会收到。
+- `then` - 执行出口
+
+## After Surface Enter
+
+`blueprint.event.head.afterSurfaceEnter` - Surface 进入动画结束后事件
+
+当当前 Page 或 Page 组件嵌入的子 Page 完成进入动画后触发。无动画或 reduced motion 时，会在预绘制完成并进入稳定显示状态后触发。该事件可用于 Surface 蓝图；也可用于元素私有蓝图，但只有元素蓝图和对应元素在该时刻已挂载且仍存活时才会收到。
 - `then` - 执行出口
 
 ## On Key Down
@@ -86,11 +100,18 @@
 当支持私有蓝图的元素在 Dev Mode runtime 中完成首次渲染并挂载后触发一次；它不是渲染前 hook。Dev Mode bundle revision 刷新导致对应 Surface / 元素 remount 时会再次触发。在 Blueprint Value 中，`init` 作为初始求值入口；后续可以由隐藏的 Element 属性依赖调度，也可以由 `On Flush` 显式刷新入口调度。
 - `then` - 执行出口
 
+## Unmount
+
+`blueprint.event.head.unmount` - 元素卸载事件
+
+当支持私有蓝图的元素从当前运行时元素树卸载时触发。Surface 关闭或替换、Frame 子 Page 切换、List item 实例移除、元素可见性导致完全不渲染等都会使对应元素实例卸载；运行时 `display: none` 只隐藏并保持挂载，不触发该事件。
+- `then` - 执行出口
+
 ## Mouse Click
 
-`blueprint.event.head.mouseClick` - 元素鼠标点击事件
+`blueprint.event.head.mouseClick` - 鼠标点击事件
 
-当鼠标在元素上完成一次点击时触发。该节点是当前真实点击事件入口；不要新增旧 Click 别名重复节点。
+当鼠标在元素上完成一次点击时触发。用于 Surface 蓝图时，表示当前 Surface 内任意鼠标点击，并输出 Surface 设计坐标。该节点是当前真实点击事件入口；不要新增旧 Click 别名重复节点。
 - `then` - 执行出口
 - `x` - 鼠标 X 坐标
 - `y` - 鼠标 Y 坐标
@@ -164,9 +185,9 @@
 
 ## Right Click
 
-`blueprint.event.head.rightClick` - 元素鼠标右键点击事件
+`blueprint.event.head.rightClick` - 鼠标右键点击事件
 
-当鼠标在元素上触发右键菜单事件时触发。事件成功派发时，默认上下文菜单会被阻止。
+当鼠标在元素上触发右键菜单事件时触发。用于 Surface 蓝图时，表示当前 Surface 内任意鼠标右键点击，并输出 Surface 设计坐标。事件成功派发时，默认上下文菜单会被阻止。
 - `then` - 执行出口
 - `x` - 鼠标 X 坐标
 - `y` - 鼠标 Y 坐标

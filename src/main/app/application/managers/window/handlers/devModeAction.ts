@@ -156,3 +156,41 @@ export class DevModeOpenBlueprintInWorkspaceHandler extends IPCHandler<IPCEventT
         return this.success();
     }
 }
+
+export class DevModeForwardBlueprintDebugEventHandler extends IPCHandler<IPCEventType.devModeForwardBlueprintDebugEvent> {
+    readonly name = IPCEventType.devModeForwardBlueprintDebugEvent;
+    readonly type = IPCMessageType.message;
+
+    public handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.devModeForwardBlueprintDebugEvent]["data"],
+    ): RequestStatus<never> {
+        if (window.getWindowType() !== WindowAppType.DevMode) {
+            return this.failed("Invalid window");
+        }
+
+        const devWindow = window as AppWindow<WindowAppType.DevMode>;
+        const props = devWindow.getProps();
+        if (!pathsEqual(props.projectPath, data.projectPath)) {
+            return this.failed("Project mismatch");
+        }
+
+        const workspaceWindow = window
+            .getApp()
+            .windowManager.getWindows()
+            .find(
+                w =>
+                    w.getWindowType() === WindowAppType.Workspace &&
+                    !w.isDestroyed() &&
+                    !w.isClosed() &&
+                    pathsEqual(w.getProps().projectPath, data.projectPath),
+            );
+
+        if (!workspaceWindow) {
+            return this.success(void 0 as never);
+        }
+
+        workspaceWindow.sendIpcEvent(IPCEventType.workspaceBlueprintDebugEvent, data.event);
+        return this.success(void 0 as never);
+    }
+}
