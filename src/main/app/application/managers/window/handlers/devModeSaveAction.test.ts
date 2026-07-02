@@ -6,6 +6,7 @@ import { UserDataNamespace } from "@shared/types/constants";
 import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
 import type { AppWindow } from "../appWindow";
 import {
+    DevModeSaveDeleteHandler,
     DevModeSaveListIdsHandler,
     DevModeSaveReadHandler,
     DevModeSaveReadPreviewHandler,
@@ -58,6 +59,7 @@ describe("dev mode save IPC handlers", () => {
         const read = new DevModeSaveReadHandler();
         const list = new DevModeSaveListIdsHandler();
         const preview = new DevModeSaveReadPreviewHandler();
+        const deleteSave = new DevModeSaveDeleteHandler();
         const projectA: DevModeSaveProjectRef = { projectIdentifier: "project-a", projectPath: "/tmp/project" };
         const projectB: DevModeSaveProjectRef = { projectIdentifier: "project-b", projectPath: "/tmp/project" };
 
@@ -75,6 +77,7 @@ describe("dev mode save IPC handlers", () => {
                 id: "slot 1",
                 savedGame: { scene: "later" },
                 capture: "data:image/jpeg;base64,two",
+                metadata: ["chapter", 2, { route: "b" }],
             }),
         ).resolves.toMatchObject({ success: true });
 
@@ -86,6 +89,7 @@ describe("dev mode save IPC handlers", () => {
                         id: "slot 1",
                         type: "save",
                         capture: "data:image/jpeg;base64,two",
+                        user: ["chapter", 2, { route: "b" }],
                     },
                     savedGame: { scene: "later" },
                 },
@@ -104,9 +108,29 @@ describe("dev mode save IPC handlers", () => {
             data: { ids: [] },
         });
 
+        const filesBeforeDelete = await listAllFiles(path.join(tempDir, UserDataNamespace.DevModeSaves));
+        expect(filesBeforeDelete).toHaveLength(1);
+        expect(filesBeforeDelete[0]).not.toContain("slot 1");
+
+        await expect(deleteSave.handle(window, { projectRef: projectA, id: "slot 1" })).resolves.toEqual({
+            success: true,
+            data: { deleted: true },
+        });
+        await expect(deleteSave.handle(window, { projectRef: projectA, id: "slot 1" })).resolves.toEqual({
+            success: true,
+            data: { deleted: false },
+        });
+        await expect(list.handle(window, { projectRef: projectA })).resolves.toEqual({
+            success: true,
+            data: { ids: [] },
+        });
+        await expect(read.handle(window, { projectRef: projectA, id: "slot 1" })).resolves.toEqual({
+            success: true,
+            data: { record: null },
+        });
+
         const files = await listAllFiles(path.join(tempDir, UserDataNamespace.DevModeSaves));
-        expect(files).toHaveLength(1);
-        expect(files[0]).not.toContain("slot 1");
+        expect(files).toHaveLength(0);
     });
 
     it("rejects unsafe ids and skips corrupted files when listing", async () => {
@@ -114,12 +138,16 @@ describe("dev mode save IPC handlers", () => {
         const write = new DevModeSaveWriteHandler();
         const read = new DevModeSaveReadHandler();
         const list = new DevModeSaveListIdsHandler();
+        const deleteSave = new DevModeSaveDeleteHandler();
         const projectRef: DevModeSaveProjectRef = { projectPath: "/tmp/project" };
 
         await expect(write.handle(window, { projectRef, id: "bad/id", savedGame: {} })).resolves.toMatchObject({
             success: false,
         });
         await expect(read.handle(window, { projectRef, id: ".." })).resolves.toMatchObject({
+            success: false,
+        });
+        await expect(deleteSave.handle(window, { projectRef, id: "../bad" })).resolves.toMatchObject({
             success: false,
         });
 

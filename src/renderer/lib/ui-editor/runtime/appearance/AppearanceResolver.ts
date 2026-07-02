@@ -746,6 +746,20 @@ function isUsableAppearance(appearance: AppearanceModel | null | undefined): app
     return Boolean(appearance && appearance.variants.length > 0);
 }
 
+const IMAGE_FILL_DISPLAYABLE_OPACITY_KEYS = ["fillOpacity", "transformOpacity"] as const;
+const TRANSFORM_DISPLAYABLE_OPACITY_KEYS = ["transformOpacity"] as const;
+
+export function resolveImageDisplayableOpacityKeys(
+    element: UIElement,
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext,
+): readonly string[] {
+    const resolved = resolveImageRectangleLike(element, appearance, ctx);
+    return resolved.fillType === "image"
+        ? IMAGE_FILL_DISPLAYABLE_OPACITY_KEYS
+        : TRANSFORM_DISPLAYABLE_OPACITY_KEYS;
+}
+
 function resolveAppearanceOpacityFromKeys(
     variant: ReturnType<typeof resolveActiveVariant>,
     ctx: AppearanceResolveContext,
@@ -895,16 +909,27 @@ export function resolveImageRectangleLike(
         }
         applyContainerKey(next, key, raw);
     }
+    // Image-fill opacity doubles as Displayable opacity for image backgrounds; color backgrounds still need it as fill alpha.
+    if (next.fillType === "color") {
+        const fillOpacityGroup = variant.propertyGroups.find(group => group.key === "fillOpacity");
+        const raw = fillOpacityGroup ? pickLastMatchingRowValue(fillOpacityGroup.rows, ctx.signals) : undefined;
+        if (raw !== undefined) {
+            applyContainerKey(next, "fillOpacity", raw);
+        }
+    }
     return next;
 }
 
 /** Same transition map as container chrome (image reuses container appearance keys). */
 export function resolveImageAppearanceTransitions(
     appearance: AppearanceModel | null | undefined,
-    ctx: AppearanceResolveContext
+    ctx: AppearanceResolveContext,
+    resolvedRectangleLike?: Pick<RectangleLikeProps, "fillType">,
 ): Partial<Record<ContainerAppearancePropertyKey, AppearanceFieldTransition>> {
     const transitions = resolveContainerAppearanceTransitions(appearance, ctx);
-    delete transitions.fillOpacity;
+    if (resolvedRectangleLike?.fillType !== "color") {
+        delete transitions.fillOpacity;
+    }
     delete transitions.imageFill;
     return transitions;
 }

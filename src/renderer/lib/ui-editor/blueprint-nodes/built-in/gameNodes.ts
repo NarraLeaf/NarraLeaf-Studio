@@ -1,6 +1,8 @@
 import {
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
@@ -28,6 +30,13 @@ const saveIdIn: BlueprintNodePinDef = {
     label: "Id",
     allowInlineLiteral: true,
 };
+const saveMetadataIn: BlueprintNodePinDef = {
+    id: "metadata",
+    kind: "input",
+    semantic: "data",
+    valueType: "json",
+    label: "Metadata",
+};
 const sentenceSpeedIn: BlueprintNodePinDef = {
     id: "speed",
     kind: "input",
@@ -51,6 +60,29 @@ function resolveSaveId(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>
         throw new BlueprintGraphExecutionError("Save id is required", ctx.node.id);
     }
     return id;
+}
+
+function cloneJsonValue(value: unknown): unknown {
+    if (value === undefined) {
+        return null;
+    }
+    try {
+        const serialized = JSON.stringify(value);
+        return serialized === undefined ? null : JSON.parse(serialized);
+    } catch {
+        return null;
+    }
+}
+
+function resolveSaveMetadata(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): unknown {
+    const value = resolveDataPinValue(ctx.graph, ctx.node.id, "metadata", ctx.params, ctx.blueprintLocals, 0, {
+        hostAdapter: ctx.hostAdapter,
+        eventPayload: ctx.eventPayload,
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
+        executionOwner: ctx.executionOwner,
+    });
+    return cloneJsonValue(value);
 }
 
 function resolveSentenceSpeed(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): number {
@@ -184,9 +216,9 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn, execNext, saveIdIn],
+        pins: [execIn, execNext, saveIdIn, saveMetadataIn],
         async execute(ctx) {
-            await requireHostApi(ctx).game.writeSave(resolveSaveId(ctx));
+            await requireHostApi(ctx).game.writeSave(resolveSaveId(ctx), resolveSaveMetadata(ctx));
             return { nextPort: "next" };
         },
     },
@@ -202,6 +234,20 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         async execute(ctx) {
             await requireHostApi(ctx).game.loadSave(resolveSaveId(ctx));
             return { nextPort: undefined };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
+        displayName: "Delete Save",
+        category: "Game",
+        keywords: ["game", "save", "delete", "remove", "slot", "storage"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext, saveIdIn],
+        async execute(ctx) {
+            await requireHostApi(ctx).game.deleteSave(resolveSaveId(ctx));
+            return { nextPort: "next" };
         },
     },
     {
@@ -228,6 +274,34 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             return {
                 nextPort: "next",
                 outputValues: { ids },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
+        displayName: "Get Save Metadata",
+        category: "Game",
+        keywords: ["game", "save", "metadata", "json", "slot"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            saveIdIn,
+            {
+                id: "metadata",
+                kind: "output",
+                semantic: "data",
+                valueType: "json",
+                label: "Metadata",
+            },
+        ],
+        async execute(ctx) {
+            const metadata = await requireHostApi(ctx).game.getSaveMetadata(resolveSaveId(ctx));
+            return {
+                nextPort: "next",
+                outputValues: { metadata },
             };
         },
     },

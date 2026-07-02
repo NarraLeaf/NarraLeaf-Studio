@@ -24,6 +24,7 @@ import {
     DevModeResolveImageAssetUrlHandler,
 } from "./window/handlers/devModeAction";
 import {
+    DevModeSaveDeleteHandler,
     DevModeSaveListIdsHandler,
     DevModeSaveReadHandler,
     DevModeSaveReadPreviewHandler,
@@ -138,6 +139,7 @@ export class WindowManager {
         win.registerIPCHandler(new DevModeSaveReadHandler());
         win.registerIPCHandler(new DevModeSaveListIdsHandler());
         win.registerIPCHandler(new DevModeSaveReadPreviewHandler());
+        win.registerIPCHandler(new DevModeSaveDeleteHandler());
 
         // Register blueprint persistent variable storage handlers
         win.registerIPCHandler(new BlueprintPersistenceGetAllHandler());

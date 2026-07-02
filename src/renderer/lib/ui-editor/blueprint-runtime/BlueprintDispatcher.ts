@@ -156,7 +156,7 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.call", functionId: "game.startStory" });
                     input.debug.emit({ type: "function.return", functionId: "game.startStory" });
                 },
-                writeSave: async (_id: string) => {
+                writeSave: async (_id: string, _metadata?: unknown) => {
                     input.debug.emit({ type: "function.call", functionId: "game.writeSave" });
                     input.debug.emit({ type: "function.return", functionId: "game.writeSave" });
                 },
@@ -164,10 +164,19 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.call", functionId: "game.loadSave" });
                     input.debug.emit({ type: "function.return", functionId: "game.loadSave" });
                 },
+                deleteSave: async (_id: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.deleteSave" });
+                    input.debug.emit({ type: "function.return", functionId: "game.deleteSave" });
+                },
                 listSaveIds: async () => {
                     input.debug.emit({ type: "function.call", functionId: "game.listSaveIds" });
                     input.debug.emit({ type: "function.return", functionId: "game.listSaveIds" });
                     return [];
+                },
+                getSaveMetadata: async (_id: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.getSaveMetadata" });
+                    input.debug.emit({ type: "function.return", functionId: "game.getSaveMetadata" });
+                    return null;
                 },
                 getSavePreview: async (_id: string) => {
                     input.debug.emit({ type: "function.call", functionId: "game.getSavePreview" });

@@ -11,6 +11,7 @@ import { createInitialImageAppearanceFromProps } from "@/lib/ui-editor/widget-mo
 import { ScopeStoreBridge } from "./ScopeStoreBridge";
 import { createDevModeBlueprintHostApi, type DevModeWidgetRuntimePatch } from "./BlueprintHostApiBridge";
 import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
+import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 
 function createDocument(): UIDocument {
@@ -116,6 +117,12 @@ function createHostApi(options?: {
     frameParams?: Record<string, unknown>;
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
     onWidgetPatch?: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
+    onWriteSave?: (id: string, metadata: unknown) => Promise<void> | void;
+    onLoadSave?: (id: string) => Promise<void> | void;
+    onDeleteSave?: (id: string) => Promise<void> | void;
+    onListSaveIds?: () => Promise<string[]> | string[];
+    onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
+    onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
     onGetNametag?: () => string | null;
     onNext?: () => Promise<void> | void;
     onSkip?: () => Promise<void> | void;
@@ -129,6 +136,12 @@ function createHostApi(options?: {
         runtimeScopeId: options?.runtimeScopeId,
         frameParams: options?.frameParams,
         onFrameEmit: options?.onFrameEmit,
+        onWriteSave: options?.onWriteSave,
+        onLoadSave: options?.onLoadSave,
+        onDeleteSave: options?.onDeleteSave,
+        onListSaveIds: options?.onListSaveIds,
+        onGetSaveMetadata: options?.onGetSaveMetadata,
+        onGetSavePreview: options?.onGetSavePreview,
         onGetNametag: options?.onGetNametag,
         onNext: options?.onNext,
         onSkip: options?.onSkip,
@@ -216,6 +229,42 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(speeds).toEqual([24]);
     });
 
+    it("routes game save operations through callbacks with normalized ids", async () => {
+        const writtenIds: string[] = [];
+        const writtenMetadata: unknown[] = [];
+        const loadedIds: string[] = [];
+        const deletedIds: string[] = [];
+        const metadata = ["route", { id: "a" }];
+        const preview = { kind: "imageAsset" as const, assetId: "dev-mode-save-preview:slot-a" };
+        const hostApi = createHostApi({
+            onWriteSave: (id, value) => {
+                writtenIds.push(id);
+                writtenMetadata.push(value);
+            },
+            onLoadSave: id => {
+                loadedIds.push(id);
+            },
+            onDeleteSave: id => {
+                deletedIds.push(id);
+            },
+            onListSaveIds: () => ["slot-b", "slot-a"],
+            onGetSaveMetadata: id => id === "slot-a" ? metadata : null,
+            onGetSavePreview: id => id === "slot-a" ? preview : null,
+        });
+
+        await hostApi.game.writeSave(" slot-a ", metadata);
+        await hostApi.game.loadSave(" slot-b ");
+        await hostApi.game.deleteSave(" slot-a ");
+
+        expect(writtenIds).toEqual(["slot-a"]);
+        expect(writtenMetadata).toEqual([metadata]);
+        expect(loadedIds).toEqual(["slot-b"]);
+        expect(deletedIds).toEqual(["slot-a"]);
+        expect(await hostApi.game.listSaveIds()).toEqual(["slot-b", "slot-a"]);
+        expect(await hostApi.game.getSaveMetadata(" slot-a ")).toEqual(metadata);
+        expect(await hostApi.game.getSavePreview(" slot-a ")).toEqual(preview);
+    });
+
     it("falls back to global nametag state when no dialog callback is installed", () => {
         const scope = new ScopeStoreBridge();
         scope.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, "Narrator");
@@ -290,12 +339,37 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             kind: "imageAsset",
             assetId: "old-image",
         });
+        expect(hostApi.widget.getImageProperties("image")).toMatchObject({
+            fitMode: "cover",
+            cropRect: { leftPct: 0, topPct: 0, widthPct: 100, heightPct: 100 },
+            flipX: false,
+            flipY: false,
+        });
 
         await hostApi.widget.setImageProperties("image", {
             asset: { kind: "imageAsset", assetId: "new-image" },
         });
         expect((document.elements.image?.props?.imageFill as Record<string, unknown>).assetId).toBe("new-image");
         expect(resolvedImageAssetId(document)).toBe("new-image");
+
+        await hostApi.widget.setImageProperties("image", {
+            fitMode: "contain",
+            cropRect: { leftPct: 5, topPct: 6, widthPct: 70, heightPct: 80 },
+            flipX: true,
+            flipY: true,
+        });
+        expect(document.elements.image?.props?.imageFill).toMatchObject({
+            mode: "contain",
+            cropPlacement: { leftPct: 5, topPct: 6, widthPct: 70, heightPct: 80 },
+        });
+        expect(document.elements.image?.props?.imageFlipX).toBe(true);
+        expect(document.elements.image?.props?.imageFlipY).toBe(true);
+        expect(hostApi.widget.getImageProperties("image")).toMatchObject({
+            fitMode: "contain",
+            cropRect: { leftPct: 5, topPct: 6, widthPct: 70, heightPct: 80 },
+            flipX: true,
+            flipY: true,
+        });
 
         await hostApi.widget.setImageProperties("image", { asset: null });
         expect((document.elements.image?.props?.imageFill as Record<string, unknown>).assetId).toBeNull();
@@ -517,6 +591,79 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(onWidgetPatch).toHaveBeenLastCalledWith("image", {
             layout: { opacity: 1 },
         });
+    });
+
+    it("treats Image color fill opacity as chrome background opacity", async () => {
+        const document = createDocument();
+        const image = document.elements.image!;
+        const colorImageProps = {
+            backgroundColor: "#ff0000",
+            fillType: "color",
+            fillOpacity: 1,
+            fillVisible: true,
+            imageFill: { mode: "cover" as const, assetId: null },
+        };
+        image.props = {
+            ...image.props,
+            ...colorImageProps,
+            appearance: createInitialImageAppearanceFromProps(colorImageProps),
+        };
+        const appearance = (image.props as { appearance: AppearanceModel }).appearance;
+        const defaultVariant = appearance.variants[0]!;
+        const transparentColorVariant = {
+            ...defaultVariant,
+            id: "transparent-color",
+            name: "Transparent Color",
+            propertyGroups: defaultVariant.propertyGroups.map(group => {
+                if (group.key === "fillType") {
+                    return { ...group, rows: [{ conditions: null, value: "color" }] };
+                }
+                if (group.key === "fillOpacity") {
+                    return {
+                        ...group,
+                        rows: [{ conditions: null, value: 0.25 }],
+                        transition: {
+                            type: "tween" as const,
+                            durationMs: 120,
+                            delayMs: 0,
+                            easing: "linear" as const,
+                        },
+                    };
+                }
+                return group;
+            }),
+        };
+        appearance.variants = [...appearance.variants, transparentColorVariant];
+
+        const resolved = resolveImageRectangleLike(image, appearance, {
+            variantOverrideId: "transparent-color",
+            signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+        });
+
+        expect(resolved.fillType).toBe("color");
+        expect(resolved.fillOpacity).toBe(0.25);
+        expect(
+            resolveImageAppearanceTransitions(
+                appearance,
+                {
+                    variantOverrideId: "transparent-color",
+                    signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+                },
+                resolved,
+            ).fillOpacity,
+        ).toMatchObject({ durationMs: 120 });
+
+        const store = new WidgetRuntimeStateStore();
+        const hostApi = createHostApi({
+            document,
+            widgetRuntimeStore: store,
+            runtimeScopeId: "scope",
+        });
+
+        await hostApi.widget.setVariant("image", "transparent-color");
+
+        expect(hostApi.widget.getDisplayableProperties("image").opacity).toBe(1);
+        expect(store.getDisplayableMotion("scope\0image")).toBeNull();
     });
 
     it("keeps Image Variant from overriding the Default image fill mode", () => {

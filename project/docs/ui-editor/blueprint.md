@@ -37,9 +37,11 @@ The current core catalog includes event heads, local variables, flow branching a
 | `blueprint.game.next` | `Next` | `Game` | Latent exec node that triggers NarraLeaf's virtual click path for the active live game. |
 | `blueprint.game.skip` | `Skip` | `Game` | Latent exec node that calls NarraLeaf `LiveGame.skipDialog()` for the active game session. |
 | `blueprint.game.setSentenceSpeed` | `Set Sentence Speed` | `Game` | Latent exec node that writes sentence `cps` through the NarraLeaf Preference API. |
-| `blueprint.game.save.write` | `Write Save` | `Game` | Latent node that serializes the active NarraLeaf live game into a project-scoped local save id. |
+| `blueprint.game.save.write` | `Write Save` | `Game` | Latent node that serializes the active NarraLeaf live game into a project-scoped local save id, with optional blueprint `json` metadata. |
 | `blueprint.game.save.load` | `Load Save` | `Game` | Terminal latent node that abandons current game progress and deserializes a project-scoped local save. |
+| `blueprint.game.save.delete` | `Delete Save` | `Game` | Latent node that deletes a project-scoped local save id and continues even when the target is already absent. |
 | `blueprint.game.save.listIds` | `List Saves` | `Game` | Latent node that lists project-scoped local save ids as an `Array<String>` / `string[]` contract over the blueprint `array` pin type. |
+| `blueprint.game.save.getMetadata` | `Get Save Metadata` | `Game` | Latent node that reads user metadata from a project-scoped local save as the standard blueprint `json` pin type. |
 | `blueprint.game.save.getPreview` | `Get Save Preview` | `Game` | Latent node that reads a save preview image as a temporary `ImageAsset|null` without importing it into project assets. |
 | `blueprint.frameWidget.setTargetPage` | `Set Frame Page` | `Frame` | Exec node that switches the current `nl.frame` Page control to the selected Page. It is available in `nl.frame` private blueprints. |
 | `blueprint.element.frame.setTargetPage` | `Set Frame Page` | `Element` | Exec node that switches a bound `nl.frame` Element reference to the selected Page. It can be derived from a bound Frame Element reference. |
@@ -80,7 +82,7 @@ Event-head nodes are surfaced in the canvas add-node palette for the current Blu
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/index.ts` | Built-in node catalog aggregation. Add a new built-in node here when it should ship in Studio by default. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/events/eventHeadNodes.ts` | Built-in event entry-head nodes, including lifecycle, widget input, scroll, broadcast, and Page Event heads. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/collectionNodes.ts` | Built-in Data / Collection array and object pure nodes. |
-| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/gameNodes.ts` | Built-in Game nodes for starting the NarraLeaf runtime and local save read/list/write/preview operations. |
+| `src/renderer/lib/ui-editor/blueprint-nodes/built-in/gameNodes.ts` | Built-in Game nodes for starting the NarraLeaf runtime and local save read/list/write/delete/preview operations. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/listNodes.ts` | Built-in List runtime nodes for content, selection, scrolling, and item context reads. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/frameNodes.ts` | Built-in Page navigation plus Page component host nodes for Frame params and child-to-parent Page events. |
 | `src/renderer/lib/ui-editor/blueprint-nodes/built-in/sliderNodes.ts` | Built-in Slider widget nodes for value/range reads and runtime value/range writes. |
@@ -436,7 +438,7 @@ Host API nodes are usually:
 - `isLatent: true` if they await runtime work
 - limited to `event` and `macro` graph kinds
 
-Game Host API nodes follow the same rules. `Get Nametag` is pure and can be evaluated from Blueprint Value or event graphs; it returns `null` when no speaker is active. The default Dialog Nametag widgetMain graph uses `Init` / `On Flush` and reads `Get Nametag` separately for the null check and text update, and the NarraLeaf Dialog hook dispatches flush for Dialog elements with Blueprint Value or `On Flush` logic when the dialog text/speaker changes. The default Dialog Content widgetMain graph centralizes advancement: Content `Mouse Click`, `Element Click` bound to the full-screen Dialog Interaction Layer, the visible Dialog Panel, and default content children, and Space `keyUp` all feed one `Next` node. `Next`, `Skip`, `Set Sentence Speed`, `Write Save`, `List Saves`, and `Get Save Preview` continue through `next` after the awaited host call, while `Start Game` and `Load Save` are terminal because they replace or enter the active NarraLeaf game state and must not continue the old execution chain. `Set Sentence Speed` writes the `cps` preference key through the NarraLeaf Preference API.
+Game Host API nodes follow the same rules. `Get Nametag` is pure and can be evaluated from Blueprint Value or event graphs; it returns `null` when no speaker is active. The default Dialog Nametag widgetMain graph uses `Init` / `On Flush` and reads `Get Nametag` separately for the null check and text update, and the NarraLeaf Dialog hook dispatches flush for Dialog elements with Blueprint Value or `On Flush` logic when the dialog text/speaker changes. The default Dialog Content widgetMain graph centralizes advancement: Content `Mouse Click`, `Element Click` bound to the full-screen Dialog Interaction Layer, the visible Dialog Panel, and default content children, and Space `keyUp` all feed one `Next` node. `Next`, `Skip`, `Set Sentence Speed`, `Write Save`, `Delete Save`, `List Saves`, and `Get Save Preview` continue through `next` after the awaited host call, while `Start Game` and `Load Save` are terminal because they replace or enter the active NarraLeaf game state and must not continue the old execution chain. `Set Sentence Speed` writes the `cps` preference key through the NarraLeaf Preference API.
 
 ## Scoping and palette availability
 

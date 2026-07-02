@@ -70,6 +70,18 @@ function isSaveFile(name: string): boolean {
     return name.endsWith(SAVE_FILE_EXTENSION);
 }
 
+function normalizeUserMetadata(value: unknown): unknown {
+    if (value === undefined) {
+        return null;
+    }
+    try {
+        const serialized = JSON.stringify(value);
+        return serialized === undefined ? null : JSON.parse(serialized);
+    } catch {
+        return null;
+    }
+}
+
 function readRecordShape(value: unknown): DevModeSaveFileRecord | null {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
         return null;
@@ -99,6 +111,7 @@ function readRecordShape(value: unknown): DevModeSaveFileRecord | null {
             createdAt: metadata.createdAt,
             updatedAt: metadata.updatedAt,
             ...(typeof metadata.capture === "string" && metadata.capture ? { capture: metadata.capture } : {}),
+            user: normalizeUserMetadata(metadata.user),
         },
         savedGame: record.savedGame,
     };
@@ -144,6 +157,7 @@ export class DevModeSaveWriteHandler extends IPCHandler<IPCEventType.devModeSave
                     createdAt: previous?.metadata.createdAt ?? now,
                     updatedAt: now,
                     ...(typeof data.capture === "string" && data.capture ? { capture: data.capture } : {}),
+                    user: normalizeUserMetadata(data.metadata),
                 },
                 savedGame: data.savedGame,
             };
@@ -211,6 +225,30 @@ export class DevModeSaveReadPreviewHandler extends IPCHandler<IPCEventType.devMo
             const id = normalizeDevModeSaveId(data.id);
             const record = await readSaveRecord(saveFilePath(window, data.projectRef, id));
             return { capture: record?.metadata.capture ?? null };
+        });
+    }
+}
+
+export class DevModeSaveDeleteHandler extends IPCHandler<IPCEventType.devModeSaveDelete> {
+    readonly name = IPCEventType.devModeSaveDelete;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.devModeSaveDelete]["data"],
+    ): Promise<RequestStatus<{ deleted: boolean }>> {
+        return this.tryUse(async () => {
+            const id = normalizeDevModeSaveId(data.id);
+            const filePath = saveFilePath(window, data.projectRef, id);
+            try {
+                await fs.unlink(filePath);
+                return { deleted: true };
+            } catch (error) {
+                if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+                    return { deleted: false };
+                }
+                throw error;
+            }
         });
     }
 }

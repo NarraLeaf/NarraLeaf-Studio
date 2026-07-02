@@ -51,7 +51,7 @@ Page分类具有：
 Game 分类具有：
 - `Start Game` 游戏启动尾节点
 - Dialog 节点：`Get Nametag`、`Next`、`Skip`、`Set Sentence Speed`
-- 本地存档节点：`Write Save`、`Load Save`、`List Saves`、`Get Save Preview`
+- 本地存档节点：`Write Save`、`Load Save`、`Delete Save`、`List Saves`、`Get Save Metadata`、`Get Save Preview`
 
 ## Data
 
@@ -87,7 +87,7 @@ Element 分类具有：
 - Element Literal 节点
 - Element Flush / Element Click 事件节点
 - 所有带 Element/ref 输入的派生控件方法节点
-- Element-targeted Text、Displayable、List、Slider 和通用 Widget Property 节点
+- Element-targeted Text、Displayable、List、Slider、Image 和通用 Widget Property 节点
 
 ## List
 
@@ -104,8 +104,7 @@ Slider分类具有：
 
 Image分类具有：
 - ImageAsset 字面量卡片
-- 当前 `nl.image` 自己的 Image 节点
-- 由 `nl.image` Element Literal / Element Flush / Element Click 派生的 Image 节点
+- 当前 `nl.image` 自己的 Image 节点，用于 asset、fit mode、crop rect、flipX、flipY
 
 ## Button / Container / Frame
 

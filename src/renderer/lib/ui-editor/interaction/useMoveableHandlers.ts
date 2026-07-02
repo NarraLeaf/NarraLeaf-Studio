@@ -97,6 +97,19 @@ function isCurrentFlowLayoutChild(documentService: UIDocumentService, elementId:
     return element != null && isUIElementFlowLayoutChild(document, element);
 }
 
+function coerceTranslate(value: readonly number[] | undefined): [number, number] {
+    const x = Number(value?.[0] ?? 0);
+    const y = Number(value?.[1] ?? 0);
+    return [Number.isFinite(x) ? x : 0, Number.isFinite(y) ? y : 0];
+}
+
+export function resolveGroupDragTranslate(
+    groupBeforeTranslate: readonly number[] | undefined,
+    childBeforeTranslate: readonly number[] | undefined,
+): [number, number] {
+    return groupBeforeTranslate ? coerceTranslate(groupBeforeTranslate) : coerceTranslate(childBeforeTranslate);
+}
+
 /** Optional smart snap for UI Surface (guides + snapping during drag/resize). */
 export type SmartSnapContext = {
     surfaceId: string;
@@ -578,6 +591,8 @@ export function useMoveableHandlers({
                 return;
             }
             const doc = documentService.getDocument();
+            const firstChildTranslate = e.events.find(event => event.beforeTranslate)?.beforeTranslate;
+            const [groupTx, groupTy] = resolveGroupDragTranslate(e.beforeTranslate, firstChildTranslate);
             const perEvent = e.events.map(event => {
                 const target = event.target;
                 if (!isHTMLElement(target)) {
@@ -587,8 +602,7 @@ export function useMoveableHandlers({
                 if (!elementId) {
                     return null;
                 }
-                let [tx, ty] = event.beforeTranslate;
-                return { target, elementId, tx, ty };
+                return { target, elementId };
             }).filter((row): row is NonNullable<typeof row> => row != null);
 
             let dx = 0;
@@ -603,8 +617,8 @@ export function useMoveableHandlers({
                         }
                         return getSurfaceAxisAlignedBoundsForLayout(doc, row.elementId, {
                             ...layout0,
-                            x: layout0.x + row.tx,
-                            y: layout0.y + row.ty,
+                            x: layout0.x + groupTx,
+                            y: layout0.y + groupTy,
                         });
                     })
                     .filter((r): r is NonNullable<typeof r> => r != null);
@@ -636,8 +650,8 @@ export function useMoveableHandlers({
             perEvent.forEach(row => {
                 const layout = layoutCache.current.get(row.elementId);
                 const rotation = layout?.rotation;
-                const tx = row.tx + dx;
-                const ty = row.ty + dy;
+                const tx = groupTx + dx;
+                const ty = groupTy + dy;
                 row.target.style.transform = buildTransform(tx, ty, rotation);
                 dragDeltaCache.current.set(row.elementId, [tx, ty]);
             });

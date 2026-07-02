@@ -56,6 +56,15 @@ Appearance Variant 的 `transformOpacity` 会投影到同一套 Displayable `opa
 `nl.image` 提供：
 - `blueprint.image.getImageAsset` / `blueprint.element.image.getImageAsset` - 读取 `ImageAsset|null`
 - `blueprint.image.setImageAsset` / `blueprint.element.image.setImageAsset` - 设置 `ImageAsset|null`；`null` 清除图片资源，未接线时可使用节点内图片选择卡片
+- `blueprint.image.clearImageAsset` / `blueprint.element.image.clearImageAsset` - 清除图片资源
+- `blueprint.image.getFitMode` / `blueprint.element.image.getFitMode` - 读取 `imageFill.mode`
+- `blueprint.image.setFitMode` / `blueprint.element.image.setFitMode` - 设置 `cover`、`contain`、`stretch`、`crop` 或 `tile`
+- `blueprint.image.getCropRect` / `blueprint.element.image.getCropRect` - 读取裁剪区域 `leftPct`、`topPct`、`widthPct`、`heightPct`
+- `blueprint.image.setCropRect` / `blueprint.element.image.setCropRect` - 设置裁剪区域，并切换为 `crop`
+- `blueprint.image.getFlipX` / `blueprint.element.image.getFlipX` - 读取水平翻转
+- `blueprint.image.setFlipX` / `blueprint.element.image.setFlipX` - 设置水平翻转
+- `blueprint.image.getFlipY` / `blueprint.element.image.getFlipY` - 读取垂直翻转
+- `blueprint.image.setFlipY` / `blueprint.element.image.setFlipY` - 设置垂直翻转
 - `blueprint.image.assetLiteral` - 图片资产字面量卡片，输出 `ImageAsset`
 - Common Visible / Enabled
 

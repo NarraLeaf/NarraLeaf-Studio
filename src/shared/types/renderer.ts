@@ -181,6 +181,7 @@ export interface RendererPreloadedInterface {
                 id: string,
                 savedGame: unknown,
                 capture?: string,
+                metadata?: unknown,
             ): Promise<RequestStatus<void>>;
             read(
                 projectRef: DevModeSaveProjectRef,
@@ -188,6 +189,7 @@ export interface RendererPreloadedInterface {
             ): Promise<RequestStatus<{ record: DevModeSaveRecord | null }>>;
             listIds(projectRef: DevModeSaveProjectRef): Promise<RequestStatus<{ ids: string[] }>>;
             readPreview(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ capture: string | null }>>;
+            delete(projectRef: DevModeSaveProjectRef, id: string): Promise<RequestStatus<{ deleted: boolean }>>;
         };
     };
 

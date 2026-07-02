@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 9 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 10 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -193,11 +193,19 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             purity: "effectful",
             callableFromBinding: false,
             async: true,
-            input: { id: "" },
+            input: { id: "", metadata: null },
             output: null,
         },
         loadSave: {
             capabilityId: "game.loadSave",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "" },
+            output: null,
+        },
+        deleteSave: {
+            capabilityId: "game.deleteSave",
             purity: "effectful",
             callableFromBinding: false,
             async: true,
@@ -211,6 +219,14 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: true,
             input: {},
             output: [],
+        },
+        getSaveMetadata: {
+            capabilityId: "game.getSaveMetadata",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "" },
+            output: null,
         },
         getSavePreview: {
             capabilityId: "game.getSavePreview",

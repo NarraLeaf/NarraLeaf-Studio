@@ -67,17 +67,24 @@ export interface DirEntry {
 }
 
 /**
- * Find project config filename from directory entries.
- * Priority: .nlproj first, then project.json.
- * Returns the filename (e.g. "MyProject.nlproj" or "project.json") or null if not found.
+ * Find the primary .nlproj config filename from directory entries.
+ * Returns the filename (e.g. "MyProject.nlproj") or null if not found.
  */
-export function findProjectConfigFileName(entries: DirEntry[]): string | null {
+export function findNlprojConfigFileName(entries: DirEntry[]): string | null {
     const nlproj = entries.find(
         (e) => e.type === "file" && e.ext === NLPROJ_EXT
     );
     if (nlproj) {
         return nlproj.name + (nlproj.ext || "");
     }
+    return null;
+}
+
+/**
+ * Find the legacy project.json config filename from directory entries.
+ * Returns "project.json" or null if not found.
+ */
+export function findLegacyProjectConfigFileName(entries: DirEntry[]): string | null {
     const legacy = entries.find(
         (e) => e.type === "file" && e.name === "project" && e.ext === ".json"
     );
@@ -85,4 +92,13 @@ export function findProjectConfigFileName(entries: DirEntry[]): string | null {
         return legacy.name + (legacy.ext || "");
     }
     return null;
+}
+
+/**
+ * Find project config filename from directory entries.
+ * Priority: .nlproj first, then project.json.
+ * Returns the filename (e.g. "MyProject.nlproj" or "project.json") or null if not found.
+ */
+export function findProjectConfigFileName(entries: DirEntry[]): string | null {
+    return findNlprojConfigFileName(entries) ?? findLegacyProjectConfigFileName(entries);
 }
