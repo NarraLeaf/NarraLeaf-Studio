@@ -14,7 +14,9 @@ import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
 import {
+    type AppearanceResolveContext,
     resolveAppearanceDisplayableOpacity,
+    resolveImageDisplayableOpacityKeys,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 
@@ -79,8 +81,14 @@ function firstMotionValue(value: number | number[] | undefined, fallback: number
     return value ?? fallback;
 }
 
-function displayableOpacityKeysForElementType(elementType: string): readonly string[] {
-    return elementType === "nl.image" ? ["fillOpacity", "transformOpacity"] : ["transformOpacity"];
+function displayableOpacityKeysForElement(
+    element: UIElement,
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext,
+): readonly string[] {
+    return element.type === "nl.image"
+        ? resolveImageDisplayableOpacityKeys(element, appearance, ctx)
+        : ["transformOpacity"];
 }
 
 export function EditorNodeWrapper({
@@ -103,16 +111,20 @@ export function EditorNodeWrapper({
     const displayableMotion = runtimeElementState.displayableMotion;
     const blueprintRuntime = hostAdapter?.blueprintRuntime;
     const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const appearance = (element.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
     const listScopedVariantId =
         typeof (element.extra as { runtimeVariantOverrideId?: unknown } | undefined)?.runtimeVariantOverrideId === "string"
             ? String((element.extra as { runtimeVariantOverrideId?: unknown }).runtimeVariantOverrideId)
             : null;
+    const appearanceResolveCtx = {
+        variantOverrideId: listScopedVariantId ?? runtimeElementState.variantOverrideId ?? inspectorVariantId ?? null,
+        signals: runtimeElementState.signals,
+    };
     const appearanceOpacity = resolveAppearanceDisplayableOpacity(
-        (element.props as { appearance?: AppearanceModel | null } | undefined)?.appearance,
+        appearance,
         {
-            variantOverrideId: listScopedVariantId ?? runtimeElementState.variantOverrideId ?? inspectorVariantId ?? null,
-            signals: runtimeElementState.signals,
-            displayableOpacityKeys: displayableOpacityKeysForElementType(element.type),
+            ...appearanceResolveCtx,
+            displayableOpacityKeys: displayableOpacityKeysForElement(element, appearance, appearanceResolveCtx),
         },
     );
     const eventOptions = useMemo(
@@ -209,9 +221,7 @@ export function EditorNodeWrapper({
     );
 
     const onPointerEnter = useCallback((e: PointerEvent<HTMLDivElement>) => {
-        if (isDirectElementEvent(e.target)) {
-            widgetRuntimeStore?.setHoverTarget(runtimeElementKey);
-        }
+        widgetRuntimeStore?.setHoverTarget(runtimeElementKey);
         dispatchWidgetEvent("mouseEnter", e.target, localMousePayload(e));
     }, [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore]);
 

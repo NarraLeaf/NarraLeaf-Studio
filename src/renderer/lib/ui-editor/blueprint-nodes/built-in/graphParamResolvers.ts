@@ -96,6 +96,7 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
@@ -1877,6 +1878,26 @@ function resolveWidgetPropertyNodeOutput(
             const asset = api.widget.getImageProperties(elementId).asset;
             return read("props.imageFill.assetId", asset?.assetId ?? "");
         }
+        if (key === "image" && action === "getFitMode" && portId === "fitMode") {
+            return read("props.imageFill.mode", api.widget.getImageProperties(elementId).fitMode);
+        }
+        if (key === "image" && action === "getCropRect") {
+            const cropRect = api.widget.getImageProperties(elementId).cropRect;
+            if (
+                portId === "leftPct" ||
+                portId === "topPct" ||
+                portId === "widthPct" ||
+                portId === "heightPct"
+            ) {
+                return read(`props.imageFill.cropPlacement.${portId}`, cropRect[portId]);
+            }
+        }
+        if (key === "image" && action === "getFlipX" && portId === "flipX") {
+            return read("props.imageFlipX", api.widget.getImageProperties(elementId).flipX);
+        }
+        if (key === "image" && action === "getFlipY" && portId === "flipY") {
+            return read("props.imageFlipY", api.widget.getImageProperties(elementId).flipY);
+        }
         if ((key === "frame" || key === "frameWidget") && action === "getTargetPage" && portId === "targetSurfaceId") {
             return read("props.targetSurfaceId", api.widget.getFrameProperties(elementId).targetSurfaceId ?? "");
         }
@@ -2162,8 +2183,14 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH ||
             selfNode.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW) &&
-        (portId === "index" || portId === "item" || portId === "value" || portId === "ids" || portId === "preview")
+        (portId === "index" ||
+            portId === "item" ||
+            portId === "value" ||
+            portId === "ids" ||
+            portId === "metadata" ||
+            portId === "preview")
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }

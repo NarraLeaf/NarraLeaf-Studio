@@ -12,6 +12,7 @@ export type DevModeSaveMetadata = {
     createdAt: string;
     updatedAt: string;
     capture?: string;
+    user?: unknown;
 };
 
 export type DevModeSaveRecord = {

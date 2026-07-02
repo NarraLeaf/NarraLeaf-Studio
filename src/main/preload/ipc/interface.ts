@@ -216,14 +216,28 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         openBlueprintInWorkspace: (payload: PreviewStudioBlueprintOpenPayload & { projectPath: string }) =>
             ipcClient.invoke(IPCEventType.devModeOpenBlueprintInWorkspace, payload) as Promise<RequestStatus<void>>,
         save: {
-            write: (projectRef: DevModeSaveProjectRef, id: string, savedGame: unknown, capture?: string) =>
-                ipcClient.invoke(IPCEventType.devModeSaveWrite, { projectRef, id, savedGame, capture }) as Promise<RequestStatus<void>>,
+            write: (
+                projectRef: DevModeSaveProjectRef,
+                id: string,
+                savedGame: unknown,
+                capture?: string,
+                metadata?: unknown,
+            ) =>
+                ipcClient.invoke(IPCEventType.devModeSaveWrite, {
+                    projectRef,
+                    id,
+                    savedGame,
+                    capture,
+                    metadata,
+                }) as Promise<RequestStatus<void>>,
             read: (projectRef: DevModeSaveProjectRef, id: string) =>
                 ipcClient.invoke(IPCEventType.devModeSaveRead, { projectRef, id }) as Promise<RequestStatus<{ record: DevModeSaveRecord | null }>>,
             listIds: (projectRef: DevModeSaveProjectRef) =>
                 ipcClient.invoke(IPCEventType.devModeSaveListIds, { projectRef }) as Promise<RequestStatus<{ ids: string[] }>>,
             readPreview: (projectRef: DevModeSaveProjectRef, id: string) =>
                 ipcClient.invoke(IPCEventType.devModeSaveReadPreview, { projectRef, id }) as Promise<RequestStatus<{ capture: string | null }>>,
+            delete: (projectRef: DevModeSaveProjectRef, id: string) =>
+                ipcClient.invoke(IPCEventType.devModeSaveDelete, { projectRef, id }) as Promise<RequestStatus<{ deleted: boolean }>>,
         },
     },
 

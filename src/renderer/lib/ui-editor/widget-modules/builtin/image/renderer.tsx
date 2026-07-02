@@ -20,7 +20,7 @@ export function ImageRenderer(props: WidgetRendererProps) {
         signals: runtimeState.signals,
     };
     const rectangleLike = resolveImageRectangleLike(element, appearance ?? undefined, resolveCtx);
-    const appearanceTransitions = resolveImageAppearanceTransitions(appearance ?? undefined, resolveCtx);
+    const appearanceTransitions = resolveImageAppearanceTransitions(appearance ?? undefined, resolveCtx, rectangleLike);
 
     return (
         <RectangleChromeRenderer

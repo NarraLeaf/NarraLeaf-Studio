@@ -11,6 +11,7 @@ import {
     isUiContainerDrillLockHit,
     markSuppressNextCanvasWidgetDoubleClick,
     promoteHitToDirectChildOfSurfaceRoot,
+    resolveUiContainerDrillTarget,
     shouldPromoteToSurfaceRootChild,
 } from "./containerDrillSelection";
 import { isMoveableInteractionTarget } from "./surfaceInlineTextEditActivation";
@@ -360,6 +361,9 @@ export function useSurfaceInteractionEvents({
                         const pickId = !drillLock && shouldPromoteToSurfaceRootChild(doc, selectionData, surfaceId, hitId)
                             ? promoteHitToDirectChildOfSurfaceRoot(doc, surfaceId, hitId)
                             : hitId;
+                        const drillTargetId = drillLock
+                            ? resolveUiContainerDrillTarget(doc, surfaceId, selectionData, hitId) ?? hitId
+                            : pickId;
                         if (!drillLock) {
                             containerDrillLastPointerRef.current = null;
                         } else {
@@ -382,8 +386,8 @@ export function useSurfaceInteractionEvents({
                         stateService.setUIElementSelection({
                             editor: "ui",
                             surfaceId,
-                            elementIds: [drillLock ? hitId : pickId],
-                            primaryId: drillLock ? hitId : pickId,
+                            elementIds: [drillTargetId],
+                            primaryId: drillTargetId,
                         });
                     }
                 }

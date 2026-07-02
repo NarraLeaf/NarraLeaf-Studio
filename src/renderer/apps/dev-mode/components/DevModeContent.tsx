@@ -315,9 +315,11 @@ function StudioDialogSlotSurface(props: {
     openSurfaceWithTransition: (surfaceId: string) => Promise<void>;
     closeLayerWithTransition: () => Promise<void>;
     startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
-    writeSaveInGame: (id: string) => Promise<void>;
+    writeSaveInGame: (id: string, metadata?: unknown) => Promise<void>;
     loadSaveInGame: (id: string) => Promise<void>;
+    deleteSaveInGame: (id: string) => Promise<void>;
     listSaveIds: () => Promise<string[]>;
+    getSaveMetadata: (id: string) => Promise<unknown>;
     getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
     getCurrentNametag: () => string | null;
     nextInGame: () => Promise<void>;
@@ -341,7 +343,9 @@ function StudioDialogSlotSurface(props: {
         startStoryInGame,
         writeSaveInGame,
         loadSaveInGame,
+        deleteSaveInGame,
         listSaveIds,
+        getSaveMetadata,
         getSavePreview,
         getCurrentNametag,
         nextInGame,
@@ -379,7 +383,9 @@ function StudioDialogSlotSurface(props: {
             onStartStory: startStoryInGame,
             onWriteSave: writeSaveInGame,
             onLoadSave: loadSaveInGame,
+            onDeleteSave: deleteSaveInGame,
             onListSaveIds: listSaveIds,
+            onGetSaveMetadata: getSaveMetadata,
             onGetSavePreview: getSavePreview,
             onGetNametag: getCurrentNametag,
             onNext: nextInGame,
@@ -413,7 +419,9 @@ function StudioDialogSlotSurface(props: {
         startStoryInGame,
         writeSaveInGame,
         loadSaveInGame,
+        deleteSaveInGame,
         listSaveIds,
+        getSaveMetadata,
         getSavePreview,
         getCurrentNametag,
         nextInGame,
@@ -551,9 +559,11 @@ function DevModeAppSurfaceLayer(props: {
     openSurfaceWithTransition: (surfaceId: string) => Promise<void>;
     closeLayerWithTransition: () => Promise<void>;
     startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
-    writeSaveInGame: (id: string) => Promise<void>;
+    writeSaveInGame: (id: string, metadata?: unknown) => Promise<void>;
     loadSaveInGame: (id: string) => Promise<void>;
+    deleteSaveInGame: (id: string) => Promise<void>;
     listSaveIds: () => Promise<string[]>;
+    getSaveMetadata: (id: string) => Promise<unknown>;
     getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
     getCurrentNametag: () => string | null;
     nextInGame: () => Promise<void>;
@@ -584,7 +594,9 @@ function DevModeAppSurfaceLayer(props: {
         startStoryInGame,
         writeSaveInGame,
         loadSaveInGame,
+        deleteSaveInGame,
         listSaveIds,
+        getSaveMetadata,
         getSavePreview,
         getCurrentNametag,
         nextInGame,
@@ -617,7 +629,9 @@ function DevModeAppSurfaceLayer(props: {
             onStartStory: startStoryInGame,
             onWriteSave: writeSaveInGame,
             onLoadSave: loadSaveInGame,
+            onDeleteSave: deleteSaveInGame,
             onListSaveIds: listSaveIds,
+            onGetSaveMetadata: getSaveMetadata,
             onGetSavePreview: getSavePreview,
             onGetNametag: getCurrentNametag,
             onNext: nextInGame,
@@ -650,7 +664,9 @@ function DevModeAppSurfaceLayer(props: {
         startStoryInGame,
         writeSaveInGame,
         loadSaveInGame,
+        deleteSaveInGame,
         listSaveIds,
+        getSaveMetadata,
         getSavePreview,
         getCurrentNametag,
         nextInGame,
@@ -799,9 +815,11 @@ export function DevModeContent(props: DevModeContentProps) {
     const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
     const activeStoryRevisionRef = useRef<number | null>(null);
     const startStoryInGameRef = useRef<((request: DevModeStartStoryRequest) => Promise<void>) | null>(null);
-    const writeSaveInGameRef = useRef<((id: string) => Promise<void>) | null>(null);
+    const writeSaveInGameRef = useRef<((id: string, metadata?: unknown) => Promise<void>) | null>(null);
     const loadSaveInGameRef = useRef<((id: string) => Promise<void>) | null>(null);
+    const deleteSaveInGameRef = useRef<((id: string) => Promise<void>) | null>(null);
     const listSaveIdsRef = useRef<(() => Promise<string[]>) | null>(null);
+    const getSaveMetadataRef = useRef<((id: string) => Promise<unknown>) | null>(null);
     const getSavePreviewRef = useRef<((id: string) => Promise<BlueprintImageAsset | null>) | null>(null);
     const getCurrentNametagRef = useRef<(() => string | null) | null>(null);
     const nextInGameRef = useRef<(() => Promise<void>) | null>(null);
@@ -1213,7 +1231,7 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [requireActiveLiveGame]);
     setSentenceSpeedInGameRef.current = setSentenceSpeedInGame;
 
-    const writeSaveInGame = useCallback(async (id: string): Promise<void> => {
+    const writeSaveInGame = useCallback(async (id: string, metadata?: unknown): Promise<void> => {
         const projectRef = requireSaveProjectRef("Write Save");
         const liveGame = requireActiveLiveGame("Write Save");
         const savedGame = liveGame.serialize();
@@ -1223,7 +1241,7 @@ export function DevModeContent(props: DevModeContentProps) {
         } catch (error) {
             console.warn("[DevMode][Save] Capture failed; writing save without preview", error);
         }
-        const result = await getInterface().devMode.save.write(projectRef, id, savedGame, capture);
+        const result = await getInterface().devMode.save.write(projectRef, id, savedGame, capture, metadata);
         if (!result.success) {
             throw new Error(result.error ?? `Write Save failed: ${id}`);
         }
@@ -1249,6 +1267,15 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [requireActiveLiveGame, requireSaveProjectRef]);
     loadSaveInGameRef.current = loadSaveInGame;
 
+    const deleteSaveInGame = useCallback(async (id: string): Promise<void> => {
+        const projectRef = requireSaveProjectRef("Delete Save");
+        const result = await getInterface().devMode.save.delete(projectRef, id);
+        if (!result.success) {
+            throw new Error(result.error ?? `Delete Save failed: ${id}`);
+        }
+    }, [requireSaveProjectRef]);
+    deleteSaveInGameRef.current = deleteSaveInGame;
+
     const listSaveIds = useCallback(async (): Promise<string[]> => {
         const projectRef = requireSaveProjectRef("List Saves");
         const result = await getInterface().devMode.save.listIds(projectRef);
@@ -1258,6 +1285,25 @@ export function DevModeContent(props: DevModeContentProps) {
         return result.data.ids;
     }, [requireSaveProjectRef]);
     listSaveIdsRef.current = listSaveIds;
+
+    const getSaveMetadata = useCallback(async (id: string): Promise<unknown> => {
+        const projectRef = requireSaveProjectRef("Get Save Metadata");
+        const result = await getInterface().devMode.save.read(projectRef, id);
+        if (!result.success) {
+            throw new Error(result.error ?? `Get Save Metadata failed: ${id}`);
+        }
+        const metadata = result.data.record?.metadata.user;
+        if (metadata === undefined) {
+            return null;
+        }
+        try {
+            const serialized = JSON.stringify(metadata);
+            return serialized === undefined ? null : JSON.parse(serialized);
+        } catch {
+            return null;
+        }
+    }, [requireSaveProjectRef]);
+    getSaveMetadataRef.current = getSaveMetadata;
 
     const getSavePreview = useCallback(async (id: string): Promise<BlueprintImageAsset | null> => {
         const projectRef = requireSaveProjectRef("Get Save Preview");
@@ -1342,15 +1388,21 @@ export function DevModeContent(props: DevModeContentProps) {
                   startStoryInGame: request =>
                       startStoryInGameRef.current?.(request) ??
                       Promise.reject(new Error("Start Game is not available")),
-                  writeSaveInGame: id =>
-                      writeSaveInGameRef.current?.(id) ??
+                  writeSaveInGame: (id, metadata) =>
+                      writeSaveInGameRef.current?.(id, metadata) ??
                       Promise.reject(new Error("Write Save is not available")),
                   loadSaveInGame: id =>
                       loadSaveInGameRef.current?.(id) ??
                       Promise.reject(new Error("Load Save is not available")),
+                  deleteSaveInGame: id =>
+                      deleteSaveInGameRef.current?.(id) ??
+                      Promise.reject(new Error("Delete Save is not available")),
                   listSaveIds: () =>
                       listSaveIdsRef.current?.() ??
                       Promise.reject(new Error("List Saves is not available")),
+                  getSaveMetadata: id =>
+                      getSaveMetadataRef.current?.(id) ??
+                      Promise.reject(new Error("Get Save Metadata is not available")),
                   getSavePreview: id =>
                       getSavePreviewRef.current?.(id) ??
                       Promise.reject(new Error("Get Save Preview is not available")),
@@ -1496,7 +1548,9 @@ export function DevModeContent(props: DevModeContentProps) {
             onStartStory: startStoryInGame,
             onWriteSave: writeSaveInGame,
             onLoadSave: loadSaveInGame,
+            onDeleteSave: deleteSaveInGame,
             onListSaveIds: listSaveIds,
+            onGetSaveMetadata: getSaveMetadata,
             onGetSavePreview: getSavePreview,
             onGetNametag: getCurrentNametag,
             onNext: nextInGame,
@@ -1530,7 +1584,9 @@ export function DevModeContent(props: DevModeContentProps) {
         startStoryInGame,
         writeSaveInGame,
         loadSaveInGame,
+        deleteSaveInGame,
         listSaveIds,
+        getSaveMetadata,
         getSavePreview,
         getCurrentNametag,
         nextInGame,
@@ -1671,7 +1727,9 @@ export function DevModeContent(props: DevModeContentProps) {
                     onStartStory: startStoryInGame,
                     onWriteSave: writeSaveInGame,
                     onLoadSave: loadSaveInGame,
+                    onDeleteSave: deleteSaveInGame,
                     onListSaveIds: listSaveIds,
+                    onGetSaveMetadata: getSaveMetadata,
                     onGetSavePreview: getSavePreview,
                     onGetNametag: getCurrentNametag,
                     onNext: nextInGame,
@@ -1760,7 +1818,9 @@ export function DevModeContent(props: DevModeContentProps) {
         startStoryInGame,
         writeSaveInGame,
         loadSaveInGame,
+        deleteSaveInGame,
         listSaveIds,
+        getSaveMetadata,
         getSavePreview,
         getCurrentNametag,
         nextInGame,
@@ -1860,7 +1920,9 @@ export function DevModeContent(props: DevModeContentProps) {
                                               startStoryInGame={startStoryInGame}
                                               writeSaveInGame={writeSaveInGame}
                                               loadSaveInGame={loadSaveInGame}
+                                              deleteSaveInGame={deleteSaveInGame}
                                               listSaveIds={listSaveIds}
+                                              getSaveMetadata={getSaveMetadata}
                                               getSavePreview={getSavePreview}
                                               getCurrentNametag={getCurrentNametag}
                                               nextInGame={nextInGame}
