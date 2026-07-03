@@ -97,6 +97,19 @@ function isCurrentFlowLayoutChild(documentService: UIDocumentService, elementId:
     return element != null && isUIElementFlowLayoutChild(document, element);
 }
 
+function coerceTranslate(value: readonly number[] | undefined): [number, number] {
+    const x = Number(value?.[0] ?? 0);
+    const y = Number(value?.[1] ?? 0);
+    return [Number.isFinite(x) ? x : 0, Number.isFinite(y) ? y : 0];
+}
+
+export function resolveGroupDragTranslate(
+    groupBeforeTranslate: readonly number[] | undefined,
+    childBeforeTranslate: readonly number[] | undefined,
+): [number, number] {
+    return childBeforeTranslate ? coerceTranslate(childBeforeTranslate) : coerceTranslate(groupBeforeTranslate);
+}
+
 /** Optional smart snap for UI Surface (guides + snapping during drag/resize). */
 export type SmartSnapContext = {
     surfaceId: string;
@@ -587,7 +600,7 @@ export function useMoveableHandlers({
                 if (!elementId) {
                     return null;
                 }
-                let [tx, ty] = event.beforeTranslate;
+                const [tx, ty] = resolveGroupDragTranslate(e.beforeTranslate, event.beforeTranslate);
                 return { target, elementId, tx, ty };
             }).filter((row): row is NonNullable<typeof row> => row != null);
 
@@ -762,6 +775,13 @@ export function useMoveableHandlers({
                     horizontal,
                     viewportScale,
                     smartSnap.surfaceId,
+                    {
+                        preserveAspectRatio: initialLayout.lockAspectRatio === true,
+                        aspectRatio:
+                            Math.abs(initialLayout.width) > 0 && Math.abs(initialLayout.height) > 0
+                                ? Math.abs(initialLayout.width) / Math.abs(initialLayout.height)
+                                : undefined,
+                    },
                 );
                 const nx = snapped.layout.x;
                 const ny = snapped.layout.y;

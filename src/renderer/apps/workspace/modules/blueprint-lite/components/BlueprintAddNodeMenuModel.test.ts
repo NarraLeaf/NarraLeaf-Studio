@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
     BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID,
+    blueprintAddNodeEntryKey,
     buildBlueprintAddNodeCategories,
     filterBlueprintAddNodeEntries,
 } from "./BlueprintAddNodeMenuModel";
@@ -171,7 +172,39 @@ describe("BlueprintAddNodeMenuModel", () => {
         ]);
         expect(filterBlueprintAddNodeEntries(entries, "Math", "literal")).toEqual([]);
     });
+
+    it("searches unambiguous element-derived entries by target label", () => {
+        const derived = [elementDerivedEntry("iconRef", "icon", "Icon")];
+
+        expect(blueprintAddNodeEntryKey(derived[0]!)).toContain("iconRef");
+        expect(filterBlueprintAddNodeEntries(derived, "Element", "icon").map(item =>
+            item.magicElementRef?.label,
+        )).toEqual(["Icon"]);
+    });
 });
+
+function elementDerivedEntry(sourceNodeId: string, elementId: string, label: string): BlueprintNodeEditorCatalogEntry {
+    return {
+        ...entry({
+            type: "blueprint.element.displayable.setProperty",
+            displayName: "Set Element Property",
+            category: "Element",
+            keywords: ["displayable", "property"],
+            isPure: false,
+            inputs: 2,
+            outputs: 1,
+        }),
+        magicElementRef: {
+            sourceNodeId,
+            sourcePortId: "element",
+            targetPortId: "element",
+            surfaceId: "surface",
+            elementId,
+            elementType: "nl.image",
+            label,
+        },
+    };
+}
 
 function entry(input: {
     type: string;

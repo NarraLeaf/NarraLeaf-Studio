@@ -10,16 +10,39 @@ import {
     normalizeBlueprintImageAssetValue,
 } from "@shared/types/blueprint/valueTypes";
 import {
+    BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER,
+    BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER,
     BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_CLEAR_ASSET,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_CROP_RECT,
     BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_ASSET,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FIT_MODE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_X,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_Y,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_CROP_RECT,
     BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FIT_MODE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_X,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_Y,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
+    BLUEPRINT_NODE_TYPE_IMAGE_CLEAR_ASSET,
+    BLUEPRINT_NODE_TYPE_IMAGE_GET_CROP_RECT,
     BLUEPRINT_NODE_TYPE_IMAGE_GET_ASSET,
+    BLUEPRINT_NODE_TYPE_IMAGE_GET_FIT_MODE,
+    BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_X,
+    BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_Y,
+    BLUEPRINT_NODE_TYPE_IMAGE_SET_CROP_RECT,
     BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
+    BLUEPRINT_NODE_TYPE_IMAGE_SET_FIT_MODE,
+    BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_X,
+    BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_Y,
 } from "@shared/types/blueprint/graph";
+import { isButtonCursorValue, type ButtonCursorValue } from "@shared/types/ui-editor/appearance";
+import type { ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import { BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE } from "../frameTargetSurfaceOptions";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
@@ -58,8 +81,13 @@ const dataIn = (id: string, label: string, valueType: string, allowInlineLiteral
 });
 
 const boolIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "boolean");
+const floatIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "float", true);
 const stringIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "string", true);
 const jsonIn = (id: string, label: string): BlueprintNodePinDef => dataIn(id, label, "json");
+const optionalJsonIn = (id: string, label: string): BlueprintNodePinDef => ({
+    ...jsonIn(id, label),
+    optional: true,
+});
 const imageAssetNullableIn = (id: string, label: string): BlueprintNodePinDef =>
     dataIn(id, label, BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE, true);
 const out = (id: string, label: string, valueType: string): BlueprintNodePinDef => ({
@@ -138,24 +166,41 @@ function toNullableString(raw: unknown): string | null {
     return s.length > 0 ? s : null;
 }
 
+function toButtonCursorValue(raw: unknown, fallback: ButtonCursorValue): ButtonCursorValue {
+    return isButtonCursorValue(raw) ? raw : fallback;
+}
+
+function toRecordValue(raw: unknown): Record<string, unknown> {
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+}
+
+function readOptionalFramePropsPatch(ctx: Parameters<BlueprintNodeDef["execute"]>[0]): { params?: Record<string, unknown> } {
+    const props = readPin(ctx, "props");
+    return props === undefined ? {} : { params: toRecordValue(props) };
+}
+
 function readNode(input: {
     type: string;
     displayName: string;
     keywords: string[];
-    output: BlueprintNodePinDef;
+    output?: BlueprintNodePinDef;
+    outputs?: BlueprintNodePinDef[];
     target: WidgetTarget;
     mode: TargetMode;
     category?: string;
+    hideInPalette?: boolean;
 }): BlueprintNodeDef {
     const elementTarget = input.mode === "element";
+    const outputs = input.outputs ?? (input.output ? [input.output] : []);
     return {
         type: input.type,
         displayName: input.displayName,
         category: input.category ?? (elementTarget ? "Element" : input.target.label),
         keywords: input.keywords,
         graphKinds: [...READ_GRAPH_KINDS],
+        hideInPalette: input.hideInPalette,
         isPure: true,
-        pins: elementTarget ? [elementIn(input.target), input.output] : [input.output],
+        pins: elementTarget ? [elementIn(input.target), ...outputs] : outputs,
         magicElementTarget: elementTarget ? { inputPinId: "element", elementTypes: [input.target.elementType] } : undefined,
         scope: elementTarget ? undefined : { ownerKinds: ["widgetMain"], widgetElementTypes: [input.target.elementType] },
         execute: () => ({}),
@@ -170,6 +215,7 @@ function writeNode(input: {
     target: WidgetTarget;
     mode: TargetMode;
     category?: string;
+    hideInPalette?: boolean;
     inspectorParams?: BlueprintNodeDef["inspectorParams"];
     execute: BlueprintNodeDef["execute"];
 }): BlueprintNodeDef {
@@ -180,6 +226,7 @@ function writeNode(input: {
         category: input.category ?? (elementTarget ? "Element" : input.target.label),
         keywords: input.keywords,
         graphKinds: [...WRITE_GRAPH_KINDS],
+        hideInPalette: input.hideInPalette,
         isPure: false,
         isLatent: true,
         pins: elementTarget
@@ -252,14 +299,15 @@ function commonNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[]
                 output: out("variantId", "Variant", "string"),
                 target,
                 mode,
+                hideInPalette: true,
             }),
             writeNode({
                 type: `${prefix}.setVariant`,
                 displayName: `Set ${labelPrefix}Variant`,
                 keywords: [target.key, "variant", "appearance", "set"],
-                pins: [stringIn("variantId", "Variant")],
                 target,
                 mode,
+                hideInPalette: true,
                 execute: async ctx => {
                     const api = requireHostApi(ctx);
                     await api.widget.setVariant(
@@ -277,6 +325,7 @@ function commonNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[]
 function buttonNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] {
     const prefix = mode === "element" ? "blueprint.element.button" : "blueprint.button";
     const labelPrefix = mode === "element" ? "Button " : "";
+    const setPointerType = mode === "element" ? BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER : BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER;
     return [
         readNode({
             type: `${prefix}.getLabel`,
@@ -297,6 +346,29 @@ function buttonNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[]
                 await requireHostApi(ctx).widget.setButtonProperties(
                     resolveTargetElementId(ctx, target, mode),
                     { label: String(readPin(ctx, "label") ?? "") },
+                );
+                return { nextPort: "next" };
+            },
+        }),
+        writeNode({
+            type: setPointerType,
+            displayName: `Set ${labelPrefix}Pointer`,
+            keywords: ["button", "pointer", "cursor", "mouse", "set"],
+            target,
+            mode,
+            inspectorParams: [
+                {
+                    key: "cursor",
+                    label: "Pointer",
+                    kind: "buttonCursor",
+                },
+            ],
+            execute: async ctx => {
+                const api = requireHostApi(ctx);
+                const elementId = resolveTargetElementId(ctx, target, mode);
+                await api.widget.setButtonProperties(
+                    elementId,
+                    { cursor: toButtonCursorValue(readPin(ctx, "cursor"), "auto") },
                 );
                 return { nextPort: "next" };
             },
@@ -336,27 +408,82 @@ function containerNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDe
     ];
 }
 
+const IMAGE_FILL_MODES: readonly ImageFillMode[] = ["cover", "contain", "stretch", "crop", "tile"];
+
+function toImageFillMode(raw: unknown, fallback: ImageFillMode): ImageFillMode {
+    return IMAGE_FILL_MODES.includes(raw as ImageFillMode) ? raw as ImageFillMode : fallback;
+}
+
+function toFiniteNumber(raw: unknown, fallback: number): number {
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+function readImageCropRect(
+    ctx: Parameters<BlueprintNodeDef["execute"]>[0],
+    fallback: ImageFillCropPlacement,
+): ImageFillCropPlacement {
+    return {
+        leftPct: toFiniteNumber(readPin(ctx, "leftPct"), fallback.leftPct),
+        topPct: toFiniteNumber(readPin(ctx, "topPct"), fallback.topPct),
+        widthPct: toFiniteNumber(readPin(ctx, "widthPct"), fallback.widthPct),
+        heightPct: toFiniteNumber(readPin(ctx, "heightPct"), fallback.heightPct),
+    };
+}
+
 function imageNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] {
-    const readType = mode === "element" ? BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_ASSET : BLUEPRINT_NODE_TYPE_IMAGE_GET_ASSET;
-    const writeType = mode === "element" ? BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET : BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET;
+    const types = mode === "element"
+        ? {
+            getAsset: BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_ASSET,
+            setAsset: BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET,
+            clearAsset: BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_CLEAR_ASSET,
+            getFitMode: BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FIT_MODE,
+            setFitMode: BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FIT_MODE,
+            getCropRect: BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_CROP_RECT,
+            setCropRect: BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_CROP_RECT,
+            getFlipX: BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_X,
+            setFlipX: BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_X,
+            getFlipY: BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_Y,
+            setFlipY: BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_Y,
+        }
+        : {
+            getAsset: BLUEPRINT_NODE_TYPE_IMAGE_GET_ASSET,
+            setAsset: BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
+            clearAsset: BLUEPRINT_NODE_TYPE_IMAGE_CLEAR_ASSET,
+            getFitMode: BLUEPRINT_NODE_TYPE_IMAGE_GET_FIT_MODE,
+            setFitMode: BLUEPRINT_NODE_TYPE_IMAGE_SET_FIT_MODE,
+            getCropRect: BLUEPRINT_NODE_TYPE_IMAGE_GET_CROP_RECT,
+            setCropRect: BLUEPRINT_NODE_TYPE_IMAGE_SET_CROP_RECT,
+            getFlipX: BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_X,
+            setFlipX: BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_X,
+            getFlipY: BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_Y,
+            setFlipY: BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_Y,
+        };
+    const cropRectPins = [
+        floatIn("leftPct", "Left %"),
+        floatIn("topPct", "Top %"),
+        floatIn("widthPct", "Width %"),
+        floatIn("heightPct", "Height %"),
+    ];
+    const category = mode === "element" ? "Element" : "Image";
     return [
         readNode({
-            type: readType,
+            type: types.getAsset,
             displayName: "Get Image Asset",
             keywords: ["image", "asset", "source"],
             output: out("asset", "Asset", BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE),
             target,
             mode,
-            category: "Image",
+            category,
         }),
         writeNode({
-            type: writeType,
+            type: types.setAsset,
             displayName: "Set Image Asset",
             keywords: ["image", "asset", "source", "set"],
             pins: [imageAssetNullableIn("asset", "Asset")],
             target,
             mode,
-            category: "Image",
+            category,
             execute: async ctx => {
                 const assetInput = readPin(ctx, "asset");
                 const legacyAssetIdInput = assetInput === undefined ? readPin(ctx, "assetId") : undefined;
@@ -364,6 +491,135 @@ function imageNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
                     resolveTargetElementId(ctx, target, mode),
                     { asset: normalizeBlueprintImageAssetValue(assetInput === undefined ? legacyAssetIdInput : assetInput) },
                 );
+                return { nextPort: "next" };
+            },
+        }),
+        writeNode({
+            type: types.clearAsset,
+            displayName: "Clear Image Asset",
+            keywords: ["image", "asset", "source", "clear", "remove"],
+            target,
+            mode,
+            category,
+            execute: async ctx => {
+                await requireHostApi(ctx).widget.setImageProperties(
+                    resolveTargetElementId(ctx, target, mode),
+                    { asset: null },
+                );
+                return { nextPort: "next" };
+            },
+        }),
+        readNode({
+            type: types.getFitMode,
+            displayName: "Get Image Fit Mode",
+            keywords: ["image", "fit", "mode", "cover", "contain", "stretch", "crop", "tile"],
+            output: out("fitMode", "Fit Mode", "string"),
+            target,
+            mode,
+            category,
+        }),
+        writeNode({
+            type: types.setFitMode,
+            displayName: "Set Image Fit Mode",
+            keywords: ["image", "fit", "mode", "cover", "contain", "stretch", "crop", "tile", "set"],
+            pins: [stringIn("fitMode", "Fit Mode")],
+            target,
+            mode,
+            category,
+            execute: async ctx => {
+                const api = requireHostApi(ctx);
+                const elementId = resolveTargetElementId(ctx, target, mode);
+                const current = api.widget.getImageProperties(elementId);
+                await api.widget.setImageProperties(elementId, {
+                    fitMode: toImageFillMode(readPin(ctx, "fitMode"), current.fitMode),
+                });
+                return { nextPort: "next" };
+            },
+        }),
+        readNode({
+            type: types.getCropRect,
+            displayName: "Get Image Crop Rect",
+            keywords: ["image", "crop", "rect", "placement"],
+            outputs: [
+                out("leftPct", "Left %", "float"),
+                out("topPct", "Top %", "float"),
+                out("widthPct", "Width %", "float"),
+                out("heightPct", "Height %", "float"),
+            ],
+            target,
+            mode,
+            category,
+        }),
+        writeNode({
+            type: types.setCropRect,
+            displayName: "Set Image Crop Rect",
+            keywords: ["image", "crop", "rect", "placement", "set"],
+            pins: cropRectPins,
+            target,
+            mode,
+            category,
+            execute: async ctx => {
+                const api = requireHostApi(ctx);
+                const elementId = resolveTargetElementId(ctx, target, mode);
+                const current = api.widget.getImageProperties(elementId);
+                await api.widget.setImageProperties(elementId, {
+                    fitMode: "crop",
+                    cropRect: readImageCropRect(ctx, current.cropRect),
+                });
+                return { nextPort: "next" };
+            },
+        }),
+        readNode({
+            type: types.getFlipX,
+            displayName: "Get Image Flip X",
+            keywords: ["image", "flip", "x", "horizontal"],
+            output: out("flipX", "Flip X", "boolean"),
+            target,
+            mode,
+            category,
+        }),
+        writeNode({
+            type: types.setFlipX,
+            displayName: "Set Image Flip X",
+            keywords: ["image", "flip", "x", "horizontal", "set"],
+            pins: [boolIn("flipX", "Flip X")],
+            target,
+            mode,
+            category,
+            execute: async ctx => {
+                const api = requireHostApi(ctx);
+                const elementId = resolveTargetElementId(ctx, target, mode);
+                const current = api.widget.getImageProperties(elementId);
+                await api.widget.setImageProperties(elementId, {
+                    flipX: toBooleanValue(readPin(ctx, "flipX"), current.flipX),
+                });
+                return { nextPort: "next" };
+            },
+        }),
+        readNode({
+            type: types.getFlipY,
+            displayName: "Get Image Flip Y",
+            keywords: ["image", "flip", "y", "vertical"],
+            output: out("flipY", "Flip Y", "boolean"),
+            target,
+            mode,
+            category,
+        }),
+        writeNode({
+            type: types.setFlipY,
+            displayName: "Set Image Flip Y",
+            keywords: ["image", "flip", "y", "vertical", "set"],
+            pins: [boolIn("flipY", "Flip Y")],
+            target,
+            mode,
+            category,
+            execute: async ctx => {
+                const api = requireHostApi(ctx);
+                const elementId = resolveTargetElementId(ctx, target, mode);
+                const current = api.widget.getImageProperties(elementId);
+                await api.widget.setImageProperties(elementId, {
+                    flipY: toBooleanValue(readPin(ctx, "flipY"), current.flipY),
+                });
                 return { nextPort: "next" };
             },
         }),
@@ -388,6 +644,7 @@ function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
             type: setPageType,
             displayName: "Set Frame Page",
             keywords: ["frame", "page", "surface", "target", "set", "set frame page"],
+            pins: [optionalJsonIn("props", "Page props")],
             target,
             mode,
             inspectorParams: [
@@ -395,13 +652,17 @@ function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
                     key: "targetSurfaceId",
                     label: "Page",
                     kind: "select",
-                    dynamicOptionsSource: "surfaces",
+                    dynamicOptionsSource: BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
+                    emptyOptionLabel: "None",
                 },
             ],
             execute: async ctx => {
                 await requireHostApi(ctx).widget.setFrameProperties(
                     resolveTargetElementId(ctx, target, mode),
-                    { targetSurfaceId: toNullableString(readPin(ctx, "targetSurfaceId")) },
+                    {
+                        targetSurfaceId: toNullableString(readPin(ctx, "targetSurfaceId")),
+                        ...readOptionalFramePropsPatch(ctx),
+                    },
                 );
                 return { nextPort: "next" };
             },
@@ -425,7 +686,7 @@ function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
                 const params = readPin(ctx, "params");
                 await requireHostApi(ctx).widget.setFrameProperties(
                     resolveTargetElementId(ctx, target, mode),
-                    { params: params && typeof params === "object" && !Array.isArray(params) ? params as Record<string, unknown> : {} },
+                    { params: toRecordValue(params) },
                 );
                 return { nextPort: "next" };
             },

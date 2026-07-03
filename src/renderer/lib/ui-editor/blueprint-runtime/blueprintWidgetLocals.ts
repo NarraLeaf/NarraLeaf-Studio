@@ -2,12 +2,13 @@ import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/docum
 import {
     buildAccessibleBlueprintVariableOptions,
     createExplicitBlueprintVariableRef,
+    listEffectiveBlueprintVariables,
     parseBlueprintVariableRef,
 } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 
 function defaultLocalsFromBlueprint(bp: Blueprint): Record<string, unknown> {
     const out: Record<string, unknown> = {};
-    for (const v of Object.values(bp.members?.variables ?? {})) {
+    for (const v of listEffectiveBlueprintVariables(bp)) {
         const d = v.defaultValue;
         out[v.id] = d === undefined ? null : cloneJsonValue(d);
     }
@@ -45,6 +46,9 @@ function blueprintVariableStoreKey(blueprint: Blueprint, runtimeScopeId?: string
     if (owner.kind === "widgetValue") {
         return `widgetValue\0${runtimeScopeId ?? owner.surfaceId}\0${instanceElementId(owner.elementId, elementInstanceKey)}\0${owner.propPath}\0${blueprint.id}`;
     }
+    if (owner.kind === "componentWidgetMain") {
+        return `componentWidget\0${owner.componentId}\0${instanceElementId(owner.elementId, elementInstanceKey)}\0${blueprint.id}`;
+    }
     return `asset\0${owner.assetId}\0${blueprint.id}`;
 }
 
@@ -81,8 +85,8 @@ function defineVariableAccessor(target: Record<string, unknown>, key: string, st
 }
 
 /**
- * Mutable per-widget blueprint execution locals: one map per (surface, element, blueprint) until release.
- * Syncs variable ids with the current blueprint definition without wiping values for existing vars.
+ * Mutable blueprint lifecycle locals. Widget owners are released on unmount; owner-level stores stay
+ * keyed by their runtime scope and are reused across event dispatches.
  */
 export function acquireBlueprintWidgetLocals(
     surfaceId: string,

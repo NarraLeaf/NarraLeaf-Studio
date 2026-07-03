@@ -1,4 +1,10 @@
 import type { UIStageSlotId, UIStageSurfaceMount, UISurfaceKind } from "@shared/types/ui-editor/document";
+import {
+    DEFAULT_UI_STAGE_SLOT_ID,
+    UI_STAGE_SLOT_DESCRIPTIONS,
+    UI_STAGE_SLOT_IDS,
+    UI_STAGE_SLOT_LABELS,
+} from "@shared/types/ui-editor/stageSlots";
 
 export type SurfaceKindOption = {
     kind: UISurfaceKind;
@@ -22,37 +28,16 @@ export const SURFACE_KIND_OPTIONS: SurfaceKindOption[] = [
     },
 ];
 
-export const GAME_UI_SLOT_OPTIONS: { value: UIStageSlotId; label: string; description: string }[] = [
-    {
-        value: "onStage",
-        label: "On Stage",
-        description: "Always available while the game is running.",
-    },
-    {
-        value: "dialog",
-        label: "Dialog",
-        description: "The main conversation or narration interface.",
-    },
-    {
-        value: "notification",
-        label: "Notification",
-        description: "Short runtime messages and prompts.",
-    },
-    {
-        value: "choice",
-        label: "Choice",
-        description: "Player choice menus and decision prompts.",
-    },
-];
+export const GAME_UI_SLOT_OPTIONS: { value: UIStageSlotId; label: string; description: string }[] =
+    UI_STAGE_SLOT_IDS.map(value => ({
+        value,
+        label: UI_STAGE_SLOT_LABELS[value],
+        description: UI_STAGE_SLOT_DESCRIPTIONS[value],
+    }));
 
-export const STAGE_SLOT_LABELS: Record<UIStageSlotId, string> = {
-    onStage: "On Stage",
-    dialog: "Dialog",
-    notification: "Notification",
-    choice: "Choice",
-};
+export const STAGE_SLOT_LABELS: Record<UIStageSlotId, string> = UI_STAGE_SLOT_LABELS;
 
-export const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = "onStage";
+export const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 
 export const formatStageMountLabel = (mount: UIStageSurfaceMount): string => {
     return STAGE_SLOT_LABELS[mount.slotId] ?? mount.slotId;

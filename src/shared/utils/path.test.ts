@@ -8,6 +8,14 @@ describe("path polyfill", () => {
         );
     });
 
+    it("treats absolute-looking later join segments like Node path.join", () => {
+        expect(join("/project", "editor", "story", "stories", "story-1", "/")).toBe(
+            "/project/editor/story/stories/story-1/",
+        );
+        expect(join("/project", "/editor")).toBe("/project/editor");
+        expect(join("project", "/editor")).toBe("project/editor");
+    });
+
     it("keeps absolute POSIX paths absolute while normalizing parent segments", () => {
         expect(normalize("/Users/nomen/../nomen/Documents")).toBe("/Users/nomen/Documents");
         expect(posix.normalize("/..")).toBe("/");

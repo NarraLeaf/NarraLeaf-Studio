@@ -8,6 +8,7 @@ export type BlueprintEditorOpenTarget = {
     blueprintId: string;
     ownerKind: BlueprintEntryOwnerKind;
     surfaceId: UISurfaceId;
+    componentId?: string;
     elementId?: UIElementId;
     propPath?: string;
     /** Optional tab title when opening from workspace. */

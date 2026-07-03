@@ -22,6 +22,10 @@ type RuntimeGrantPolicy = {
         mode: FileSystemGrantMode;
         recursive: true;
     };
+    droppedFile?: {
+        mode: FileSystemGrantMode;
+        recursive: false;
+    };
 };
 
 type WindowPermissionContext = {
@@ -57,6 +61,7 @@ const projectFileSystemAccess = ({ window }: WindowPermissionContext): FileSyste
 const workspaceImportGrants: RuntimeGrantPolicy = {
     selectFile: { mode: "read", recursive: false },
     selectDirectory: { mode: "read", recursive: true },
+    droppedFile: { mode: "read", recursive: false },
 };
 
 const pluginPermissionElevatedAccess = (): ApiCapability[] => [

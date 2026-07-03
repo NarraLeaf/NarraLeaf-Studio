@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     DebugBridge,
+    MAX_DEBUG_EVENT_BUFFER_LENGTH,
     MAX_DEBUG_EVENT_MESSAGE_CHARS,
     truncateDebugEventMessage,
 } from "./DebugBridge";
@@ -28,5 +29,18 @@ describe("DebugBridge", () => {
         debug.emit({ type: "devtools.log", level: "info", message });
 
         expect(debug.snapshot()).toEqual([{ type: "devtools.log", level: "info", message }]);
+    });
+
+    it("keeps the most recent events up to the debug buffer limit", () => {
+        const debug = new DebugBridge();
+
+        for (let i = 0; i < MAX_DEBUG_EVENT_BUFFER_LENGTH + 5; i += 1) {
+            debug.emit({ type: "devtools.log", level: "info", message: `message-${i}` });
+        }
+
+        const snapshot = debug.snapshot();
+        expect(snapshot).toHaveLength(MAX_DEBUG_EVENT_BUFFER_LENGTH);
+        expect(snapshot[0]).toMatchObject({ message: "message-5" });
+        expect(snapshot.at(-1)).toMatchObject({ message: `message-${MAX_DEBUG_EVENT_BUFFER_LENGTH + 4}` });
     });
 });

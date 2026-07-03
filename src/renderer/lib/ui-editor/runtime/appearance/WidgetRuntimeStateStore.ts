@@ -15,8 +15,49 @@ type UIListRuntimeScrollRequestInput = UIListRuntimeScrollRequest extends infer 
         : never
     : never;
 
+export type UIDisplayableMotionFromCurrentValue = {
+    from: "current";
+    to: number;
+};
+
+export type UIDisplayableMotionValue = number | number[] | UIDisplayableMotionFromCurrentValue;
+
+export type UIDisplayableMotionTarget = {
+    x?: UIDisplayableMotionValue;
+    y?: UIDisplayableMotionValue;
+    scale?: UIDisplayableMotionValue;
+    rotate?: UIDisplayableMotionValue;
+    opacity?: UIDisplayableMotionValue;
+};
+
+export type UIDisplayableMotionTransition =
+    | {
+          type: "tween";
+          durationMs: number;
+          delayMs?: number;
+          easing?: string;
+      }
+    | {
+          type: "spring";
+          delayMs?: number;
+          stiffness: number;
+          damping: number;
+          mass: number;
+      };
+
+export type UIDisplayableMotionOverride = {
+    id: string;
+    target: UIDisplayableMotionTarget;
+    transition: UIDisplayableMotionTransition;
+    /** One-shot effects such as shake/pulse should hand control back to authored layout when finished. */
+    resetOnComplete?: boolean;
+};
+
 export type WidgetRuntimeSnapshot = {
+    /** Most recently entered hovered widget, kept for compact debug display and backwards compatibility. */
     hoverTargetId: string | null;
+    /** All widgets whose pointer boundary currently contains the cursor, including ancestors. */
+    hoverTargetIds: ReadonlySet<string>;
     activePointerId: string | null;
     focusedId: string | null;
     /** Copy for external readers; treat as immutable after getSnapshot. */
@@ -27,11 +68,13 @@ export type WidgetRuntimeSnapshot = {
     listItems: ReadonlyMap<string, readonly unknown[]>;
     listSelectedIndexes: ReadonlyMap<string, number>;
     listScrollRequests: ReadonlyMap<string, UIListRuntimeScrollRequest>;
+    displayableMotions: ReadonlyMap<string, UIDisplayableMotionOverride>;
 };
 
 /** Stable snapshot when no provider is mounted (e.g. Dev Mode without store). */
 export const STATIC_WIDGET_RUNTIME_SNAPSHOT: WidgetRuntimeSnapshot = Object.freeze({
     hoverTargetId: null,
+    hoverTargetIds: new Set<string>(),
     activePointerId: null,
     focusedId: null,
     variantOverrides: new Map<string, string>(),
@@ -39,6 +82,7 @@ export const STATIC_WIDGET_RUNTIME_SNAPSHOT: WidgetRuntimeSnapshot = Object.free
     listItems: new Map<string, readonly unknown[]>(),
     listSelectedIndexes: new Map<string, number>(),
     listScrollRequests: new Map<string, UIListRuntimeScrollRequest>(),
+    displayableMotions: new Map<string, UIDisplayableMotionOverride>(),
 });
 
 /**
@@ -46,7 +90,7 @@ export const STATIC_WIDGET_RUNTIME_SNAPSHOT: WidgetRuntimeSnapshot = Object.free
  * Not persisted; not surface blueprint state.
  */
 export class WidgetRuntimeStateStore {
-    private hoverTargetId: string | null = null;
+    private readonly hoverTargetIds = new Set<string>();
     private activePointerId: string | null = null;
     private focusedId: string | null = null;
     private readonly variantOverrides = new Map<string, string>();
@@ -54,9 +98,12 @@ export class WidgetRuntimeStateStore {
     private readonly listItems = new Map<string, unknown[]>();
     private readonly listSelectedIndexes = new Map<string, number>();
     private readonly listScrollRequests = new Map<string, UIListRuntimeScrollRequest>();
+    private readonly displayableMotions = new Map<string, UIDisplayableMotionOverride>();
     private readonly listeners = new Set<() => void>();
+    private readonly runtimePatchListeners = new Set<() => void>();
     private snapshot: WidgetRuntimeSnapshot;
     private listScrollRequestVersion = 0;
+    private displayableMotionVersion = 0;
 
     constructor() {
         this.snapshot = this.rebuildSnapshot();
@@ -67,11 +114,17 @@ export class WidgetRuntimeStateStore {
         return () => this.listeners.delete(onStoreChange);
     };
 
+    subscribeRuntimePatches = (onStoreChange: () => void): (() => void) => {
+        this.runtimePatchListeners.add(onStoreChange);
+        return () => this.runtimePatchListeners.delete(onStoreChange);
+    };
+
     getSnapshot = (): WidgetRuntimeSnapshot => this.snapshot;
 
     private rebuildSnapshot(): WidgetRuntimeSnapshot {
         return {
-            hoverTargetId: this.hoverTargetId,
+            hoverTargetId: this.getPrimaryHoverTargetId(),
+            hoverTargetIds: new Set(this.hoverTargetIds),
             activePointerId: this.activePointerId,
             focusedId: this.focusedId,
             variantOverrides: new Map(this.variantOverrides),
@@ -79,6 +132,7 @@ export class WidgetRuntimeStateStore {
             listItems: new Map(this.listItems),
             listSelectedIndexes: new Map(this.listSelectedIndexes),
             listScrollRequests: new Map(this.listScrollRequests),
+            displayableMotions: new Map(this.displayableMotions),
         };
     }
 
@@ -89,20 +143,71 @@ export class WidgetRuntimeStateStore {
         }
     }
 
+    private emitRuntimePatches(): void {
+        for (const fn of this.runtimePatchListeners) {
+            fn();
+        }
+    }
+
+    notifyRuntimePatchesChanged(options?: { widgetStateChanged?: boolean }): void {
+        if (options?.widgetStateChanged) {
+            this.snapshot = this.rebuildSnapshot();
+            for (const fn of this.listeners) {
+                fn();
+            }
+        }
+        this.emitRuntimePatches();
+    }
+
+    private getPrimaryHoverTargetId(): string | null {
+        let latest: string | null = null;
+        for (const id of this.hoverTargetIds) {
+            latest = id;
+        }
+        return latest;
+    }
+
     setHoverTarget(id: string): void {
-        if (this.hoverTargetId === id) {
+        if (this.hoverTargetIds.has(id)) {
             return;
         }
-        this.hoverTargetId = id;
+        this.hoverTargetIds.add(id);
         this.emit();
     }
 
     clearHoverIf(id: string): void {
-        if (this.hoverTargetId !== id) {
+        if (!this.hoverTargetIds.delete(id)) {
             return;
         }
-        this.hoverTargetId = null;
         this.emit();
+    }
+
+    clearInteractionStateForScope(runtimeScopeId?: string | null): void {
+        const prefix = runtimeScopeId ? `${runtimeScopeId}\0` : null;
+        let changed = false;
+        const belongsToScope = (id: string | null): boolean =>
+            id != null && (prefix ? id.startsWith(prefix) : true);
+
+        for (const id of [...this.hoverTargetIds]) {
+            if (belongsToScope(id)) {
+                this.hoverTargetIds.delete(id);
+                changed = true;
+            }
+        }
+
+        if (belongsToScope(this.activePointerId)) {
+            this.activePointerId = null;
+            changed = true;
+        }
+
+        if (belongsToScope(this.focusedId)) {
+            this.focusedId = null;
+            changed = true;
+        }
+
+        if (changed) {
+            this.emit();
+        }
     }
 
     setActivePointerTarget(id: string | null): void {
@@ -208,9 +313,62 @@ export class WidgetRuntimeStateStore {
         this.emit();
     }
 
+    setDisplayableMotion(
+        elementId: string,
+        motion: Omit<UIDisplayableMotionOverride, "id"> & { id?: string },
+    ): UIDisplayableMotionOverride {
+        this.displayableMotionVersion += 1;
+        const next: UIDisplayableMotionOverride = {
+            ...motion,
+            id: motion.id ?? `${this.displayableMotionVersion}`,
+        };
+        this.displayableMotions.set(elementId, next);
+        this.emit();
+        this.emitRuntimePatches();
+        return next;
+    }
+
+    getDisplayableMotion(elementId: string): UIDisplayableMotionOverride | null {
+        return this.displayableMotions.get(elementId) ?? null;
+    }
+
+    clearDisplayableMotion(elementId: string, options?: { silent?: boolean }): boolean {
+        if (!this.displayableMotions.delete(elementId)) {
+            return false;
+        }
+        if (!options?.silent) {
+            this.emit();
+            this.emitRuntimePatches();
+        }
+        return true;
+    }
+
+    clearDisplayableMotionById(motionId: string): { elementId: string; motion: UIDisplayableMotionOverride } | null {
+        for (const [elementId, motion] of this.displayableMotions) {
+            if (motion.id !== motionId) {
+                continue;
+            }
+            this.displayableMotions.delete(elementId);
+            this.emit();
+            this.emitRuntimePatches();
+            return { elementId, motion };
+        }
+        return null;
+    }
+
+    completeDisplayableMotion(elementId: string, motionId: string): void {
+        const current = this.displayableMotions.get(elementId);
+        if (!current || current.id !== motionId || !current.resetOnComplete) {
+            return;
+        }
+        this.displayableMotions.delete(elementId);
+        this.emit();
+        this.emitRuntimePatches();
+    }
+
     getSignalsForElement(elementId: string, interactionDisabled: boolean | undefined): SystemInteractionSignals {
         return {
-            hovered: this.hoverTargetId === elementId,
+            hovered: this.hoverTargetIds.has(elementId),
             active: this.activePointerId === elementId,
             focused: this.focusedId === elementId,
             disabled: Boolean(interactionDisabled),

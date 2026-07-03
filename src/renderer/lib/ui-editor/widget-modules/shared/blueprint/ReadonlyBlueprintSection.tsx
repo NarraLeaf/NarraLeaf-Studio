@@ -10,6 +10,7 @@ import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { getOwnerLabel } from "@shared/types/ui-editor/ownerLabels";
 import { BlueprintLayerPreview, resolveFirstBlueprintLayerPreview } from "./BlueprintLayerPreview";
 import { useReadonlyBlueprintSummary } from "./useReadonlyBlueprintSummary";
+import { parseComponentEditorSurfaceId } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 
 const widgetOwnerLabel = getOwnerLabel("widgetMain");
 
@@ -19,6 +20,7 @@ const widgetOwnerLabel = getOwnerLabel("widgetMain");
 export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorData>) {
     const { context, isInitialized } = useWorkspace();
     const surfaceId = data.surfaceId;
+    const componentId = parseComponentEditorSurfaceId(surfaceId);
     const element = data.element;
     const summary = useReadonlyBlueprintSummary(null, surfaceId, element);
     const blueprintRevision = useBlueprintDocumentRevision();
@@ -38,8 +40,9 @@ export function ReadonlyBlueprintSection({ data }: CustomFieldProps<UIInspectorD
         }
         openBlueprint({
             blueprintId: summary.blueprintId,
-            ownerKind: "widgetMain",
+            ownerKind: componentId ? "componentWidgetMain" : "widgetMain",
             surfaceId,
+            componentId: componentId ?? undefined,
             elementId: element.id,
             title: `${widgetOwnerLabel.titlePrefix} - ${element.name ?? element.type}`,
         });

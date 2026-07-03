@@ -68,7 +68,7 @@ export function BlueprintEditorLayout({
             <div className="relative flex min-h-0 min-w-0 flex-1">
                 <aside className={leftPanelClasses}>
                     <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-2 py-1.5">
-                        <span className="text-[10px] uppercase tracking-wide text-gray-500">Blueprint</span>
+                        <span className="text-[11px] font-medium text-gray-500">Blueprint</span>
                         <button
                             type="button"
                             className="text-gray-400 transition-colors hover:text-white"

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import {
     applyPlannedMove,
+    filterToTopLevelMovers,
     normalizeFlowChildLayouts,
 } from "./uiDocumentTreeMove";
 
@@ -42,6 +43,17 @@ function makeDocument(elements: Record<string, UIElement>): UIDocument {
 }
 
 describe("uiDocumentTreeMove flow layout normalization", () => {
+    it("drops selected descendants when their ancestor is also selected", () => {
+        const document = makeDocument({
+            root: element("root", "nl.root", null, ["panel", "sibling"]),
+            panel: element("panel", "nl.container", "root", ["child"]),
+            child: element("child", "nl.text", "panel"),
+            sibling: element("sibling", "nl.text", "root"),
+        });
+
+        expect(filterToTopLevelMovers(document, ["panel", "child", "sibling"])).toEqual(["panel", "sibling"]);
+    });
+
     it("neutralizes direct flow-child coordinates without changing authored size or rotation", () => {
         const document = makeDocument({
             root: element("root", "nl.root", null, ["stack", "free"]),

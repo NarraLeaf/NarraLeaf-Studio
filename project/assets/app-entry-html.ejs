@@ -35,6 +35,18 @@
     <%= title %>
   </title>
   <base href="<%= base %>">
+  <script type="importmap">
+    {
+      "imports": {
+        "narraleaf-studio/plugin": "app://plugin-api/plugin.js",
+        "react": "app://plugin-api/react.js",
+        "react-dom": "app://plugin-api/react-dom.js",
+        "react-dom/client": "app://plugin-api/react-dom-client.js",
+        "react/jsx-runtime": "app://plugin-api/react-jsx-runtime.js",
+        "react/jsx-dev-runtime": "app://plugin-api/react-jsx-dev-runtime.js"
+      }
+    }
+  </script>
   <script defer src="<%= script %>"></script>
   <link href="<%= style %>" rel="stylesheet">
 </head>

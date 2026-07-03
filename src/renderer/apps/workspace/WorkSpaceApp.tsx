@@ -1,12 +1,15 @@
-import { LoadingScreen } from "./components";
+import { LoadingScreen, MissingProjectConfigScreen } from "./components";
 import { ErrorScreen } from "./components/ErrorScreen";
 import { WorkspaceLayout } from "./components/layout";
 import { WorkspaceProvider, useWorkspace } from "./context";
 import { useModuleLoader } from "./hooks/useModuleLoader";
 import { useWorkspaceEditorSession } from "./hooks/useWorkspaceEditorSession";
+import { useMenuActionHandler } from "./hooks/useMenuActionHandler";
+import { useWorkspacePlugins } from "./hooks/useWorkspacePlugins";
 import { RegistryProvider } from "./registry";
 import { WorkspaceAssetDragProvider } from "./dnd/WorkspaceAssetDragProvider";
 import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/PreviewBlueprintNavigateBridge";
+import { isWorkspaceStartupError, WorkspaceStartupErrorKind } from "@/lib/workspace/startup/workspaceProjectPreflight";
 
 /**
  * Main workspace application component
@@ -15,7 +18,9 @@ import { PreviewBlueprintNavigateBridge } from "./modules/blueprint-lite/Preview
 function WorkspaceContent() {
     // Load all built-in modules (panels, editors, actions)
     useModuleLoader();
+    useWorkspacePlugins();
     useWorkspaceEditorSession();
+    useMenuActionHandler();
 
     return (
         <>
@@ -36,6 +41,9 @@ function InitializedWorkspace({ children }: { children: React.ReactNode }) {
 
     // Show error screen if initialization failed
     if (error) {
+        if (isWorkspaceStartupError(error) && error.kind === WorkspaceStartupErrorKind.MissingProjectConfig) {
+            return <MissingProjectConfigScreen projectPath={error.projectPath} />;
+        }
         return <ErrorScreen error={error} />;
     }
 

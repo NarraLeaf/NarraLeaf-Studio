@@ -82,7 +82,7 @@ export function Modal({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="nl-window-content-layer z-50 flex items-center justify-center p-4">
             {/* Backdrop — match workspace DialogContainer */}
             <div
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"

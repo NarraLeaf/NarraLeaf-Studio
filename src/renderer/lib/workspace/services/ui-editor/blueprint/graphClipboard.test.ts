@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
+import { BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR } from "@shared/types/blueprint/graph";
 import {
     buildBlueprintGraphClipboardPayload,
     pasteBlueprintGraphClipboardPayload,
@@ -90,5 +91,32 @@ describe("blueprint graph clipboard", () => {
 
         expect(first?.ir.nodes?.["new-a-1"]?.meta?.editorLayout).toEqual({ x: 58, y: 68 });
         expect(second?.ir.nodes?.["new-a-2"]?.meta?.editorLayout).toEqual({ x: 106, y: 116 });
+    });
+
+    it("assigns pasted Var declaration nodes a fresh variable id", () => {
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                varNode: {
+                    id: "varNode",
+                    type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                    params: { variableId: "varNode", name: "score", valueType: "integer", defaultValue: 0 },
+                    meta: { editorLayout: { x: 10, y: 20 } },
+                },
+            },
+            edges: [],
+        };
+        const payload = buildBlueprintGraphClipboardPayload(ir, ["varNode"]);
+
+        const result = pasteBlueprintGraphClipboardPayload({
+            ir,
+            payload,
+            generateId: () => "varNodeCopy",
+        });
+
+        expect(result?.ir.nodes?.varNodeCopy?.params).toMatchObject({
+            variableId: "varNodeCopy",
+            name: "score",
+            valueType: "integer",
+        });
     });
 });

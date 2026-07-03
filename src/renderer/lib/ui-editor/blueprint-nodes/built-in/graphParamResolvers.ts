@@ -37,6 +37,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_IS_NUMBER,
     BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT,
     BLUEPRINT_NODE_TYPE_DATA_IS_STRING,
+    BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_JSON_HAS,
@@ -55,9 +56,12 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_SIZE,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE,
@@ -68,6 +72,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_RANGE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_ALL_PROPERTIES,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_EFFECTS,
@@ -81,14 +86,36 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT_VERTICAL_ALIGN,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_WRAP_MODE,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
+    BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
+    BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
@@ -133,6 +160,10 @@ import {
     BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER,
     BLUEPRINT_NODE_TYPE_MATH_ROUND,
     BLUEPRINT_NODE_TYPE_MATH_SUBTRACT,
+    BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     BLUEPRINT_NODE_TYPE_STRING_CAPITALIZE,
     BLUEPRINT_NODE_TYPE_STRING_CHAR_AT,
     BLUEPRINT_NODE_TYPE_STRING_CONCAT,
@@ -202,6 +233,10 @@ import {
     normalizeBlueprintElementRefValue,
     readBlueprintElementRefParams,
 } from "./elementRefUtils";
+import {
+    BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID,
+    createDelayTimerToken,
+} from "./flowTimerTokens";
 
 const MAX_RESOLVE_DEPTH = 32;
 const MAX_REPEAT_COUNT = 10000;
@@ -255,6 +290,7 @@ const COMPARE_OPS: Record<string, "eq" | "ne" | "gt" | "gte" | "lt" | "lte"> = {
 };
 
 export type DataPinGraph = {
+    id?: string;
     edges?: Array<{ from: { nodeId: string; port: string }; to: { nodeId: string; port: string } }>;
     nodes?: Record<string, { type: string; params?: Record<string, unknown> }>;
 };
@@ -268,6 +304,7 @@ export type DataPinResolveRuntime = {
         surfaceId?: string;
         elementId?: string;
         blueprintId?: string;
+        componentId?: string;
     };
     valueExecution?: BehaviorGraphValueExecution;
 };
@@ -275,7 +312,9 @@ export type DataPinResolveRuntime = {
 function isElementBindingOutput(type: string, portId: string): boolean {
     return (
         portId === "element" &&
-        (type === BLUEPRINT_NODE_TYPE_ELEMENT_REF || type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH)
+        (type === BLUEPRINT_NODE_TYPE_ELEMENT_REF ||
+            type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH ||
+            type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK)
     );
 }
 
@@ -1280,7 +1319,60 @@ function resolveFrameNodeOutput(
         return undefined;
     }
     const key = toBlueprintString(resolveInput(graph, nodeId, "key", params, blueprintLocals, depth, runtime)).trim();
-    return key ? api.frame.getParam(key) : undefined;
+    return key ? api.frame.getParam(key) : null;
+}
+
+function resolvePageNodeOutput(portId: string, runtime?: DataPinResolveRuntime): unknown {
+    if (portId === "props") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.navigation.getPageProps() ?? {};
+    }
+    if (portId === "isExiting") {
+        return runtime?.hostAdapter?.blueprintRuntime?.getSurfaceTransitionState?.().isExiting === true;
+    }
+    if (portId === "isEntering") {
+        return runtime?.hostAdapter?.blueprintRuntime?.getSurfaceTransitionState?.().isEntering === true;
+    }
+    if (portId === "isTransitioning") {
+        const state = runtime?.hostAdapter?.blueprintRuntime?.getSurfaceTransitionState?.();
+        return state?.isEntering === true || state?.isExiting === true;
+    }
+    return undefined;
+}
+
+const GAME_PREFERENCE_OUTPUT_KEYS: Record<string, { portId: string; key: string }> = {
+    [BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD]: { portId: "autoForward", key: "autoForward" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED]: { portId: "skip", key: "skip" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED]: { portId: "gameSpeed", key: "gameSpeed" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED]: { portId: "cps", key: "cps" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME]: { portId: "voiceVolume", key: "voiceVolume" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION]: { portId: "voiceFadeDuration", key: "voiceFadeDuration" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE]: { portId: "voiceEndMode", key: "voiceEndMode" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME]: { portId: "bgmVolume", key: "bgmVolume" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME]: { portId: "soundVolume", key: "soundVolume" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME]: { portId: "globalVolume", key: "globalVolume" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY]: { portId: "skipDelay", key: "skipDelay" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL]: { portId: "skipInterval", key: "skipInterval" },
+};
+
+function resolveGameNodeOutput(
+    nodeType: string,
+    portId: string,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (portId === "nametag") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getNametag() ?? null;
+    }
+    if (portId === "isInGame") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isInGame() === true;
+    }
+    if (portId === "isGameOverlay") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isGameOverlay() === true;
+    }
+    const preference = GAME_PREFERENCE_OUTPUT_KEYS[nodeType];
+    if (preference && portId === preference.portId) {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getPreference(preference.key as never);
+    }
+    return undefined;
 }
 
 function trackElementDependency(
@@ -1464,17 +1556,70 @@ function resolveElementDisplayableNodeOutput(
     if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE && portId === "visible") {
         return read("layout.visible", props.visible);
     }
+    if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY && portId === "display") {
+        return read("runtime.display", props.display);
+    }
+    if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT && portId === "variantId") {
+        return read("props.appearance.defaultVariantId", api.widget.getCommonProperties(ref.elementId).variantId ?? "");
+    }
+    if (type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY && portId === "value") {
+        const property = toBlueprintString(params.property || "position");
+        switch (property) {
+            case "position":
+                trackElementDependency(runtime, ref, "layout.x");
+                trackElementDependency(runtime, ref, "layout.y");
+                return props.position;
+            case "size":
+                trackElementDependency(runtime, ref, "layout.width");
+                trackElementDependency(runtime, ref, "layout.height");
+                return props.size;
+            case "bounds":
+                trackElementDependency(runtime, ref, "layout.x");
+                trackElementDependency(runtime, ref, "layout.y");
+                trackElementDependency(runtime, ref, "layout.width");
+                trackElementDependency(runtime, ref, "layout.height");
+                return props.bounds;
+            case "x":
+                return read("layout.x", props.position.x);
+            case "y":
+                return read("layout.y", props.position.y);
+            case "offsetX":
+                return read("runtime.offsetX", props.offset.x);
+            case "offsetY":
+                return read("runtime.offsetY", props.offset.y);
+            case "width":
+                return read("layout.width", props.size.width);
+            case "height":
+                return read("layout.height", props.size.height);
+            case "rotation":
+                return read("layout.rotation", props.rotation);
+            case "opacity":
+                return read("layout.opacity", props.opacity);
+            case "visible":
+                return read("layout.visible", props.visible);
+            default:
+                return undefined;
+        }
+    }
     return undefined;
 }
 
-function resolveSelfDisplayableNodeOutput(type: string, portId: string, runtime?: DataPinResolveRuntime): unknown {
+function resolveSelfDisplayableNodeOutput(
+    type: string,
+    portId: string,
+    params: Record<string, unknown>,
+    runtime?: DataPinResolveRuntime,
+): unknown {
     const isDisplayableNode =
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION ||
         type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY ||
-        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE;
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT ||
+        type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY;
     if (!isDisplayableNode) {
         return undefined;
     }
@@ -1506,6 +1651,47 @@ function resolveSelfDisplayableNodeOutput(type: string, portId: string, runtime?
     }
     if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE && portId === "visible") {
         return props.visible;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY && portId === "display") {
+        return props.display;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT && portId === "variantId") {
+        try {
+            return api.widget.getCommonProperties(elementId).variantId ?? "";
+        } catch {
+            return undefined;
+        }
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY && portId === "value") {
+        const property = toBlueprintString(params.property || "position");
+        switch (property) {
+            case "position":
+                return props.position;
+            case "size":
+                return props.size;
+            case "bounds":
+                return props.bounds;
+            case "x":
+                return props.position.x;
+            case "y":
+                return props.position.y;
+            case "offsetX":
+                return props.offset.x;
+            case "offsetY":
+                return props.offset.y;
+            case "width":
+                return props.size.width;
+            case "height":
+                return props.size.height;
+            case "rotation":
+                return props.rotation;
+            case "opacity":
+                return props.opacity;
+            case "visible":
+                return props.visible;
+            default:
+                return undefined;
+        }
     }
     return undefined;
 }
@@ -1777,6 +1963,26 @@ function resolveWidgetPropertyNodeOutput(
             const asset = api.widget.getImageProperties(elementId).asset;
             return read("props.imageFill.assetId", asset?.assetId ?? "");
         }
+        if (key === "image" && action === "getFitMode" && portId === "fitMode") {
+            return read("props.imageFill.mode", api.widget.getImageProperties(elementId).fitMode);
+        }
+        if (key === "image" && action === "getCropRect") {
+            const cropRect = api.widget.getImageProperties(elementId).cropRect;
+            if (
+                portId === "leftPct" ||
+                portId === "topPct" ||
+                portId === "widthPct" ||
+                portId === "heightPct"
+            ) {
+                return read(`props.imageFill.cropPlacement.${portId}`, cropRect[portId]);
+            }
+        }
+        if (key === "image" && action === "getFlipX" && portId === "flipX") {
+            return read("props.imageFlipX", api.widget.getImageProperties(elementId).flipX);
+        }
+        if (key === "image" && action === "getFlipY" && portId === "flipY") {
+            return read("props.imageFlipY", api.widget.getImageProperties(elementId).flipY);
+        }
         if ((key === "frame" || key === "frameWidget") && action === "getTargetPage" && portId === "targetSurfaceId") {
             return read("props.targetSurfaceId", api.widget.getFrameProperties(elementId).targetSurfaceId ?? "");
         }
@@ -1941,7 +2147,10 @@ function resolveDataNodeOutput(
         return isJsonObjectRecord(value);
     }
     if (type === BLUEPRINT_NODE_TYPE_DATA_IS_NULL) {
-        return value === null;
+        return value == null;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_DATA_NOT_NULL) {
+        return value != null;
     }
     if (type === BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE) {
         return isEmptyBlueprintValue(value);
@@ -2052,13 +2261,29 @@ function resolveSelfOutput(
         }
     }
     if (isBlueprintEventDispatchHeadType(selfNode.type) && portId !== "then") {
-        return runtime?.eventPayload?.[portId];
+        return runtime?.eventPayload?.[portId] ?? null;
+    }
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_DELAY && portId === BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID) {
+        return createDelayTimerToken({
+            graphId: graph.id,
+            nodeId,
+            instanceKey: runtime?.instanceKey,
+            executionOwner: runtime?.executionOwner,
+        });
     }
     if (
         (selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP ||
             selfNode.type === BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH ||
-            selfNode.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET) &&
-        (portId === "index" || portId === "item" || portId === "value")
+            selfNode.type === BLUEPRINT_NODE_TYPE_PERSISTENT_GET ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW) &&
+        (portId === "index" ||
+            portId === "item" ||
+            portId === "value" ||
+            portId === "ids" ||
+            portId === "metadata" ||
+            portId === "preview")
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
@@ -2094,6 +2319,22 @@ function resolveSelfOutput(
     if (selfNode.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM) {
         return resolveFrameNodeOutput(graph, nodeId, portId, selfNode.params ?? {}, blueprintLocals, depth, runtime);
     }
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING
+    ) {
+        return resolvePageNodeOutput(portId, runtime);
+    }
+    if (
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY ||
+        GAME_PREFERENCE_OUTPUT_KEYS[selfNode.type]
+    ) {
+        return resolveGameNodeOutput(selfNode.type, portId, runtime);
+    }
     const elementTextOutput = resolveElementTextNodeOutput(
         graph,
         nodeId,
@@ -2120,7 +2361,7 @@ function resolveSelfOutput(
     if (elementDisplayableOutput !== undefined) {
         return elementDisplayableOutput;
     }
-    const selfDisplayableOutput = resolveSelfDisplayableNodeOutput(selfNode.type, portId, runtime);
+    const selfDisplayableOutput = resolveSelfDisplayableNodeOutput(selfNode.type, portId, selfNode.params ?? {}, runtime);
     if (selfDisplayableOutput !== undefined) {
         return selfDisplayableOutput;
     }

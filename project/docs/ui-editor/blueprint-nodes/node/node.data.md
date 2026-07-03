@@ -40,7 +40,7 @@ Collection 节点归入 Data 分类，用于处理 `array` 与 JSON object。`ar
 
 `blueprint.data.returnValue` 只出现在 Blueprint Value 图中，用于把当前执行线路产出的值作为属性动态值返回。它有一个执行入口 `in` 和一个数据入口 `value`，没有后续执行出口。
 
-如果一次 Blueprint Value 求值没有执行到 `returnValue`，运行时会保留上一次解析值；没有上一次解析值时回退到 UIDocument 中的字面 props。`string` 绑定会把返回结果转换为字符串，`null` / `undefined` 会变成空字符串；Page `params` 这类 `json` 绑定应返回 JSON object，非 object 结果会回退为空对象。
+如果一次 Blueprint Value 求值没有执行到 `returnValue`，运行时会保留上一次解析值；没有上一次解析值时回退到 UIDocument 中的字面 props。`string` 绑定会把返回结果转换为字符串，`null` 会变成空字符串；Page `params` 这类 `json` 绑定应返回 JSON object，非 object 结果会回退为空对象。
 
 ## 转换
 
@@ -59,7 +59,8 @@ Collection 节点归入 Data 分类，用于处理 `array` 与 JSON object。`ar
 - `blueprint.data.isArray` - 判断 `any` 是否为数组
 - `blueprint.data.isObject` - 判断 `any` 是否为非数组对象
 - `blueprint.data.isNull` - 判断 `any` 是否为 `null`
-- `blueprint.data.isEmptyValue` - 判断 `any` 是否为空字符串、空数组、空对象、`null` 或 `undefined`
+- `blueprint.data.notNull` - 判断 `any` 是否不是 `null`
+- `blueprint.data.isEmptyValue` - 判断 `any` 是否为空字符串、空数组、空对象或 `null`
 
 
-`integer` 输出允许直接连接 `float` 输入。`string` 输入允许直接连接 `integer` / `float` 输出，并会在读取输入时自动转换为字符串。
+`integer` 输出允许直接连接 `float` 输入。`string` 输入允许直接连接 `integer` / `float` 输出，并会在读取输入时自动转换为字符串。`Timer` 和 `AnimationToken` 是独立 pin/变量类型，分别用于表示可跳过的运行时计时器 token 和可停止的 Displayable 动画 token；它们不是 JSON 通配类型，只能连接到同类型输入或 `any` 输入。

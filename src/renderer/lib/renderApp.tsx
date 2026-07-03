@@ -1,18 +1,15 @@
 import React from "react";
 import { AppInfo } from "@shared/types/app";
-import { RendererInterfaceKey } from "@shared/types/constants";
 import { PlatformInfo } from "@shared/types/os";
 import { createRoot } from "react-dom/client";
-import { getInterface } from "./app/bridge";
+import { getInterface, hardenRendererBridge, initializeRendererBridge } from "./app/bridge";
 import { CriticalErrorBoundary } from "./app/errorHandling/CriticalErrorBoundary";
 import { RenderingStatusAnnouncer } from "./components/announcers/RenderingStatusAnnouncer";
 
 import "@/styles/styles.css";
 
 function validateEnv() {
-    if (!window[RendererInterfaceKey]) {
-        throw new Error("Invalid environment: Renderer interface not found");
-    }
+    initializeRendererBridge();
 }
 
 let appInfo: AppInfo | null = null;
@@ -52,6 +49,8 @@ async function renderApp(children: React.ReactNode) {
 
     console.log("[renderer] platformInfo", platformInfo);
     console.log("[renderer] appInfo", appInfo);
+
+    hardenRendererBridge();
 
     const root = createRoot(document.getElementById("root")!);
     const content = (<>

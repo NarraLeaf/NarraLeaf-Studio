@@ -32,14 +32,18 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP = "blueprint.event.head.keyUp
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN = "blueprint.event.head.anyKeyDown" as const;
 /** Entry for owner-level global keyboard up events without a key filter. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP = "blueprint.event.head.anyKeyUp" as const;
-/** Persisted on On Key event heads: KeyboardEvent.key name to match, case-insensitive. */
+/** Persisted on On Key event heads: keyboard binding string to match, case-insensitive. */
 export const BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME = "key" as const;
 /** Entry for widget `focus` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus" as const;
 /** Entry for widget `blur` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR = "blueprint.event.head.blur" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH = "blueprint.event.head.flush" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT = "blueprint.event.head.unmount" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT = "blueprint.event.head.beforeSurfaceExit" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER = "blueprint.event.head.afterSurfaceEnter" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH = "blueprint.event.head.elementFlush" as const;
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK = "blueprint.event.head.elementClick" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL = "blueprint.event.head.scroll" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST = "blueprint.event.head.onAnyBroadcast" as const;
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST = "blueprint.event.head.onBroadcast" as const;
@@ -55,6 +59,8 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED = "blueprint.ev
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END = "blueprint.event.head.sliderDragEnd" as const;
 /** Entry for global `appBoot` lifecycle event (application start). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
+/** Entry for global NarraLeaf game runtime readiness. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY = "blueprint.event.head.gameReady" as const;
 /** Entry for surface `surfaceInit` lifecycle event (page entered). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT = "blueprint.event.head.surfaceInit" as const;
 /** Entry for surface `surfaceUnmount` lifecycle event (page left). */
@@ -78,7 +84,11 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
@@ -93,6 +103,7 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
 ]);
@@ -112,7 +123,93 @@ export function resolveBlueprintEventHeadTypesForUiSlot(slotId: string, widgetEl
     return [...EVENT_DISPATCH_HEAD_TYPES];
 }
 
-function normalizeKeyboardEventKeyName(raw: unknown): string {
+export type BlueprintKeyboardEventLike = {
+    key?: unknown;
+    altKey?: unknown;
+    ctrlKey?: unknown;
+    shiftKey?: unknown;
+    metaKey?: unknown;
+};
+
+export type BlueprintKeyboardBinding = {
+    key: string;
+    altKey: boolean;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+    metaKey: boolean;
+    /** True when the binding text explicitly includes at least one modifier token. */
+    hasExplicitModifiers: boolean;
+};
+
+type BlueprintKeyboardModifierFlag = "altKey" | "ctrlKey" | "shiftKey" | "metaKey";
+
+const BLUEPRINT_KEYBOARD_MODIFIER_ORDER: BlueprintKeyboardModifierFlag[] = [
+    "ctrlKey",
+    "altKey",
+    "shiftKey",
+    "metaKey",
+];
+
+const BLUEPRINT_KEYBOARD_MODIFIER_LABELS: Record<BlueprintKeyboardModifierFlag, string> = {
+    altKey: "Alt",
+    ctrlKey: "Ctrl",
+    shiftKey: "Shift",
+    metaKey: "Meta",
+};
+
+const BLUEPRINT_KEYBOARD_MODIFIER_ALIASES: Record<string, BlueprintKeyboardModifierFlag> = {
+    alt: "altKey",
+    option: "altKey",
+    ctrl: "ctrlKey",
+    control: "ctrlKey",
+    shift: "shiftKey",
+    meta: "metaKey",
+    cmd: "metaKey",
+    command: "metaKey",
+    win: "metaKey",
+    windows: "metaKey",
+};
+
+const BLUEPRINT_KEYBOARD_MODIFIER_KEYS: Record<string, BlueprintKeyboardModifierFlag> = {
+    alt: "altKey",
+    control: "ctrlKey",
+    shift: "shiftKey",
+    meta: "metaKey",
+};
+
+const BLUEPRINT_KEYBOARD_KEY_ALIASES: Record<string, string> = {
+    " ": "space",
+    spacebar: "space",
+    esc: "escape",
+    return: "enter",
+    del: "delete",
+    plus: "+",
+    add: "+",
+    left: "arrowleft",
+    right: "arrowright",
+    up: "arrowup",
+    down: "arrowdown",
+};
+
+const BLUEPRINT_KEYBOARD_KEY_LABELS: Record<string, string> = {
+    "+": "Plus",
+    " ": "Space",
+    alt: "Alt",
+    arrowdown: "Arrow Down",
+    arrowleft: "Arrow Left",
+    arrowright: "Arrow Right",
+    arrowup: "Arrow Up",
+    control: "Ctrl",
+    delete: "Delete",
+    enter: "Enter",
+    escape: "Escape",
+    meta: "Meta",
+    shift: "Shift",
+    space: "Space",
+    tab: "Tab",
+};
+
+export function normalizeBlueprintKeyboardEventKeyName(raw: unknown): string {
     if (typeof raw !== "string" && typeof raw !== "number") {
         return "";
     }
@@ -120,14 +217,150 @@ function normalizeKeyboardEventKeyName(raw: unknown): string {
     if (text.length > 0 && text.trim().length === 0) {
         return "space";
     }
-    const normalized = text.trim().toLocaleLowerCase();
-    if (normalized === "spacebar") {
-        return "space";
+    const normalized = text.trim().toLowerCase();
+    return BLUEPRINT_KEYBOARD_KEY_ALIASES[normalized] ?? normalized;
+}
+
+function readKeyboardModifierToken(raw: string): BlueprintKeyboardModifierFlag | null {
+    return BLUEPRINT_KEYBOARD_MODIFIER_ALIASES[raw.trim().toLowerCase()] ?? null;
+}
+
+function readKeyboardModifierFlagForKey(key: string): BlueprintKeyboardModifierFlag | null {
+    return BLUEPRINT_KEYBOARD_MODIFIER_KEYS[key] ?? null;
+}
+
+function keyboardModifierKeyForFlag(flag: BlueprintKeyboardModifierFlag): string {
+    switch (flag) {
+        case "altKey":
+            return "alt";
+        case "ctrlKey":
+            return "control";
+        case "shiftKey":
+            return "shift";
+        case "metaKey":
+            return "meta";
     }
-    if (normalized === "esc") {
-        return "escape";
+}
+
+function keyboardBindingDisplayLabelForKey(key: string): string {
+    const label = BLUEPRINT_KEYBOARD_KEY_LABELS[key];
+    if (label) {
+        return label;
     }
-    return normalized;
+    return key.length === 1 ? key.toUpperCase() : key;
+}
+
+function readKeyboardBindingTokens(raw: string): string[] {
+    const trimmed = raw.trim();
+    if (!trimmed && raw.length > 0) {
+        return ["Space"];
+    }
+    if (trimmed === "+") {
+        return ["Plus"];
+    }
+    const tokens = trimmed.split("+").map(part => part.trim()).filter(Boolean);
+    if (trimmed.endsWith("+") && tokens.length > 0) {
+        tokens.push("Plus");
+    }
+    return tokens;
+}
+
+export function parseBlueprintKeyboardBinding(raw: unknown): BlueprintKeyboardBinding | null {
+    if (typeof raw !== "string" && typeof raw !== "number") {
+        return null;
+    }
+    const tokens = readKeyboardBindingTokens(String(raw));
+    if (tokens.length === 0) {
+        return null;
+    }
+
+    const modifiers: Record<BlueprintKeyboardModifierFlag, boolean> = {
+        altKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        metaKey: false,
+    };
+    const modifierTokens: BlueprintKeyboardModifierFlag[] = [];
+    let keyToken: string | null = null;
+
+    for (const token of tokens) {
+        const modifier = readKeyboardModifierToken(token);
+        if (modifier) {
+            modifiers[modifier] = true;
+            modifierTokens.push(modifier);
+            continue;
+        }
+        keyToken = token;
+    }
+
+    if (!keyToken && modifierTokens.length > 0) {
+        keyToken = keyboardModifierKeyForFlag(modifierTokens[modifierTokens.length - 1]);
+    }
+
+    const key = normalizeBlueprintKeyboardEventKeyName(keyToken);
+    if (!key) {
+        return null;
+    }
+
+    return {
+        key,
+        altKey: modifiers.altKey,
+        ctrlKey: modifiers.ctrlKey,
+        shiftKey: modifiers.shiftKey,
+        metaKey: modifiers.metaKey,
+        hasExplicitModifiers: modifierTokens.length > 0,
+    };
+}
+
+export function formatBlueprintKeyboardBinding(raw: unknown): string {
+    const binding = parseBlueprintKeyboardBinding(raw);
+    if (!binding) {
+        return "";
+    }
+    const keyModifier = readKeyboardModifierFlagForKey(binding.key);
+    const parts = BLUEPRINT_KEYBOARD_MODIFIER_ORDER
+        .filter(flag => binding[flag])
+        .map(flag => BLUEPRINT_KEYBOARD_MODIFIER_LABELS[flag]);
+    if (!keyModifier || !binding[keyModifier]) {
+        parts.push(keyboardBindingDisplayLabelForKey(binding.key));
+    }
+    return parts.join("+");
+}
+
+export function formatBlueprintKeyboardBindingFromEvent(event: BlueprintKeyboardEventLike): string {
+    const key = normalizeBlueprintKeyboardEventKeyName(event.key);
+    if (!key) {
+        return "";
+    }
+    const keyModifier = readKeyboardModifierFlagForKey(key);
+    const parts = BLUEPRINT_KEYBOARD_MODIFIER_ORDER
+        .filter(flag => Boolean(event[flag]))
+        .map(flag => BLUEPRINT_KEYBOARD_MODIFIER_LABELS[flag]);
+    if (!keyModifier || !Boolean(event[keyModifier])) {
+        parts.push(keyboardBindingDisplayLabelForKey(key));
+    }
+    return parts.join("+");
+}
+
+export function blueprintKeyboardBindingMatchesEvent(raw: unknown, eventPayload?: BlueprintKeyboardEventLike): boolean {
+    const binding = parseBlueprintKeyboardBinding(raw);
+    if (!binding) {
+        return false;
+    }
+    const eventKey = normalizeBlueprintKeyboardEventKeyName(eventPayload?.key);
+    if (binding.key !== eventKey) {
+        return false;
+    }
+    if (!binding.hasExplicitModifiers) {
+        return true;
+    }
+    const keyModifier = readKeyboardModifierFlagForKey(binding.key);
+    return BLUEPRINT_KEYBOARD_MODIFIER_ORDER.every(flag => {
+        if (flag === keyModifier && binding[flag]) {
+            return true;
+        }
+        return Boolean(eventPayload?.[flag]) === binding[flag];
+    });
 }
 
 function isFilteredKeyboardEventHeadType(nodeType: string): boolean {
@@ -141,11 +374,7 @@ function matchesDispatchPayload(
     if (!isFilteredKeyboardEventHeadType(node.type)) {
         return true;
     }
-    const expected = normalizeKeyboardEventKeyName(node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME]);
-    if (!expected) {
-        return false;
-    }
-    return expected === normalizeKeyboardEventKeyName(eventPayload?.key);
+    return blueprintKeyboardBindingMatchesEvent(node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME], eventPayload);
 }
 
 /** All node type ids that may start an event graph chain (for validation / normalization). */
@@ -243,6 +472,8 @@ export const BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D = "blueprint.data.vector2dLite
 export const BLUEPRINT_NODE_TYPE_LITERAL_RECT = "blueprint.data.rectLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL_JSON = "blueprint.data.jsonLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_REF = "blueprint.element.ref" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE = "blueprint.element.continueEventBubble" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE = "blueprint.element.stopEventBubble" as const;
 export const BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL = "blueprint.image.assetLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE = "blueprint.data.returnValue" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT = "blueprint.data.toFloat" as const;
@@ -255,6 +486,7 @@ export const BLUEPRINT_NODE_TYPE_DATA_IS_BOOLEAN = "blueprint.data.isBoolean" as
 export const BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY = "blueprint.data.isArray" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT = "blueprint.data.isObject" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_IS_NULL = "blueprint.data.isNull" as const;
+export const BLUEPRINT_NODE_TYPE_DATA_NOT_NULL = "blueprint.data.notNull" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE = "blueprint.data.isEmptyValue" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_PARSE_INT = "blueprint.data.parseInt" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_PARSE_FLOAT = "blueprint.data.parseFloat" as const;
@@ -297,12 +529,15 @@ export const BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP = "blueprint.flow.forLoop" as con
 export const BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH = "blueprint.flow.forEach" as const;
 export const BLUEPRINT_NODE_TYPE_FLOW_WHILE = "blueprint.flow.while" as const;
 export const BLUEPRINT_NODE_TYPE_FLOW_DELAY = "blueprint.flow.delay" as const;
+export const BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY = "blueprint.flow.skipDelay" as const;
 export const BLUEPRINT_NODE_TYPE_FLOW_RETURN = "blueprint.flow.return" as const;
 export const BLUEPRINT_NODE_TYPE_FLOW_COMMENT = "blueprint.flow.comment" as const;
 /** Read blueprint execution local variable (pure data source). */
 export const BLUEPRINT_NODE_TYPE_LOCAL_GET = "blueprint.local.get" as const;
 /** Write blueprint execution local variable. */
 export const BLUEPRINT_NODE_TYPE_LOCAL_SET = "blueprint.local.set" as const;
+/** Declare a blueprint-scoped execution local variable from the graph canvas. */
+export const BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR = "blueprint.local.declareVar" as const;
 /** Async read from project-level persistent storage. */
 export const BLUEPRINT_NODE_TYPE_PERSISTENT_GET = "blueprint.persistent.get" as const;
 /** Async write to project-level persistent storage. */
@@ -386,6 +621,51 @@ export const BLUEPRINT_NODE_TYPE_STRING_NORMALIZE_LINE_BREAKS = "blueprint.strin
 export const BLUEPRINT_NODE_TYPE_BROADCAST_SEND = "blueprint.broadcast.send" as const;
 export const BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT = "blueprint.broadcast.getListenerCount" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
+export const BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS = "blueprint.page.getProps" as const;
+export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING = "blueprint.page.isSurfaceExiting" as const;
+export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING = "blueprint.page.isSurfaceEntering" as const;
+export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING = "blueprint.page.isSurfaceTransitioning" as const;
+export const BLUEPRINT_NODE_TYPE_PAGE_QUIT = "blueprint.page.quit" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_START_STORY = "blueprint.game.startStory" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME = "blueprint.game.isInGame" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY = "blueprint.game.isGameOverlay" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_QUIT = "blueprint.game.quit" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE = "blueprint.game.save.write" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD = "blueprint.game.save.load" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS = "blueprint.game.save.listIds" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW = "blueprint.game.save.getPreview" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE = "blueprint.game.save.delete" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA = "blueprint.game.save.getMetadata" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG = "blueprint.game.getNametag" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG = "blueprint.game.showDialog" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG = "blueprint.game.hideDialog" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY = "blueprint.game.toggleDialogDisplay" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED = "blueprint.game.setSentenceSpeed" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD = "blueprint.game.getAutoForward" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD = "blueprint.game.setAutoForward" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED = "blueprint.game.getSkip" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED = "blueprint.game.setSkip" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED = "blueprint.game.getGameSpeed" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED = "blueprint.game.setGameSpeed" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED = "blueprint.game.getCps" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME = "blueprint.game.getVoiceVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_VOLUME = "blueprint.game.setVoiceVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION = "blueprint.game.getVoiceFadeDuration" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_FADE_DURATION = "blueprint.game.setVoiceFadeDuration" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE = "blueprint.game.getVoiceEndMode" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE = "blueprint.game.setVoiceEndMode" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME = "blueprint.game.getBgmVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME = "blueprint.game.setBgmVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME = "blueprint.game.getSoundVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME = "blueprint.game.setSoundVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME = "blueprint.game.getGlobalVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_GLOBAL_VOLUME = "blueprint.game.setGlobalVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY = "blueprint.game.getSkipDelay" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY = "blueprint.game.setSkipDelay" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL = "blueprint.game.getSkipInterval" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL = "blueprint.game.setSkipInterval" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM = "blueprint.frame.getParam" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_EMIT = "blueprint.frame.emit" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE = "blueprint.frameWidget.setTargetPage" as const;
@@ -447,6 +727,14 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_BOUNDS = "blueprint.ele
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_ROTATION = "blueprint.element.displayable.getRotation" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_OPACITY = "blueprint.element.displayable.getOpacity" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE = "blueprint.element.displayable.getVisible" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY = "blueprint.element.displayable.getDisplay" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY = "blueprint.element.displayable.getProperty" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_DISPLAY = "blueprint.element.displayable.setDisplay" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY = "blueprint.element.displayable.setProperty" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT = "blueprint.element.displayable.getVariant" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT = "blueprint.element.displayable.setVariant" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY = "blueprint.element.displayable.animateProperty" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION = "blueprint.element.displayable.stopAnimation" as const;
 
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION = "blueprint.displayable.getPosition" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_SIZE = "blueprint.displayable.getSize" as const;
@@ -454,6 +742,14 @@ export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS = "blueprint.displayable
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_ROTATION = "blueprint.displayable.getRotation" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_OPACITY = "blueprint.displayable.getOpacity" as const;
 export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VISIBLE = "blueprint.displayable.getVisible" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY = "blueprint.displayable.getDisplay" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY = "blueprint.displayable.getProperty" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY = "blueprint.displayable.setDisplay" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY = "blueprint.displayable.setProperty" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT = "blueprint.displayable.getVariant" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT = "blueprint.displayable.setVariant" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY = "blueprint.displayable.animateProperty" as const;
+export const BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION = "blueprint.displayable.stopAnimation" as const;
 
 export const BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE = "blueprint.slider.getValue" as const;
 export const BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE = "blueprint.slider.getNormalizedValue" as const;
@@ -503,8 +799,29 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SCROLL_TO_BOTTOM = "blueprint.elem
 
 export const BLUEPRINT_NODE_TYPE_IMAGE_GET_ASSET = "blueprint.image.getImageAsset" as const;
 export const BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET = "blueprint.image.setImageAsset" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_CLEAR_ASSET = "blueprint.image.clearImageAsset" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_GET_FIT_MODE = "blueprint.image.getFitMode" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_SET_FIT_MODE = "blueprint.image.setFitMode" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_GET_CROP_RECT = "blueprint.image.getCropRect" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_SET_CROP_RECT = "blueprint.image.setCropRect" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_X = "blueprint.image.getFlipX" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_X = "blueprint.image.setFlipX" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_Y = "blueprint.image.getFlipY" as const;
+export const BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_Y = "blueprint.image.setFlipY" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_ASSET = "blueprint.element.image.getImageAsset" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET = "blueprint.element.image.setImageAsset" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_CLEAR_ASSET = "blueprint.element.image.clearImageAsset" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FIT_MODE = "blueprint.element.image.getFitMode" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FIT_MODE = "blueprint.element.image.setFitMode" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_CROP_RECT = "blueprint.element.image.getCropRect" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_CROP_RECT = "blueprint.element.image.setCropRect" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_X = "blueprint.element.image.getFlipX" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_X = "blueprint.element.image.setFlipX" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_Y = "blueprint.element.image.getFlipY" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_Y = "blueprint.element.image.setFlipY" as const;
+
+export const BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER = "blueprint.button.setPointer" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER = "blueprint.element.button.setPointer" as const;
 
 /** IR meta key for graph kind (string value matches BlueprintGraphKind). */
 export const BLUEPRINT_GRAPH_IR_META_KIND = "graphKind" as const;
@@ -525,6 +842,7 @@ export type BlueprintGraphKindRules = {
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT
         | typeof BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY;
     /** Whether UI may bind widget events directly to this graph slot */

@@ -3,7 +3,7 @@ import { getUIListChildSlot, isUIListScrollbarSlot } from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
 import { getUISliderChildSlot } from "./slider";
 
-export const UI_DOCUMENT_SCHEMA_VERSION = 8 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 10 as const;
 
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;
@@ -15,6 +15,7 @@ export type UIDocument = {
     id: UIDocumentId;
     name: string;
     surfaces: UISurface[];
+    components?: UIComponentDefinition[];
     elements: Record<UIElementId, UIElement>;
     meta?: UIDocumentMeta;
 };
@@ -75,6 +76,30 @@ export type UISlotDefinition = {
     rootElementId?: UIElementId;
 };
 
+export type UIComponentId = string;
+
+export type UIComponentDefinition = {
+    id: UIComponentId;
+    name: string;
+    rootElementId: UIElementId;
+    elements: Record<UIElementId, UIElement>;
+    previewMeta?: {
+        width?: number;
+        height?: number;
+    };
+    createdAt?: string;
+    updatedAt?: string;
+};
+
+export type UIComponentLink = {
+    componentId: UIComponentId;
+    linked: true;
+};
+
+export type UIElementExtraComponentLink = {
+    componentLink?: UIComponentLink;
+};
+
 /** Types that may own `childrenIds` (structural parents). Leaf widgets must stay childless. */
 const UI_PARENT_CAPABLE_ELEMENT_TYPES = new Set<string>(["nl.root", "nl.container", "nl.list", "nl.button", "nl.slider"]);
 /** Types that accept ordinary user-inserted children. Structural part parents can be narrower. */
@@ -101,6 +126,25 @@ export type UIElement = {
     valueBindings?: Record<string, UIElementValueBinding>;
     extra?: Record<string, unknown>;
 };
+
+export function getUIComponentLink(element: Pick<UIElement, "extra"> | null | undefined): UIComponentLink | null {
+    const raw = element?.extra?.componentLink;
+    if (!raw || typeof raw !== "object") {
+        return null;
+    }
+    const link = raw as Partial<UIComponentLink>;
+    if (link.linked !== true || typeof link.componentId !== "string" || link.componentId.trim().length === 0) {
+        return null;
+    }
+    return {
+        componentId: link.componentId,
+        linked: true,
+    };
+}
+
+export function isLinkedUIComponentElement(element: Pick<UIElement, "extra"> | null | undefined): boolean {
+    return getUIComponentLink(element) != null;
+}
 
 export type UIElementValueBindingValueType = "string" | "json" | "float";
 

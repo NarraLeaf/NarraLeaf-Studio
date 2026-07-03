@@ -1,16 +1,19 @@
-import type { UISurface } from "@shared/types/ui-editor/document";
+import type { UIComponentId, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { BLUEPRINT_HOST_API_CONTRACT_VERSION } from "@shared/types/blueprint/hostApi";
 import type { UIHostAdapter, UIHostAdapterBlueprintRuntime } from "../types";
 import {
     countBlueprintBroadcastListeners,
+    dispatchBlueprintElementClickEvent,
     dispatchBlueprintElementFlushEvent,
     dispatchBlueprintBroadcastEvent,
+    dispatchSurfaceBlueprintEvent,
     dispatchBlueprintUiEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import type { BlueprintExecutionManager } from "@/lib/ui-editor/blueprint-runtime/BlueprintExecutionManager";
 
 const MAX_FLUSH_CASCADE_ROUNDS = 24;
 
@@ -21,13 +24,14 @@ export type DevModeBlueprintHostAdapterOptions = {
     scopeBridge: ScopeStoreBridge;
     debug: DebugBridge;
     hostApi: BlueprintHostApiRuntime;
+    executionManager?: BlueprintExecutionManager;
 };
 
 /**
  * Build Dev Mode UIHostAdapter base + blueprintRuntime for widget event dispatch and graph execution.
  */
 export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostAdapterOptions): UIHostAdapter {
-    const { bundle, surface, runtimeScopeId, scopeBridge, debug, hostApi } = options;
+    const { bundle, surface, runtimeScopeId, scopeBridge, debug, hostApi, executionManager } = options;
     const effectiveRuntimeScopeId = runtimeScopeId ?? surface.id;
     const document = bundle.ui.uidoc;
     const blueprintDocument = bundle.ui.localBlueprints;
@@ -41,6 +45,13 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
     let flushDrainScheduled = false;
     let flushDraining = false;
     let flushCascadeRounds = 0;
+
+    const readRuntimeElement = (elementId: string, componentId?: UIComponentId): UIElement | undefined => {
+        if (componentId) {
+            return document.components?.find(component => component.id === componentId)?.elements[elementId];
+        }
+        return document.elements[elementId];
+    };
 
     const blueprintRuntime: UIHostAdapterBlueprintRuntime = {
         surfaceId: surface.id,
@@ -72,7 +83,8 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         eventPayload,
         eventOptions,
     ) => {
-        const flushedElement = eventName === "flush" ? document.elements[elementId] : undefined;
+        const flushedElement = eventName === "flush" ? readRuntimeElement(elementId, eventOptions?.componentId) : undefined;
+        const clickedElement = eventName === "mouseClick" ? readRuntimeElement(elementId, eventOptions?.componentId) : undefined;
         await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
@@ -83,13 +95,20 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             eventPayload,
             listItemScope: eventOptions?.listItemScope,
             instanceKey: eventOptions?.instanceKey,
+            componentId: eventOptions?.componentId,
+            eventControl: eventOptions?.eventControl,
             hostAdapter: adapter,
             debug,
             getSurfaceState: key => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key),
             setSurfaceState: (key, value) => {
                 hostApi.state.set("surface", key, value);
             },
+            executionManager,
+            allowClosedScopeExecution: eventOptions?.allowClosedScopeExecution,
         });
+        if (eventOptions?.eventControl?.isPropagationStopped()) {
+            return;
+        }
         if (eventName === "flush" && flushedElement) {
             const target = {
                 surfaceId: surface.id,
@@ -109,6 +128,29 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 setSurfaceState: (key, value) => {
                     hostApi.state.set("surface", key, value);
                 },
+                executionManager,
+            });
+        }
+        if (eventName === "mouseClick" && clickedElement) {
+            const target = {
+                surfaceId: surface.id,
+                elementId,
+                elementType: clickedElement.type,
+            };
+            await dispatchBlueprintElementClickEvent({
+                document,
+                blueprintDocument,
+                surfaceId: surface.id,
+                runtimeScopeId: effectiveRuntimeScopeId,
+                target,
+                eventPayload: { ...(eventPayload ?? {}), element: target },
+                hostAdapter: adapter,
+                debug,
+                getSurfaceState: key => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key),
+                setSurfaceState: (key, value) => {
+                    hostApi.state.set("surface", key, value);
+                },
+                executionManager,
             });
         }
     };
@@ -224,6 +266,33 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         await dispatchElementBlueprintEventNow(elementId, eventName, eventPayload, eventOptions);
     };
 
+    blueprintRuntime.continueElementEventBubble = async (elementId, eventName, eventPayload, eventOptions) => {
+        const current = readRuntimeElement(elementId, eventOptions?.componentId);
+        const parentId = current?.parentId ?? null;
+        if (!parentId) {
+            return false;
+        }
+        await blueprintRuntime.dispatchElementBlueprintEvent(parentId, eventName, eventPayload, eventOptions);
+        return true;
+    };
+
+    blueprintRuntime.dispatchSurfaceBlueprintEvent = async (eventName, eventPayload) => {
+        await dispatchSurfaceBlueprintEvent({
+            blueprintDocument,
+            surfaceId: surface.id,
+            runtimeScopeId: effectiveRuntimeScopeId,
+            eventName,
+            eventPayload,
+            hostAdapter: adapter,
+            debug,
+            getSurfaceState: key => scopeBridge.getSurfaceStore(effectiveRuntimeScopeId).get(key),
+            setSurfaceState: (key, value) => {
+                hostApi.state.set("surface", key, value);
+            },
+            executionManager,
+        });
+    };
+
     blueprintRuntime.dispatchBroadcastEvent = async (eventName, data, sender) => {
         await dispatchBlueprintBroadcastEvent({
             document,
@@ -239,6 +308,7 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             setSurfaceState: (key, value) => {
                 hostApi.state.set("surface", key, value);
             },
+            executionManager,
         });
     };
 

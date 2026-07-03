@@ -24,7 +24,7 @@ import {
 } from "@/apps/workspace/registry/types";
 
 export interface SelectionState {
-    type: "asset" | "character" | "element" | "scene" | null;
+    type: "asset" | "character" | "element" | "scene" | "storyMotionKeyframe" | null;
     data: any | UIElementSelection | null;
 }
 
@@ -98,6 +98,15 @@ export interface UIStateEvents {
     selectionChanged: SelectionState;
 }
 
+export interface EditorTabFocusTarget {
+    tabId: string;
+    groupId: string;
+}
+
+interface EditorTabFocusEntry extends EditorTabFocusTarget {
+    key: string;
+}
+
 /**
  * Central UI state store with event emission
  */
@@ -106,6 +115,7 @@ export class UIStore {
     private events: EventEmitter<UIStateEvents>;
     private keybindingService?: KeybindingService;
     private kbDisposers: Map<string, () => void> = new Map();
+    private editorTabFocusHistory: string[] = [];
 
     constructor() {
         this.state = {
@@ -517,6 +527,110 @@ export class UIStore {
         };
     }
 
+    private getEditorTabFocusKey(groupId: string, tabId: string): string {
+        return `${groupId}:${tabId}`;
+    }
+
+    private collectEditorTabFocusEntries(layout: EditorLayout = this.state.editorLayout): EditorTabFocusEntry[] {
+        const entries: EditorTabFocusEntry[] = [];
+
+        const visit = (node: EditorLayout) => {
+            if ("tabs" in node) {
+                for (const tab of node.tabs) {
+                    entries.push({
+                        key: this.getEditorTabFocusKey(node.id, tab.id),
+                        tabId: tab.id,
+                        groupId: node.id,
+                    });
+                }
+                return;
+            }
+
+            visit(node.first);
+            visit(node.second);
+        };
+
+        visit(layout);
+        return entries;
+    }
+
+    private pruneEditorTabFocusHistory(entries: readonly EditorTabFocusEntry[] = this.collectEditorTabFocusEntries()): void {
+        const validKeys = new Set(entries.map((entry) => entry.key));
+        const seen = new Set<string>();
+        const pruned: string[] = [];
+
+        for (const key of this.editorTabFocusHistory) {
+            if (!validKeys.has(key) || seen.has(key)) {
+                continue;
+            }
+            seen.add(key);
+            pruned.push(key);
+        }
+
+        this.editorTabFocusHistory = pruned;
+    }
+
+    private recordEditorTabFocus(groupId: string, tabId: string): void {
+        const entries = this.collectEditorTabFocusEntries();
+        const key = this.getEditorTabFocusKey(groupId, tabId);
+
+        if (!entries.some((entry) => entry.key === key)) {
+            this.pruneEditorTabFocusHistory(entries);
+            return;
+        }
+
+        this.editorTabFocusHistory = [
+            key,
+            ...this.editorTabFocusHistory.filter((existingKey) => existingKey !== key),
+        ];
+        this.pruneEditorTabFocusHistory(entries);
+    }
+
+    private getPreferredEditorTabFocusTarget(
+        entries: readonly EditorTabFocusEntry[] = this.collectEditorTabFocusEntries()
+    ): EditorTabFocusTarget | null {
+        this.pruneEditorTabFocusHistory(entries);
+        const byKey = new Map(entries.map((entry) => [entry.key, entry]));
+        const entry = this.editorTabFocusHistory
+            .map((key) => byKey.get(key))
+            .find((candidate): candidate is EditorTabFocusEntry => Boolean(candidate));
+
+        return entry ? { tabId: entry.tabId, groupId: entry.groupId } : null;
+    }
+
+    private setEditorGroupFocus(target: EditorTabFocusTarget): boolean {
+        let didSetFocus = false;
+
+        this.state.editorLayout = this.updateGroup(this.state.editorLayout, target.groupId, (group) => {
+            if (!group.tabs.some((tab) => tab.id === target.tabId)) {
+                return group;
+            }
+
+            didSetFocus = true;
+            return { ...group, focus: target.tabId };
+        });
+
+        return didSetFocus;
+    }
+
+    private ensureEditorGroupHasValidFocus(groupId: string): void {
+        this.state.editorLayout = this.updateGroup(this.state.editorLayout, groupId, (group) => {
+            if (group.focus && group.tabs.some((tab) => tab.id === group.focus)) {
+                return group;
+            }
+
+            return {
+                ...group,
+                focus: group.tabs.length > 0 ? group.tabs[group.tabs.length - 1].id : null,
+            };
+        });
+    }
+
+    public getEditorTabFocusHistoryKeys(): string[] {
+        this.pruneEditorTabFocusHistory();
+        return [...this.editorTabFocusHistory];
+    }
+
     public openEditorTabInGroup<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string, activate: boolean = true): void {
         const targetGroup = this.findGroup(this.state.editorLayout, groupId);
         const targetId = targetGroup?.id ?? (this.state.editorLayout as EditorGroup).id;
@@ -537,6 +651,12 @@ export class UIStore {
             };
             return activate ? { ...newGroup, focus: tab.id } : newGroup;
         });
+
+        if (activate) {
+            this.recordEditorTabFocus(targetId, tab.id);
+        } else {
+            this.pruneEditorTabFocusHistory();
+        }
 
         this.events.emit("editorTabOpenedInGroup", { tab: tab as EditorTabDefinition<any>, groupId: targetId, activated: activate });
         this.events.emit("editorLayoutChanged", this.state.editorLayout);
@@ -561,34 +681,61 @@ export class UIStore {
         this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
     }
 
-    public closeEditorTabInGroup(tabId: string, groupId?: string): void {
+    public closeEditorTabInGroup(tabId: string, groupId?: string): EditorTabFocusTarget | null {
         const targetGroup = this.findGroup(this.state.editorLayout, groupId);
         const targetId = targetGroup?.id ?? (this.state.editorLayout as EditorGroup).id;
+        const closedActiveTab = targetGroup?.focus === tabId;
 
         this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
             const tabs = group.tabs.filter((t) => t.id !== tabId);
             let activeTabId = group.focus;
 
-            // If we closed the active tab, activate another
+            // Active replacement is selected after MRU pruning so it can span groups.
             if (activeTabId === tabId) {
-                activeTabId = tabs.length > 0 ? tabs[tabs.length - 1].id : null;
+                activeTabId = null;
             }
 
             return { ...group, tabs, focus: activeTabId };
         });
 
+        const entriesAfterClose = this.collectEditorTabFocusEntries();
+        this.pruneEditorTabFocusHistory(entriesAfterClose);
+        let focusTarget: EditorTabFocusTarget | null = null;
+
+        if (closedActiveTab) {
+            focusTarget = this.getPreferredEditorTabFocusTarget(entriesAfterClose);
+            if (!focusTarget) {
+                const groupAfterClose = this.findGroup(this.state.editorLayout, targetId);
+                const fallbackTab = groupAfterClose?.tabs[groupAfterClose.tabs.length - 1];
+                focusTarget = fallbackTab ? { tabId: fallbackTab.id, groupId: targetId } : null;
+            }
+
+            if (focusTarget) {
+                if (focusTarget.groupId !== targetId) {
+                    this.ensureEditorGroupHasValidFocus(targetId);
+                }
+                if (this.setEditorGroupFocus(focusTarget)) {
+                    this.recordEditorTabFocus(focusTarget.groupId, focusTarget.tabId);
+                }
+            }
+        } else {
+            this.ensureEditorGroupHasValidFocus(targetId);
+        }
+
         this.events.emit("editorTabClosedInGroup", { tabId, groupId: targetId });
         this.events.emit("editorLayoutChanged", this.state.editorLayout);
         this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+
+        return focusTarget;
     }
 
     /**
      * Close multiple tabs in one layout update. Emits one layout change and one close event per removed tab.
      */
-    public closeEditorTabsInGroup(tabIds: readonly string[], groupId?: string): void {
+    public closeEditorTabsInGroup(tabIds: readonly string[], groupId?: string): EditorTabFocusTarget | null {
         const idSet = new Set(tabIds);
         if (idSet.size === 0) {
-            return;
+            return null;
         }
 
         const targetGroup = this.findGroup(this.state.editorLayout, groupId);
@@ -597,27 +744,54 @@ export class UIStore {
             targetGroup ?? (this.state.editorLayout as EditorGroup);
         const closedIds = groupSnapshot.tabs.filter((t) => idSet.has(t.id)).map((t) => t.id);
         if (closedIds.length === 0) {
-            return;
+            return null;
         }
+        const closedActiveTab = Boolean(groupSnapshot.focus && idSet.has(groupSnapshot.focus));
 
         this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
             const tabs = group.tabs.filter((t) => !idSet.has(t.id));
             let activeTabId = group.focus;
 
             if (activeTabId && idSet.has(activeTabId)) {
-                activeTabId = tabs.length > 0 ? tabs[tabs.length - 1].id : null;
+                activeTabId = null;
             } else if (activeTabId && !tabs.some((t) => t.id === activeTabId)) {
-                activeTabId = tabs.length > 0 ? tabs[tabs.length - 1].id : null;
+                activeTabId = null;
             }
 
             return { ...group, tabs, focus: activeTabId };
         });
+
+        const entriesAfterClose = this.collectEditorTabFocusEntries();
+        this.pruneEditorTabFocusHistory(entriesAfterClose);
+        let focusTarget: EditorTabFocusTarget | null = null;
+
+        if (closedActiveTab) {
+            focusTarget = this.getPreferredEditorTabFocusTarget(entriesAfterClose);
+            if (!focusTarget) {
+                const groupAfterClose = this.findGroup(this.state.editorLayout, targetId);
+                const fallbackTab = groupAfterClose?.tabs[groupAfterClose.tabs.length - 1];
+                focusTarget = fallbackTab ? { tabId: fallbackTab.id, groupId: targetId } : null;
+            }
+
+            if (focusTarget) {
+                if (focusTarget.groupId !== targetId) {
+                    this.ensureEditorGroupHasValidFocus(targetId);
+                }
+                if (this.setEditorGroupFocus(focusTarget)) {
+                    this.recordEditorTabFocus(focusTarget.groupId, focusTarget.tabId);
+                }
+            }
+        } else {
+            this.ensureEditorGroupHasValidFocus(targetId);
+        }
 
         for (const tabId of closedIds) {
             this.events.emit("editorTabClosedInGroup", { tabId, groupId: targetId });
         }
         this.events.emit("editorLayoutChanged", this.state.editorLayout);
         this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+
+        return focusTarget;
     }
 
     public setActiveEditorTabInGroup(tabId: string, groupId: string): void {
@@ -626,6 +800,7 @@ export class UIStore {
             focus: tabId,
         }));
 
+        this.recordEditorTabFocus(groupId, tabId);
         this.events.emit("editorTabActivatedInGroup", { tabId, groupId });
         this.events.emit("editorLayoutChanged", this.state.editorLayout);
         this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
@@ -721,7 +896,7 @@ export class UIStore {
             },
             selection: { type: null, data: null },
         };
+        this.editorTabFocusHistory = [];
         this.events.clear();
     }
 }
-

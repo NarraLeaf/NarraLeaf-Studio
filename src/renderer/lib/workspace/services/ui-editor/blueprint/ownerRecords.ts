@@ -31,6 +31,10 @@ export function parsePrivateOwnerKeyToRef(ownerKey: string): BlueprintOwnerRef |
     if (wm) {
         return { kind: "widgetMain", surfaceId: wm[1], elementId: wm[2] };
     }
+    const cwm = /^componentWidgetMain:([^:]+):(.+)$/.exec(ownerKey);
+    if (cwm) {
+        return { kind: "componentWidgetMain", componentId: cwm[1], elementId: cwm[2] };
+    }
     const wv = decodeWidgetValueOwnerKey(ownerKey);
     if (wv) {
         return { kind: "widgetValue", ...wv };

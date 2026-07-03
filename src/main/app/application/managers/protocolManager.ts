@@ -1,5 +1,6 @@
 import { protocol } from "electron";
 import { FileSystemHandler, FileSystemHashHandler } from "./protocol/fileSystemHandler";
+import { PluginApiHandler, PluginEntryHandler } from "./protocol/pluginHandler";
 import { ProtocolHandler, ProtocolManager as IProtocolManager } from "./protocol/types";
 import { App } from "@/app/app";
 import { AppHost, AppProtocol } from "@shared/types/constants";
@@ -129,6 +130,15 @@ export class ProtocolManager implements IProtocolManager {
             this.app.storageManager
         );
         this.registerHandler(fsHashHandler);
+
+        const pluginEntryHandler = new PluginEntryHandler(
+            AppProtocol,
+            { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+            this.app.pluginManager
+        );
+        this.registerHandler(pluginEntryHandler);
+
+        this.registerHandler(new PluginApiHandler());
     }
 
     private setupProtocolHandler(): void {

@@ -6,7 +6,9 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
@@ -59,6 +61,22 @@ function elementTextGraph(): BlueprintGraphIr {
             { from: { nodeId: "head", port: "then" }, to: { nodeId: "ret", port: "in" } },
             { from: { nodeId: "element", port: "element" }, to: { nodeId: "getText", port: "element" } },
             { from: { nodeId: "getText", port: "text" }, to: { nodeId: "ret", port: "value" } },
+        ],
+    };
+}
+
+function gameNametagGraph(): BlueprintGraphIr {
+    return {
+        nodes: {
+            init: { id: "init", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, params: {} },
+            flush: { id: "flush", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH, params: {} },
+            getNametag: { id: "getNametag", type: BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG, params: {} },
+            ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
+        },
+        edges: [
+            { from: { nodeId: "init", port: "then" }, to: { nodeId: "ret", port: "in" } },
+            { from: { nodeId: "flush", port: "then" }, to: { nodeId: "ret", port: "in" } },
+            { from: { nodeId: "getNametag", port: "nametag" }, to: { nodeId: "ret", port: "value" } },
         ],
     };
 }
@@ -194,7 +212,11 @@ function uiDocument(): { document: UIDocument; surface: UISurface } {
     };
 }
 
-function hostAdapterForDocument(document: UIDocument, onReadText?: (elementId: string) => void): UIHostAdapter {
+function hostAdapterForDocument(
+    document: UIDocument,
+    onReadText?: (elementId: string) => void,
+    options: { getNametag?: () => string | null } = {},
+): UIHostAdapter {
     return {
         host: "player",
         blueprintRuntime: {
@@ -227,13 +249,18 @@ function hostAdapterForDocument(document: UIDocument, onReadText?: (elementId: s
                         const layout = document.elements[elementId]?.layout ?? { x: 0, y: 0, width: 0, height: 0 };
                         return {
                             position: { x: layout.x, y: layout.y },
+                            offset: { x: 0, y: 0 },
                             size: { width: layout.width, height: layout.height },
                             bounds: { x: layout.x, y: layout.y, width: layout.width, height: layout.height },
                             rotation: layout.rotation ?? 0,
                             opacity: layout.opacity ?? 1,
+                            display: true,
                             visible: layout.visible !== false,
                         };
                     },
+                },
+                game: {
+                    getNametag: options.getNametag ?? (() => null),
                 },
             },
         },
@@ -350,6 +377,60 @@ describe("BlueprintValueRuntimeStore", () => {
             });
         });
         expect(changes).toBe(2);
+    });
+
+    it("merges Game Get Nametag into ordinary Text value bindings", async () => {
+        const { document, surface } = uiDocument();
+        let nametag: string | null = "Nattou";
+        let changes = 0;
+        const store = new BlueprintValueRuntimeStore(() => {
+            changes += 1;
+        });
+        const hostAdapter = hostAdapterForDocument(document, undefined, {
+            getNametag: () => nametag,
+        });
+        const bpDoc = blueprintDocument(gameNametagGraph());
+
+        store.sync({
+            document,
+            surface,
+            blueprintDocument: bpDoc,
+            hostAdapter,
+        });
+
+        await waitFor(() => {
+            expect(store.getResolvedValue("surface", "text", "text", "bp-value")).toEqual({
+                hasResolved: true,
+                value: "Nattou",
+            });
+        });
+        let merged = mergeElementWithBlueprintValues(document.elements.text!, "surface", store);
+        expect(merged.props?.text).toBe("Nattou");
+
+        nametag = "YouKi";
+        store.refreshAll();
+
+        await waitFor(() => {
+            expect(store.getResolvedValue("surface", "text", "text", "bp-value")).toEqual({
+                hasResolved: true,
+                value: "YouKi",
+            });
+        });
+        merged = mergeElementWithBlueprintValues(document.elements.text!, "surface", store);
+        expect(merged.props?.text).toBe("YouKi");
+
+        nametag = null;
+        store.refreshAll();
+
+        await waitFor(() => {
+            expect(store.getResolvedValue("surface", "text", "text", "bp-value")).toEqual({
+                hasResolved: true,
+                value: "",
+            });
+        });
+        merged = mergeElementWithBlueprintValues(document.elements.text!, "surface", store);
+        expect(merged.props?.text).toBe("");
+        expect(changes).toBeGreaterThanOrEqual(2);
     });
 
     it("merges resolved button labels", async () => {

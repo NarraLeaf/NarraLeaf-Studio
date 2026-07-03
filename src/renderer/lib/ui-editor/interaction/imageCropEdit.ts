@@ -1,8 +1,6 @@
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import { normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
-import { buildImageFillPropsUpdate } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
-import type { ImageFill } from "@shared/types/ui-editor/imageFill";
 import {
     resolveContainerRectangleLike,
     resolveImageRectangleLike,
@@ -48,13 +46,6 @@ export function beginImageCropEdit(params: {
         return false;
     }
 
-    const nextFill: ImageFill = {
-        ...(fill ?? { mode: "cover", assetId: null }),
-        mode: "crop",
-        assetId: fill?.assetId ?? null,
-        cropPlacement: fill?.cropPlacement,
-    };
-    documentService.updateElementProps(elementId, buildImageFillPropsUpdate(element, nextFill));
     stateService.setUIElementSelection({
         editor: "ui",
         surfaceId,

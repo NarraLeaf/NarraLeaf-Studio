@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "id": "narraleaf.gallery",
+  "name": "Gallery",
+  "version": "1.0.0",
+  "description": "Manage visual novel gallery entries and unlock them from blueprint graphs.",
+  "publisher": "NarraLeaf Studio",
+  "entry": "main.js",
+  "permissions": []
+}

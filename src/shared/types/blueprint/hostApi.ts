@@ -1,5 +1,8 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 5 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 17 as const;
+
+/** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
+export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
 
 export type BlueprintHostApiContractVersion = typeof BLUEPRINT_HOST_API_CONTRACT_VERSION;
 
@@ -38,6 +41,7 @@ export type BlueprintHostApiContract = {
     state: BlueprintHostApiFamily;
     persistence: BlueprintHostApiFamily;
     frame: BlueprintHostApiFamily;
+    game: BlueprintHostApiFamily;
     devtools: BlueprintHostApiFamily;
 };
 
@@ -51,8 +55,16 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             purity: "effectful",
             callableFromBinding: false,
             async: true,
-            input: { surfaceId: "" },
-            output: undefined,
+            input: { surfaceId: "", props: {} },
+            output: null,
+        },
+        getPageProps: {
+            capabilityId: "navigation.getPageProps",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: {},
         },
         closeLayer: {
             capabilityId: "navigation.closeLayer",
@@ -60,7 +72,15 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: {},
-            output: undefined,
+            output: null,
+        },
+        quitApplication: {
+            capabilityId: "navigation.quitApplication",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
         },
     },
     widget: {
@@ -70,7 +90,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: false,
             input: { elementId: "", visible: true },
-            output: undefined,
+            output: null,
         },
         setEnabled: {
             capabilityId: "widget.setEnabled",
@@ -78,7 +98,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: false,
             input: { elementId: "", enabled: true },
-            output: undefined,
+            output: null,
         },
         setVariant: {
             capabilityId: "widget.setVariant",
@@ -86,7 +106,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { elementId: "", variantId: "" },
-            output: undefined,
+            output: null,
         },
         getTextProperties: {
             capabilityId: "widget.getTextProperties",
@@ -102,7 +122,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { elementId: "", patch: {} },
-            output: undefined,
+            output: null,
         },
         getSliderProperties: {
             capabilityId: "widget.getSliderProperties",
@@ -118,7 +138,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { elementId: "", patch: {} },
-            output: undefined,
+            output: null,
         },
     },
     state: {
@@ -128,15 +148,15 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: true,
             async: false,
             input: { scope: "", key: "" },
-            output: undefined,
+            output: null,
         },
         set: {
             capabilityId: "state.set",
             purity: "effectful",
             callableFromBinding: false,
             async: false,
-            input: { scope: "", key: "", value: undefined },
-            output: undefined,
+            input: { scope: "", key: "", value: null },
+            output: null,
         },
     },
     persistence: {
@@ -146,15 +166,15 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: true,
             async: true,
             input: { key: "" },
-            output: undefined,
+            output: null,
         },
         set: {
             capabilityId: "persistence.set",
             purity: "effectful",
             callableFromBinding: false,
             async: true,
-            input: { key: "", value: undefined },
-            output: undefined,
+            input: { key: "", value: null },
+            output: null,
         },
     },
     frame: {
@@ -164,15 +184,169 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: true,
             async: false,
             input: { key: "" },
-            output: undefined,
+            output: null,
         },
         emit: {
             capabilityId: "frame.emit",
             purity: "effectful",
             callableFromBinding: false,
             async: true,
-            input: { event: "", data: undefined },
-            output: undefined,
+            input: { event: "", data: null },
+            output: null,
+        },
+    },
+    game: {
+        startStory: {
+            capabilityId: "game.startStory",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { storyId: "", sceneId: "" },
+            output: null,
+        },
+        isInGame: {
+            capabilityId: "game.isInGame",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: false,
+        },
+        isGameOverlay: {
+            capabilityId: "game.isGameOverlay",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: false,
+        },
+        quit: {
+            capabilityId: "game.quit",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { surfaceId: "" },
+            output: null,
+        },
+        writeSave: {
+            capabilityId: "game.writeSave",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "", metadata: null, screenshot: false },
+            output: null,
+        },
+        loadSave: {
+            capabilityId: "game.loadSave",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "" },
+            output: null,
+        },
+        deleteSave: {
+            capabilityId: "game.deleteSave",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "" },
+            output: null,
+        },
+        listSaveIds: {
+            capabilityId: "game.listSaveIds",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: [],
+        },
+        getSaveMetadata: {
+            capabilityId: "game.getSaveMetadata",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "" },
+            output: null,
+        },
+        getSavePreview: {
+            capabilityId: "game.getSavePreview",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { id: "" },
+            output: null,
+        },
+        getNametag: {
+            capabilityId: "game.getNametag",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: null,
+        },
+        next: {
+            capabilityId: "game.next",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        skip: {
+            capabilityId: "game.skip",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        showDialog: {
+            capabilityId: "game.showDialog",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        hideDialog: {
+            capabilityId: "game.hideDialog",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        toggleDialogDisplay: {
+            capabilityId: "game.toggleDialogDisplay",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: null,
+        },
+        setSentenceSpeed: {
+            capabilityId: "game.setSentenceSpeed",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { cps: 10 },
+            output: null,
+        },
+        getPreference: {
+            capabilityId: "game.getPreference",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { key: "" },
+            output: null,
+        },
+        setPreference: {
+            capabilityId: "game.setPreference",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { key: "", value: null },
+            output: null,
         },
     },
     devtools: {
@@ -182,7 +356,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: false,
             input: { level: "info", message: "" },
-            output: undefined,
+            output: null,
         },
     },
 };

@@ -2,15 +2,15 @@
 
 节点分类是节点在图形界面中显示的操作分类，并能够在创建浮窗中导航。
 
-Self 节点和 Element 节点使用不同分类：
+Self 节点和 Element 节点通常使用不同分类：
 - Self 节点操作当前私有蓝图所属控件，不带 Element/ref 输入，显示在对应控件分类中，例如 `Button`、`Slider`、`List`。
 - Element 节点操作显式传入的 Element 引用，带 typed Element 输入，统一显示在 `Element` 分类中。
-- Element 节点只有在当前图里已有兼容的 `Element` 或 `Element Flush` 绑定节点时才会出现在创建浮窗中；创建后不会自动连线。
+- Element 节点只有在当前图里已有兼容的 `Element`、`Element Flush` 或 `Element Click` 绑定节点时才会出现在创建浮窗中。同一节点类型在创建浮窗中只显示一项；若兼容来源唯一，创建时会自动连到该来源，若有多个兼容来源则保留目标输入由作者选择。
 
 ## Events
 
 Events分类具有：
-- Events节点，包括生命周期、元素交互、列表/滑块事件、Page Event，以及 Global / Surface / 控件的 On Key / Any Key 键盘事件
+- Events节点，包括生命周期、`App Boot`、`On Game Ready`、元素交互、Surface 点击/右键、Surface 进入/退出动画事件、列表/滑块事件、Page Event，以及 Global / Surface / 控件的 On Key / Any Key 键盘事件
 - Broadcast节点
 
 ## Flow
@@ -32,13 +32,34 @@ Network分类具有：
 ## Displayable
 
 Displayable分类具有：
-- 当前控件自己的 Displayable 读取节点
+- 当前控件自己的 Displayable `Get Display` / `Set Display`
+- 当前控件自己的 Displayable `Get Property` / `Set Property`
+- Appearance Variant 节点：Self `Set Variant` 默认绑定当前控件；派生 `Set Element Variant` 才通过 Element 引用目标控件
+- 属性动画节点：`Animate Property` 输出 `AnimationToken`，`Stop Animation` 接收该 token 停止指定动画
+
+带 Element 输入的 Displayable 派生节点属于 `Element` 分类；`Stop Element Animation` 也属于 `Element` 分类，但只接收 `AnimationToken`，不带 Element 输入。`Displayable` 分类只放当前控件自己的 Self 节点。
+
+Displayable 透明度只有一套有效 `opacity`。Appearance Variant 的 `transformOpacity` 会投影到这套值；`nl.image` Variant 中相对 Default 实际改动过的 `fillOpacity` 也会投影到这套值，并且不会再写到内部 `<img>` 的 opacity。`nl.image` 的非 Default Variant 不覆盖 Default 的 `imageFill` / crop / contain 模式。`Set Property` / `Animate Property` 的 opacity 也操作同一份透明度。
+
+Displayable `display` 是运行时渲染开关。`Set Display false` 会给元素应用 CSS `display: none`，元素和子树保持挂载；带 Element 输入的 `Get Element Display` / `Set Element Display` 属于 `Element` 分类。
 
 ## Page
 
 Page分类具有：
 - Page节点
-- `Go Page` 页面导航尾节点
+- `Go Page` 页面导航尾节点，可选传入 Page props；选择 `None` 会清除当前顶层 Page 叠层，游戏状态中打开的 Page 会叠加在游戏舞台之上
+- `Get Page Props` 读取当前 Page props；Global 蓝图不可用
+- `Is Surface Exiting` / `Is Surface Entering` / `Is Surface Transitioning` 读取当前 Surface 进退场状态；可用于 Blueprint Value，Global 蓝图不可用
+- `Quit` 退出当前应用运行时；在 Studio Dev Mode 中停止 Dev Mode 会话，不终止 Studio 主进程
+
+## Game
+
+Game 分类具有：
+- `Start Game` 游戏启动尾节点
+- 游戏状态节点：`Is In Game`、`Is Game Overlay`、`Quit Game`
+- Dialog 节点：`Get Nametag`、`Next`、`Skip`、`Show Dialog`、`Hide Dialog`、`Toggle Dialog Display`、`Set Sentence Speed`、`Get Sentence Speed`
+- Preference 节点：`Get/Set Auto Forward`、`Get/Set Skip`、`Get/Set Game Speed`、`Get/Set Voice Volume`、`Get/Set Voice Fade Duration`、`Get/Set Voice End Mode`、`Get/Set BGM Volume`、`Get/Set Sound Volume`、`Get/Set Global Volume`、`Get/Set Skip Delay`、`Get/Set Skip Interval`；`showDialog` 继续由现有 Dialog Display 节点覆盖
+- 本地存档节点：`Save Game`、`Load Save`、`Delete Save`、`List Saves`、`Get Save Metadata`、`Get Save Preview`
 
 ## Data
 
@@ -48,6 +69,13 @@ Data分类具有：
 - Data节点
 - JSON节点
 - String节点
+
+## Variables
+
+Variables 分类具有：
+- `Var` 图内变量声明节点
+- `Get Var` / `Set Var` 本地变量读写节点
+- `Get Persistent` / `Set Persistent` 项目级持久变量读写节点
 
 ## Math
 
@@ -65,9 +93,11 @@ Text分类具有：
 
 Element 分类具有：
 - Element Literal 节点
-- Element Flush 事件节点
+- Element Flush / Element Click 事件节点
+- `Continue Event Bubble` 在当前 Widget 事件图中把接入的事件继续派发给父元素
+- `Stop Event Bubble` 在当前事件图中标记事件已处理，阻止后续冒泡或背景层键盘响应
 - 所有带 Element/ref 输入的派生控件方法节点
-- Element-targeted Text、Displayable、List、Slider 和通用 Widget Property 节点
+- Element-targeted Text、Displayable、List、Slider、Image 和通用 Widget Property 节点；其中 Displayable 派生节点包含 `Get Element Display` / `Set Element Display`
 
 ## List
 
@@ -84,9 +114,8 @@ Slider分类具有：
 
 Image分类具有：
 - ImageAsset 字面量卡片
-- 当前 `nl.image` 自己的 Image 节点
-- 由 `nl.image` Element Literal / Element Flush 派生的 Image 节点
+- 当前 `nl.image` 自己的 Image 节点，用于 asset、fit mode、crop rect、flipX、flipY
 
 ## Button / Container / Frame
 
-这些控件私有分类具有对应控件自己的属性方法节点，例如 `Set Enabled`、`Set Label`。`nl.frame` Self 形态的 `Set Frame Page` 属于 `Frame` 分类；派生 Element 形态和其他派生节点一样属于 `Element` 分类。
+这些控件私有分类具有对应控件自己的属性方法节点，例如 `Set Enabled`、`Set Label`、`Set Pointer`。`nl.button` 的 `Set Pointer` 卡片使用和按钮 Appearance 检视器 Mouse 区一致的带鼠标图标下拉框选择目标指针形态。`nl.frame` Self 形态的 `Set Frame Page` 属于 `Frame` 分类，并可通过可选 `Page props` 输入同时更新目标 Frame 的 params；派生 Element 形态和其他派生节点一样属于 `Element` 分类。

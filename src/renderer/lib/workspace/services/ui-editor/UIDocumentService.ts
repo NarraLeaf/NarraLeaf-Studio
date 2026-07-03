@@ -12,11 +12,15 @@ import {
     UIElement,
     UIElementId,
     UIElementValueBindingValueType,
+    UIComponentDefinition,
+    UIComponentId,
     UIBehaviorBinding,
     UISlotDefinition,
     UILayout,
     isUIFlowLayoutParentElement,
     uiElementTypeAcceptsChildren,
+    getUIComponentLink,
+    isLinkedUIComponentElement,
 } from "@shared/types/ui-editor/document";
 import { FsRejectErrorCode } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
@@ -34,6 +38,7 @@ import { EventEmitter } from "../ui/EventEmitter";
 import {
     applyPlannedMove,
     collectSubtreeElementIds,
+    filterToTopLevelMovers,
     layoutPatchForReparent,
     normalizeFlowChildLayout,
     normalizeFlowChildLayouts,
@@ -50,8 +55,34 @@ import {
     remapElementValueBindingBlueprintIds,
 } from "./blueprint/cloneBlueprintForPaste";
 import { registerPrivateBlueprintAsActive } from "./blueprint/ownerRecords";
-import { widgetMainOwnerKey, widgetValueOwnerKey } from "./blueprint/ownerKeys";
-import type { Blueprint } from "@shared/types/blueprint/document";
+import {
+    componentWidgetMainOwnerKey,
+    surfaceMainOwnerKey,
+    widgetMainOwnerKey,
+    widgetValueOwnerKey,
+} from "./blueprint/ownerKeys";
+import type {
+    Blueprint,
+    BlueprintGraphIr,
+    BlueprintGraphNode,
+    BlueprintOwnerRef,
+    BlueprintPrivateOwnerRecord,
+} from "@shared/types/blueprint/document";
+import {
+    BLUEPRINT_GRAPH_IR_META_KIND,
+    BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_FLOW_IF,
+    BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_NEXT,
+    BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
+} from "@shared/types/blueprint/graph";
 import {
     DEFAULT_APP_SURFACE_NAME,
     DEFAULT_UI_DOCUMENT_NAME,
@@ -62,6 +93,17 @@ import {
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
 import { normalizeUIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
+import {
+    DEFAULT_UI_STAGE_SLOT_ID,
+    normalizeUIStageSlotId,
+} from "@shared/types/ui-editor/stageSlots";
+import { defaultContainerWidgetProps, type ContainerWidgetProps } from "@shared/types/ui-editor/container";
+import { defaultTextWidgetProps, type TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
+import {
+    createInitialContainerAppearance,
+    createInitialTextAppearance,
+    isUsableAppearanceModel,
+} from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 
 type UIDocumentServiceEvents = {
     documentChanged: UIDocument;
@@ -89,6 +131,8 @@ type UIDocumentMutationOptions = {
     history?: UIDocumentMutationHistoryOptions;
 };
 
+const COMPONENT_EDITOR_SURFACE_ID_PREFIX = "component-editor:";
+
 function createDefaultPageSurfaceSettings(settings?: UISurfaceSettings): UISurfaceSettings {
     return {
         ...settings,
@@ -96,7 +140,26 @@ function createDefaultPageSurfaceSettings(settings?: UISurfaceSettings): UISurfa
     };
 }
 
-const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = "onStage";
+const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
+const COMPONENT_LINKED_LAYOUT_KEYS = new Set<keyof UILayout>(["x", "y", "width", "height", "rotation"]);
+const DEFAULT_COMPONENT_SIZE: UISurfaceDesignSize = { width: 240, height: 120 };
+const DIALOG_SENTENCE_WIDGET_TYPE = "nl.dialog.sentence";
+
+type DialogStageTemplate = {
+    elements: Record<UIElementId, UIElement>;
+    interactionLayerId: UIElementId;
+    panelId: UIElementId;
+    stackId: UIElementId;
+    nametagId: UIElementId;
+    sentenceId: UIElementId;
+};
+
+function getComponentPreviewDesignSize(component: UIComponentDefinition): UISurfaceDesignSize {
+    return {
+        width: component.previewMeta?.width ?? DEFAULT_COMPONENT_SIZE.width,
+        height: component.previewMeta?.height ?? DEFAULT_COMPONENT_SIZE.height,
+    };
+}
 
 type LegacyUISurfaceKind = "appSurface" | "playerStageSurface" | "playerOverlaySurface";
 
@@ -121,6 +184,201 @@ type LegacyUIDocument = Omit<UIDocument, "surfaces" | "schemaVersion"> & {
     schemaVersion: 1;
     surfaces: LegacyUISurface[];
 };
+
+function cloneJson<T>(value: T): T {
+    return value == null ? value : JSON.parse(JSON.stringify(value)) as T;
+}
+
+function createDuplicateName(baseName: string, existingNames: Set<string>): string {
+    const base = `${baseName.trim() || "Page"} Copy`;
+    if (!existingNames.has(base)) {
+        return base;
+    }
+    let i = 2;
+    while (existingNames.has(`${base} ${i}`)) {
+        i += 1;
+    }
+    return `${base} ${i}`;
+}
+
+function isReferenceKey(key: string, suffix: string): boolean {
+    return key === suffix || key.endsWith(suffix[0].toUpperCase() + suffix.slice(1));
+}
+
+type SurfaceDuplicateRemapContext = {
+    oldSurfaceId: string;
+    newSurfaceId: string;
+    elementIdMap: Record<string, string>;
+    blueprintIdMap: Record<string, string>;
+};
+
+function remapSurfaceDuplicateReferenceValue<T>(value: T, ctx: SurfaceDuplicateRemapContext, key?: string): T {
+    if (typeof value === "string") {
+        if (key && isReferenceKey(key, "surfaceId") && value === ctx.oldSurfaceId) {
+            return ctx.newSurfaceId as T;
+        }
+        if (key && isReferenceKey(key, "elementId") && ctx.elementIdMap[value]) {
+            return ctx.elementIdMap[value] as T;
+        }
+        if (key && isReferenceKey(key, "blueprintId") && ctx.blueprintIdMap[value]) {
+            return ctx.blueprintIdMap[value] as T;
+        }
+        return value;
+    }
+    if (Array.isArray(value)) {
+        return value.map(item => remapSurfaceDuplicateReferenceValue(item, ctx)) as T;
+    }
+    if (value && typeof value === "object") {
+        const out: Record<string, unknown> = {};
+        for (const [childKey, childValue] of Object.entries(value)) {
+            out[childKey] = remapSurfaceDuplicateReferenceValue(childValue, ctx, childKey);
+        }
+        return out as T;
+    }
+    return value;
+}
+
+function remapDuplicatedBlueprintOwner(owner: BlueprintOwnerRef, ctx: SurfaceDuplicateRemapContext): BlueprintOwnerRef | null {
+    if (owner.kind === "surfaceMain" && owner.surfaceId === ctx.oldSurfaceId) {
+        return { kind: "surfaceMain", surfaceId: ctx.newSurfaceId };
+    }
+    if (owner.kind === "widgetMain" && owner.surfaceId === ctx.oldSurfaceId) {
+        const newElementId = ctx.elementIdMap[owner.elementId];
+        return newElementId ? { kind: "widgetMain", surfaceId: ctx.newSurfaceId, elementId: newElementId } : null;
+    }
+    if (owner.kind === "widgetValue" && owner.surfaceId === ctx.oldSurfaceId) {
+        const newElementId = ctx.elementIdMap[owner.elementId];
+        return newElementId
+            ? { kind: "widgetValue", surfaceId: ctx.newSurfaceId, elementId: newElementId, propPath: owner.propPath }
+            : null;
+    }
+    return null;
+}
+
+function cloneBlueprintForSurfaceDuplicate(
+    source: Blueprint,
+    newBlueprintId: string,
+    ctx: SurfaceDuplicateRemapContext,
+): Blueprint | null {
+    const owner = remapDuplicatedBlueprintOwner(source.owner, ctx);
+    if (!owner) {
+        return null;
+    }
+    const cloned = remapSurfaceDuplicateReferenceValue(cloneJson(source), ctx);
+    cloned.id = newBlueprintId;
+    cloned.owner = owner;
+    return cloned;
+}
+
+function createContainerTemplateProps(overrides: Partial<ContainerWidgetProps>): ContainerWidgetProps {
+    const props: ContainerWidgetProps = {
+        ...cloneJson(defaultContainerWidgetProps),
+        ...overrides,
+    };
+    props.appearance = createInitialContainerAppearance(props);
+    return props;
+}
+
+function createTextTemplateProps(overrides: Partial<TextWidgetProps>): TextWidgetProps {
+    const props: TextWidgetProps = {
+        ...cloneJson(defaultTextWidgetProps),
+        ...overrides,
+    };
+    props.appearance = createInitialTextAppearance(props);
+    return props;
+}
+
+function ensureElementSerializedAppearance(element: UIElement): boolean {
+    if (element.type === "nl.container") {
+        const props: ContainerWidgetProps = {
+            ...cloneJson(defaultContainerWidgetProps),
+            ...(element.props ?? {}),
+        };
+        if (isUsableAppearanceModel(props.appearance)) {
+            return false;
+        }
+        props.appearance = createInitialContainerAppearance(props);
+        element.props = props;
+        return true;
+    }
+    const isTextLike =
+        element.type === "nl.text" ||
+        element.type === DIALOG_SENTENCE_WIDGET_TYPE;
+    if (isTextLike) {
+        const props: TextWidgetProps = {
+            ...cloneJson(defaultTextWidgetProps),
+            ...(element.props ?? {}),
+        };
+        if (isUsableAppearanceModel(props.appearance)) {
+            return false;
+        }
+        props.appearance = createInitialTextAppearance(props);
+        element.props = props;
+        return true;
+    }
+    return false;
+}
+
+function sanitizeComponentName(name: string | undefined, fallback: string): string {
+    const trimmed = String(name ?? "").trim();
+    return trimmed.length > 0 ? trimmed : fallback;
+}
+
+function stripElementForComponentDefinition(element: UIElement): UIElement {
+    const next = cloneJson(element);
+    if (next.extra?.componentLink) {
+        const { componentLink: _componentLink, ...rest } = next.extra;
+        next.extra = Object.keys(rest).length > 0 ? rest : undefined;
+    }
+    delete next.behavior;
+    delete next.valueBindings;
+    return next;
+}
+
+function collectComponentSubtreeElementIds(elements: Record<string, UIElement>, rootElementId: string): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const walk = (elementId: string) => {
+        if (seen.has(elementId)) {
+            return;
+        }
+        const element = elements[elementId];
+        if (!element) {
+            return;
+        }
+        seen.add(elementId);
+        out.push(elementId);
+        element.childrenIds.forEach(walk);
+    };
+    walk(rootElementId);
+    return out;
+}
+
+function calculateElementsBounds(elements: UIElement[]): UISurfaceDesignSize & { x: number; y: number } {
+    if (elements.length === 0) {
+        return { x: 0, y: 0, ...DEFAULT_COMPONENT_SIZE };
+    }
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const element of elements) {
+        const x0 = Math.min(element.layout.x, element.layout.x + element.layout.width);
+        const y0 = Math.min(element.layout.y, element.layout.y + element.layout.height);
+        const x1 = Math.max(element.layout.x, element.layout.x + element.layout.width);
+        const y1 = Math.max(element.layout.y, element.layout.y + element.layout.height);
+        minX = Math.min(minX, x0);
+        minY = Math.min(minY, y0);
+        maxX = Math.max(maxX, x1);
+        maxY = Math.max(maxY, y1);
+    }
+    return {
+        x: Number.isFinite(minX) ? minX : 0,
+        y: Number.isFinite(minY) ? minY : 0,
+        width: Math.max(1, Number.isFinite(maxX - minX) ? maxX - minX : DEFAULT_COMPONENT_SIZE.width),
+        height: Math.max(1, Number.isFinite(maxY - minY) ? maxY - minY : DEFAULT_COMPONENT_SIZE.height),
+    };
+}
 
 export class UIDocumentService extends Service<UIDocumentService> implements IUIDocumentService {
     private document: UIDocument | null = null;
@@ -176,11 +434,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             throw new RendererError(result.error.message);
         }
 
+        const loadedSnapshot = JSON.stringify(result.data);
         const migrated = this.migrateIfNeeded(result.data);
         this.document = migrated;
+        const schemaChanged = result.data.schemaVersion !== migrated.schemaVersion;
+        const normalizedChanged = loadedSnapshot !== JSON.stringify(migrated);
         const mainSurfaceChanged = this.ensureMainSurface(this.document);
         const flowLayoutsChanged = normalizeFlowChildLayouts(this.document);
-        const needsSave = mainSurfaceChanged || flowLayoutsChanged;
+        const needsSave = schemaChanged || normalizedChanged || mainSurfaceChanged || flowLayoutsChanged;
         if (needsSave) {
             await this.save(this.document);
             this.revision = 0;
@@ -283,21 +544,28 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         options: { skipHistory?: boolean } = {},
     ): void {
         const surfaceId = this.getElementSurfaceId(elementId);
+        const patchKeys = Object.keys(layoutPatch).sort();
         this.mutateDocument(document => {
             const element = document.elements[elementId];
             if (!element) {
                 return;
             }
+            const effectivePatch = isLinkedUIComponentElement(element)
+                ? this.filterLinkedComponentLayoutPatch(layoutPatch)
+                : layoutPatch;
+            if (Object.keys(effectivePatch).length === 0) {
+                return;
+            }
             element.layout = roundUILayoutGeometryFields({
                 ...element.layout,
-                ...layoutPatch,
+                ...effectivePatch,
             });
             normalizeFlowChildLayout(document, element);
         }, {
             history: !options.skipHistory && surfaceId
                 ? {
                       surfaceId,
-                      mergeKey: `layout:${elementId}:${Object.keys(layoutPatch).sort().join(",")}`,
+                      mergeKey: `layout:${elementId}:${patchKeys.join(",")}`,
                   }
                 : false,
         });
@@ -315,7 +583,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (!element) {
                     return;
                 }
-                const patch = layoutPatches[elementId];
+                const patch = isLinkedUIComponentElement(element)
+                    ? this.filterLinkedComponentLayoutPatch(layoutPatches[elementId])
+                    : layoutPatches[elementId];
+                if (Object.keys(patch).length === 0) {
+                    return;
+                }
                 element.layout = roundUILayoutGeometryFields({
                     ...element.layout,
                     ...patch,
@@ -332,6 +605,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.mutateDocument(document => {
             const element = document.elements[elementId];
             if (!element) {
+                return;
+            }
+            if (isLinkedUIComponentElement(element)) {
                 return;
             }
             element.props = {
@@ -360,6 +636,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const surfaceId = this.getElementSurfaceId(elementId);
         if (!surfaceId) {
             throw new RendererError(`Element ${elementId} does not belong to a surface`);
+        }
+        if (isLinkedUIComponentElement(this.getDocument().elements[elementId])) {
+            throw new RendererError("Linked component instances cannot edit Blueprint Value bindings");
         }
         const historyService = this.getHistoryService();
         const beforeHistory = historyService ? historyService.captureSnapshot(surfaceId) : null;
@@ -401,6 +680,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (!surfaceId) {
             return;
         }
+        if (isLinkedUIComponentElement(this.getDocument().elements[elementId])) {
+            return;
+        }
         const historyService = this.getHistoryService();
         const beforeHistory = historyService ? historyService.captureSnapshot(surfaceId) : null;
         const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
@@ -431,6 +713,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             if (!element) {
                 return;
             }
+            if (isLinkedUIComponentElement(element)) {
+                return;
+            }
             element.extra = {
                 ...(element.extra ?? {}),
                 ...extraPatch,
@@ -450,7 +735,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const surfaceId = this.getElementSurfaceId(parentId);
         this.mutateDocument(document => {
             const parent = document.elements[parentId];
-            if (!parent) {
+            if (!parent || isLinkedUIComponentElement(parent)) {
                 return;
             }
             parent.childrenIds = [...orderedChildIds];
@@ -467,6 +752,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         beforeChildId: string | null,
     ): MoveUiElementsResult {
         const document = this.getDocument();
+        if (isLinkedUIComponentElement(document.elements[targetParentId])) {
+            return { ok: false, reason: "invalid_target" };
+        }
         const planned = planMoveElementsInSurface(document, surfaceId, elementIds, targetParentId, beforeChildId);
         if (!planned.ok) {
             return planned;
@@ -505,7 +793,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const surfaceId = this.getElementSurfaceId(elementId);
         this.mutateDocument(document => {
             const el = document.elements[elementId];
-            if (!el || el.type === "nl.root") {
+            if (!el || el.type === "nl.root" || isLinkedUIComponentElement(el)) {
                 return;
             }
             el.name = trimmed;
@@ -642,12 +930,22 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return surfaceId;
     }
 
+    private filterLinkedComponentLayoutPatch(layoutPatch: Partial<UILayout>): Partial<UILayout> {
+        const out: Partial<UILayout> = {};
+        for (const [key, value] of Object.entries(layoutPatch) as Array<[keyof UILayout, UILayout[keyof UILayout]]>) {
+            if (COMPONENT_LINKED_LAYOUT_KEYS.has(key)) {
+                (out as Record<string, unknown>)[key] = value;
+            }
+        }
+        return out;
+    }
+
     private migrateIfNeeded(document: UIDocument): UIDocument {
         if (document.schemaVersion > UI_DOCUMENT_SCHEMA_VERSION) {
             throw new RendererError("UI document schema is newer than this Studio version");
         }
         if (document.schemaVersion === UI_DOCUMENT_SCHEMA_VERSION) {
-            return document;
+            return this.normalizeSpecialChildSlots(this.ensureComponentLibrary(document));
         }
         if (document.schemaVersion === 1) {
             return this.migrateFromLegacyDocument(document);
@@ -670,7 +968,26 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (document.schemaVersion === 7) {
             return this.migrateFromV7Document(document);
         }
+        if (document.schemaVersion === 8) {
+            return this.migrateFromV8Document(document);
+        }
+        if (document.schemaVersion === 9) {
+            return this.migrateFromV9Document(document);
+        }
         throw new RendererError("UI document migration is not implemented");
+    }
+
+    private withComponentLibrary(document: UIDocument): UIDocument {
+        return {
+            ...document,
+            components: Array.isArray((document as UIDocument & { components?: unknown }).components)
+                ? (document as UIDocument & { components: UIComponentDefinition[] }).components
+                : [],
+        };
+    }
+
+    private ensureComponentLibrary(document: UIDocument): UIDocument {
+        return this.withComponentLibrary(document);
     }
 
     private migrateFromLegacyDocument(document: UIDocument): UIDocument {
@@ -729,8 +1046,43 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /** P9: project-level UI component library. */
+    private migrateFromV8Document(document: UIDocument): UIDocument {
+        return this.normalizeSpecialChildSlots({
+            ...document,
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        });
+    }
+
+    /** P10: Game UI stage slots are normalized and Dialog gets slot-private widgets. */
+    private migrateFromV9Document(document: UIDocument): UIDocument {
+        return this.normalizeSpecialChildSlots({
+            ...document,
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        });
+    }
+
     private normalizeSpecialChildSlots(document: UIDocument): UIDocument {
+        document = this.withComponentLibrary(document);
+        for (const surface of document.surfaces) {
+            if (surface.kind !== "stageSurface") {
+                continue;
+            }
+            const rawMount = (surface as UISurface & { mount?: unknown }).mount;
+            const rawMountRecord = rawMount && typeof rawMount === "object"
+                ? rawMount as Record<string, unknown>
+                : {};
+            surface.mount = {
+                kind: "slot",
+                slotId: normalizeUIStageSlotId(rawMountRecord.slotId),
+            };
+            surface.settings = {
+                backgroundColor: "transparent",
+                ...(surface.settings ?? {}),
+            };
+        }
         for (const element of Object.values(document.elements)) {
+            ensureElementSerializedAppearance(element);
             if (element.type === "nl.list") {
                 const props = (element.props ?? {}) as Record<string, unknown>;
                 const scrollbar = props.scrollbar && typeof props.scrollbar === "object"
@@ -806,7 +1158,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
         const stageMount: UIStageSurfaceMount = {
             kind: "slot",
-            slotId: surface.settings?.stageElementType ?? DEFAULT_STAGE_SLOT_ID,
+            slotId: normalizeUIStageSlotId(surface.settings?.stageElementType),
         };
 
         return {
@@ -816,7 +1168,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             kind: "stageSurface",
             designSize: surface.designSize,
             rootElementId: surface.rootElementId,
-            settings,
+            settings: {
+                backgroundColor: "transparent",
+                ...(settings ?? {}),
+            },
             mount: stageMount,
             slots: surface.slots,
         };
@@ -849,6 +1204,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             id: documentId,
             name: DEFAULT_UI_DOCUMENT_NAME,
             surfaces: [surface],
+            components: [],
             elements: {
                 [rootElementId]: rootElement,
             },
@@ -873,7 +1229,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const { kind, name, host, settings, stageMount } = input;
         const effectiveMount =
             kind === "stageSurface"
-                ? stageMount ?? { kind: "slot", slotId: DEFAULT_STAGE_SLOT_ID }
+                ? {
+                      kind: "slot" as const,
+                      slotId: normalizeUIStageSlotId(stageMount?.slotId),
+                  }
                 : undefined;
 
         if (kind === "stageSurface" && host !== "player") {
@@ -881,6 +1240,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         if (kind === "appSurface" && host !== "app") {
             throw new RendererError("Pages must be hosted by app");
+        }
+        if (kind === "stageSurface") {
+            const existing = this.getDocument().surfaces.find(surface =>
+                surface.kind === "stageSurface" && surface.mount.slotId === effectiveMount?.slotId
+            );
+            if (existing) {
+                return existing;
+            }
         }
 
         const surface: UISurface =
@@ -892,7 +1259,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                       kind,
                       designSize,
                       rootElementId,
-                      settings,
+                      settings: {
+                          backgroundColor: "transparent",
+                          ...(settings ?? {}),
+                      },
                       mount: effectiveMount ?? { kind: "slot", slotId: DEFAULT_STAGE_SLOT_ID },
                   }
                 : {
@@ -906,11 +1276,20 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                   };
 
         const rootElement = this.createRootElement(rootElementId, designSize);
+        const dialogTemplate =
+            kind === "stageSurface" && effectiveMount?.slotId === "dialog"
+                ? this.createDialogStageTemplate(rootElement, designSize)
+                : null;
+        const templateElements = dialogTemplate?.elements ?? {};
 
         this.mutateDocument(document => {
             document.elements[rootElementId] = rootElement;
+            Object.assign(document.elements, templateElements);
             document.surfaces.push(surface);
         });
+        if (dialogTemplate) {
+            this.configureDefaultDialogBlueprints(surface.id, dialogTemplate);
+        }
 
         return surface;
     }
@@ -953,6 +1332,24 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    public renameSurface(surfaceId: string, name: string): void {
+        const nextName = name.trim();
+        if (!nextName) {
+            return;
+        }
+        const currentSurface = this.getDocument().surfaces.find(surface => surface.id === surfaceId);
+        if (!currentSurface || currentSurface.name === nextName) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const surface = document.surfaces.find(next => next.id === surfaceId);
+            if (!surface) {
+                return;
+            }
+            surface.name = nextName;
+        });
+    }
+
     public updateSurface(surfaceId: string, updater: (surface: UISurface) => void): void {
         this.mutateDocument(document => {
             const surface = document.surfaces.find(next => next.id === surfaceId);
@@ -960,13 +1357,1103 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 return;
             }
             const isMainSurface = surface.id === MAIN_APP_SURFACE_ID;
-            const originalName = surface.name;
             updater(surface);
             if (isMainSurface) {
-                surface.name = originalName;
                 surface.id = MAIN_APP_SURFACE_ID;
             }
         });
+    }
+
+    public duplicateSurface(surfaceId: string, name?: string): UISurface | null {
+        const sourceDocument = this.getDocument();
+        const sourceSurface = sourceDocument.surfaces.find(next => next.id === surfaceId);
+        if (!sourceSurface || sourceSurface.kind !== "appSurface") {
+            return null;
+        }
+        const sourceRootId = sourceSurface.rootElementId;
+        if (!sourceDocument.elements[sourceRootId]) {
+            return null;
+        }
+
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const newSurfaceId = uuidService.generate();
+        const sourceElementIds = Array.from(collectSubtreeElementIds(sourceDocument, sourceRootId))
+            .filter(elementId => Boolean(sourceDocument.elements[elementId]));
+        const elementIdMap: Record<string, string> = {};
+        for (const elementId of sourceElementIds) {
+            elementIdMap[elementId] = uuidService.generate();
+        }
+        const newRootElementId = elementIdMap[sourceRootId];
+        if (!newRootElementId) {
+            return null;
+        }
+
+        let localBp: LocalBlueprintService | null = null;
+        try {
+            localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        } catch {
+            localBp = null;
+        }
+
+        const blueprintIdMap: Record<string, string> = {};
+        const ownerRecordsToClone: Record<string, BlueprintPrivateOwnerRecord> = {};
+        const sourceBlueprintDocument = localBp?.getBlueprintDocument();
+        if (sourceBlueprintDocument) {
+            for (const [ownerKey, ownerRecord] of Object.entries(sourceBlueprintDocument.ownerRecords)) {
+                const firstBlueprint = ownerRecord.privateBlueprintIds
+                    .map(blueprintId => sourceBlueprintDocument.blueprints[blueprintId])
+                    .find((blueprint): blueprint is Blueprint => Boolean(blueprint));
+                const owner = firstBlueprint?.owner;
+                if (!owner || !remapDuplicatedBlueprintOwner(owner, {
+                    oldSurfaceId: sourceSurface.id,
+                    newSurfaceId,
+                    elementIdMap,
+                    blueprintIdMap: {},
+                })) {
+                    continue;
+                }
+                ownerRecordsToClone[ownerKey] = cloneJson(ownerRecord);
+                for (const blueprintId of ownerRecord.privateBlueprintIds) {
+                    if (sourceBlueprintDocument.blueprints[blueprintId] && !blueprintIdMap[blueprintId]) {
+                        blueprintIdMap[blueprintId] = uuidService.generate();
+                    }
+                }
+            }
+        }
+
+        const remapContext: SurfaceDuplicateRemapContext = {
+            oldSurfaceId: sourceSurface.id,
+            newSurfaceId,
+            elementIdMap,
+            blueprintIdMap,
+        };
+        const existingNames = new Set(sourceDocument.surfaces.map(surface => surface.name));
+        const nextName = name?.trim() || createDuplicateName(sourceSurface.name, existingNames);
+        const duplicatedSurface: UISurface = {
+            ...cloneJson(sourceSurface),
+            id: newSurfaceId,
+            name: nextName,
+            rootElementId: newRootElementId,
+            settings: sourceSurface.settings
+                ? remapSurfaceDuplicateReferenceValue(cloneJson(sourceSurface.settings), remapContext)
+                : undefined,
+        };
+
+        localBp?.applyBlueprintMutation(bpDoc => {
+            for (const sourceOwnerRecord of Object.values(ownerRecordsToClone)) {
+                const clonedBlueprintIds = sourceOwnerRecord.privateBlueprintIds
+                    .map(oldBlueprintId => blueprintIdMap[oldBlueprintId])
+                    .filter((blueprintId): blueprintId is string => Boolean(blueprintId));
+                const activeBlueprintId = blueprintIdMap[sourceOwnerRecord.activeBlueprintId];
+                if (!activeBlueprintId || clonedBlueprintIds.length === 0) {
+                    continue;
+                }
+                const firstSourceBlueprint = sourceOwnerRecord.privateBlueprintIds
+                    .map(oldBlueprintId => sourceBlueprintDocument?.blueprints[oldBlueprintId])
+                    .find((blueprint): blueprint is Blueprint => Boolean(blueprint));
+                const newOwner = firstSourceBlueprint ? remapDuplicatedBlueprintOwner(firstSourceBlueprint.owner, remapContext) : null;
+                if (!newOwner) {
+                    continue;
+                }
+                let newOwnerKey: string;
+                if (newOwner.kind === "surfaceMain") {
+                    newOwnerKey = surfaceMainOwnerKey(newOwner.surfaceId);
+                } else if (newOwner.kind === "widgetMain") {
+                    newOwnerKey = widgetMainOwnerKey(newOwner.surfaceId, newOwner.elementId);
+                } else if (newOwner.kind === "widgetValue") {
+                    newOwnerKey = widgetValueOwnerKey(newOwner.surfaceId, newOwner.elementId, newOwner.propPath);
+                } else {
+                    continue;
+                }
+                for (const oldBlueprintId of sourceOwnerRecord.privateBlueprintIds) {
+                    const sourceBlueprint = sourceBlueprintDocument?.blueprints[oldBlueprintId];
+                    const newBlueprintId = blueprintIdMap[oldBlueprintId];
+                    if (!sourceBlueprint || !newBlueprintId) {
+                        continue;
+                    }
+                    const clonedBlueprint = cloneBlueprintForSurfaceDuplicate(sourceBlueprint, newBlueprintId, remapContext);
+                    if (clonedBlueprint) {
+                        bpDoc.blueprints[newBlueprintId] = clonedBlueprint;
+                    }
+                }
+                bpDoc.ownerRecords[newOwnerKey] = {
+                    ...cloneJson(sourceOwnerRecord),
+                    activeBlueprintId,
+                    privateBlueprintIds: clonedBlueprintIds,
+                };
+            }
+        });
+
+        const duplicatedElements: Record<string, UIElement> = {};
+        for (const oldElementId of sourceElementIds) {
+            const sourceElement = sourceDocument.elements[oldElementId];
+            const newElementId = elementIdMap[oldElementId];
+            if (!sourceElement || !newElementId) {
+                continue;
+            }
+            const copy = cloneJson(sourceElement);
+            copy.id = newElementId;
+            copy.parentId = sourceElement.parentId ? elementIdMap[sourceElement.parentId] ?? null : null;
+            copy.childrenIds = sourceElement.childrenIds
+                .filter(childId => Boolean(elementIdMap[childId]))
+                .map(childId => elementIdMap[childId]);
+            copy.props = copy.props
+                ? remapSurfaceDuplicateReferenceValue(copy.props, remapContext)
+                : undefined;
+            copy.style = copy.style
+                ? remapSurfaceDuplicateReferenceValue(copy.style, remapContext)
+                : undefined;
+            copy.extra = copy.extra
+                ? remapSurfaceDuplicateReferenceValue(copy.extra, remapContext)
+                : undefined;
+            if (copy.behavior?.events) {
+                copy.behavior = {
+                    ...copy.behavior,
+                    events: remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap),
+                };
+            }
+            if (copy.valueBindings) {
+                copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
+            }
+            duplicatedElements[newElementId] = copy;
+        }
+
+        this.mutateDocument(document => {
+            Object.assign(document.elements, duplicatedElements);
+            const sourceIndex = document.surfaces.findIndex(surface => surface.id === sourceSurface.id);
+            if (sourceIndex >= 0) {
+                document.surfaces.splice(sourceIndex + 1, 0, duplicatedSurface);
+            } else {
+                document.surfaces.push(duplicatedSurface);
+            }
+            normalizeFlowChildLayouts(document, Object.keys(duplicatedElements));
+        });
+
+        return duplicatedSurface;
+    }
+
+    public getComponent(componentId: string): UIComponentDefinition | undefined {
+        return (this.getDocument().components ?? []).find(component => component.id === componentId);
+    }
+
+    public getComponentUsageCount(componentId: string): number {
+        let count = 0;
+        for (const element of Object.values(this.getDocument().elements)) {
+            const link = getUIComponentLink(element);
+            if (link?.componentId === componentId) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    public createEmptyComponent(name?: string): UIComponentDefinition {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const now = new Date().toISOString();
+        const componentId = uuidService.generate();
+        const rootElementId = uuidService.generate();
+        const containerModule = widgetModuleRegistry.get("nl.container");
+        const defaults = containerModule?.createDefaultElement() ?? {};
+        const rootElement: UIElement = {
+            id: rootElementId,
+            type: "nl.container",
+            name: "Root",
+            parentId: null,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: defaults.layout?.width ?? DEFAULT_COMPONENT_SIZE.width,
+                height: defaults.layout?.height ?? DEFAULT_COMPONENT_SIZE.height,
+                opacity: defaults.layout?.opacity ?? 1,
+                visible: defaults.layout?.visible ?? true,
+                rotation: defaults.layout?.rotation,
+            }),
+            props: defaults.props,
+            style: defaults.style,
+            extra: defaults.extra,
+        };
+        const component: UIComponentDefinition = {
+            id: componentId,
+            name: sanitizeComponentName(name, "Component"),
+            rootElementId,
+            elements: {
+                [rootElementId]: rootElement,
+            },
+            previewMeta: {
+                width: rootElement.layout.width,
+                height: rootElement.layout.height,
+            },
+            createdAt: now,
+            updatedAt: now,
+        };
+        this.mutateDocument(document => {
+            document.components = [...(document.components ?? []), component];
+        }, { history: false });
+        return component;
+    }
+
+    public createComponentFromElements(surfaceId: string, elementIds: string[], name?: string): UIComponentDefinition | null {
+        const document = this.getDocument();
+        const effectiveRootId = resolveSurfaceRootElementId(document, surfaceId);
+        if (!effectiveRootId || elementIds.length === 0) {
+            return null;
+        }
+        const allowed = collectSubtreeElementIds(document, effectiveRootId);
+        const topLevelIds = filterToTopLevelMovers(document, elementIds)
+            .filter(id => {
+                const element = document.elements[id];
+                return element && element.type !== "nl.root" && allowed.has(id);
+            });
+        if (topLevelIds.length === 0) {
+            return null;
+        }
+
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const now = new Date().toISOString();
+        const componentId = uuidService.generate();
+        const elementIdMap: Record<string, string> = {};
+        const componentElements: Record<string, UIElement> = {};
+        const selectedTopElements = topLevelIds
+            .map(id => document.elements[id])
+            .filter((element): element is UIElement => Boolean(element));
+        const bounds = calculateElementsBounds(selectedTopElements);
+
+        const collectSourceIds = (rootId: string) => {
+            for (const id of collectSubtreeElementIds(document, rootId)) {
+                if (!allowed.has(id) || !document.elements[id]) {
+                    continue;
+                }
+                elementIdMap[id] = elementIdMap[id] ?? uuidService.generate();
+            }
+        };
+        topLevelIds.forEach(collectSourceIds);
+
+        let rootElementId: string;
+        if (topLevelIds.length === 1) {
+            const sourceRootId = topLevelIds[0];
+            rootElementId = elementIdMap[sourceRootId];
+            for (const [oldId, newId] of Object.entries(elementIdMap)) {
+                const source = document.elements[oldId];
+                if (!source) {
+                    continue;
+                }
+                const copy = stripElementForComponentDefinition(source);
+                copy.id = newId;
+                copy.parentId = oldId === sourceRootId
+                    ? null
+                    : source.parentId && elementIdMap[source.parentId]
+                      ? elementIdMap[source.parentId]
+                      : null;
+                copy.childrenIds = source.childrenIds.filter(childId => elementIdMap[childId]).map(childId => elementIdMap[childId]);
+                if (oldId === sourceRootId) {
+                    copy.layout = roundUILayoutGeometryFields({
+                        ...copy.layout,
+                        x: 0,
+                        y: 0,
+                    });
+                }
+                componentElements[newId] = copy;
+            }
+        } else {
+            rootElementId = uuidService.generate();
+            const rootDefaults = widgetModuleRegistry.get("nl.container")?.createDefaultElement() ?? {};
+            const rootElement: UIElement = {
+                id: rootElementId,
+                type: "nl.container",
+                name: "Root",
+                parentId: null,
+                childrenIds: topLevelIds.map(id => elementIdMap[id]).filter(Boolean),
+                layout: roundUILayoutGeometryFields({
+                    x: 0,
+                    y: 0,
+                    width: bounds.width,
+                    height: bounds.height,
+                    opacity: 1,
+                    visible: true,
+                }),
+                props: rootDefaults.props,
+                style: rootDefaults.style,
+                extra: rootDefaults.extra,
+            };
+            componentElements[rootElementId] = rootElement;
+            for (const [oldId, newId] of Object.entries(elementIdMap)) {
+                const source = document.elements[oldId];
+                if (!source) {
+                    continue;
+                }
+                const copy = stripElementForComponentDefinition(source);
+                copy.id = newId;
+                copy.parentId = topLevelIds.includes(oldId)
+                    ? rootElementId
+                    : source.parentId && elementIdMap[source.parentId]
+                      ? elementIdMap[source.parentId]
+                      : null;
+                copy.childrenIds = source.childrenIds.filter(childId => elementIdMap[childId]).map(childId => elementIdMap[childId]);
+                if (topLevelIds.includes(oldId)) {
+                    copy.layout = roundUILayoutGeometryFields({
+                        ...copy.layout,
+                        x: copy.layout.x - bounds.x,
+                        y: copy.layout.y - bounds.y,
+                    });
+                }
+                componentElements[newId] = copy;
+            }
+        }
+
+        const root = componentElements[rootElementId];
+        if (!root) {
+            return null;
+        }
+        const component: UIComponentDefinition = {
+            id: componentId,
+            name: sanitizeComponentName(name, selectedTopElements.length === 1 ? (selectedTopElements[0].name ?? "Component") : "Component"),
+            rootElementId,
+            elements: componentElements,
+            previewMeta: {
+                width: Math.max(1, Math.abs(root.layout.width)),
+                height: Math.max(1, Math.abs(root.layout.height)),
+            },
+            createdAt: now,
+            updatedAt: now,
+        };
+
+        this.mutateDocument(doc => {
+            doc.components = [...(doc.components ?? []), component];
+        }, { history: false });
+        return component;
+    }
+
+    public renameComponent(componentId: string, name: string): void {
+        const nextName = name.trim();
+        if (!nextName) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            if (!component) {
+                return;
+            }
+            component.name = nextName;
+            component.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    public deleteComponents(componentIds: string[]): void {
+        const ids = new Set(componentIds);
+        if (ids.size === 0) {
+            return;
+        }
+        this.mutateDocument(document => {
+            document.components = (document.components ?? []).filter(component => !ids.has(component.id));
+        }, { history: false });
+    }
+
+    public duplicateComponent(componentId: string): UIComponentDefinition | null {
+        const source = this.getComponent(componentId);
+        if (!source) {
+            return null;
+        }
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const now = new Date().toISOString();
+        const newComponentId = uuidService.generate();
+        const idMap: Record<string, string> = {};
+        for (const elementId of Object.keys(source.elements)) {
+            idMap[elementId] = uuidService.generate();
+        }
+        let localBp: LocalBlueprintService | null = null;
+        try {
+            localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        } catch {
+            localBp = null;
+        }
+        const blueprintIdMap: Record<string, string> = {};
+        if (localBp) {
+            for (const oldElementId of Object.keys(source.elements)) {
+                const oldBpId = localBp.getComponentWidgetMainBlueprintId(source.id, oldElementId);
+                if (oldBpId) {
+                    blueprintIdMap[oldBpId] = uuidService.generate();
+                }
+            }
+        }
+        const elements: Record<string, UIElement> = {};
+        for (const [oldId, element] of Object.entries(source.elements)) {
+            const copy = cloneJson(element);
+            copy.id = idMap[oldId];
+            copy.parentId = element.parentId ? idMap[element.parentId] ?? null : null;
+            copy.childrenIds = element.childrenIds.filter(childId => idMap[childId]).map(childId => idMap[childId]);
+            if (copy.behavior?.events) {
+                const remapped = remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap);
+                copy.behavior = { ...copy.behavior, events: remapped };
+            }
+            if (copy.valueBindings) {
+                copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
+            }
+            elements[copy.id] = copy;
+        }
+        const component: UIComponentDefinition = {
+            ...cloneJson(source),
+            id: newComponentId,
+            name: `${source.name} Copy`,
+            rootElementId: idMap[source.rootElementId],
+            elements,
+            createdAt: now,
+            updatedAt: now,
+        };
+        this.mutateDocument(document => {
+            document.components = [...(document.components ?? []), component];
+        }, { history: false });
+        localBp?.applyBlueprintMutation(bpDoc => {
+            for (const [oldBpId, newBpId] of Object.entries(blueprintIdMap)) {
+                const sourceBp = bpDoc.blueprints[oldBpId];
+                const owner = sourceBp?.owner;
+                if (!sourceBp || owner?.kind !== "componentWidgetMain" || owner.componentId !== source.id) {
+                    continue;
+                }
+                const newElementId = idMap[owner.elementId];
+                if (!newElementId) {
+                    continue;
+                }
+                const cloned = cloneJson(sourceBp) as Blueprint;
+                cloned.id = newBpId;
+                cloned.owner = {
+                    kind: "componentWidgetMain",
+                    componentId: newComponentId,
+                    elementId: newElementId,
+                };
+                if (cloned.bindings) {
+                    for (const binding of Object.values(cloned.bindings)) {
+                        if (binding.target.kind === "widgetProp") {
+                            binding.target = {
+                                ...binding.target,
+                                surfaceId: `${COMPONENT_EDITOR_SURFACE_ID_PREFIX}${newComponentId}`,
+                                elementId: idMap[binding.target.elementId] ?? binding.target.elementId,
+                            };
+                        }
+                        if (binding.source.kind === "field" && binding.source.blueprintId === oldBpId) {
+                            binding.source = { ...binding.source, blueprintId: newBpId };
+                        }
+                    }
+                }
+                bpDoc.blueprints[newBpId] = cloned;
+                registerPrivateBlueprintAsActive(
+                    bpDoc,
+                    componentWidgetMainOwnerKey(newComponentId, newElementId),
+                    newBpId,
+                    cloned.frontend,
+                );
+            }
+        });
+        return component;
+    }
+
+    public updateComponentElementLayout(
+        componentId: string,
+        elementId: string,
+        layoutPatch: Partial<UILayout>,
+    ): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element) {
+                return;
+            }
+            element.layout = roundUILayoutGeometryFields({
+                ...element.layout,
+                ...layoutPatch,
+            });
+            component.updatedAt = new Date().toISOString();
+            if (component.rootElementId === elementId) {
+                component.previewMeta = {
+                    ...(component.previewMeta ?? {}),
+                    width: Math.max(1, Math.abs(element.layout.width)),
+                    height: Math.max(1, Math.abs(element.layout.height)),
+                };
+            }
+        }, { history: false });
+    }
+
+    public updateComponentElementProps(
+        componentId: string,
+        elementId: string,
+        propsPatch: Record<string, unknown>,
+    ): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element) {
+                return;
+            }
+            element.props = {
+                ...(element.props ?? {}),
+                ...propsPatch,
+            };
+            component.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    public updateComponentElementExtra(
+        componentId: string,
+        elementId: string,
+        extraPatch: Record<string, unknown>,
+    ): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element) {
+                return;
+            }
+            element.extra = {
+                ...(element.extra ?? {}),
+                ...extraPatch,
+            };
+            component.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    public setComponentElementBlueprintEvent(
+        componentId: string,
+        elementId: string,
+        eventName: string,
+        ref: { blueprintId: string; eventId: string },
+    ): void {
+        const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const bpDoc = localBp.getBlueprintDocument();
+        const bp = bpDoc.blueprints[ref.blueprintId];
+        const slot = bp?.program.kind === "graph" ? bp.program.graphs.events?.[ref.eventId] : undefined;
+        const defaultLayerName = `Layer ${ref.eventId.slice(0, 8)}`;
+        localBp.ensureEventGraph(ref.blueprintId, ref.eventId, slot ? undefined : defaultLayerName);
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element) {
+                return;
+            }
+            element.behavior = element.behavior ?? {};
+            element.behavior.events = element.behavior.events ?? {};
+            element.behavior.events[eventName] = {
+                kind: "blueprintEvent",
+                blueprintId: ref.blueprintId,
+                eventId: ref.eventId,
+            };
+            component.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    public clearComponentElementBlueprintEvent(componentId: string, elementId: string, eventName: string): void {
+        const component = (this.getDocument().components ?? []).find(item => item.id === componentId);
+        const current = component?.elements[elementId]?.behavior?.events?.[eventName];
+        if (current?.kind === "blueprintEvent") {
+            const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+            localBp.removeEventGraph(current.blueprintId, current.eventId);
+        }
+        this.mutateDocument(document => {
+            const liveComponent = (document.components ?? []).find(item => item.id === componentId);
+            const target = liveComponent?.elements[elementId];
+            if (!liveComponent || !target?.behavior?.events?.[eventName]) {
+                return;
+            }
+            const { [eventName]: _removed, ...rest } = target.behavior.events;
+            target.behavior = {
+                ...target.behavior,
+                events: Object.keys(rest).length > 0 ? rest : undefined,
+            };
+            liveComponent.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    public stripComponentBlueprintLayerBindings(componentId: string, blueprintId: string, layerEventId: string): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            if (!component) {
+                return;
+            }
+            let componentChanged = false;
+            for (const el of Object.values(component.elements)) {
+                const events = el.behavior?.events;
+                if (!events) {
+                    continue;
+                }
+                let changed = false;
+                const nextEvents = { ...events };
+                for (const [eventName, binding] of Object.entries(nextEvents)) {
+                    if (
+                        binding.kind === "blueprintEvent" &&
+                        binding.blueprintId === blueprintId &&
+                        binding.eventId === layerEventId
+                    ) {
+                        nextEvents[eventName] = { kind: "noop" };
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    el.behavior = { ...el.behavior, events: nextEvents };
+                    componentChanged = true;
+                }
+            }
+            if (componentChanged) {
+                component.updatedAt = new Date().toISOString();
+            }
+        }, { history: false });
+    }
+
+    public renameComponentElement(componentId: string, elementId: string, name: string): void {
+        const trimmed = name.trim();
+        if (!trimmed) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const element = component?.elements[elementId];
+            if (!component || !element) {
+                return;
+            }
+            element.name = trimmed;
+            component.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    public reorderComponentChildren(componentId: string, parentId: string, orderedChildIds: string[]): void {
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const parent = component?.elements[parentId];
+            if (!component || !parent || !uiElementTypeAcceptsChildren(parent.type)) {
+                return;
+            }
+            const allowed = new Set(parent.childrenIds);
+            const ordered = orderedChildIds.filter(id => allowed.has(id));
+            if (ordered.length !== parent.childrenIds.length) {
+                return;
+            }
+            parent.childrenIds = ordered;
+            normalizeFlowChildLayouts({ ...document, elements: component.elements }, ordered);
+            component.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    public deleteComponentElements(componentId: string, elementIds: string[]): void {
+        if (elementIds.length === 0) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            if (!component) {
+                return;
+            }
+            const rootId = component.rootElementId;
+            const toRemove = new Set<string>();
+            const collect = (elementId: string) => {
+                if (elementId === rootId || toRemove.has(elementId)) {
+                    return;
+                }
+                const element = component.elements[elementId];
+                if (!element) {
+                    return;
+                }
+                toRemove.add(elementId);
+                element.childrenIds.forEach(collect);
+            };
+            elementIds.forEach(collect);
+            if (toRemove.size === 0) {
+                return;
+            }
+            for (const element of Object.values(component.elements)) {
+                if (element.childrenIds.length > 0) {
+                    element.childrenIds = element.childrenIds.filter(childId => !toRemove.has(childId));
+                }
+            }
+            for (const id of toRemove) {
+                delete component.elements[id];
+            }
+            component.updatedAt = new Date().toISOString();
+        }, { history: false });
+    }
+
+    public moveComponentElements(
+        componentId: string,
+        elementIds: string[],
+        targetParentId: string,
+        beforeChildId: string | null,
+    ): MoveUiElementsResult {
+        const document = this.getDocument();
+        const component = (document.components ?? []).find(item => item.id === componentId);
+        const rootId = component?.rootElementId;
+        if (!component || !rootId || elementIds.includes(rootId)) {
+            return { ok: false, reason: "invalid_movers" };
+        }
+        const targetParent = component.elements[targetParentId];
+        if (!targetParent || !uiElementTypeAcceptsChildren(targetParent.type)) {
+            return { ok: false, reason: "invalid_target" };
+        }
+        const surfaceId = `component:${componentId}`;
+        const virtualSurface: UISurface = {
+            id: surfaceId,
+            name: component.name,
+            host: "app",
+            kind: "appSurface",
+            designSize: getComponentPreviewDesignSize(component),
+            rootElementId: rootId,
+        };
+        const virtualDocument: UIDocument = {
+            ...document,
+            surfaces: [virtualSurface],
+            elements: component.elements,
+        };
+        const planned = planMoveElementsInSurface(virtualDocument, surfaceId, elementIds, targetParentId, beforeChildId);
+        if (!planned.ok) {
+            return planned;
+        }
+        this.mutateDocument(doc => {
+            const liveComponent = (doc.components ?? []).find(item => item.id === componentId);
+            if (!liveComponent) {
+                return;
+            }
+            const liveVirtualSurface: UISurface = {
+                id: surfaceId,
+                name: liveComponent.name,
+                host: "app",
+                kind: "appSurface",
+                designSize: getComponentPreviewDesignSize(liveComponent),
+                rootElementId: liveComponent.rootElementId,
+            };
+            const liveVirtualDocument: UIDocument = {
+                ...doc,
+                surfaces: [liveVirtualSurface],
+                elements: liveComponent.elements,
+            };
+            applyPlannedMove(liveVirtualDocument, planned.plan);
+            normalizeFlowChildLayouts(liveVirtualDocument, elementIds);
+            liveComponent.updatedAt = new Date().toISOString();
+        }, { history: false });
+        return { ok: true };
+    }
+
+    public createComponentElement(
+        componentId: string,
+        parentId: string,
+        type: string,
+        layoutPatch: Partial<UILayout> = {},
+    ): UIElement | null {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const definition = widgetModuleRegistry.get(type);
+        if (!definition) {
+            throw new RendererError(`Unknown element type: ${type}`);
+        }
+        let created: UIElement | null = null;
+        this.mutateDocument(document => {
+            const component = (document.components ?? []).find(item => item.id === componentId);
+            const parent = component?.elements[parentId];
+            if (!component || !parent || !uiElementTypeAcceptsChildren(parent.type)) {
+                return;
+            }
+            const elementId = uuidService.generate();
+            const defaults = definition.createDefaultElement();
+            const element: UIElement = {
+                id: elementId,
+                type: definition.type,
+                name: defaults.name ?? definition.displayName,
+                parentId,
+                childrenIds: [],
+                layout: roundUILayoutGeometryFields({
+                    x: defaults.layout?.x ?? 0,
+                    y: defaults.layout?.y ?? 0,
+                    width: defaults.layout?.width ?? 100,
+                    height: defaults.layout?.height ?? 100,
+                    opacity: defaults.layout?.opacity ?? 1,
+                    visible: defaults.layout?.visible ?? true,
+                    rotation: defaults.layout?.rotation,
+                    ...layoutPatch,
+                }),
+                props: defaults.props,
+                style: defaults.style,
+                extra: defaults.extra,
+            };
+            const defaultChildrenResult = definition.createDefaultChildElements?.({
+                element,
+                generateId: () => uuidService.generate(),
+            });
+            const defaultChildren = defaultChildrenResult?.children ?? [];
+            const elementWithChildren: UIElement = {
+                ...element,
+                ...(defaultChildrenResult?.elementPatch ?? {}),
+                id: element.id,
+                type: element.type,
+                parentId: element.parentId,
+                childrenIds: defaultChildren.length > 0 ? defaultChildren.map(child => child.id) : element.childrenIds,
+                layout: {
+                    ...element.layout,
+                    ...(defaultChildrenResult?.elementPatch?.layout ?? {}),
+                },
+                props: {
+                    ...(element.props ?? {}),
+                    ...(defaultChildrenResult?.elementPatch?.props ?? {}),
+                },
+                style: defaultChildrenResult?.elementPatch?.style ?? element.style,
+                behavior: undefined,
+                valueBindings: undefined,
+                extra: defaultChildrenResult?.elementPatch?.extra ?? element.extra,
+            };
+            component.elements[elementId] = elementWithChildren;
+            for (const child of defaultChildren) {
+                component.elements[child.id] = {
+                    ...child,
+                    parentId: elementId,
+                    behavior: undefined,
+                    valueBindings: undefined,
+                };
+            }
+            parent.childrenIds = [...parent.childrenIds, elementId];
+            normalizeFlowChildLayouts({ ...document, elements: component.elements }, [
+                elementId,
+                ...defaultChildren.map(child => child.id),
+            ]);
+            component.updatedAt = new Date().toISOString();
+            created = cloneJson(elementWithChildren);
+        }, { history: false });
+        return created;
+    }
+
+    public pasteComponentClipboardPayload(
+        componentId: string,
+        targetParentId: string,
+        beforeChildId: string | null,
+        payload: UIEditorClipboardPayload,
+    ): { ok: true; newRootIds: string[] } | { ok: false; reason: "invalid_clipboard" | "invalid_target" } {
+        if (payload.v !== 1 || payload.topLevelElementIds.length === 0 || Object.keys(payload.elements).length === 0) {
+            return { ok: false, reason: "invalid_clipboard" };
+        }
+        const document = this.getDocument();
+        const component = (document.components ?? []).find(item => item.id === componentId);
+        const target = component?.elements[targetParentId];
+        if (!component || !target || !uiElementTypeAcceptsChildren(target.type)) {
+            return { ok: false, reason: "invalid_target" };
+        }
+        if (beforeChildId != null) {
+            const before = component.elements[beforeChildId];
+            if (!before || before.parentId !== targetParentId) {
+                return { ok: false, reason: "invalid_target" };
+            }
+        }
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const elementIdMap: Record<string, string> = {};
+        for (const oldId of Object.keys(payload.elements)) {
+            elementIdMap[oldId] = uuidService.generate();
+        }
+        const newRootIds = payload.topLevelElementIds
+            .map(oldId => elementIdMap[oldId])
+            .filter((id): id is string => Boolean(id));
+        if (newRootIds.length === 0) {
+            return { ok: false, reason: "invalid_clipboard" };
+        }
+
+        this.mutateDocument(doc => {
+            const liveComponent = (doc.components ?? []).find(item => item.id === componentId);
+            const liveParent = liveComponent?.elements[targetParentId];
+            if (!liveComponent || !liveParent) {
+                return;
+            }
+            for (const [oldId, source] of Object.entries(payload.elements)) {
+                const newId = elementIdMap[oldId];
+                if (!newId) {
+                    continue;
+                }
+                const copy = stripElementForComponentDefinition(source);
+                copy.id = newId;
+                copy.parentId = payload.topLevelElementIds.includes(oldId)
+                    ? targetParentId
+                    : source.parentId && elementIdMap[source.parentId]
+                      ? elementIdMap[source.parentId]
+                      : null;
+                copy.childrenIds = source.childrenIds.filter(childId => elementIdMap[childId]).map(childId => elementIdMap[childId]);
+                liveComponent.elements[newId] = copy;
+            }
+            const insertAt = beforeChildId ? liveParent.childrenIds.indexOf(beforeChildId) : -1;
+            const withoutMoved = liveParent.childrenIds.filter(id => !newRootIds.includes(id));
+            liveParent.childrenIds = insertAt >= 0
+                ? [...withoutMoved.slice(0, insertAt), ...newRootIds, ...withoutMoved.slice(insertAt)]
+                : [...withoutMoved, ...newRootIds];
+            normalizeFlowChildLayouts({ ...doc, elements: liveComponent.elements }, newRootIds);
+            liveComponent.updatedAt = new Date().toISOString();
+        }, { history: false });
+        return { ok: true, newRootIds };
+    }
+
+    public createComponentInstance(parentId: string, componentId: string, layoutPatch: Partial<UILayout> = {}): UIElement {
+        const surfaceId = this.getElementSurfaceId(parentId);
+        const document = this.getDocument();
+        const component = (document.components ?? []).find(item => item.id === componentId);
+        if (!component) {
+            throw new RendererError(`Component ${componentId} not found`);
+        }
+        const root = component.elements[component.rootElementId];
+        if (!root) {
+            throw new RendererError(`Component ${component.name} root is missing`);
+        }
+        const parent = document.elements[parentId];
+        if (!parent) {
+            throw new RendererError("Parent element not found");
+        }
+        if (isLinkedUIComponentElement(parent)) {
+            throw new RendererError("Cannot insert children into a linked component instance");
+        }
+        if (!uiElementTypeAcceptsChildren(parent.type)) {
+            throw new RendererError(`Parent type ${parent.type} cannot have child elements`);
+        }
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const elementId = uuidService.generate();
+        const element: UIElement = {
+            id: elementId,
+            type: root.type,
+            name: component.name,
+            parentId,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: root.layout.x,
+                y: root.layout.y,
+                width: root.layout.width,
+                height: root.layout.height,
+                opacity: 1,
+                visible: true,
+                rotation: root.layout.rotation,
+                ...layoutPatch,
+            }),
+            extra: {
+                componentLink: {
+                    componentId,
+                    linked: true,
+                },
+            },
+        };
+        this.mutateDocument(doc => {
+            doc.elements[elementId] = element;
+            const parentElement = doc.elements[parentId];
+            if (parentElement) {
+                parentElement.childrenIds = [...parentElement.childrenIds, elementId];
+            }
+            normalizeFlowChildLayout(doc, element);
+        }, {
+            history: surfaceId ? { surfaceId } : false,
+        });
+        return element;
+    }
+
+    public unlinkComponentInstance(elementId: string): string[] {
+        const document = this.getDocument();
+        const surfaceId = this.getElementSurfaceId(elementId);
+        const instance = document.elements[elementId];
+        const link = getUIComponentLink(instance);
+        if (!instance || !link) {
+            return [];
+        }
+        const component = (document.components ?? []).find(item => item.id === link.componentId);
+        const sourceRoot = component?.elements[component.rootElementId];
+        if (!component || !sourceRoot) {
+            return [];
+        }
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const idMap: Record<string, string> = {
+            [sourceRoot.id]: instance.id,
+        };
+        const sourceElementIds = collectComponentSubtreeElementIds(component.elements, sourceRoot.id);
+        for (const id of sourceElementIds) {
+            idMap[id] = idMap[id] ?? uuidService.generate();
+        }
+        let localBp: LocalBlueprintService | null = null;
+        try {
+            localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        } catch {
+            localBp = null;
+        }
+        const blueprintIdMap: Record<string, string> = {};
+        if (localBp) {
+            for (const sourceElementId of sourceElementIds) {
+                const oldBpId = localBp.getComponentWidgetMainBlueprintId(component.id, sourceElementId);
+                if (oldBpId) {
+                    blueprintIdMap[oldBpId] = uuidService.generate();
+                }
+            }
+        }
+        const materializedIds = Object.values(idMap);
+        const pageBehavior = cloneJson(instance.behavior);
+        this.mutateDocument(doc => {
+            const liveInstance = doc.elements[elementId];
+            if (!liveInstance) {
+                return;
+            }
+            const liveComponent = (doc.components ?? []).find(item => item.id === link.componentId);
+            const liveRoot = liveComponent?.elements[liveComponent.rootElementId];
+            if (!liveComponent || !liveRoot) {
+                return;
+            }
+            for (const [oldId, source] of Object.entries(liveComponent.elements)) {
+                if (!idMap[oldId]) {
+                    continue;
+                }
+                const copy = cloneJson(source);
+                copy.id = idMap[oldId];
+                copy.parentId = oldId === liveRoot.id
+                    ? liveInstance.parentId
+                    : source.parentId && idMap[source.parentId]
+                      ? idMap[source.parentId]
+                      : null;
+                copy.childrenIds = source.childrenIds.filter(childId => idMap[childId]).map(childId => idMap[childId]);
+                if (copy.behavior?.events) {
+                    const remapped = remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap);
+                    copy.behavior = { ...copy.behavior, events: remapped };
+                }
+                if (copy.valueBindings) {
+                    copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
+                }
+                if (oldId === liveRoot.id) {
+                    copy.layout = {
+                        ...copy.layout,
+                        ...liveInstance.layout,
+                    };
+                    copy.name = liveInstance.name;
+                    copy.behavior = pageBehavior;
+                    if (copy.extra?.componentLink) {
+                        const { componentLink: _removed, ...rest } = copy.extra;
+                        copy.extra = Object.keys(rest).length > 0 ? rest : undefined;
+                    }
+                }
+                doc.elements[copy.id] = copy;
+            }
+            normalizeFlowChildLayouts(doc, materializedIds);
+        }, {
+            history: surfaceId ? { surfaceId } : false,
+        });
+        if (surfaceId && localBp) {
+            localBp.applyBlueprintMutation(bpDoc => {
+                for (const [oldBpId, newBpId] of Object.entries(blueprintIdMap)) {
+                    const sourceBp = bpDoc.blueprints[oldBpId];
+                    const owner = sourceBp?.owner;
+                    if (!sourceBp || owner?.kind !== "componentWidgetMain" || owner.componentId !== component.id) {
+                        continue;
+                    }
+                    const newElementId = idMap[owner.elementId];
+                    if (!newElementId) {
+                        continue;
+                    }
+                    const cloned: Blueprint = cloneWidgetMainBlueprintForPaste({
+                        source: sourceBp,
+                        newBlueprintId: newBpId,
+                        surfaceId,
+                        newOwnerElementId: newElementId,
+                        elementIdMap: idMap,
+                        oldBlueprintId: oldBpId,
+                        newBlueprintIdForSourceRemap: newBpId,
+                    });
+                    bpDoc.blueprints[newBpId] = cloned;
+                    registerPrivateBlueprintAsActive(
+                        bpDoc,
+                        widgetMainOwnerKey(surfaceId, newElementId),
+                        newBpId,
+                        cloned.frontend,
+                    );
+                }
+            });
+        }
+        return materializedIds;
     }
 
     public createElement(parentId: string, type: string, layoutPatch: Partial<UILayout> = {}): UIElement {
@@ -979,6 +2466,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const parent = document.elements[parentId];
         if (!parent) {
             throw new RendererError("Parent element not found");
+        }
+        if (isLinkedUIComponentElement(parent)) {
+            throw new RendererError("Cannot insert children into a linked component instance");
         }
         if (!uiElementTypeAcceptsChildren(parent.type)) {
             throw new RendererError(`Parent type ${parent.type} cannot have child elements`);
@@ -1086,7 +2576,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         const allowed = collectSubtreeElementIds(document, effectiveRootId);
         const target = document.elements[targetParentId];
-        if (!target || !allowed.has(targetParentId) || !isValidUIInsertParent(target)) {
+        if (!target || !allowed.has(targetParentId) || !isValidUIInsertParent(target) || isLinkedUIComponentElement(target)) {
             return { ok: false, reason: "invalid_target" };
         }
         if (beforeChildId != null) {
@@ -1399,16 +2889,431 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         };
     }
 
+    private createDialogStageTemplate(rootElement: UIElement, designSize: UISurfaceDesignSize): DialogStageTemplate {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const interactionLayerId = uuidService.generate();
+        const panelId = uuidService.generate();
+        const stackId = uuidService.generate();
+        const nametagId = uuidService.generate();
+        const sentenceId = uuidService.generate();
+        const panelWidth = Math.round(designSize.width * 0.86);
+        const panelHeight = Math.max(180, Math.round(designSize.height * 0.24));
+        const panelX = Math.round((designSize.width - panelWidth) / 2);
+        const panelY = Math.max(0, designSize.height - panelHeight - Math.round(designSize.height * 0.04));
+
+        rootElement.childrenIds = [interactionLayerId, panelId];
+
+        const interactionLayer: UIElement = {
+            id: interactionLayerId,
+            type: "nl.container",
+            name: "Dialog Interaction Layer",
+            parentId: rootElement.id,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: designSize.width,
+                height: designSize.height,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createContainerTemplateProps({
+                layoutKind: "free",
+                backgroundColor: "transparent",
+                fillVisible: false,
+                fillOpacity: 0,
+                strokeVisible: false,
+                borderWidth: 0,
+                stackPaddingTop: 0,
+                stackPaddingRight: 0,
+                stackPaddingBottom: 0,
+                stackPaddingLeft: 0,
+                clipContent: false,
+            }),
+        };
+
+        const panel: UIElement = {
+            id: panelId,
+            type: "nl.container",
+            name: "Dialog Panel",
+            parentId: rootElement.id,
+            childrenIds: [stackId],
+            layout: roundUILayoutGeometryFields({
+                x: panelX,
+                y: panelY,
+                width: panelWidth,
+                height: panelHeight,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createContainerTemplateProps({
+                layoutKind: "free",
+                backgroundColor: "#0b0d12",
+                fillOpacity: 0.78,
+                borderRadius: 8,
+                borderRadiusTL: 8,
+                borderRadiusTR: 8,
+                borderRadiusBL: 8,
+                borderRadiusBR: 8,
+                borderColor: "#f8fafc",
+                borderWidth: 1,
+                strokeOpacity: 0.18,
+                clipContent: true,
+            }),
+        };
+
+        const stack: UIElement = {
+            id: stackId,
+            type: "nl.container",
+            name: "Dialog Content",
+            parentId: panelId,
+            childrenIds: [nametagId, sentenceId],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: panelWidth,
+                height: panelHeight,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createContainerTemplateProps({
+                layoutKind: "stack",
+                stackDirection: "vertical",
+                stackGap: 10,
+                stackPaddingTop: 22,
+                stackPaddingRight: 28,
+                stackPaddingBottom: 22,
+                stackPaddingLeft: 28,
+                backgroundColor: "transparent",
+                fillVisible: false,
+                strokeVisible: false,
+                borderWidth: 0,
+                clipContent: false,
+            }),
+        };
+
+        const nametag: UIElement = {
+            id: nametagId,
+            type: "nl.text",
+            name: "Nametag",
+            parentId: stackId,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: 320,
+                height: 34,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createTextTemplateProps({
+                text: "Speaker",
+                fontSize: 22,
+                color: "#f8d37a",
+                fontWeight: "600",
+                lineHeight: 1.2,
+                textVerticalAlign: "center",
+            }),
+        };
+
+        const sentence: UIElement = {
+            id: sentenceId,
+            type: DIALOG_SENTENCE_WIDGET_TYPE,
+            name: "Sentence",
+            parentId: stackId,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: Math.max(1, panelWidth - 56),
+                height: Math.max(96, panelHeight - 88),
+                opacity: 1,
+                visible: true,
+            }),
+            props: createTextTemplateProps({
+                text: "The current line will appear here.",
+                fontSize: 24,
+                color: "#f8fafc",
+                lineHeight: 1.45,
+            }),
+        };
+
+        return {
+            elements: {
+                [interactionLayer.id]: interactionLayer,
+                [panel.id]: panel,
+                [stack.id]: stack,
+                [nametag.id]: nametag,
+                [sentence.id]: sentence,
+            },
+            interactionLayerId,
+            panelId,
+            stackId,
+            nametagId,
+            sentenceId,
+        };
+    }
+
+    private getOptionalLocalBlueprintService(): LocalBlueprintService | null {
+        try {
+            return this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        } catch {
+            return null;
+        }
+    }
+
+    private createDialogContentNextGraph(
+        surfaceId: UISurfaceId,
+        targets: {
+            interactionLayerId: UIElementId;
+            panelId: UIElementId;
+            nametagId: UIElementId;
+            sentenceId: UIElementId;
+        },
+    ): BlueprintGraphIr {
+        const contentClickHeadId = "dialog.next.contentMouseClick";
+        const spaceHeadId = "dialog.next.spaceKeyUp";
+        const nextId = "dialog.next";
+        const elementClickTargets = [
+            {
+                nodeId: "dialog.next.interactionLayerElementClick",
+                elementId: targets.interactionLayerId,
+                elementType: "nl.container",
+                y: 210,
+            },
+            {
+                nodeId: "dialog.next.panelElementClick",
+                elementId: targets.panelId,
+                elementType: "nl.container",
+                y: 380,
+            },
+            {
+                nodeId: "dialog.next.nametagElementClick",
+                elementId: targets.nametagId,
+                elementType: "nl.text",
+                y: 550,
+            },
+            {
+                nodeId: "dialog.next.sentenceElementClick",
+                elementId: targets.sentenceId,
+                elementType: DIALOG_SENTENCE_WIDGET_TYPE,
+                y: 720,
+            },
+        ] as const;
+        const nodes: Record<string, BlueprintGraphNode> = {
+            [contentClickHeadId]: {
+                id: contentClickHeadId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+                params: {},
+                meta: { editorLayout: { x: 80, y: 40 } },
+            },
+            [spaceHeadId]: {
+                id: spaceHeadId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+                params: {
+                    [BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME]: " ",
+                },
+                meta: { editorLayout: { x: 80, y: 890 } },
+            },
+            [nextId]: {
+                id: nextId,
+                type: BLUEPRINT_NODE_TYPE_GAME_NEXT,
+                params: {},
+                meta: { editorLayout: { x: 560, y: 465 } },
+            },
+        };
+        const edges: NonNullable<BlueprintGraphIr["edges"]> = [
+            {
+                from: { nodeId: contentClickHeadId, port: "then" },
+                to: { nodeId: nextId, port: "in" },
+            },
+            {
+                from: { nodeId: spaceHeadId, port: "then" },
+                to: { nodeId: nextId, port: "in" },
+            },
+        ];
+        for (const target of elementClickTargets) {
+            nodes[target.nodeId] = {
+                id: target.nodeId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+                params: {
+                    surfaceId,
+                    elementId: target.elementId,
+                    elementType: target.elementType,
+                },
+                meta: { editorLayout: { x: 80, y: target.y } },
+            };
+            edges.push({
+                from: { nodeId: target.nodeId, port: "then" },
+                to: { nodeId: nextId, port: "in" },
+            });
+        }
+        return {
+            nodes,
+            edges,
+            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+        };
+    }
+
+    private createNametagUpdateGraph(): BlueprintGraphIr {
+        const initHeadId = "nametag.update.init";
+        const flushHeadId = "nametag.update.flush";
+        const conditionNametagId = "nametag.update.get.condition";
+        const textNametagId = "nametag.update.get.text";
+        const notNullId = "nametag.update.notNull";
+        const ifId = "nametag.update.if";
+        const showId = "nametag.update.show";
+        const setTextId = "nametag.update.setText";
+        const hideId = "nametag.update.hide";
+        return {
+            nodes: {
+                [initHeadId]: {
+                    id: initHeadId,
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+                    params: {},
+                    meta: { editorLayout: { x: 80, y: 60 } },
+                } satisfies BlueprintGraphNode,
+                [flushHeadId]: {
+                    id: flushHeadId,
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
+                    params: {},
+                    meta: { editorLayout: { x: 80, y: 190 } },
+                } satisfies BlueprintGraphNode,
+                [conditionNametagId]: {
+                    id: conditionNametagId,
+                    type: BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+                    params: {},
+                    meta: { editorLayout: { x: 300, y: 220 } },
+                } satisfies BlueprintGraphNode,
+                [textNametagId]: {
+                    id: textNametagId,
+                    type: BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+                    params: {},
+                    meta: { editorLayout: { x: 1030, y: 150 } },
+                } satisfies BlueprintGraphNode,
+                [notNullId]: {
+                    id: notNullId,
+                    type: BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
+                    params: {},
+                    meta: { editorLayout: { x: 540, y: 260 } },
+                } satisfies BlueprintGraphNode,
+                [ifId]: {
+                    id: ifId,
+                    type: BLUEPRINT_NODE_TYPE_FLOW_IF,
+                    params: {},
+                    meta: { editorLayout: { x: 780, y: 125 } },
+                } satisfies BlueprintGraphNode,
+                [showId]: {
+                    id: showId,
+                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+                    params: { property: "opacity", value: 100 },
+                    meta: { editorLayout: { x: 1030, y: 70 } },
+                } satisfies BlueprintGraphNode,
+                [setTextId]: {
+                    id: setTextId,
+                    type: BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
+                    params: {},
+                    meta: { editorLayout: { x: 1270, y: 70 } },
+                } satisfies BlueprintGraphNode,
+                [hideId]: {
+                    id: hideId,
+                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+                    params: { property: "opacity", value: 0 },
+                    meta: { editorLayout: { x: 1030, y: 220 } },
+                } satisfies BlueprintGraphNode,
+            },
+            edges: [
+                {
+                    from: { nodeId: initHeadId, port: "then" },
+                    to: { nodeId: ifId, port: "in" },
+                },
+                {
+                    from: { nodeId: flushHeadId, port: "then" },
+                    to: { nodeId: ifId, port: "in" },
+                },
+                {
+                    from: { nodeId: conditionNametagId, port: "nametag" },
+                    to: { nodeId: notNullId, port: "value" },
+                },
+                {
+                    from: { nodeId: notNullId, port: "result" },
+                    to: { nodeId: ifId, port: "condition" },
+                },
+                {
+                    from: { nodeId: ifId, port: "true" },
+                    to: { nodeId: showId, port: "in" },
+                },
+                {
+                    from: { nodeId: showId, port: "next" },
+                    to: { nodeId: setTextId, port: "in" },
+                },
+                {
+                    from: { nodeId: textNametagId, port: "nametag" },
+                    to: { nodeId: setTextId, port: "text" },
+                },
+                {
+                    from: { nodeId: ifId, port: "false" },
+                    to: { nodeId: hideId, port: "in" },
+                },
+            ],
+            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+        };
+    }
+
+    private configureDefaultDialogBlueprints(surfaceId: UISurfaceId, template: DialogStageTemplate): void {
+        const localBp = this.getOptionalLocalBlueprintService();
+        if (!localBp) {
+            return;
+        }
+
+        const contentBlueprintId = localBp.ensureWidgetMain(
+            surfaceId,
+            template.stackId,
+            "Dialog Content",
+            "nl.container",
+        );
+        const dialogNextEventId = "dialogNext";
+        localBp.applyBlueprintMutation(doc => {
+            const blueprint = doc.blueprints[contentBlueprintId];
+            if (!blueprint || blueprint.program.kind !== "graph") {
+                return;
+            }
+            blueprint.program.graphs.events = {
+                [dialogNextEventId]: {
+                    id: dialogNextEventId,
+                    name: "Dialog Next",
+                    graph: this.createDialogContentNextGraph(surfaceId, {
+                        interactionLayerId: template.interactionLayerId,
+                        panelId: template.panelId,
+                        nametagId: template.nametagId,
+                        sentenceId: template.sentenceId,
+                    }),
+                },
+            };
+        });
+
+        const nametagBlueprintId = localBp.ensureWidgetMain(surfaceId, template.nametagId, "Nametag", "nl.text");
+        localBp.applyBlueprintMutation(doc => {
+            const blueprint = doc.blueprints[nametagBlueprintId];
+            if (!blueprint || blueprint.program.kind !== "graph") {
+                return;
+            }
+            blueprint.program.graphs.events = {
+                nametagUpdate: {
+                    id: "nametagUpdate",
+                    name: "Update Nametag",
+                    graph: this.createNametagUpdateGraph(),
+                },
+            };
+        });
+    }
+
     private ensureMainSurface(document: UIDocument): boolean {
         const designSize = this.getProjectDesignSize();
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         const existingMain = document.surfaces.find(surface => surface.id === MAIN_APP_SURFACE_ID);
         let changed = false;
         if (existingMain) {
-            if (existingMain.name !== DEFAULT_APP_SURFACE_NAME) {
-                existingMain.name = DEFAULT_APP_SURFACE_NAME;
-                changed = true;
-            }
             if (!document.elements[existingMain.rootElementId]) {
                 const rootElementId = uuidService.generate();
                 existingMain.rootElementId = rootElementId;
@@ -1421,7 +3326,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         const candidate = document.surfaces.find(surface => surface.kind === "appSurface");
         if (candidate) {
             candidate.id = MAIN_APP_SURFACE_ID;
-            candidate.name = DEFAULT_APP_SURFACE_NAME;
+            candidate.name = candidate.name || DEFAULT_APP_SURFACE_NAME;
             if (!document.elements[candidate.rootElementId]) {
                 const rootElementId = uuidService.generate();
                 candidate.rootElementId = rootElementId;

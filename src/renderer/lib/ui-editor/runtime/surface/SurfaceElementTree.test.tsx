@@ -6,6 +6,7 @@ import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
+import { BlueprintWidgetInitLifecycle } from "./BlueprintWidgetInitLifecycle";
 import { SurfaceElementTree } from "./SurfaceElementTree";
 
 function flattenNodes(node: ReactNode): ReactNode[] {
@@ -19,6 +20,90 @@ function flattenNodes(node: ReactNode): ReactNode[] {
 }
 
 describe("SurfaceElementTree", () => {
+    it("mounts widget init lifecycle for linked component elements without editor chrome", () => {
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            components: [
+                {
+                    id: "component",
+                    name: "Component",
+                    rootElementId: "component-root",
+                    elements: {
+                        "component-root": {
+                            id: "component-root",
+                            type: "nl.container",
+                            parentId: null,
+                            childrenIds: [],
+                            layout: { x: 0, y: 0, width: 160, height: 80 },
+                        },
+                    },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["instance"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                instance: {
+                    id: "instance",
+                    type: "nl.container",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 8, y: 8, width: 160, height: 80 },
+                    extra: { componentLink: { componentId: "component", linked: true } },
+                },
+            },
+        };
+        const surface = document.surfaces[0]!;
+        const hostAdapter: UIHostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                surfaceId: surface.id,
+                setSurfaceState: () => undefined,
+                getSurfaceState: () => undefined,
+                emitDebug: () => undefined,
+                dispatchElementBlueprintEvent: async () => undefined,
+            },
+        };
+        const rendererRegistry = new ElementRendererRegistry([
+            { type: "nl.root", render: props => <>{props.children}</> },
+            { type: "nl.container", render: props => <>{props.children}</> },
+        ]);
+
+        const tree = SurfaceElementTree({
+            document,
+            surface,
+            rootElement: document.elements.root!,
+            rendererRegistry,
+            hostAdapter,
+        });
+
+        const lifecycleNodes = flattenNodes(tree).filter(
+            (node): node is React.ReactElement<React.ComponentProps<typeof BlueprintWidgetInitLifecycle>> =>
+                isValidElement(node) && node.type === BlueprintWidgetInitLifecycle,
+        );
+        const componentRootLifecycle = lifecycleNodes.find(node => node.props.elementId === "component-root");
+
+        expect(componentRootLifecycle?.props.componentId).toBe("component");
+        expect(componentRootLifecycle?.props.instanceKey).toBe("component:instance");
+    });
+
     it("passes the host adapter into element wrappers so Dev Mode widget events can dispatch", () => {
         const document: UIDocument = {
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
@@ -89,6 +174,206 @@ describe("SurfaceElementTree", () => {
         const buttonWrapper = wrappers.find(node => node.props.element.id === "button");
 
         expect(buttonWrapper?.props.hostAdapter).toBe(hostAdapter);
+    });
+
+    it("passes pointer and keyboard interactivity separately into element wrappers", () => {
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "test.container",
+                    parentId: null,
+                    childrenIds: ["button"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                button: {
+                    id: "button",
+                    type: "test.button",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 8, y: 8, width: 96, height: 32 },
+                },
+            },
+        };
+        const surface = document.surfaces[0]!;
+        const hostAdapter: UIHostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                surfaceId: surface.id,
+                setSurfaceState: () => undefined,
+                getSurfaceState: () => undefined,
+                emitDebug: () => undefined,
+                dispatchElementBlueprintEvent: async () => undefined,
+            },
+        };
+        const rendererRegistry = new ElementRendererRegistry([
+            { type: "test.container", render: props => <>{props.children}</> },
+            { type: "test.button", render: () => <button type="button">Click</button> },
+        ]);
+
+        const tree = SurfaceElementTree({
+            document,
+            surface,
+            rootElement: document.elements.root!,
+            rendererRegistry,
+            hostAdapter,
+            interactive: false,
+            keyboardInteractive: true,
+        });
+
+        const wrappers = flattenNodes(tree).filter(
+            (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
+                isValidElement(node) && node.type === EditorNodeWrapper,
+        );
+        const buttonWrapper = wrappers.find(node => node.props.element.id === "button");
+
+        expect(buttonWrapper?.props.interactive).toBe(false);
+        expect(buttonWrapper?.props.keyboardInteractive).toBe(true);
+    });
+
+    it("applies runtime button cursor to the authored wrapper bounds", () => {
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["button"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                button: {
+                    id: "button",
+                    type: "nl.button",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 8, y: 8, width: 120, height: 40 },
+                    props: {
+                        label: "Start",
+                        paddingX: 0,
+                        paddingY: 0,
+                        textAlign: "center",
+                        cursor: "auto",
+                    },
+                },
+            },
+        };
+        const surface = document.surfaces[0]!;
+        const hostAdapter: UIHostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                surfaceId: surface.id,
+                setSurfaceState: () => undefined,
+                getSurfaceState: () => undefined,
+                emitDebug: () => undefined,
+                dispatchElementBlueprintEvent: async () => undefined,
+            },
+        };
+        const rendererRegistry = new ElementRendererRegistry([
+            { type: "nl.root", render: props => <>{props.children}</> },
+            { type: "nl.button", render: () => <span>Start</span> },
+        ]);
+
+        const markup = renderToStaticMarkup(
+            <>
+                {SurfaceElementTree({
+                    document,
+                    surface,
+                    rootElement: document.elements.root!,
+                    rendererRegistry,
+                    hostAdapter,
+                })}
+            </>,
+        );
+
+        expect(markup).toMatch(
+            /data-ui-element-id="button"[^>]+style="[^"]*width:120px[^"]*height:40px[^"]*cursor:pointer/,
+        );
+    });
+
+    it("keeps runtime display disabled elements mounted with display none", () => {
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "test.container",
+                    parentId: null,
+                    childrenIds: ["button"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                button: {
+                    id: "button",
+                    type: "test.button",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 8, y: 8, width: 96, height: 32 },
+                },
+            },
+        };
+        const rendererRegistry = new ElementRendererRegistry([
+            { type: "test.container", render: props => <>{props.children}</> },
+            { type: "test.button", render: () => <button type="button">Hidden</button> },
+        ]);
+
+        const tree = SurfaceElementTree({
+            document,
+            surface: document.surfaces[0]!,
+            rootElement: document.elements.root!,
+            rendererRegistry,
+            hostAdapter: { host: "player" },
+            widgetRuntimePatches: {
+                button: { display: false },
+            },
+        });
+
+        const wrappers = flattenNodes(tree).filter(
+            (node): node is React.ReactElement<React.ComponentProps<typeof EditorNodeWrapper>> =>
+                isValidElement(node) && node.type === EditorNodeWrapper,
+        );
+        const buttonWrapper = wrappers.find(node => node.props.element.id === "button");
+        expect(buttonWrapper?.props.styleOverrides).toMatchObject({ display: "none" });
+        expect(renderToStaticMarkup(<>{tree}</>)).toContain("Hidden");
     });
 
     it("passes fresh element snapshots to wrappers when the document mutates in place", () => {
@@ -267,6 +552,71 @@ describe("SurfaceElementTree", () => {
         expect(markup).toContain("Nested Page");
         expect(markup).toContain('data-ui-surface-id="page-b"');
         expect(markup).not.toContain('data-ui-element-id="label-b"');
+    });
+
+    it("renders no nested Page placeholder when a frame target is cleared", () => {
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "page-a",
+                    name: "Page A",
+                    host: "app",
+                    kind: "appSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root-a",
+                },
+            ],
+            elements: {
+                "root-a": {
+                    id: "root-a",
+                    type: "test.root",
+                    parentId: null,
+                    childrenIds: ["frame-a"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                "frame-a": {
+                    id: "frame-a",
+                    type: UI_FRAME_ELEMENT_TYPE,
+                    parentId: "root-a",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 200, height: 100 },
+                    props: { targetSurfaceId: null, params: {}, navigationMode: "static" },
+                },
+            },
+        };
+        const rendererRegistry = new ElementRendererRegistry([
+            { type: "test.root", render: props => <>{props.children}</> },
+            {
+                type: UI_FRAME_ELEMENT_TYPE,
+                render: props => (
+                    <>
+                        {props.renderSurface?.({
+                            targetSurfaceId: null,
+                            frameElement: props.element,
+                            params: {},
+                        })}
+                    </>
+                ),
+            },
+        ]);
+
+        const markup = renderToStaticMarkup(
+            <>
+                {SurfaceElementTree({
+                    document,
+                    surface: document.surfaces[0]!,
+                    rootElement: document.elements["root-a"]!,
+                    rendererRegistry,
+                    hostAdapter: { host: "app" },
+                })}
+            </>,
+        );
+
+        expect(markup).not.toContain("Select a Page");
+        expect(markup).not.toContain("Missing Page");
     });
 
     it("renders a placeholder instead of recursing when nested Page targets would loop", () => {

@@ -11,6 +11,7 @@ interface ImageCropControllerConfig {
     selectedTargets: HTMLElement[];
     viewportScale: number;
     scheduleMoveableRectUpdate: () => void;
+    updateMoveableRectNow: () => void;
     beginTransform: () => void;
     endTransform: () => void;
     surfaceId: string;
@@ -40,6 +41,7 @@ export function useImageCropController(config: ImageCropControllerConfig): Inter
         beginTransform: config.beginTransform,
         endTransform: config.endTransform,
         scheduleMoveableRectUpdate: config.scheduleMoveableRectUpdate,
+        updateMoveableRectNow: config.updateMoveableRectNow,
     });
 
     const moveableProps = useMemo<Partial<MoveableProps>>(() => ({

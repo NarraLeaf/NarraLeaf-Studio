@@ -5,6 +5,8 @@ import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { AssetType, AssetData } from "@/lib/workspace/services/assets/assetTypes";
 import { getInterface } from "@/lib/app/bridge";
+import { resolveDevModeSavePreviewImageUrl } from "@/lib/ui-editor/runtime/devModeSavePreviewAssets";
+import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 
 interface AssetObjectUrlState {
     url: string | null;
@@ -40,6 +42,36 @@ export function useAssetObjectUrl(assetId?: string | null) {
             }
             setState({
                 url: null,
+                metadata: null,
+                loading: false,
+                error: null,
+            });
+            return;
+        }
+
+        const runtimePreviewUrl = resolveDevModeSavePreviewImageUrl(assetId);
+        if (runtimePreviewUrl) {
+            if (urlRef.current) {
+                URL.revokeObjectURL(urlRef.current);
+                urlRef.current = null;
+            }
+            setState({
+                url: runtimePreviewUrl,
+                metadata: null,
+                loading: false,
+                error: null,
+            });
+            return;
+        }
+
+        const gameRuntimeUrl = resolveGameRuntimeAssetUrl(assetId);
+        if (gameRuntimeUrl) {
+            if (urlRef.current) {
+                URL.revokeObjectURL(urlRef.current);
+                urlRef.current = null;
+            }
+            setState({
+                url: gameRuntimeUrl,
                 metadata: null,
                 loading: false,
                 error: null,
@@ -175,4 +207,3 @@ export function useAssetObjectUrl(assetId?: string | null) {
 
     return state;
 }
-

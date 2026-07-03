@@ -6,6 +6,7 @@ import {
 } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import { filterSelectionToTopLevelMovers } from "./uiEditorSelection";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 const ROOT_WIDGET_TYPE = "nl.root";
 
@@ -141,7 +142,7 @@ function getArrangeMovers(document: UIDocument, selection: UIElementSelection): 
     const tops = filterSelectionToTopLevelMovers(document, selection);
     return tops.filter(id => {
         const el = document.elements[id];
-        return el != null && el.type !== ROOT_WIDGET_TYPE;
+        return el != null && el.type !== ROOT_WIDGET_TYPE && !isComponentEditorRootElement(el);
     });
 }
 

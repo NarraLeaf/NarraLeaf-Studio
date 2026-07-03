@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import {
     BLUEPRINT_ADD_NODE_ALL_CATEGORY_ID,
+    blueprintAddNodeEntryKey,
     buildBlueprintAddNodeCategories,
     filterBlueprintAddNodeEntries,
 } from "./BlueprintAddNodeMenuModel";
@@ -26,6 +27,7 @@ import { SearchBox } from "@/apps/workspace/modules/assets/components/SearchBox"
 const MENU_W = 440;
 const MENU_MAX_H = 520;
 const MENU_CHROME_H = 132;
+const WINDOW_TITLEBAR_HEIGHT = 40;
 
 type PaletteEntry = ReturnType<IBlueprintNodeCatalogService["listPaletteEntries"]>[number];
 
@@ -132,9 +134,10 @@ export function BlueprintAddNodeMenu({
             return { left: anchor.x, top: anchor.y, maxHeight: MENU_MAX_H };
         }
         const pad = 8;
-        const maxHeight = Math.min(MENU_MAX_H, Math.max(280, window.innerHeight - pad * 2));
+        const viewportTop = WINDOW_TITLEBAR_HEIGHT + pad;
+        const maxHeight = Math.min(MENU_MAX_H, Math.max(280, window.innerHeight - viewportTop - pad));
         const left = Math.max(pad, Math.min(anchor.x, window.innerWidth - MENU_W - pad));
-        const top = Math.max(pad, Math.min(anchor.y, window.innerHeight - maxHeight - pad));
+        const top = Math.max(viewportTop, Math.min(anchor.y, Math.max(viewportTop, window.innerHeight - maxHeight - pad)));
         return { left, top, maxHeight };
     }, [anchor.x, anchor.y]);
 
@@ -279,7 +282,7 @@ export function BlueprintAddNodeMenu({
         <>
             <button
                 type="button"
-                className="fixed inset-0 z-[100] cursor-default bg-transparent"
+                className="nl-window-content-layer z-[100] cursor-default bg-transparent"
                 aria-label="Close add node menu"
                 onClick={onClose}
             />
@@ -356,7 +359,7 @@ export function BlueprintAddNodeMenu({
                     ) : (
                         filteredEntries.map((entry, index) => (
                             <BlueprintAddNodeRow
-                                key={entry.type}
+                                key={blueprintAddNodeEntryKey(entry)}
                                 entry={entry}
                                 active={activeFlatIndex === index}
                                 flatIndex={index}
@@ -383,6 +386,16 @@ function BlueprintAddNodeRow(props: {
 }) {
     const visual = getCategoryVisual(props.entry.category);
     const Icon = visual.icon;
+    const magicRef = props.entry.magicElementRef;
+    const subtitle = magicRef
+        ? `${props.entry.category} -> ${magicRef.label}`
+        : props.entry.category;
+    const title = [
+        props.entry.displayName,
+        props.entry.type,
+        magicRef ? `Target: ${magicRef.label} (${magicRef.elementType})` : "",
+        props.entry.keywords?.length ? props.entry.keywords.join(", ") : "",
+    ].filter(Boolean).join("\n");
 
     return (
         <div
@@ -400,9 +413,7 @@ function BlueprintAddNodeRow(props: {
                 aria-setsize={props.itemCount}
                 data-bp-add-node-idx={props.flatIndex}
                 className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
-                title={`${props.entry.displayName}\n${props.entry.type}${
-                    props.entry.keywords?.length ? `\n${props.entry.keywords.join(", ")}` : ""
-                }`}
+                title={title}
                 onClick={() => props.onPick(props.entry)}
                 onMouseEnter={() => props.onHover(props.flatIndex)}
             >
@@ -411,7 +422,7 @@ function BlueprintAddNodeRow(props: {
                 </span>
                 <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-slate-100">{props.entry.displayName}</span>
-                    <span className="block truncate text-[11px] text-slate-500">{props.entry.category}</span>
+                    <span className="block truncate text-[11px] text-slate-500">{subtitle}</span>
                 </span>
                 <span className="min-w-0 max-w-[180px] shrink-0 truncate font-mono text-[11px] text-slate-500">
                     {props.entry.type}

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
     Blueprint,
-    BlueprintField,
     BlueprintPersistentVariable,
     BlueprintVariable,
     LiteralValue,
@@ -17,7 +16,7 @@ import { UIService } from "@/lib/workspace/services/ui";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { GLOBAL_MAIN_OWNER_KEY } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
 import { BlueprintVariableDialogContent, type BlueprintVariableDialogValue } from "./BlueprintVariableDialogContent";
-import { ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Save, Trash2 } from "lucide-react";
 
 const FIELD_INPUT =
     "w-full rounded-md border border-white/20 bg-white/5 px-2 py-1 text-[11px] text-gray-200 outline-none transition-colors focus:border-[#40a8c4] focus:ring-1 focus:ring-[#40a8c4]/30";
@@ -39,7 +38,7 @@ type Props = {
     onDeleteLayer: (layerId: string) => void;
 };
 
-export type BlueprintVariableGroupKey = "page" | "blueprint" | "global" | "persistent";
+export type BlueprintVariableGroupKey = "page" | "global" | "persistent";
 
 type VariableGroup = {
     key: BlueprintVariableGroupKey;
@@ -75,6 +74,7 @@ function countForGraph(
 
 function CollapsibleSection({
     title,
+    titleIcon,
     defaultOpen,
     open,
     onOpenChange,
@@ -82,6 +82,7 @@ function CollapsibleSection({
     children,
 }: {
     title: string;
+    titleIcon?: ReactNode;
     defaultOpen: boolean;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
@@ -106,6 +107,7 @@ function CollapsibleSection({
                     onClick={() => setOpen(!actualOpen)}
                 >
                     {actualOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                    {titleIcon}
                     <span className="truncate">{title}</span>
                 </button>
                 {action}
@@ -243,14 +245,9 @@ function BlueprintPersistentVariableRow({
     return (
         <div className="group rounded border border-white/10 bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
             <div className="flex items-center justify-between gap-1">
-                <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="text-[9px] uppercase text-emerald-200/80">Persistent</span>
-                    {v.valueType ? (
-                        <span className="truncate rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[9px] text-gray-400">
-                            {v.valueType}
-                        </span>
-                    ) : null}
-                </div>
+                <label htmlFor={`persistent-variable-name-${v.id}`} className="text-[10px] font-medium text-gray-500">
+                    Name
+                </label>
                 <button
                     type="button"
                     title={`Delete persistent variable "${v.name}"`}
@@ -275,6 +272,7 @@ function BlueprintPersistentVariableRow({
                 </button>
             </div>
             <input
+                id={`persistent-variable-name-${v.id}`}
                 className={`${FIELD_INPUT} font-mono`}
                 value={draftName}
                 onChange={e => setDraftName(e.target.value)}
@@ -309,84 +307,6 @@ function BlueprintPersistentVariableRow({
     );
 }
 
-function FieldRow({
-    field,
-    blueprintId,
-    localBp,
-    uiService,
-}: {
-    field: BlueprintField;
-    blueprintId: string;
-    localBp: LocalBlueprintService;
-    uiService: UIService | null;
-}) {
-    return (
-        <div className="rounded border border-white/10 bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
-            <div className="flex items-center justify-between gap-1">
-                <span className="text-[9px] uppercase text-cyan-200/80">Field</span>
-                <button
-                    type="button"
-                    className="text-[10px] text-red-400/90 hover:text-red-300"
-                    onClick={() => {
-                        if (!uiService) {
-                            return;
-                        }
-                        void (async () => {
-                            const ok = await uiService.showConfirm(
-                                `Delete field "${field.name}"?`,
-                                "This cannot be undone.",
-                            );
-                            if (ok) {
-                                localBp.deleteField(blueprintId, field.id);
-                            }
-                        })();
-                    }}
-                >
-                    Delete
-                </button>
-            </div>
-            <input
-                className={FIELD_INPUT}
-                value={field.name}
-                onChange={e => localBp.renameField(blueprintId, field.id, e.target.value)}
-                onKeyDown={e => {
-                    e.stopPropagation();
-                    if (e.key === "Enter") {
-                        e.preventDefault();
-                        e.currentTarget.blur();
-                    }
-                }}
-            />
-            <label className="block space-y-0.5">
-                <span className="text-[9px] text-gray-500">Page state key</span>
-                <input
-                    className={`${FIELD_INPUT} font-mono`}
-                    value={field.valueSource?.kind === "surfaceState" ? field.valueSource.key : ""}
-                    placeholder="w:elementId:propPath"
-                    onChange={e => {
-                        const key = e.target.value.trim();
-                        if (!key) {
-                            localBp.setFieldValueSource(blueprintId, field.id, undefined);
-                            return;
-                        }
-                        localBp.setFieldValueSource(blueprintId, field.id, {
-                            kind: "surfaceState",
-                            key,
-                        });
-                    }}
-                    onKeyDown={e => {
-                        e.stopPropagation();
-                        if (e.key === "Enter") {
-                            e.preventDefault();
-                            e.currentTarget.blur();
-                        }
-                    }}
-                />
-            </label>
-        </div>
-    );
-}
-
 function sortedVariables(blueprint: Blueprint): BlueprintVariable[] {
     return Object.values(blueprint.members?.variables ?? {}).sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -395,13 +315,7 @@ function sortedPersistentVariables(variables: Record<string, BlueprintPersistent
     return Object.values(variables ?? {}).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function sortedFields(blueprint: Blueprint): BlueprintField[] {
-    return Object.values(blueprint.members?.fields ?? {}).sort((a, b) => a.name.localeCompare(b.name));
-}
-
 function buildVariableGroups(input: {
-    currentBlueprint: Blueprint;
-    currentBlueprintId: string;
     pageBlueprint?: Blueprint;
     pageBlueprintId?: string;
     globalBlueprint?: Blueprint;
@@ -409,8 +323,6 @@ function buildVariableGroups(input: {
 }): VariableGroup[] {
     const groups: VariableGroup[] = [];
     const used = new Set<string>();
-    const currentIsPage = Boolean(input.pageBlueprintId && input.currentBlueprintId === input.pageBlueprintId);
-    const currentIsGlobal = Boolean(input.globalBlueprintId && input.currentBlueprintId === input.globalBlueprintId);
 
     const addGroup = (group: VariableGroup | null) => {
         if (!group || used.has(group.blueprintId)) {
@@ -434,19 +346,6 @@ function buildVariableGroups(input: {
               }
             : null,
     );
-
-    if (!currentIsPage && !currentIsGlobal) {
-        addGroup({
-            key: "blueprint",
-            label: "Blueprint variables",
-            scopeLabel: "Blueprint",
-            blueprintId: input.currentBlueprintId,
-            blueprint: input.currentBlueprint,
-            defaultOpen: true,
-            accentClass: "text-amber-200/80",
-            emptyText: "No blueprint variables.",
-        });
-    }
 
     addGroup(
         input.globalBlueprint && input.globalBlueprintId
@@ -701,14 +600,11 @@ export function BlueprintMemberTree({
     const pageBlueprint = pageBlueprintId ? blueprintDocument.blueprints[pageBlueprintId] : undefined;
 
     const events = blueprint.program.graphs.events ?? {};
-    const fields = blueprint.members?.fields ?? {};
     const persistentVariables = blueprintDocument.persistentVariables ?? {};
 
     const variableGroups = useMemo(
         () =>
             buildVariableGroups({
-                currentBlueprint: blueprint,
-                currentBlueprintId: blueprintId,
                 pageBlueprint,
                 pageBlueprintId,
                 globalBlueprint,
@@ -724,15 +620,12 @@ export function BlueprintMemberTree({
             pageBlueprintId,
         ],
     );
-    const sortedFieldList = useMemo(() => sortedFields(blueprint), [fields, blueprintDocumentRevision, blueprint]);
     const sortedPersistentList = useMemo(
         () => sortedPersistentVariables(persistentVariables),
         [persistentVariables, blueprintDocumentRevision],
     );
 
     const layerActive = (id: string) => graphView?.kind === "event" && graphView.graphId === id;
-
-    const canDefineBindingFields = blueprint.owner.kind !== "widgetMain" && blueprint.owner.kind !== "widgetValue";
 
     const layerMenuItems: ContextMenuDef = useMemo(() => {
         if (!menuLayerId) {
@@ -792,7 +685,7 @@ export function BlueprintMemberTree({
     return (
         <div className="flex h-full min-h-0 flex-col gap-4 text-xs text-gray-300">
             <section className="shrink-0">
-                <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wide text-gray-500">
+                <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-gray-500">
                     <span>Layers</span>
                     <button
                         type="button"
@@ -879,6 +772,7 @@ export function BlueprintMemberTree({
 
                 <CollapsibleSection
                     title="Persistent variables"
+                    titleIcon={<Save className="h-3 w-3 shrink-0 text-current" aria-hidden />}
                     defaultOpen={false}
                     open={variableGroupOpenState?.persistent ?? false}
                     onOpenChange={open => onVariableGroupOpenChange?.("persistent", open)}
@@ -906,41 +800,6 @@ export function BlueprintMemberTree({
                         ))}
                     </div>
                 </CollapsibleSection>
-
-                {canDefineBindingFields ? (
-                    <CollapsibleSection
-                        title="Binding fields"
-                        defaultOpen={sortedFieldList.length > 0}
-                        action={
-                            <button
-                                type="button"
-                                className="inline-flex items-center gap-1 text-cyan-400/90 hover:text-cyan-300"
-                                onClick={() =>
-                                    localBp.createField(blueprintId, {
-                                        name: "Field",
-                                        kind: "constant",
-                                    })
-                                }
-                            >
-                                <Plus className="h-3 w-3" />
-                                New
-                            </button>
-                        }
-                    >
-                        <div className="space-y-2">
-                            {sortedFieldList.length === 0 ? <p className="text-gray-500">No binding fields.</p> : null}
-                            {sortedFieldList.map(field => (
-                                <FieldRow
-                                    key={field.id}
-                                    field={field}
-                                    blueprintId={blueprintId}
-                                    localBp={localBp}
-                                    uiService={uiService}
-                                />
-                            ))}
-                        </div>
-                    </CollapsibleSection>
-                ) : null}
             </div>
 
             <ContextMenu items={layerMenuItems} position={menuState.position} visible={menuState.visible} onClose={hideMenu} />

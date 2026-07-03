@@ -65,6 +65,8 @@ export class ProjectService {
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorAssets)));
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorServices)));
             throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorUI)));
+            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorStory)));
+            throwException(await BaseFileSystemService.createDir(this.resolve(basePath, ProjectNameConvention.EditorStoryStories)));
 
             // Write editor.json
             const editorConfigPath = this.resolve(basePath, ProjectNameConvention.EditorConfig);
@@ -186,6 +188,7 @@ function createDefaultUIDocument(designSize: UISurfaceDesignSize): UIDocument {
         id: documentId,
         name: DEFAULT_UI_DOCUMENT_NAME,
         surfaces: [surface],
+        components: [],
         elements: {
             [rootElementId]: rootElement,
         },

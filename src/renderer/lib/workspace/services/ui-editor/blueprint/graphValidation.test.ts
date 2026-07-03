@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
@@ -13,7 +16,7 @@ import {
     BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
 } from "@shared/types/blueprint/graph";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
-import { validateBlueprintGraphIr } from "./graphValidation";
+import { validateBlueprintDocumentGraphs, validateBlueprintGraphIr } from "./graphValidation";
 
 describe("blueprint graph validation", () => {
     it("reports multiple outgoing edges from one output pin", () => {
@@ -164,6 +167,133 @@ describe("blueprint graph validation", () => {
         expect(diagnostics.map(d => d.code)).toContain("node.persistent_variable_id_invalid");
     });
 
+    it("validates Get Var references against Var declaration nodes", () => {
+        registerCoreBlueprintNodes();
+        const doc: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                widget: {
+                    id: "widget",
+                    name: "Widget",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                init: {
+                                    id: "init",
+                                    graph: {
+                                        nodes: {
+                                            declare: {
+                                                id: "declare",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                                                params: { variableId: "score", name: "Score", valueType: "integer", defaultValue: 0 },
+                                            },
+                                            get: {
+                                                id: "get",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_GET,
+                                                params: { variableId: "score" },
+                                            },
+                                        },
+                                        edges: [],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {},
+        };
+
+        expect(validateBlueprintDocumentGraphs(doc, "widget").map(d => d.code)).not.toContain("node.variable_id_invalid");
+        const widget = doc.blueprints.widget!;
+        if (widget.program.kind === "graph") {
+            delete widget.program.graphs.events.init!.graph!.nodes!.declare;
+        }
+        expect(validateBlueprintDocumentGraphs(doc, "widget").map(d => d.code)).toContain("node.variable_id_invalid");
+    });
+
+    it("reports inferred Var type mismatches without removing existing edges", () => {
+        registerCoreBlueprintNodes();
+        const doc: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                widget: {
+                    id: "widget",
+                    name: "Widget",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                init: {
+                                    id: "init",
+                                    graph: {
+                                        nodes: {
+                                            declare: {
+                                                id: "declare",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+                                                params: {
+                                                    variableId: "score",
+                                                    name: "Score",
+                                                    valueType: "integer",
+                                                    defaultValue: 0,
+                                                },
+                                            },
+                                            get: {
+                                                id: "get",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_GET,
+                                                params: { variableId: "score" },
+                                            },
+                                            format: { id: "format", type: BLUEPRINT_NODE_TYPE_STRING_FORMAT },
+                                        },
+                                        edges: [
+                                            {
+                                                from: { nodeId: "get", port: "value" },
+                                                to: { nodeId: "format", port: "values" },
+                                            },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {},
+        };
+
+        const diagnostics = validateBlueprintDocumentGraphs(doc, "widget");
+        expect(diagnostics.map(d => d.code)).toContain("edge.connection_invalid");
+        expect(diagnostics.find(d => d.code === "edge.connection_invalid")?.message).toContain(
+            "Type mismatch: integer -> json",
+        );
+        const graph = doc.blueprints.widget?.program.kind === "graph"
+            ? doc.blueprints.widget.program.graphs.events.init?.graph
+            : undefined;
+        expect(graph?.edges).toHaveLength(1);
+
+        const declare = graph?.nodes?.declare;
+        if (declare) {
+            declare.params = { ...declare.params, valueType: "json", defaultValue: {} };
+        }
+        expect(validateBlueprintDocumentGraphs(doc, "widget").map(d => d.code)).not.toContain(
+            "edge.connection_invalid",
+        );
+        expect(graph?.edges).toHaveLength(1);
+    });
+
     it("reports float output connected to a json input", () => {
         registerCoreBlueprintNodes();
         const ir: BlueprintGraphIr = {
@@ -290,6 +420,35 @@ describe("blueprint graph validation", () => {
             edges: [
                 { from: { nodeId: "flush", port: "element" }, to: { nodeId: "getValue", port: "slider" } },
                 { from: { nodeId: "flush", port: "element" }, to: { nodeId: "getNormalized", port: "slider" } },
+            ],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "event",
+            blueprintOwner: { kind: "surfaceMain", surfaceId: "surface" },
+        });
+
+        expect(diagnostics.map(d => d.code)).not.toContain("edge.pin_multiple");
+        expect(diagnostics.map(d => d.code)).not.toContain("node.context_invalid");
+    });
+
+    it("allows Element Click element outputs to feed multiple derived nodes", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                click: {
+                    id: "click",
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+                    params: { surfaceId: "surface", elementId: "slider", elementType: "nl.slider" },
+                },
+                getValue: { id: "getValue", type: BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE },
+                getNormalized: { id: "getNormalized", type: BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE },
+            },
+            edges: [
+                { from: { nodeId: "click", port: "element" }, to: { nodeId: "getValue", port: "slider" } },
+                { from: { nodeId: "click", port: "element" }, to: { nodeId: "getNormalized", port: "slider" } },
             ],
         };
 

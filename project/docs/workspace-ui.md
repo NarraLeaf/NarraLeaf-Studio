@@ -81,7 +81,7 @@
 - QuickPick/InputBox 没有真实 UI。
 - Status bar UI 未完整挂载。
 - Welcome tab 自动打开逻辑仍被注释。
-- 部分 placeholder module 仍存在，例如 Localization、Running Tasks。
+- 部分 placeholder module 仍存在，例如 Localization。
 - 旧 flat editor tab API 仍保留，容易和当前 group-aware layout 混淆。
 - Split editor layout 的 session restore 不完整。
 

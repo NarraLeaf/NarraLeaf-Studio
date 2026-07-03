@@ -8,6 +8,7 @@ import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
 import { buildDefaultSurfaceStateKeyForWidgetProp } from "@/lib/workspace/services/ui-editor/blueprint/defaultFieldKeys";
 import type { BlueprintFieldValueSource } from "@shared/types/blueprint/document";
+import { parseComponentEditorSurfaceId } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 
 export type FieldStateScope = "surface" | "global" | "item";
 
@@ -44,6 +45,7 @@ export function usePropertyBindingState(
 
     const surfaceId = data.surfaceId;
     const elementId = data.element.id;
+    const componentId = parseComponentEditorSurfaceId(surfaceId);
 
     const snapshot = useMemo(() => {
         if (!isInitialized || !context || !surfaceId) {
@@ -56,7 +58,9 @@ export function usePropertyBindingState(
             };
         }
         const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
-        const blueprintId = localBp.getWidgetMainBlueprintId(surfaceId, elementId);
+        const blueprintId = componentId
+            ? localBp.getComponentWidgetMainBlueprintId(componentId, elementId)
+            : localBp.getWidgetMainBlueprintId(surfaceId, elementId);
         if (!blueprintId) {
             return { blueprintId: undefined, binding: undefined, fieldName: null, stateKey: null, stateScope: null };
         }
@@ -91,7 +95,7 @@ export function usePropertyBindingState(
             stateKey,
             stateScope,
         };
-    }, [bindingMeta.propPath, context, elementId, isInitialized, revision, surfaceId]);
+    }, [bindingMeta.propPath, componentId, context, elementId, isInitialized, revision, surfaceId]);
 
     const status: PropertyBindingUiStatus = useMemo(() => {
         if (!snapshot.binding) {
@@ -185,13 +189,23 @@ export function usePropertyBindingState(
         }
         openTarget({
             blueprintId: snapshot.blueprintId,
-            ownerKind: "widgetMain",
+            ownerKind: componentId ? "componentWidgetMain" : "widgetMain",
             surfaceId,
+            componentId: componentId ?? undefined,
             elementId,
             focusFieldId: snapshot.binding.source.fieldId,
             title: `Blueprint · ${data.element.name ?? data.element.type}`,
         });
-    }, [data.element.name, data.element.type, openTarget, snapshot.binding, snapshot.blueprintId, surfaceId, elementId]);
+    }, [
+        componentId,
+        data.element.name,
+        data.element.type,
+        openTarget,
+        snapshot.binding,
+        snapshot.blueprintId,
+        surfaceId,
+        elementId,
+    ]);
 
     const uiLocked = status === "bound";
 

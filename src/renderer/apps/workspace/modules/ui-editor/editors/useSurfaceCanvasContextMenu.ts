@@ -27,6 +27,8 @@ import type {
     EditorStateService,
     EditorUIService,
 } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceEditorTabModel";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import { selectSurfaceForProperties } from "@/lib/ui-editor/commands/uiEditorSelection";
 
 export function useSurfaceCanvasContextMenu(params: {
     surface: UISurface | null | undefined;
@@ -37,6 +39,7 @@ export function useSurfaceCanvasContextMenu(params: {
     widgetModules: UIWidgetModule[];
     inputDialog: InputDialog | null;
     createElementAtClientPoint: (type: string, point: { x: number; y: number }) => void;
+    allowAddSelectionToComponentLibrary?: boolean;
     showMenu: (event: React.MouseEvent<HTMLElement>) => void;
     hideMenu: () => void;
 }) {
@@ -49,6 +52,7 @@ export function useSurfaceCanvasContextMenu(params: {
         widgetModules,
         inputDialog,
         createElementAtClientPoint,
+        allowAddSelectionToComponentLibrary = true,
         showMenu,
         hideMenu,
     } = params;
@@ -66,7 +70,13 @@ export function useSurfaceCanvasContextMenu(params: {
             event.stopPropagation();
             lastContextPoint.current = { x: event.clientX, y: event.clientY };
             const hit = (event.target as HTMLElement | null)?.closest(SELECTABLE_TARGET) as HTMLElement | null;
-            lastContextHitElementId.current = hit?.dataset.uiElementId ?? null;
+            const hitElementId = hit?.dataset.uiElementId ?? null;
+            const hitElement = hitElementId ? documentService.getDocument().elements[hitElementId] : null;
+            if (isComponentEditorRootElement(hitElement)) {
+                selectSurfaceForProperties(stateService, surface.id, uiService);
+            }
+            lastContextHitElementId.current =
+                hitElement && !isComponentEditorRootElement(hitElement) ? hitElementId : null;
 
             const curSel = stateService.getSelection();
             if (shouldApplyCanvasContextRetarget(surface.id, lastContextHitElementId.current, curSel)) {
@@ -95,6 +105,7 @@ export function useSurfaceCanvasContextMenu(params: {
                 widgetModules,
                 documentService,
                 canAddToGroup: canGroup,
+                allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions: {
                     hideMenu,
                     insertType: type => {
@@ -136,7 +147,7 @@ export function useSurfaceCanvasContextMenu(params: {
                         }
                         const pid = menuSel.primaryId ?? menuSel.elementIds[0];
                         const el = doc.elements[pid];
-                        if (!el || el.type === "nl.root") {
+                        if (!el || el.type === "nl.root" || isComponentEditorRootElement(el)) {
                             return;
                         }
                         void inputDialog.showRenameDialog(el.name ?? el.type ?? "Layer", "layer").then(name => {
@@ -151,13 +162,32 @@ export function useSurfaceCanvasContextMenu(params: {
                         }
                         for (const id of menuSel.elementIds) {
                             const el = doc.elements[id];
-                            if (el && el.type !== "nl.root") {
+                            if (el && el.type !== "nl.root" && !isComponentEditorRootElement(el)) {
                                 documentService.updateElementLayout(id, { visible });
                             }
                         }
                     },
                     addSelectionToLeaderGroup: () => {
                         uiEditorGroupIntoLeaderContainer(documentService, stateService, surface.id, menuSel);
+                    },
+                    addSelectionToComponentLibrary: () => {
+                        if (!menuSel || menuSel.elementIds.length === 0) {
+                            return;
+                        }
+                        const primaryId = menuSel.primaryId ?? menuSel.elementIds[0];
+                        const primary = primaryId ? doc.elements[primaryId] : null;
+                        const fallbackName =
+                            menuSel.elementIds.length === 1
+                                ? primary?.name ?? primary?.type ?? "Component"
+                                : "Component";
+                        const component = documentService.createComponentFromElements(
+                            surface.id,
+                            menuSel.elementIds,
+                            fallbackName,
+                        );
+                        if (component) {
+                            uiService?.showNotification(`Added "${component.name}" to Component Library`, "success");
+                        }
                     },
                     arrange: op => {
                         uiEditorArrange(documentService, surface.id, menuSel, op);
@@ -177,6 +207,7 @@ export function useSurfaceCanvasContextMenu(params: {
             showMenu,
             hideMenu,
             createElementAtClientPoint,
+            allowAddSelectionToComponentLibrary,
             inputDialog,
         ]
     );

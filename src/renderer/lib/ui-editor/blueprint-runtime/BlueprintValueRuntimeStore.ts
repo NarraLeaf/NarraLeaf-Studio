@@ -327,6 +327,17 @@ export class BlueprintValueRuntimeStore {
         };
     }
 
+    public refreshAll(): void {
+        if (this.disposed) {
+            return;
+        }
+        for (const entry of this.entries.values()) {
+            if (entry.started) {
+                this.queueEvaluate(entry);
+            }
+        }
+    }
+
     private startInitial(entry: BindingRuntimeEntry): void {
         if (entry.started || entry.running) {
             return;

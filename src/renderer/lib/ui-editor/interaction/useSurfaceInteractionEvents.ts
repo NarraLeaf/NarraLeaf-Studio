@@ -11,6 +11,7 @@ import {
     isUiContainerDrillLockHit,
     markSuppressNextCanvasWidgetDoubleClick,
     promoteHitToDirectChildOfSurfaceRoot,
+    resolveUiContainerDrillTarget,
     shouldPromoteToSurfaceRootChild,
 } from "./containerDrillSelection";
 import { isMoveableInteractionTarget } from "./surfaceInlineTextEditActivation";
@@ -35,6 +36,12 @@ import {
     SURFACE_WHEEL_PAN_DELTA_LIMIT_PX,
     SURFACE_WHEEL_ZOOM_DELTA_LIMIT_PX,
 } from "./surfaceWheelInput";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
+import {
+    constrainPointToAspectRatio,
+    resolveAspectRatio,
+    type SurfacePoint,
+} from "./insertAspectRatio";
 
 const WHEEL_ZOOM_SPEED = 0.003;
 const PINCH_ZOOM_SPEED = 0.006;
@@ -42,6 +49,8 @@ const PINCH_ZOOM_SPEED = 0.006;
 export type InsertToolDragState = {
     active: boolean;
     nodeType: string;
+    componentId?: string;
+    aspectRatio?: number | null;
     startClientX: number;
     startClientY: number;
     startSurfaceX: number;
@@ -115,6 +124,14 @@ export function useSurfaceInteractionEvents({
             setInsertPreview(next);
         };
 
+        const constrainInsertPoint = (state: InsertToolDragState, current: SurfacePoint): SurfacePoint => {
+            return constrainPointToAspectRatio(
+                { x: state.startSurfaceX, y: state.startSurfaceY },
+                current,
+                state.aspectRatio ?? null,
+            );
+        };
+
         const stopPan = () => {
             panStateRef.current.active = false;
         };
@@ -161,7 +178,9 @@ export function useSurfaceInteractionEvents({
                 width,
                 height,
             });
-            const element = documentService.createElement(target.parentId, state.nodeType, layoutPatch);
+            const element = state.componentId
+                ? documentService.createComponentInstance(target.parentId, state.componentId, layoutPatch)
+                : documentService.createElement(target.parentId, state.nodeType, layoutPatch);
 
             stateService.setUIElementSelection({
                 editor: "ui",
@@ -209,11 +228,12 @@ export function useSurfaceInteractionEvents({
                 } else {
                     stateService.setSnapGuides(null);
                 }
+                const current = constrainInsertPoint(insertStateRef.current, { x: curX, y: curY });
                 updateInsertPreview({
                     startX: insertStateRef.current.startSurfaceX,
                     startY: insertStateRef.current.startSurfaceY,
-                    currentX: curX,
-                    currentY: curY,
+                    currentX: current.x,
+                    currentY: current.y,
                 });
                 return;
             }
@@ -264,6 +284,14 @@ export function useSurfaceInteractionEvents({
                 event.preventDefault();
                 event.stopPropagation();
                 const surfacePoint = clientToSurfaceCoords(event.clientX, event.clientY);
+                const component = tool.componentId ? documentService.getComponent(tool.componentId) : null;
+                const componentRoot = component ? component.elements[component.rootElementId] : null;
+                const aspectRatio = component
+                    ? resolveAspectRatio(
+                          component.previewMeta?.width ?? componentRoot?.layout.width,
+                          component.previewMeta?.height ?? componentRoot?.layout.height,
+                      )
+                    : null;
                 let primaryElementId: string | null = null;
                 if (selectionData?.surfaceId === surfaceId) {
                     primaryElementId =
@@ -274,6 +302,8 @@ export function useSurfaceInteractionEvents({
                 insertStateRef.current = {
                     active: true,
                     nodeType: tool.nodeType,
+                    componentId: tool.componentId,
+                    aspectRatio,
                     startClientX: event.clientX,
                     startClientY: event.clientY,
                     startSurfaceX: surfacePoint.x,
@@ -293,6 +323,13 @@ export function useSurfaceInteractionEvents({
             if (tool.kind === "select" && event.button === 0 && isElementNode) {
                 const elementId = elementNode?.dataset.uiElementId;
                 if (elementId) {
+                    const doc = documentService.getDocument();
+                    const hitElement = doc.elements[elementId];
+                    if (!hitElement || hitElement.type === "nl.root" || isComponentEditorRootElement(hitElement)) {
+                        selectSurfaceForProperties(stateService, surfaceId, uiService);
+                        containerDrillLastPointerRef.current = null;
+                        return;
+                    }
                     if ((event.metaKey || event.ctrlKey) && selectionData && selectionData.surfaceId === surfaceId) {
                         const cur = selectionData.elementIds;
                         const nextIds = cur.includes(elementId)
@@ -319,12 +356,14 @@ export function useSurfaceInteractionEvents({
                             primaryId: elementId,
                         });
                     } else {
-                        const doc = documentService.getDocument();
                         const hitId = elementId;
                         const drillLock = isUiContainerDrillLockHit(doc, surfaceId, selectionData, hitId);
                         const pickId = !drillLock && shouldPromoteToSurfaceRootChild(doc, selectionData, surfaceId, hitId)
                             ? promoteHitToDirectChildOfSurfaceRoot(doc, surfaceId, hitId)
                             : hitId;
+                        const drillTargetId = drillLock
+                            ? resolveUiContainerDrillTarget(doc, surfaceId, selectionData, hitId) ?? hitId
+                            : pickId;
                         if (!drillLock) {
                             containerDrillLastPointerRef.current = null;
                         } else {
@@ -347,8 +386,8 @@ export function useSurfaceInteractionEvents({
                         stateService.setUIElementSelection({
                             editor: "ui",
                             surfaceId,
-                            elementIds: [drillLock ? hitId : pickId],
-                            primaryId: drillLock ? hitId : pickId,
+                            elementIds: [drillTargetId],
+                            primaryId: drillTargetId,
                         });
                     }
                 }

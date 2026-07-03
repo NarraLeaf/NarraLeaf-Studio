@@ -5,6 +5,7 @@ import {
     useRef,
     useState,
     type CSSProperties,
+    type ChangeEvent,
     type FocusEvent,
     type FormEvent,
     type KeyboardEvent,
@@ -45,6 +46,7 @@ import {
 } from "@/lib/ui-editor/interaction/doubleClickDebug";
 
 const OPENING_BLUR_GRACE_MS = 300;
+const TEXT_VALUE_PROP_PATH = "text";
 
 function assignMotionTransition(
     target: Record<string, unknown>,
@@ -57,19 +59,33 @@ function assignMotionTransition(
     target[property] = toRuntimeMotionTransition(transition);
 }
 
+function commitTextEditValue(documentService: UIDocumentService, elementId: string, nextText: string): void {
+    const docEl = documentService.getDocument().elements[elementId];
+    if (docEl?.valueBindings?.[TEXT_VALUE_PROP_PATH]?.kind === "blueprintValue") {
+        documentService.clearElementBlueprintValueBinding(elementId, TEXT_VALUE_PROP_PATH);
+    }
+    documentService.updateElementProps(elementId, {
+        text: nextText,
+    });
+}
+
 export function TextRenderer({
     element,
     surface,
-    document,
     hostAdapter,
     useAppearanceInspectorPreview,
 }: WidgetRendererProps) {
     const stateService = hostAdapter.editorStateService ?? UIEditorStateService.getInstance();
-    const documentService = UIDocumentService.getInstance();
+    const documentService = hostAdapter.editorDocumentService ?? UIDocumentService.getInstance();
     useUIDocumentRevision(documentService);
+    const initialText = getTextProps(element).text;
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
-    const draftRef = useRef("");
+    const [draftText, setDraftText] = useState(initialText);
+    const draftRef = useRef(initialText);
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    const editOpenedAtRef = useRef(0);
     const skipBlurCommitRef = useRef(false);
+    const skipOverrideCommitRef = useRef(false);
 
     useEffect(() => {
         return stateService.on("interactionOverrideChanged", payload => {
@@ -97,21 +113,21 @@ export function TextRenderer({
             }
 
             if (isHere && !wasHere) {
-                const docEl = documentService.getDocument().elements[element.id];
-                draftRef.current = docEl ? getTextProps(docEl).text : "";
+                const nextDraft = getTextProps(documentService.getDocument().elements[element.id] ?? element).text;
+                draftRef.current = nextDraft;
+                setDraftText(nextDraft);
             }
 
             if (wasHere && !isHere) {
                 if (skipBlurCommitRef.current) {
                     skipBlurCommitRef.current = false;
+                } else if (skipOverrideCommitRef.current) {
+                    skipOverrideCommitRef.current = false;
                 } else {
-                    const docEl = documentService.getDocument().elements[element.id];
-                    if (docEl) {
-                        documentService.updateElementProps(element.id, {
-                            ...docEl.props,
-                            text: draftRef.current,
-                        });
-                    }
+                    const currentText = textareaRef.current?.value ?? draftRef.current;
+                    draftRef.current = currentText;
+                    setDraftText(currentText);
+                    commitTextEditValue(documentService, element.id, currentText);
                 }
             }
         });
@@ -164,26 +180,26 @@ export function TextRenderer({
     );
 
     useLayoutEffect(() => {
-        if (!isEditing) {
+        if (isEditing) {
             return;
         }
-        const docEl = documentService.getDocument().elements[element.id];
-        draftRef.current = docEl ? getTextProps(docEl).text : "";
-    }, [isEditing, documentService, element.id]);
+        const nextDraft = getTextProps(element).text;
+        draftRef.current = nextDraft;
+        setDraftText(nextDraft);
+    }, [element, isEditing]);
 
-    const liveElement = isEditing ? document.elements[element.id] ?? element : element;
-    const flatProps = getTextProps(liveElement);
+    const flatProps = getTextProps(element);
     const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
     const runtimeState = useWidgetRuntimeElementState(element.id);
     const listScopedVariantId =
-        typeof (liveElement.extra as UIListElementExtra | undefined)?.runtimeVariantOverrideId === "string"
-            ? (liveElement.extra as UIListElementExtra).runtimeVariantOverrideId
+        typeof (element.extra as UIListElementExtra | undefined)?.runtimeVariantOverrideId === "string"
+            ? (element.extra as UIListElementExtra).runtimeVariantOverrideId
             : null;
     const resolveCtx = {
         variantOverrideId: listScopedVariantId ?? runtimeState.variantOverrideId ?? inspectorVariantId ?? null,
         signals: runtimeState.signals,
     };
-    const p = resolveTextVisualProps(liveElement, flatProps.appearance ?? undefined, resolveCtx);
+    const p = resolveTextVisualProps(element, flatProps.appearance ?? undefined, resolveCtx);
     const appearanceTransitions = resolveTextAppearanceTransitions(flatProps.appearance ?? undefined, resolveCtx);
     const color = colorValueToCss({ hex: p.color, alpha: 1 });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
@@ -229,7 +245,6 @@ export function TextRenderer({
     const ty = Number.isFinite(p.transformOffsetY) ? p.transformOffsetY : 0;
     const ts = Number.isFinite(p.transformScale) && p.transformScale > 0 ? p.transformScale : 1;
     const tr = Number.isFinite(p.transformRotation) ? p.transformRotation : 0;
-    const tOp = Math.max(0, Math.min(1, Number.isFinite(p.transformOpacity) ? p.transformOpacity : 1));
     const transformCss = `translate(${tx}px, ${ty}px) scale(${ts}) rotate(${tr}deg)`;
 
     const rootAnimate: Record<string, string | number> = {
@@ -237,7 +252,7 @@ export function TextRenderer({
         y: ty,
         scale: ts,
         rotate: tr,
-        opacity: tOp,
+        opacity: 1,
     };
     const rootTransition: Record<string, unknown> = {};
     assignMotionTransition(
@@ -259,11 +274,6 @@ export function TextRenderer({
         rootTransition,
         "rotate",
         firstTransitionForKeys(appearanceTransitions, ["transformRotation"])
-    );
-    assignMotionTransition(
-        rootTransition,
-        "opacity",
-        firstTransitionForKeys(appearanceTransitions, ["transformOpacity"])
     );
     const rootMotionActive = Object.keys(rootTransition).length > 0;
 
@@ -308,22 +318,18 @@ export function TextRenderer({
     const outerStaticStyle: CSSProperties = {
         ...outerStyle,
         transform: transformCss,
-        opacity: tOp,
+        opacity: 1,
     };
-
-    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-    const editOpenedAtRef = useRef(0);
 
     const commitAndClose = useCallback(
         (nextText: string) => {
-            const docEl = documentService.getDocument().elements[element.id];
-            documentService.updateElementProps(element.id, {
-                ...(docEl?.props ?? element.props),
-                text: nextText,
-            });
+            draftRef.current = nextText;
+            setDraftText(nextText);
+            commitTextEditValue(documentService, element.id, nextText);
+            skipOverrideCommitRef.current = true;
             stateService.setInteractionOverride(null);
         },
-        [documentService, element.id, element.props, stateService],
+        [documentService, element.id, stateService],
     );
 
     useEffect(() => {
@@ -348,9 +354,18 @@ export function TextRenderer({
         el.select();
     }, [isEditing]);
 
-    const handleTextareaInput = useCallback((e: FormEvent<HTMLTextAreaElement>) => {
-        draftRef.current = e.currentTarget.value;
+    const updateDraftFromTextarea = useCallback((value: string) => {
+        draftRef.current = value;
+        setDraftText(value);
     }, []);
+
+    const handleTextareaChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
+        updateDraftFromTextarea(e.currentTarget.value);
+    }, [updateDraftFromTextarea]);
+
+    const handleTextareaInput = useCallback((e: FormEvent<HTMLTextAreaElement>) => {
+        updateDraftFromTextarea(e.currentTarget.value);
+    }, [updateDraftFromTextarea]);
 
     const handleTextareaKeyDown = useCallback(
         (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -403,13 +418,14 @@ export function TextRenderer({
                 }
                 return;
             }
+            draftRef.current = e.currentTarget.value;
             debugUIDoubleClick("TextRenderer blur commit", {
                 elementId: element.id,
                 surfaceId: surface.id,
                 openedMsAgo,
                 relatedTarget: describeDoubleClickTarget(relatedTarget),
             });
-            commitAndClose(e.target.value);
+            commitAndClose(e.currentTarget.value);
         },
         [commitAndClose, element.id, surface.id],
     );
@@ -429,9 +445,10 @@ export function TextRenderer({
         const textarea = (
             <textarea
                 ref={textareaRef}
-                defaultValue={p.text}
+                value={draftText}
                 style={textareaStyle}
                 onInput={handleTextareaInput}
+                onChange={handleTextareaChange}
                 onBlur={handleTextareaBlur}
                 onKeyDown={handleTextareaKeyDown}
                 onClick={e => e.stopPropagation()}

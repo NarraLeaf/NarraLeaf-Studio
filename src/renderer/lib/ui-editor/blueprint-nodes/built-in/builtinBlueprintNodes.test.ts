@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_BOOLEAN_AND,
     BLUEPRINT_NODE_TYPE_BOOLEAN_NOT,
     BLUEPRINT_NODE_TYPE_BOOLEAN_OR,
     BLUEPRINT_NODE_TYPE_BOOLEAN_XOR,
+    BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER,
     BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT,
     BLUEPRINT_NODE_TYPE_BROADCAST_SEND,
     BLUEPRINT_NODE_TYPE_COMPARE_EQUAL,
@@ -20,6 +22,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_IS_NUMBER,
     BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT,
     BLUEPRINT_NODE_TYPE_DATA_IS_STRING,
+    BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_JSON_HAS,
     BLUEPRINT_NODE_TYPE_DATA_JSON_SET,
@@ -36,15 +39,40 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_STRINGIFY_JSON,
     BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
+    BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_DISPLAY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
@@ -55,6 +83,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SELECTION_CHANGED,
@@ -63,9 +92,50 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
+    BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG,
+    BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
+    BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
+    BLUEPRINT_NODE_TYPE_GAME_NEXT,
+    BLUEPRINT_NODE_TYPE_GAME_QUIT,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
+    BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_SET_GLOBAL_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_FADE_DURATION,
+    BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG,
+    BLUEPRINT_NODE_TYPE_GAME_SKIP,
+    BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+    BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
@@ -75,13 +145,32 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_NOOP,
     BLUEPRINT_NODE_TYPE_FLOW_RETURN,
     BLUEPRINT_NODE_TYPE_FLOW_SEQUENCE,
+    BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
     BLUEPRINT_NODE_TYPE_FLOW_WHILE,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
+    BLUEPRINT_NODE_TYPE_IMAGE_CLEAR_ASSET,
+    BLUEPRINT_NODE_TYPE_IMAGE_GET_CROP_RECT,
     BLUEPRINT_NODE_TYPE_IMAGE_GET_ASSET,
+    BLUEPRINT_NODE_TYPE_IMAGE_GET_FIT_MODE,
+    BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_X,
+    BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_Y,
+    BLUEPRINT_NODE_TYPE_IMAGE_SET_CROP_RECT,
     BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
+    BLUEPRINT_NODE_TYPE_IMAGE_SET_FIT_MODE,
+    BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_X,
+    BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_Y,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_CLEAR_ASSET,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_CROP_RECT,
     BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_ASSET,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FIT_MODE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_X,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_Y,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_CROP_RECT,
     BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FIT_MODE,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_X,
+    BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_Y,
     BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
     BLUEPRINT_NODE_TYPE_LITERAL_COLOR,
     BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
@@ -93,6 +182,7 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_VECTOR2D,
     BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS,
     BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_LOG,
@@ -106,7 +196,12 @@ import {
     BLUEPRINT_NODE_TYPE_MATH_RANDOM_FLOAT,
     BLUEPRINT_NODE_TYPE_MATH_RANDOM_INTEGER,
     BLUEPRINT_NODE_TYPE_MATH_ROUND,
+    BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
+    BLUEPRINT_NODE_TYPE_PAGE_QUIT,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     BLUEPRINT_NODE_TYPE_SLIDER_GET_NORMALIZED_VALUE,
@@ -136,18 +231,29 @@ import { dataBlueprintNodes } from "./dataNodes";
 import { devtoolsBlueprintNodes } from "./devtoolsNodes";
 import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { frameBlueprintNodes } from "./frameNodes";
+import { gameBlueprintNodes } from "./gameNodes";
 import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { elementBlueprintNodes } from "./elementNodes";
+import {
+    ELEMENT_REF_PARAM_ELEMENT_ID,
+    ELEMENT_REF_PARAM_ELEMENT_TYPE,
+    ELEMENT_REF_PARAM_SURFACE_ID,
+} from "./elementRefUtils";
+import { BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE } from "../frameTargetSurfaceOptions";
 import { sliderBlueprintNodes } from "./sliderNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
+import { widgetHostBlueprintNodes } from "./widget/widgetHostNodes";
 import { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
 import {
+    BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+    BLUEPRINT_VALUE_TYPE_TIMER,
 } from "@shared/types/blueprint/valueTypes";
+import { BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT } from "../types";
 
 function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAdapter {
     return {
@@ -161,7 +267,9 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
             hostApi: {
                 navigation: {
                     openSurface: async () => undefined,
+                    getPageProps: () => ({}),
                     closeLayer: async () => undefined,
+                    quitApplication: async () => undefined,
                 },
                 widget: {} as any,
                 state: {
@@ -182,6 +290,27 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     getParam: () => undefined,
                     emit: async () => undefined,
                 },
+                game: {
+                    startStory: async () => undefined,
+                    isInGame: () => false,
+                    isGameOverlay: () => false,
+                    quit: async () => undefined,
+                    writeSave: async () => undefined,
+                    loadSave: async () => undefined,
+                    deleteSave: async () => undefined,
+                    listSaveIds: async () => [],
+                    getSaveMetadata: async () => ({}),
+                    getSavePreview: async () => null,
+                    getNametag: () => null,
+                    next: async () => undefined,
+                    skip: async () => undefined,
+                    showDialog: async () => undefined,
+                    hideDialog: async () => undefined,
+                    toggleDialogDisplay: async () => undefined,
+                    setSentenceSpeed: async () => undefined,
+                    getPreference: () => 0,
+                    setPreference: async () => undefined,
+                },
                 devtools: {
                     log: () => undefined,
                 },
@@ -190,10 +319,20 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
     };
 }
 
+type FramePatchCall = {
+    elementId: string;
+    targetSurfaceId?: string | null;
+    params?: Record<string, unknown>;
+};
+
 function createPageNavigationHostAdapter(
     openedSurfaceIds: string[],
     frameTargets: Record<string, string | null> = {},
-    framePatches: Array<{ elementId: string; targetSurfaceId: string | null }> = [],
+    framePatches: FramePatchCall[] = [],
+    startedStories: Array<{ storyId: string; sceneId: string }> = [],
+    openedPageProps: unknown[] = [],
+    pageProps: Record<string, unknown> = {},
+    quitApplicationCalls: boolean[] = [],
 ): UIHostAdapter {
     return {
         host: "player",
@@ -205,10 +344,15 @@ function createPageNavigationHostAdapter(
             dispatchElementBlueprintEvent: async () => undefined,
             hostApi: {
                 navigation: {
-                    openSurface: async (surfaceId: string) => {
+                    openSurface: async (surfaceId: string, props?: unknown) => {
                         openedSurfaceIds.push(surfaceId);
+                        openedPageProps.push(props);
                     },
+                    getPageProps: () => pageProps,
                     closeLayer: async () => undefined,
+                    quitApplication: async () => {
+                        quitApplicationCalls.push(true);
+                    },
                 },
                 widget: {
                     getFrameProperties: (elementId: string) => ({
@@ -217,11 +361,18 @@ function createPageNavigationHostAdapter(
                     }),
                     setFrameProperties: async (
                         elementId: string,
-                        patch: { targetSurfaceId?: string | null },
+                        patch: { targetSurfaceId?: string | null; params?: Record<string, unknown> },
                     ) => {
+                        const call: FramePatchCall = { elementId };
                         if (patch.targetSurfaceId !== undefined) {
                             frameTargets[elementId] = patch.targetSurfaceId;
-                            framePatches.push({ elementId, targetSurfaceId: patch.targetSurfaceId });
+                            call.targetSurfaceId = patch.targetSurfaceId;
+                        }
+                        if (patch.params !== undefined) {
+                            call.params = patch.params;
+                        }
+                        if (call.targetSurfaceId !== undefined || call.params !== undefined) {
+                            framePatches.push(call);
                         }
                     },
                 } as any,
@@ -236,6 +387,132 @@ function createPageNavigationHostAdapter(
                 frame: {
                     getParam: () => undefined,
                     emit: async () => undefined,
+                },
+                game: {
+                    startStory: async request => {
+                        startedStories.push(request);
+                    },
+                    isInGame: () => false,
+                    isGameOverlay: () => false,
+                    quit: async () => undefined,
+                    writeSave: async () => undefined,
+                    loadSave: async () => undefined,
+                    deleteSave: async () => undefined,
+                    listSaveIds: async () => [],
+                    getSaveMetadata: async () => ({}),
+                    getSavePreview: async () => null,
+                    getNametag: () => null,
+                    next: async () => undefined,
+                    skip: async () => undefined,
+                    showDialog: async () => undefined,
+                    hideDialog: async () => undefined,
+                    toggleDialogDisplay: async () => undefined,
+                    setSentenceSpeed: async () => undefined,
+                    getPreference: () => 0,
+                    setPreference: async () => undefined,
+                },
+                devtools: {
+                    log: () => undefined,
+                },
+            },
+        },
+    };
+}
+
+function createGameSaveHostAdapter(options: {
+    writtenIds?: string[];
+    writtenMetadata?: unknown[];
+    writtenScreenshots?: boolean[];
+    loadedIds?: string[];
+    deletedIds?: string[];
+    listedIds?: string[];
+    metadata?: unknown;
+    previews?: Record<string, unknown>;
+    nametag?: string | null;
+    isInGame?: boolean;
+    isGameOverlay?: boolean;
+    quitSurfaceIds?: string[];
+    nextCalls?: boolean[];
+    skipCalls?: boolean[];
+    showDialogCalls?: boolean[];
+    hideDialogCalls?: boolean[];
+    toggleDialogDisplayCalls?: boolean[];
+    sentenceCpsValues?: number[];
+    preferenceReads?: Partial<Record<string, unknown>>;
+    preferenceWrites?: Array<{ key: string; value: unknown }>;
+}): UIHostAdapter {
+    return {
+        host: "player",
+        blueprintRuntime: {
+            surfaceId: "surface",
+            setSurfaceState: () => undefined,
+            getSurfaceState: () => undefined,
+            emitDebug: () => undefined,
+            dispatchElementBlueprintEvent: async () => undefined,
+            hostApi: {
+                navigation: {
+                    openSurface: async () => undefined,
+                    getPageProps: () => ({}),
+                    closeLayer: async () => undefined,
+                    quitApplication: async () => undefined,
+                },
+                widget: {} as any,
+                state: {
+                    get: () => undefined,
+                    set: () => undefined,
+                },
+                persistence: {
+                    get: async () => undefined,
+                    set: async () => undefined,
+                },
+                frame: {
+                    getParam: () => undefined,
+                    emit: async () => undefined,
+                },
+                game: {
+                    startStory: async () => undefined,
+                    isInGame: () => options.isInGame ?? false,
+                    isGameOverlay: () => options.isGameOverlay ?? false,
+                    quit: async (surfaceId: string) => {
+                        options.quitSurfaceIds?.push(surfaceId);
+                    },
+                    writeSave: async (id: string, metadata?: unknown, screenshot?: boolean) => {
+                        options.writtenIds?.push(id);
+                        options.writtenMetadata?.push(metadata ?? {});
+                        options.writtenScreenshots?.push(screenshot === true);
+                    },
+                    loadSave: async (id: string) => {
+                        options.loadedIds?.push(id);
+                    },
+                    deleteSave: async (id: string) => {
+                        options.deletedIds?.push(id);
+                    },
+                    listSaveIds: async () => options.listedIds ?? [],
+                    getSaveMetadata: async () => options.metadata ?? {},
+                    getSavePreview: async (id: string) => options.previews?.[id] as any ?? null,
+                    getNametag: () => options.nametag ?? null,
+                    next: async () => {
+                        options.nextCalls?.push(true);
+                    },
+                    skip: async () => {
+                        options.skipCalls?.push(true);
+                    },
+                    showDialog: async () => {
+                        options.showDialogCalls?.push(true);
+                    },
+                    hideDialog: async () => {
+                        options.hideDialogCalls?.push(true);
+                    },
+                    toggleDialogDisplay: async () => {
+                        options.toggleDialogDisplayCalls?.push(true);
+                    },
+                    setSentenceSpeed: async (cps: number) => {
+                        options.sentenceCpsValues?.push(cps);
+                    },
+                    getPreference: key => options.preferenceReads?.[key] as any,
+                    setPreference: async (key, value) => {
+                        options.preferenceWrites?.push({ key, value });
+                    },
                 },
                 devtools: {
                     log: () => undefined,
@@ -255,6 +532,7 @@ describe("built-in blueprint nodes", () => {
             ...eventHeadBlueprintNodes,
             ...broadcastBlueprintNodes,
             ...frameBlueprintNodes,
+            ...gameBlueprintNodes,
             ...controlFlowBlueprintNodes,
             ...dataBlueprintNodes,
             ...elementBlueprintNodes,
@@ -289,7 +567,23 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_BROADCAST_SEND)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_START_STORY)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_QUIT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(true);
+        expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)?.hideInPalette).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_EMIT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE)).toBe(true);
@@ -302,6 +596,8 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_WHILE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_DELAY)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY)).toBe(true);
+        expect(blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY)?.displayName).toBe("Skip Delay");
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_RETURN)).toBe(true);
         expect(blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_FLOW_RETURN)?.displayName).toBe("Return");
         expect(types.has(BLUEPRINT_NODE_TYPE_FLOW_COMMENT)).toBe(true);
@@ -320,6 +616,7 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_IS_ARRAY)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_IS_NULL)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DATA_NOT_NULL)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_PARSE_INT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DATA_PARSE_FLOAT)).toBe(true);
@@ -355,14 +652,21 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_COMPARE_LESS_THAN_OR_EQUAL)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_STRING_TO_STRING)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_GET)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LOCAL_SET)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_PERSISTENT_SET)).toBe(true);
         expect([...types].some(type => type.startsWith("blueprint.persistence."))).toBe(false);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_REF)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_DISPLAY)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_TEXT_GET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE)).toBe(true);
@@ -374,7 +678,60 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_IMAGE_GET_ASSET)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_IMAGE_CLEAR_ASSET)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_IMAGE_GET_FIT_MODE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_IMAGE_SET_FIT_MODE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_IMAGE_GET_CROP_RECT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_IMAGE_SET_CROP_RECT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_X)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_X)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_Y)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_Y)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_CLEAR_ASSET)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_ASSET)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_ASSET)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FIT_MODE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FIT_MODE)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_CROP_RECT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_CROP_RECT)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_X)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_X)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FLIP_Y)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FLIP_Y)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_LOG)).toBe(true);
+    });
+
+    it("logs a visible marker when Log has no value input", () => {
+        const logNode = devtoolsBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_LOG)!;
+        const devtoolsLog = vi.fn();
+        const hostAdapter = createPersistenceHostAdapter({});
+        hostAdapter.blueprintRuntime!.hostApi!.devtools.log = devtoolsLog;
+        const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+        try {
+            const result = logNode.execute({
+                graph: {
+                    id: "graph",
+                    entries: {
+                        main: { start: { nodeId: "log", port: "in" } },
+                    },
+                    nodes: {
+                        log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "log", port: "in" } },
+                node: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG },
+                params: {},
+                hostAdapter,
+            });
+
+            expect(result).toEqual({ nextPort: "next" });
+            expect(devtoolsLog).toHaveBeenCalledWith("info", "Log node reached");
+            expect(consoleLog).toHaveBeenCalledWith("[Blueprint]", "Log node reached");
+        } finally {
+            consoleLog.mockRestore();
+        }
     });
 
     it("defines filtered and any keyboard event head card fields and pins", () => {
@@ -388,10 +745,10 @@ describe("built-in blueprint nodes", () => {
         expect(onKeyDown?.displayName).toBe("On Key Down");
         expect(onKeyUp?.displayName).toBe("On Key Up");
         expect(onKeyDown?.inspectorParams).toEqual([
-            { key: BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME, label: "Key", kind: "string" },
+            { key: BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME, label: "Key", kind: "keyboardBinding" },
         ]);
-        expect(onKeyDown?.pins.map(pin => pin.id)).toEqual(["then", "altKey", "ctrlKey", "shiftKey", "metaKey"]);
-        expect(onKeyUp?.pins.map(pin => pin.id)).toEqual(["then", "altKey", "ctrlKey", "shiftKey", "metaKey"]);
+        expect(onKeyDown?.pins.map(pin => pin.id)).toEqual(["then"]);
+        expect(onKeyUp?.pins.map(pin => pin.id)).toEqual(["then"]);
 
         expect(anyKeyDown?.displayName).toBe("Any Key Down");
         expect(anyKeyUp?.displayName).toBe("Any Key Up");
@@ -424,11 +781,93 @@ describe("built-in blueprint nodes", () => {
             .sort();
 
         expect(variableTypes).toEqual([
+            BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
             BLUEPRINT_NODE_TYPE_LOCAL_GET,
             BLUEPRINT_NODE_TYPE_LOCAL_SET,
             BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
             BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
         ].sort());
+    });
+
+    it("registers Var as a pinless blueprint-scope declaration node", () => {
+        registerCoreBlueprintNodes();
+
+        const def = blueprintNodeRegistry.get(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR);
+        expect(def).toMatchObject({
+            displayName: "Var",
+            category: "Variables",
+            isPure: true,
+            pins: [],
+        });
+        expect(def?.inspectorParams?.map(param => param.key)).toEqual(["name", "valueType", "defaultValue"]);
+
+        const widgetPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "widgetMain", surfaceId: "surface", elementId: "button" },
+                widgetElementType: "nl.button",
+            }).map(entry => entry.type),
+        );
+        const surfacePaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "surfaceMain", surfaceId: "surface" },
+            }).map(entry => entry.type),
+        );
+        const globalPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "globalMain" },
+            }).map(entry => entry.type),
+        );
+        const componentWidgetPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "componentWidgetMain", componentId: "component", elementId: "button" },
+                widgetElementType: "nl.button",
+            }).map(entry => entry.type),
+        );
+        const sharedAssetPaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: { kind: "sharedAsset", assetId: "dialog-template" },
+            }).map(entry => entry.type),
+        );
+        const valuePaletteTypes = new Set(
+            blueprintNodeRegistry.listPaletteEntries({
+                graphKind: "event",
+                owner: {
+                    kind: "widgetValue",
+                    surfaceId: "surface",
+                    elementId: "text",
+                    propPath: "props.text",
+                },
+                isBlueprintValueGraph: true,
+            }).map(entry => entry.type),
+        );
+
+        expect(widgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
+        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
+        expect(componentWidgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
+        expect(sharedAssetPaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(false);
+    });
+
+    it("projects Get Var and Set Var value pins from the selected variable type", () => {
+        registerCoreBlueprintNodes();
+
+        const getEntry = blueprintNodeRegistry.resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_LOCAL_GET, {
+            variableId: "score",
+            [BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]: "integer",
+        });
+        const setEntry = blueprintNodeRegistry.resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_LOCAL_SET, {
+            variableId: "score",
+            [BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]: "integer",
+        });
+
+        expect(getEntry.pins.find(pin => pin.id === "value")?.valueType).toBe("integer");
+        expect(setEntry.pins.find(pin => pin.id === "value")?.valueType).toBe("integer");
     });
 
     it("executes persistent variable get/set through the host store", async () => {
@@ -536,6 +975,7 @@ describe("built-in blueprint nodes", () => {
         registerCoreBlueprintNodes();
 
         const openedSurfaceIds: string[] = [];
+        const openedPageProps: unknown[] = [];
         const localsAfterGoPage: Record<string, unknown> = {};
         await executeGraph({
             graph: {
@@ -557,20 +997,193 @@ describe("built-in blueprint nodes", () => {
                         type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
                         params: { value: "continued" },
                     },
+                    props: {
+                        id: "props",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+                        params: { value: { tab: "audio", index: 2 } },
+                    },
                 },
                 edges: [
                     { from: { nodeId: "go", port: "next" }, to: { nodeId: "after", port: "in" } },
                     { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                    { from: { nodeId: "props", port: "value" }, to: { nodeId: "go", port: "props" } },
                 ],
             },
             entry: { start: { nodeId: "go", port: "in" } },
-            hostAdapter: createPageNavigationHostAdapter(openedSurfaceIds),
+            hostAdapter: createPageNavigationHostAdapter(openedSurfaceIds, {}, [], [], openedPageProps),
             blueprintLocals: localsAfterGoPage,
         });
         expect(openedSurfaceIds).toEqual(["target-page"]);
+        expect(openedPageProps).toEqual([{ tab: "audio", index: 2 }]);
         expect(localsAfterGoPage).not.toHaveProperty("afterGoPage");
 
-        const framePatches: Array<{ elementId: string; targetSurfaceId: string | null }> = [];
+        openedSurfaceIds.length = 0;
+        openedPageProps.length = 0;
+        await executeGraph({
+            graph: {
+                id: "clearPage",
+                entries: { main: { start: { nodeId: "go", port: "in" } } },
+                nodes: {
+                    go: {
+                        id: "go",
+                        type: BLUEPRINT_NODE_TYPE_PAGE_GO,
+                        params: {},
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "go", port: "in" } },
+            hostAdapter: createPageNavigationHostAdapter(openedSurfaceIds, {}, [], [], openedPageProps),
+        });
+        expect(openedSurfaceIds).toEqual([""]);
+        expect(openedPageProps).toEqual([undefined]);
+
+        const quitApplicationCalls: boolean[] = [];
+        const localsAfterQuit: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "quitPage",
+                entries: { main: { start: { nodeId: "quit", port: "in" } } },
+                nodes: {
+                    quit: {
+                        id: "quit",
+                        type: BLUEPRINT_NODE_TYPE_PAGE_QUIT,
+                        params: {},
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterQuit" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "quit", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "quit", port: "in" } },
+            hostAdapter: createPageNavigationHostAdapter([], {}, [], [], [], {}, quitApplicationCalls),
+            blueprintLocals: localsAfterQuit,
+        });
+        expect(quitApplicationCalls).toEqual([true]);
+        expect(localsAfterQuit).not.toHaveProperty("afterQuit");
+
+        const currentPageProps = { tab: "video", nested: { muted: true } };
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        props: {
+                            type: BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
+                            params: {},
+                        },
+                    },
+                },
+                "props",
+                "props",
+                {},
+                undefined,
+                0,
+                { hostAdapter: createPageNavigationHostAdapter([], {}, [], [], [], currentPageProps) },
+            ),
+        ).toEqual(currentPageProps);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        exiting: {
+                            type: BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
+                            params: {},
+                        },
+                    },
+                },
+                "exiting",
+                "isExiting",
+                {},
+                undefined,
+                0,
+                {
+                    hostAdapter: {
+                        host: "player",
+                        blueprintRuntime: {
+                            surfaceId: "surface",
+                            setSurfaceState: () => undefined,
+                            getSurfaceState: () => undefined,
+                            emitDebug: () => undefined,
+                            dispatchElementBlueprintEvent: async () => undefined,
+                            getSurfaceTransitionState: () => ({ isEntering: false, isExiting: true }),
+                        },
+                    },
+                },
+            ),
+        ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        entering: {
+                            type: BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
+                            params: {},
+                        },
+                    },
+                },
+                "entering",
+                "isEntering",
+                {},
+                undefined,
+                0,
+                {
+                    hostAdapter: {
+                        host: "player",
+                        blueprintRuntime: {
+                            surfaceId: "surface",
+                            setSurfaceState: () => undefined,
+                            getSurfaceState: () => undefined,
+                            emitDebug: () => undefined,
+                            dispatchElementBlueprintEvent: async () => undefined,
+                            getSurfaceTransitionState: () => ({ isEntering: true, isExiting: false }),
+                        },
+                    },
+                },
+            ),
+        ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        transitioning: {
+                            type: BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
+                            params: {},
+                        },
+                    },
+                },
+                "transitioning",
+                "isTransitioning",
+                {},
+                undefined,
+                0,
+                {
+                    hostAdapter: {
+                        host: "player",
+                        blueprintRuntime: {
+                            surfaceId: "surface",
+                            setSurfaceState: () => undefined,
+                            getSurfaceState: () => undefined,
+                            emitDebug: () => undefined,
+                            dispatchElementBlueprintEvent: async () => undefined,
+                            getSurfaceTransitionState: () => ({ isEntering: false, isExiting: true }),
+                        },
+                    },
+                },
+            ),
+        ).toBe(true);
+
+        const framePatches: FramePatchCall[] = [];
         await executeGraph({
             graph: {
                 id: "setPage",
@@ -581,14 +1194,667 @@ describe("built-in blueprint nodes", () => {
                         type: BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
                         params: { targetSurfaceId: "embedded-page" },
                     },
+                    props: {
+                        id: "props",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+                        params: { value: { tab: "details", index: 3 } },
+                    },
                 },
-                edges: [],
+                edges: [
+                    { from: { nodeId: "props", port: "value" }, to: { nodeId: "set", port: "props" } },
+                ],
             },
             entry: { start: { nodeId: "set", port: "in" } },
             hostAdapter: createPageNavigationHostAdapter([], {}, framePatches),
             executionOwner: { surfaceId: "surface", elementId: "frame" },
         });
-        expect(framePatches).toEqual([{ elementId: "frame", targetSurfaceId: "embedded-page" }]);
+        expect(framePatches).toEqual([
+            { elementId: "frame", targetSurfaceId: "embedded-page", params: { tab: "details", index: 3 } },
+        ]);
+
+        framePatches.length = 0;
+        await executeGraph({
+            graph: {
+                id: "clearPage",
+                entries: { main: { start: { nodeId: "set", port: "in" } } },
+                nodes: {
+                    set: {
+                        id: "set",
+                        type: BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
+                        params: {},
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "set", port: "in" } },
+            hostAdapter: createPageNavigationHostAdapter([], { frame: "embedded-page" }, framePatches),
+            executionOwner: { surfaceId: "surface", elementId: "frame" },
+        });
+        expect(framePatches).toEqual([{ elementId: "frame", targetSurfaceId: null }]);
+
+        framePatches.length = 0;
+        await executeGraph({
+            graph: {
+                id: "setPageFromElementRef",
+                entries: { main: { start: { nodeId: "set", port: "in" } } },
+                nodes: {
+                    ref: {
+                        id: "ref",
+                        type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                        params: {
+                            [ELEMENT_REF_PARAM_SURFACE_ID]: "surface",
+                            [ELEMENT_REF_PARAM_ELEMENT_ID]: "frame-from-ref",
+                            [ELEMENT_REF_PARAM_ELEMENT_TYPE]: "nl.frame",
+                        },
+                    },
+                    set: {
+                        id: "set",
+                        type: BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
+                        params: { targetSurfaceId: "element-page" },
+                    },
+                    props: {
+                        id: "props",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_JSON,
+                        params: { value: { pane: "summary" } },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "ref", port: "element" }, to: { nodeId: "set", port: "element" } },
+                    { from: { nodeId: "props", port: "value" }, to: { nodeId: "set", port: "props" } },
+                ],
+            },
+            entry: { start: { nodeId: "set", port: "in" } },
+            hostAdapter: createPageNavigationHostAdapter([], {}, framePatches),
+            executionOwner: { surfaceId: "surface" },
+        });
+        expect(framePatches).toEqual([
+            { elementId: "frame-from-ref", targetSurfaceId: "element-page", params: { pane: "summary" } },
+        ]);
+    });
+
+    it("executes Start Game as a terminal host API node", async () => {
+        registerCoreBlueprintNodes();
+
+        const startedStories: Array<{ storyId: string; sceneId: string }> = [];
+        const localsAfterStartGame: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "startGame",
+                entries: { main: { start: { nodeId: "start", port: "in" } } },
+                nodes: {
+                    start: {
+                        id: "start",
+                        type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+                        params: { storyId: "story-1", sceneId: "scene-1" },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterStartGame" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "start", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "start", port: "in" } },
+            hostAdapter: createPageNavigationHostAdapter([], {}, [], startedStories),
+            blueprintLocals: localsAfterStartGame,
+        });
+
+        expect(startedStories).toEqual([{ storyId: "story-1", sceneId: "scene-1" }]);
+        expect(localsAfterStartGame).not.toHaveProperty("afterStartGame");
+    });
+
+    it("executes dialog Game nodes through host APIs", async () => {
+        registerCoreBlueprintNodes();
+
+        const localsFromNametag: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "getNametag",
+                entries: { main: { start: { nodeId: "capture", port: "in" } } },
+                nodes: {
+                    get: {
+                        id: "get",
+                        type: BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+                        params: {},
+                    },
+                    capture: {
+                        id: "capture",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "nametag" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "get", port: "nametag" }, to: { nodeId: "capture", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "capture", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ nametag: "Alice" }),
+            blueprintLocals: localsFromNametag,
+        });
+        expect(localsFromNametag.nametag).toBe("Alice");
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        state: {
+                            type: BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
+                            params: {},
+                        },
+                    },
+                    edges: [],
+                },
+                "state",
+                "isInGame",
+                {},
+                undefined,
+                0,
+                { hostAdapter: createGameSaveHostAdapter({ isInGame: true }) },
+            ),
+        ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        overlay: {
+                            type: BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
+                            params: {},
+                        },
+                    },
+                    edges: [],
+                },
+                "overlay",
+                "isGameOverlay",
+                {},
+                undefined,
+                0,
+                { hostAdapter: createGameSaveHostAdapter({ isGameOverlay: true }) },
+            ),
+        ).toBe(true);
+
+        const quitSurfaceIds: string[] = [];
+        const localsAfterQuit: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "quitGame",
+                entries: { main: { start: { nodeId: "quit", port: "in" } } },
+                nodes: {
+                    quit: {
+                        id: "quit",
+                        type: BLUEPRINT_NODE_TYPE_GAME_QUIT,
+                        params: { surfaceId: "return-page" },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterQuit" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "quit", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "quit", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ quitSurfaceIds }),
+            blueprintLocals: localsAfterQuit,
+        });
+        expect(quitSurfaceIds).toEqual(["return-page"]);
+        expect(localsAfterQuit).not.toHaveProperty("afterQuit");
+
+        const nextCalls: boolean[] = [];
+        const localsAfterNext: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "next",
+                entries: { main: { start: { nodeId: "next", port: "in" } } },
+                nodes: {
+                    next: {
+                        id: "next",
+                        type: BLUEPRINT_NODE_TYPE_GAME_NEXT,
+                        params: {},
+                    },
+                    capture: {
+                        id: "capture",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterNext" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "next", port: "next" }, to: { nodeId: "capture", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "capture", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "next", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ nextCalls }),
+            blueprintLocals: localsAfterNext,
+        });
+        expect(nextCalls).toEqual([true]);
+        expect(localsAfterNext.afterNext).toBe("continued");
+
+        const skipCalls: boolean[] = [];
+        await executeGraph({
+            graph: {
+                id: "skip",
+                entries: { main: { start: { nodeId: "skip", port: "in" } } },
+                nodes: {
+                    skip: {
+                        id: "skip",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SKIP,
+                        params: {},
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "skip", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ skipCalls }),
+        });
+        expect(skipCalls).toEqual([true]);
+
+        async function executeDialogDisplayNode(
+            graphId: string,
+            nodeType: string,
+            hostAdapter: UIHostAdapter,
+        ): Promise<Record<string, unknown>> {
+            const locals: Record<string, unknown> = {};
+            await executeGraph({
+                graph: {
+                    id: graphId,
+                    entries: { main: { start: { nodeId: "action", port: "in" } } },
+                    nodes: {
+                        action: {
+                            id: "action",
+                            type: nodeType,
+                            params: {},
+                        },
+                        capture: {
+                            id: "capture",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: `${graphId}Next` },
+                        },
+                        literal: {
+                            id: "literal",
+                            type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                            params: { value: "continued" },
+                        },
+                    },
+                    edges: [
+                        { from: { nodeId: "action", port: "next" }, to: { nodeId: "capture", port: "in" } },
+                        { from: { nodeId: "literal", port: "value" }, to: { nodeId: "capture", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "action", port: "in" } },
+                hostAdapter,
+                blueprintLocals: locals,
+            });
+            return locals;
+        }
+
+        const showDialogCalls: boolean[] = [];
+        const showLocals = await executeDialogDisplayNode(
+            "showDialog",
+            BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG,
+            createGameSaveHostAdapter({ showDialogCalls }),
+        );
+        expect(showDialogCalls).toEqual([true]);
+        expect(showLocals.showDialogNext).toBe("continued");
+
+        const hideDialogCalls: boolean[] = [];
+        const hideLocals = await executeDialogDisplayNode(
+            "hideDialog",
+            BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG,
+            createGameSaveHostAdapter({ hideDialogCalls }),
+        );
+        expect(hideDialogCalls).toEqual([true]);
+        expect(hideLocals.hideDialogNext).toBe("continued");
+
+        const toggleDialogDisplayCalls: boolean[] = [];
+        const toggleLocals = await executeDialogDisplayNode(
+            "toggleDialogDisplay",
+            BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY,
+            createGameSaveHostAdapter({ toggleDialogDisplayCalls }),
+        );
+        expect(toggleDialogDisplayCalls).toEqual([true]);
+        expect(toggleLocals.toggleDialogDisplayNext).toBe("continued");
+
+        const sentenceCpsValues: number[] = [];
+        await executeGraph({
+            graph: {
+                id: "setSentenceSpeed",
+                entries: { main: { start: { nodeId: "cps", port: "in" } } },
+                nodes: {
+                    cps: {
+                        id: "cps",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
+                        params: { cps: 32 },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "cps", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ sentenceCpsValues }),
+        });
+        expect(sentenceCpsValues).toEqual([32]);
+    });
+
+    it("executes game preference getter and setter nodes through host APIs", async () => {
+        registerCoreBlueprintNodes();
+
+        const preferenceWrites: Array<{ key: string; value: unknown }> = [];
+        const setterLocals: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "setPreferences",
+                entries: { main: { start: { nodeId: "autoForward", port: "in" } } },
+                nodes: {
+                    autoForward: {
+                        id: "autoForward",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD,
+                        params: { autoForward: true },
+                    },
+                    gameSpeed: {
+                        id: "gameSpeed",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED,
+                        params: { gameSpeed: 1.5 },
+                    },
+                    voiceEndMode: {
+                        id: "voiceEndMode",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE,
+                        params: { voiceEndMode: "fade" },
+                    },
+                    done: {
+                        id: "done",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "done", value: "yes" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "autoForward", port: "next" }, to: { nodeId: "gameSpeed", port: "in" } },
+                    { from: { nodeId: "gameSpeed", port: "next" }, to: { nodeId: "voiceEndMode", port: "in" } },
+                    { from: { nodeId: "voiceEndMode", port: "next" }, to: { nodeId: "done", port: "in" } },
+                ],
+            },
+            entry: { start: { nodeId: "autoForward", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ preferenceWrites }),
+            blueprintLocals: setterLocals,
+        });
+        expect(preferenceWrites).toEqual([
+            { key: "autoForward", value: true },
+            { key: "gameSpeed", value: 1.5 },
+            { key: "voiceEndMode", value: "fade" },
+        ]);
+        expect(setterLocals.done).toBe("yes");
+
+        const getterLocals: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "getSentenceSpeed",
+                entries: { main: { start: { nodeId: "capture", port: "in" } } },
+                nodes: {
+                    cps: {
+                        id: "cps",
+                        type: BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
+                        params: {},
+                    },
+                    capture: {
+                        id: "capture",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "cps" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "cps", port: "cps" }, to: { nodeId: "capture", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "capture", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ preferenceReads: { cps: 28 } }),
+            blueprintLocals: getterLocals,
+        });
+        expect(getterLocals.cps).toBe(28);
+
+        await expect(executeGraph({
+            graph: {
+                id: "invalidVoiceEndMode",
+                entries: { main: { start: { nodeId: "voiceEndMode", port: "in" } } },
+                nodes: {
+                    voiceEndMode: {
+                        id: "voiceEndMode",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE,
+                        params: { voiceEndMode: "hold" },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "voiceEndMode", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ preferenceWrites: [] }),
+        })).rejects.toThrow(/Voice End Mode/);
+
+        await expect(executeGraph({
+            graph: {
+                id: "invalidSkipInterval",
+                entries: { main: { start: { nodeId: "skipInterval", port: "in" } } },
+                nodes: {
+                    skipInterval: {
+                        id: "skipInterval",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL,
+                        params: { skipInterval: 0 },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "skipInterval", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ preferenceWrites: [] }),
+        })).rejects.toThrow(/Skip Interval/);
+    });
+
+    it("executes game save nodes through host APIs", async () => {
+        registerCoreBlueprintNodes();
+
+        const writtenIds: string[] = [];
+        const writtenMetadata: unknown[] = [];
+        const writtenScreenshots: boolean[] = [];
+        const writeMetadata = ["chapter", 3, { route: "true" }];
+        await executeGraph({
+            graph: {
+                id: "writeSave",
+                entries: { main: { start: { nodeId: "write", port: "in" } } },
+                nodes: {
+                    write: {
+                        id: "write",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
+                        params: { id: "slot-a", metadata: writeMetadata },
+                    },
+                    capture: {
+                        id: "capture",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_BOOLEAN,
+                        params: { value: "true" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "capture", port: "value" }, to: { nodeId: "write", port: "screenshot" } },
+                ],
+            },
+            entry: { start: { nodeId: "write", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ writtenIds, writtenMetadata, writtenScreenshots }),
+        });
+        expect(writtenIds).toEqual(["slot-a"]);
+        expect(writtenMetadata).toEqual([writeMetadata]);
+        expect(writtenScreenshots).toEqual([true]);
+
+        const deletedIds: string[] = [];
+        const localsAfterDelete: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "deleteSave",
+                entries: { main: { start: { nodeId: "delete", port: "in" } } },
+                nodes: {
+                    delete: {
+                        id: "delete",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
+                        params: { id: "slot-a" },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterDelete" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "delete", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "delete", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ deletedIds }),
+            blueprintLocals: localsAfterDelete,
+        });
+        expect(deletedIds).toEqual(["slot-a"]);
+        expect(localsAfterDelete.afterDelete).toBe("continued");
+
+        const localsFromList: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "listSaves",
+                entries: { main: { start: { nodeId: "list", port: "in" } } },
+                nodes: {
+                    list: {
+                        id: "list",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
+                        params: {},
+                    },
+                    capture: {
+                        id: "capture",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "ids" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "list", port: "next" }, to: { nodeId: "capture", port: "in" } },
+                    { from: { nodeId: "list", port: "ids" }, to: { nodeId: "capture", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "list", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ listedIds: ["slot-b", "slot-a"] }),
+            blueprintLocals: localsFromList,
+        });
+        expect(localsFromList.ids).toEqual(["slot-b", "slot-a"]);
+
+        const saveMetadata = ["chapter", 2, { flags: { metAlice: true } }];
+        const localsFromMetadata: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "metadataSave",
+                entries: { main: { start: { nodeId: "metadata", port: "in" } } },
+                nodes: {
+                    metadata: {
+                        id: "metadata",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
+                        params: { id: "slot-a" },
+                    },
+                    capture: {
+                        id: "capture",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "metadata" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "metadata", port: "next" }, to: { nodeId: "capture", port: "in" } },
+                    { from: { nodeId: "metadata", port: "metadata" }, to: { nodeId: "capture", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "metadata", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ metadata: saveMetadata }),
+            blueprintLocals: localsFromMetadata,
+        });
+        expect(localsFromMetadata.metadata).toEqual(saveMetadata);
+
+        const preview = { kind: "imageAsset", assetId: "dev-mode-save-preview:slot-a" };
+        const localsFromPreview: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "previewSave",
+                entries: { main: { start: { nodeId: "preview", port: "in" } } },
+                nodes: {
+                    preview: {
+                        id: "preview",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
+                        params: { id: "slot-a" },
+                    },
+                    capture: {
+                        id: "capture",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "preview" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "preview", port: "next" }, to: { nodeId: "capture", port: "in" } },
+                    { from: { nodeId: "preview", port: "preview" }, to: { nodeId: "capture", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "preview", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ previews: { "slot-a": preview } }),
+            blueprintLocals: localsFromPreview,
+        });
+        expect(localsFromPreview.preview).toEqual(preview);
+
+        const loadedIds: string[] = [];
+        const localsAfterLoad: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "loadSave",
+                entries: { main: { start: { nodeId: "load", port: "in" } } },
+                nodes: {
+                    load: {
+                        id: "load",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
+                        params: { id: "slot-a" },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterLoad" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "load", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "load", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ loadedIds }),
+            blueprintLocals: localsAfterLoad,
+        });
+        expect(loadedIds).toEqual(["slot-a"]);
+        expect(localsAfterLoad).not.toHaveProperty("afterLoad");
     });
 
     it("uses class.md palette categories for the new node groups", () => {
@@ -597,9 +1863,245 @@ describe("built-in blueprint nodes", () => {
         expect(eventHeadBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(broadcastBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(frameBlueprintNodes.every(def => def.category === "Page")).toBe(true);
-        expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)?.pins.map(pin => pin.id)).toEqual([
+        expect(gameBlueprintNodes.every(def => def.category === "Game")).toBe(true);
+        const gameReadyHead = eventHeadBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY);
+        expect(gameReadyHead?.displayName).toBe("On Game Ready");
+        expect(gameReadyHead?.role).toBe("eventHead");
+        expect(gameReadyHead?.scope).toEqual({ ownerKinds: ["globalMain"] });
+        expect(gameReadyHead?.pins.map(pin => pin.id)).toEqual(["then"]);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY)?.pins.map(pin => pin.id)).toEqual([
             "in",
         ]);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)?.pins.map(pin => pin.id)).toEqual([
+            "nametag",
+        ]);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)?.pins.map(pin => pin.id)).toEqual([
+            "isInGame",
+        ]);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)?.pins.map(pin => pin.id)).toEqual([
+            "isGameOverlay",
+        ]);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_QUIT)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+        ]);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_QUIT)?.inspectorParams).toEqual([
+            expect.objectContaining({
+                key: "surfaceId",
+                dynamicOptionsSource: "surfaces",
+            }),
+        ]);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_NEXT)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "next",
+        ]);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SKIP)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "next",
+        ]);
+        const setSentenceSpeedNode = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED);
+        expect(setSentenceSpeedNode?.pins.map(pin => pin.id)).toEqual(["in", "next", "cps"]);
+        expect(setSentenceSpeedNode?.pins.find(pin => pin.id === "cps")).toMatchObject({ label: "CPS" });
+        const preferenceNodeExpectations: Array<{
+            getterType: string;
+            setterType?: string;
+            getterName: string;
+            setterName?: string;
+            pinId: string;
+            pinLabel: string;
+            valueType: string;
+        }> = [
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD,
+                getterName: "Get Auto Forward",
+                setterName: "Set Auto Forward",
+                pinId: "autoForward",
+                pinLabel: "Auto Forward",
+                valueType: "boolean",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED,
+                getterName: "Get Skip",
+                setterName: "Set Skip",
+                pinId: "skip",
+                pinLabel: "Skip",
+                valueType: "boolean",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED,
+                getterName: "Get Game Speed",
+                setterName: "Set Game Speed",
+                pinId: "gameSpeed",
+                pinLabel: "Game Speed",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
+                getterName: "Get Sentence Speed",
+                pinId: "cps",
+                pinLabel: "CPS",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_VOLUME,
+                getterName: "Get Voice Volume",
+                setterName: "Set Voice Volume",
+                pinId: "voiceVolume",
+                pinLabel: "Voice Volume",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_FADE_DURATION,
+                getterName: "Get Voice Fade Duration",
+                setterName: "Set Voice Fade Duration",
+                pinId: "voiceFadeDuration",
+                pinLabel: "Voice Fade",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE,
+                getterName: "Get Voice End Mode",
+                setterName: "Set Voice End Mode",
+                pinId: "voiceEndMode",
+                pinLabel: "Voice End Mode",
+                valueType: "string",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME,
+                getterName: "Get BGM Volume",
+                setterName: "Set BGM Volume",
+                pinId: "bgmVolume",
+                pinLabel: "BGM Volume",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
+                getterName: "Get Sound Volume",
+                setterName: "Set Sound Volume",
+                pinId: "soundVolume",
+                pinLabel: "Sound Volume",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_GLOBAL_VOLUME,
+                getterName: "Get Global Volume",
+                setterName: "Set Global Volume",
+                pinId: "globalVolume",
+                pinLabel: "Global Volume",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY,
+                getterName: "Get Skip Delay",
+                setterName: "Set Skip Delay",
+                pinId: "skipDelay",
+                pinLabel: "Skip Delay",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL,
+                getterName: "Get Skip Interval",
+                setterName: "Set Skip Interval",
+                pinId: "skipInterval",
+                pinLabel: "Skip Interval",
+                valueType: "float",
+            },
+        ];
+        for (const item of preferenceNodeExpectations) {
+            const getter = gameBlueprintNodes.find(def => def.type === item.getterType);
+            expect(getter?.displayName).toBe(item.getterName);
+            expect(getter?.graphKinds).toEqual(["event", "function", "macro"]);
+            expect(getter?.isPure).toBe(true);
+            expect(getter?.isLatent).toBe(false);
+            expect(getter?.pins).toEqual([
+                expect.objectContaining({
+                    id: item.pinId,
+                    kind: "output",
+                    label: item.pinLabel,
+                    valueType: item.valueType,
+                }),
+            ]);
+            if (!item.setterType) {
+                continue;
+            }
+            const setter = gameBlueprintNodes.find(def => def.type === item.setterType);
+            expect(setter?.displayName).toBe(item.setterName);
+            expect(setter?.graphKinds).toEqual(["event", "macro"]);
+            expect(setter?.isPure).toBe(false);
+            expect(setter?.isLatent).toBe(true);
+            expect(setter?.pins.map(pin => pin.id)).toEqual(["in", "next", item.pinId]);
+            expect(setter?.pins.find(pin => pin.id === item.pinId)).toMatchObject({
+                kind: "input",
+                label: item.pinLabel,
+                valueType: item.valueType,
+            });
+        }
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "id",
+        ]);
+        const saveGameNode = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE);
+        expect(saveGameNode?.displayName).toBe("Save Game");
+        expect(saveGameNode?.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "next",
+            "id",
+            "metadata",
+            "screenshot",
+        ]);
+        expect(saveGameNode?.pins.find(pin => pin.id === "metadata")).toMatchObject({ optional: true });
+        expect(saveGameNode?.pins.find(pin => pin.id === "screenshot")).toMatchObject({
+            label: "Capture",
+            optional: true,
+        });
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "next",
+            "id",
+            "metadata",
+        ]);
+        expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "next",
+            "id",
+        ]);
+        expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "props",
+        ]);
+        expect(frameBlueprintNodes
+            .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)
+            ?.pins.find(pin => pin.id === "props")?.optional).toBe(true);
+        expect(frameBlueprintNodes
+            .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)
+            ?.pins.map(pin => pin.id)).toEqual(["isExiting"]);
+        expect(frameBlueprintNodes
+            .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)
+            ?.pins.map(pin => pin.id)).toEqual(["isEntering"]);
+        expect(frameBlueprintNodes
+            .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)
+            ?.pins.map(pin => pin.id)).toEqual(["isTransitioning"]);
+        expect(frameBlueprintNodes
+            .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)
+            ?.inspectorParams).toEqual([
+                {
+                    key: "surfaceId",
+                    label: "Page",
+                    kind: "select",
+                    dynamicOptionsSource: "surfaces",
+                    emptyOptionLabel: "None",
+                },
+            ]);
         expect(controlFlowBlueprintNodes.every(def => def.category === "Flow")).toBe(true);
         expect(localVariableBlueprintNodes.every(def => def.category === "Variables")).toBe(true);
         expect(persistentVariableBlueprintNodes.every(def => def.category === "Variables")).toBe(true);
@@ -618,19 +2120,358 @@ describe("built-in blueprint nodes", () => {
         );
         expect(frameSetPage?.category).toBe("Frame");
         expect(elementFrameSetPage?.category).toBe("Element");
-        expect(frameSetPage?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
-        expect(elementFrameSetPage?.pins.map(pin => pin.id)).toEqual(["in", "next", "element"]);
+        expect(frameSetPage?.pins.map(pin => pin.id)).toEqual(["in", "next", "props"]);
+        expect(elementFrameSetPage?.pins.map(pin => pin.id)).toEqual(["in", "next", "element", "props"]);
+        expect(frameSetPage?.pins.find(pin => pin.id === "props")).toMatchObject({
+            label: "Page props",
+            valueType: "json",
+            optional: true,
+        });
+        expect(elementFrameSetPage?.pins.find(pin => pin.id === "props")).toMatchObject({
+            label: "Page props",
+            valueType: "json",
+            optional: true,
+        });
         expect(frameSetPage?.inspectorParams).toEqual([
             {
                 key: "targetSurfaceId",
                 label: "Page",
                 kind: "select",
-                dynamicOptionsSource: "surfaces",
+                dynamicOptionsSource: BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
+                emptyOptionLabel: "None",
             },
         ]);
         expect(elementFrameSetPage?.inspectorParams).toEqual(frameSetPage?.inspectorParams);
+        const buttonSetPointer = widgetPropertyBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER);
+        const elementButtonSetPointer = widgetPropertyBlueprintNodes.find(
+            def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER,
+        );
+        expect(buttonSetPointer?.category).toBe("Button");
+        expect(elementButtonSetPointer?.category).toBe("Element");
+        expect(buttonSetPointer?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
+        expect(elementButtonSetPointer?.pins.map(pin => pin.id)).toEqual(["in", "next", "element"]);
+        expect(buttonSetPointer?.inspectorParams).toEqual([
+            {
+                key: "cursor",
+                label: "Pointer",
+                kind: "buttonCursor",
+            },
+        ]);
+        expect(elementButtonSetPointer?.inspectorParams).toEqual(buttonSetPointer?.inspectorParams);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "next",
+        ]);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)?.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "next",
+        ]);
         expect(elementBlueprintNodes.some(def => def.category === "Element")).toBe(true);
         expect(elementBlueprintNodes.some(def => def.category === "Displayable")).toBe(true);
+    });
+
+    it("continues the active Element event bubble through the runtime", async () => {
+        registerCoreBlueprintNodes();
+
+        const bubbleCalls: Array<{
+            elementId: string;
+            eventName: string;
+            payload?: Record<string, unknown>;
+            options?: Record<string, unknown>;
+        }> = [];
+        const blueprintLocals: Record<string, unknown> = {};
+        const eventPayload = { x: 12, y: 34, button: 0 };
+
+        await executeGraph({
+            graph: {
+                id: "continueEventBubble",
+                entries: { main: { start: { nodeId: "bubble", port: "in" } } },
+                nodes: {
+                    bubble: {
+                        id: "bubble",
+                        type: BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
+                        params: {},
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterBubble" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "bubble", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "bubble", port: "in" } },
+            hostAdapter: {
+                host: "player",
+                blueprintRuntime: {
+                    continueElementEventBubble: async (
+                        elementId: string,
+                        eventName: string,
+                        payload?: Record<string, unknown>,
+                        options?: Record<string, unknown>,
+                    ) => {
+                        bubbleCalls.push({ elementId, eventName, payload, options });
+                        return true;
+                    },
+                },
+            } as unknown as UIHostAdapter,
+            eventName: "mouseClick",
+            eventPayload,
+            executionOwner: { surfaceId: "surface", elementId: "button" },
+            blueprintLocals,
+        });
+
+        expect(bubbleCalls).toEqual([
+            {
+                elementId: "button",
+                eventName: "mouseClick",
+                payload: eventPayload,
+                options: {
+                    listItemScope: undefined,
+                    instanceKey: undefined,
+                    componentId: undefined,
+                },
+            },
+        ]);
+        expect(blueprintLocals.afterBubble).toBe("continued");
+    });
+
+    it("stops the active Element event bubble before a later continue request", async () => {
+        registerCoreBlueprintNodes();
+
+        const bubbleCalls: string[] = [];
+        let stopped = false;
+        const blueprintLocals: Record<string, unknown> = {};
+
+        await executeGraph({
+            graph: {
+                id: "stopEventBubble",
+                entries: { main: { start: { nodeId: "stop", port: "in" } } },
+                nodes: {
+                    stop: {
+                        id: "stop",
+                        type: BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
+                        params: {},
+                    },
+                    bubble: {
+                        id: "bubble",
+                        type: BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
+                        params: {},
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "afterStop" },
+                    },
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "continued" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "stop", port: "next" }, to: { nodeId: "bubble", port: "in" } },
+                    { from: { nodeId: "bubble", port: "next" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "stop", port: "in" } },
+            hostAdapter: {
+                host: "player",
+                blueprintRuntime: {
+                    continueElementEventBubble: async (elementId: string) => {
+                        bubbleCalls.push(elementId);
+                        return true;
+                    },
+                },
+            } as unknown as UIHostAdapter,
+            eventName: "mouseClick",
+            eventPayload: { x: 12, y: 34 },
+            eventControl: {
+                stopPropagation: () => {
+                    stopped = true;
+                },
+                isPropagationStopped: () => stopped,
+            },
+            executionOwner: { surfaceId: "surface", elementId: "button" },
+            blueprintLocals,
+        });
+
+        expect(stopped).toBe(true);
+        expect(bubbleCalls).toEqual([]);
+        expect(blueprintLocals.afterStop).toBe("continued");
+    });
+
+    it("adds Displayable variant and generic property nodes", () => {
+        const displayableTypes = new Set(elementBlueprintNodes
+            .filter(def => def.category === "Displayable")
+            .map(def => def.type));
+        const elementTypes = new Set(elementBlueprintNodes
+            .filter(def => def.category === "Element")
+            .map(def => def.type));
+
+        expect([...displayableTypes]).toEqual(expect.arrayContaining([
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY,
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY,
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT,
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+            BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
+        ]));
+        expect(displayableTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY)).toBe(false);
+        expect(displayableTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)).toBe(false);
+        expect(displayableTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY)).toBe(false);
+        expect(displayableTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_DISPLAY)).toBe(false);
+        expect(displayableTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)).toBe(false);
+
+        expect([...elementTypes]).toEqual(expect.arrayContaining([
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY,
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_DISPLAY,
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT,
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+            BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION,
+        ]));
+        expect(elementTypes.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY)).toBe(false);
+        expect(elementTypes.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY)).toBe(false);
+        expect(elementTypes.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY)).toBe(false);
+
+        const setVariant = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT);
+        expect(setVariant?.category).toBe("Displayable");
+        expect(setVariant?.inspectorParams).toBeUndefined();
+        expect(setVariant?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
+        expect(setVariant?.scope).toMatchObject({
+            ownerKinds: ["widgetMain"],
+            widgetElementTypes: ["nl.container", "nl.text", "nl.image", "nl.button"],
+        });
+
+        const setElementVariant = elementBlueprintNodes.find(
+            def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
+        );
+        expect(setElementVariant?.category).toBe("Element");
+        expect(setElementVariant?.pins.map(pin => pin.id)).toEqual(["in", "next", "element"]);
+        expect(setElementVariant?.magicElementTarget).toEqual({
+            inputPinId: "element",
+            elementTypes: ["nl.container", "nl.text", "nl.image", "nl.button"],
+        });
+
+        const getProperty = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY);
+        expect(getProperty?.inspectorParams?.[0]).toMatchObject({
+            key: "property",
+            kind: "select",
+            options: expect.arrayContaining([
+                { value: "position", label: "Position" },
+                { value: "offsetX", label: "Offset X" },
+                { value: "offsetY", label: "Offset Y" },
+                { value: "visible", label: "Visible" },
+            ]),
+        });
+        expect(getProperty?.inspectorParams?.[0]).not.toMatchObject({
+            options: expect.arrayContaining([
+                { value: "variant", label: "Variant" },
+            ]),
+        });
+        const setProperty = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY);
+        expect(setProperty?.pins.map(pin => pin.id)).toEqual(["in", "next", "value"]);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY)
+            ?.pins.map(pin => pin.id)).toEqual(["in", "next", "display"]);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_DISPLAY)
+            ?.pins.map(pin => pin.id)).toEqual(["in", "next", "element", "display"]);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)
+            ?.pins.map(pin => pin.id)).toEqual(["in", "next", "element", "value"]);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY)
+            ?.pins.map(pin => pin.id)).toEqual(["in", "next", "animation"]);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)
+            ?.pins.map(pin => pin.id)).toEqual(["in", "next", "element", "animation"]);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION)
+            ?.pins.map(pin => pin.id)).toEqual(["in", "next", "animation"]);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION)
+            ?.pins.map(pin => pin.id)).toEqual(["in", "next", "animation"]);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY)
+            ?.pins.find(pin => pin.id === "animation")).toMatchObject({
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN,
+                label: "Animation",
+            });
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION)
+            ?.pins.find(pin => pin.id === "animation")).toMatchObject({
+                kind: "input",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN,
+                label: "Animation",
+            });
+        expect(setProperty?.inspectorParams?.[0]).toMatchObject({
+            key: "property",
+            kind: "select",
+            options: expect.arrayContaining([
+                { value: "x", label: "X" },
+                { value: "y", label: "Y" },
+                { value: "offsetX", label: "Offset X" },
+                { value: "offsetY", label: "Offset Y" },
+                { value: "opacity", label: "Opacity" },
+                { value: "visible", label: "Visible" },
+            ]),
+        });
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_POSITION)?.hideInPalette)
+            .toBe(true);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_VARIANT)?.hideInPalette)
+            .toBe(true);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION)?.hideInPalette)
+            .toBe(true);
+        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VARIANT)?.hideInPalette)
+            .toBe(true);
+
+        const legacyWidgetVariantNodes = widgetPropertyBlueprintNodes.filter(
+            def => def.type.endsWith(".getVariant") || def.type.endsWith(".setVariant"),
+        );
+        expect(legacyWidgetVariantNodes.length).toBeGreaterThan(0);
+        expect(legacyWidgetVariantNodes.every(def => def.hideInPalette === true)).toBe(true);
+        expect(legacyWidgetVariantNodes
+            .filter(def => def.type.endsWith(".setVariant"))
+            .flatMap(def => def.pins)
+            .some(pin => pin.id === "variantId")).toBe(false);
+
+        const legacyHostSetVariant = widgetHostBlueprintNodes.find(def => def.type === "blueprint.widget.setVariant");
+        expect(legacyHostSetVariant?.hideInPalette).toBe(true);
+        expect(legacyHostSetVariant?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
+        expect(legacyHostSetVariant?.inspectorParams?.some(param => param.key === "variantId")).toBe(false);
+
+        const animate = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY);
+        expect(animate?.inspectorParams?.map(param => param.key)).toEqual([
+            "property",
+            "from",
+            "to",
+            "duration",
+            "delay",
+            "easing",
+            "after",
+        ]);
+        expect(animate?.inspectorParams?.[0]).toMatchObject({
+            key: "property",
+            kind: "select",
+            options: expect.arrayContaining([
+                { value: "opacity", label: "Opacity" },
+                { value: "offsetX", label: "Offset X" },
+                { value: "offsetY", label: "Offset Y" },
+                { value: "x", label: "X" },
+                { value: "y", label: "Y" },
+                { value: "scale", label: "Scale" },
+                { value: "rotation", label: "Rotation" },
+            ]),
+        });
     });
 
     it("keeps structured literal editor metadata locked to fixed schemas", () => {
@@ -915,6 +2756,42 @@ describe("built-in blueprint nodes", () => {
         expect(
             resolveDataPinValue(
                 {
+                    nodes: { check: { type: BLUEPRINT_NODE_TYPE_DATA_IS_NULL, params: {} } },
+                    edges: [],
+                },
+                "check",
+                "result",
+                {},
+                undefined,
+            ),
+        ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: { check: { type: BLUEPRINT_NODE_TYPE_DATA_NOT_NULL, params: { value: "Ada" } } },
+                    edges: [],
+                },
+                "check",
+                "result",
+                { value: "Ada" },
+                undefined,
+            ),
+        ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: { check: { type: BLUEPRINT_NODE_TYPE_DATA_NOT_NULL, params: { value: null } } },
+                    edges: [],
+                },
+                "check",
+                "result",
+                { value: null },
+                undefined,
+            ),
+        ).toBe(false);
+        expect(
+            resolveDataPinValue(
+                {
                     nodes: { check: { type: BLUEPRINT_NODE_TYPE_DATA_IS_EMPTY_VALUE, params: { value: {} } } },
                     edges: [],
                 },
@@ -1180,6 +3057,42 @@ describe("built-in blueprint nodes", () => {
                 targetPort: "value",
             }),
         ).toBe(false);
+
+        expect(
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                sourcePort: "token",
+                targetType: BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY,
+                targetPort: "timer",
+            }),
+        ).toBe(true);
+
+        expect(
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                sourcePort: "token",
+                targetType: BLUEPRINT_NODE_TYPE_STRING_LENGTH,
+                targetPort: "value",
+            }),
+        ).toBe(false);
+
+        expect(
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+                sourcePort: "animation",
+                targetType: BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
+                targetPort: "animation",
+            }),
+        ).toBe(true);
+
+        expect(
+            isValidBlueprintPinConnection({
+                sourceType: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+                sourcePort: "animation",
+                targetType: BLUEPRINT_NODE_TYPE_STRING_LENGTH,
+                targetPort: "value",
+            }),
+        ).toBe(false);
     });
 
     it("connects generic and typed Element refs while rejecting nonmatching typed refs", () => {
@@ -1227,6 +3140,10 @@ describe("built-in blueprint nodes", () => {
         expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_REF)).toBe(true);
         expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT)).toBe(false);
         expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE)).toBe(false);
+        expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY)).toBe(false);
+        expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)).toBe(false);
+        expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)).toBe(false);
+        expect(baseEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT)).toBe(false);
 
         const derivedEntries = blueprintNodeRegistry.listPaletteEntries({
             graphKind: "event",
@@ -1250,7 +3167,61 @@ describe("built-in blueprint nodes", () => {
             targetPortId: "element",
         });
         expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT)).toBe(true);
-        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE)).toBe(true);
+        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_VISIBLE)).toBe(false);
+        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY)).toBe(true);
+        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)).toBe(true);
+        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)).toBe(true);
+        expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT)).toBe(true);
+        expect(derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)
+            ?.category).toBe("Element");
+        expect(derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT)
+            ?.magicElementRef).toMatchObject({
+                sourceNodeId: "element-ref",
+                sourcePortId: "element",
+                targetPortId: "element",
+            });
+    });
+
+    it("deduplicates element-derived palette entries when several compatible refs exist", () => {
+        registerCoreBlueprintNodes();
+
+        const derivedEntries = blueprintNodeRegistry.listPaletteEntries({
+            graphKind: "event",
+            owner: { kind: "surfaceMain", surfaceId: "surface" },
+            magicElementRefs: [
+                {
+                    sourceNodeId: "poster-ref",
+                    sourcePortId: "element",
+                    targetPortId: "element",
+                    surfaceId: "surface",
+                    elementId: "poster",
+                    elementType: "nl.image",
+                    label: "Poster",
+                },
+                {
+                    sourceNodeId: "icon-ref",
+                    sourcePortId: "element",
+                    targetPortId: "element",
+                    surfaceId: "surface",
+                    elementId: "icon",
+                    elementType: "nl.image",
+                    label: "Icon",
+                },
+            ],
+        });
+        const entriesOfType = (type: string) => derivedEntries.filter(entry => entry.type === type);
+
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_ASSET)).toHaveLength(1);
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_FIT_MODE)).toHaveLength(1);
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_CROP_RECT)).toHaveLength(1);
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)).toHaveLength(1);
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)).toHaveLength(1);
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_CROP_RECT)[0]?.category).toBe("Element");
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_CROP_RECT)[0]?.magicElementRef)
+            .toBeUndefined();
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)[0]?.category).toBe("Element");
+        expect(entriesOfType(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)[0]?.magicElementRef)
+            .toBeUndefined();
     });
 
     it("exposes Set Frame Page as an Element-category derived element entry", () => {
@@ -1283,13 +3254,19 @@ describe("built-in blueprint nodes", () => {
             category: "Element",
             displayName: "Set Frame Page",
         });
-        expect(setPage?.pins.map(pin => pin.id)).toEqual(["in", "next", "element"]);
+        expect(setPage?.pins.map(pin => pin.id)).toEqual(["in", "next", "element", "props"]);
+        expect(setPage?.pins.find(pin => pin.id === "props")).toMatchObject({
+            label: "Page props",
+            valueType: "json",
+            optional: true,
+        });
         expect(setPage?.inspectorParams).toEqual([
             {
                 key: "targetSurfaceId",
                 label: "Page",
                 kind: "select",
-                dynamicOptionsSource: "surfaces",
+                dynamicOptionsSource: BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
+                emptyOptionLabel: "None",
             },
         ]);
         expect(setPage?.magicElementRef).toMatchObject({
@@ -1322,6 +3299,10 @@ describe("built-in blueprint nodes", () => {
             valueType: BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
             allowInlineLiteral: true,
         });
+        expect(imageOwnerEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_IMAGE_SET_FIT_MODE)?.pins
+            .some(pin => pin.id === "element")).toBe(false);
+        expect(imageOwnerEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_IMAGE_GET_CROP_RECT)?.pins
+            .map(pin => pin.id)).toEqual(["leftPct", "topPct", "widthPct", "heightPct"]);
 
         const derivedEntries = blueprintNodeRegistry.listPaletteEntries({
             graphKind: "event",
@@ -1340,10 +3321,48 @@ describe("built-in blueprint nodes", () => {
         });
         expect(derivedEntries.some(entry => entry.type === BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL)).toBe(true);
         const getImage = derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_ASSET);
-        expect(getImage?.category).toBe("Image");
+        expect(getImage?.category).toBe("Element");
         expect(getImage?.pins.find(pin => pin.id === "asset")).toMatchObject({
             valueType: BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
         });
+        const setFitMode = derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FIT_MODE);
+        expect(setFitMode?.category).toBe("Element");
+        expect(setFitMode?.pins.map(pin => pin.id)).toEqual(["in", "next", "element", "fitMode"]);
+        expect(setFitMode?.pins.find(pin => pin.id === "element")).toMatchObject({
+            valueType: "element:nl.image",
+        });
+        const getCropRect = derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_CROP_RECT);
+        expect(getCropRect?.category).toBe("Element");
+        expect(getCropRect?.pins.map(pin => pin.id)).toEqual(["element", "leftPct", "topPct", "widthPct", "heightPct"]);
+        expect(derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY)
+            ?.category).toBe("Element");
+        expect(derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)
+            ?.category).toBe("Element");
+        expect(derivedEntries.find(entry => entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_STOP_ANIMATION)
+            ?.category).toBe("Element");
+
+        const imageWidgetDerivedEntries = blueprintNodeRegistry.listPaletteEntries({
+            graphKind: "event",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "owner-image" },
+            widgetElementType: "nl.image",
+            magicElementRefs: [
+                {
+                    sourceNodeId: "other-image-ref",
+                    sourcePortId: "element",
+                    targetPortId: "element",
+                    surfaceId: "surface",
+                    elementId: "other-image",
+                    elementType: "nl.image",
+                    label: "Other Image",
+                },
+            ],
+        });
+        expect(imageWidgetDerivedEntries.find(entry =>
+            entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY
+        )?.category).toBe("Element");
+        expect(imageWidgetDerivedEntries.find(entry =>
+            entry.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY
+        )?.category).toBe("Element");
     });
 
     it("connects ImageAsset literals to Set Image Asset and keeps legacy string compatibility", () => {
@@ -1597,6 +3616,21 @@ describe("built-in blueprint nodes", () => {
         registerCoreBlueprintNodes();
 
         const switchNode = controlFlowBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING)!;
+        const switchCatalog = blueprintNodeRegistry.resolveCatalogEntryForNode(BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING, {
+            __switchStringCasePins: ["case_1_value", "case_1_output"],
+        });
+        expect(switchCatalog.dynamicInputPinAddLabel).toBe("Add Case");
+        expect(switchCatalog.pins.map(pin => pin.id)).toEqual([
+            "in",
+            "value",
+            "case0Value",
+            "case1Value",
+            "case_1_value",
+            "case0",
+            "case1",
+            "case_1_output",
+            "default",
+        ]);
         expect(
             switchNode.execute({
                 graph: {
@@ -1621,6 +3655,72 @@ describe("built-in blueprint nodes", () => {
                 hostAdapter: { host: "player" },
             }),
         ).toEqual({ nextPort: "case1" });
+        expect(
+            switchNode.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "switch", port: "in" } } },
+                    nodes: {
+                        switch: {
+                            id: "switch",
+                            type: BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
+                            params: { value: "legacy", case3Value: "legacy" },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "switch", port: "in" } },
+                node: {
+                    id: "switch",
+                    type: BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
+                    params: { value: "legacy", case3Value: "legacy" },
+                },
+                params: { value: "legacy", case3Value: "legacy" },
+                hostAdapter: { host: "player" },
+            }),
+        ).toEqual({ nextPort: "case3" });
+        expect(
+            switchNode.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "switch", port: "in" } } },
+                    nodes: {
+                        switch: {
+                            id: "switch",
+                            type: BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
+                            params: {
+                                value: "settings",
+                                case0Value: "title",
+                                case1Value: "menu",
+                                __switchStringCasePins: ["case_1_value", "case_1_output"],
+                                case_1_value: "settings",
+                            },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "switch", port: "in" } },
+                node: {
+                    id: "switch",
+                    type: BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
+                    params: {
+                        value: "settings",
+                        case0Value: "title",
+                        case1Value: "menu",
+                        __switchStringCasePins: ["case_1_value", "case_1_output"],
+                        case_1_value: "settings",
+                    },
+                },
+                params: {
+                    value: "settings",
+                    case0Value: "title",
+                    case1Value: "menu",
+                    __switchStringCasePins: ["case_1_value", "case_1_output"],
+                    case_1_value: "settings",
+                },
+                hostAdapter: { host: "player" },
+            }),
+        ).toEqual({ nextPort: "case_1_output" });
 
         const sequenceEntered: string[] = [];
         await executeGraph({
@@ -1774,8 +3874,60 @@ describe("built-in blueprint nodes", () => {
         expect(whileNode.execute(whileContext)).toEqual({ nextPort: "completed" });
 
         const delayNode = controlFlowBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FLOW_DELAY)!;
-        await expect(
-            Promise.resolve(
+        const skipDelayNode = controlFlowBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY)!;
+        expect(delayNode.pins.find(pin => pin.id === "token")).toMatchObject({
+            kind: "output",
+            semantic: "data",
+            valueType: BLUEPRINT_VALUE_TYPE_TIMER,
+            label: "Token",
+        });
+        expect(skipDelayNode.pins.find(pin => pin.id === "timer")).toMatchObject({
+            kind: "input",
+            semantic: "data",
+            valueType: BLUEPRINT_VALUE_TYPE_TIMER,
+            label: "Timer",
+        });
+        const zeroDelayResult = await Promise.resolve(
+            delayNode.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "delay", port: "in" } } },
+                    nodes: {
+                        delay: {
+                            id: "delay",
+                            type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                            params: { duration: 0 },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "delay", port: "in" } },
+                node: {
+                    id: "delay",
+                    type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                    params: { duration: 0 },
+                },
+                params: { duration: 0 },
+                hostAdapter: { host: "player" },
+            }),
+        );
+        expect(zeroDelayResult).toMatchObject({
+            nextPort: "completed",
+            outputValues: {
+                token: {
+                    kind: "timer",
+                    id: expect.any(String),
+                },
+            },
+        });
+    });
+
+    it("treats Delay duration as seconds", async () => {
+        vi.useFakeTimers();
+        try {
+            const delayNode = controlFlowBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FLOW_DELAY)!;
+            let resolved = false;
+            const execution = Promise.resolve(
                 delayNode.execute({
                     graph: {
                         id: "graph",
@@ -1784,7 +3936,7 @@ describe("built-in blueprint nodes", () => {
                             delay: {
                                 id: "delay",
                                 type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
-                                params: { duration: 0 },
+                                params: { duration: 1 },
                             },
                         },
                         edges: [],
@@ -1793,13 +3945,232 @@ describe("built-in blueprint nodes", () => {
                     node: {
                         id: "delay",
                         type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
-                        params: { duration: 0 },
+                        params: { duration: 1 },
                     },
-                    params: { duration: 0 },
+                    params: { duration: 1 },
                     hostAdapter: { host: "player" },
                 }),
-            ),
-        ).resolves.toEqual({ nextPort: "completed" });
+            ).then(result => {
+                resolved = true;
+                return result;
+            });
+
+            await vi.advanceTimersByTimeAsync(999);
+            expect(resolved).toBe(false);
+            await vi.advanceTimersByTimeAsync(1);
+            await expect(execution).resolves.toMatchObject({
+                nextPort: "completed",
+                outputValues: {
+                    token: {
+                        kind: "timer",
+                        id: expect.any(String),
+                    },
+                },
+            });
+            expect(resolved).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("keeps graph execution suspended while Delay is pending", async () => {
+        vi.useFakeTimers();
+        try {
+            const entered: string[] = [];
+            const graph = {
+                id: "graph",
+                entries: { main: { start: { nodeId: "delay", port: "in" } } },
+                nodes: {
+                    delay: {
+                        id: "delay",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                        params: { duration: 1 },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_NOOP,
+                        params: {},
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "delay", port: "completed" }, to: { nodeId: "after", port: "in" } },
+                ],
+            };
+            const execution = executeGraph({
+                graph,
+                entry: { start: { nodeId: "delay", port: "in" } },
+                hostAdapter: { host: "player" },
+                trace: {
+                    executionId: "execution",
+                    graphId: "graph",
+                    emit: event => {
+                        if (event.type === "node.enter") {
+                            entered.push(event.nodeId);
+                        }
+                    },
+                },
+            });
+
+            await Promise.resolve();
+            expect(entered).toEqual(["delay"]);
+            await vi.advanceTimersByTimeAsync(999);
+            expect(entered).toEqual(["delay"]);
+            await vi.advanceTimersByTimeAsync(1);
+            await expect(execution).resolves.toEqual({ returnValueSet: false, returnValue: undefined });
+            expect(entered).toEqual(["delay", "after"]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("cancels pending Delay graph execution without entering downstream nodes", async () => {
+        vi.useFakeTimers();
+        try {
+            const entered: string[] = [];
+            const controller = new AbortController();
+            const graph = {
+                id: "graph",
+                entries: { main: { start: { nodeId: "delay", port: "in" } } },
+                nodes: {
+                    delay: {
+                        id: "delay",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                        params: { duration: 1 },
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_NOOP,
+                        params: {},
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "delay", port: "completed" }, to: { nodeId: "after", port: "in" } },
+                ],
+            };
+            const execution = executeGraph({
+                graph,
+                entry: { start: { nodeId: "delay", port: "in" } },
+                hostAdapter: { host: "player" },
+                signal: controller.signal,
+                trace: {
+                    executionId: "execution",
+                    graphId: "graph",
+                    emit: event => {
+                        if (event.type === "node.enter") {
+                            entered.push(event.nodeId);
+                        }
+                    },
+                },
+            });
+
+            await Promise.resolve();
+            expect(entered).toEqual(["delay"]);
+            controller.abort("Surface unmounted");
+            await expect(execution).rejects.toThrow("Surface unmounted");
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(entered).toEqual(["delay"]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("skips a pending Delay through its Timer token", async () => {
+        vi.useFakeTimers();
+        try {
+            const entered: string[] = [];
+            const executionOwner = { surfaceId: "surface", elementId: "button", blueprintId: "blueprint" };
+            const graph = {
+                id: "skipDelayGraph",
+                entries: { main: { start: { nodeId: "delay", port: "in" } } },
+                nodes: {
+                    delay: {
+                        id: "delay",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                        params: { duration: 1 },
+                    },
+                    skip: {
+                        id: "skip",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY,
+                        params: {},
+                    },
+                    after: {
+                        id: "after",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_NOOP,
+                        params: {},
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "delay", port: "completed" }, to: { nodeId: "after", port: "in" } },
+                    { from: { nodeId: "delay", port: "token" }, to: { nodeId: "skip", port: "timer" } },
+                ],
+            };
+            const delayExecution = executeGraph({
+                graph,
+                entry: { start: { nodeId: "delay", port: "in" } },
+                hostAdapter: { host: "player" },
+                executionOwner,
+                trace: {
+                    executionId: "delay-execution",
+                    graphId: "skipDelayGraph",
+                    emit: event => {
+                        if (event.type === "node.enter") {
+                            entered.push(event.nodeId);
+                        }
+                    },
+                },
+            });
+
+            await Promise.resolve();
+            expect(entered).toEqual(["delay"]);
+
+            await executeGraph({
+                graph,
+                entry: { start: { nodeId: "skip", port: "in" } },
+                hostAdapter: { host: "player" },
+                executionOwner,
+            });
+
+            await expect(delayExecution).resolves.toEqual({ returnValueSet: false, returnValue: undefined });
+            expect(entered).toEqual(["delay", "after"]);
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(entered).toEqual(["delay", "after"]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("treats Skip Delay with non-Delay Timer input as a no-op", () => {
+        const skipDelayNode = controlFlowBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY)!;
+        const createContext = (timer: unknown) => ({
+            graph: {
+                id: "graph",
+                entries: { main: { start: { nodeId: "skip", port: "in" } } },
+                nodes: {
+                    skip: {
+                        id: "skip",
+                        type: BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY,
+                        params: { timer },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "skip", port: "in" } },
+            node: {
+                id: "skip",
+                type: BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY,
+                params: { timer },
+            },
+            params: { timer },
+            hostAdapter: { host: "player" as const },
+        });
+
+        expect(skipDelayNode.execute(createContext({ kind: "timer", id: "interval:abc" }))).toEqual({
+            nextPort: "next",
+        });
+        expect(skipDelayNode.execute(createContext({ kind: "timer", id: "delay:missing" }))).toEqual({
+            nextPort: "next",
+        });
+        expect(skipDelayNode.execute(createContext("not-a-timer"))).toEqual({ nextPort: "next" });
     });
 
     it("only exposes Text nodes for Text widget blueprints", () => {
@@ -1826,6 +4197,48 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);
     });
 
+    it("binds self Displayable nodes to the current widget and keeps Element references for derived nodes", () => {
+        registerCoreBlueprintNodes();
+
+        const paletteTypesForWidget = (elementType: string) =>
+            new Set(
+                blueprintNodeRegistry.listPaletteEntries({
+                    graphKind: "event",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "owner" },
+                    widgetElementType: elementType,
+                }).map(entry => entry.type),
+            );
+
+        for (const type of ["nl.container", "nl.text", "nl.image", "nl.button"]) {
+            const entries = paletteTypesForWidget(type);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY)).toBe(true);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY)).toBe(true);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY)).toBe(true);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY)).toBe(true);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT)).toBe(true);
+        }
+
+        const selfDisplayableEntries = blueprintNodeRegistry.listPaletteEntries({
+            graphKind: "event",
+            owner: { kind: "widgetMain", surfaceId: "surface", elementId: "owner" },
+            widgetElementType: "nl.image",
+        });
+        const setSelfProperty = selfDisplayableEntries.find(
+            entry => entry.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+        );
+        expect(setSelfProperty?.category).toBe("Displayable");
+        expect(setSelfProperty?.pins.some(pin => pin.id === "element")).toBe(false);
+
+        for (const type of ["nl.slider", "nl.list", "nl.frame"]) {
+            const entries = paletteTypesForWidget(type);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY)).toBe(true);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY)).toBe(true);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY)).toBe(true);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY)).toBe(true);
+            expect(entries.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT)).toBe(false);
+        }
+    });
+
     it("scopes Blueprint Value event heads and return nodes to value blueprints", () => {
         registerCoreBlueprintNodes();
 
@@ -1846,18 +4259,35 @@ describe("built-in blueprint nodes", () => {
         );
 
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(true);
-        expect(valuePaletteTypes.has("blueprint.event.head.flush")).toBe(false);
+        expect(valuePaletteTypes.has("blueprint.event.head.flush")).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK)).toBe(false);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_REF)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_BOOLEAN_AND)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_COMPARE_EQUAL)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_COMMENT)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_GET)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOCAL_SET)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(false);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_QUIT)).toBe(false);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_NEXT)).toBe(false);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_SKIP)).toBe(false);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PERSISTENT_SET)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_DELAY)).toBe(false);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_LOG)).toBe(false);
 
         expect(widgetPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBe(true);
@@ -1874,11 +4304,20 @@ describe("built-in blueprint nodes", () => {
         const byType = new Map(entries.map(entry => [entry.type, entry]));
 
         expect(byType.get(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)?.category).toBe("Events");
-        expect(byType.has("blueprint.event.head.flush")).toBe(false);
+        expect(byType.get("blueprint.event.head.flush")?.category).toBe("Events");
         expect(byType.get(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)?.category).toBe("Data");
         expect(byType.get(BLUEPRINT_NODE_TYPE_ELEMENT_REF)?.category).toBe("Element");
+        expect(byType.has(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR)).toBe(false);
         expect(byType.get(BLUEPRINT_NODE_TYPE_LOCAL_GET)?.category).toBe("Variables");
         expect(byType.get(BLUEPRINT_NODE_TYPE_LOCAL_SET)?.category).toBe("Variables");
+        expect(byType.get(BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)?.category).toBe("Game");
+        expect(byType.get(BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)?.category).toBe("Game");
+        expect(byType.get(BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)?.category).toBe("Game");
+        expect(byType.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(false);
+        expect(byType.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
+        expect(byType.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(false);
+        expect(byType.has(BLUEPRINT_NODE_TYPE_GAME_QUIT)).toBe(false);
+        expect(byType.has(BLUEPRINT_NODE_TYPE_GAME_NEXT)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_PERSISTENT_SET)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(false);
@@ -1945,24 +4384,50 @@ describe("built-in blueprint nodes", () => {
 
         expect(allTypes.has("blueprint.event.head.click")).toBe(false);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT)).toBe(true);
+        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY)).toBe(true);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN)).toBe(true);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT)).toBe(false);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(false);
+        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
+        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT)).toBe(false);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT)).toBe(false);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
@@ -1972,6 +4437,14 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL_END)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS)).toBe(true);
@@ -1987,7 +4460,13 @@ describe("built-in blueprint nodes", () => {
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(false);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
+        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE)).toBe(true);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE)).toBe(true);
@@ -2000,17 +4479,35 @@ describe("built-in blueprint nodes", () => {
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT)).toBe(true);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER)).toBe(true);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT)).toBe(true);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(false);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL)).toBe(false);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
+        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(false);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_ANY_BROADCAST)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
         const frameSetPageEntry = blueprintNodeRegistry
             .listPaletteEntries({
@@ -2211,6 +4708,1035 @@ describe("built-in blueprint nodes", () => {
         expect(textProps.color).toBe("#102030");
     });
 
+    it("resolves Displayable Get Property against self and element targets without exposing Variant ids", () => {
+        const displayableProps = {
+            self: {
+                position: { x: 11, y: 22 },
+                offset: { x: 7, y: -3 },
+                size: { width: 100, height: 50 },
+                bounds: { x: 11, y: 22, width: 100, height: 50 },
+                rotation: 5,
+                opacity: 0.75,
+                display: true,
+                visible: true,
+            },
+            target: {
+                position: { x: 40, y: 80 },
+                offset: { x: 12, y: -8 },
+                size: { width: 200, height: 90 },
+                bounds: { x: 40, y: 80, width: 200, height: 90 },
+                rotation: 10,
+                opacity: 0.5,
+                display: false,
+                visible: false,
+            },
+        };
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    widget: {
+                        getDisplayableProperties: (elementId: keyof typeof displayableProps) => displayableProps[elementId],
+                        getCommonProperties: (elementId: string) => ({
+                            visible: true,
+                            enabled: true,
+                            variantId: elementId === "target" ? "variant-target" : "variant-self",
+                        }),
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getX: { type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY, params: { property: "x" } },
+                    },
+                    edges: [],
+                },
+                "getX",
+                "value",
+                { property: "x" },
+                undefined,
+                0,
+                {
+                    hostAdapter,
+                    executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+                },
+            ),
+        ).toBe(11);
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getOffsetX: {
+                            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
+                            params: { property: "offsetX" },
+                        },
+                    },
+                    edges: [],
+                },
+                "getOffsetX",
+                "value",
+                { property: "offsetX" },
+                undefined,
+                0,
+                {
+                    hostAdapter,
+                    executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+                },
+            ),
+        ).toBe(7);
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        ref: {
+                            type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                            params: {
+                                [ELEMENT_REF_PARAM_SURFACE_ID]: "surface",
+                                [ELEMENT_REF_PARAM_ELEMENT_ID]: "target",
+                                [ELEMENT_REF_PARAM_ELEMENT_TYPE]: "nl.image",
+                            },
+                        },
+                        getOpacity: {
+                            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
+                            params: { property: "opacity" },
+                        },
+                    },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "getOpacity", port: "element" },
+                        },
+                    ],
+                },
+                "getOpacity",
+                "value",
+                { property: "opacity" },
+                undefined,
+                0,
+                {
+                    hostAdapter,
+                    executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+                },
+            ),
+        ).toBe(0.5);
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        ref: {
+                            type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                            params: {
+                                [ELEMENT_REF_PARAM_SURFACE_ID]: "surface",
+                                [ELEMENT_REF_PARAM_ELEMENT_ID]: "target",
+                                [ELEMENT_REF_PARAM_ELEMENT_TYPE]: "nl.image",
+                            },
+                        },
+                        getOffsetY: {
+                            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
+                            params: { property: "offsetY" },
+                        },
+                    },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "getOffsetY", port: "element" },
+                        },
+                    ],
+                },
+                "getOffsetY",
+                "value",
+                { property: "offsetY" },
+                undefined,
+                0,
+                {
+                    hostAdapter,
+                    executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+                },
+            ),
+        ).toBe(-8);
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getDisplay: { type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY, params: {} },
+                    },
+                    edges: [],
+                },
+                "getDisplay",
+                "display",
+                {},
+                undefined,
+                0,
+                {
+                    hostAdapter,
+                    executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+                },
+            ),
+        ).toBe(true);
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        ref: {
+                            type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                            params: {
+                                [ELEMENT_REF_PARAM_SURFACE_ID]: "surface",
+                                [ELEMENT_REF_PARAM_ELEMENT_ID]: "target",
+                                [ELEMENT_REF_PARAM_ELEMENT_TYPE]: "nl.image",
+                            },
+                        },
+                        getDisplay: { type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_DISPLAY, params: {} },
+                    },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "getDisplay", port: "element" },
+                        },
+                    ],
+                },
+                "getDisplay",
+                "display",
+                {},
+                undefined,
+                0,
+                {
+                    hostAdapter,
+                    executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+                },
+            ),
+        ).toBe(false);
+    });
+
+    it("executes Displayable Set Variant with a wait-for-animation option", async () => {
+        let setVariantCall: {
+            elementId: string;
+            variantId: string | null;
+            waitForTransition: boolean | undefined;
+        } | null = null;
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    widget: {
+                        setVariant: async (
+                            elementId: string,
+                            variantId: string | null,
+                            options?: { waitForTransition?: boolean },
+                        ) => {
+                            setVariantCall = {
+                                elementId,
+                                variantId,
+                                waitForTransition: options?.waitForTransition,
+                            };
+                        },
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+
+        const setVariant = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT)!;
+        await Promise.resolve(
+            setVariant.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setVariant", port: "in" } } },
+                    nodes: {
+                        setVariant: {
+                            id: "setVariant",
+                            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+                            params: { variantId: "variant-visible", waitForTransition: "wait" },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "setVariant", port: "in" } },
+                node: {
+                    id: "setVariant",
+                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+                    params: { variantId: "variant-visible", waitForTransition: "wait" },
+                },
+                params: { variantId: "variant-visible", waitForTransition: "wait" },
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(setVariantCall).toEqual({
+            elementId: "image",
+            variantId: "variant-visible",
+            waitForTransition: true,
+        });
+    });
+
+    it("rejects Element Displayable Set Variant targets that do not support Appearance variants", async () => {
+        let setVariantCalled = false;
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    widget: {
+                        setVariant: async () => {
+                            setVariantCalled = true;
+                        },
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+        const setElementVariant = elementBlueprintNodes.find(def =>
+            def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT
+        )!;
+        const node = {
+            id: "setVariant",
+            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
+            params: { variantId: "variant-visible", waitForTransition: "wait" },
+        };
+
+        await expect(Promise.resolve(
+            setElementVariant.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setVariant", port: "in" } } },
+                    nodes: {
+                        ref: {
+                            id: "ref",
+                            type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                            params: {
+                                [ELEMENT_REF_PARAM_SURFACE_ID]: "surface",
+                                [ELEMENT_REF_PARAM_ELEMENT_ID]: "slider",
+                                [ELEMENT_REF_PARAM_ELEMENT_TYPE]: "nl.slider",
+                            },
+                        },
+                        setVariant: node,
+                    },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "setVariant", port: "element" },
+                        },
+                    ],
+                },
+                entry: { start: { nodeId: "setVariant", port: "in" } },
+                node,
+                params: node.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+            }),
+        )).rejects.toThrow("cannot target nl.slider");
+        expect(setVariantCalled).toBe(false);
+    });
+
+    it("executes Displayable opacity writes and animations as editor percentages", async () => {
+        let displayablePatch: Record<string, unknown> | undefined;
+        const displayablePatchCalls: Record<string, unknown>[] = [];
+        let displayableMotion: { target?: Record<string, unknown>; transition?: Record<string, unknown> } | undefined;
+        const currentDisplayable = {
+            position: { x: 12, y: 0 },
+            offset: { x: 0, y: 0 },
+            size: { width: 100, height: 100 },
+            bounds: { x: 12, y: 0, width: 100, height: 100 },
+            rotation: 0,
+            opacity: 0,
+            display: true,
+            visible: true,
+        };
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    widget: {
+                        getDisplayableProperties: () => currentDisplayable,
+                        setDisplayableProperties: async (_elementId: string, patch: Record<string, unknown>) => {
+                            displayablePatch = patch;
+                            displayablePatchCalls.push(patch);
+                        },
+                        animateDisplayable: async (_elementId: string, request: { target?: Record<string, unknown>; transition?: Record<string, unknown> }) => {
+                            displayableMotion = request;
+                            return { id: "motion", ...request };
+                        },
+                        stopDisplayableAnimation: async () => undefined,
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+
+        const setOpacity = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY)!;
+        await Promise.resolve(
+            setOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setOpacity", port: "in" } } },
+                    nodes: {
+                        setOpacity: {
+                            id: "setOpacity",
+                            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+                            params: { property: "opacity", value: 50 },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "setOpacity", port: "in" } },
+                node: {
+                    id: "setOpacity",
+                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+                    params: { property: "opacity", value: 50 },
+                },
+                params: { property: "opacity", value: 50 },
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayablePatch).toEqual({ opacity: 0.5 });
+
+        const setDisplay = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY)!;
+        await Promise.resolve(
+            setDisplay.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setDisplay", port: "in" } } },
+                    nodes: {
+                        setDisplay: {
+                            id: "setDisplay",
+                            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY,
+                            params: { display: false },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "setDisplay", port: "in" } },
+                node: {
+                    id: "setDisplay",
+                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_DISPLAY,
+                    params: { display: false },
+                },
+                params: { display: false },
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayablePatch).toEqual({ display: false });
+
+        const animateOpacity = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY)!;
+        const animateOpacityResult = await Promise.resolve(
+            animateOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "animateOpacity", port: "in" } } },
+                    nodes: {
+                        animateOpacity: {
+                            id: "animateOpacity",
+                            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+                            params: {
+                                property: "opacity",
+                                from: 0,
+                                to: 100,
+                                duration: 0.3,
+                                delay: 0,
+                                easing: "easeOut",
+                                after: "hold",
+                            },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "animateOpacity", port: "in" } },
+                node: {
+                    id: "animateOpacity",
+                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+                    params: {
+                        property: "opacity",
+                        from: 0,
+                        to: 100,
+                        duration: 0.3,
+                        delay: 0,
+                        easing: "easeOut",
+                        after: "hold",
+                    },
+                },
+                params: {
+                    property: "opacity",
+                    from: 0,
+                    to: 100,
+                    duration: 0.3,
+                    delay: 0,
+                    easing: "easeOut",
+                    after: "hold",
+                },
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(animateOpacityResult).toMatchObject({
+            nextPort: "next",
+            outputValues: {
+                animation: {
+                    kind: "animation",
+                    id: expect.any(String),
+                },
+            },
+        });
+        expect(displayableMotion).toMatchObject({
+            target: { opacity: [0, 1] },
+            transition: { type: "tween", durationMs: 300, delayMs: 0 },
+        });
+
+        const animateOpacityFromCurrentNode = {
+            id: "animateOpacityFromCurrent",
+            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+            params: {
+                property: "opacity",
+                to: 100,
+                duration: 0.3,
+                delay: 0,
+                easing: "easeOut",
+                after: "hold",
+            },
+        };
+        await Promise.resolve(
+            animateOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "animateOpacityFromCurrent", port: "in" } } },
+                    nodes: { animateOpacityFromCurrent: animateOpacityFromCurrentNode },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "animateOpacityFromCurrent", port: "in" } },
+                node: animateOpacityFromCurrentNode,
+                params: animateOpacityFromCurrentNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayableMotion).toMatchObject({
+            target: { opacity: { from: "current", to: 1 } },
+            transition: { type: "tween", durationMs: 300, delayMs: 0 },
+        });
+
+        const animateOpacityOnePercentNode = {
+            id: "animateOpacityOnePercent",
+            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+            params: {
+                property: "opacity",
+                from: 0,
+                to: 1,
+                duration: 0.3,
+                delay: 0,
+                easing: "easeOut",
+                after: "hold",
+            },
+        };
+        await Promise.resolve(
+            animateOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "animateOpacityOnePercent", port: "in" } } },
+                    nodes: { animateOpacityOnePercent: animateOpacityOnePercentNode },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "animateOpacityOnePercent", port: "in" } },
+                node: animateOpacityOnePercentNode,
+                params: animateOpacityOnePercentNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayableMotion).toMatchObject({
+            target: { opacity: [0, 0.01] },
+            transition: { type: "tween", durationMs: 300, delayMs: 0 },
+        });
+
+        const setOffset = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY)!;
+        await Promise.resolve(
+            setOffset.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setOffset", port: "in" } } },
+                    nodes: {
+                        setOffset: {
+                            id: "setOffset",
+                            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+                            params: { property: "offsetX", value: 24 },
+                        },
+                    },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "setOffset", port: "in" } },
+                node: {
+                    id: "setOffset",
+                    type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+                    params: { property: "offsetX", value: 24 },
+                },
+                params: { property: "offsetX", value: 24 },
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayablePatch).toEqual({ offsetX: 24 });
+
+        const animateXNode = {
+            id: "animateX",
+            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+            params: {
+                property: "x",
+                from: 0,
+                [BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT]: true,
+                to: 64,
+                duration: 0.2,
+                delay: 0,
+                easing: "easeOut",
+                after: "hold",
+            },
+        };
+        await Promise.resolve(
+            animateOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "animateX", port: "in" } } },
+                    nodes: { animateX: animateXNode },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "animateX", port: "in" } },
+                node: animateXNode,
+                params: animateXNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayablePatch).toEqual({ offsetX: 24 });
+        expect(displayableMotion).toMatchObject({
+            target: { x: [-12, 52] },
+            transition: { type: "tween", durationMs: 200, delayMs: 0 },
+            commitLayoutOnComplete: { x: 64 },
+        });
+
+        const animateLegacyDefaultXNode = {
+            id: "animateLegacyDefaultX",
+            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+            params: {
+                property: "x",
+                from: 0,
+                to: 64,
+                duration: 0.2,
+                delay: 0,
+                easing: "easeOut",
+                after: "hold",
+            },
+        };
+        const legacyDefaultPatchCallCount = displayablePatchCalls.length;
+        await Promise.resolve(
+            animateOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "animateLegacyDefaultX", port: "in" } } },
+                    nodes: { animateLegacyDefaultX: animateLegacyDefaultXNode },
+                    edges: [],
+                },
+                entry: { start: { nodeId: "animateLegacyDefaultX", port: "in" } },
+                node: animateLegacyDefaultXNode,
+                params: animateLegacyDefaultXNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayablePatch).toEqual({ offsetX: 24 });
+        expect(displayablePatchCalls.slice(legacyDefaultPatchCallCount)).toEqual([]);
+        expect(displayableMotion).toMatchObject({
+            target: { x: [0, 52] },
+            transition: { type: "tween", durationMs: 200, delayMs: 0 },
+            commitLayoutOnComplete: { x: 64 },
+        });
+    });
+
+    it("requests held Displayable x animations without pre-patching layout", async () => {
+        vi.useFakeTimers();
+        const originalRafDescriptor = Object.getOwnPropertyDescriptor(globalThis, "requestAnimationFrame");
+        Object.defineProperty(globalThis, "requestAnimationFrame", {
+            configurable: true,
+            writable: true,
+            value: vi.fn(() => 1),
+        });
+        const displayablePatchCalls: Record<string, unknown>[] = [];
+        const stoppedAnimationIds: string[] = [];
+        let displayableMotion: { target?: Record<string, unknown>; transition?: Record<string, unknown> } | undefined;
+        const currentDisplayable = {
+            position: { x: -500, y: 0 },
+            offset: { x: 0, y: 0 },
+            size: { width: 100, height: 100 },
+            bounds: { x: -500, y: 0, width: 100, height: 100 },
+            rotation: 0,
+            opacity: 1,
+            display: true,
+            visible: true,
+        };
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    widget: {
+                        getDisplayableProperties: () => currentDisplayable,
+                        setDisplayableProperties: async (_elementId: string, patch: Record<string, unknown>) => {
+                            displayablePatchCalls.push(patch);
+                        },
+                        animateDisplayable: async (_elementId: string, request: { target?: Record<string, unknown>; transition?: Record<string, unknown> }) => {
+                            displayableMotion = request;
+                            return { id: "motion", ...request };
+                        },
+                        stopDisplayableAnimation: async (animationId: string) => {
+                            stoppedAnimationIds.push(animationId);
+                        },
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+        const animateX = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY)!;
+        const animateXNode = {
+            id: "animateX",
+            type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+            params: {
+                property: "x",
+                to: 0,
+                duration: 0.2,
+                delay: 0,
+                easing: "easeOut",
+                after: "hold",
+            },
+        };
+
+        try {
+            const execution = Promise.resolve(
+                animateX.execute({
+                    graph: {
+                        id: "graph",
+                        entries: { main: { start: { nodeId: "animateX", port: "in" } } },
+                        nodes: { animateX: animateXNode },
+                        edges: [],
+                    },
+                    entry: { start: { nodeId: "animateX", port: "in" } },
+                    node: animateXNode,
+                    params: animateXNode.params,
+                    hostAdapter,
+                    executionOwner: { surfaceId: "surface", elementId: "image", blueprintId: "bp" },
+                }),
+            );
+
+            await vi.advanceTimersByTimeAsync(50);
+            await expect(execution).resolves.toMatchObject({
+                nextPort: "next",
+                outputValues: {
+                    animation: {
+                        kind: "animation",
+                        id: expect.stringMatching(/^animation:bp:surface:image:-:-:graph:animateX:\d+$/),
+                    },
+                },
+            });
+        } finally {
+            vi.useRealTimers();
+            if (originalRafDescriptor) {
+                Object.defineProperty(globalThis, "requestAnimationFrame", originalRafDescriptor);
+            } else {
+                delete (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame;
+            }
+        }
+
+        expect(displayablePatchCalls).toEqual([]);
+        expect(displayableMotion).toMatchObject({
+            target: { x: [0, 500] },
+            transition: { type: "tween", durationMs: 200, delayMs: 0 },
+            commitLayoutOnComplete: { x: 0 },
+        });
+        expect(stoppedAnimationIds).toEqual([]);
+    });
+
+    it("stops Displayable animations through AnimationToken input", async () => {
+        const stopAnimation = elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION)!;
+        const stoppedAnimationIds: string[] = [];
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    widget: {
+                        stopDisplayableAnimation: async (animationId: string) => {
+                            stoppedAnimationIds.push(animationId);
+                        },
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+        const createContext = (animation: unknown) => ({
+            graph: {
+                id: "graph",
+                entries: { main: { start: { nodeId: "stop", port: "in" } } },
+                nodes: {
+                    stop: {
+                        id: "stop",
+                        type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
+                        params: { animation },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "stop", port: "in" } },
+            node: {
+                id: "stop",
+                type: BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
+                params: { animation },
+            },
+            params: { animation },
+            hostAdapter,
+        });
+
+        await expect(Promise.resolve(stopAnimation.execute(createContext({ kind: "animation", id: "animation:one" })))).resolves.toEqual({
+            nextPort: "next",
+        });
+        await expect(Promise.resolve(stopAnimation.execute(createContext({ kind: "timer", id: "animation:one" })))).resolves.toEqual({
+            nextPort: "next",
+        });
+        await expect(Promise.resolve(stopAnimation.execute(createContext("not-an-animation")))).resolves.toEqual({ nextPort: "next" });
+        expect(stoppedAnimationIds).toEqual(["animation:one"]);
+    });
+
+    it("executes Element Displayable property writes and animations through Element refs", async () => {
+        let displayablePatchCall: { elementId: string; patch: Record<string, unknown> } | undefined;
+        let displayableMotionCall: { elementId: string; target?: Record<string, unknown>; transition?: Record<string, unknown> } | undefined;
+        const currentDisplayable = {
+            position: { x: 0, y: 0 },
+            offset: { x: 0, y: 0 },
+            size: { width: 100, height: 100 },
+            bounds: { x: 0, y: 0, width: 100, height: 100 },
+            rotation: 0,
+            opacity: 0,
+            display: true,
+            visible: true,
+        };
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                hostApi: {
+                    widget: {
+                        getDisplayableProperties: () => currentDisplayable,
+                        setDisplayableProperties: async (elementId: string, patch: Record<string, unknown>) => {
+                            displayablePatchCall = { elementId, patch };
+                        },
+                        animateDisplayable: async (elementId: string, request: { target?: Record<string, unknown>; transition?: Record<string, unknown> }) => {
+                            displayableMotionCall = { elementId, target: request.target, transition: request.transition };
+                            return { id: "motion", ...request };
+                        },
+                        stopDisplayableAnimation: async () => undefined,
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+        const refNode = {
+            id: "ref",
+            type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+            params: {
+                [ELEMENT_REF_PARAM_SURFACE_ID]: "surface",
+                [ELEMENT_REF_PARAM_ELEMENT_ID]: "target",
+                [ELEMENT_REF_PARAM_ELEMENT_TYPE]: "nl.image",
+            },
+        };
+
+        const setElementOpacity = elementBlueprintNodes.find(def =>
+            def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY
+        )!;
+        const setNode = {
+            id: "setOpacity",
+            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+            params: { property: "opacity", value: 25 },
+        };
+        await Promise.resolve(
+            setElementOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setOpacity", port: "in" } } },
+                    nodes: { ref: refNode, setOpacity: setNode },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "setOpacity", port: "element" },
+                        },
+                    ],
+                },
+                entry: { start: { nodeId: "setOpacity", port: "in" } },
+                node: setNode,
+                params: setNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayablePatchCall).toEqual({ elementId: "target", patch: { opacity: 0.25 } });
+
+        const setElementDisplay = elementBlueprintNodes.find(def =>
+            def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_DISPLAY
+        )!;
+        const setDisplayNode = {
+            id: "setDisplay",
+            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_DISPLAY,
+            params: { display: false },
+        };
+        await Promise.resolve(
+            setElementDisplay.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "setDisplay", port: "in" } } },
+                    nodes: { ref: refNode, setDisplay: setDisplayNode },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "setDisplay", port: "element" },
+                        },
+                    ],
+                },
+                entry: { start: { nodeId: "setDisplay", port: "in" } },
+                node: setDisplayNode,
+                params: setDisplayNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayablePatchCall).toEqual({ elementId: "target", patch: { display: false } });
+
+        const animateElementOpacity = elementBlueprintNodes.find(def =>
+            def.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY
+        )!;
+        const animateNode = {
+            id: "animateOpacity",
+            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+            params: {
+                property: "opacity",
+                from: 25,
+                to: 100,
+                duration: 0.3,
+                delay: 0,
+                easing: "easeOut",
+                after: "hold",
+            },
+        };
+        await Promise.resolve(
+            animateElementOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "animateOpacity", port: "in" } } },
+                    nodes: { ref: refNode, animateOpacity: animateNode },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "animateOpacity", port: "element" },
+                        },
+                    ],
+                },
+                entry: { start: { nodeId: "animateOpacity", port: "in" } },
+                node: animateNode,
+                params: animateNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayableMotionCall).toMatchObject({
+            elementId: "target",
+            target: { opacity: [0.25, 1] },
+            transition: { type: "tween", durationMs: 300, delayMs: 0 },
+        });
+
+        const animateFromCurrentNode = {
+            id: "animateFromCurrent",
+            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+            params: {
+                property: "opacity",
+                to: 50,
+                duration: 0.2,
+                delay: 0,
+                easing: "easeOut",
+                after: "hold",
+            },
+        };
+        await Promise.resolve(
+            animateElementOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "animateFromCurrent", port: "in" } } },
+                    nodes: { ref: refNode, animateFromCurrent: animateFromCurrentNode },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "animateFromCurrent", port: "element" },
+                        },
+                    ],
+                },
+                entry: { start: { nodeId: "animateFromCurrent", port: "in" } },
+                node: animateFromCurrentNode,
+                params: animateFromCurrentNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayableMotionCall).toMatchObject({
+            elementId: "target",
+            target: { opacity: { from: "current", to: 0.5 } },
+            transition: { type: "tween", durationMs: 200, delayMs: 0 },
+        });
+
+        const animateOnePercentNode = {
+            id: "animateOnePercent",
+            type: BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+            params: {
+                property: "opacity",
+                from: 0,
+                to: 1,
+                duration: 0.2,
+                delay: 0,
+                easing: "easeOut",
+                after: "hold",
+            },
+        };
+        await Promise.resolve(
+            animateElementOpacity.execute({
+                graph: {
+                    id: "graph",
+                    entries: { main: { start: { nodeId: "animateOnePercent", port: "in" } } },
+                    nodes: { ref: refNode, animateOnePercent: animateOnePercentNode },
+                    edges: [
+                        {
+                            from: { nodeId: "ref", port: "element" },
+                            to: { nodeId: "animateOnePercent", port: "element" },
+                        },
+                    ],
+                },
+                entry: { start: { nodeId: "animateOnePercent", port: "in" } },
+                node: animateOnePercentNode,
+                params: animateOnePercentNode.params,
+                hostAdapter,
+                executionOwner: { surfaceId: "surface", elementId: "self", blueprintId: "bp" },
+            }),
+        );
+
+        expect(displayableMotionCall).toMatchObject({
+            elementId: "target",
+            target: { opacity: [0, 0.01] },
+            transition: { type: "tween", durationMs: 200, delayMs: 0 },
+        });
+    });
+
     it("executes Slider write nodes and resolves Slider read nodes against the current widget owner", async () => {
         registerCoreBlueprintNodes();
 
@@ -2388,16 +5914,114 @@ describe("built-in blueprint nodes", () => {
         ).toBe(10);
     });
 
-    it("executes ImageAsset write nodes and resolves ImageAsset reads", async () => {
+    it("executes Button Set Pointer nodes", async () => {
         registerCoreBlueprintNodes();
 
-        let imageProps: {
+        let buttonProps = {
+            label: "Go",
+            cursor: "pointer" as const,
+        };
+        let lastButtonPatchElementId: string | null = null;
+        const hostAdapter = {
+            host: "player",
+            blueprintRuntime: {
+                surfaceId: "surface",
+                setSurfaceState: () => undefined,
+                getSurfaceState: () => undefined,
+                emitDebug: () => undefined,
+                dispatchElementBlueprintEvent: async () => undefined,
+                hostApi: {
+                    widget: {
+                        getButtonProperties: () => buttonProps,
+                        setButtonProperties: async (elementId: string, patch: Partial<typeof buttonProps>) => {
+                            lastButtonPatchElementId = elementId;
+                            buttonProps = { ...buttonProps, ...patch };
+                        },
+                    },
+                },
+            },
+        } as unknown as UIHostAdapter;
+        const owner = { surfaceId: "surface", elementId: "button", blueprintId: "bp" };
+        const executeButtonNode = async (
+            type: string,
+            nodeId: string,
+            params: Record<string, unknown>,
+            graphPatch?: {
+                nodes?: Record<string, { id: string; type: string; params?: Record<string, unknown> }>;
+                edges?: { from: { nodeId: string; port: string }; to: { nodeId: string; port: string } }[];
+            },
+        ) => {
+            const def = widgetPropertyBlueprintNodes.find(node => node.type === type)!;
+            await Promise.resolve(
+                def.execute({
+                    graph: {
+                        id: "graph",
+                        entries: { main: { start: { nodeId, port: "in" } } },
+                        nodes: {
+                            ...(graphPatch?.nodes ?? {}),
+                            [nodeId]: { id: nodeId, type, params },
+                        },
+                        edges: graphPatch?.edges ?? [],
+                    },
+                    entry: { start: { nodeId, port: "in" } },
+                    node: { id: nodeId, type, params },
+                    params,
+                    hostAdapter,
+                    executionOwner: owner,
+                }),
+            );
+        };
+
+        await executeButtonNode(BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER, "setPointerDefault", {});
+        expect(buttonProps.cursor).toBe("auto");
+
+        await executeButtonNode(BLUEPRINT_NODE_TYPE_BUTTON_SET_POINTER, "setPointerCrosshair", { cursor: "crosshair" });
+        expect(buttonProps.cursor).toBe("crosshair");
+
+        await executeButtonNode(
+            BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER,
+            "setElementPointer",
+            { cursor: "grab" },
+            {
+                nodes: {
+                    buttonRef: {
+                        id: "buttonRef",
+                        type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                        params: { surfaceId: "surface", elementId: "other-button", elementType: "nl.button" },
+                    },
+                },
+                edges: [
+                    {
+                        from: { nodeId: "buttonRef", port: "element" },
+                        to: { nodeId: "setElementPointer", port: "element" },
+                    },
+                ],
+            },
+        );
+        expect(lastButtonPatchElementId).toBe("other-button");
+        expect(buttonProps.cursor).toBe("grab");
+    });
+
+    it("executes Image write nodes and resolves Image reads", async () => {
+        registerCoreBlueprintNodes();
+
+        type ImageProps = {
             asset: { kind: "imageAsset"; assetId: string } | null;
             assetId: string | null;
-        } = {
+            fitMode: "cover" | "contain" | "stretch" | "crop" | "tile";
+            cropRect: { leftPct: number; topPct: number; widthPct: number; heightPct: number };
+            flipX: boolean;
+            flipY: boolean;
+        };
+        let imageProps: ImageProps = {
             asset: { kind: "imageAsset" as const, assetId: "old-image" },
             assetId: "old-image",
+            fitMode: "cover",
+            cropRect: { leftPct: 0, topPct: 0, widthPct: 100, heightPct: 100 },
+            flipX: false,
+            flipY: false,
         };
+        let lastImagePatchElementId: string | null = null;
         const hostAdapter = {
             host: "player",
             blueprintRuntime: {
@@ -2409,9 +6033,19 @@ describe("built-in blueprint nodes", () => {
                 hostApi: {
                     widget: {
                         getImageProperties: () => imageProps,
-                        setImageProperties: async (_elementId: string, patch: Partial<typeof imageProps>) => {
-                            const asset = patch.asset ?? (patch.assetId ? { kind: "imageAsset" as const, assetId: patch.assetId } : null);
+                        setImageProperties: async (elementId: string, patch: Partial<ImageProps>) => {
+                            lastImagePatchElementId = elementId;
+                            const hasAssetPatch = Object.prototype.hasOwnProperty.call(patch, "asset");
+                            const asset = hasAssetPatch
+                                ? patch.asset ?? null
+                                : patch.assetId === undefined
+                                  ? imageProps.asset
+                                  : patch.assetId
+                                    ? { kind: "imageAsset" as const, assetId: patch.assetId }
+                                    : null;
                             imageProps = {
+                                ...imageProps,
+                                ...patch,
                                 asset,
                                 assetId: asset?.assetId ?? null,
                             };
@@ -2421,32 +6055,40 @@ describe("built-in blueprint nodes", () => {
             },
         } as unknown as UIHostAdapter;
         const owner = { surfaceId: "surface", elementId: "image", blueprintId: "bp" };
-        const setAssetNode = widgetPropertyBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET)!;
-
-        await Promise.resolve(
-            setAssetNode.execute({
-                graph: {
-                    id: "graph",
-                    entries: { main: { start: { nodeId: "setImage", port: "in" } } },
-                    nodes: {
-                        setImage: {
-                            id: "setImage",
-                            type: BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
-                            params: { asset: { kind: "imageAsset", assetId: "new-image" } },
+        const executeImageNode = async (
+            type: string,
+            nodeId: string,
+            params: Record<string, unknown>,
+            graphPatch?: {
+                nodes?: Record<string, { id: string; type: string; params?: Record<string, unknown> }>;
+                edges?: { from: { nodeId: string; port: string }; to: { nodeId: string; port: string } }[];
+            },
+        ) => {
+            const def = widgetPropertyBlueprintNodes.find(node => node.type === type)!;
+            await Promise.resolve(
+                def.execute({
+                    graph: {
+                        id: "graph",
+                        entries: { main: { start: { nodeId, port: "in" } } },
+                        nodes: {
+                            ...(graphPatch?.nodes ?? {}),
+                            [nodeId]: { id: nodeId, type, params },
                         },
+                        edges: graphPatch?.edges ?? [],
                     },
-                    edges: [],
-                },
-                entry: { start: { nodeId: "setImage", port: "in" } },
-                node: {
-                    id: "setImage",
-                    type: BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
-                    params: { asset: { kind: "imageAsset", assetId: "new-image" } },
-                },
-                params: { asset: { kind: "imageAsset", assetId: "new-image" } },
-                hostAdapter,
-                executionOwner: owner,
-            }),
+                    entry: { start: { nodeId, port: "in" } },
+                    node: { id: nodeId, type, params },
+                    params,
+                    hostAdapter,
+                    executionOwner: owner,
+                }),
+            );
+        };
+
+        await executeImageNode(
+            BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
+            "setImage",
+            { asset: { kind: "imageAsset", assetId: "new-image" } },
         );
 
         expect(imageProps.asset).toEqual({ kind: "imageAsset", assetId: "new-image" });
@@ -2467,42 +6109,144 @@ describe("built-in blueprint nodes", () => {
             ),
         ).toEqual({ kind: "imageAsset", assetId: "new-image" });
 
-        await Promise.resolve(
-            setAssetNode.execute({
-                graph: {
-                    id: "graph",
-                    entries: { main: { start: { nodeId: "setLegacy", port: "in" } } },
-                    nodes: {
-                        literal: {
-                            id: "literal",
-                            type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-                            params: { value: "legacy-image" },
-                        },
-                        setLegacy: {
-                            id: "setLegacy",
-                            type: BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
-                            params: {},
-                        },
+        await executeImageNode(
+            BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
+            "setLegacy",
+            {},
+            {
+                nodes: {
+                    literal: {
+                        id: "literal",
+                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                        params: { value: "legacy-image" },
                     },
-                    edges: [
-                        {
-                            from: { nodeId: "literal", port: "value" },
-                            to: { nodeId: "setLegacy", port: "assetId" },
-                        },
-                    ],
                 },
-                entry: { start: { nodeId: "setLegacy", port: "in" } },
-                node: {
-                    id: "setLegacy",
-                    type: BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET,
-                    params: {},
-                },
-                params: {},
-                hostAdapter,
-                executionOwner: owner,
-            }),
+                edges: [
+                    {
+                        from: { nodeId: "literal", port: "value" },
+                        to: { nodeId: "setLegacy", port: "assetId" },
+                    },
+                ],
+            },
         );
 
         expect(imageProps.asset).toEqual({ kind: "imageAsset", assetId: "legacy-image" });
+
+        await executeImageNode(BLUEPRINT_NODE_TYPE_IMAGE_SET_FIT_MODE, "setFitMode", { fitMode: "contain" });
+        expect(imageProps.fitMode).toBe("contain");
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getFitMode: { type: BLUEPRINT_NODE_TYPE_IMAGE_GET_FIT_MODE },
+                    },
+                    edges: [],
+                },
+                "getFitMode",
+                "fitMode",
+                {},
+                undefined,
+                0,
+                { hostAdapter, executionOwner: owner },
+            ),
+        ).toBe("contain");
+
+        await executeImageNode(BLUEPRINT_NODE_TYPE_IMAGE_SET_CROP_RECT, "setCropRect", {
+            leftPct: 12,
+            topPct: 8,
+            widthPct: 64,
+            heightPct: 72,
+        });
+        expect(imageProps.fitMode).toBe("crop");
+        expect(imageProps.cropRect).toEqual({ leftPct: 12, topPct: 8, widthPct: 64, heightPct: 72 });
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getCropRect: { type: BLUEPRINT_NODE_TYPE_IMAGE_GET_CROP_RECT },
+                    },
+                    edges: [],
+                },
+                "getCropRect",
+                "leftPct",
+                {},
+                undefined,
+                0,
+                { hostAdapter, executionOwner: owner },
+            ),
+        ).toBe(12);
+
+        await executeImageNode(BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_X, "setFlipX", { flipX: true });
+        await executeImageNode(BLUEPRINT_NODE_TYPE_IMAGE_SET_FLIP_Y, "setFlipY", { flipY: true });
+        expect(imageProps.flipX).toBe(true);
+        expect(imageProps.flipY).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        getFlipY: { type: BLUEPRINT_NODE_TYPE_IMAGE_GET_FLIP_Y },
+                    },
+                    edges: [],
+                },
+                "getFlipY",
+                "flipY",
+                {},
+                undefined,
+                0,
+                { hostAdapter, executionOwner: owner },
+            ),
+        ).toBe(true);
+
+        await executeImageNode(BLUEPRINT_NODE_TYPE_IMAGE_CLEAR_ASSET, "clearImage", {});
+        expect(imageProps.asset).toBeNull();
+
+        await executeImageNode(
+            BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_SET_FIT_MODE,
+            "setOtherFitMode",
+            { fitMode: "tile" },
+            {
+                nodes: {
+                    otherImageRef: {
+                        id: "otherImageRef",
+                        type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                        params: { surfaceId: "surface", elementId: "other-image", elementType: "nl.image" },
+                    },
+                },
+                edges: [
+                    {
+                        from: { nodeId: "otherImageRef", port: "element" },
+                        to: { nodeId: "setOtherFitMode", port: "element" },
+                    },
+                ],
+            },
+        );
+        expect(lastImagePatchElementId).toBe("other-image");
+        expect(imageProps.fitMode).toBe("tile");
+
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        otherImageRef: {
+                            type: BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+                            params: { surfaceId: "surface", elementId: "other-image", elementType: "nl.image" },
+                        },
+                        getOtherCropRect: { type: BLUEPRINT_NODE_TYPE_ELEMENT_IMAGE_GET_CROP_RECT },
+                    },
+                    edges: [
+                        {
+                            from: { nodeId: "otherImageRef", port: "element" },
+                            to: { nodeId: "getOtherCropRect", port: "element" },
+                        },
+                    ],
+                },
+                "getOtherCropRect",
+                "widthPct",
+                {},
+                undefined,
+                0,
+                { hostAdapter, executionOwner: owner },
+            ),
+        ).toBe(64);
     });
 });

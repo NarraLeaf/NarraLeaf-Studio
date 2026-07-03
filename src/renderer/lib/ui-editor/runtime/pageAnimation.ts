@@ -5,13 +5,12 @@ import {
     type UIPageAnimationPreset,
     type UIPageAnimationSettings,
 } from "@shared/types/ui-editor/pageAnimation";
-import type { MotionProps } from "motion/react";
 
 export type PageAnimationNavigationDirection = "forward" | "back";
 export type PageAnimationPhase = "enter" | "exit";
 
-type MotionTarget = Exclude<NonNullable<MotionProps["initial"]>, boolean | string | string[]>;
-type MotionTransition = NonNullable<MotionTarget["transition"]>;
+type MotionTarget = any;
+type MotionTransition = Record<string, unknown>;
 
 export type PageAnimationMotion = {
     initial: MotionTarget;

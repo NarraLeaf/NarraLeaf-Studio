@@ -14,6 +14,7 @@ export type BlueprintOwnerRef =
     | { kind: "surfaceMain"; surfaceId: string }
     | { kind: "widgetMain"; surfaceId: string; elementId: string }
     | { kind: "widgetValue"; surfaceId: string; elementId: string; propPath: string }
+    | { kind: "componentWidgetMain"; componentId: string; elementId: string }
     | { kind: "sharedAsset"; assetId: string };
 
 export type BlueprintFrontendKind = "visual" | "typescript";

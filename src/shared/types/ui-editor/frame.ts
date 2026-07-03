@@ -49,6 +49,22 @@ function getSurface(document: UIDocument, surfaceId: UISurfaceId | null | undefi
     return surfaceId ? document.surfaces.find(surface => surface.id === surfaceId) : undefined;
 }
 
+export function findUIElementSurfaceId(
+    document: UIDocument,
+    elementId: UIElementId | null | undefined,
+): UISurfaceId | null {
+    let current = elementId ? document.elements[elementId] : undefined;
+    while (current) {
+        const currentElement = current;
+        const surface = document.surfaces.find(item => item.rootElementId === currentElement.id);
+        if (surface) {
+            return surface.id;
+        }
+        current = currentElement.parentId ? document.elements[currentElement.parentId] : undefined;
+    }
+    return null;
+}
+
 function collectSurfaceFrameTargets(
     document: UIDocument,
     surfaceId: UISurfaceId,

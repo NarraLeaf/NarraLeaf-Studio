@@ -20,6 +20,9 @@ import { StorageManager } from "./managers/storageManager";
 import { WindowManager } from "./managers/windowManager";
 import { GlobalStateManager } from "./managers/storage/globalState";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
+import { PluginManager } from "./managers/pluginManager";
+import { isMainDevMode, parseMainCommandLine } from "./commandLine";
+import { APP_DISPLAY_NAME } from "@shared/constants/app";
 
 export interface AppDependencies {
     protocolManager: ProtocolManager;
@@ -49,26 +52,36 @@ export class BaseApp {
     public readonly storageManager: StorageManager;
     public readonly globalState: GlobalStateManager;
     public readonly pluginPermissionManager: PluginPermissionManager;
+    public readonly pluginManager: PluginManager;
 
     private initialized: boolean = false;
     protected appInfo: AppInfo | null = null;
+    private readonly commandLine = parseMainCommandLine(process.argv);
 
     constructor(config: BaseAppConfig) {
         this.config = config;
         this.electronApp = app;
+        this.electronApp.setName(APP_DISPLAY_NAME);
+        this.electronApp.setAboutPanelOptions({
+            applicationName: APP_DISPLAY_NAME,
+        });
         this.platform = Platform.getInfo(process, this.electronApp.isPackaged);
         this.logger = new Logger("MainProcess");
         this.events = new EventEmitter();
 
+        this.configureCdp();
         this.setupUserDataDir();
+
+        this.globalState = new GlobalStateManager(this.getUserDataDir());
+        this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
+        this.pluginManager = new PluginManager(this.getUserDataDir(), this.pluginPermissionManager, {
+            builtInPluginsDir: this.getBuiltInPluginsDir(),
+        });
 
         this.protocolManager = new ProtocolManager(this);
         this.windowManager = new WindowManager(this);
         this.menuManager = new MenuManager(this);
         this.storageManager = new StorageManager(this);
-
-        this.globalState = new GlobalStateManager(this.getUserDataDir());
-        this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
 
         this.prepare();
     }
@@ -151,11 +164,15 @@ export class BaseApp {
             return null;
         }
 
-        return this.resolveExistingResource("app-icon.png", "app-icon.icns");
+        return this.resolveExistingResource("app-icon-mac.png", "app-icon.png", "app-icon.icns");
     }
 
     public getDistDir(): string {
         return path.resolve(this.getAppPath(), "dist");
+    }
+
+    public getBuiltInPluginsDir(): string {
+        return path.resolve(this.getDistDir(), "builtin-plugins");
     }
 
     public getPublicDir(): string {
@@ -187,7 +204,7 @@ export class BaseApp {
     }
 
     public isDevMode(): boolean {
-        return process.argv.includes("--dev");
+        return isMainDevMode(this.commandLine, this.electronApp.isPackaged);
     }
 
     public getAppEntry(type: WindowAppType): string {
@@ -220,6 +237,26 @@ export class BaseApp {
         }
     }
 
+    private configureCdp(): void {
+        const cdp = this.commandLine.cdp;
+        if (!cdp.enabled) {
+            return;
+        }
+
+        if (!this.isDevMode()) {
+            this.logger.warn("[CDP] Ignoring --cdp because it is only available in development mode.");
+            return;
+        }
+
+        if (cdp.error) {
+            this.logger.warn(`[CDP] ${cdp.error}. CDP was not enabled.`);
+            return;
+        }
+
+        this.electronApp.commandLine.appendSwitch("remote-debugging-port", String(cdp.port));
+        this.logger.info(`[CDP] Enabled on port ${cdp.port}.`);
+    }
+
     private async prepare() {
         if (this.initialized) {
             return;
@@ -235,6 +272,7 @@ export class BaseApp {
         this.menuManager.initialize();
         this.storageManager.initialize();
         this.pluginPermissionManager.initialize();
+        this.pluginManager.initialize();
 
         this.electronApp.whenReady().then(async () => {
             // Retrieve app info
@@ -253,9 +291,13 @@ export class BaseApp {
 
             const { WebSocket } = await import("ws");
             const ws = new WebSocket("ws://localhost:5588");
-            ws.onmessage = () => {
+            ws.onmessage = (event) => {
+                const target = this.parseDevReloadTarget(event.data);
                 this.windowManager.getWindows().forEach((w) => {
                     if (w.isClosed()) {
+                        return;
+                    }
+                    if (target === "workspace" && w.getWindowType() !== WindowAppType.Workspace) {
                         return;
                     }
                     // Avoid interrupting an in-flight navigation which causes ERR_ABORTED
@@ -269,6 +311,24 @@ export class BaseApp {
                     }
                 });
             };
+        }
+    }
+
+    private parseDevReloadTarget(data: unknown): "all" | "workspace" {
+        const text = typeof data === "string"
+            ? data
+            : Buffer.isBuffer(data)
+              ? data.toString("utf-8")
+              : "";
+        if (!text || text === "reload") {
+            return "all";
+        }
+
+        try {
+            const parsed = JSON.parse(text) as { target?: unknown };
+            return parsed.target === "workspace" ? "workspace" : "all";
+        } catch {
+            return "all";
         }
     }
 

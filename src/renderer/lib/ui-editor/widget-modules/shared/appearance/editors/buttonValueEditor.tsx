@@ -11,6 +11,7 @@ import { FILL_TYPE_OPTIONS, controlButtonClass } from "@/lib/ui-editor/widget-mo
 import { normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import type { ButtonAppearancePropertyKey } from "@shared/types/ui-editor/appearance";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
+import { ButtonCursorSelect } from "./ButtonCursorSelect";
 
 export type ButtonValueEditorProps = {
     fieldKey: ButtonAppearancePropertyKey;
@@ -202,6 +203,8 @@ export function ButtonAppearanceValueEditor({
                 </label>
             );
         }
+        case "cursor":
+            return <ButtonCursorSelect value={value} onChange={onChange} />;
         default:
             return <span className="text-xs text-gray-500">{String(value ?? "")}</span>;
     }

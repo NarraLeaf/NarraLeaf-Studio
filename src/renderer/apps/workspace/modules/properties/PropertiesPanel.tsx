@@ -17,6 +17,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
+import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { AssetData } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { Character } from "@/lib/workspace/services/character/Character";
@@ -33,7 +34,7 @@ import {
     type SceneEditorContext,
 } from "./schemas";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import { getUIComponentLink, isLinkedUIComponentElement, type UIElement } from "@shared/types/ui-editor/document";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import { createPropertyEditorSchema, defineField } from "./framework";
@@ -45,14 +46,27 @@ import type { UIInspectorData } from "../ui-editor/inspector/registry";
 import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevision";
 import { collectSurfaceDiagnostics } from "@/lib/ui-editor/diagnostics/collectSurfaceDiagnostics";
 import { pairLayoutDimensionsForLock } from "@/lib/ui-editor/layout/aspectRatioLock";
+import { getElementSurfaceTopLeft } from "@/lib/ui-editor/layout/elementSurfaceGeometry";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import {
+    createComponentDocumentServiceAdapter,
+    parseComponentEditorSurfaceId,
+} from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
+import { StoryMotionKeyframeProperties } from "../story-motion/StoryMotionKeyframeProperties";
+import {
+    STORY_MOTION_KEYFRAME_SELECTION_TYPE,
+    isStoryMotionKeyframeSelectionData,
+    type StoryMotionKeyframeSelection,
+} from "../story-motion/storyMotionTypes";
 
 function createLayoutInspectorSchema(
     elements: UIElement[],
     documentService: UIDocumentService,
     surfaceId?: string,
+    options: { linkedOnly?: boolean } = {},
 ): PropertyEditorSchema<UIInspectorData> {
     const primaryId = elements.map(element => element.id).join("-");
+    const linkedOnly = options.linkedOnly === true;
     const applyLayoutPatch = (patch: Partial<UIElement["layout"]>) => {
         elements.forEach(element => {
             documentService.updateElementLayout(element.id, patch);
@@ -76,113 +90,140 @@ function createLayoutInspectorSchema(
     };
 
     const getPrimaryLayout = (data: UIInspectorData) => data.elements[0]?.layout;
+    const readElementSurfaceTopLeft = (element: UIElement) => {
+        const document = documentService.getDocument();
+        return document.elements[element.id] ? getElementSurfaceTopLeft(document, element.id) : element.layout;
+    };
+    const applySurfacePositionPatch = (axis: "x" | "y", surfaceValue: number) => {
+        const document = documentService.getDocument();
+        const patches: Record<string, Partial<UIElement["layout"]>> = {};
+        elements.forEach(element => {
+            const current = document.elements[element.id] ?? element;
+            const parentTopLeft =
+                current.parentId && document.elements[current.parentId]
+                    ? getElementSurfaceTopLeft(document, current.parentId)
+                    : { x: 0, y: 0 };
+            const size = axis === "x" ? current.layout.width : current.layout.height;
+            patches[element.id] = {
+                [axis]: surfaceValue - parentTopLeft[axis] - Math.min(0, size),
+            };
+        });
+        documentService.updateElementLayouts(patches);
+    };
 
-    const createDefaultSizeField = (): FieldDefinition<UIInspectorData> =>
-        defineField<UIInspectorData, any>({
+    const createDefaultSizeField = (): FieldDefinition<UIInspectorData> => {
+        const items = [
+            {
+                id: "layout.width",
+                className: "min-w-0 flex-1 basis-0",
+                render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                    const w = getPrimaryLayout(data)?.width ?? 0;
+                    return (
+                        <NumericDraftEnhancedInput
+                            committedDisplay={String(w)}
+                            draftResetKey={`${primaryId}-w`}
+                            onFiniteNumber={value => {
+                                onSaving(true);
+                                try {
+                                    updateDimension("width", value);
+                                } finally {
+                                    onSaving(false);
+                                }
+                            }}
+                            inputMode="numeric"
+                            type="number"
+                            precision={2}
+                            unit="px"
+                            leftIcon={<ArrowLeftRight className="w-4 h-4 text-gray-400" />}
+                            className="w-full min-w-0"
+                            selectAllOnFocus
+                            aria-label="Width"
+                        />
+                    );
+                },
+            },
+            {
+                id: "layout.height",
+                className: "min-w-0 flex-1 basis-0",
+                render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                    const h = getPrimaryLayout(data)?.height ?? 0;
+                    return (
+                        <NumericDraftEnhancedInput
+                            committedDisplay={String(h)}
+                            draftResetKey={`${primaryId}-h`}
+                            onFiniteNumber={value => {
+                                onSaving(true);
+                                try {
+                                    updateDimension("height", value);
+                                } finally {
+                                    onSaving(false);
+                                }
+                            }}
+                            inputMode="numeric"
+                            type="number"
+                            precision={2}
+                            unit="px"
+                            leftIcon={<ArrowUpDown className="w-4 h-4 text-gray-400" />}
+                            className="w-full min-w-0"
+                            selectAllOnFocus
+                            aria-label="Height"
+                        />
+                    );
+                },
+            },
+        ];
+        if (!linkedOnly) {
+            items.push({
+                id: "layout.aspectLock",
+                className: "flex-shrink-0",
+                render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
+                    // Multi-select: all on when not every element is locked; all off when every element is locked.
+                    const allLocked = elements.every(el => el.layout.lockAspectRatio === true);
+                    const primaryLocked = getPrimaryLayout(data)?.lockAspectRatio === true;
+                    const pressed = elements.length === 1 ? primaryLocked : allLocked;
+                    const toggle = () => {
+                        const nextLocked = !allLocked;
+                        onSaving(true);
+                        try {
+                            elements.forEach(el => {
+                                documentService.updateElementLayout(el.id, {
+                                    lockAspectRatio: nextLocked,
+                                });
+                            });
+                        } finally {
+                            onSaving(false);
+                        }
+                    };
+                    return (
+                        <button
+                            type="button"
+                            onClick={toggle}
+                            aria-pressed={pressed}
+                            aria-label={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                            title={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                            className={controlButtonClass(pressed)}
+                        >
+                            <Link className="w-4 h-4" />
+                        </button>
+                    );
+                },
+            });
+        }
+        return defineField<UIInspectorData, any>({
             id: "layout.size",
             type: "inlineRow",
             label: "Size",
             gap: 8,
             wrap: false,
-            items: [
-                {
-                    id: "layout.width",
-                    className: "min-w-0 flex-1 basis-0",
-                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                        const w = getPrimaryLayout(data)?.width ?? 0;
-                        return (
-                            <NumericDraftEnhancedInput
-                                committedDisplay={String(w)}
-                                draftResetKey={`${primaryId}-w`}
-                                onFiniteNumber={value => {
-                                    onSaving(true);
-                                    try {
-                                        updateDimension("width", value);
-                                    } finally {
-                                        onSaving(false);
-                                    }
-                                }}
-                                inputMode="numeric"
-                                type="number"
-                                precision={2}
-                                unit="px"
-                                leftIcon={<ArrowLeftRight className="w-4 h-4 text-gray-400" />}
-                                className="w-full min-w-0"
-                                selectAllOnFocus
-                                aria-label="Width"
-                            />
-                        );
-                    },
-                },
-                {
-                    id: "layout.height",
-                    className: "min-w-0 flex-1 basis-0",
-                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                        const h = getPrimaryLayout(data)?.height ?? 0;
-                        return (
-                            <NumericDraftEnhancedInput
-                                committedDisplay={String(h)}
-                                draftResetKey={`${primaryId}-h`}
-                                onFiniteNumber={value => {
-                                    onSaving(true);
-                                    try {
-                                        updateDimension("height", value);
-                                    } finally {
-                                        onSaving(false);
-                                    }
-                                }}
-                                inputMode="numeric"
-                                type="number"
-                                precision={2}
-                                unit="px"
-                                leftIcon={<ArrowUpDown className="w-4 h-4 text-gray-400" />}
-                                className="w-full min-w-0"
-                                selectAllOnFocus
-                                aria-label="Height"
-                            />
-                        );
-                    },
-                },
-                {
-                    id: "layout.aspectLock",
-                    className: "flex-shrink-0",
-                    render: ({ data, onSaving }: InlineRowItemContext<UIInspectorData>) => {
-                        // Multi-select: all on when not every element is locked; all off when every element is locked.
-                        const allLocked = elements.every(el => el.layout.lockAspectRatio === true);
-                        const primaryLocked = getPrimaryLayout(data)?.lockAspectRatio === true;
-                        const pressed = elements.length === 1 ? primaryLocked : allLocked;
-                        const toggle = () => {
-                            const nextLocked = !allLocked;
-                            onSaving(true);
-                            try {
-                                elements.forEach(el => {
-                                    documentService.updateElementLayout(el.id, {
-                                        lockAspectRatio: nextLocked,
-                                    });
-                                });
-                            } finally {
-                                onSaving(false);
-                            }
-                        };
-                        return (
-                            <button
-                                type="button"
-                                onClick={toggle}
-                                aria-pressed={pressed}
-                                aria-label={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
-                                title={pressed ? "Unlock aspect ratio" : "Lock aspect ratio"}
-                                className={controlButtonClass(pressed)}
-                            >
-                                <Link className="w-4 h-4" />
-                            </button>
-                        );
-                    },
-                },
-            ],
+            items,
             order: 1,
         });
+    };
 
     const createSizeField = (): FieldDefinition<UIInspectorData> | null => {
+        if (linkedOnly) {
+            return createDefaultSizeField();
+        }
         if (elements.length !== 1) {
             return createDefaultSizeField();
         }
@@ -212,13 +253,16 @@ function createLayoutInspectorSchema(
                     icon: <MoveHorizontal className="w-4 h-4 text-gray-400" />,
                     type: "number",
                     precision: 2,
-                    getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.x ?? 0),
+                    getValue: (data: UIInspectorData) => {
+                        const element = data.elements[0];
+                        return String(element ? readElementSurfaceTopLeft(element).x : 0);
+                    },
                     setValue: (_data: UIInspectorData, raw: string) => {
                         const number = toNumber(raw);
                         if (number === null) {
                             return;
                         }
-                        applyLayoutPatch({ x: number });
+                        applySurfacePositionPatch("x", number);
                     },
                     selectAllOnFocus: true,
                 },
@@ -228,13 +272,16 @@ function createLayoutInspectorSchema(
                     icon: <MoveVertical className="w-4 h-4 text-gray-400" />,
                     type: "number",
                     precision: 2,
-                    getValue: (data: UIInspectorData) => String(getPrimaryLayout(data)?.y ?? 0),
+                    getValue: (data: UIInspectorData) => {
+                        const element = data.elements[0];
+                        return String(element ? readElementSurfaceTopLeft(element).y : 0);
+                    },
                     setValue: (_data: UIInspectorData, raw: string) => {
                         const number = toNumber(raw);
                         if (number === null) {
                             return;
                         }
-                        applyLayoutPatch({ y: number });
+                        applySurfacePositionPatch("y", number);
                     },
                     selectAllOnFocus: true,
                 },
@@ -311,7 +358,10 @@ function createLayoutInspectorSchema(
             ],
             order: 2,
         }),
-        defineField<UIInspectorData, any>({
+    ];
+
+    if (!linkedOnly) {
+        fields.push(defineField<UIInspectorData, any>({
             id: "layout.visibility",
             type: "inlineRow",
             label: "Appearance",
@@ -389,8 +439,8 @@ function createLayoutInspectorSchema(
                 },
             ],
             order: 3,
-        }),
-    ];
+        }));
+    }
     if (sizeField) {
         fields.splice(1, 0, sizeField);
     }
@@ -444,6 +494,41 @@ function mergeInspectorWithLayoutSchema(
     });
 }
 
+function LinkedComponentInfoField({ data }: { data: UIInspectorData }) {
+    const link = getUIComponentLink(data.element);
+    const component = link ? data.documentService.getComponent(link.componentId) : null;
+    if (!link) {
+        return null;
+    }
+    return (
+        <div className="rounded-md border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-50">
+            <div className="font-medium">{component?.name ?? "Missing component"}</div>
+            <div className="mt-1 text-[11px] leading-snug text-cyan-100/70">
+                Linked instance. Only position, size, and rotation can be changed before unlinking.
+            </div>
+        </div>
+    );
+}
+
+function createLinkedComponentInspectorSchema(
+    layoutSchema: PropertyEditorSchema<UIInspectorData>,
+    element: UIElement,
+): PropertyEditorSchema<UIInspectorData> {
+    return createPropertyEditorSchema<UIInspectorData>({
+        id: `ui-linked-component:${element.id}`,
+        title: element.name ?? "Linked Component",
+        fields: [
+            ...(layoutSchema.fields ?? []),
+            defineField<UIInspectorData, any>({
+                id: "component.linkInfo",
+                type: "custom",
+                component: LinkedComponentInfoField,
+                order: 99,
+            }),
+        ],
+    });
+}
+
 /**
  * Properties panel component
  * Shows properties/inspector for the selected item based on active editor
@@ -456,6 +541,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const [characterVersion, setCharacterVersion] = useState(0);
     const [uiSelection, setUISelection] = useState<UIElementSelection | null>(null);
     const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
+    const [storyMotionSelection, setStoryMotionSelection] = useState<StoryMotionKeyframeSelection | null>(null);
     const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
     
     // Track the current thumbnail URL and its associated thumbnailId to avoid revoking URLs still in use
@@ -473,6 +559,16 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const serviceAssets = useMemo(() => {
         if (!context || !isInitialized) return null;
         return context.services.get<ServiceAssetsService>(Services.ServiceAssets);
+    }, [context, isInitialized]);
+
+    const uiService = useMemo(() => {
+        if (!context || !isInitialized) return null;
+        return context.services.get<UIService>(Services.UI);
+    }, [context, isInitialized]);
+
+    const storyService = useMemo(() => {
+        if (!context || !isInitialized) return null;
+        return context.services.get<StoryService>(Services.Story);
     }, [context, isInitialized]);
 
     const documentService = useMemo<UIDocumentService | null>(() => {
@@ -521,14 +617,18 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         };
     }, [activeSceneSurface, documentService, documentVersion]);
 
-    const panelTitle = activeSceneSurface
+    const panelTitle = storyMotionSelection
+        ? "Motion Keyframe"
+        : activeSceneSurface
         ? activeSceneSurface.name
         : activeCharacter
         ? activeCharacter.profile.getProfile().name
         : activeAsset
         ? activeAsset.name
         : "Properties";
-    const panelSubtitle = activeSceneSurface
+    const panelSubtitle = storyMotionSelection
+        ? "Story Motion"
+        : activeSceneSurface
         ? "Scene"
         : activeCharacter
         ? "Character"
@@ -536,23 +636,27 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
     // Listen to selection changes
     useEffect(() => {
-        if (!context) return;
-        const uiService = context.services.get<UIService>(Services.UI);
+        if (!uiService) return;
         const store = uiService.getStore();
 
-    const setSelectionState = (selection: SelectionState) => {
-        setActiveAsset(selection.type === "asset" ? (selection.data as Asset) : null);
-        setActiveCharacter(selection.type === "character" ? (selection.data as Character) : null);
-        setAssetMetadata(null);
-        setUISelection(isUIElementSelection(selection) ? (selection.data as UIElementSelection) : null);
-        const sceneId =
-            selection.type === "scene"
-                ? typeof selection.data === "string"
+        const setSelectionState = (selection: SelectionState) => {
+            const motionSelection =
+                selection.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE && isStoryMotionKeyframeSelectionData(selection.data)
                     ? selection.data
-                    : selection.data?.id ?? null
-                : null;
-        setActiveSceneId(sceneId);
-    };
+                    : null;
+            setStoryMotionSelection(motionSelection);
+            setActiveAsset(!motionSelection && selection.type === "asset" ? (selection.data as Asset) : null);
+            setActiveCharacter(!motionSelection && selection.type === "character" ? (selection.data as Character) : null);
+            setAssetMetadata(null);
+            setUISelection(!motionSelection && isUIElementSelection(selection) ? (selection.data as UIElementSelection) : null);
+            const sceneId =
+                !motionSelection && selection.type === "scene"
+                    ? typeof selection.data === "string"
+                        ? selection.data
+                        : selection.data?.id ?? null
+                    : null;
+            setActiveSceneId(sceneId);
+        };
 
         setSelectionState(store.getSelection());
 
@@ -563,13 +667,17 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         });
 
         return unsub;
-    }, [context]);
+    }, [uiService]);
 
     const uiInspectorContent = useMemo(() => {
         if (!deferredUiSelection || !documentService) {
             return null;
         }
-        const document = documentService.getDocument();
+        const componentId = parseComponentEditorSurfaceId(deferredUiSelection.surfaceId);
+        const inspectorDocumentService = componentId
+            ? createComponentDocumentServiceAdapter(documentService, componentId)
+            : documentService;
+        const document = inspectorDocumentService.getDocument();
         const elements = deferredUiSelection.elementIds
             .map(id => document.elements[id])
             .filter((element): element is UIElement => Boolean(element));
@@ -577,17 +685,31 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return null;
         }
 
-        const layoutSchema = createLayoutInspectorSchema(elements, documentService, deferredUiSelection.surfaceId);
+        const linkedLayoutOnly = elements.some(element => isLinkedUIComponentElement(element));
+        const layoutSchema = createLayoutInspectorSchema(
+            elements,
+            inspectorDocumentService,
+            deferredUiSelection.surfaceId,
+            { linkedOnly: linkedLayoutOnly },
+        );
         if (elements.length === 1) {
             const element = elements[0];
-            const inspectorSchema = getElementInspector(element, documentService);
+            if (isLinkedUIComponentElement(element)) {
+                return (
+                    <PropertyEditor
+                        schema={createLinkedComponentInspectorSchema(layoutSchema, element)}
+                        data={{ element, elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId }}
+                    />
+                );
+            }
+            const inspectorSchema = getElementInspector(element, inspectorDocumentService);
             const combinedSchema = inspectorSchema
                 ? mergeInspectorWithLayoutSchema(layoutSchema, inspectorSchema, element)
                 : layoutSchema;
             return (
                 <PropertyEditor
                     schema={combinedSchema}
-                    data={{ element, elements, documentService, surfaceId: deferredUiSelection.surfaceId }}
+                    data={{ element, elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId }}
                 />
             );
         }
@@ -595,7 +717,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return (
             <PropertyEditor
                 schema={layoutSchema}
-                data={{ element: elements[0], elements, documentService, surfaceId: deferredUiSelection.surfaceId }}
+                data={{ element: elements[0], elements, documentService: inspectorDocumentService, surfaceId: deferredUiSelection.surfaceId }}
             />
         );
     }, [deferredUiSelection, documentService, deferredDocumentVersion, documentVersion]);
@@ -618,7 +740,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return null;
         }
         const bp = graphService?.getDocument().blueprintDocument;
-        const all = collectSurfaceDiagnostics(documentService.getDocument(), deferredUiSelection.surfaceId, {
+        const componentId = parseComponentEditorSurfaceId(deferredUiSelection.surfaceId);
+        const diagnosticDocumentService = componentId
+            ? createComponentDocumentServiceAdapter(documentService, componentId)
+            : documentService;
+        const all = collectSurfaceDiagnostics(diagnosticDocumentService.getDocument(), deferredUiSelection.surfaceId, {
             blueprintDocument: bp,
         });
         const idSet = new Set(deferredUiSelection.elementIds);
@@ -824,6 +950,15 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
     // Render appropriate property editor
     const renderPropertyEditor = () => {
+        if (storyMotionSelection && storyService && uiService) {
+            return (
+                <StoryMotionKeyframeProperties
+                    selection={storyMotionSelection}
+                    storyService={storyService}
+                    uiService={uiService}
+                />
+            );
+        }
         if (uiInspectorContent) {
             return (
                 <>
@@ -836,7 +971,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             return <PropertyEditor schema={scenePropertySchema} data={sceneEditorContext} />;
         }
         // No selection
-        if (!activeAsset && !activeCharacter && !sceneEditorContext) {
+        if (!activeAsset && !activeCharacter && !sceneEditorContext && !storyMotionSelection) {
             return (
                 <div className="flex-1 flex items-center justify-center p-4">
                     <div className="text-center text-gray-500 py-8">

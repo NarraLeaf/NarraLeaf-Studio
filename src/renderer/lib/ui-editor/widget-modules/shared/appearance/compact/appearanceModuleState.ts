@@ -98,6 +98,7 @@ export const BUTTON_MODULE_KEYS: Record<ButtonAppearanceModuleId, readonly Butto
         "effectBlur",
         "effectBackgroundBlur",
         "effectShadow",
+        "effectTextShadow",
         "effectInnerShadow",
         "effectBlend",
         "effectGlow",

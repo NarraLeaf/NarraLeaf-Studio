@@ -13,13 +13,17 @@ import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
+import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEditable";
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { StoryDocument } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
+import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { getUIListChildSlot } from "@shared/types/ui-editor/list";
 import {
+    applyBlueprintIrConnection,
     createGraphNodeForPalette,
     ensureBlueprintGraphIr,
     graphIrHasFunctionEntry,
@@ -57,8 +61,13 @@ import type {
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
 } from "@shared/types/blueprint/graph";
 import {
     ELEMENT_REF_PARAM_ELEMENT_ID,
@@ -74,6 +83,10 @@ import {
     startElementBindingSession,
     subscribeElementBindingSession,
 } from "../elementBindingSession";
+import {
+    createComponentDocumentServiceAdapter,
+    getComponentTabId,
+} from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 import { buildAccessibleBlueprintVariableOptions } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
 import {
@@ -82,6 +95,10 @@ import {
     pasteBlueprintGraphClipboardPayload,
     setBlueprintGraphClipboard,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphClipboard";
+import {
+    BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
+    listBlueprintSetFramePageTargetOptions,
+} from "@/lib/ui-editor/blueprint-nodes/frameTargetSurfaceOptions";
 
 function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
     if (!view || bp.program.kind !== "graph") {
@@ -136,7 +153,7 @@ type BlueprintEditorViewportPanelState = {
 
 const BLUEPRINT_EDITOR_MEMBER_PANEL_STATE_ID = "blueprintEditor.memberPanel";
 const BLUEPRINT_EDITOR_FLOW_VIEWPORT_STATE_PREFIX = "blueprintEditor.flowViewport";
-const BLUEPRINT_VARIABLE_GROUP_KEYS: BlueprintVariableGroupKey[] = ["page", "blueprint", "global", "persistent"];
+const BLUEPRINT_VARIABLE_GROUP_KEYS: BlueprintVariableGroupKey[] = ["page", "global", "persistent"];
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 
 function normalizeBlueprintFlowViewport(raw: unknown): BlueprintFlowViewport | null {
@@ -260,7 +277,42 @@ const ELEMENT_LITERAL_PREVIEW_WIDTH = 176;
 const ELEMENT_LITERAL_PREVIEW_HEIGHT = 72;
 
 function isElementBindingNodeType(type: string): boolean {
-    return type === BLUEPRINT_NODE_TYPE_ELEMENT_REF || type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH;
+    return (
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_REF ||
+        type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH ||
+        type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK
+    );
+}
+
+function elementVariantOptions(
+    element: UIElement | undefined,
+    targetLabel?: string,
+): NonNullable<BlueprintFlowNodeData["displayableTargetVariants"]> {
+    if (!element) {
+        return {
+            supported: false,
+            options: [],
+            message: "Target element is missing",
+        };
+    }
+    const appearance = (element.props as { appearance?: unknown } | undefined)?.appearance;
+    if (!isAppearanceModel(appearance)) {
+        return {
+            supported: false,
+            targetLabel,
+            options: [],
+            message: `${targetLabel ?? element.name ?? element.id} does not support variants`,
+        };
+    }
+    return {
+        supported: true,
+        targetLabel,
+        options: appearance.variants.map((variant, index) => ({
+            value: variant.id,
+            label: variant.name?.trim() || `Variant ${index + 1}`,
+        })),
+        message: targetLabel,
+    };
 }
 
 function previewNumber(value: number | undefined, fallback: number): number {
@@ -269,28 +321,68 @@ function previewNumber(value: number | undefined, fallback: number): number {
 
 function ElementLiteralSurfacePreview({
     runtimeBridge,
+    document,
     surface,
     element,
 }: {
     runtimeBridge: UIRuntimeBridgeService;
+    document: UIDocument;
     surface: UISurface;
     element: UIElement;
 }) {
-    const width = Math.max(1, previewNumber(element.layout.width, 1));
-    const height = Math.max(1, previewNumber(element.layout.height, 1));
-    const x = previewNumber(element.layout.x, 0);
-    const y = previewNumber(element.layout.y, 0);
+    const width = Math.max(1, Math.abs(previewNumber(element.layout.width, 1)));
+    const height = Math.max(1, Math.abs(previewNumber(element.layout.height, 1)));
     const scale = Math.max(
         0.02,
         Math.min(2.2, ELEMENT_LITERAL_PREVIEW_WIDTH / width, ELEMENT_LITERAL_PREVIEW_HEIGHT / height),
     );
     const frameWidth = Math.max(24, Math.min(ELEMENT_LITERAL_PREVIEW_WIDTH, width * scale));
     const frameHeight = Math.max(18, Math.min(ELEMENT_LITERAL_PREVIEW_HEIGHT, height * scale));
-    const rendered = runtimeBridge.renderSurface({
-        surfaceId: surface.id,
+    const previewSurfaceId = `${surface.id}:element-preview:${element.id}`;
+    const previewDocument = useMemo<UIDocument>(() => {
+        const previewRoot: UIElement = {
+            ...element,
+            parentId: null,
+            childrenIds: [...element.childrenIds],
+            layout: {
+                ...element.layout,
+                x: 0,
+                y: 0,
+                width,
+                height,
+            },
+            props: element.props ? { ...element.props } : undefined,
+            style: element.style ? { ...element.style } : undefined,
+            behavior: element.behavior ? { ...element.behavior } : undefined,
+            valueBindings: element.valueBindings ? { ...element.valueBindings } : undefined,
+            extra: element.extra ? { ...element.extra } : undefined,
+        };
+        const previewSurface: UISurface = {
+            ...surface,
+            id: previewSurfaceId,
+            name: `${surface.name} Element Preview`,
+            designSize: { width, height },
+            rootElementId: element.id,
+            settings: {
+                ...(surface.settings ?? {}),
+                backgroundColor: "transparent",
+            },
+        };
+        return {
+            ...document,
+            surfaces: [previewSurface, ...document.surfaces.filter(item => item.id !== previewSurfaceId)],
+            elements: {
+                ...document.elements,
+                [element.id]: previewRoot,
+            },
+        };
+    }, [document, element, height, previewSurfaceId, surface, width]);
+    const rendered = runtimeBridge.renderDocumentSurface({
+        document: previewDocument,
+        surfaceId: previewSurfaceId,
         hostAdapter: { host: surface.host },
         className: "pointer-events-none select-none",
-        style: { backgroundColor: surface.settings?.backgroundColor ?? "#ffffff" },
+        style: { backgroundColor: "transparent" },
         editorChrome: false,
     });
 
@@ -315,8 +407,8 @@ function ElementLiteralSurfacePreview({
                 <div
                     className="absolute"
                     style={{
-                        left: -x * scale,
-                        top: -y * scale,
+                        left: 0,
+                        top: 0,
                         transform: `scale(${scale})`,
                         transformOrigin: "top left",
                         pointerEvents: "none",
@@ -345,11 +437,23 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
     const uuid = context.services.get<UuidService>(Services.Uuid);
     const uidoc = context.services.get<UIDocumentService>(Services.UIDocument);
+    const isComponentDefinitionGraph = payload.ownerKind === "componentWidgetMain";
+    const blueprintDocumentService = useMemo(
+        () =>
+            isComponentDefinitionGraph && payload.componentId
+                ? createComponentDocumentServiceAdapter(uidoc, payload.componentId)
+                : uidoc,
+        [isComponentDefinitionGraph, payload.componentId, uidoc],
+    );
     const uiService = context.services.get<UIService>(Services.UI);
     const panelStateService = context.services.get<PanelStateService>(Services.PanelState);
     const nodeCatalog = context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     const runtimeBridge = context.services.get<UIRuntimeBridgeService>(Services.RuntimeBridge);
+    const storyService = context.services.get<StoryService>(Services.Story);
     const [uiDocumentRevision, setUiDocumentRevision] = useState(() => uidoc.getRevision());
+    const [storyDocumentsById, setStoryDocumentsById] = useState<Record<string, StoryDocument>>({});
+    const [storyLibraryRevision, setStoryLibraryRevision] = useState(0);
+    const [dynamicSelectOptionsRevision, setDynamicSelectOptionsRevision] = useState(0);
     const [memberPanelState, setMemberPanelState] = useState<BlueprintEditorMemberPanelState>(() =>
         normalizeBlueprintEditorMemberPanelState(
             panelStateService.getPanelState<Partial<BlueprintEditorMemberPanelState>>(
@@ -358,6 +462,47 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         ),
     );
     useEffect(() => uidoc.onDocumentChanged(() => setUiDocumentRevision(uidoc.getRevision())), [uidoc]);
+    useEffect(
+        () => nodeCatalog.onDynamicSelectOptionsChanged(() => setDynamicSelectOptionsRevision(value => value + 1)),
+        [nodeCatalog],
+    );
+    useEffect(() => {
+        let disposed = false;
+        const refreshLibrary = () => {
+            setStoryLibraryRevision(value => value + 1);
+            const entries = storyService.listStories();
+            void Promise.all(
+                entries.map(entry => (
+                    storyService.loadStory(entry.id)
+                        .then(document => [entry.id, document] as const)
+                        .catch(() => null)
+                )),
+            ).then(results => {
+                if (disposed) {
+                    return;
+                }
+                const next: Record<string, StoryDocument> = {};
+                for (const result of results) {
+                    if (result) {
+                        next[result[0]] = result[1];
+                    }
+                }
+                setStoryDocumentsById(next);
+            });
+        };
+
+        refreshLibrary();
+        const offLibrary = storyService.onLibraryChanged(refreshLibrary);
+        const offDocument = storyService.onDocumentChanged(({ storyId, document }) => {
+            setStoryDocumentsById(prev => ({ ...prev, [storyId]: document }));
+            setStoryLibraryRevision(value => value + 1);
+        });
+        return () => {
+            disposed = true;
+            offLibrary();
+            offDocument();
+        };
+    }, [storyService]);
     const doc = localBp.getBlueprintDocument();
     const bp = doc.blueprints[payload.blueprintId];
     if (!bp) {
@@ -368,9 +513,12 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         );
     }
 
-    const uiDocument = uidoc.getDocument();
+    const uiDocument = blueprintDocumentService.getDocument();
     const widgetElement =
-        (payload.ownerKind === "widgetMain" || payload.ownerKind === "widgetValue") && payload.elementId
+        (payload.ownerKind === "widgetMain" ||
+            payload.ownerKind === "widgetValue" ||
+            payload.ownerKind === "componentWidgetMain") &&
+        payload.elementId
             ? uiDocument.elements[payload.elementId]
             : undefined;
     const listItemContextAvailable = isListItemContextElement(uiDocument, widgetElement);
@@ -389,6 +537,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         widgetElement,
         widgetSurfaceId: payload.surfaceId,
         widgetBlueprintEvents: widgetLogicEvents,
+        isComponentDefinitionGraph,
     });
     const openBlueprint = useOpenBlueprintTarget();
     const focusBlueprintEditor = useCallback(() => {
@@ -424,6 +573,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 blueprintId: payload.blueprintId,
                 ownerKind: payload.ownerKind,
                 surfaceId: payload.surfaceId,
+                componentId: payload.componentId,
                 elementId: payload.elementId,
                 propPath: payload.propPath,
                 title: "Blueprint",
@@ -442,6 +592,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 blueprintId,
                 ownerKind: payload.ownerKind,
                 surfaceId: payload.surfaceId,
+                componentId: payload.componentId,
                 elementId: payload.elementId,
                 propPath: payload.propPath,
                 title: "Blueprint",
@@ -682,6 +833,14 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 // Mutate `draft` in place — `ensureBlueprintGraphIr(draft)` returns a new object, so assigning
                 // to that copy would not update the IR reference held by LocalBlueprintService.
                 draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
+                if (entry.magicElementRef) {
+                    draft.edges = applyBlueprintIrConnection(draft, {
+                        source: entry.magicElementRef.sourceNodeId,
+                        sourceHandle: entry.magicElementRef.sourcePortId,
+                        target: node.id,
+                        targetHandle: entry.magicElementRef.targetPortId,
+                    });
+                }
             };
             if (editor.graphView.kind === "event") {
                 localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
@@ -698,7 +857,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             if (!editor.graphView || !payload.surfaceId) {
                 return;
             }
-            const surface = uidoc.getDocument().surfaces.find(item => item.id === payload.surfaceId);
+            const surface = blueprintDocumentService.getDocument().surfaces.find(item => item.id === payload.surfaceId);
             if (!surface) {
                 return;
             }
@@ -711,17 +870,30 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 nodeId,
                 surfaceId: surface.id,
             });
+            const tabPayload = isComponentDefinitionGraph && payload.componentId
+                ? { componentId: payload.componentId }
+                : { surfaceId: surface.id };
             openEditorTab({
-                id: getSurfaceTabId(surface.id),
+                id: isComponentDefinitionGraph && payload.componentId ? getComponentTabId(payload.componentId) : getSurfaceTabId(surface.id),
                 title: surface.name,
                 icon: <PanelsTopLeft className="w-4 h-4" />,
                 component: UISurfaceEditorTab,
-                payload: { surfaceId: surface.id },
+                payload: tabPayload,
                 closable: true,
                 modified: false,
             });
         },
-        [editor.graphView, openEditorTab, payload.blueprintId, payload.surfaceId, tabId, uidoc, uuid],
+        [
+            blueprintDocumentService,
+            editor.graphView,
+            isComponentDefinitionGraph,
+            openEditorTab,
+            payload.blueprintId,
+            payload.componentId,
+            payload.surfaceId,
+            tabId,
+            uuid,
+        ],
     );
 
     const onAddEvent = useCallback(async () => {
@@ -730,11 +902,15 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             owner: bp.owner,
             widgetElementType: widgetElement?.type,
             widgetBlueprintEvents: widgetLogicEvents,
-            widgetEventLayerSlots: payload.ownerKind === "widgetMain" && widgetElement ? [] : undefined,
+            widgetEventLayerSlots:
+                (payload.ownerKind === "widgetMain" || payload.ownerKind === "componentWidgetMain") && widgetElement
+                    ? []
+                    : undefined,
             hasEventHead: false,
             hasFunctionEntry: false,
             isBlueprintValueGraph: bp.owner.kind === "widgetValue",
             listItemContextAvailable,
+            isComponentDefinitionGraph,
         })).filter(entry => entry.role === "eventHead" || entry.role === "elementEventHead");
         const defaultLayerName = `Layer ${eventIds.length + 1}`;
 
@@ -813,6 +989,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         localBp,
         nodeCatalog,
         payload.blueprintId,
+        isComponentDefinitionGraph,
         payload.ownerKind,
         selectEventGraph,
         uiService,
@@ -825,7 +1002,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         (layerId: string) => {
             const wasActive = editor.graphView?.kind === "event" && editor.graphView.graphId === layerId;
             localBp.runBlueprintHistoryTransaction(payload.blueprintId, () => {
-                uidoc.stripBlueprintLayerBindings(payload.surfaceId, payload.blueprintId, layerId);
+                blueprintDocumentService.stripBlueprintLayerBindings(payload.surfaceId, payload.blueprintId, layerId);
                 localBp.removeEventGraph(payload.blueprintId, layerId);
             });
             if (wasActive) {
@@ -837,7 +1014,15 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 }
             }
         },
-        [clearGraphView, editor.graphView, localBp, payload.blueprintId, payload.surfaceId, selectEventGraph, uidoc],
+        [
+            blueprintDocumentService,
+            clearGraphView,
+            editor.graphView,
+            localBp,
+            payload.blueprintId,
+            payload.surfaceId,
+            selectEventGraph,
+        ],
     );
 
     const onDeleteSelectedNode = useCallback(() => {
@@ -929,7 +1114,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         const activeIr = editor.graphView ? ir : null;
         const magicElementRefs = collectMagicElementRefs({
             ir: activeIr,
-            document: uidoc.getDocument(),
+            document: blueprintDocumentService.getDocument(),
             surfaceId: payload.surfaceId,
         });
         return buildBlueprintPaletteContext({
@@ -943,15 +1128,28 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             isBlueprintValueGraph: bp.owner.kind === "widgetValue",
             listItemContextAvailable,
             magicElementRefs,
+            isComponentDefinitionGraph,
         });
-    }, [bp.owner, editor.graphView, ir, listItemContextAvailable, payload.surfaceId, uidoc, widgetElement?.type, widgetEventLayerSlots, widgetLogicEvents]);
+    }, [
+        blueprintDocumentService,
+        bp.owner,
+        editor.graphView,
+        ir,
+        isComponentDefinitionGraph,
+        listItemContextAvailable,
+        payload.surfaceId,
+        revision,
+        widgetElement?.type,
+        widgetEventLayerSlots,
+        widgetLogicEvents,
+    ]);
 
     const elementPreviews = useMemo(() => {
         const activeIr = editor.graphView ? ir : null;
         if (!activeIr) {
             return {};
         }
-        const uiDocument = uidoc.getDocument();
+        const uiDocument = blueprintDocumentService.getDocument();
         const previews: Record<string, NonNullable<BlueprintFlowNodeData["elementPreview"]>> = {};
         for (const node of Object.values(activeIr.nodes ?? {})) {
             if (!isElementBindingNodeType(node.type)) {
@@ -963,7 +1161,9 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             if (!ref || !element || !surface) {
                 continue;
             }
+            const revisionKey = `${node.id}:${ref.surfaceId}:${ref.elementId}:${uiDocumentRevision}`;
             previews[node.id] = {
+                revisionKey,
                 name: element.name?.trim() || element.id,
                 type: element.type,
                 text: typeof element.props?.text === "string" ? element.props.text : undefined,
@@ -973,8 +1173,9 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                 },
                 preview: (
                     <ElementLiteralSurfacePreview
-                        key={`${node.id}:${ref.surfaceId}:${ref.elementId}:${uiDocumentRevision}`}
+                        key={revisionKey}
                         runtimeBridge={runtimeBridge}
+                        document={uiDocument}
                         surface={surface}
                         element={element}
                     />
@@ -982,7 +1183,76 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             };
         }
         return previews;
-    }, [editor.graphView, ir, runtimeBridge, uidoc, uiDocumentRevision]);
+    }, [blueprintDocumentService, editor.graphView, ir, runtimeBridge, uiDocumentRevision]);
+
+    const displayableTargetVariantsByNodeId = useMemo(() => {
+        const activeIr = editor.graphView ? ir : null;
+        if (!activeIr) {
+            return {};
+        }
+        const currentDocument = blueprintDocumentService.getDocument();
+        const out: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]> = {};
+        for (const node of Object.values(activeIr.nodes ?? {})) {
+            if (node.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT) {
+                const label = widgetElement?.name?.trim() || widgetElement?.id;
+                out[node.id] = elementVariantOptions(widgetElement, label);
+                continue;
+            }
+            if (node.type !== BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT) {
+                continue;
+            }
+            const edge = activeIr.edges?.find(item => item.to.nodeId === node.id && item.to.port === "element");
+            if (!edge) {
+                out[node.id] = {
+                    supported: false,
+                    options: [],
+                    message: "Connect an Element ref to preview variants",
+                };
+                continue;
+            }
+            const sourceNode = activeIr.nodes?.[edge.from.nodeId];
+            if (!sourceNode || !isElementBindingNodeType(sourceNode.type) || edge.from.port !== "element") {
+                out[node.id] = {
+                    supported: false,
+                    options: [],
+                    message: "Static Element target required for variant list",
+                };
+                continue;
+            }
+            const ref = readBlueprintElementRefParams(sourceNode.params);
+            const element = ref ? currentDocument.elements[ref.elementId] : undefined;
+            const label = element?.name?.trim() || element?.id || ref?.elementId;
+            out[node.id] = elementVariantOptions(element, label);
+        }
+        return out;
+    }, [blueprintDocumentService, editor.graphView, ir, revision, uiDocumentRevision, widgetElement]);
+
+    const dynamicSelectOptionsByNodeId = useMemo(() => {
+        const activeIr = editor.graphView ? ir : null;
+        if (!activeIr) {
+            return {};
+        }
+        const currentDocument = blueprintDocumentService.getDocument();
+        const out: Record<string, Record<string, BlueprintInspectorParamSelectOption[]>> = {};
+        for (const node of Object.values(activeIr.nodes ?? {})) {
+            if (
+                node.type !== BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE &&
+                node.type !== BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE
+            ) {
+                continue;
+            }
+            out[node.id] = {
+                [BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE]: listBlueprintSetFramePageTargetOptions({
+                    document: currentDocument,
+                    owner: bp.owner,
+                    ir: activeIr,
+                    nodeId: node.id,
+                    nodeType: node.type,
+                }),
+            };
+        }
+        return out;
+    }, [blueprintDocumentService, bp.owner, editor.graphView, ir, revision, uiDocumentRevision]);
 
     const contextTitle = useMemo(
         () =>
@@ -1035,20 +1305,67 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     );
 
     const dynamicSelectOptions = useMemo<Record<string, BlueprintInspectorParamSelectOption[]>>(() => {
-        const doc = uidoc.getDocument();
-        const surfaceOptions: BlueprintInspectorParamSelectOption[] = doc.surfaces
+        const uiDocument = blueprintDocumentService.getDocument();
+        const surfaceOptions: BlueprintInspectorParamSelectOption[] = uiDocument.surfaces
             .filter(s => s.kind === "appSurface")
             .map(s => ({ value: s.id, label: s.name || s.id }));
-        const opts: Record<string, BlueprintInspectorParamSelectOption[]> = { surfaces: surfaceOptions };
-        if (payload.ownerKind === "widgetMain" && payload.surfaceId) {
-            const surface = doc.surfaces.find(s => s.id === payload.surfaceId);
+        const storyEntries = storyService.listStories();
+        const storyOptions: BlueprintInspectorParamSelectOption[] = storyEntries
+            .map(story => ({ value: story.id, label: story.name || story.id }));
+        const storySceneOptions: BlueprintInspectorParamSelectOption[] = [];
+        for (const story of storyEntries) {
+            const storyDocument = storyDocumentsById[story.id];
+            if (!storyDocument) {
+                continue;
+            }
+            const orderedSceneIds: string[] = [];
+            const seenSceneIds = new Set<string>();
+            for (const chapter of storyDocument.chapters) {
+                for (const sceneId of chapter.sceneIds) {
+                    if (!seenSceneIds.has(sceneId) && storyDocument.scenes[sceneId]) {
+                        seenSceneIds.add(sceneId);
+                        orderedSceneIds.push(sceneId);
+                    }
+                }
+            }
+            for (const sceneId of Object.keys(storyDocument.scenes).sort()) {
+                if (!seenSceneIds.has(sceneId)) {
+                    seenSceneIds.add(sceneId);
+                    orderedSceneIds.push(sceneId);
+                }
+            }
+            for (const sceneId of orderedSceneIds) {
+                const scene = storyDocument.scenes[sceneId];
+                if (!scene) {
+                    continue;
+                }
+                storySceneOptions.push({
+                    value: scene.id,
+                    label: scene.name || scene.runtimeName || scene.id,
+                    meta: { storyId: story.id },
+                });
+            }
+        }
+        const opts: Record<string, BlueprintInspectorParamSelectOption[]> = {
+            surfaces: surfaceOptions,
+            stories: storyOptions,
+            storyScenes: storySceneOptions,
+            ...nodeCatalog.getDynamicSelectOptions(),
+        };
+        if (
+            (payload.ownerKind === "widgetMain" || payload.ownerKind === "componentWidgetMain") &&
+            payload.surfaceId
+        ) {
+            const surface = uiDocument.surfaces.find(s => s.id === payload.surfaceId);
             if (surface) {
                 const collectElements = (rootId: string): BlueprintInspectorParamSelectOption[] => {
                     const result: BlueprintInspectorParamSelectOption[] = [];
                     const visit = (id: string) => {
-                        const el = doc.elements[id];
+                        const el = uiDocument.elements[id];
                         if (!el) return;
-                        result.push({ value: el.id, label: el.name || `${el.type} (${el.id.slice(0, 8)})` });
+                        if (el.type !== "nl.root") {
+                            result.push({ value: el.id, label: el.name || `${el.type} (${el.id.slice(0, 8)})` });
+                        }
                         for (const cid of el.childrenIds) visit(cid);
                     };
                     visit(rootId);
@@ -1058,7 +1375,17 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             }
         }
         return opts;
-    }, [uidoc, revision, payload.ownerKind, payload.surfaceId]);
+    }, [
+        blueprintDocumentService,
+        revision,
+        payload.ownerKind,
+        payload.surfaceId,
+        storyService,
+        storyDocumentsById,
+        storyLibraryRevision,
+        nodeCatalog,
+        dynamicSelectOptionsRevision,
+    ]);
 
     const [memberPanelFocusContained, setMemberPanelFocusContained] = useState(false);
 
@@ -1148,7 +1475,6 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
     const header = (
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5" title={contextTitle}>
             <span className="text-sm font-semibold text-white">Blueprint</span>
-            <BlueprintFrontendBadge kind="visual" />
             <span className="truncate font-mono text-[11px] text-gray-400">{bp.name}</span>
         </div>
     );
@@ -1177,8 +1503,10 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                         paletteContext={paletteContext}
                         deleteKeyCode={memberPanelFocusContained ? null : undefined}
                         dynamicSelectOptions={dynamicSelectOptions}
+                        dynamicSelectOptionsByNodeId={dynamicSelectOptionsByNodeId}
                         diagnostics={diagnostics}
                         elementPreviews={elementPreviews}
+                        displayableTargetVariantsByNodeId={displayableTargetVariantsByNodeId}
                         onBindElementLiteral={onBindElementLiteral}
                         initialViewport={initialFlowViewport}
                         onViewportChange={onFlowViewportChange}

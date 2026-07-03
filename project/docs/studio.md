@@ -78,3 +78,9 @@ const story = context.services.get<StoryService>(Services.Story);
 - UI graph / local blueprint：`editor/ui/uigraphs.json`。
 - Story library index：`editor/story/index.json`。
 - Story document：`editor/story/stories/<storyId>/storydoc.json`。
+
+## 项目包导入导出
+
+- Workspace `File > Export Project` 通过主进程 IPC 选择导出文件夹，并在该文件夹内生成 `.nlspkg` 二进制项目包。
+- `.nlspkg` 包含项目相对路径下的真实项目文件和空目录；导出会排除 `editor/cache/`、`editor/assets/remote/`、`.nlstudio/cache|tmp|temp|dev-mode|build|dist/`、`.git/`、`node_modules/` 和已有 `.nlspkg` 导出文件。
+- Launcher `Projects > Import Project` 通过主进程 IPC 先选择 `.nlspkg`，再选择导入目录。导入目录必须为空；解包前会校验所有包内路径都是安全的项目相对路径。

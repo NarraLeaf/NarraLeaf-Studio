@@ -6,7 +6,7 @@ Text 节点默认作用于当前 Text 元素。
 
 Text Self 节点只在 `nl.text` 自己的私有蓝图中出现，创建浮窗中归入 `Text` 分类，且没有 Element 输入。
 
-Text Element 节点使用同一属性目录下的 `blueprint.element.text.*`，带顶部 `element:nl.text` 输入，创建浮窗中归入 `Element` 分类。它们只有在当前图中已有绑定到 `nl.text` 的 Element Literal 或 Element Flush 时才会显示；放置后不会自动连线，必须手动连接 `element` 输入。读取节点是 pure，可用于 Blueprint Value；写入节点只用于 event/macro。
+Text Element 节点使用同一属性目录下的 `blueprint.element.text.*`，带顶部 `element:nl.text` 输入，创建浮窗中归入 `Element` 分类。它们只有在当前图中已有绑定到 `nl.text` 的 Element Literal、Element Flush 或 Element Click 时才会显示；同一节点类型只显示一项。若兼容来源唯一，放置时会自动连接 `element` 输入；若有多个兼容来源，则保留 `element` 输入由作者手动选择/连接。读取节点是 pure，可用于 Blueprint Value；写入节点只用于 event/macro。
 
 下文列出的 `blueprint.text.*` 均有对应 `blueprint.element.text.*` Element 版。
 

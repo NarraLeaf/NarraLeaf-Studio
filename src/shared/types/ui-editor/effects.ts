@@ -212,6 +212,7 @@ export const EFFECT_APPEARANCE_KEY_BY_KIND: Record<VisualEffectKind, keyof Eleme
 /** Which effect kinds each widget type supports (static path: no backgroundBlur on text). */
 export const WIDGET_EFFECT_KINDS_BY_TYPE: Record<string, readonly VisualEffectKind[]> = {
     "nl.text": ["blur", "textShadow", "blend", "filter"],
+    "nl.dialog.sentence": ["blur", "textShadow", "blend", "filter"],
     "nl.list": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
     "nl.container": [
         "blur",
@@ -223,7 +224,7 @@ export const WIDGET_EFFECT_KINDS_BY_TYPE: Record<string, readonly VisualEffectKi
         "filter",
     ],
     "nl.image": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
-    "nl.button": ["blur", "backgroundBlur", "shadow", "innerShadow", "blend", "glow", "filter"],
+    "nl.button": ["blur", "backgroundBlur", "shadow", "textShadow", "innerShadow", "blend", "glow", "filter"],
 };
 
 export function getSupportedEffectKindsForWidgetType(type: string): readonly VisualEffectKind[] {

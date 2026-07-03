@@ -20,6 +20,10 @@ import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBe
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
 import { behaviorNodeRegistry } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { buildAccessibleBlueprintVariableOptions, createExplicitBlueprintVariableRef } from "./blueprintVariableRefs";
+import {
+    withInferredBlueprintVariableValueTypeParam,
+    type BlueprintVariableTypeOption,
+} from "./graphVariableTypeInference";
 import { isBlueprintElementBindingOutputPin, isBlueprintLiteralNodeType } from "./graphEditing";
 import {
     isValidBlueprintExecConnection,
@@ -53,6 +57,8 @@ export type ValidateBlueprintDocumentGraphsOptions = {
     widgetSurfaceId?: string;
     /** Runtime widget event catalog used to validate scoped event-head nodes. */
     widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
+    /** Component definition graphs use Element references scoped to the component editor surface. */
+    isComponentDefinitionGraph?: boolean;
 };
 
 type BlueprintEventHook = {
@@ -123,6 +129,7 @@ function buildNodeValidationPaletteContext(ctx: {
     widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
     layerUiSlots?: string[];
     isBlueprintValueGraph?: boolean;
+    isComponentDefinitionGraph?: boolean;
 }): BlueprintPaletteContext | null {
     if (!ctx.blueprintOwner) {
         return null;
@@ -134,6 +141,7 @@ function buildNodeValidationPaletteContext(ctx: {
         widgetBlueprintEvents: ctx.widgetBlueprintEvents,
         widgetEventLayerSlots: ctx.layerUiSlots,
         isBlueprintValueGraph: ctx.isBlueprintValueGraph ?? ctx.blueprintOwner.kind === "widgetValue",
+        isComponentDefinitionGraph: ctx.isComponentDefinitionGraph,
         hasEventHead: false,
         hasFunctionEntry: false,
     };
@@ -210,18 +218,25 @@ export function validateBlueprintGraphIr(
         graphId: string;
         validVariableIds?: ReadonlySet<string>;
         validPersistentVariableIds?: ReadonlySet<string>;
+        variableValueTypes?: readonly BlueprintVariableTypeOption[];
+        persistentVariableValueTypes?: readonly BlueprintVariableTypeOption[];
         /** Widget UI slots referencing this event layer (when known). */
         layerUiSlots?: string[];
         widgetElementType?: string;
         widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
         blueprintOwner?: BlueprintOwnerRef;
         isBlueprintValueGraph?: boolean;
+        isComponentDefinitionGraph?: boolean;
     },
 ): BlueprintGraphEditorDiagnostic[] {
     const out: BlueprintGraphEditorDiagnostic[] = [];
     const nodes = ir.nodes ?? {};
     const edges = ir.edges ?? [];
     const nodeIds = new Set(Object.keys(nodes));
+    const variableTypeContext = {
+        memberVariables: ctx.variableValueTypes,
+        persistentVariables: ctx.persistentVariableValueTypes,
+    };
 
     if (Object.keys(nodes).length === 0) {
         out.push({
@@ -334,11 +349,21 @@ export function validateBlueprintGraphIr(
         const fromNode = nodes[edge.from.nodeId];
         const toNode = nodes[edge.to.nodeId];
         if (fromNode && toNode) {
-            const ok = resolveBlueprintNodeEditorCatalogEntryForNode(fromNode.type, fromNode.params);
-            const itk = resolveBlueprintNodeEditorCatalogEntryForNode(toNode.type, toNode.params);
-            const hasOut = ok.pins.some(p => p.id === edge.from.port && p.kind === "output");
-            const hasIn = itk.pins.some(p => p.id === edge.to.port && p.kind === "input");
-            if (!hasOut || !hasIn) {
+            const sourceParams = withInferredBlueprintVariableValueTypeParam(
+                fromNode.type,
+                fromNode.params,
+                variableTypeContext,
+            );
+            const targetParams = withInferredBlueprintVariableValueTypeParam(
+                toNode.type,
+                toNode.params,
+                variableTypeContext,
+            );
+            const ok = resolveBlueprintNodeEditorCatalogEntryForNode(fromNode.type, sourceParams);
+            const itk = resolveBlueprintNodeEditorCatalogEntryForNode(toNode.type, targetParams);
+            const outPin = ok.pins.find(p => p.id === edge.from.port && p.kind === "output");
+            const inPin = itk.pins.find(p => p.id === edge.to.port && p.kind === "input");
+            if (!outPin || !inPin) {
                 out.push({
                     severity: "warning",
                     code: "edge.port_mismatch",
@@ -351,14 +376,18 @@ export function validateBlueprintGraphIr(
                     sourcePort: edge.from.port,
                     targetType: toNode.type,
                     targetPort: edge.to.port,
-                    sourceParams: fromNode.params,
-                    targetParams: toNode.params,
+                    sourceParams,
+                    targetParams,
                 })
             ) {
+                const typeDetail =
+                    outPin.semantic === "data" && inPin.semantic === "data" && outPin.valueType && inPin.valueType
+                        ? ` Type mismatch: ${outPin.valueType} -> ${inPin.valueType}.`
+                        : "";
                 out.push({
                     severity: "error",
                     code: "edge.connection_invalid",
-                    message: `Invalid connection ${edge.from.nodeId}.${edge.from.port} -> ${edge.to.nodeId}.${edge.to.port}.`,
+                    message: `Invalid connection ${edge.from.nodeId}.${edge.from.port} -> ${edge.to.nodeId}.${edge.to.port}.${typeDetail}`,
                     target: { kind: "node", graphKind: ctx.graphKind, graphId: ctx.graphId, nodeId: edge.from.nodeId },
                 });
             }
@@ -507,8 +536,21 @@ export function validateBlueprintDocumentGraphs(
                 : [];
         return [...base, ...wiring];
     }
-    const validVariableIds = buildValidVariableRefSet(doc, blueprintId, options?.widgetSurfaceId);
+    const accessibleVariables = buildAccessibleBlueprintVariableOptions({
+        doc,
+        currentBlueprintId: blueprintId,
+        surfaceId: options?.widgetSurfaceId,
+    });
+    const variableValueTypes = accessibleVariables.map(option => ({
+        value: option.value,
+        valueType: option.valueType,
+    }));
+    const validVariableIds = buildValidVariableRefSetFromOptions(accessibleVariables);
     const validPersistentVariableIds = new Set(Object.keys(doc.persistentVariables ?? {}));
+    const persistentVariableValueTypes = Object.values(doc.persistentVariables ?? {}).map(variable => ({
+        value: variable.id,
+        valueType: variable.valueType,
+    }));
     const out: BlueprintGraphEditorDiagnostic[] = [];
     for (const [eventId, eg] of Object.entries(bp.program.graphs.events ?? {})) {
         const layerUiSlots =
@@ -522,11 +564,14 @@ export function validateBlueprintDocumentGraphs(
                 graphId: eventId,
                 validVariableIds,
                 validPersistentVariableIds,
+                variableValueTypes,
+                persistentVariableValueTypes,
                 layerUiSlots,
                 widgetElementType: options?.widgetElement?.type,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
                 isBlueprintValueGraph: bp.owner.kind === "widgetValue",
+                isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
             }),
         );
     }
@@ -538,10 +583,13 @@ export function validateBlueprintDocumentGraphs(
                 graphId: fnId,
                 validVariableIds,
                 validPersistentVariableIds,
+                variableValueTypes,
+                persistentVariableValueTypes,
                 widgetElementType: options?.widgetElement?.type,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
                 isBlueprintValueGraph: bp.owner.kind === "widgetValue",
+                isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
             }),
         );
     }
@@ -557,17 +605,11 @@ export function validateBlueprintDocumentGraphs(
     return out;
 }
 
-function buildValidVariableRefSet(
-    doc: BlueprintDocument,
-    blueprintId: string,
-    surfaceId?: string,
+function buildValidVariableRefSetFromOptions(
+    options: ReturnType<typeof buildAccessibleBlueprintVariableOptions>,
 ): ReadonlySet<string> {
     const values = new Set<string>();
-    for (const option of buildAccessibleBlueprintVariableOptions({
-        doc,
-        currentBlueprintId: blueprintId,
-        surfaceId,
-    })) {
+    for (const option of options) {
         values.add(option.value);
         values.add(createExplicitBlueprintVariableRef(option.blueprintId, option.variableId));
     }

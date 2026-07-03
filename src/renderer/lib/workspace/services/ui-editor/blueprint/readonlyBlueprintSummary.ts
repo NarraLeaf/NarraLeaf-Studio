@@ -2,7 +2,7 @@ import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { getActiveBlueprintId } from "./ownerRecords";
-import { surfaceMainOwnerKey, widgetMainOwnerKey } from "./ownerKeys";
+import { componentWidgetMainOwnerKey, surfaceMainOwnerKey, widgetMainOwnerKey } from "./ownerKeys";
 import { validateBlueprintWidgetMainEventWiring } from "./graphValidation";
 
 /** Read-only inspector summary for a widget instance main blueprint (Blueprint M2). */
@@ -101,8 +101,11 @@ export function buildReadonlyWidgetMainSummary(
     doc: BlueprintDocument,
     surfaceId: string,
     element: UIElement,
+    options: { componentId?: string } = {},
 ): ReadonlyBlueprintWidgetSummary {
-    const key = widgetMainOwnerKey(surfaceId, element.id);
+    const key = options.componentId
+        ? componentWidgetMainOwnerKey(options.componentId, element.id)
+        : widgetMainOwnerKey(surfaceId, element.id);
     const blueprintId = getActiveBlueprintId(doc, key);
     const bp = blueprintId ? doc.blueprints[blueprintId] : undefined;
     const supportedEventCount = listWidgetLogicEventIds(element.type).length;
@@ -128,10 +131,12 @@ export function buildReadonlyWidgetMainSummary(
         eventGraphCount = Object.keys(bp.program.graphs.events ?? {}).length;
     }
 
-    const eventWiringDiags = validateBlueprintWidgetMainEventWiring(doc, blueprintId, {
-        element,
-        surfaceId,
-    });
+    const eventWiringDiags = options.componentId
+        ? []
+        : validateBlueprintWidgetMainEventWiring(doc, blueprintId, {
+              element,
+              surfaceId,
+          });
     const eventSchemaIssueCount = eventWiringDiags.filter(d => d.severity !== "info").length;
 
     return {

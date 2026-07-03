@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { AnimatePresence, useReducedMotion } from "motion/react";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
-import { type UIDocument, type UISurface, type UIElement, isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
+import {
+    type UIDocument,
+    type UISurface,
+    type UIElement,
+    getUIComponentLink,
+    isUIElementFlowLayoutChild,
+} from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -18,9 +24,19 @@ import type { BindingDebugCoalescer } from "@/lib/ui-editor/blueprint-runtime/Bi
 import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { renderUnknownWidgetTypeContent } from "@/lib/ui-editor/runtime/unknownWidgetTypeUi";
 import { BlueprintWidgetInitLifecycle } from "@/lib/ui-editor/runtime/surface/BlueprintWidgetInitLifecycle";
-import { WidgetRuntimeScopeProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import {
+    useWidgetRuntimeStateStore,
+    WidgetRuntimeScopeProvider,
+} from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { getUIFrameWidgetProps } from "@shared/types/ui-editor/frame";
-import { resolvePageAnimationMotion, shouldBlockPageAnimationExit } from "@/lib/ui-editor/runtime/pageAnimation";
+import {
+    getPageAnimationDurationMs,
+    resolvePageAnimationMotion,
+    shouldBlockPageAnimationExit,
+} from "@/lib/ui-editor/runtime/pageAnimation";
+import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
+import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
+import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
@@ -42,12 +58,21 @@ export type NestedSurfaceRuntimeInput = {
     surfacePath: string[];
 };
 
+type VisibleNestedSurfaceRuntimeInput = NestedSurfaceRuntimeInput & {
+    exitBehind?: boolean;
+};
+
 export type NestedSurfaceRuntime = {
     createRuntimeScopeId?(input: Omit<NestedSurfaceRuntimeInput, "runtimeScopeId">): string;
     createHostAdapter?(input: NestedSurfaceRuntimeInput): UIHostAdapter;
     createBindingContext?(input: NestedSurfaceRuntimeInput): SurfaceBlueprintBindingContext | null;
     mountSurface?(input: NestedSurfaceRuntimeInput & { hostAdapter: UIHostAdapter }): void | (() => void);
     getWidgetRuntimePatches?(input: NestedSurfaceRuntimeInput): Record<string, DevModeWidgetRuntimePatch> | undefined;
+};
+
+export type SurfaceLifecycleSignals = {
+    beforeSurfaceExit: number;
+    afterSurfaceEnter: number;
 };
 
 export type SurfaceElementTreeProps = {
@@ -63,6 +88,10 @@ export type SurfaceElementTreeProps = {
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     surfacePath?: string[];
     editorChrome?: boolean;
+    interactive?: boolean;
+    keyboardInteractive?: boolean;
+    surfaceLifecycleSignals?: SurfaceLifecycleSignals;
+    blueprintLifecycleReady?: boolean;
 };
 
 /**
@@ -107,6 +136,7 @@ function SurfaceValueRuntimeBoundary(props: SurfaceElementTreeProps) {
             return undefined;
         }
         const onStateChanged = () => {
+            valueRuntime.refreshAll();
             setBindingTick(tick => tick + 1);
         };
         const disposers = [
@@ -150,7 +180,12 @@ function renderSurfaceElementTreeWithValueRuntime(
         props.nestedSurfaceRuntime,
         props.surfacePath ?? [surface.id],
         editorChrome,
+        props.interactive ?? true,
+        props.keyboardInteractive ?? props.interactive ?? true,
         valueRuntime,
+        [],
+        props.surfaceLifecycleSignals,
+        props.blueprintLifecycleReady ?? true,
     );
 
     return (
@@ -189,6 +224,8 @@ function NestedSurfaceRenderer(props: {
     useAppearanceInspectorPreview: boolean;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     surfacePath: string[];
+    parentInteractive: boolean;
+    parentKeyboardInteractive: boolean;
 }) {
     const {
         document,
@@ -202,17 +239,17 @@ function NestedSurfaceRenderer(props: {
         useAppearanceInspectorPreview,
         nestedSurfaceRuntime,
         surfacePath,
+        parentInteractive,
+        parentKeyboardInteractive,
     } = props;
     const prefersReducedMotion = useReducedMotion();
     const surfacePathKey = surfacePath.join("\0");
-    const targetSurface = document.surfaces.find(surface => surface.id === targetSurfaceId);
-    const invalidLabel = !targetSurfaceId
-        ? "Select a Page"
-        : !targetSurface
-          ? "Missing Page"
-          : targetSurface.kind !== "appSurface"
+    const targetSurface = targetSurfaceId ? document.surfaces.find(surface => surface.id === targetSurfaceId) : undefined;
+    const invalidLabel = targetSurfaceId && !targetSurface
+        ? "Missing Page"
+        : targetSurface && targetSurface.kind !== "appSurface"
             ? "Target is not a Page"
-            : surfacePath.includes(targetSurface.id)
+            : targetSurface && surfacePath.includes(targetSurface.id)
               ? "Page loop blocked"
               : null;
 
@@ -256,64 +293,247 @@ function NestedSurfaceRenderer(props: {
         return { ...runtimeBaseInput, runtimeScopeId };
     }, [runtimeBaseInput, runtimeScopeId]);
 
+    const frameAnimation = getUIFrameWidgetProps(frameElement).animation;
+    const reducedMotion = prefersReducedMotion === true || !parentHostAdapter.blueprintRuntime;
+    const [visibleInputs, setVisibleInputs] = useState<VisibleNestedSurfaceRuntimeInput[]>(() =>
+        runtimeInput ? [runtimeInput] : []
+    );
+    const [presenceMode, setPresenceMode] = useState<"sync" | "wait">("sync");
+    const visibleInputsRef = useRef(visibleInputs);
+    const pendingWaitInputRef = useRef<NestedSurfaceRuntimeInput | null>(null);
+    const pendingUnderlayReadyKeyRef = useRef<string | null>(null);
+    const pendingRemoveAfterEnterKeyRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        visibleInputsRef.current = visibleInputs;
+    }, [visibleInputs]);
+
+    useEffect(() => {
+        if (!runtimeInput) {
+            pendingWaitInputRef.current = null;
+            pendingUnderlayReadyKeyRef.current = null;
+            pendingRemoveAfterEnterKeyRef.current = null;
+            setPresenceMode("sync");
+            setVisibleInputs([]);
+            return;
+        }
+        const currentInput = visibleInputsRef.current[visibleInputsRef.current.length - 1] ?? null;
+        if (!currentInput) {
+            pendingWaitInputRef.current = null;
+            pendingUnderlayReadyKeyRef.current = null;
+            pendingRemoveAfterEnterKeyRef.current = null;
+            setPresenceMode("sync");
+            setVisibleInputs([runtimeInput]);
+            return;
+        }
+        if (currentInput.runtimeScopeId === runtimeInput.runtimeScopeId) {
+            setVisibleInputs(prev => prev.map(input =>
+                input.runtimeScopeId === runtimeInput.runtimeScopeId ? runtimeInput : input
+            ));
+            return;
+        }
+
+        const exitSettings = frameAnimation ?? currentInput.targetSurface.settings?.pageAnimation;
+        const enterSettings = frameAnimation ?? runtimeInput.targetSurface.settings?.pageAnimation;
+        const waitForExit = shouldBlockPageAnimationExit(exitSettings, reducedMotion);
+        const exitDurationMs = getPageAnimationDurationMs(exitSettings, "exit", reducedMotion);
+        const enterDurationMs = getPageAnimationDurationMs(enterSettings, "enter", reducedMotion);
+        const holdCurrentUntilEnterComplete = shouldHoldCurrentSurfaceUntilEnterComplete({
+            waitForExit,
+            hasCurrentSurface: true,
+            exitDurationMs,
+            enterDurationMs,
+        });
+        pendingWaitInputRef.current = waitForExit ? runtimeInput : null;
+        pendingUnderlayReadyKeyRef.current =
+            waitForExit || holdCurrentUntilEnterComplete ? null : runtimeInput.runtimeScopeId;
+        pendingRemoveAfterEnterKeyRef.current = holdCurrentUntilEnterComplete ? runtimeInput.runtimeScopeId : null;
+        setPresenceMode(waitForExit ? "wait" : "sync");
+        setVisibleInputs(
+            waitForExit
+                ? []
+                : holdCurrentUntilEnterComplete
+                    ? [{ ...currentInput, exitBehind: true }, runtimeInput]
+                    : [runtimeInput, currentInput],
+        );
+    }, [frameAnimation, reducedMotion, runtimeInput]);
+
+    const handleLayerPrepaintReady = (runtimeScopeId: string) => {
+        if (pendingUnderlayReadyKeyRef.current !== runtimeScopeId) {
+            return;
+        }
+        pendingUnderlayReadyKeyRef.current = null;
+        setVisibleInputs(prev => prev.filter(input => input.runtimeScopeId === runtimeScopeId));
+    };
+
+    const handleLayerEnterComplete = (runtimeScopeId: string) => {
+        if (pendingRemoveAfterEnterKeyRef.current !== runtimeScopeId) {
+            return;
+        }
+        pendingRemoveAfterEnterKeyRef.current = null;
+        setVisibleInputs(prev => prev.filter(input => input.runtimeScopeId === runtimeScopeId));
+    };
+
+    const handleExitComplete = () => {
+        const pendingInput = pendingWaitInputRef.current;
+        if (!pendingInput) {
+            return;
+        }
+        pendingWaitInputRef.current = null;
+        setPresenceMode("sync");
+        setVisibleInputs([pendingInput]);
+    };
+
     if (invalidLabel) {
         return <NestedSurfacePlaceholder label={invalidLabel} />;
     }
 
-    if (!runtimeInput) {
+    if (!runtimeInput && targetSurfaceId) {
         return <NestedSurfacePlaceholder label="Page preview unavailable" />;
     }
-    const frameAnimation = getUIFrameWidgetProps(frameElement).animation;
-    const animationSettings = frameAnimation ?? targetSurface?.settings?.pageAnimation;
-    const reducedMotion = prefersReducedMotion === true || !parentHostAdapter.blueprintRuntime;
-    const waitForExit = shouldBlockPageAnimationExit(animationSettings, reducedMotion);
 
     return (
-        <AnimatePresence initial={false} mode={waitForExit ? "wait" : "sync"}>
-            <NestedSurfaceInstance
-                key={runtimeScopeId}
-                runtimeInput={runtimeInput}
-                rendererRegistry={rendererRegistry}
-                parentHostAdapter={parentHostAdapter}
-                useAppearanceInspectorPreview={useAppearanceInspectorPreview}
-                nestedSurfaceRuntime={nestedSurfaceRuntime}
-                surfacePath={surfacePath}
-            />
+        <AnimatePresence custom="forward" initial={false} mode={presenceMode} onExitComplete={handleExitComplete}>
+            {visibleInputs.map((visibleInput, layerIndex) => (
+                <NestedSurfaceInstance
+                    key={visibleInput.runtimeScopeId}
+                    runtimeInput={visibleInput}
+                    layerIndex={layerIndex}
+                    rendererRegistry={rendererRegistry}
+                    parentHostAdapter={parentHostAdapter}
+                    useAppearanceInspectorPreview={useAppearanceInspectorPreview}
+                    nestedSurfaceRuntime={nestedSurfaceRuntime}
+                    surfacePath={surfacePath}
+                    reducedMotion={reducedMotion}
+                    active={visibleInput.runtimeScopeId === runtimeInput?.runtimeScopeId}
+                    parentInteractive={parentInteractive}
+                    parentKeyboardInteractive={parentKeyboardInteractive}
+                    onPrepaintReady={handleLayerPrepaintReady}
+                    onEnterComplete={handleLayerEnterComplete}
+                />
+            ))}
         </AnimatePresence>
     );
 }
 
 function NestedSurfaceInstance(props: {
-    runtimeInput: NestedSurfaceRuntimeInput;
+    runtimeInput: VisibleNestedSurfaceRuntimeInput;
+    layerIndex: number;
     rendererRegistry: ElementRendererRegistry;
     parentHostAdapter: UIHostAdapter;
     useAppearanceInspectorPreview: boolean;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     surfacePath: string[];
+    reducedMotion: boolean;
+    active: boolean;
+    parentInteractive: boolean;
+    parentKeyboardInteractive: boolean;
+    onPrepaintReady: (runtimeScopeId: string) => void;
+    onEnterComplete: (runtimeScopeId: string) => void;
 }) {
     const {
         runtimeInput,
+        layerIndex,
         rendererRegistry,
         parentHostAdapter,
         useAppearanceInspectorPreview,
         nestedSurfaceRuntime,
         surfacePath,
+        reducedMotion,
+        active,
+        parentInteractive,
+        parentKeyboardInteractive,
+        onPrepaintReady,
+        onEnterComplete,
     } = props;
     const [, setBindingTick] = useState(0);
-    const prefersReducedMotion = useReducedMotion();
+    const [prepaintReady, setPrepaintReady] = useState(false);
+    const [surfaceInteractive, setSurfaceInteractive] = useState(false);
+    const [surfaceLifecycleSignals, setSurfaceLifecycleSignals] = useState<SurfaceLifecycleSignals>({
+        beforeSurfaceExit: 0,
+        afterSurfaceEnter: 0,
+    });
+    const surfaceTransitionStateRef = useRef({ isEntering: true, isExiting: false });
     const { document, targetSurface } = runtimeInput;
-    const hostAdapter = useMemo(
-        () => nestedSurfaceRuntime?.createHostAdapter?.(runtimeInput) ?? parentHostAdapter,
-        [nestedSurfaceRuntime, parentHostAdapter, runtimeInput],
-    );
+    const [, setRuntimePatchRenderTick] = useState(0);
+    const widgetRuntimeStore = useWidgetRuntimeStateStore();
+    const effectiveInteractive = parentInteractive && active && surfaceInteractive;
+    const effectiveKeyboardInteractive = parentKeyboardInteractive && active && prepaintReady;
+    const hostAdapter = useMemo(() => {
+        const getSurfaceTransitionState = () => surfaceTransitionStateRef.current;
+        const nestedHostAdapter = nestedSurfaceRuntime?.createHostAdapter?.(runtimeInput);
+        if (nestedHostAdapter) {
+            if (nestedHostAdapter.blueprintRuntime) {
+                nestedHostAdapter.blueprintRuntime.getSurfaceTransitionState = getSurfaceTransitionState;
+            }
+            return nestedHostAdapter;
+        }
+        if (parentHostAdapter.blueprintRuntime) {
+            return {
+                ...parentHostAdapter,
+                blueprintRuntime: {
+                    ...parentHostAdapter.blueprintRuntime,
+                    getSurfaceTransitionState,
+                },
+            };
+        }
+        return parentHostAdapter;
+    }, [nestedSurfaceRuntime, parentHostAdapter, runtimeInput]);
     const bindingContext = useMemo(
         () => nestedSurfaceRuntime?.createBindingContext?.(runtimeInput) ?? null,
         [nestedSurfaceRuntime, runtimeInput],
     );
-    const widgetRuntimePatches = useMemo(
-        () => nestedSurfaceRuntime?.getWidgetRuntimePatches?.(runtimeInput),
-        [nestedSurfaceRuntime, runtimeInput],
-    );
+    const widgetRuntimePatches = nestedSurfaceRuntime?.getWidgetRuntimePatches?.(runtimeInput);
+    const dispatchSurfaceTransitionEvent = (eventName: "beforeSurfaceExit" | "afterSurfaceEnter") => {
+        surfaceTransitionStateRef.current =
+            eventName === "beforeSurfaceExit"
+                ? { isEntering: false, isExiting: true }
+                : { isEntering: false, isExiting: false };
+        void hostAdapter.blueprintRuntime?.dispatchSurfaceBlueprintEvent?.(eventName);
+        setSurfaceLifecycleSignals(prev => ({
+            ...prev,
+            [eventName]: prev[eventName] + 1,
+        }));
+    };
+
+    const handleBeforeExit = (runtimeScopeId: string) => {
+        if (runtimeScopeId !== runtimeInput.runtimeScopeId) {
+            return;
+        }
+        setSurfaceInteractive(false);
+        widgetRuntimeStore?.clearInteractionStateForScope(runtimeInput.runtimeScopeId);
+        dispatchSurfaceTransitionEvent("beforeSurfaceExit");
+    };
+
+    const handleEnterComplete = (runtimeScopeId: string) => {
+        if (runtimeScopeId === runtimeInput.runtimeScopeId) {
+            dispatchSurfaceTransitionEvent("afterSurfaceEnter");
+            setSurfaceInteractive(active);
+        }
+        onEnterComplete(runtimeScopeId);
+    };
+
+    const handlePrepaintReady = (runtimeScopeId: string) => {
+        if (runtimeScopeId === runtimeInput.runtimeScopeId) {
+            setPrepaintReady(true);
+        }
+        onPrepaintReady(runtimeScopeId);
+    };
+
+    useEffect(() => {
+        if (active) {
+            return;
+        }
+        setSurfaceInteractive(false);
+        widgetRuntimeStore?.clearInteractionStateForScope(runtimeInput.runtimeScopeId);
+    }, [active, runtimeInput.runtimeScopeId, widgetRuntimeStore]);
+
+    useEffect(() => {
+        if (parentInteractive) {
+            return;
+        }
+        widgetRuntimeStore?.clearInteractionStateForScope(runtimeInput.runtimeScopeId);
+    }, [parentInteractive, runtimeInput.runtimeScopeId, widgetRuntimeStore]);
 
     useEffect(() => {
         const store = bindingContext?.surfaceState;
@@ -324,6 +544,15 @@ function NestedSurfaceInstance(props: {
             setBindingTick(tick => tick + 1);
         });
     }, [bindingContext?.surfaceState]);
+
+    useLayoutEffect(() => {
+        if (!widgetRuntimeStore) {
+            return undefined;
+        }
+        return widgetRuntimeStore.subscribeRuntimePatches(() => {
+            setRuntimePatchRenderTick(tick => tick + 1);
+        });
+    }, [widgetRuntimeStore]);
 
     useEffect(() => nestedSurfaceRuntime?.mountSurface?.({ ...runtimeInput, hostAdapter }), [
         hostAdapter,
@@ -342,25 +571,38 @@ function NestedSurfaceInstance(props: {
     const animationMotion = resolvePageAnimationMotion({
         settings: animationSettings,
         navigationDirection: "forward",
-        reducedMotion: prefersReducedMotion === true || !runtimeInput.parentHostAdapter.blueprintRuntime,
+        reducedMotion,
     });
+    const resolveExit = () => resolvePageAnimationMotion({
+        settings: animationSettings,
+        navigationDirection: "forward",
+        reducedMotion,
+    }).exit;
     const surfaceStyle: CSSProperties = {
         position: "relative",
         width: targetSurface.designSize.width,
         height: targetSurface.designSize.height,
         overflow: "hidden",
-        backgroundColor: targetSurface.settings?.backgroundColor ?? "#ffffff",
+        backgroundColor: getSurfaceBackgroundColor(targetSurface),
     };
 
     return (
-        <motion.div
+        <SurfaceAnimationLayer
+            prepaintKey={runtimeInput.runtimeScopeId}
+            direction="forward"
+            pageMotion={animationMotion}
             className="ui-editor-surface"
-            data-ui-surface-id={targetSurface.id}
-            data-ui-surface-kind={targetSurface.kind}
-            initial={animationMotion.initial}
-            animate={animationMotion.animate}
-            exit={animationMotion.exit}
+            surfaceId={targetSurface.id}
+            surfaceKind={targetSurface.kind}
             style={surfaceStyle}
+            contentStyle={{ width: "100%", height: "100%" }}
+            presentZIndex={10 + layerIndex}
+            exitZIndex={runtimeInput.exitBehind ? 0 : 30 + layerIndex}
+            interactive={effectiveInteractive}
+            resolveExit={resolveExit}
+            onPrepaintReady={handlePrepaintReady}
+            onBeforeExit={handleBeforeExit}
+            onEnterComplete={handleEnterComplete}
         >
             <SurfaceElementTree
                 document={document}
@@ -374,8 +616,11 @@ function NestedSurfaceInstance(props: {
                 nestedSurfaceRuntime={nestedSurfaceRuntime}
                 surfacePath={[...surfacePath, targetSurface.id]}
                 editorChrome={Boolean(parentHostAdapter.blueprintRuntime)}
+                interactive={effectiveInteractive}
+                keyboardInteractive={effectiveKeyboardInteractive}
+                surfaceLifecycleSignals={surfaceLifecycleSignals}
             />
-        </motion.div>
+        </SurfaceAnimationLayer>
     );
 }
 
@@ -392,8 +637,23 @@ function applyWidgetRuntimePatches(element: UIElement, patches: Record<string, D
     if (patch.visible !== undefined) {
         next.layout.visible = patch.visible;
     }
+    if (patch.layout) {
+        next.layout = {
+            ...next.layout,
+            ...patch.layout,
+        };
+    }
     if (patch.enabled !== undefined) {
         (next.props as Record<string, unknown>).interactionDisabled = !patch.enabled;
+    }
+    if (element.type === "nl.frame" && patch.frame) {
+        const props = next.props as Record<string, unknown>;
+        if (Object.prototype.hasOwnProperty.call(patch.frame, "targetSurfaceId")) {
+            props.targetSurfaceId = patch.frame.targetSurfaceId ?? null;
+        }
+        if (patch.frame.params !== undefined) {
+            props.params = patch.frame.params;
+        }
     }
     return next;
 }
@@ -411,6 +671,124 @@ function cloneElementRenderSnapshot(element: UIElement): UIElement {
     };
 }
 
+function ComponentInstancePlaceholder({ label }: { label: string }) {
+    return (
+        <div className="flex h-full w-full items-center justify-center border border-dashed border-white/20 bg-black/20 px-3 text-center text-xs text-gray-400">
+            {label}
+        </div>
+    );
+}
+
+function renderLinkedComponentInstanceContent(input: {
+    instanceElement: UIElement;
+    document: UIDocument;
+    hostAdapter: UIHostAdapter;
+    rendererRegistry: ElementRendererRegistry;
+    useAppearanceInspectorPreview: boolean;
+    widgetRuntimePatches?: Record<string, DevModeWidgetRuntimePatch>;
+    nestedSurfaceRuntime?: NestedSurfaceRuntime;
+    instanceKey: string;
+    componentPath: string[];
+    valueRuntime: BlueprintValueRuntimeStore | null;
+    surfaceLifecycleSignals?: SurfaceLifecycleSignals;
+    blueprintLifecycleReady?: boolean;
+    interactive?: boolean;
+    keyboardInteractive?: boolean;
+}): ReactNode | null {
+    const link = getUIComponentLink(input.instanceElement);
+    if (!link) {
+        return null;
+    }
+    const component = input.document.components?.find(item => item.id === link.componentId);
+    if (!component) {
+        return <ComponentInstancePlaceholder label="Missing component" />;
+    }
+    if (input.componentPath.includes(component.id)) {
+        return <ComponentInstancePlaceholder label="Component loop blocked" />;
+    }
+    const root = component.elements[component.rootElementId];
+    if (!root) {
+        return <ComponentInstancePlaceholder label="Component root missing" />;
+    }
+
+    const rootWidth = Math.max(1, Math.abs(root.layout.width));
+    const rootHeight = Math.max(1, Math.abs(root.layout.height));
+    const instanceWidth = Math.max(1, Math.abs(input.instanceElement.layout.width));
+    const instanceHeight = Math.max(1, Math.abs(input.instanceElement.layout.height));
+    const virtualSurface: UISurface = {
+        id: `component:${component.id}`,
+        name: component.name,
+        host: "app",
+        kind: "appSurface",
+        designSize: { width: rootWidth, height: rootHeight },
+        rootElementId: root.id,
+    };
+    const rootSnapshot: UIElement = {
+        ...cloneElementRenderSnapshot(root),
+        parentId: null,
+        layout: {
+            ...root.layout,
+            x: 0,
+            y: 0,
+        },
+    };
+    const virtualDocument: UIDocument = {
+        ...input.document,
+        surfaces: [virtualSurface],
+        elements: {
+            ...input.document.elements,
+            ...component.elements,
+            [root.id]: rootSnapshot,
+        },
+    };
+    const componentInstanceKey = input.instanceKey
+        ? `${input.instanceKey}\0component:${input.instanceElement.id}`
+        : `component:${input.instanceElement.id}`;
+    const viewportStyle: CSSProperties = {
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        overflow: "hidden",
+    };
+    const contentStyle: CSSProperties = {
+        position: "absolute",
+        left: 0,
+        top: 0,
+        width: rootWidth,
+        height: rootHeight,
+        transform: `scale(${instanceWidth / rootWidth}, ${instanceHeight / rootHeight})`,
+        transformOrigin: "top left",
+        pointerEvents: "none",
+    };
+    return (
+        <div style={viewportStyle}>
+            <div style={contentStyle}>
+                {renderElementTree(
+                    rootSnapshot,
+                    virtualDocument,
+                    virtualSurface,
+                    input.hostAdapter,
+                    input.rendererRegistry,
+                    input.useAppearanceInspectorPreview,
+                    null,
+                    input.widgetRuntimePatches,
+                    null,
+                    componentInstanceKey,
+                    input.nestedSurfaceRuntime,
+                    [virtualSurface.id],
+                    false,
+                    input.interactive ?? true,
+                    input.keyboardInteractive ?? input.interactive ?? true,
+                    input.valueRuntime,
+                    [...input.componentPath, component.id],
+                    input.surfaceLifecycleSignals,
+                    input.blueprintLifecycleReady ?? true,
+                )}
+            </div>
+        </div>
+    );
+}
+
 function renderElementTree(
     element: UIElement,
     document: UIDocument,
@@ -425,8 +803,15 @@ function renderElementTree(
     nestedSurfaceRuntime?: NestedSurfaceRuntime,
     surfacePath: string[] = [surface.id],
     editorChrome = true,
+    interactive = true,
+    keyboardInteractive = interactive,
     valueRuntime: BlueprintValueRuntimeStore | null = null,
+    componentPath: string[] = [],
+    surfaceLifecycleSignals?: SurfaceLifecycleSignals,
+    blueprintLifecycleReady = true,
 ): ReactNode {
+    const componentId = componentPath[componentPath.length - 1];
+    const runtimePatch = widgetRuntimePatches?.[element.id];
     const patched = applyWidgetRuntimePatches(element, widgetRuntimePatches ?? {});
     const bound =
         blueprintBindingContext != null
@@ -477,7 +862,12 @@ function renderElementTree(
                 nestedSurfaceRuntime,
                 surfacePath,
                 editorChrome,
+                interactive,
+                keyboardInteractive,
                 valueRuntime,
+                componentPath,
+                surfaceLifecycleSignals,
+                blueprintLifecycleReady,
             );
         })
         .filter((node): node is ReactNode => node !== null);
@@ -486,7 +876,23 @@ function renderElementTree(
     const children = resolved.type === "nl.list" || resolved.type === "nl.slider" ? [] : renderChildren();
 
     const renderer = rendererRegistry.get(resolved.type);
-    const content = renderer
+    const linkedComponentContent = renderLinkedComponentInstanceContent({
+        instanceElement: resolved,
+        document,
+        hostAdapter,
+        rendererRegistry,
+        useAppearanceInspectorPreview,
+        widgetRuntimePatches,
+        nestedSurfaceRuntime,
+        instanceKey,
+        componentPath,
+        valueRuntime,
+        surfaceLifecycleSignals,
+        blueprintLifecycleReady,
+        interactive,
+        keyboardInteractive,
+    });
+    const content = linkedComponentContent ?? (renderer
         ? renderer.render({
               element: resolved,
               document,
@@ -507,6 +913,8 @@ function renderElementTree(
                       useAppearanceInspectorPreview={useAppearanceInspectorPreview}
                       nestedSurfaceRuntime={nestedSurfaceRuntime}
                       surfacePath={surfacePath}
+                      parentInteractive={interactive}
+                      parentKeyboardInteractive={keyboardInteractive}
                   />
               ),
               instanceKey,
@@ -518,9 +926,13 @@ function renderElementTree(
                   : undefined,
               useAppearanceInspectorPreview,
           })
-        : renderUnknownWidgetTypeContent(resolved, children);
+        : renderUnknownWidgetTypeContent(resolved, children));
 
-    const styleOverrides = extractStyleOverrides(resolved);
+    const baseStyleOverrides = extractStyleOverrides(resolved);
+    const styleOverrides =
+        runtimePatch?.display === false
+            ? { ...baseStyleOverrides, display: "none" }
+            : baseStyleOverrides;
     const layoutMode =
         resolved.parentId === null
             ? "absolute"
@@ -535,12 +947,17 @@ function renderElementTree(
             isRoot={resolved.parentId === null}
             layoutMode={layoutMode}
             styleOverrides={styleOverrides}
+            hasRuntimeOpacityOverride={Boolean(
+                runtimePatch?.layout && Object.prototype.hasOwnProperty.call(runtimePatch.layout, "opacity"),
+            )}
             hostAdapter={hostAdapter}
-            interactive={editorChrome}
+            interactive={editorChrome && interactive}
+            keyboardInteractive={editorChrome && keyboardInteractive}
+            useAppearanceInspectorPreview={useAppearanceInspectorPreview}
             listItemScope={listItemScope ?? null}
             instanceKey={instanceKey}
         >
-            {editorChrome && hostAdapter.blueprintRuntime ? (
+            {blueprintLifecycleReady && hostAdapter.blueprintRuntime ? (
                 <BlueprintWidgetInitLifecycle
                     surfaceId={surface.id}
                     elementId={resolved.id}
@@ -548,6 +965,10 @@ function renderElementTree(
                     behavior={resolved.behavior}
                     initBinding={resolved.behavior?.events?.init}
                     hostAdapter={hostAdapter}
+                    componentId={componentId}
+                    listItemScope={listItemScope}
+                    instanceKey={instanceKey || undefined}
+                    surfaceLifecycleSignals={surfaceLifecycleSignals}
                 />
             ) : null}
             {content}

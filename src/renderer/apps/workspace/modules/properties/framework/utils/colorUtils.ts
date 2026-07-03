@@ -2,6 +2,7 @@ import type { ColorValue } from "../types";
 
 const RGBA_REGEX =
     /^rgba?\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(0|1|0?\.\d+|1\.0+))?\s*\)$/i;
+const HEX_BODY_REGEX = /^[0-9a-fA-F]+$/;
 
 export function clamp(value: number, min: number, max: number) {
     return Math.min(Math.max(value, min), max);
@@ -9,6 +10,9 @@ export function clamp(value: number, min: number, max: number) {
 
 export function normalizeHex(raw: string) {
     const cleaned = raw.trim().replace(/^#/, "");
+    if (!HEX_BODY_REGEX.test(cleaned)) {
+        return null;
+    }
     if (cleaned.length === 3) {
         const expanded = cleaned
             .split("")
@@ -20,6 +24,15 @@ export function normalizeHex(raw: string) {
         return `#${cleaned}`.toUpperCase();
     }
     return null;
+}
+
+export function normalizeHexInputDraft(raw: string) {
+    const cleaned = raw
+        .trim()
+        .replace(/^#/, "")
+        .replace(/[^0-9a-fA-F]/g, "")
+        .slice(0, 6);
+    return `#${cleaned}`.toUpperCase();
 }
 
 export function hexToRgb(hex: string) {
