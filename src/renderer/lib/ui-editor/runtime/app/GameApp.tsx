@@ -31,7 +31,10 @@ import {
     useBlueprintRuntimeCore,
     type BlueprintRuntimeCore,
 } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
-import { SurfaceLifecycleManager } from "@/lib/ui-editor/blueprint-runtime/SurfaceLifecycleManager";
+import {
+    executeLifecycleCommands,
+    SurfaceLifecycleOrchestrator,
+} from "./lifecycle/surfaceLifecycleOrchestrator";
 import {
     dispatchGlobalBlueprintEvent,
     dispatchSurfaceBlueprintEvent,
@@ -131,7 +134,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     const navEntrySeqRef = useRef(0);
     const studioPageHiddenForGameRef = useRef(false);
     const gameHiddenNavKeysRef = useRef(gameHiddenNavKeys);
-    const lifecycleRef = useRef(new SurfaceLifecycleManager());
+    const lifecycleRef = useRef(new SurfaceLifecycleOrchestrator());
     const appBootFiredRef = useRef<string | null>(null);
     const gameReadyFiredRef = useRef<string | null>(null);
     const nlrBootStartedRef = useRef<string | null>(null);
@@ -1018,35 +1021,36 @@ export function GameApp(props: GameAppProps): ReactNode {
             }),
             mountSurface: input => {
                 const surfaceStore = core.scopeBridge.getSurfaceStore(input.runtimeScopeId);
-                if (lifecycleRef.current.onSurfaceEnter(input.runtimeScopeId)) {
-                    core.executionManager.openScope(input.runtimeScopeId);
-                    void dispatchSurfaceBlueprintEvent({
-                        blueprintDocument: bundle.ui.localBlueprints,
-                        surfaceId: input.targetSurface.id,
-                        runtimeScopeId: input.runtimeScopeId,
-                        eventName: "surfaceInit",
-                        hostAdapter: input.hostAdapter,
-                        debug: core.debug,
-                        getSurfaceState: key => surfaceStore.get(key),
-                        setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                        executionManager: core.executionManager,
-                    });
-                }
+                const executor = {
+                    openScope: (scopeId: string) => core.executionManager.openScope(scopeId),
+                    closeScope: (scopeId: string, reason: string) => core.executionManager.closeScope(scopeId, reason),
+                    dispatchSurfaceEvent: (command: { eventName: "surfaceInit" | "surfaceUnmount" | "beforeSurfaceExit" | "afterSurfaceEnter"; scopeId: string; surfaceId: string; allowClosedScopeExecution?: boolean }) => {
+                        void dispatchSurfaceBlueprintEvent({
+                            blueprintDocument: bundle.ui.localBlueprints,
+                            surfaceId: command.surfaceId,
+                            runtimeScopeId: command.scopeId,
+                            eventName: command.eventName,
+                            hostAdapter: input.hostAdapter,
+                            debug: core.debug,
+                            getSurfaceState: key => surfaceStore.get(key),
+                            setSurfaceState: (key, value) => surfaceStore.set(key, value),
+                            executionManager: core.executionManager,
+                            ...(command.allowClosedScopeExecution ? { allowClosedScopeExecution: true } : {}),
+                        });
+                    },
+                    setTransitionState: () => undefined,
+                    bumpLifecycleSignal: () => undefined,
+                    clearInteraction: () => undefined,
+                };
+                executeLifecycleCommands(
+                    lifecycleRef.current.surfaceReady(input.runtimeScopeId, input.targetSurface.id),
+                    executor,
+                );
                 return () => {
-                    lifecycleRef.current.onSurfaceExit(input.runtimeScopeId);
-                    core.executionManager.closeScope(input.runtimeScopeId, "Nested surface unmounted");
-                    void dispatchSurfaceBlueprintEvent({
-                        blueprintDocument: bundle.ui.localBlueprints,
-                        surfaceId: input.targetSurface.id,
-                        runtimeScopeId: input.runtimeScopeId,
-                        eventName: "surfaceUnmount",
-                        hostAdapter: input.hostAdapter,
-                        debug: core.debug,
-                        getSurfaceState: key => surfaceStore.get(key),
-                        setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                        executionManager: core.executionManager,
-                        allowClosedScopeExecution: true,
-                    });
+                    executeLifecycleCommands(
+                        lifecycleRef.current.surfaceUnmounted(input.runtimeScopeId, input.targetSurface.id),
+                        executor,
+                    );
                 };
             },
             getWidgetRuntimePatches: input => widgetPatchesByScopeRef.current[input.runtimeScopeId] ?? {},
@@ -1079,7 +1083,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     ]);
 
     useEffect(() => {
-        lifecycleRef.current.reset();
+        lifecycleRef.current.sessionReset();
         appBootFiredRef.current = null;
         gameReadyFiredRef.current = null;
     }, [bundle.bundleId, bundle.revision]);

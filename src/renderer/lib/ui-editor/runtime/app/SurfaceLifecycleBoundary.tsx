@@ -4,9 +4,50 @@ import type { UISurface } from "@shared/types/ui-editor/document";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import { dispatchSurfaceBlueprintEvent } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
-import type { SurfaceLifecycleManager } from "@/lib/ui-editor/blueprint-runtime/SurfaceLifecycleManager";
+import {
+    executeLifecycleCommands,
+    type LifecycleCommand,
+    type SurfaceLifecycleOrchestrator,
+} from "./lifecycle/surfaceLifecycleOrchestrator";
 import { waitForAnimationFrame } from "./frameTiming";
 import type { SurfaceStateAccessors } from "./types";
+
+
+/** Maps scope-lifecycle commands onto the blueprint execution manager and dispatcher. */
+function executeScopeCommands(input: {
+    commands: readonly LifecycleCommand[];
+    core: BlueprintRuntimeCore;
+    blueprintDocument: BlueprintDocument;
+    hostAdapter: UIHostAdapter | null;
+    makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
+}): void {
+    const { commands, core, blueprintDocument, hostAdapter, makeStateAccessors } = input;
+    executeLifecycleCommands(commands, {
+        openScope: scopeId => core.executionManager.openScope(scopeId),
+        closeScope: (scopeId, reason) => core.executionManager.closeScope(scopeId, reason),
+        dispatchSurfaceEvent: command => {
+            const acc = makeStateAccessors(command.scopeId);
+            if (!acc || !hostAdapter?.blueprintRuntime) {
+                return;
+            }
+            void dispatchSurfaceBlueprintEvent({
+                blueprintDocument,
+                surfaceId: command.surfaceId,
+                runtimeScopeId: command.scopeId,
+                eventName: command.eventName,
+                hostAdapter,
+                debug: core.debug,
+                getSurfaceState: acc.get,
+                setSurfaceState: acc.set,
+                executionManager: core.executionManager,
+                ...(command.allowClosedScopeExecution ? { allowClosedScopeExecution: true } : {}),
+            });
+        },
+        setTransitionState: () => undefined,
+        bumpLifecycleSignal: () => undefined,
+        clearInteraction: () => undefined,
+    });
+}
 
 /**
  * Owns the blueprint surface scope lifecycle for one mounted surface layer:
@@ -24,7 +65,7 @@ export function SurfaceLifecycleBoundary(props: {
     surface: UISurface;
     runtimeScopeId: string;
     hostAdapter: UIHostAdapter;
-    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
+    lifecycleRef: MutableRefObject<SurfaceLifecycleOrchestrator>;
     makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
     children: ReactNode;
 }) {
@@ -51,24 +92,12 @@ export function SurfaceLifecycleBoundary(props: {
             if (cancelled) {
                 return;
             }
-            core.executionManager.openScope(runtimeScopeId);
-            if (!lifecycleRef.current.onSurfaceEnter(runtimeScopeId)) {
-                return;
-            }
-            const acc = makeStateAccessors(runtimeScopeId);
-            if (!acc) {
-                return;
-            }
-            void dispatchSurfaceBlueprintEvent({
+            executeScopeCommands({
+                commands: lifecycleRef.current.surfaceReady(runtimeScopeId, surface.id),
+                core,
                 blueprintDocument,
-                surfaceId: surface.id,
-                runtimeScopeId,
-                eventName: "surfaceInit",
                 hostAdapter: currentHostAdapter,
-                debug: core.debug,
-                getSurfaceState: acc.get,
-                setSurfaceState: acc.set,
-                executionManager: core.executionManager,
+                makeStateAccessors,
             });
         })();
         return () => {
@@ -83,24 +112,12 @@ export function SurfaceLifecycleBoundary(props: {
         const surfaceToUnmount = surface.id;
         const scopeToUnmount = runtimeScopeId;
         return () => {
-            const currentHostAdapter = latestRuntimeHostAdapterRef.current;
-            lifecycleRef.current.onSurfaceExit(scopeToUnmount);
-            core.executionManager.closeScope(scopeToUnmount, "Surface unmounted");
-            const acc = makeStateAccessors(scopeToUnmount);
-            if (!acc || !currentHostAdapter?.blueprintRuntime) {
-                return;
-            }
-            void dispatchSurfaceBlueprintEvent({
+            executeScopeCommands({
+                commands: lifecycleRef.current.surfaceUnmounted(scopeToUnmount, surfaceToUnmount),
+                core,
                 blueprintDocument,
-                surfaceId: surfaceToUnmount,
-                runtimeScopeId: scopeToUnmount,
-                eventName: "surfaceUnmount",
-                hostAdapter: currentHostAdapter,
-                debug: core.debug,
-                getSurfaceState: acc.get,
-                setSurfaceState: acc.set,
-                executionManager: core.executionManager,
-                allowClosedScopeExecution: true,
+                hostAdapter: latestRuntimeHostAdapterRef.current,
+                makeStateAccessors,
             });
         };
     }, [blueprintDocument, core, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);

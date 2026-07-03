@@ -21,7 +21,7 @@ import {
     makeTestSurface,
     type LifecycleEventLog,
 } from "@/lib/ui-editor/runtime/testing/lifecycleTestKit";
-import { SurfaceLifecycleManager } from "@/lib/ui-editor/blueprint-runtime/SurfaceLifecycleManager";
+import { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
 
 const hoisted = vi.hoisted(() => ({ log: [] as string[] }));
 
@@ -47,11 +47,11 @@ const blueprintDocument = makeTestBundle().ui.localBlueprints as BlueprintDocume
 function mountBoundary(input: {
     log: LifecycleEventLog;
     strict?: boolean;
-    lifecycleRef?: { current: SurfaceLifecycleManager };
+    lifecycleRef?: { current: SurfaceLifecycleOrchestrator };
     core?: ReturnType<typeof createRecordingCore> | null;
 }) {
     const core = input.core === undefined ? createRecordingCore(input.log) : input.core;
-    const lifecycleRef = input.lifecycleRef ?? { current: new SurfaceLifecycleManager() };
+    const lifecycleRef = input.lifecycleRef ?? { current: new SurfaceLifecycleOrchestrator() };
     const accessors = makeStateAccessors();
     const element = (
         <SurfaceLifecycleBoundary
@@ -107,7 +107,7 @@ describe("SurfaceLifecycleBoundary dispatch order", () => {
     });
 
     it("re-dispatches surfaceInit when the same scope remounts after exit", async () => {
-        const lifecycleRef = { current: new SurfaceLifecycleManager() };
+        const lifecycleRef = { current: new SurfaceLifecycleOrchestrator() };
         const first = mountBoundary({ log: hoisted.log, lifecycleRef });
         await act(async () => {
             await flushAnimationFrame();
@@ -139,7 +139,7 @@ describe("SurfaceLifecycleBoundary dispatch order", () => {
                 surface={makeTestSurface("surface-a")}
                 runtimeScopeId="scope-1"
                 hostAdapter={makeBlueprintHostAdapter()}
-                lifecycleRef={{ current: new SurfaceLifecycleManager() }}
+                lifecycleRef={{ current: new SurfaceLifecycleOrchestrator() }}
                 makeStateAccessors={() => accessors}
             >
                 <div />

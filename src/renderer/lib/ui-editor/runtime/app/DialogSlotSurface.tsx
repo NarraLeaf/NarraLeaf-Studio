@@ -25,7 +25,7 @@ import {
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
-import type { SurfaceLifecycleManager } from "@/lib/ui-editor/blueprint-runtime/SurfaceLifecycleManager";
+import type { SurfaceLifecycleOrchestrator } from "./lifecycle/surfaceLifecycleOrchestrator";
 import { collectDialogFlushElementIds } from "@/lib/ui-editor/runtime/game/dialogFlushTargets";
 import { DialogStateBridge } from "./DialogStateBridge";
 import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
@@ -44,7 +44,7 @@ export function DialogSlotSurface(props: {
     bundle: DevModeBundle;
     surface: UIStageSurface;
     rendererRegistry: ElementRendererRegistry;
-    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
+    lifecycleRef: MutableRefObject<SurfaceLifecycleOrchestrator>;
     makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
     openSurfaceWithTransition: (
         surfaceId: string,
