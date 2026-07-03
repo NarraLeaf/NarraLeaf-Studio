@@ -94,6 +94,7 @@ import {
 import { waitForAnimationFrame } from "@/lib/ui-editor/runtime/app/frameTiming";
 import { dialogSlotRuntimeScopeId, findStageSurfaceForSlot } from "@/lib/ui-editor/runtime/app/stageSlots";
 import { DialogStateBridge } from "@/lib/ui-editor/runtime/app/DialogStateBridge";
+import { SurfaceLifecycleBoundary } from "@/lib/ui-editor/runtime/app/SurfaceLifecycleBoundary";
 import { resolveDevModeViewportSize } from "./devModeViewport";
 
 const NLR_BOOT_PRELOAD_TIMEOUT_MS = 15_000;
@@ -153,97 +154,6 @@ function SessionErrorBanner(props: {
             </div>
         </div>
     );
-}
-
-// Exported for lifecycle characterization tests only.
-export function DevModeSurfaceLifecycleLayer(props: {
-    bpCore: DevModeBlueprintRuntimeCore | null;
-    bundle: DevModeBundle;
-    surface: UISurface;
-    runtimeScopeId: string;
-    hostAdapter: UIHostAdapter;
-    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
-    makeStateAccessors: (surfaceId: string) => SurfaceStateAccessors | null;
-    children: ReactNode;
-}) {
-    const { bpCore, bundle, surface, runtimeScopeId, hostAdapter, lifecycleRef, makeStateAccessors, children } = props;
-    const latestRuntimeHostAdapterRef = useRef<UIHostAdapter | null>(
-        hostAdapter.blueprintRuntime ? hostAdapter : null,
-    );
-    const hasBlueprintRuntime = Boolean(hostAdapter.blueprintRuntime);
-
-    useEffect(() => {
-        if (hostAdapter.blueprintRuntime) {
-            latestRuntimeHostAdapterRef.current = hostAdapter;
-        }
-    }, [hostAdapter]);
-
-    useEffect(() => {
-        const currentHostAdapter = latestRuntimeHostAdapterRef.current;
-        if (!bpCore || !hasBlueprintRuntime || !currentHostAdapter?.blueprintRuntime) {
-            return;
-        }
-        let cancelled = false;
-        void (async () => {
-            await waitForAnimationFrame();
-            if (cancelled) {
-                return;
-            }
-            bpCore.executionManager.openScope(runtimeScopeId);
-            if (!lifecycleRef.current.onSurfaceEnter(runtimeScopeId)) {
-                return;
-            }
-            const acc = makeStateAccessors(runtimeScopeId);
-            if (!acc) {
-                return;
-            }
-            void dispatchSurfaceBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                surfaceId: surface.id,
-                runtimeScopeId,
-                eventName: "surfaceInit",
-                hostAdapter: currentHostAdapter,
-                debug: bpCore.debug,
-                getSurfaceState: acc.get,
-                setSurfaceState: acc.set,
-                executionManager: bpCore.executionManager,
-            });
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [bpCore, bundle.ui.localBlueprints, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
-
-    useEffect(() => {
-        if (!bpCore || !hasBlueprintRuntime) {
-            return undefined;
-        }
-        const surfaceToUnmount = surface.id;
-        const scopeToUnmount = runtimeScopeId;
-        return () => {
-            const currentHostAdapter = latestRuntimeHostAdapterRef.current;
-            lifecycleRef.current.onSurfaceExit(scopeToUnmount);
-            bpCore.executionManager.closeScope(scopeToUnmount, "Surface unmounted");
-            const acc = makeStateAccessors(scopeToUnmount);
-            if (!acc || !currentHostAdapter?.blueprintRuntime) {
-                return;
-            }
-            void dispatchSurfaceBlueprintEvent({
-                blueprintDocument: bundle.ui.localBlueprints,
-                surfaceId: surfaceToUnmount,
-                runtimeScopeId: scopeToUnmount,
-                eventName: "surfaceUnmount",
-                hostAdapter: currentHostAdapter,
-                debug: bpCore.debug,
-                getSurfaceState: acc.get,
-                setSurfaceState: acc.set,
-                executionManager: bpCore.executionManager,
-                allowClosedScopeExecution: true,
-            });
-        };
-    }, [bpCore, bundle.ui.localBlueprints, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
-
-    return <>{children}</>;
 }
 
 function StudioDialogSlotSurface(props: {
@@ -491,9 +401,9 @@ function StudioDialogSlotSurface(props: {
                 getCurrentNametag={getCurrentNametag}
                 flushDialogElements={flushDialogElements}
             />
-            <DevModeSurfaceLifecycleLayer
-                bpCore={bpCore}
-                bundle={bundle}
+            <SurfaceLifecycleBoundary
+                core={bpCore}
+                blueprintDocument={bundle.ui.localBlueprints}
                 surface={surface}
                 runtimeScopeId={runtimeScopeId}
                 hostAdapter={hostAdapter}
@@ -511,7 +421,7 @@ function StudioDialogSlotSurface(props: {
                         getWidgetRuntimePatches={() => widgetPatchesByScopeRef.current[runtimeScopeId] ?? {}}
                     />
                 </WidgetRuntimeStateProvider>
-            </DevModeSurfaceLifecycleLayer>
+            </SurfaceLifecycleBoundary>
         </NlrDialog>
     );
 }
@@ -703,9 +613,9 @@ function DevModeAppSurfaceLayer(props: {
             onBeforeExit={handleBeforeExit}
             onEnterComplete={handleEnterComplete}
         >
-            <DevModeSurfaceLifecycleLayer
-                bpCore={surfaceBlueprintLifecycleReady ? bpCore : null}
-                bundle={bundle}
+            <SurfaceLifecycleBoundary
+                core={surfaceBlueprintLifecycleReady ? bpCore : null}
+                blueprintDocument={bundle.ui.localBlueprints}
                 surface={surface}
                 runtimeScopeId={hostAdapterBundle.runtimeScopeId}
                 hostAdapter={hostAdapterBundle.hostAdapter}
@@ -738,7 +648,7 @@ function DevModeAppSurfaceLayer(props: {
                         onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     />
                 </WidgetRuntimeStateProvider>
-            </DevModeSurfaceLifecycleLayer>
+            </SurfaceLifecycleBoundary>
         </SurfaceAnimationLayer>
     );
 }

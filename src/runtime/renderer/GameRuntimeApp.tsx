@@ -94,6 +94,7 @@ import {
 import { waitForAnimationFrame } from "@/lib/ui-editor/runtime/app/frameTiming";
 import { dialogSlotRuntimeScopeId, findStageSurfaceForSlot } from "@/lib/ui-editor/runtime/app/stageSlots";
 import { DialogStateBridge } from "@/lib/ui-editor/runtime/app/DialogStateBridge";
+import { SurfaceLifecycleBoundary } from "@/lib/ui-editor/runtime/app/SurfaceLifecycleBoundary";
 import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
@@ -360,97 +361,6 @@ function RuntimeViewportFrame(props: {
     );
 }
 
-// Exported for lifecycle characterization tests only.
-export function RuntimeSurfaceLifecycleLayer(props: {
-    core: RuntimeCore | null;
-    pack: GameRuntimePackV1;
-    surface: UISurface;
-    runtimeScopeId: string;
-    hostAdapter: UIHostAdapter;
-    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
-    makeStateAccessors: (runtimeScopeId: string) => SurfaceStateAccessors | null;
-    children: ReactNode;
-}) {
-    const { core, pack, surface, runtimeScopeId, hostAdapter, lifecycleRef, makeStateAccessors, children } = props;
-    const latestRuntimeHostAdapterRef = useRef<UIHostAdapter | null>(
-        hostAdapter.blueprintRuntime ? hostAdapter : null,
-    );
-    const hasBlueprintRuntime = Boolean(hostAdapter.blueprintRuntime);
-
-    useEffect(() => {
-        if (hostAdapter.blueprintRuntime) {
-            latestRuntimeHostAdapterRef.current = hostAdapter;
-        }
-    }, [hostAdapter]);
-
-    useEffect(() => {
-        const currentHostAdapter = latestRuntimeHostAdapterRef.current;
-        if (!core || !hasBlueprintRuntime || !currentHostAdapter?.blueprintRuntime) {
-            return;
-        }
-        let cancelled = false;
-        void (async () => {
-            await waitForAnimationFrame();
-            if (cancelled) {
-                return;
-            }
-            core.executionManager.openScope(runtimeScopeId);
-            if (!lifecycleRef.current.onSurfaceEnter(runtimeScopeId)) {
-                return;
-            }
-            const acc = makeStateAccessors(runtimeScopeId);
-            if (!acc) {
-                return;
-            }
-            void dispatchSurfaceBlueprintEvent({
-                blueprintDocument: pack.bundle.ui.localBlueprints,
-                surfaceId: surface.id,
-                runtimeScopeId,
-                eventName: "surfaceInit",
-                hostAdapter: currentHostAdapter,
-                debug: core.debug,
-                getSurfaceState: acc.get,
-                setSurfaceState: acc.set,
-                executionManager: core.executionManager,
-            });
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [core, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, pack.bundle.ui.localBlueprints, runtimeScopeId, surface.id]);
-
-    useEffect(() => {
-        if (!core || !hasBlueprintRuntime) {
-            return undefined;
-        }
-        const surfaceToUnmount = surface.id;
-        const scopeToUnmount = runtimeScopeId;
-        return () => {
-            const currentHostAdapter = latestRuntimeHostAdapterRef.current;
-            lifecycleRef.current.onSurfaceExit(scopeToUnmount);
-            core.executionManager.closeScope(scopeToUnmount, "Preview surface unmounted");
-            const acc = makeStateAccessors(scopeToUnmount);
-            if (!acc || !currentHostAdapter?.blueprintRuntime) {
-                return;
-            }
-            void dispatchSurfaceBlueprintEvent({
-                blueprintDocument: pack.bundle.ui.localBlueprints,
-                surfaceId: surfaceToUnmount,
-                runtimeScopeId: scopeToUnmount,
-                eventName: "surfaceUnmount",
-                hostAdapter: currentHostAdapter,
-                debug: core.debug,
-                getSurfaceState: acc.get,
-                setSurfaceState: acc.set,
-                executionManager: core.executionManager,
-                allowClosedScopeExecution: true,
-            });
-        };
-    }, [core, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, pack.bundle.ui.localBlueprints, runtimeScopeId, surface.id]);
-
-    return <>{children}</>;
-}
-
 function RuntimeDialogSlotSurface(props: {
     sessionId: string;
     core: RuntimeCore | null;
@@ -697,9 +607,9 @@ function RuntimeDialogSlotSurface(props: {
                 getCurrentNametag={getCurrentNametag}
                 flushDialogElements={flushDialogElements}
             />
-            <RuntimeSurfaceLifecycleLayer
+            <SurfaceLifecycleBoundary
                 core={core}
-                pack={pack}
+                blueprintDocument={pack.bundle.ui.localBlueprints}
                 surface={surface}
                 runtimeScopeId={runtimeScopeId}
                 hostAdapter={hostAdapter}
@@ -717,7 +627,7 @@ function RuntimeDialogSlotSurface(props: {
                         getWidgetRuntimePatches={() => widgetPatchesByScopeRef.current[runtimeScopeId] ?? {}}
                     />
                 </WidgetRuntimeStateProvider>
-            </RuntimeSurfaceLifecycleLayer>
+            </SurfaceLifecycleBoundary>
         </NlrDialog>
     );
 }
@@ -907,9 +817,9 @@ function RuntimeSurfaceLayer(props: {
             onBeforeExit={handleBeforeExit}
             onEnterComplete={handleEnterComplete}
         >
-            <RuntimeSurfaceLifecycleLayer
+            <SurfaceLifecycleBoundary
                 core={surfaceBlueprintLifecycleReady ? core : null}
-                pack={pack}
+                blueprintDocument={pack.bundle.ui.localBlueprints}
                 surface={surface}
                 runtimeScopeId={hostAdapterBundle.runtimeScopeId}
                 hostAdapter={hostAdapterBundle.hostAdapter}
@@ -942,7 +852,7 @@ function RuntimeSurfaceLayer(props: {
                         onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     />
                 </WidgetRuntimeStateProvider>
-            </RuntimeSurfaceLifecycleLayer>
+            </SurfaceLifecycleBoundary>
         </SurfaceAnimationLayer>
     );
 }
