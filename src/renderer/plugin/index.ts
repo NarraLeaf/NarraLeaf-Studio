@@ -2,7 +2,6 @@ import type { BoundPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { PanelPosition } from "@/apps/workspace/registry/types";
 import type { PanelDefinition, ActionDefinition, ActionGroup, EditorTabDefinition } from "@/apps/workspace/registry/types";
 import type { Keybinding } from "@/lib/workspace/services/ui/types";
-import type { WorkspaceContext, Services } from "@/lib/workspace/services/services";
 import type { PluginIdentity } from "@shared/types/pluginPermissions";
 import type { NormalizedPluginManifestV1 } from "@shared/types/plugins";
 import type {
@@ -117,9 +116,14 @@ export type PluginAssetsService = {
     revokeObjectUrl(url: string): void;
 };
 
+/**
+ * The curated plugin API surface. This is intentionally a whitelist:
+ * plugins do NOT get access to the workspace service registry. Anything
+ * beyond this surface (arbitrary file system access, bash, permission
+ * grants) must go through the privileged facade, which is enforced
+ * per-plugin by the main process.
+ */
 export type PluginServices = {
-    get<T>(service: Services): T;
-    workspace: WorkspaceContext;
     storage: PluginStorageService;
     assets: PluginAssetsService;
     ui: {

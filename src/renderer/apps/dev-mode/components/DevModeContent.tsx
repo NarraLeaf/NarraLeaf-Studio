@@ -46,6 +46,7 @@ import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostA
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { dispatchSurfaceBlueprintEvent, dispatchGlobalBlueprintEvent } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
+import { subscribeGamePreferenceChanges } from "@/lib/ui-editor/blueprint-runtime/gamePreferenceSubscription";
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import { SurfaceLifecycleManager } from "@/lib/ui-editor/blueprint-runtime/SurfaceLifecycleManager";
 import { getInterface } from "@/lib/app/bridge";
@@ -54,7 +55,12 @@ import {
     type PageAnimationNavigationDirection,
 } from "@/lib/ui-editor/runtime/pageAnimation";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
-import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import {
+    compileStudioStoryToNlr,
+    createEmptyCompiledNlrStory,
+    type CompiledNlrStory,
+} from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { resolveDefaultLaunchScene } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import {
     clearDevModeSavePreviewImages,
     registerDevModeSavePreviewImage,
@@ -68,6 +74,8 @@ import {
     type SurfaceNavigationPresentation,
 } from "@/lib/ui-editor/runtime/game/surfaceNavigationController";
 import { resolveDevModeViewportSize } from "./devModeViewport";
+
+const NLR_BOOT_PRELOAD_TIMEOUT_MS = 15_000;
 
 type DevModeContentProps = {
     bundle: DevModeBundle | null;
@@ -1009,15 +1017,24 @@ export function DevModeContent(props: DevModeContentProps) {
     const devtoolsFabRef = useRef<HTMLButtonElement>(null);
     const devtoolsMenuRef = useRef<HTMLDivElement>(null);
     const [nlrSession, setNlrSession] = useState<NlrStageSession | null>(null);
+    const [nlrPreloadDone, setNlrPreloadDone] = useState(false);
     const [gameStageVisible, setGameStageVisible] = useState(false);
     const [studioPageHiddenForGame, setStudioPageHiddenForGame] = useState(false);
     const [gameHiddenNavKeys, setGameHiddenNavKeys] = useState<Set<string>>(() => new Set());
     const studioPageHiddenForGameRef = useRef(false);
     const gameHiddenNavKeysRef = useRef(gameHiddenNavKeys);
     const nlrSessionSeqRef = useRef(0);
+    const nlrBootStartedRef = useRef<string | null>(null);
+    // Whether the currently mounted NLR environment has actually entered a game (newGame() called).
+    // Boot mounts the environment (fires gameReady) but does not enter — stays false until Start Game.
+    const gameEnteredRef = useRef(false);
+    // Resolves when the environment is initialised + gameReady dispatched, gating the surface system.
+    const pendingEnvReadyRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
     const activeStoryRevisionRef = useRef<number | null>(null);
-    const startStoryInGameRef = useRef<((request: DevModeStartStoryRequest) => Promise<void>) | null>(null);
+    const startStoryInGameRef = useRef<
+        ((request: DevModeStartStoryRequest, options?: { forceReinit?: boolean }) => Promise<void>) | null
+    >(null);
     const writeSaveInGameRef = useRef<((id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>) | null>(null);
     const loadSaveInGameRef = useRef<((id: string) => Promise<void>) | null>(null);
     const deleteSaveInGameRef = useRef<((id: string) => Promise<void>) | null>(null);
@@ -1040,6 +1057,11 @@ export function DevModeContent(props: DevModeContentProps) {
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
+    const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
+    const preferenceSnapshotRef = useRef<Record<string, unknown>>({});
+    const dispatchPreferenceChangeRef = useRef<
+        ((key: string, value: unknown, previousValue: unknown) => void) | null
+    >(null);
     const currentDialogNametagRef = useRef<string | null>(null);
     const pendingGameStartsRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
     const openSurfaceWithTransitionRef = useRef<((surfaceId: string, props?: DevModePageProps) => Promise<void>) | null>(null);
@@ -1496,6 +1518,8 @@ export function DevModeContent(props: DevModeContentProps) {
     const rejectPendingGameStarts = useCallback((error: Error) => {
         pendingGameStartsRef.current.forEach(pending => pending.reject(error));
         pendingGameStartsRef.current.clear();
+        pendingEnvReadyRef.current.forEach(pending => pending.reject(error));
+        pendingEnvReadyRef.current.clear();
     }, []);
 
     const requireSaveProjectRef = useCallback((operation: string): DevModeSaveProjectRef => {
@@ -1608,8 +1632,12 @@ export function DevModeContent(props: DevModeContentProps) {
         rejectPendingGameStarts(new Error("Quit Game"));
         activeStoryRequestRef.current = null;
         activeStoryRevisionRef.current = null;
+        gameEnteredRef.current = false;
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
+        nlrPreferenceTokenRef.current?.cancel();
+        nlrPreferenceTokenRef.current = null;
+        preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
@@ -1659,6 +1687,7 @@ export function DevModeContent(props: DevModeContentProps) {
         }
         liveGame.game.router.clear().cleanHistory();
         liveGame.newGame().deserialize(savedGame as SavedGame);
+        gameEnteredRef.current = true;
         await liveGame.waitForRouterExit().promise;
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
@@ -1717,56 +1746,24 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [requireSaveProjectRef]);
     getSavePreviewRef.current = getSavePreview;
 
-    const startStoryInGame = useCallback(async (request: DevModeStartStoryRequest): Promise<void> => {
-        if (!bundle?.storyLibrary) {
-            throw new Error("Start Game: story library is not available in Dev Mode bundle");
+    // Mount the NLR environment (Game/LiveGame + Player via NlrStageLayer) and initialise it:
+    // gameReady fires and assets preheat, but the game does NOT enter — liveGame.newGame() is only
+    // called later by enterMountedGame(). Resolves once the environment is ready. Kept hidden behind
+    // the surfaces (main menu).
+    const mountNlrSession = useCallback(async (
+        compiled: CompiledNlrStory,
+        options: { storyRequest: DevModeStartStoryRequest | null },
+    ): Promise<string> => {
+        if (!bundle) {
+            throw new Error("Start Game: Dev Mode bundle is not available");
         }
         if (!activeSurface) {
             throw new Error("Start Game: active page is not available");
         }
-        const storyId = String(request.storyId ?? "").trim();
-        const sceneId = String(request.sceneId ?? "").trim();
-        if (!storyId) {
-            throw new Error("Start Game: storyId is required");
-        }
-        if (!sceneId) {
-            throw new Error("Start Game: sceneId is required");
-        }
-        const storyDocument =
-            bundle.storyLibrary.documents[storyId] ??
-            Object.values(bundle.storyLibrary.documents).find(document => document.id === storyId);
-        if (!storyDocument) {
-            const indexedStoryIds = bundle.storyLibrary.index.stories.map(story => story.id).join(", ") || "(none)";
-            const documentStoryIds = Object.values(bundle.storyLibrary.documents).map(document => document.id).join(", ") || "(none)";
-            throw new Error(
-                `Start Game: story not found: ${storyId}. ` +
-                `Bundle index story ids: ${indexedStoryIds}. Bundle document ids: ${documentStoryIds}.`,
-            );
-        }
-        if (!storyDocument.scenes[sceneId]) {
-            throw new Error(`Start Game: scene not found: ${sceneId}`);
-        }
-
-        rejectPendingGameStarts(new Error("Start Game superseded by a newer session"));
-        activeStoryRequestRef.current = { storyId, sceneId };
+        rejectPendingGameStarts(new Error("NLR environment superseded by a newer session"));
+        activeStoryRequestRef.current = options.storyRequest;
         activeStoryRevisionRef.current = bundle.revision;
-
-        const compiled = await compileStudioStoryToNlr({
-            document: storyDocument,
-            sceneId,
-            characters: bundle.storyLibrary.characters,
-            animations: bundle.storyLibrary.animations,
-            resolveAssetUrl: async (assetId, assetType) => {
-                const result = await getInterface().devMode.resolveAssetUrl(assetId, assetType);
-                if (!result.success || !result.data?.url) {
-                    throw new Error(result.error ?? `Failed to resolve asset: ${assetId}`);
-                }
-                return result.data.url;
-            },
-        });
-        if (compiled.diagnostics.length > 0) {
-            console.warn("[DevMode][NLR] Story compile diagnostics", compiled.diagnostics);
-        }
+        gameEnteredRef.current = false;
 
         nlrSessionSeqRef.current += 1;
         const sessionId = `${bundle.bundleId}:${bundle.revision}:${nlrSessionSeqRef.current}`;
@@ -1862,8 +1859,8 @@ export function DevModeContent(props: DevModeContentProps) {
         const game = new Game(gameConfig);
         game.keyMap.setKeyBinding(KeyBindingType.nextAction, null);
 
-        const ready = new Promise<void>((resolve, reject) => {
-            pendingGameStartsRef.current.set(sessionId, { resolve, reject });
+        const environmentReady = new Promise<void>((resolve, reject) => {
+            pendingEnvReadyRef.current.set(sessionId, { resolve, reject });
         });
 
         setGameStageVisible(false);
@@ -1876,23 +1873,130 @@ export function DevModeContent(props: DevModeContentProps) {
             height,
         });
 
-        await ready;
-        await waitForAnimationFrame();
-        setGameStageVisible(true);
-        hideCurrentStudioPagesForGame();
+        await environmentReady;
+        return sessionId;
     }, [
         activeSurface,
         bpCore,
         bundle,
         clearGameHiddenStudioPages,
-        hideCurrentStudioPagesForGame,
         lifecycleRef,
         makeStateAccessors,
         rejectPendingGameStarts,
         rendererRegistry,
         widgetRuntimeStore,
     ]);
+
+    const compileStoryRequest = useCallback(async (
+        request: DevModeStartStoryRequest,
+    ): Promise<CompiledNlrStory> => {
+        if (!bundle?.storyLibrary) {
+            throw new Error("Start Game: story library is not available in Dev Mode bundle");
+        }
+        const storyId = String(request.storyId ?? "").trim();
+        const sceneId = String(request.sceneId ?? "").trim();
+        if (!storyId) {
+            throw new Error("Start Game: storyId is required");
+        }
+        if (!sceneId) {
+            throw new Error("Start Game: sceneId is required");
+        }
+        const storyDocument =
+            bundle.storyLibrary.documents[storyId] ??
+            Object.values(bundle.storyLibrary.documents).find(document => document.id === storyId);
+        if (!storyDocument) {
+            const indexedStoryIds = bundle.storyLibrary.index.stories.map(story => story.id).join(", ") || "(none)";
+            const documentStoryIds = Object.values(bundle.storyLibrary.documents).map(document => document.id).join(", ") || "(none)";
+            throw new Error(
+                `Start Game: story not found: ${storyId}. ` +
+                `Bundle index story ids: ${indexedStoryIds}. Bundle document ids: ${documentStoryIds}.`,
+            );
+        }
+        if (!storyDocument.scenes[sceneId]) {
+            throw new Error(`Start Game: scene not found: ${sceneId}`);
+        }
+        const compiled = await compileStudioStoryToNlr({
+            document: storyDocument,
+            sceneId,
+            characters: bundle.storyLibrary.characters,
+            animations: bundle.storyLibrary.animations,
+            resolveAssetUrl: async (assetId, assetType) => {
+                const result = await getInterface().devMode.resolveAssetUrl(assetId, assetType);
+                if (!result.success || !result.data?.url) {
+                    throw new Error(result.error ?? `Failed to resolve asset: ${assetId}`);
+                }
+                return result.data.url;
+            },
+        });
+        if (compiled.diagnostics.length > 0) {
+            console.warn("[DevMode][NLR] Story compile diagnostics", compiled.diagnostics);
+        }
+        return compiled;
+    }, [bundle]);
+
+    // Enter (start playing) the currently mounted environment: call newGame() on the live game,
+    // wait for the first scene to be visually ready, then reveal the stage over the surfaces.
+    const enterMountedGame = useCallback(async (): Promise<void> => {
+        const liveGame = nlrLiveGameRef.current;
+        const sessionId = nlrLiveGameSessionIdRef.current;
+        if (!liveGame || !sessionId) {
+            throw new Error("Start Game: game environment is not ready");
+        }
+        const sceneReady = new Promise<void>((resolve, reject) => {
+            pendingGameStartsRef.current.set(sessionId, { resolve, reject });
+        });
+        liveGame.newGame();
+        gameEnteredRef.current = true;
+        await sceneReady;
+        await waitForAnimationFrame();
+        setGameStageVisible(true);
+        hideCurrentStudioPagesForGame();
+    }, [hideCurrentStudioPagesForGame]);
+
+    const startStoryInGame = useCallback(async (
+        request: DevModeStartStoryRequest,
+        options?: { forceReinit?: boolean },
+    ): Promise<void> => {
+        if (!bundle?.storyLibrary) {
+            throw new Error("Start Game: story library is not available in Dev Mode bundle");
+        }
+        if (!activeSurface) {
+            throw new Error("Start Game: active page is not available");
+        }
+        const storyId = String(request.storyId ?? "").trim();
+        const sceneId = String(request.sceneId ?? "").trim();
+
+        // Fast path: the environment is already mounted with this story from the boot preload and
+        // has not entered a game yet. Just enter it (newGame + reveal) — no recompile, no re-mount,
+        // and gameReady does not fire again.
+        if (
+            !options?.forceReinit &&
+            nlrLiveGameRef.current &&
+            !gameEnteredRef.current &&
+            activeStoryRequestRef.current?.storyId === storyId &&
+            activeStoryRequestRef.current?.sceneId === sceneId
+        ) {
+            await enterMountedGame();
+            return;
+        }
+
+        const compiled = await compileStoryRequest({ storyId, sceneId });
+        await mountNlrSession(compiled, { storyRequest: { storyId, sceneId } });
+        await enterMountedGame();
+    }, [activeSurface, bundle, compileStoryRequest, enterMountedGame, mountNlrSession]);
     startStoryInGameRef.current = startStoryInGame;
+
+    // Boot-time init of the default scene environment: mount + preheat, WITHOUT entering the game.
+    const initDefaultSceneEnvironment = useCallback(async (
+        request: DevModeStartStoryRequest,
+    ): Promise<void> => {
+        const compiled = await compileStoryRequest(request);
+        await mountNlrSession(compiled, { storyRequest: request });
+    }, [compileStoryRequest, mountNlrSession]);
+
+    const startEmptyNlrEnvironment = useCallback(async (): Promise<void> => {
+        await mountNlrSession(createEmptyCompiledNlrStory(), { storyRequest: null });
+    }, [mountNlrSession]);
 
     const handleNlrFirstSceneReady = useCallback((sessionId: string) => {
         const pending = pendingGameStartsRef.current.get(sessionId);
@@ -1901,6 +2005,10 @@ export function DevModeContent(props: DevModeContentProps) {
         }
         pendingGameStartsRef.current.delete(sessionId);
         pending.resolve();
+    }, []);
+
+    const handleNlrEnvironmentReady = useCallback((sessionId: string) => {
+        console.info("[DevMode][NLR] Environment assets preheated", sessionId);
     }, []);
 
     const handleNlrLiveGameReady = useCallback(async (sessionId: string, liveGame: LiveGame) => {
@@ -1913,30 +2021,43 @@ export function DevModeContent(props: DevModeContentProps) {
             currentDialogNametagRef.current = nametag;
             bpCore?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
         });
+        nlrPreferenceTokenRef.current?.cancel();
+        nlrPreferenceTokenRef.current = subscribeGamePreferenceChanges(
+            liveGame,
+            preferenceSnapshotRef,
+            (key, value, previousValue) => dispatchPreferenceChangeRef.current?.(key, value, previousValue),
+        );
         nlrLiveGameRef.current = liveGame;
         nlrLiveGameSessionIdRef.current = sessionId;
-        if (!bpCore || !bundle || gameReadyFiredRef.current === sessionId) {
-            return;
+        try {
+            // Environment ready: LiveGame exists. Dispatch gameReady so global blueprints can load
+            // game settings — BEFORE the game is ever entered (no newGame yet).
+            const currentHostAdapter = hostAdapterRef.current;
+            if (bpCore && bundle && currentHostAdapter?.blueprintRuntime && gameReadyFiredRef.current !== sessionId) {
+                const runtimeScopeId = activeRuntimeScopeId || surface?.id || "";
+                const acc = makeStateAccessors(runtimeScopeId);
+                if (acc) {
+                    gameReadyFiredRef.current = sessionId;
+                    await dispatchGlobalBlueprintEvent({
+                        blueprintDocument: bundle.ui.localBlueprints,
+                        eventName: "gameReady",
+                        hostAdapter: currentHostAdapter,
+                        debug: bpCore.debug,
+                        getSurfaceState: acc.get,
+                        setSurfaceState: acc.set,
+                        executionManager: bpCore.executionManager,
+                    });
+                }
+            }
+        } finally {
+            // Unblock the mount (and the surface system) once the environment is initialised and
+            // gameReady has run. The game has NOT entered any story.
+            const pending = pendingEnvReadyRef.current.get(sessionId);
+            if (pending) {
+                pendingEnvReadyRef.current.delete(sessionId);
+                pending.resolve();
+            }
         }
-        const currentHostAdapter = hostAdapterRef.current;
-        if (!currentHostAdapter?.blueprintRuntime) {
-            return;
-        }
-        const runtimeScopeId = activeRuntimeScopeId || surface?.id || "";
-        const acc = makeStateAccessors(runtimeScopeId);
-        if (!acc) {
-            return;
-        }
-        gameReadyFiredRef.current = sessionId;
-        await dispatchGlobalBlueprintEvent({
-            blueprintDocument: bundle.ui.localBlueprints,
-            eventName: "gameReady",
-            hostAdapter: currentHostAdapter,
-            debug: bpCore.debug,
-            getSurfaceState: acc.get,
-            setSurfaceState: acc.set,
-            executionManager: bpCore.executionManager,
-        });
     }, [activeRuntimeScopeId, bpCore, bundle, makeStateAccessors, nlrSession?.id, surface?.id]);
 
     const handleNlrStageError = useCallback((error: Error) => {
@@ -1945,17 +2066,32 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [rejectPendingGameStarts]);
 
     useEffect(() => {
-        if (!bundle || !activeStoryRequestRef.current) {
+        if (!bundle || activeStoryRevisionRef.current === null) {
             return;
         }
         if (activeStoryRevisionRef.current === bundle.revision) {
             return;
         }
+        // Hot reload (new bundle revision): re-mount the environment with the recompiled story,
+        // preserving whether the game had already been entered.
         const request = activeStoryRequestRef.current;
-        void startStoryInGame(request).catch(error => {
-            console.error("[DevMode][NLR] Hot reload restart failed", error);
-        });
-    }, [bundle, startStoryInGame]);
+        const wasEntered = gameEnteredRef.current;
+        void (async () => {
+            try {
+                if (request) {
+                    const compiled = await compileStoryRequest(request);
+                    await mountNlrSession(compiled, { storyRequest: request });
+                    if (wasEntered) {
+                        await enterMountedGame();
+                    }
+                } else {
+                    await startEmptyNlrEnvironment();
+                }
+            } catch (error) {
+                console.error("[DevMode][NLR] Hot reload restart failed", error);
+            }
+        })();
+    }, [bundle, compileStoryRequest, enterMountedGame, mountNlrSession, startEmptyNlrEnvironment]);
 
     useEffect(() => {
         activeStoryRequestRef.current = null;
@@ -1963,12 +2099,19 @@ export function DevModeContent(props: DevModeContentProps) {
         rejectPendingGameStarts(new Error("Dev Mode session changed"));
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
+        nlrPreferenceTokenRef.current?.cancel();
+        nlrPreferenceTokenRef.current = null;
+        preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         clearCurrentDialogNametag();
         clearDevModeSavePreviewImages();
+        // A new bundle/surface session must re-run the NLR boot preload before surfaces show.
+        nlrBootStartedRef.current = null;
+        gameEnteredRef.current = false;
+        setNlrPreloadDone(false);
         setNlrSession(null);
         setGameStageVisible(false);
         clearGameHiddenStudioPages();
@@ -1977,6 +2120,9 @@ export function DevModeContent(props: DevModeContentProps) {
     useEffect(() => {
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
+        nlrPreferenceTokenRef.current?.cancel();
+        nlrPreferenceTokenRef.current = null;
+        preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
@@ -2160,6 +2306,50 @@ export function DevModeContent(props: DevModeContentProps) {
         makeStateAccessors,
     ]);
 
+    // Keep a live dispatch closure for game preference changes. The subscription in
+    // handleNlrLiveGameReady routes each change through this ref so it always uses the
+    // current active surface and runtime scope, not the ones captured at game start.
+    useEffect(() => {
+        dispatchPreferenceChangeRef.current = (key, value, previousValue) => {
+            if (!bpCore || !bundle || !activeSurface || !hostAdapter.blueprintRuntime) {
+                return;
+            }
+            const runtimeScopeId = activeRuntimeScopeId || activeSurface.id;
+            const acc = makeStateAccessors(runtimeScopeId);
+            if (!acc) {
+                return;
+            }
+            const eventPayload = { key, value: value ?? null, previousValue: previousValue ?? null };
+            void (async () => {
+                await dispatchGlobalBlueprintEvent({
+                    blueprintDocument: bundle.ui.localBlueprints,
+                    eventName: "gamePreferenceChanged",
+                    eventPayload,
+                    hostAdapter,
+                    debug: bpCore.debug,
+                    getSurfaceState: acc.get,
+                    setSurfaceState: acc.set,
+                    executionManager: bpCore.executionManager,
+                });
+                await dispatchSurfaceBlueprintEvent({
+                    blueprintDocument: bundle.ui.localBlueprints,
+                    surfaceId: activeSurface.id,
+                    runtimeScopeId,
+                    eventName: "gamePreferenceChanged",
+                    eventPayload,
+                    hostAdapter,
+                    debug: bpCore.debug,
+                    getSurfaceState: acc.get,
+                    setSurfaceState: acc.set,
+                    executionManager: bpCore.executionManager,
+                });
+            })();
+        };
+        return () => {
+            dispatchPreferenceChangeRef.current = null;
+        };
+    }, [activeRuntimeScopeId, activeSurface, bpCore, bundle, hostAdapter, makeStateAccessors]);
+
     // Reset lifecycle tracking on new session
     useEffect(() => {
         lifecycleRef.current.reset();
@@ -2191,6 +2381,57 @@ export function DevModeContent(props: DevModeContentProps) {
             executionManager: bpCore.executionManager,
         });
     }, [activeRuntimeScopeId, bpCore, bundle, hostAdapter, makeStateAccessors, surface?.id]);
+
+    // Boot the NarraLeaf React environment as a load step BEFORE the surface system starts:
+    // preload the configured default scene, otherwise boot an empty NLR environment. gameReady
+    // fires here, once, at boot.
+    useEffect(() => {
+        if (!bundle || !bpCore || !activeSurface || !hostAdapter.blueprintRuntime) {
+            return;
+        }
+        const sig = bundle.bundleId;
+        if (nlrBootStartedRef.current === sig) {
+            return;
+        }
+        nlrBootStartedRef.current = sig;
+
+        let cancelled = false;
+        const finish = () => {
+            if (!cancelled) {
+                setNlrPreloadDone(true);
+            }
+        };
+        const timeoutId = setTimeout(() => {
+            console.warn("[DevMode][NLR] Environment preload timed out; starting surface system");
+            finish();
+        }, NLR_BOOT_PRELOAD_TIMEOUT_MS);
+
+        void (async () => {
+            try {
+                // Initialise the environment (gameReady) and preheat the default scene, but do NOT
+                // enter the game — the player stays on the previewed surface/menu.
+                const defaultScene = resolveDefaultLaunchScene(bundle);
+                if (defaultScene) {
+                    await initDefaultSceneEnvironment(defaultScene);
+                } else {
+                    await startEmptyNlrEnvironment();
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    nlrBootStartedRef.current = null;
+                    console.error("[DevMode][NLR] Environment preload failed", error);
+                }
+            } finally {
+                clearTimeout(timeoutId);
+                finish();
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timeoutId);
+        };
+    }, [activeSurface, bpCore, bundle, hostAdapter, initDefaultSceneEnvironment, startEmptyNlrEnvironment]);
 
     const nestedSurfaceRuntime = useMemo<NestedSurfaceRuntime | undefined>(() => {
         if (!bpCore || !bundle || !uiDocument) {
@@ -2412,17 +2653,20 @@ export function DevModeContent(props: DevModeContentProps) {
                             <NlrStageLayer
                                 session={nlrSession}
                                 interactive={gameStageVisible}
+                                onEnvironmentReady={handleNlrEnvironmentReady}
                                 onFirstSceneReady={handleNlrFirstSceneReady}
                                 onLiveGameReady={handleNlrLiveGameReady}
                                 onError={handleNlrStageError}
                             />
+                            {/* Surface system starts only after the NLR environment boot preload finishes. */}
                             <AnimatePresence
                                 custom={transitionDirectionRef.current}
                                 initial={false}
                                 mode={surfacePresenceMode}
                                 onExitComplete={handleSurfaceExitComplete}
                             >
-                                {visibleSurfaceEntries.map(({ entry, surface: visibleSurface }, layerIndex) => (
+                                {nlrPreloadDone
+                                    ? visibleSurfaceEntries.map(({ entry, surface: visibleSurface }, layerIndex) => (
                                     <DevModeAppSurfaceLayer
                                         key={entry.key}
                                         entry={entry}
@@ -2468,7 +2712,8 @@ export function DevModeContent(props: DevModeContentProps) {
                                         onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                         onEnterComplete={markActiveEnterComplete}
                                     />
-                                ))}
+                                    ))
+                                    : null}
                             </AnimatePresence>
                         </div>
                     </FixedAspectRatioContainer>

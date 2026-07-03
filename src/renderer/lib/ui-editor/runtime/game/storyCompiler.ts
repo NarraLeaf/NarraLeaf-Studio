@@ -108,6 +108,30 @@ type CompileInput = {
 
 const EMPTY_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'></svg>";
 const SCENE_INITIAL_BACKGROUND_BLOCK_ID = "__scene_initial_background";
+const EMPTY_STORY_ID = "__nlr_empty_story__";
+const EMPTY_SCENE_ID = "__nlr_empty_scene__";
+
+/**
+ * Build a minimal, playable NLR story that mounts an empty scene. Used to boot the
+ * NarraLeaf React environment (creating a live `Game`/`LiveGame` and firing the
+ * `gameReady` blueprint event) when the project has no configured default scene to
+ * preload.
+ */
+export function createEmptyCompiledNlrStory(): CompiledNlrStory {
+    const nlrStory = new Story(EMPTY_STORY_ID);
+    const nlrScene = new Scene(EMPTY_SCENE_ID);
+    nlrScene.action([] as unknown as Parameters<Scene["action"]>[0]);
+    nlrStory.entry(nlrScene);
+    return {
+        story: nlrStory,
+        scene: nlrScene,
+        scenes: { [EMPTY_SCENE_ID]: nlrScene },
+        storyId: EMPTY_STORY_ID,
+        sceneId: EMPTY_SCENE_ID,
+        actionIdBindings: [],
+        diagnostics: [],
+    };
+}
 
 export async function compileStudioStoryToNlr(input: CompileInput): Promise<CompiledNlrStory> {
     const entryScene = input.document.scenes[input.sceneId];

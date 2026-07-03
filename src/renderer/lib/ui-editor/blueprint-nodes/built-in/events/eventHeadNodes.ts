@@ -5,10 +5,13 @@
 
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BLUR,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
@@ -166,6 +169,40 @@ const PIN_ELEMENT: BlueprintNodePinDef = {
     valueType: BLUEPRINT_VALUE_TYPE_ELEMENT,
     label: "Element",
 };
+// Game preference value type varies per key (boolean / number / string), so the
+// change heads expose the value as a generic json pin, matching broadcast `data`.
+const PIN_PREFERENCE_VALUE: BlueprintNodePinDef = {
+    id: "value",
+    kind: "output",
+    semantic: "data",
+    valueType: "json",
+    label: "Value",
+};
+const PIN_PREFERENCE_PREVIOUS_VALUE: BlueprintNodePinDef = {
+    id: "previousValue",
+    kind: "output",
+    semantic: "data",
+    valueType: "json",
+    label: "Previous Value",
+};
+
+// Inspector dropdown for `On Preference Changed`. Values mirror the NarraLeaf
+// GamePreference keys covered by the Game category Getter/Setter nodes.
+const GAME_PREFERENCE_HEAD_OPTIONS: { value: string; label: string }[] = [
+    { value: "autoForward", label: "Auto Forward" },
+    { value: "skip", label: "Skip" },
+    { value: "showDialog", label: "Show Dialog" },
+    { value: "gameSpeed", label: "Game Speed" },
+    { value: "cps", label: "Sentence Speed (CPS)" },
+    { value: "voiceVolume", label: "Voice Volume" },
+    { value: "voiceFadeDuration", label: "Voice Fade" },
+    { value: "voiceEndMode", label: "Voice End Mode" },
+    { value: "bgmVolume", label: "BGM Volume" },
+    { value: "soundVolume", label: "Sound Volume" },
+    { value: "globalVolume", label: "Global Volume" },
+    { value: "skipDelay", label: "Skip Delay" },
+    { value: "skipInterval", label: "Skip Interval" },
+];
 
 function widgetTypesForHead(headType: string): string[] {
     return Object.entries(BUILTIN_WIDGET_LOGIC_APIS)
@@ -235,6 +272,30 @@ function keyboardEventHead(input: {
         isPure: false,
         role: "eventHead",
         scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        pins: input.pins,
+        inspectorParams: input.inspectorParams,
+        execute: eventHeadExecute,
+    };
+}
+
+// Game preference change heads subscribe to the active live game's preference
+// dispatcher, which the runtime fans out to the global and surface blueprints.
+function preferenceEventHead(input: {
+    type: string;
+    displayName: string;
+    keywords: string[];
+    pins: BlueprintNodePinDef[];
+    inspectorParams?: BlueprintNodeDef["inspectorParams"];
+}): BlueprintNodeDef {
+    return {
+        type: input.type,
+        displayName: input.displayName,
+        category: "Events",
+        keywords: input.keywords,
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        scope: { ownerKinds: ["globalMain", "surfaceMain"] },
         pins: input.pins,
         inspectorParams: input.inspectorParams,
         execute: eventHeadExecute,
@@ -567,5 +628,25 @@ export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
             { id: "event", kind: "output", semantic: "data", valueType: "string", label: "Event" },
             { id: "data", kind: "output", semantic: "data", valueType: "json", label: "Data" },
         ],
+    }),
+    preferenceEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
+        displayName: "On Preference Changed",
+        keywords: ["game", "preference", "setting", "changed", "bgm", "volume", "audio", "nlr"],
+        pins: [THEN_PIN, PIN_PREFERENCE_VALUE, PIN_PREFERENCE_PREVIOUS_VALUE],
+        inspectorParams: [
+            {
+                key: BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY,
+                label: "Preference",
+                kind: "select",
+                options: GAME_PREFERENCE_HEAD_OPTIONS,
+            },
+        ],
+    }),
+    preferenceEventHead({
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
+        displayName: "On Any Preference Changed",
+        keywords: ["game", "preference", "setting", "changed", "any", "audio", "nlr"],
+        pins: [THEN_PIN, PIN_KEY, PIN_PREFERENCE_VALUE, PIN_PREFERENCE_PREVIOUS_VALUE],
     }),
 ];
