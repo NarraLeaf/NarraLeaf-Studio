@@ -15,6 +15,10 @@ export type SurfaceStateAccessors = {
 
 export type PageProps = Record<string, unknown>;
 
+export type OpenSurfaceOptions = {
+    presentation?: import("@/lib/ui-editor/runtime/game/surfaceNavigationController").SurfaceNavigationPresentation;
+};
+
 /** Per-layer blueprint host wiring created by the host app's factory. */
 export type HostAdapterBundle = {
     hostAdapter: UIHostAdapter;
