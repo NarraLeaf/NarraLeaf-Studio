@@ -63,7 +63,7 @@ type NlrStatement = unknown;
 type NlrChainLike = {
     getActions: () => NlrAction[];
 };
-type StoryAssetKind = "image" | "audio" | "video" | "font" | "other";
+export type StoryAssetKind = "image" | "audio" | "video" | "font" | "other";
 type NlrCondition = Lambda<boolean> | (() => boolean);
 
 export type CompiledNlrStory = {
