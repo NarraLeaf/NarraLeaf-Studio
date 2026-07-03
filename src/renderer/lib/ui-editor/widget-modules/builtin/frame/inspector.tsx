@@ -3,7 +3,7 @@ import type { CustomFieldProps, SelectFieldDefinition } from "@/apps/workspace/m
 import type { InspectorContext, UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { createBlueprintValueField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
-import { getUIFrameTargetInvalidReason } from "@shared/types/ui-editor/frame";
+import { findUIElementSurfaceId, getUIFrameTargetInvalidReason } from "@shared/types/ui-editor/frame";
 import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
 import { getFrameProps, type FrameWidgetProps } from "./helpers";
@@ -58,8 +58,8 @@ function FrameAnimationField({ data }: CustomFieldProps<UIInspectorData>) {
 }
 
 function pageOptions(data: UIInspectorData) {
-    const sourceSurfaceId = data.surfaceId ?? "";
     const document = data.documentService.getDocument();
+    const sourceSurfaceId = data.surfaceId || findUIElementSurfaceId(document, data.element.id) || "";
     return [
         { value: NO_PAGE_VALUE, label: "None" },
         ...document

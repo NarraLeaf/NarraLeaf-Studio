@@ -138,7 +138,8 @@ export type BlueprintInspectorParamDef = {
     /**
      * For `kind: "select"` without static `options`: the flow projection
      * populates options from context data keyed by this source id.
-     * Known sources: `"surfaces"` (available App Surfaces).
+     * Known sources include `"surfaces"` (available App Surfaces) and
+     * `"frameTargetSurfaces"` (Page targets filtered for the inferred Frame).
      */
     dynamicOptionsSource?: string;
     /** Label for the empty select option. Defaults to "-". */

@@ -98,7 +98,19 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
+    BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
@@ -151,6 +163,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     BLUEPRINT_NODE_TYPE_STRING_CAPITALIZE,
     BLUEPRINT_NODE_TYPE_STRING_CHAR_AT,
     BLUEPRINT_NODE_TYPE_STRING_CONCAT,
@@ -1319,10 +1332,30 @@ function resolvePageNodeOutput(portId: string, runtime?: DataPinResolveRuntime):
     if (portId === "isEntering") {
         return runtime?.hostAdapter?.blueprintRuntime?.getSurfaceTransitionState?.().isEntering === true;
     }
+    if (portId === "isTransitioning") {
+        const state = runtime?.hostAdapter?.blueprintRuntime?.getSurfaceTransitionState?.();
+        return state?.isEntering === true || state?.isExiting === true;
+    }
     return undefined;
 }
 
+const GAME_PREFERENCE_OUTPUT_KEYS: Record<string, { portId: string; key: string }> = {
+    [BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD]: { portId: "autoForward", key: "autoForward" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED]: { portId: "skip", key: "skip" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED]: { portId: "gameSpeed", key: "gameSpeed" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED]: { portId: "cps", key: "cps" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME]: { portId: "voiceVolume", key: "voiceVolume" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION]: { portId: "voiceFadeDuration", key: "voiceFadeDuration" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE]: { portId: "voiceEndMode", key: "voiceEndMode" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME]: { portId: "bgmVolume", key: "bgmVolume" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME]: { portId: "soundVolume", key: "soundVolume" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME]: { portId: "globalVolume", key: "globalVolume" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY]: { portId: "skipDelay", key: "skipDelay" },
+    [BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL]: { portId: "skipInterval", key: "skipInterval" },
+};
+
 function resolveGameNodeOutput(
+    nodeType: string,
     portId: string,
     runtime?: DataPinResolveRuntime,
 ): unknown {
@@ -1334,6 +1367,10 @@ function resolveGameNodeOutput(
     }
     if (portId === "isGameOverlay") {
         return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isGameOverlay() === true;
+    }
+    const preference = GAME_PREFERENCE_OUTPUT_KEYS[nodeType];
+    if (preference && portId === preference.portId) {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getPreference(preference.key as never);
     }
     return undefined;
 }
@@ -2285,16 +2322,18 @@ function resolveSelfOutput(
     if (
         selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS ||
         selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING ||
-        selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING
+        selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING
     ) {
         return resolvePageNodeOutput(portId, runtime);
     }
     if (
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME ||
-        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY ||
+        GAME_PREFERENCE_OUTPUT_KEYS[selfNode.type]
     ) {
-        return resolveGameNodeOutput(portId, runtime);
+        return resolveGameNodeOutput(selfNode.type, portId, runtime);
     }
     const elementTextOutput = resolveElementTextNodeOutput(
         graph,

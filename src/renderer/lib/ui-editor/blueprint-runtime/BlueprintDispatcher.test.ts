@@ -9,6 +9,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
@@ -925,6 +926,7 @@ describe("BlueprintDispatcher", () => {
                     members: {
                         variables: {
                             booted: { id: "booted", name: "booted", valueType: "string", defaultValue: "" },
+                            ready: { id: "ready", name: "ready", valueType: "string", defaultValue: "" },
                         },
                         fields: {},
                         functions: {},
@@ -947,6 +949,22 @@ describe("BlueprintDispatcher", () => {
                                         },
                                         edges: [
                                             { from: { nodeId: "head", port: "then" }, to: { nodeId: "setBooted", port: "in" } },
+                                        ],
+                                    },
+                                },
+                                gameReady: {
+                                    id: "gameReady",
+                                    graph: {
+                                        nodes: {
+                                            headReady: { id: "headReady", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY },
+                                            setReady: {
+                                                id: "setReady",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "ready", value: "yes" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "headReady", port: "then" }, to: { nodeId: "setReady", port: "in" } },
                                         ],
                                     },
                                 },
@@ -1024,6 +1042,14 @@ describe("BlueprintDispatcher", () => {
             getSurfaceState: () => undefined,
             setSurfaceState: () => undefined,
         });
+        await dispatchGlobalBlueprintEvent({
+            blueprintDocument,
+            eventName: "gameReady",
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
         await dispatchSurfaceBlueprintEvent({
             blueprintDocument,
             surfaceId: "surface",
@@ -1039,6 +1065,12 @@ describe("BlueprintDispatcher", () => {
                 blueprintDocument,
                 currentBlueprintId: globalBlueprintId,
             }).booted,
+        ).toBe("yes");
+        expect(
+            acquireBlueprintExecutionLocals({
+                blueprintDocument,
+                currentBlueprintId: globalBlueprintId,
+            }).ready,
         ).toBe("yes");
         expect(
             acquireBlueprintExecutionLocals({

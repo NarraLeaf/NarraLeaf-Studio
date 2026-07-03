@@ -4,9 +4,9 @@
 
 元素鼠标事件坐标使用当前元素的本地设计坐标系；Surface 鼠标事件坐标使用当前 Surface 的设计坐标系。Broadcast、Page Event、键盘事件与鼠标事件的传出值均来自当前运行时事件 payload；没有对应 payload 时传出值按 `null` 处理。
 
-键盘事件由运行时窗口级监听派发，不依赖元素焦点。Global 蓝图、当前 active Surface 蓝图，以及已挂载控件的私有蓝图都会收到对应键盘事件；如果多处都放置事件 Head，它们会分别执行。控件私有蓝图的键盘监听随控件挂载注册，控件卸载时自动移除。
+键盘事件由运行时窗口级监听派发，不依赖元素焦点。Global 蓝图、当前 active Surface 蓝图，以及已挂载控件的私有蓝图都会收到对应键盘事件；如果多处都放置事件 Head，它们会分别执行。控件私有蓝图的键盘监听随控件挂载注册，控件卸载时自动移除。Surface 完成 prepaint 后，Page 进退场期间键盘事件仍会派发；需要屏蔽时在图里读取 Page 分类的 `Is Surface Entering`、`Is Surface Exiting` 或 `Is Surface Transitioning` 自行分支。
 
-元素事件只从当前元素自己的可交互区域触发，不会默认冒泡接管子元素事件；控件处于禁用或文本编辑等不可交互状态时不会派发对应 Events Head。需要把当前接入的元素事件继续交给父元素时，在子元素的事件图中使用 Element 分类的 `Continue Event Bubble` 节点；它会沿用当前事件名和原始 payload 派发到结构父元素。需要在当前层吃掉事件时，使用 `Stop Event Bubble`；例如叠层 Page 拦截 Space 后，可阻止该按键继续影响背景游戏。
+元素事件只从当前元素自己的可交互区域触发，不会默认冒泡接管子元素事件；Surface 进退场期间，鼠标与点击类事件默认等到 Surface interaction ready 后才派发。控件处于禁用或文本编辑等不可交互状态时不会派发对应 Events Head。需要把当前接入的元素事件继续交给父元素时，在子元素的事件图中使用 Element 分类的 `Continue Event Bubble` 节点；它会沿用当前事件名和原始 payload 派发到结构父元素。需要在当前层吃掉事件时，使用 `Stop Event Bubble`；例如叠层 Page 拦截 Space 后，可阻止该按键继续影响背景游戏。
 
 在可视化编辑器中，画布右键 Add Node 菜单会按当前 Blueprint owner 和 widget event slot 显示可用 Events Head。左侧 `Layers > New` 也提供可选的 Event 字段，默认 `-` 表示只创建空图层；只有显式选择事件时才会自动插入对应 Events Head。
 
@@ -15,6 +15,15 @@
 `blueprint.event.head.appBoot` - 应用启动事件
 
 当 Dev Mode UI runtime 完成启动并拥有可执行的全局蓝图时触发一次。该节点仅出现在全局蓝图中。
+- `then` - 执行出口
+
+## On Game Ready
+
+`blueprint.event.head.gameReady` - NarraLeaf 游戏环境准备就绪事件
+
+当 NarraLeaf React `LiveGame` 对象已经创建并存入 Studio runtime、但 `liveGame.newGame()` 尚未启动第一段剧情前触发。该节点仅出现在全局蓝图中，每个被接受的 NarraLeaf session id 触发一次。
+
+该事件用于初始化需要活动游戏实例的 NarraLeaf Preference，例如 `Set Auto Forward`、`Set Game Speed`、`Set Voice Volume` 或 `Set Sentence Speed`。不要在 `App Boot` 中依赖活动 `LiveGame`，因为应用启动事件可能早于 NarraLeaf React 游戏环境准备完成。
 - `then` - 执行出口
 
 ## Surface Init

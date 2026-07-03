@@ -72,6 +72,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_HOVER,
@@ -95,7 +96,19 @@ import {
     BLUEPRINT_NODE_TYPE_FRAME_EMIT,
     BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
+    BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
@@ -107,7 +120,18 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
+    BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_SET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_FADE_DURATION,
+    BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG,
     BLUEPRINT_NODE_TYPE_GAME_SKIP,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
@@ -176,6 +200,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_GO,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
@@ -216,6 +241,7 @@ import {
     ELEMENT_REF_PARAM_ELEMENT_TYPE,
     ELEMENT_REF_PARAM_SURFACE_ID,
 } from "./elementRefUtils";
+import { BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE } from "../frameTargetSurfaceOptions";
 import { sliderBlueprintNodes } from "./sliderNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
@@ -282,6 +308,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     hideDialog: async () => undefined,
                     toggleDialogDisplay: async () => undefined,
                     setSentenceSpeed: async () => undefined,
+                    getPreference: () => 0,
+                    setPreference: async () => undefined,
                 },
                 devtools: {
                     log: () => undefined,
@@ -380,6 +408,8 @@ function createPageNavigationHostAdapter(
                     hideDialog: async () => undefined,
                     toggleDialogDisplay: async () => undefined,
                     setSentenceSpeed: async () => undefined,
+                    getPreference: () => 0,
+                    setPreference: async () => undefined,
                 },
                 devtools: {
                     log: () => undefined,
@@ -408,6 +438,8 @@ function createGameSaveHostAdapter(options: {
     hideDialogCalls?: boolean[];
     toggleDialogDisplayCalls?: boolean[];
     sentenceCpsValues?: number[];
+    preferenceReads?: Partial<Record<string, unknown>>;
+    preferenceWrites?: Array<{ key: string; value: unknown }>;
 }): UIHostAdapter {
     return {
         host: "player",
@@ -477,6 +509,10 @@ function createGameSaveHostAdapter(options: {
                     setSentenceSpeed: async (cps: number) => {
                         options.sentenceCpsValues?.push(cps);
                     },
+                    getPreference: key => options.preferenceReads?.[key] as any,
+                    setPreference: async (key, value) => {
+                        options.preferenceWrites?.push({ key, value });
+                    },
                 },
                 devtools: {
                     log: () => undefined,
@@ -534,6 +570,7 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
+        expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_START_STORY)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)).toBe(true);
@@ -1115,6 +1152,36 @@ describe("built-in blueprint nodes", () => {
                 },
             ),
         ).toBe(true);
+        expect(
+            resolveDataPinValue(
+                {
+                    nodes: {
+                        transitioning: {
+                            type: BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
+                            params: {},
+                        },
+                    },
+                },
+                "transitioning",
+                "isTransitioning",
+                {},
+                undefined,
+                0,
+                {
+                    hostAdapter: {
+                        host: "player",
+                        blueprintRuntime: {
+                            surfaceId: "surface",
+                            setSurfaceState: () => undefined,
+                            getSurfaceState: () => undefined,
+                            emitDebug: () => undefined,
+                            dispatchElementBlueprintEvent: async () => undefined,
+                            getSurfaceTransitionState: () => ({ isEntering: false, isExiting: true }),
+                        },
+                    },
+                },
+            ),
+        ).toBe(true);
 
         const framePatches: FramePatchCall[] = [];
         await executeGraph({
@@ -1489,6 +1556,116 @@ describe("built-in blueprint nodes", () => {
         expect(sentenceCpsValues).toEqual([32]);
     });
 
+    it("executes game preference getter and setter nodes through host APIs", async () => {
+        registerCoreBlueprintNodes();
+
+        const preferenceWrites: Array<{ key: string; value: unknown }> = [];
+        const setterLocals: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "setPreferences",
+                entries: { main: { start: { nodeId: "autoForward", port: "in" } } },
+                nodes: {
+                    autoForward: {
+                        id: "autoForward",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD,
+                        params: { autoForward: true },
+                    },
+                    gameSpeed: {
+                        id: "gameSpeed",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED,
+                        params: { gameSpeed: 1.5 },
+                    },
+                    voiceEndMode: {
+                        id: "voiceEndMode",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE,
+                        params: { voiceEndMode: "fade" },
+                    },
+                    done: {
+                        id: "done",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "done", value: "yes" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "autoForward", port: "next" }, to: { nodeId: "gameSpeed", port: "in" } },
+                    { from: { nodeId: "gameSpeed", port: "next" }, to: { nodeId: "voiceEndMode", port: "in" } },
+                    { from: { nodeId: "voiceEndMode", port: "next" }, to: { nodeId: "done", port: "in" } },
+                ],
+            },
+            entry: { start: { nodeId: "autoForward", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ preferenceWrites }),
+            blueprintLocals: setterLocals,
+        });
+        expect(preferenceWrites).toEqual([
+            { key: "autoForward", value: true },
+            { key: "gameSpeed", value: 1.5 },
+            { key: "voiceEndMode", value: "fade" },
+        ]);
+        expect(setterLocals.done).toBe("yes");
+
+        const getterLocals: Record<string, unknown> = {};
+        await executeGraph({
+            graph: {
+                id: "getSentenceSpeed",
+                entries: { main: { start: { nodeId: "capture", port: "in" } } },
+                nodes: {
+                    cps: {
+                        id: "cps",
+                        type: BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
+                        params: {},
+                    },
+                    capture: {
+                        id: "capture",
+                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                        params: { variableId: "cps" },
+                    },
+                },
+                edges: [
+                    { from: { nodeId: "cps", port: "cps" }, to: { nodeId: "capture", port: "value" } },
+                ],
+            },
+            entry: { start: { nodeId: "capture", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ preferenceReads: { cps: 28 } }),
+            blueprintLocals: getterLocals,
+        });
+        expect(getterLocals.cps).toBe(28);
+
+        await expect(executeGraph({
+            graph: {
+                id: "invalidVoiceEndMode",
+                entries: { main: { start: { nodeId: "voiceEndMode", port: "in" } } },
+                nodes: {
+                    voiceEndMode: {
+                        id: "voiceEndMode",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE,
+                        params: { voiceEndMode: "hold" },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "voiceEndMode", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ preferenceWrites: [] }),
+        })).rejects.toThrow(/Voice End Mode/);
+
+        await expect(executeGraph({
+            graph: {
+                id: "invalidSkipInterval",
+                entries: { main: { start: { nodeId: "skipInterval", port: "in" } } },
+                nodes: {
+                    skipInterval: {
+                        id: "skipInterval",
+                        type: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL,
+                        params: { skipInterval: 0 },
+                    },
+                },
+                edges: [],
+            },
+            entry: { start: { nodeId: "skipInterval", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ preferenceWrites: [] }),
+        })).rejects.toThrow(/Skip Interval/);
+    });
+
     it("executes game save nodes through host APIs", async () => {
         registerCoreBlueprintNodes();
 
@@ -1687,6 +1864,11 @@ describe("built-in blueprint nodes", () => {
         expect(broadcastBlueprintNodes.every(def => def.category === "Events")).toBe(true);
         expect(frameBlueprintNodes.every(def => def.category === "Page")).toBe(true);
         expect(gameBlueprintNodes.every(def => def.category === "Game")).toBe(true);
+        const gameReadyHead = eventHeadBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY);
+        expect(gameReadyHead?.displayName).toBe("On Game Ready");
+        expect(gameReadyHead?.role).toBe("eventHead");
+        expect(gameReadyHead?.scope).toEqual({ ownerKinds: ["globalMain"] });
+        expect(gameReadyHead?.pins.map(pin => pin.id)).toEqual(["then"]);
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY)?.pins.map(pin => pin.id)).toEqual([
             "in",
         ]);
@@ -1719,6 +1901,151 @@ describe("built-in blueprint nodes", () => {
         const setSentenceSpeedNode = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED);
         expect(setSentenceSpeedNode?.pins.map(pin => pin.id)).toEqual(["in", "next", "cps"]);
         expect(setSentenceSpeedNode?.pins.find(pin => pin.id === "cps")).toMatchObject({ label: "CPS" });
+        const preferenceNodeExpectations: Array<{
+            getterType: string;
+            setterType?: string;
+            getterName: string;
+            setterName?: string;
+            pinId: string;
+            pinLabel: string;
+            valueType: string;
+        }> = [
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD,
+                getterName: "Get Auto Forward",
+                setterName: "Set Auto Forward",
+                pinId: "autoForward",
+                pinLabel: "Auto Forward",
+                valueType: "boolean",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED,
+                getterName: "Get Skip",
+                setterName: "Set Skip",
+                pinId: "skip",
+                pinLabel: "Skip",
+                valueType: "boolean",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED,
+                getterName: "Get Game Speed",
+                setterName: "Set Game Speed",
+                pinId: "gameSpeed",
+                pinLabel: "Game Speed",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
+                getterName: "Get Sentence Speed",
+                pinId: "cps",
+                pinLabel: "CPS",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_VOLUME,
+                getterName: "Get Voice Volume",
+                setterName: "Set Voice Volume",
+                pinId: "voiceVolume",
+                pinLabel: "Voice Volume",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_FADE_DURATION,
+                getterName: "Get Voice Fade Duration",
+                setterName: "Set Voice Fade Duration",
+                pinId: "voiceFadeDuration",
+                pinLabel: "Voice Fade",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE,
+                getterName: "Get Voice End Mode",
+                setterName: "Set Voice End Mode",
+                pinId: "voiceEndMode",
+                pinLabel: "Voice End Mode",
+                valueType: "string",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME,
+                getterName: "Get BGM Volume",
+                setterName: "Set BGM Volume",
+                pinId: "bgmVolume",
+                pinLabel: "BGM Volume",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
+                getterName: "Get Sound Volume",
+                setterName: "Set Sound Volume",
+                pinId: "soundVolume",
+                pinLabel: "Sound Volume",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_GLOBAL_VOLUME,
+                getterName: "Get Global Volume",
+                setterName: "Set Global Volume",
+                pinId: "globalVolume",
+                pinLabel: "Global Volume",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY,
+                getterName: "Get Skip Delay",
+                setterName: "Set Skip Delay",
+                pinId: "skipDelay",
+                pinLabel: "Skip Delay",
+                valueType: "float",
+            },
+            {
+                getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+                setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL,
+                getterName: "Get Skip Interval",
+                setterName: "Set Skip Interval",
+                pinId: "skipInterval",
+                pinLabel: "Skip Interval",
+                valueType: "float",
+            },
+        ];
+        for (const item of preferenceNodeExpectations) {
+            const getter = gameBlueprintNodes.find(def => def.type === item.getterType);
+            expect(getter?.displayName).toBe(item.getterName);
+            expect(getter?.graphKinds).toEqual(["event", "function", "macro"]);
+            expect(getter?.isPure).toBe(true);
+            expect(getter?.isLatent).toBe(false);
+            expect(getter?.pins).toEqual([
+                expect.objectContaining({
+                    id: item.pinId,
+                    kind: "output",
+                    label: item.pinLabel,
+                    valueType: item.valueType,
+                }),
+            ]);
+            if (!item.setterType) {
+                continue;
+            }
+            const setter = gameBlueprintNodes.find(def => def.type === item.setterType);
+            expect(setter?.displayName).toBe(item.setterName);
+            expect(setter?.graphKinds).toEqual(["event", "macro"]);
+            expect(setter?.isPure).toBe(false);
+            expect(setter?.isLatent).toBe(true);
+            expect(setter?.pins.map(pin => pin.id)).toEqual(["in", "next", item.pinId]);
+            expect(setter?.pins.find(pin => pin.id === item.pinId)).toMatchObject({
+                kind: "input",
+                label: item.pinLabel,
+                valueType: item.valueType,
+            });
+        }
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)?.pins.map(pin => pin.id)).toEqual([
             "in",
             "id",
@@ -1761,6 +2088,9 @@ describe("built-in blueprint nodes", () => {
         expect(frameBlueprintNodes
             .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)
             ?.pins.map(pin => pin.id)).toEqual(["isEntering"]);
+        expect(frameBlueprintNodes
+            .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)
+            ?.pins.map(pin => pin.id)).toEqual(["isTransitioning"]);
         expect(frameBlueprintNodes
             .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)
             ?.inspectorParams).toEqual([
@@ -1807,7 +2137,7 @@ describe("built-in blueprint nodes", () => {
                 key: "targetSurfaceId",
                 label: "Page",
                 kind: "select",
-                dynamicOptionsSource: "surfaces",
+                dynamicOptionsSource: BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
                 emptyOptionLabel: "None",
             },
         ]);
@@ -2935,7 +3265,7 @@ describe("built-in blueprint nodes", () => {
                 key: "targetSurfaceId",
                 label: "Page",
                 kind: "select",
-                dynamicOptionsSource: "surfaces",
+                dynamicOptionsSource: BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
                 emptyOptionLabel: "None",
             },
         ]);
@@ -3943,6 +4273,7 @@ describe("built-in blueprint nodes", () => {
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
+        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)).toBe(true);
@@ -4053,6 +4384,7 @@ describe("built-in blueprint nodes", () => {
 
         expect(allTypes.has("blueprint.event.head.click")).toBe(false);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT)).toBe(true);
+        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY)).toBe(true);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN)).toBe(true);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP)).toBe(true);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
@@ -4077,11 +4409,13 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT)).toBe(false);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GO)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
+        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
@@ -4106,6 +4440,7 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
+        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
@@ -4168,6 +4503,7 @@ describe("built-in blueprint nodes", () => {
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
+        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);

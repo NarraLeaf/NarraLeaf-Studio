@@ -163,6 +163,25 @@ export type BlueprintFrameProperties = {
     params: Record<string, unknown>;
 };
 
+export type BlueprintGamePreferenceKey =
+    | "autoForward"
+    | "skip"
+    | "showDialog"
+    | "gameSpeed"
+    | "cps"
+    | "voiceVolume"
+    | "voiceFadeDuration"
+    | "voiceEndMode"
+    | "bgmVolume"
+    | "soundVolume"
+    | "globalVolume"
+    | "skipDelay"
+    | "skipInterval";
+
+export type BlueprintGamePreferenceVoiceEndMode = "fade" | "stop" | "none";
+
+export type BlueprintGamePreferenceValue = boolean | number | BlueprintGamePreferenceVoiceEndMode;
+
 export type BlueprintHostApiRuntime = {
     navigation: {
         openSurface: (surfaceId: string, props?: unknown) => Promise<void>;
@@ -229,6 +248,8 @@ export type BlueprintHostApiRuntime = {
         hideDialog: () => Promise<void>;
         toggleDialogDisplay: () => Promise<void>;
         setSentenceSpeed: (cps: number) => Promise<void>;
+        getPreference: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
+        setPreference: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
     };
     devtools: {
         log: (level: string, message: string) => void;
@@ -260,6 +281,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onHideDialog?: () => Promise<void> | void;
     onToggleDialogDisplay?: () => Promise<void> | void;
     onSetSentenceSpeed?: (cps: number) => Promise<void> | void;
+    onGetGamePreference?: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
+    onSetGamePreference?: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void> | void;
     emit: (event: BlueprintDebugEvent) => void;
     onOpenSurface: (surfaceId: string, props?: Record<string, unknown>) => void | Promise<void>;
     onCloseLayer: () => void | Promise<void>;
@@ -1059,6 +1082,94 @@ function normalizeSentenceCps(cps: unknown): number {
     return value;
 }
 
+const GAME_PREFERENCE_KEYS = new Set<BlueprintGamePreferenceKey>([
+    "autoForward",
+    "skip",
+    "showDialog",
+    "gameSpeed",
+    "cps",
+    "voiceVolume",
+    "voiceFadeDuration",
+    "voiceEndMode",
+    "bgmVolume",
+    "soundVolume",
+    "globalVolume",
+    "skipDelay",
+    "skipInterval",
+]);
+
+function normalizeGamePreferenceKey(key: unknown): BlueprintGamePreferenceKey {
+    const safeKey = String(key ?? "").trim() as BlueprintGamePreferenceKey;
+    if (!GAME_PREFERENCE_KEYS.has(safeKey)) {
+        throw new Error(`game preference key is not supported: ${String(key ?? "")}`);
+    }
+    return safeKey;
+}
+
+function normalizeGamePreferenceNumber(operation: string, key: BlueprintGamePreferenceKey, value: unknown): number {
+    const safeValue = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(safeValue)) {
+        throw new Error(`${operation}: ${key} must be a finite number`);
+    }
+    switch (key) {
+        case "gameSpeed":
+        case "cps":
+        case "skipInterval":
+            if (safeValue <= 0) {
+                throw new Error(`${operation}: ${key} must be a positive number`);
+            }
+            break;
+        case "voiceVolume":
+        case "voiceFadeDuration":
+        case "bgmVolume":
+        case "soundVolume":
+        case "globalVolume":
+        case "skipDelay":
+            if (safeValue < 0) {
+                throw new Error(`${operation}: ${key} must be zero or greater`);
+            }
+            break;
+        default:
+            break;
+    }
+    return safeValue;
+}
+
+function normalizeGamePreferenceValue(
+    operation: string,
+    key: BlueprintGamePreferenceKey,
+    value: unknown,
+): BlueprintGamePreferenceValue {
+    switch (key) {
+        case "autoForward":
+        case "skip":
+        case "showDialog":
+            if (typeof value !== "boolean") {
+                throw new Error(`${operation}: ${key} must be a boolean`);
+            }
+            return value;
+        case "voiceEndMode": {
+            const mode = String(value ?? "").trim();
+            if (mode !== "fade" && mode !== "stop" && mode !== "none") {
+                throw new Error(`${operation}: voiceEndMode must be "fade", "stop", or "none"`);
+            }
+            return mode;
+        }
+        case "gameSpeed":
+        case "cps":
+        case "voiceVolume":
+        case "voiceFadeDuration":
+        case "bgmVolume":
+        case "soundVolume":
+        case "globalVolume":
+        case "skipDelay":
+        case "skipInterval":
+            return normalizeGamePreferenceNumber(operation, key, value);
+        default:
+            throw new Error(`${operation}: ${key} is not supported`);
+    }
+}
+
 /**
  * Unified Host API implementation for Dev Mode (M3-full). Workspace editor does not instantiate this.
  */
@@ -1088,6 +1199,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onHideDialog,
         onToggleDialogDisplay,
         onSetSentenceSpeed,
+        onGetGamePreference,
+        onSetGamePreference,
         emit,
         onOpenSurface,
         onCloseLayer,
@@ -1794,16 +1907,19 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         ? undefined
                         : finalDisplayableMotionValue(request.target.opacity);
                     const waitMs = displayableMotionWaitMs(request.transition) * (request.resetOnComplete ? 2 : 1);
-                    if (waitMs > 0 && hasExplicitDisplayableMotionKeyframes(request.target)) {
-                        await waitForDisplayableMotionStartFrame();
-                    }
+                    const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
                     const motion = widgetRuntimeStore.setDisplayableMotion(
-                        scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId),
+                        scopedKey,
                         request,
                     );
+                    if (waitMs > 0 && hasExplicitDisplayableMotionKeyframes(request.target)) {
+                        await waitForDisplayableMotionStartFrame();
+                        if (widgetRuntimeStore.getDisplayableMotion(scopedKey)?.id !== motion.id) {
+                            return motion;
+                        }
+                    }
                     const waitReason = await waitForDisplayableAnimation(motion.id, waitMs);
                     if (waitReason === "completed" && heldOpacity !== undefined) {
-                        const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
                         const currentMotion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
                         if (currentMotion?.id === motion.id) {
                             const opacity = normalizeDisplayableOpacity(heldOpacity);
@@ -1824,7 +1940,6 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     }
                     const commitLayoutOnComplete = request.resetOnComplete ? undefined : request.commitLayoutOnComplete;
                     if (waitReason === "completed" && commitLayoutOnComplete) {
-                        const scopedKey = scopedWidgetRuntimeKey(runtimeScopeId, activeSurfaceId, elementId);
                         const currentMotion = widgetRuntimeStore.getDisplayableMotion(scopedKey);
                         if (currentMotion?.id === motion.id) {
                             const beforeCommit = readEffectiveDisplayableProperties(
@@ -2207,6 +2322,37 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("setSentenceSpeed: game runtime is not available");
                     }
                     await onSetSentenceSpeed(safeCps);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getPreference: (key: BlueprintGamePreferenceKey) => {
+                const cap = "game.getPreference";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const safeKey = normalizeGamePreferenceKey(key);
+                    if (!onGetGamePreference) {
+                        throw new Error("getPreference: game runtime is not available");
+                    }
+                    return normalizeGamePreferenceValue(
+                        "getPreference",
+                        safeKey,
+                        onGetGamePreference(safeKey),
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setPreference: async (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => {
+                const cap = "game.setPreference";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const safeKey = normalizeGamePreferenceKey(key);
+                    const safeValue = normalizeGamePreferenceValue("setPreference", safeKey, value);
+                    if (!onSetGamePreference) {
+                        throw new Error("setPreference: game runtime is not available");
+                    }
+                    await onSetGamePreference(safeKey, safeValue);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

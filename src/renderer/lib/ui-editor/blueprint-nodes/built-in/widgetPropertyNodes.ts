@@ -42,6 +42,7 @@ import { isButtonCursorValue, type ButtonCursorValue } from "@shared/types/ui-ed
 import type { ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import { BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE } from "../frameTargetSurfaceOptions";
 import { normalizeBlueprintElementRefValue } from "./elementRefUtils";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
@@ -651,7 +652,7 @@ function frameNodes(target: WidgetTarget, mode: TargetMode): BlueprintNodeDef[] 
                     key: "targetSurfaceId",
                     label: "Page",
                     kind: "select",
-                    dynamicOptionsSource: "surfaces",
+                    dynamicOptionsSource: BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
                     emptyOptionLabel: "None",
                 },
             ],
