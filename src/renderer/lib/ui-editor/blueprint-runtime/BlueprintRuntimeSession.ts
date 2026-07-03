@@ -4,8 +4,8 @@ import type { BindingDebugCoalescer } from "./BindingDebugCoalescer";
 
 /**
  * Logical aggregate for one Dev Mode surface runtime (Blueprint M3-min).
- * Instantiation: Dev Mode session core is created in {@link useDevModeBlueprintRuntime}; the host adapter is built in
- * {@link DevModeContent} together with navigation and widget runtime patches (M3-full).
+ * Instantiation: the session core is created by useBlueprintRuntimeCore inside the shared GameApp
+ * (src/renderer/lib/ui-editor/runtime/app/GameApp.tsx), which also builds host adapters and navigation.
  */
 export type BlueprintRuntimeSession = {
     surfaceId: string;
