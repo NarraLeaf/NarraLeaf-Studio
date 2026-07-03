@@ -54,6 +54,7 @@ import {
     resolvePageAnimationMotion,
     type PageAnimationNavigationDirection,
 } from "@/lib/ui-editor/runtime/pageAnimation";
+import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import {
     compileStudioStoryToNlr,
@@ -151,6 +152,7 @@ function cloneDevModePageProps(props: DevModePageProps | undefined): DevModePage
 
 type DevModeNavEntry = SurfaceNavigationEntry<DevModePageProps, DevModePagePresentation> & {
     sessionKey: string;
+    runtimeScopeId: string;
 };
 
 type DevModeBlueprintRuntimeCore = NonNullable<ReturnType<typeof useDevModeBlueprintRuntime>>;
@@ -434,12 +436,6 @@ function StudioDialogSlotSurface(props: {
     const runtimeScopeId = useMemo(() => dialogSlotRuntimeScopeId(sessionId, surface.id), [sessionId, surface.id]);
     const hostAdapterRef = useRef<UIHostAdapter | null>(null);
     const document = bundle.ui.uidoc;
-    const setVirtualClickTarget = useCallback(
-        (target: HTMLElement | null) => {
-            setDialogVirtualClickTarget(target);
-        },
-        [setDialogVirtualClickTarget],
-    );
 
     useEffect(() => () => setDialogVirtualClickTarget(null), [setDialogVirtualClickTarget]);
 
@@ -601,7 +597,10 @@ function StudioDialogSlotSurface(props: {
     }, [bpCore, bundle.ui.localBlueprints, globalStateReader, runtimeScopeId]);
 
     return (
-        <NlrDialog ref={setVirtualClickTarget} style={{ width: "100%", height: "100%", position: "relative" }}>
+        <NlrDialog
+            ref={setDialogVirtualClickTarget}
+            style={{ width: "100%", height: "100%", position: "relative" }}
+        >
             <StudioDialogStateBridge
                 bpCore={bpCore}
                 getCurrentNametag={getCurrentNametag}
@@ -730,7 +729,7 @@ function DevModeAppSurfaceLayer(props: {
         onPrepaintReady,
         onEnterComplete,
     } = props;
-    const runtimeScopeId = entry.key || surface.id;
+    const runtimeScopeId = entry.runtimeScopeId || surface.id;
     const hostAdapterRef = useRef<UIHostAdapter | null>(null);
     const [surfaceInteractive, setSurfaceInteractive] = useState(false);
     const [surfaceRuntimeSubscriptionsReadyKey, setSurfaceRuntimeSubscriptionsReadyKey] = useState<string | null>(null);
@@ -878,11 +877,14 @@ function DevModeAppSurfaceLayer(props: {
               }
             : null;
 
-    const pageMotion = resolvePageAnimationMotion({
-        settings: surface.settings?.pageAnimation,
-        navigationDirection: entry.direction,
-        reducedMotion,
-    });
+    const pageMotion = useMemo(
+        () => resolvePageAnimationMotion({
+            settings: surface.settings?.pageAnimation,
+            navigationDirection: entry.direction,
+            reducedMotion,
+        }),
+        [entry.direction, reducedMotion, surface.settings?.pageAnimation],
+    );
     const resolveExit = useCallback(
         (direction: PageAnimationNavigationDirection) =>
             resolvePageAnimationMotion({
@@ -953,10 +955,13 @@ function DevModeAppSurfaceLayer(props: {
             direction={entry.direction}
             pageMotion={pageMotion}
             className="absolute inset-0 flex items-center justify-center"
+            style={{ backgroundColor: getSurfaceBackgroundColor(surface) }}
             presentZIndex={10 + layerIndex}
             exitZIndex={entry.exitBehind ? 0 : 30 + layerIndex}
-            interactive={effectiveInteractive}
+            surfaceId={surface.id}
+            surfaceKind={surface.kind}
             resolveExit={resolveExit}
+            interactive={effectiveInteractive}
             onPrepaintReady={onPrepaintReady}
             onBeforeExit={handleBeforeExit}
             onEnterComplete={handleEnterComplete}
@@ -1123,8 +1128,10 @@ export function DevModeContent(props: DevModeContentProps) {
     useEffect(() => {
         if (surface?.id) {
             navEntrySeqRef.current += 1;
+            const initialKey = `${surface.id}:${navEntrySeqRef.current}`;
             const initialEntry: DevModeNavEntry = {
-                key: `${surface.id}:${navEntrySeqRef.current}`,
+                key: initialKey,
+                runtimeScopeId: initialKey,
                 sessionKey: runtimeSessionKey,
                 surfaceId: surface.id,
                 direction: "forward",
@@ -1393,8 +1400,10 @@ export function DevModeContent(props: DevModeContentProps) {
             presentation: DevModePagePresentation = "appPage",
         ): DevModeNavEntry => {
             navEntrySeqRef.current += 1;
+            const key = `${surfaceId}:${navEntrySeqRef.current}`;
             return {
-                key: `${surfaceId}:${navEntrySeqRef.current}`,
+                key,
+                runtimeScopeId: key,
                 sessionKey: runtimeSessionKey,
                 surfaceId,
                 direction,
