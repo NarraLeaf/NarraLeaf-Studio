@@ -13,18 +13,31 @@ const chokidar = require('chokidar');
 const { WebSocketServer } = require('ws');
 const { watchBuild } = require('../build/watch');
 const { postcssPlugin } = require('../build/postCss-plugin');
+const {
+    buildBuiltInPlugins,
+    copyBuiltInPluginsToDevUserData,
+    sourceRoot: builtInPluginsSourceRoot,
+} = require('../build/builtin-plugins');
+
+const forwardedElectronArgs = process.argv.slice(2);
 
 const styleIn = path.join(rootDir, 'src', 'renderer', 'styles', 'styles.css');
 const styleOut = path.join(distWindows, 'styles.css');
+const runtimeSourceRoots = [
+    path.join(rootDir, 'src', 'runtime'),
+    path.join(rootDir, 'src', 'shared'),
+    path.join(rootDir, 'src', 'renderer', 'apps', 'dev-mode', 'nlr'),
+    path.join(rootDir, 'src', 'renderer', 'lib', 'ui-editor'),
+];
 
 // Ensure dist directory exists
 fs.mkdirSync(distWindows, { recursive: true });
 
 // Initialize WebSocketServer
 const wss = new WebSocketServer({ port: 5588 });
-function broadcastReload() {
+function broadcastReload(target = 'all') {
     wss.clients.forEach((client) => {
-        if (client.readyState === 1) client.send('reload');
+        if (client.readyState === 1) client.send(JSON.stringify({ type: 'reload', target }));
     });
 }
 
@@ -38,10 +51,23 @@ function broadcastReload() {
     let initialStylesBuilt = false;
     let initialRenderersBuilt = false;
     let initialPreloadBuilt = false;
+    let initialRuntimeBuilt = false;
+    let initialBuiltInPluginsBuilt = false;
     let restartTimer = null; // Timer for debouncing restarts
+    let runtimeRebuildTimer = null;
+    let runtimeBuildRunning = false;
+    let runtimeBuildQueued = false;
 
     function tryStartElectronOnce() {
-        if (!appStarted && initialMainBuilt && initialStylesBuilt && initialRenderersBuilt && initialPreloadBuilt) {
+        if (
+            !appStarted &&
+            initialMainBuilt &&
+            initialStylesBuilt &&
+            initialRenderersBuilt &&
+            initialPreloadBuilt &&
+            initialRuntimeBuilt &&
+            initialBuiltInPluginsBuilt
+        ) {
             appStarted = true;
             console.log('[dev] all initial builds completed. starting electron...');
             restartElectron();
@@ -73,7 +99,7 @@ function broadcastReload() {
         const electronBinary = require('electron');
         const mainEntry = path.join(distDir, 'main', 'index.js');
         console.log('[dev] starting electron process...');
-        electronProcess = spawn(electronBinary, [mainEntry, '--dev'], {
+        electronProcess = spawn(electronBinary, [mainEntry, '--dev', ...forwardedElectronArgs], {
             stdio: 'inherit',
         });
 
@@ -90,6 +116,65 @@ function broadcastReload() {
             }
         });
     }
+
+    function runNodeScript(args) {
+        return new Promise((resolve, reject) => {
+            const child = spawn(process.execPath, args, {
+                cwd: rootDir,
+                stdio: 'inherit',
+            });
+            child.on('close', code => {
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(new Error(`node ${args.join(' ')} exited with code ${code}`));
+                }
+            });
+            child.on('error', reject);
+        });
+    }
+
+    async function rebuildRuntimeForDev() {
+        if (runtimeBuildRunning) {
+            runtimeBuildQueued = true;
+            return;
+        }
+        runtimeBuildRunning = true;
+        runtimeBuildQueued = false;
+        try {
+            await runNodeScript(['project/build/build-runtime.js', '--dev']);
+            if (!initialRuntimeBuilt) {
+                initialRuntimeBuilt = true;
+                console.log('[runtime] initial build complete.');
+                tryStartElectronOnce();
+            } else {
+                console.log('[runtime] rebuilt.');
+            }
+        } catch (error) {
+            console.error('[runtime] build failed:', error);
+        } finally {
+            runtimeBuildRunning = false;
+            if (runtimeBuildQueued) {
+                void rebuildRuntimeForDev();
+            }
+        }
+    }
+
+    void rebuildRuntimeForDev();
+
+    const runtimeWatcher = chokidar.watch(runtimeSourceRoots, {
+        ignored: /(^|[\/\\])\../,
+        ignoreInitial: true,
+    });
+
+    runtimeWatcher.on('all', () => {
+        if (runtimeRebuildTimer) {
+            clearTimeout(runtimeRebuildTimer);
+        }
+        runtimeRebuildTimer = setTimeout(() => {
+            void rebuildRuntimeForDev();
+        }, 150);
+    });
 
     // Build & watch main process
     const mainEntry = path.join(rootDir, 'src', 'main', 'index.ts');
@@ -199,6 +284,41 @@ function broadcastReload() {
     // Mark all renderers as built after HTML written
     initialRenderersBuilt = true;
     tryStartElectronOnce();
+
+    async function rebuildBuiltInPluginsForDev() {
+        const results = await buildBuiltInPlugins({ dev: true });
+        await copyBuiltInPluginsToDevUserData();
+        return results;
+    }
+
+    const builtInPluginResults = await rebuildBuiltInPluginsForDev();
+    initialBuiltInPluginsBuilt = true;
+    console.log(`[builtin-plugins] initial build complete (${builtInPluginResults.length}).`);
+    tryStartElectronOnce();
+
+    let builtInPluginRebuildTimer = null;
+    const builtInPluginWatcher = chokidar.watch(builtInPluginsSourceRoot, {
+        ignored: /(^|[\/\\])\../,
+        ignoreInitial: true,
+    });
+
+    builtInPluginWatcher.on('all', () => {
+        if (builtInPluginRebuildTimer) {
+            clearTimeout(builtInPluginRebuildTimer);
+        }
+        builtInPluginRebuildTimer = setTimeout(async () => {
+            try {
+                const results = await rebuildBuiltInPluginsForDev();
+                console.log(`[builtin-plugins] rebuilt (${results.length}).`);
+                if (appStarted) {
+                    console.log('[builtin-plugins] broadcasting workspace reload...');
+                    broadcastReload('workspace');
+                }
+            } catch (error) {
+                console.error('[builtin-plugins] rebuild failed:', error);
+            }
+        }, 150);
+    });
 
     if (!initialStylesBuilt) {
         initialStylesBuilt = true;

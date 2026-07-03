@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
     Play,
-    Bug,
     Hammer,
+    Package,
     FileText,
     FolderOpen,
-    Save,
+    X,
+    Archive,
 } from "lucide-react";
 import { ModuleAction, ModuleActionGroup } from "../types";
 import { Workspace } from "@/lib/workspace/workspace";
@@ -16,9 +17,13 @@ import { getInterface } from "@/lib/app/bridge";
 import { Separator } from "../../registry/types";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
+import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
+import { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import type { DevModeStatus } from "@shared/types/devMode";
+import type { PreviewStatus } from "@shared/types/gameRuntime";
 import { useWorkspace } from "../../context";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
+import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
 
 /**
  * Global toolbar actions
@@ -40,12 +45,7 @@ export const devModeAction: ModuleAction = {
     onClick: (workspace: Workspace) => {
         const devModeService = workspace.getContext().services.get<DevModeService>(Services.DevMode);
         const status = devModeService.getStatus();
-        const sessionActive =
-            status === "running" ||
-            status === "compiling" ||
-            status === "starting" ||
-            status === "reloading";
-        if (sessionActive) {
+        if (isDevModeRuntimeActive(status)) {
             void devModeService.stop();
             return;
         }
@@ -84,7 +84,7 @@ function DevModeActionIcon() {
         if (status === "error") {
             return "#f87171";
         }
-        if (status !== "idle") {
+        if (isDevModeRuntimeActive(status)) {
             return "#ffffff";
         }
         return "rgba(255,255,255,0.6)";
@@ -93,20 +93,53 @@ function DevModeActionIcon() {
     return <Play className="w-4 h-4" color={iconColor} />;
 }
 
-/**
- * Debug project action
- * Starts debugging the current project
- */
-export const debugAction: ModuleAction = {
-    id: "narraleaf-studio:debug",
-    icon: <Bug className="w-4 h-4" />,
-    tooltip: "Debug project",
-    onClick: () => {
-        console.log("Debug clicked");
-        // TODO: Implement debug functionality
+export const previewAction: ModuleAction = {
+    id: "narraleaf-studio:preview",
+    icon: <PreviewActionIcon />,
+    tooltip: "Preview",
+    onClick: (workspace: Workspace) => {
+        const previewService = workspace.getContext().services.get<PreviewService>(Services.Preview);
+        const status = previewService.getStatus();
+        if (isPreviewRuntimeActive(status)) {
+            void previewService.stop();
+            return;
+        }
+        void previewService.launch({
+            kind: "surface",
+            surfaceId: MAIN_APP_SURFACE_ID,
+        });
     },
-    order: 3,
+    order: 2,
 };
+
+function PreviewActionIcon() {
+    const { context } = useWorkspace();
+    const [status, setStatus] = useState<PreviewStatus>("idle");
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const previewService = context.services.get<PreviewService>(Services.Preview);
+        setStatus(previewService.getStatus());
+        const unsub = previewService.onStatusChanged(setStatus);
+        return () => {
+            unsub();
+        };
+    }, [context]);
+
+    const iconColor = useMemo(() => {
+        if (status === "error") {
+            return "#f87171";
+        }
+        if (isPreviewRuntimeActive(status)) {
+            return "#ffffff";
+        }
+        return "rgba(255,255,255,0.6)";
+    }, [status]);
+
+    return <Hammer className="w-4 h-4" color={iconColor} />;
+}
 
 /**
  * Build project action
@@ -114,11 +147,33 @@ export const debugAction: ModuleAction = {
  */
 export const buildAction: ModuleAction = {
     id: "narraleaf-studio:build",
-    icon: <Hammer className="w-4 h-4" />,
+    icon: <Package className="w-4 h-4" />,
     tooltip: "Build project",
-    onClick: () => {
-        console.log("Build clicked");
-        // TODO: Implement build functionality
+    onClick: (workspace: Workspace) => {
+        const services = workspace.getContext().services;
+        const consoleService = services.get<ConsoleService>(Services.Console);
+        const uiService = services.get<UIService>(Services.UI);
+        const projectPath = workspace.getContext().project.getConfig().projectPath;
+        const projectName = projectPath.split(/[\\/]/).filter(Boolean).at(-1) ?? "project";
+
+        uiService.panels.show("narraleaf-studio:console");
+        consoleService.append("build", {
+            level: "info",
+            source: "Build",
+            segments: [
+                { text: "Build requested for ", color: "#8b949e" },
+                { text: projectName, bold: true },
+                { text: "." },
+            ],
+        });
+        consoleService.append("build", {
+            level: "warning",
+            source: "Build",
+            segments: [
+                { text: "Project build pipeline is not wired to the toolbar yet.", bold: true },
+                { text: " Packaging output will stream here once the build runner is connected.", italic: true },
+            ],
+        });
     },
     order: 4,
 };
@@ -167,16 +222,42 @@ export const fileActionGroup: ModuleActionGroup = {
             },
             order: 1,
         },
+        {
+            id: "narraleaf-studio:file-export-project",
+            label: "Export Project",
+            icon: <Archive className="w-4 h-4" />,
+            tooltip: "Export the current project as a package",
+            onClick: (workspace: Workspace) => {
+                void (async () => {
+                    const uiService = workspace.getContext().services.get<UIService>(Services.UI);
+                    uiService.showNotification("Choose a folder for the exported project package.", "info");
+
+                    const projectPath = workspace.getContext().project.getConfig().projectPath;
+                    const result = await getInterface().workspace.exportProjectPackage(projectPath);
+                    if (!result.success) {
+                        uiService.showNotification(result.error || "Failed to export project.", "error");
+                        return;
+                    }
+                    if (result.data.canceled) {
+                        return;
+                    }
+
+                    const fileCount = result.data.fileCount ?? 0;
+                    uiService.showNotification(`Exported project package with ${fileCount} files.`, "success");
+                })();
+            },
+            order: 2,
+        },
         Separator,
         {
-            id: "narraleaf-studio:file-save-as",
+            id: "narraleaf-studio:file-close-workspace",
             label: "Close",
-            icon: <Save className="w-4 h-4" />,
+            icon: <X className="w-4 h-4" />,
             tooltip: "Close the current workspace",
             onClick: () => {
                 getInterface().workspace.close();
             },
-            order: 2,
+            order: 3,
         },
     ],
 };
@@ -210,11 +291,10 @@ export const helpActionGroup: ModuleActionGroup = {
  * All global actions
  * Array of all actions that should be registered globally
  */
-export const globalActions: ModuleAction[] = [devModeAction, debugAction, buildAction];
+export const globalActions: ModuleAction[] = [devModeAction, previewAction, buildAction];
 
 /**
  * All global action groups
  * Array of all action groups that should be registered globally
  */
 export const globalActionGroups: ModuleActionGroup[] = [fileActionGroup, helpActionGroup];
-

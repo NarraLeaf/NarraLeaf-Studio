@@ -11,6 +11,7 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_IS_NUMBER,
     BLUEPRINT_NODE_TYPE_DATA_IS_OBJECT,
     BLUEPRINT_NODE_TYPE_DATA_IS_STRING,
+    BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
     BLUEPRINT_NODE_TYPE_DATA_TO_BOOLEAN,
     BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_TO_INTEGER,
@@ -337,6 +338,12 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         type: BLUEPRINT_NODE_TYPE_DATA_IS_NULL,
         displayName: "Is Null",
         keywords: ["type", "check", "null", "none"],
+        pins: [anyIn("value", "Value"), out("result", "Result", "boolean")],
+    }),
+    dataNode({
+        type: BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
+        displayName: "Not Null",
+        keywords: ["type", "check", "null", "none", "exists", "defined"],
         pins: [anyIn("value", "Value"), out("result", "Result", "boolean")],
     }),
     dataNode({

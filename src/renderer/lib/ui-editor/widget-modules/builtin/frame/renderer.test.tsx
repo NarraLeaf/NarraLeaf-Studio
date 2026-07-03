@@ -60,6 +60,63 @@ function createDocument(): UIDocument {
 }
 
 describe("FrameRenderer", () => {
+    it("renders nothing when no Page is selected", () => {
+        const document = createDocument();
+        const element = document.elements.frame as UIElement;
+        element.props = {
+            ...element.props,
+            targetSurfaceId: null,
+        };
+
+        const markup = renderToStaticMarkup(
+            <FrameRenderer
+                element={element}
+                document={document}
+                surface={document.surfaces[0]!}
+                hostAdapter={{ host: "app" }}
+                renderSurface={() => <div>Target Page</div>}
+            />,
+        );
+
+        expect(markup).toBe("");
+    });
+
+    it("keeps the nested Page renderer mounted while runtime clears the target Page", () => {
+        const document = createDocument();
+        const element = document.elements.frame as UIElement;
+        element.props = {
+            ...element.props,
+            targetSurfaceId: null,
+        };
+        let renderedTargetSurfaceId: string | null | undefined = undefined;
+
+        const markup = renderToStaticMarkup(
+            <FrameRenderer
+                element={element}
+                document={document}
+                surface={document.surfaces[0]!}
+                hostAdapter={{
+                    host: "app",
+                    blueprintRuntime: {
+                        surfaceId: "host-page",
+                        setSurfaceState: () => undefined,
+                        getSurfaceState: () => undefined,
+                        emitDebug: () => undefined,
+                        dispatchElementBlueprintEvent: async () => undefined,
+                    },
+                }}
+                renderSurface={({ targetSurfaceId }) => {
+                    renderedTargetSurfaceId = targetSurfaceId;
+                    return <div>Runtime Page host</div>;
+                }}
+            />,
+        );
+
+        expect(renderedTargetSurfaceId).toBeNull();
+        expect(markup).toContain("Runtime Page host");
+        expect(markup).toContain("background:transparent");
+    });
+
     it("fills the frame box instead of letterboxing mismatched target Page ratios", () => {
         const document = createDocument();
         const element = document.elements.frame as UIElement;

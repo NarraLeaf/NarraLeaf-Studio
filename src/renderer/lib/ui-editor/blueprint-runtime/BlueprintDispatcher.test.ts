@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -8,6 +8,9 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
@@ -15,11 +18,16 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_BROADCAST,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
+    BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+    BLUEPRINT_NODE_TYPE_LOG,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
 import {
     countBlueprintBroadcastListeners,
     dispatchBlueprintBroadcastEvent,
+    dispatchBlueprintElementClickEvent,
     dispatchGlobalBlueprintEvent,
     dispatchSurfaceBlueprintEvent,
     dispatchBlueprintUiEvent,
@@ -30,9 +38,237 @@ import {
     releaseBlueprintWidgetLocals,
 } from "./blueprintWidgetLocals";
 import { DebugBridge } from "./DebugBridge";
+import { BlueprintExecutionManager } from "./BlueprintExecutionManager";
 import { createExplicitBlueprintVariableRef } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
 
 describe("BlueprintDispatcher", () => {
+    it("dispatches top-level container init into a Log node", async () => {
+        const blueprintId = "bp-container";
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [blueprintId]: {
+                    id: blueprintId,
+                    name: "Container Logic",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "container" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                init: {
+                                    id: "init",
+                                    graph: {
+                                        nodes: {
+                                            head: {
+                                                id: "head",
+                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+                                            },
+                                            message: {
+                                                id: "message",
+                                                type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                                                params: { value: "init fired" },
+                                            },
+                                            log: {
+                                                id: "log",
+                                                type: BLUEPRINT_NODE_TYPE_LOG,
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                                            { from: { nodeId: "message", port: "value" }, to: { nodeId: "log", port: "value" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                "widgetMain:surface:container": {
+                    activeBlueprintId: blueprintId,
+                    privateBlueprintIds: [blueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["container"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                container: {
+                    id: "container",
+                    type: "nl.container",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 100, height: 32 },
+                },
+            },
+        };
+        const debug = new DebugBridge();
+        const hostAdapter: UIHostAdapter = { host: "player" };
+        const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+        try {
+            await dispatchBlueprintUiEvent({
+                document,
+                blueprintDocument,
+                surfaceId: "surface",
+                elementId: "container",
+                eventName: "init",
+                hostAdapter,
+                debug,
+                getSurfaceState: () => undefined,
+                setSurfaceState: () => undefined,
+            });
+            expect(debug.snapshot().map(e => e.type)).toEqual([
+                "execution.started",
+                "node.enter",
+                "node.exit",
+                "node.enter",
+                "node.exit",
+                "execution.finished",
+            ]);
+            expect(log).toHaveBeenCalledWith("[Blueprint]", "init fired");
+        } finally {
+            log.mockRestore();
+        }
+    });
+
+    it("dispatches widget init on component-owned container blueprints", async () => {
+        const blueprintId = "bp-component-container";
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [blueprintId]: {
+                    id: blueprintId,
+                    name: "Component Container Logic",
+                    owner: { kind: "componentWidgetMain", componentId: "component", elementId: "component-container" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                init: {
+                                    id: "init",
+                                    graph: {
+                                        nodes: {
+                                            head: {
+                                                id: "head",
+                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+                                            },
+                                        },
+                                        edges: [],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                "componentWidgetMain:component:component-container": {
+                    activeBlueprintId: blueprintId,
+                    privateBlueprintIds: [blueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "onStage" },
+                },
+            ],
+            components: [
+                {
+                    id: "component",
+                    name: "Component",
+                    rootElementId: "component-container",
+                    elements: {
+                        "component-container": {
+                            id: "component-container",
+                            type: "nl.container",
+                            parentId: null,
+                            childrenIds: [],
+                            layout: { x: 0, y: 0, width: 160, height: 80 },
+                        },
+                    },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+            },
+        };
+        const debug = new DebugBridge();
+        const hostAdapter: UIHostAdapter = { host: "player" };
+
+        await dispatchBlueprintUiEvent({
+            document,
+            blueprintDocument,
+            surfaceId: "surface",
+            elementId: "component-container",
+            componentId: "component",
+            eventName: "init",
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+
+        expect(debug.snapshot().map(e => e.type)).toEqual([
+            "execution.started",
+            "node.enter",
+            "node.exit",
+            "execution.finished",
+        ]);
+    });
+
     it("does not emit output when a supported widget event has no event head", async () => {
         const blueprintId = "bp-widget";
         const blueprintDocument: BlueprintDocument = {
@@ -199,6 +435,117 @@ describe("BlueprintDispatcher", () => {
             surfaceId: "surface",
             elementId: "container",
             eventName: "mouseEnter",
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+
+        expect(debug.snapshot().map(e => e.type)).toEqual([
+            "execution.started",
+            "node.enter",
+            "node.exit",
+            "execution.finished",
+        ]);
+    });
+
+    it("dispatches an Element Click listener bound to another same-surface element", async () => {
+        const blueprintId = "bp-panel";
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [blueprintId]: {
+                    id: blueprintId,
+                    name: "Panel Logic",
+                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "panel" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                dialogNext: {
+                                    id: "dialogNext",
+                                    graph: {
+                                        nodes: {
+                                            head: {
+                                                id: "head",
+                                                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+                                                params: {
+                                                    surfaceId: "surface",
+                                                    elementId: "interaction",
+                                                    elementType: "nl.container",
+                                                },
+                                            },
+                                        },
+                                        edges: [],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                "widgetMain:surface:panel": {
+                    activeBlueprintId: blueprintId,
+                    privateBlueprintIds: [blueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const document: UIDocument = {
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+            id: "doc",
+            name: "Doc",
+            surfaces: [
+                {
+                    id: "surface",
+                    name: "Surface",
+                    host: "player",
+                    kind: "stageSurface",
+                    designSize: { width: 320, height: 180 },
+                    rootElementId: "root",
+                    mount: { kind: "slot", slotId: "dialog" },
+                },
+            ],
+            elements: {
+                root: {
+                    id: "root",
+                    type: "nl.root",
+                    parentId: null,
+                    childrenIds: ["interaction", "panel"],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                interaction: {
+                    id: "interaction",
+                    type: "nl.container",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 320, height: 180 },
+                },
+                panel: {
+                    id: "panel",
+                    type: "nl.container",
+                    parentId: "root",
+                    childrenIds: [],
+                    layout: { x: 40, y: 100, width: 240, height: 60 },
+                },
+            },
+        };
+        const debug = new DebugBridge();
+        const hostAdapter: UIHostAdapter = { host: "player" };
+
+        await dispatchBlueprintElementClickEvent({
+            document,
+            blueprintDocument,
+            surfaceId: "surface",
+            target: { surfaceId: "surface", elementId: "interaction", elementType: "nl.container" },
+            eventPayload: { x: 12, y: 34, button: 0 },
             hostAdapter,
             debug,
             getSurfaceState: () => undefined,
@@ -579,6 +926,7 @@ describe("BlueprintDispatcher", () => {
                     members: {
                         variables: {
                             booted: { id: "booted", name: "booted", valueType: "string", defaultValue: "" },
+                            ready: { id: "ready", name: "ready", valueType: "string", defaultValue: "" },
                         },
                         fields: {},
                         functions: {},
@@ -601,6 +949,22 @@ describe("BlueprintDispatcher", () => {
                                         },
                                         edges: [
                                             { from: { nodeId: "head", port: "then" }, to: { nodeId: "setBooted", port: "in" } },
+                                        ],
+                                    },
+                                },
+                                gameReady: {
+                                    id: "gameReady",
+                                    graph: {
+                                        nodes: {
+                                            headReady: { id: "headReady", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY },
+                                            setReady: {
+                                                id: "setReady",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "ready", value: "yes" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "headReady", port: "then" }, to: { nodeId: "setReady", port: "in" } },
                                         ],
                                     },
                                 },
@@ -678,6 +1042,14 @@ describe("BlueprintDispatcher", () => {
             getSurfaceState: () => undefined,
             setSurfaceState: () => undefined,
         });
+        await dispatchGlobalBlueprintEvent({
+            blueprintDocument,
+            eventName: "gameReady",
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
         await dispatchSurfaceBlueprintEvent({
             blueprintDocument,
             surfaceId: "surface",
@@ -697,10 +1069,207 @@ describe("BlueprintDispatcher", () => {
         expect(
             acquireBlueprintExecutionLocals({
                 blueprintDocument,
+                currentBlueprintId: globalBlueprintId,
+            }).ready,
+        ).toBe("yes");
+        expect(
+            acquireBlueprintExecutionLocals({
+                blueprintDocument,
                 currentBlueprintId: surfaceBlueprintId,
                 surfaceId: "surface",
             }).initialized,
         ).toBe("yes");
+    });
+
+    it("dispatches surface mouse click event payloads to surface blueprints", async () => {
+        const surfaceBlueprintId = "bp-surface-click";
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [surfaceBlueprintId]: {
+                    id: surfaceBlueprintId,
+                    name: "Surface Click",
+                    owner: { kind: "surfaceMain", surfaceId: "surface" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: {
+                        variables: {
+                            mouseX: { id: "mouseX", name: "mouseX", valueType: "float", defaultValue: 0 },
+                            mouseY: { id: "mouseY", name: "mouseY", valueType: "float", defaultValue: 0 },
+                        },
+                        fields: {},
+                        functions: {},
+                    },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                mouseClick: {
+                                    id: "mouseClick",
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
+                                            setX: {
+                                                id: "setX",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "mouseX" },
+                                            },
+                                            setY: {
+                                                id: "setY",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "mouseY" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setX", port: "in" } },
+                                            { from: { nodeId: "setX", port: "next" }, to: { nodeId: "setY", port: "in" } },
+                                            { from: { nodeId: "head", port: "x" }, to: { nodeId: "setX", port: "value" } },
+                                            { from: { nodeId: "head", port: "y" }, to: { nodeId: "setY", port: "value" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                "surfaceMain:surface": {
+                    activeBlueprintId: surfaceBlueprintId,
+                    privateBlueprintIds: [surfaceBlueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const debug = new DebugBridge();
+        const hostAdapter: UIHostAdapter = { host: "player" };
+
+        await dispatchSurfaceBlueprintEvent({
+            blueprintDocument,
+            surfaceId: "surface",
+            eventName: "mouseClick",
+            eventPayload: { x: 42, y: 9 },
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+
+        const locals = acquireBlueprintExecutionLocals({
+            blueprintDocument,
+            currentBlueprintId: surfaceBlueprintId,
+            surfaceId: "surface",
+        });
+        expect(locals.mouseX).toBe(42);
+        expect(locals.mouseY).toBe(9);
+    });
+
+    it("cancels pending surface graph executions when their runtime scope closes", async () => {
+        vi.useFakeTimers();
+        try {
+            const surfaceBlueprintId = "bp-surface-cancel";
+            const runtimeScopeId = "surface:cancel-test";
+            const blueprintDocument: BlueprintDocument = {
+                schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+                persistentVariables: {},
+                blueprints: {
+                    [surfaceBlueprintId]: {
+                        id: surfaceBlueprintId,
+                        name: "Surface Cancel",
+                        owner: { kind: "surfaceMain", surfaceId: "surface" },
+                        frontend: "visual",
+                        programKind: "graph",
+                        members: {
+                            variables: {
+                                initialized: {
+                                    id: "initialized",
+                                    name: "initialized",
+                                    valueType: "string",
+                                    defaultValue: "no",
+                                },
+                            },
+                            fields: {},
+                            functions: {},
+                        },
+                        bindings: {},
+                        program: {
+                            kind: "graph",
+                            graphs: {
+                                events: {
+                                    surfaceInit: {
+                                        id: "surfaceInit",
+                                        graph: {
+                                            nodes: {
+                                                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT },
+                                                delay: {
+                                                    id: "delay",
+                                                    type: BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+                                                    params: { duration: 1 },
+                                                },
+                                                setInitialized: {
+                                                    id: "setInitialized",
+                                                    type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                    params: { variableId: "initialized", value: "yes" },
+                                                },
+                                            },
+                                            edges: [
+                                                { from: { nodeId: "head", port: "then" }, to: { nodeId: "delay", port: "in" } },
+                                                { from: { nodeId: "delay", port: "completed" }, to: { nodeId: "setInitialized", port: "in" } },
+                                            ],
+                                        },
+                                    },
+                                },
+                                functions: {},
+                            },
+                        },
+                    },
+                },
+                ownerRecords: {
+                    "surfaceMain:surface": {
+                        activeBlueprintId: surfaceBlueprintId,
+                        privateBlueprintIds: [surfaceBlueprintId],
+                        initializedFrontend: "visual",
+                    },
+                },
+            };
+            const debug = new DebugBridge();
+            const executionManager = new BlueprintExecutionManager();
+            executionManager.openScope(runtimeScopeId);
+            const hostAdapter: UIHostAdapter = { host: "player" };
+
+            const dispatch = dispatchSurfaceBlueprintEvent({
+                blueprintDocument,
+                surfaceId: "surface",
+                runtimeScopeId,
+                eventName: "surfaceInit",
+                hostAdapter,
+                debug,
+                getSurfaceState: () => undefined,
+                setSurfaceState: () => undefined,
+                executionManager,
+            });
+
+            await Promise.resolve();
+            executionManager.closeScope(runtimeScopeId, "Surface unmounted");
+            await expect(dispatch).resolves.toBeUndefined();
+            await vi.advanceTimersByTimeAsync(1000);
+
+            expect(
+                acquireBlueprintExecutionLocals({
+                    blueprintDocument,
+                    currentBlueprintId: surfaceBlueprintId,
+                    surfaceId: "surface",
+                    runtimeScopeId,
+                }).initialized,
+            ).toBe("no");
+            expect(debug.snapshot().some(event => event.type === "execution.cancelled")).toBe(true);
+            expect(debug.snapshot().some(event => event.type === "execution.error")).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("dispatches global and surface any-key event payloads", async () => {
@@ -858,6 +1427,147 @@ describe("BlueprintDispatcher", () => {
         ).toBe(" ");
     });
 
+    it("stops keyboard propagation before dispatching the surface event", async () => {
+        const globalBlueprintId = "bp-global-stop-keyboard";
+        const surfaceBlueprintId = "bp-surface-after-stop";
+        const blueprintDocument: BlueprintDocument = {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: {
+                [globalBlueprintId]: {
+                    id: globalBlueprintId,
+                    name: "Global Stop Keyboard",
+                    owner: { kind: "globalMain" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: { variables: {}, fields: {}, functions: {} },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                keyDown: {
+                                    id: "keyDown",
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN },
+                                            stop: { id: "stop", type: BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "stop", port: "in" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+                [surfaceBlueprintId]: {
+                    id: surfaceBlueprintId,
+                    name: "Surface Keyboard",
+                    owner: { kind: "surfaceMain", surfaceId: "surface" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    members: {
+                        variables: {
+                            lastKey: { id: "lastKey", name: "lastKey", valueType: "string", defaultValue: "" },
+                        },
+                        fields: {},
+                        functions: {},
+                    },
+                    bindings: {},
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            events: {
+                                keyDown: {
+                                    id: "keyDown",
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN },
+                                            setKey: {
+                                                id: "setKey",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "lastKey" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "setKey", port: "in" } },
+                                            { from: { nodeId: "head", port: "key" }, to: { nodeId: "setKey", port: "value" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {
+                globalMain: {
+                    activeBlueprintId: globalBlueprintId,
+                    privateBlueprintIds: [globalBlueprintId],
+                    initializedFrontend: "visual",
+                },
+                "surfaceMain:surface": {
+                    activeBlueprintId: surfaceBlueprintId,
+                    privateBlueprintIds: [surfaceBlueprintId],
+                    initializedFrontend: "visual",
+                },
+            },
+        };
+        const debug = new DebugBridge();
+        const hostAdapter: UIHostAdapter = { host: "player" };
+        let stopped = false;
+        const eventControl = {
+            stopPropagation: () => {
+                stopped = true;
+            },
+            isPropagationStopped: () => stopped,
+        };
+        const eventPayload = {
+            key: " ",
+            code: "Space",
+            repeat: false,
+            altKey: false,
+            ctrlKey: false,
+            shiftKey: false,
+            metaKey: false,
+        };
+
+        await dispatchGlobalBlueprintEvent({
+            blueprintDocument,
+            eventName: "keyDown",
+            eventPayload,
+            eventControl,
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+        await dispatchSurfaceBlueprintEvent({
+            blueprintDocument,
+            surfaceId: "surface",
+            eventName: "keyDown",
+            eventPayload,
+            eventControl,
+            hostAdapter,
+            debug,
+            getSurfaceState: () => undefined,
+            setSurfaceState: () => undefined,
+        });
+
+        expect(stopped).toBe(true);
+        expect(
+            acquireBlueprintExecutionLocals({
+                blueprintDocument,
+                currentBlueprintId: surfaceBlueprintId,
+                surfaceId: "surface",
+            }).lastKey,
+        ).toBe("");
+    });
+
     it("filters On Key event heads case-insensitively", async () => {
         const blueprintId = "bp-global-on-key-filter";
         const blueprintDocument: BlueprintDocument = {
@@ -900,12 +1610,11 @@ describe("BlueprintDispatcher", () => {
                                             setCtrl: {
                                                 id: "setCtrl",
                                                 type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "ctrlHeld" },
+                                                params: { variableId: "ctrlHeld", value: true },
                                             },
                                         },
                                         edges: [
                                             { from: { nodeId: "head", port: "then" }, to: { nodeId: "setCtrl", port: "in" } },
-                                            { from: { nodeId: "head", port: "ctrlKey" }, to: { nodeId: "setCtrl", port: "value" } },
                                         ],
                                     },
                                 },
@@ -917,12 +1626,11 @@ describe("BlueprintDispatcher", () => {
                                             setEmpty: {
                                                 id: "setEmpty",
                                                 type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "emptyMatched" },
+                                                params: { variableId: "emptyMatched", value: true },
                                             },
                                         },
                                         edges: [
                                             { from: { nodeId: "head", port: "then" }, to: { nodeId: "setEmpty", port: "in" } },
-                                            { from: { nodeId: "head", port: "ctrlKey" }, to: { nodeId: "setEmpty", port: "value" } },
                                         ],
                                     },
                                 },

@@ -1,8 +1,9 @@
+import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { UIDocument } from "./ui-editor/document";
 import type { UIGraphDocument } from "./ui-editor/graph";
 import type { UISurfaceId } from "./ui-editor/document";
-import type { StoryDocument } from "./story";
+import type { StoryAnimationAsset, StoryAnimationAssetId, StoryDocument, StoryId, StoryLibraryIndex } from "./story";
 
 export type DevModeEntry =
     | {
@@ -31,6 +32,51 @@ export type DevModeStatus =
     | "error"
     | "stopping";
 
+export type DevModeConsoleLogLevel = "verbose" | "info" | "success" | "warning" | "error";
+
+export type DevModeConsoleLogPayload = {
+    level: DevModeConsoleLogLevel;
+    message: string;
+    source?: string;
+    timestamp?: number;
+};
+
+export type DevModeBlueprintDebugEventPayload = {
+    projectPath: string;
+    event: BlueprintDebugEvent;
+};
+
+export type DevModeCharacterSummary = {
+    id: string;
+    name: string;
+    defaultForm?: string | null;
+    forms?: DevModeCharacterFormSummary[];
+};
+
+export type DevModeCharacterFormSummary = {
+    name: string;
+    groups: DevModeCharacterVariantGroupSummary[];
+    variantAssets: Record<string, { assetId: string; name?: string }>;
+};
+
+export type DevModeCharacterVariantGroupSummary = {
+    name: string;
+    defaultVariant: string | null;
+    variants: { name: string }[];
+};
+
+export type DevModeStoryLibrary = {
+    index: StoryLibraryIndex;
+    documents: Record<StoryId, StoryDocument>;
+    characters: DevModeCharacterSummary[];
+    animations: Record<StoryAnimationAssetId, StoryAnimationAsset>;
+};
+
+export type DevModeStartStoryRequest = {
+    storyId: StoryId;
+    sceneId: string;
+};
+
 export type DevModeBundle = {
     bundleId: string;
     revision: number;
@@ -45,6 +91,7 @@ export type DevModeBundle = {
         sharedBlueprints: SharedBlueprintAsset[];
     };
     story?: StoryDocument;
+    storyLibrary?: DevModeStoryLibrary;
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;

@@ -30,6 +30,11 @@ export type BehaviorGraphValueExecution = {
     trackDependency?(dependency: BlueprintValueDependency): void;
 };
 
+export type BehaviorGraphEventControl = {
+    stopPropagation(): void;
+    isPropagationStopped(): boolean;
+};
+
 export type BehaviorNodeExecutionContext = {
     graph: UIGraph;
     entry: UIGraphEntry;
@@ -39,13 +44,18 @@ export type BehaviorNodeExecutionContext = {
     trace?: BehaviorGraphExecutionTrace;
     /** Per-event execution locals; initialized from blueprint member variables (M4 simplified editor). */
     blueprintLocals?: Record<string, unknown>;
+    /** Runtime event slot currently being handled, for nodes that need to continue event propagation. */
+    eventName?: string;
     eventPayload?: Record<string, unknown>;
+    eventControl?: BehaviorGraphEventControl;
+    signal?: AbortSignal;
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
     executionOwner?: {
         surfaceId?: string;
         elementId?: string;
         blueprintId?: string;
+        componentId?: string;
     };
     persistentVariables?: Record<string, BlueprintPersistentVariable>;
     valueExecution?: BehaviorGraphValueExecution;
@@ -60,8 +70,8 @@ export type BehaviorNodeDefinition = {
 export class BehaviorNodeRegistry {
     private readonly definitions = new Map<string, BehaviorNodeDefinition>();
 
-    public register(definition: BehaviorNodeDefinition): void {
-        if (this.definitions.has(definition.type)) {
+    public register(definition: BehaviorNodeDefinition, options?: { quietOverwrite?: boolean }): void {
+        if (this.definitions.has(definition.type) && !options?.quietOverwrite) {
             console.warn(`[BehaviorNodeRegistry] Overwriting node definition: ${definition.type}`);
         }
         this.definitions.set(definition.type, definition);

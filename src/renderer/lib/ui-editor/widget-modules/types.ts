@@ -6,6 +6,7 @@ import type { UIHostAdapter } from "../runtime/types";
 import type { FieldDefinition, PropertyEditorSchema } from "@/apps/workspace/modules/properties/framework/types";
 import type { ContextMenuItemDef } from "@/lib/components/elements/ContextMenu";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { LucideIcon } from "lucide-react";
 
 // ─── Element Renderer ───────────────────────────────────────────────────────
@@ -134,6 +135,8 @@ export type DockerBarSeparator = {
 export type DockerBarContext = {
     element: UIElement;
     documentService: UIDocumentService;
+    stateService?: UIEditorStateService;
+    surfaceId?: string;
 };
 
 /** Optional element entries for canvas / outline context menus. */

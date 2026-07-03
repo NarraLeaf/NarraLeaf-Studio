@@ -1,5 +1,5 @@
 appId: com.narraleaf.studio
-productName: NarraLeaf-Studio
+productName: NarraLeaf Studio
 directories:
   output: build
 files:

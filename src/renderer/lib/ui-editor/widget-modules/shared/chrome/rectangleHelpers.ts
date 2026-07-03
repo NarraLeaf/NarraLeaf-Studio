@@ -1,4 +1,4 @@
-import type { ImageFill, ImageFillCropPlacement } from "@shared/types/ui-editor/imageFill";
+import type { ImageFill, ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
 import { DEFAULT_RECTANGLE_CROP_PLACEMENT, mapLegacyFitToMode } from "@shared/types/ui-editor/rectangleLike";
 import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
@@ -90,4 +90,54 @@ export function computeCoverCropPlacement(options: {
         widthPct,
         heightPct,
     };
+}
+
+export function computeContainCropPlacement(options: {
+    imageWidth: number;
+    imageHeight: number;
+    containerWidth: number;
+    containerHeight: number;
+}): ImageFillCropPlacement | null {
+    const { imageWidth, imageHeight, containerWidth, containerHeight } = options;
+    if (
+        !Number.isFinite(imageWidth) ||
+        !Number.isFinite(imageHeight) ||
+        !Number.isFinite(containerWidth) ||
+        !Number.isFinite(containerHeight) ||
+        imageWidth <= 0 ||
+        imageHeight <= 0 ||
+        containerWidth <= 0 ||
+        containerHeight <= 0
+    ) {
+        return null;
+    }
+
+    const scale = Math.min(containerWidth / imageWidth, containerHeight / imageHeight);
+    const scaledWidth = imageWidth * scale;
+    const scaledHeight = imageHeight * scale;
+    const widthPct = (scaledWidth / containerWidth) * 100;
+    const heightPct = (scaledHeight / containerHeight) * 100;
+
+    return {
+        leftPct: (100 - widthPct) / 2,
+        topPct: (100 - heightPct) / 2,
+        widthPct,
+        heightPct,
+    };
+}
+
+export function computeCropPlacementForMode(options: {
+    imageWidth: number;
+    imageHeight: number;
+    containerWidth: number;
+    containerHeight: number;
+    mode: ImageFillMode;
+}): ImageFillCropPlacement | null {
+    if (options.mode === "contain") {
+        return computeContainCropPlacement(options);
+    }
+    if (options.mode === "stretch" || options.mode === "tile") {
+        return DEFAULT_RECTANGLE_CROP_PLACEMENT;
+    }
+    return computeCoverCropPlacement(options);
 }

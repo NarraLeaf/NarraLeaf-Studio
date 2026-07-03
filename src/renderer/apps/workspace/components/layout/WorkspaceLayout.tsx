@@ -20,11 +20,14 @@ import { Services } from "@/lib/workspace/services/services";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
+import { isMacPlatform } from "@/lib/app/platform";
 
 interface WorkspaceLayoutProps {
     title: string;
     iconSrc: string;
 }
+
+const MACOS_NATIVE_MENU_GROUP_IDS = ["narraleaf-studio:file", "narraleaf-studio:help"];
 
 // Default sizes (in pixels)
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 320;
@@ -49,6 +52,15 @@ const SETTINGS_KEYS = {
     BOTTOM_PANEL_HEIGHT: "ui.bottomPanel.height",
     BOTTOM_PANEL_ACTIVE_PANEL: "ui.bottomPanel.activePanel",
 };
+
+const REMOVED_PANEL_IDS = new Set(["narraleaf-studio:running-tasks"]);
+
+function normalizeStoredPanelId(panelId: string | null | undefined): string | null | undefined {
+    if (panelId && REMOVED_PANEL_IDS.has(panelId)) {
+        return null;
+    }
+    return panelId;
+}
 
 /**
  * Main workspace layout container
@@ -164,14 +176,14 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 const bottomHeight = await settingsService.get<number>(SETTINGS_KEYS.BOTTOM_PANEL_HEIGHT);
 
                 // Load active panels
-                const leftPanel = await settingsService.get<string | null>(SETTINGS_KEYS.LEFT_SIDEBAR_ACTIVE_PANEL);
-                const rightPanel = await settingsService.get<string | null>(SETTINGS_KEYS.RIGHT_SIDEBAR_ACTIVE_PANEL);
-                const bottomPanel = await settingsService.get<string | null>(SETTINGS_KEYS.BOTTOM_PANEL_ACTIVE_PANEL);
+                const leftPanel = normalizeStoredPanelId(await settingsService.get<string | null>(SETTINGS_KEYS.LEFT_SIDEBAR_ACTIVE_PANEL));
+                const rightPanel = normalizeStoredPanelId(await settingsService.get<string | null>(SETTINGS_KEYS.RIGHT_SIDEBAR_ACTIVE_PANEL));
+                const bottomPanel = normalizeStoredPanelId(await settingsService.get<string | null>(SETTINGS_KEYS.BOTTOM_PANEL_ACTIVE_PANEL));
 
                 // Only update if values exist in settings
-                if (leftVisible !== undefined) setLeftSidebarVisible(leftVisible);
-                if (rightVisible !== undefined) setRightSidebarVisible(rightVisible);
-                if (bottomVisible !== undefined) setBottomPanelVisible(bottomVisible);
+                if (leftVisible !== undefined) setLeftSidebarVisible(Boolean(leftVisible && leftPanel !== null));
+                if (rightVisible !== undefined) setRightSidebarVisible(Boolean(rightVisible && rightPanel !== null));
+                if (bottomVisible !== undefined) setBottomPanelVisible(Boolean(bottomVisible && bottomPanel !== null));
                 if (leftWidth !== undefined) {
                     setLeftSidebarWidth(leftWidth);
                     leftSidebarWidthRef.current = leftWidth;
@@ -465,13 +477,16 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         };
     }, [context]);
 
+    const isMac = isMacPlatform();
+    const hiddenActionGroupIds = isMac ? MACOS_NATIVE_MENU_GROUP_IDS : undefined;
+
     return (
         <div className="h-screen w-screen flex flex-col bg-[#0f1115] text-gray-200">
             {/* Title Bar with Action Bar and Control Bar */}
             <TitleBar
                 title=""
                 iconSrc={iconSrc}
-                actionBar={<ActionBar />}
+                actionBar={<ActionBar hiddenGroupIds={hiddenActionGroupIds} />}
                 controlBar={
                     <ControlBar
                         leftSidebarVisible={leftSidebarVisible}
@@ -581,4 +596,3 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
         </div>
     );
 }
-

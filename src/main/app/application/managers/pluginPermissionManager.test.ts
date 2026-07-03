@@ -32,7 +32,7 @@ vi.mock("@shared/utils/persistentState", () => ({
 describe("PluginPermissionManager actor grants", () => {
     let tempDir: string;
     let manager: PluginPermissionManager;
-    const plugin: PluginIdentity = { id: "plugin.test", name: "Plugin Test" };
+    const plugin: PluginIdentity = { id: "plugin.test", name: "Plugin Test", version: "0.0.1" };
 
     beforeEach(async () => {
         tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-plugin-perms-"));
@@ -59,10 +59,10 @@ describe("PluginPermissionManager actor grants", () => {
             persistence: "temporary",
         });
 
-        expect(manager.isPluginFileSystemAllowed(plugin.id, path.join(root, "story.json"), "read")).toBe(true);
-        expect(manager.isPluginFileSystemAllowed(plugin.id, path.join(root, "story.json"), "write")).toBe(false);
-        expect(manager.isPluginFileSystemAllowed(plugin.id, path.join(tempDir, "other", "story.json"), "read")).toBe(false);
-        expect(manager.isPluginFileSystemAllowed("plugin.other", path.join(root, "story.json"), "read")).toBe(false);
+        expect(manager.isPluginFileSystemAllowed(plugin.id, plugin.version, path.join(root, "story.json"), "read")).toBe(true);
+        expect(manager.isPluginFileSystemAllowed(plugin.id, plugin.version, path.join(root, "story.json"), "write")).toBe(false);
+        expect(manager.isPluginFileSystemAllowed(plugin.id, plugin.version, path.join(tempDir, "other", "story.json"), "read")).toBe(false);
+        expect(manager.isPluginFileSystemAllowed("plugin.other", plugin.version, path.join(root, "story.json"), "read")).toBe(false);
     });
 
     it("returns existing filesystem grants instead of requiring another prompt", () => {
@@ -148,12 +148,12 @@ describe("PluginPermissionManager actor grants", () => {
             persistence: "temporary",
         });
 
-        expect(manager.isPluginCapabilityAllowed(plugin.id, ApiCapability.BashExecute)).toBe(true);
-        expect(manager.isPluginCapabilityAllowed("plugin.other", ApiCapability.BashExecute)).toBe(false);
-        expect(manager.isPluginCapabilityAllowed(plugin.id, "plugin.install")).toBe(false);
+        expect(manager.isPluginCapabilityAllowed(plugin.id, plugin.version, ApiCapability.BashExecute)).toBe(true);
+        expect(manager.isPluginCapabilityAllowed("plugin.other", plugin.version, ApiCapability.BashExecute)).toBe(false);
+        expect(manager.isPluginCapabilityAllowed(plugin.id, plugin.version, "plugin.install")).toBe(false);
     });
 
-    it("approves install prompts without creating reusable plugin capability grants", () => {
+    it("approves install prompts and grants declared manifest permissions for that plugin version", () => {
         const result = manager.grantPermission({
             kind: "install",
             requestId: "install-1",
@@ -177,7 +177,8 @@ describe("PluginPermissionManager actor grants", () => {
             approved: true,
             persistence: "temporary",
         });
-        expect(manager.isPluginCapabilityAllowed(plugin.id, "plugin.install")).toBe(false);
+        expect(manager.isPluginCapabilityAllowed(plugin.id, plugin.version, ApiCapability.BashExecute)).toBe(true);
+        expect(manager.isPluginCapabilityAllowed(plugin.id, "0.0.2", ApiCapability.BashExecute)).toBe(false);
     });
 
     it("revokes all persistent and temporary grants for an uninstalled plugin", () => {
@@ -219,10 +220,10 @@ describe("PluginPermissionManager actor grants", () => {
 
         manager.revokePluginPermissions(plugin.id);
 
-        expect(manager.isPluginTrusted(plugin.id)).toBe(false);
-        expect(manager.isPluginFileSystemAllowed(plugin.id, filePath, "read")).toBe(false);
-        expect(manager.isPluginFileSystemAllowed(plugin.id, filePath, "write")).toBe(false);
-        expect(manager.isPluginCapabilityAllowed(plugin.id, ApiCapability.BashExecute)).toBe(false);
+        expect(manager.isPluginTrusted(plugin.id, plugin.version)).toBe(false);
+        expect(manager.isPluginFileSystemAllowed(plugin.id, plugin.version, filePath, "read")).toBe(false);
+        expect(manager.isPluginFileSystemAllowed(plugin.id, plugin.version, filePath, "write")).toBe(false);
+        expect(manager.isPluginCapabilityAllowed(plugin.id, plugin.version, ApiCapability.BashExecute)).toBe(false);
         expect(manager.getExistingGrantResult({
             kind: "filesystem",
             requestId: "fs-2",

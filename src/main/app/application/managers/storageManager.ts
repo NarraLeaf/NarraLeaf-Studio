@@ -306,17 +306,22 @@ export class StorageManager extends Manager {
 
     private async resolvePathForAuthorization(fsPath: string): Promise<string> {
         const resolvedPath = path.resolve(fsPath);
-        try {
-            return await fs.realpath(resolvedPath);
-        } catch {
-            const parent = path.dirname(resolvedPath);
-            if (parent === resolvedPath) {
-                return resolvedPath;
-            }
+        const pendingSegments: string[] = [];
+        let current = resolvedPath;
+
+        while (true) {
             try {
-                return path.join(await fs.realpath(parent), path.basename(resolvedPath));
+                const realCurrent = await fs.realpath(current);
+                return pendingSegments.length > 0
+                    ? path.join(realCurrent, ...pendingSegments)
+                    : realCurrent;
             } catch {
-                return resolvedPath;
+                const parent = path.dirname(current);
+                if (parent === current) {
+                    return resolvedPath;
+                }
+                pendingSegments.unshift(path.basename(current));
+                current = parent;
             }
         }
     }
@@ -334,6 +339,8 @@ export class StorageManager extends Manager {
     private getProtectedStorageRoots(): string[] {
         return [
             path.join(this.app.getUserDataDir(), UserDataNamespace.Authorization),
+            path.join(this.app.getUserDataDir(), UserDataNamespace.Plugins),
+            this.app.getBuiltInPluginsDir(),
         ];
     }
 

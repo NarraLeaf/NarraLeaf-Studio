@@ -14,26 +14,26 @@ import { audioPreviewModule } from "./assets/editors/audioPreviewModule";
 import { charactersModule } from "./characters";
 import { PanelModule, EditorModule, ModuleAction, ModuleActionGroup } from "./types";
 import { uiEditorSurfacesModule } from "./ui-editor";
+import { projectPanelModule } from "./project";
 import { storyPanelModule } from "./story";
-import {
-    localizationPanelModule,
-    runningTasksPanelModule,
-} from "./placeholders/workspacePlaceholderModules";
+import { storyMotionPanelModule } from "./story-motion";
+import { localizationPanelModule } from "./placeholders/workspacePlaceholderModules";
 
 /**
  * Built-in panel modules
  * All panels that should be registered on workspace startup
  */
 export const builtInPanels: PanelModule[] = [
+    projectPanelModule,
     storyPanelModule,
     uiEditorSurfacesModule,
     charactersModule,
     assetsModule,
     localizationPanelModule,
+    storyMotionPanelModule,
     assetsBottomModule,
     propertiesModule,
     consoleModule,
-    runningTasksPanelModule,
 ];
 
 /**
@@ -68,8 +68,7 @@ export { consoleModule } from "./console";
 export { welcomeModule } from "./welcome";
 export { globalActions, globalActionGroups } from "./actions";
 export { uiEditorSurfacesModule } from "./ui-editor";
+export { projectPanelModule } from "./project";
 export { storyPanelModule } from "./story";
-export {
-    localizationPanelModule,
-    runningTasksPanelModule,
-} from "./placeholders/workspacePlaceholderModules";
+export { storyMotionPanelModule } from "./story-motion";
+export { localizationPanelModule } from "./placeholders/workspacePlaceholderModules";

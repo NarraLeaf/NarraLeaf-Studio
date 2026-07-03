@@ -168,7 +168,7 @@ describe("UI Frame target validation", () => {
             exitAngleDegrees: 180,
             enterDurationSeconds: 0.26,
             exitDurationSeconds: 0.26,
-            exitBlocking: false,
+            exitBlocking: true,
         });
         expect(
             normalizeUIFrameWidgetProps({
@@ -188,7 +188,7 @@ describe("UI Frame target validation", () => {
             exitAngleDegrees: 180,
             enterDurationSeconds: 0.16,
             exitDurationSeconds: 0.16,
-            exitBlocking: false,
+            exitBlocking: true,
         });
     });
 });

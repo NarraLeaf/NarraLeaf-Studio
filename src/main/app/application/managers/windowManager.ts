@@ -8,10 +8,11 @@ import {
     FsCreateDirHandler, FsEnsureRegularFileHandler, FsWriteFileNoFollowHandler, FsRecoverCorruptedJsonFileHandler, FsDeleteFileHandler, FsDeleteDirHandler, FsRenameHandler,
     FsCopyFileHandler, FsCopyDirHandler, FsMoveFileHandler, FsMoveDirHandler,
     FsFileExistsHandler, FsDirExistsHandler, FsIsFileHandler, FsIsDirHandler,
-    FsSelectFileHandler, FsSelectDirectoryHandler, FsHashHandler,
+    FsSelectFileHandler, FsSelectDirectoryHandler, FsGrantFileAccessHandler, FsHashHandler,
 } from "./window/handlers/fsAction";
 import { IPCHost } from "./window/ipcHost";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./window/handlers/projectWizardAction";
+import { WorkspaceExportProjectPackageHandler, WorkspaceImportProjectPackageHandler } from "./window/handlers/projectPackageAction";
 import { WorkspaceLaunchHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler } from "./window/handlers/workspaceAction";
 import {
     DevModeGetStatusHandler,
@@ -19,9 +20,33 @@ import {
     DevModeOpenBlueprintInWorkspaceHandler,
     DevModeReloadHandler,
     DevModeStopHandler,
+    DevModeResolveAssetUrlHandler,
     DevModeResolveImageAssetUrlHandler,
+    DevModeForwardBlueprintDebugEventHandler,
 } from "./window/handlers/devModeAction";
+import {
+    DevModeSaveDeleteHandler,
+    DevModeSaveListIdsHandler,
+    DevModeSaveReadHandler,
+    DevModeSaveReadPreviewHandler,
+    DevModeSaveWriteHandler,
+} from "./window/handlers/devModeSaveAction";
+import {
+    PreviewGetStatusHandler,
+    PreviewLaunchHandler,
+    PreviewStopHandler,
+} from "./window/handlers/previewAction";
 import { PluginPermissionGrantHandler, PluginPermissionPromptLaunchHandler } from "./window/handlers/pluginPermissionAction";
+import {
+    PluginApproveHandler,
+    PluginInstallLocalHandler,
+    PluginListHandler,
+    PluginReportLoadErrorHandler,
+    PluginRevokeHandler,
+    PluginSetEnabledHandler,
+    PluginUninstallHandler,
+    PluginWorkspaceListHandler,
+} from "./window/handlers/pluginManagerAction";
 import {
     BlueprintPersistenceGetAllHandler,
     BlueprintPersistenceGetValueHandler,
@@ -105,6 +130,8 @@ export class WindowManager {
         win.registerIPCHandler(new WorkspaceLaunchHandler());
         win.registerIPCHandler(new WorkspaceSelectFolderHandler());
         win.registerIPCHandler(new WorkspaceCloseHandler());
+        win.registerIPCHandler(new WorkspaceExportProjectPackageHandler());
+        win.registerIPCHandler(new WorkspaceImportProjectPackageHandler());
 
         // Register dev mode handlers
         win.registerIPCHandler(new DevModeLaunchHandler());
@@ -112,7 +139,19 @@ export class WindowManager {
         win.registerIPCHandler(new DevModeReloadHandler());
         win.registerIPCHandler(new DevModeGetStatusHandler());
         win.registerIPCHandler(new DevModeOpenBlueprintInWorkspaceHandler());
+        win.registerIPCHandler(new DevModeForwardBlueprintDebugEventHandler());
+        win.registerIPCHandler(new DevModeResolveAssetUrlHandler());
         win.registerIPCHandler(new DevModeResolveImageAssetUrlHandler());
+        win.registerIPCHandler(new DevModeSaveWriteHandler());
+        win.registerIPCHandler(new DevModeSaveReadHandler());
+        win.registerIPCHandler(new DevModeSaveListIdsHandler());
+        win.registerIPCHandler(new DevModeSaveReadPreviewHandler());
+        win.registerIPCHandler(new DevModeSaveDeleteHandler());
+
+        // Register preview runtime handlers
+        win.registerIPCHandler(new PreviewLaunchHandler());
+        win.registerIPCHandler(new PreviewStopHandler());
+        win.registerIPCHandler(new PreviewGetStatusHandler());
 
         // Register blueprint persistent variable storage handlers
         win.registerIPCHandler(new BlueprintPersistenceGetAllHandler());
@@ -123,6 +162,14 @@ export class WindowManager {
         // Register plugin permission handlers
         win.registerIPCHandler(new PluginPermissionPromptLaunchHandler());
         win.registerIPCHandler(new PluginPermissionGrantHandler());
+        win.registerIPCHandler(new PluginListHandler());
+        win.registerIPCHandler(new PluginInstallLocalHandler());
+        win.registerIPCHandler(new PluginSetEnabledHandler());
+        win.registerIPCHandler(new PluginApproveHandler());
+        win.registerIPCHandler(new PluginUninstallHandler());
+        win.registerIPCHandler(new PluginRevokeHandler());
+        win.registerIPCHandler(new PluginWorkspaceListHandler());
+        win.registerIPCHandler(new PluginReportLoadErrorHandler());
 
         // Register actor-aware privileged facade handlers
         win.registerIPCHandler(new PrivilegedFsCallHandler());
@@ -153,6 +200,7 @@ export class WindowManager {
         win.registerIPCHandler(new FsIsDirHandler());
         win.registerIPCHandler(new FsSelectFileHandler());
         win.registerIPCHandler(new FsSelectDirectoryHandler());
+        win.registerIPCHandler(new FsGrantFileAccessHandler());
         win.registerIPCHandler(new FsHashHandler());
     }
 

@@ -10,6 +10,7 @@ import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint
 import { useDocumentVersion } from "@/lib/ui-editor/hooks/useDocumentVersion";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { Blueprint } from "@shared/types/blueprint/document";
+import { parseComponentEditorSurfaceId } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
 
 /**
  * Read current legacy blueprintEvent wiring for a widget UI event slot.
@@ -55,6 +56,7 @@ export function useBlueprintEventBindingState(data: UIInspectorData): {
 
     const surfaceId = data.surfaceId;
     const element = data.element;
+    const componentId = parseComponentEditorSurfaceId(surfaceId);
 
     const snapshot = useMemo(() => {
         if (!isInitialized || !context || !surfaceId || !documentService) {
@@ -66,12 +68,14 @@ export function useBlueprintEventBindingState(data: UIInspectorData): {
             };
         }
         const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
-        const blueprintId = localBp.getWidgetMainBlueprintId(surfaceId, element.id);
+        const blueprintId = componentId
+            ? localBp.getComponentWidgetMainBlueprintId(componentId, element.id)
+            : localBp.getWidgetMainBlueprintId(surfaceId, element.id);
         const docEl = documentService.getDocument().elements[element.id];
         const blueprint = blueprintId ? localBp.getBlueprintDocument().blueprints[blueprintId] : undefined;
         const existingIds = blueprintId ? localBp.listEventGraphIds(blueprintId) : [];
         return { blueprintId, element: docEl, blueprint, existingIds };
-    }, [context, documentService, element.id, graphRev, isInitialized, surfaceId, docVersion]);
+    }, [componentId, context, documentService, element.id, graphRev, isInitialized, surfaceId, docVersion]);
 
     const mod = widgetModuleRegistry.get(element.type);
     const defs = mod?.logicApi?.events ?? [];
@@ -87,14 +91,26 @@ export function useBlueprintEventBindingState(data: UIInspectorData): {
             }
             openBlueprint({
                 blueprintId: snapshot.blueprintId,
-                ownerKind: "widgetMain",
+                ownerKind: componentId ? "componentWidgetMain" : "widgetMain",
                 surfaceId,
+                componentId: componentId ?? undefined,
                 elementId: element.id,
                 focusEventId: snapshot.blueprint?.program.kind === "graph" ? uiEventName : undefined,
                 title: `Blueprint · ${element.name ?? element.type}`,
             });
         },
-        [context, defs, element.id, element.name, element.type, openBlueprint, snapshot.blueprint, snapshot.blueprintId, surfaceId],
+        [
+            componentId,
+            context,
+            defs,
+            element.id,
+            element.name,
+            element.type,
+            openBlueprint,
+            snapshot.blueprint,
+            snapshot.blueprintId,
+            surfaceId,
+        ],
     );
 
     const rows: BlueprintEventBindingRow[] = useMemo(() => {

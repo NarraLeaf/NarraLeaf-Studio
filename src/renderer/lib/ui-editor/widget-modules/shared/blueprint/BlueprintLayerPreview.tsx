@@ -219,7 +219,13 @@ const miniNodeTypes: NodeTypes = {
     [PREVIEW_NODE_TYPE]: MiniBlueprintNode,
 };
 
-export function BlueprintLayerPreview({ model }: { model: BlueprintLayerPreviewModel | null }) {
+export function BlueprintLayerPreview({
+    model,
+    heightClassName = "h-[112px]",
+}: {
+    model: BlueprintLayerPreviewModel | null;
+    heightClassName?: string;
+}) {
     const hasLayer = model !== null;
     const hasNodes = Boolean(model?.nodes.length);
     const nodes = model?.nodes ?? [];
@@ -229,7 +235,9 @@ export function BlueprintLayerPreview({ model }: { model: BlueprintLayerPreviewM
         .join("|")}::${edges.map(edge => edge.id).join("|")}`;
 
     return (
-        <div className="relative h-[112px] w-full overflow-hidden rounded-md border border-white/10 bg-[#05060a]">
+        <div
+            className={`relative ${heightClassName} w-full overflow-hidden rounded-md border border-white/10 bg-[#05060a]`}
+        >
             <ReactFlowProvider>
                 <ReactFlow
                     key={flowKey}

@@ -53,6 +53,21 @@ export function buildBlueprintAddNodeCategories(
     ];
 }
 
+export function blueprintAddNodeEntryKey(entry: BlueprintNodeEditorCatalogEntry): string {
+    const ref = entry.magicElementRef;
+    if (!ref) {
+        return entry.type;
+    }
+    return [
+        entry.type,
+        ref.sourceNodeId,
+        ref.sourcePortId,
+        ref.targetPortId,
+        ref.surfaceId,
+        ref.elementId,
+    ].join("\0");
+}
+
 export function filterBlueprintAddNodeEntries(
     entries: readonly BlueprintNodeEditorCatalogEntry[],
     activeCategoryId: string,
@@ -105,6 +120,12 @@ function scoreBlueprintAddNodeEntry(
 ): number | null {
     const fields: BlueprintAddNodeSearchField[] = [
         { text: entry.displayName, weight: FIELD_WEIGHTS.displayName },
+        ...(entry.magicElementRef
+            ? [
+                  { text: entry.magicElementRef.label, weight: FIELD_WEIGHTS.displayName + 2 },
+                  { text: entry.magicElementRef.elementType, weight: FIELD_WEIGHTS.keyword },
+              ]
+            : []),
         { text: entry.type, weight: FIELD_WEIGHTS.type },
         { text: entry.category, weight: FIELD_WEIGHTS.category },
         ...(entry.keywords ?? []).map(keyword => ({ text: keyword, weight: FIELD_WEIGHTS.keyword })),

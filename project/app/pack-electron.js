@@ -29,11 +29,20 @@ function run(cmd, args = [], opts = {}) {
     process.chdir(rootDir);
 
     try {
+        console.log('[pack] Building preview runtime (production)...');
+        await run('node', ['project/build/build-runtime.js']);
+
         console.log('[pack] Building renderer apps (production)...');
         await run('node', ['project/build/build-apps.js']);
 
         console.log('[pack] Building main process (production)...');
         await run('node', ['project/build/build-main.js']);
+
+        console.log('[pack] Building built-in plugins (production)...');
+        await run('node', ['project/build/build-builtin-plugins.js']);
+
+        console.log('[pack] Preparing embedded preview runner...');
+        await run('node', ['project/build/prepare-preview-runner.js']);
 
         console.log('[pack] Packaging with electron-builder...');
         const extraArgs = process.argv.slice(2);

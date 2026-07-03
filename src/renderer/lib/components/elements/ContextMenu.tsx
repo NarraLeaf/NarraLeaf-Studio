@@ -154,6 +154,14 @@ export function ContextMenu({
         );
 
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (enabledItems.length === 0) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    onClose();
+                }
+                return;
+            }
+
             switch (e.key) {
                 case 'ArrowDown':
                     e.preventDefault();
@@ -401,4 +409,3 @@ export function useContextMenu() {
         hideMenu,
     };
 }
-

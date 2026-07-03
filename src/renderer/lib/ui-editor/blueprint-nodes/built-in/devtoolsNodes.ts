@@ -54,10 +54,7 @@ export const devtoolsBlueprintNodes: BlueprintNodeDef[] = [
                     executionOwner: ctx.executionOwner,
                 },
             );
-            if (wired === undefined) {
-                return { nextPort: "next" };
-            }
-            const line = stringifyForLog(wired);
+            const line = wired === undefined ? "Log node reached" : stringifyForLog(wired);
             const api = ctx.hostAdapter.blueprintRuntime?.hostApi;
             if (api) {
                 api.devtools.log("info", line);

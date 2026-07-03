@@ -25,7 +25,15 @@ import {
     type Viewport,
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
-import { BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+    BLUEPRINT_NODE_TYPE_LOCAL_GET,
+    BLUEPRINT_NODE_TYPE_LOCAL_SET,
+} from "@shared/types/blueprint/graph";
+import { resolveBlueprintVariableDefaultValue } from "@shared/types/blueprint/variableTypes";
 import {
     applyBlueprintIrConnection,
     createGraphNodeForPalette,
@@ -35,10 +43,13 @@ import { blueprintFlowNodeTypes } from "./nodeTypes";
 import {
     applyBlueprintFlowNodeSelection,
     applyFlowPositionsToIr,
+    blueprintDynamicSelectOptionsByNodeSignature,
+    blueprintElementPreviewsSignature,
     blueprintIrToFlowEdges,
     blueprintIrToFlowNodes,
     blueprintSelectedNodesDependencyKey,
     blueprintSelectionIdsEqual,
+    type BlueprintDynamicSelectOptionsByNodeId,
 } from "./useBlueprintFlowProjection";
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 import { BlueprintFlowZoomControls } from "./components/BlueprintFlowZoomControls";
@@ -50,6 +61,7 @@ import {
     readDynamicInputPinLabels,
 } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
 import {
+    BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT,
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
     type BlueprintInspectorParamSelectOption,
     type BlueprintNodeEditorCatalogEntry,
@@ -57,6 +69,7 @@ import {
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
+import type { BlueprintGraphVariableTypeInferenceContext } from "@/lib/workspace/services/ui-editor/blueprint/graphVariableTypeInference";
 
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
@@ -144,10 +157,14 @@ type BlueprintFlowCanvasInnerProps = {
      * Populated from workspace context and forwarded to node cards.
      */
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
+    /** Per-node dynamic select option overrides for cards whose choices depend on node wiring. */
+    dynamicSelectOptionsByNodeId?: BlueprintDynamicSelectOptionsByNodeId;
     /** Active graph diagnostics, used to mark invalid nodes in-place. */
     diagnostics?: readonly BlueprintGraphEditorDiagnostic[];
     /** Preview data for bound Element Literal nodes by node id. */
     elementPreviews?: Record<string, BlueprintFlowNodeData["elementPreview"]>;
+    /** Static Variant choices for Displayable Set Variant node cards by node id. */
+    displayableTargetVariantsByNodeId?: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]>;
     /** Starts Element Literal binding flow from a node card click. */
     onBindElementLiteral?: (nodeId: string) => void;
     /** Initial React Flow viewport restored from editor-session state. */
@@ -191,6 +208,19 @@ function nodeDiagnosticsSignature(map: ReadonlyMap<string, readonly BlueprintGra
         .join("\x1e");
 }
 
+function displayableTargetVariantsSignature(
+    map: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]> | undefined,
+): string {
+    return Object.entries(map ?? {})
+        .map(([nodeId, item]) =>
+            `${nodeId}:${item?.supported ? "1" : "0"}:${item?.targetLabel ?? ""}:${item?.message ?? ""}:${
+                item?.options.map(option => `${option.value}:${option.label}`).join("\x1f") ?? ""
+            }`,
+        )
+        .sort()
+        .join("\x1e");
+}
+
 function BlueprintFlowCanvasInner({
     nodeCatalog,
     graphKey,
@@ -206,8 +236,10 @@ function BlueprintFlowCanvasInner({
     paletteContext,
     deleteKeyCode = ["Backspace", "Delete"],
     dynamicSelectOptions,
+    dynamicSelectOptionsByNodeId,
     diagnostics,
     elementPreviews,
+    displayableTargetVariantsByNodeId,
     onBindElementLiteral,
     initialViewport,
     onViewportChange,
@@ -223,6 +255,27 @@ function BlueprintFlowCanvasInner({
         () => nodeDiagnosticsSignature(nodeDiagnosticsByNodeId),
         [nodeDiagnosticsByNodeId],
     );
+    const displayableTargetVariantsSig = useMemo(
+        () => displayableTargetVariantsSignature(displayableTargetVariantsByNodeId),
+        [displayableTargetVariantsByNodeId],
+    );
+    const dynamicSelectOptionsByNodeSig = useMemo(
+        () => blueprintDynamicSelectOptionsByNodeSignature(dynamicSelectOptionsByNodeId),
+        [dynamicSelectOptionsByNodeId],
+    );
+    const elementPreviewsSig = useMemo(
+        () => blueprintElementPreviewsSignature(elementPreviews),
+        [elementPreviews],
+    );
+    const variableTypeContext = useMemo<BlueprintGraphVariableTypeInferenceContext>(
+        () => ({
+            memberVariables: blueprintMemberVariables,
+            persistentVariables: blueprintPersistentVariables,
+        }),
+        [blueprintMemberVariables, blueprintPersistentVariables],
+    );
+    const variableTypeContextRef = useRef(variableTypeContext);
+    variableTypeContextRef.current = variableTypeContext;
     const irRef = useRef(ir);
     irRef.current = ir;
 
@@ -246,6 +299,36 @@ function BlueprintFlowCanvasInner({
                 delete next[key];
             } else {
                 next[key] = value;
+            }
+            if (
+                key === "from" &&
+                (n.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY ||
+                    n.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY)
+            ) {
+                if (value === undefined) {
+                    delete next[BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT];
+                } else {
+                    next[BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT] = true;
+                }
+            }
+            if (n.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR && key === "valueType") {
+                next.defaultValue = resolveBlueprintVariableDefaultValue(typeof value === "string" ? value : undefined);
+                const variableId = typeof next.variableId === "string" ? next.variableId : undefined;
+                for (const other of Object.values(snap.nodes ?? {})) {
+                    if (
+                        variableId &&
+                        (other.type === BLUEPRINT_NODE_TYPE_LOCAL_GET || other.type === BLUEPRINT_NODE_TYPE_LOCAL_SET) &&
+                        other.params?.variableId === variableId
+                    ) {
+                        const otherParams = { ...(other.params ?? {}) };
+                        if (typeof value === "string") {
+                            otherParams[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE] = value;
+                        } else {
+                            delete otherParams[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
+                        }
+                        other.params = otherParams;
+                    }
+                }
             }
             if (key === "variableId") {
                 const selectedVariable =
@@ -408,6 +491,9 @@ function BlueprintFlowCanvasInner({
         revision: number;
         membersSig: string;
         diagnosticsSig: string;
+        elementPreviewsSig: string;
+        displayableTargetVariantsSig: string;
+        dynamicSelectOptionsByNodeSig: string;
     } | null>(null);
     const lastNodeCatalogRef = useRef(nodeCatalog);
 
@@ -561,7 +647,10 @@ function BlueprintFlowCanvasInner({
             prevStruct.graphKey !== graphKey ||
             prevStruct.revision !== revision ||
             prevStruct.membersSig !== blueprintMembersSig ||
-            prevStruct.diagnosticsSig !== nodeDiagnosticsSig;
+            prevStruct.diagnosticsSig !== nodeDiagnosticsSig ||
+            prevStruct.elementPreviewsSig !== elementPreviewsSig ||
+            prevStruct.displayableTargetVariantsSig !== displayableTargetVariantsSig ||
+            prevStruct.dynamicSelectOptionsByNodeSig !== dynamicSelectOptionsByNodeSig;
 
         if (structural) {
             lastStructuralRef.current = {
@@ -569,6 +658,9 @@ function BlueprintFlowCanvasInner({
                 revision,
                 membersSig: blueprintMembersSig,
                 diagnosticsSig: nodeDiagnosticsSig,
+                elementPreviewsSig,
+                displayableTargetVariantsSig,
+                dynamicSelectOptionsByNodeSig,
             };
             setNodes(prevNodes => {
                 const base = blueprintIrToFlowNodes(
@@ -580,8 +672,10 @@ function BlueprintFlowCanvasInner({
                     stableAddDynamicInputPin,
                     stableRemoveDynamicInputPin,
                     dynamicSelectOptions,
+                    dynamicSelectOptionsByNodeId,
                     nodeDiagnosticsByNodeId,
                     elementPreviews,
+                    displayableTargetVariantsByNodeId,
                     onBindElementLiteral,
                 );
                 const withSel = applyBlueprintFlowNodeSelection(base, selectedNodeIdsRef.current);
@@ -606,7 +700,7 @@ function BlueprintFlowCanvasInner({
                     return live ? { ...n, position: live.position } : n;
                 });
             });
-            setEdges(blueprintIrToFlowEdges(snap, nodeCatalog));
+            setEdges(blueprintIrToFlowEdges(snap, nodeCatalog, variableTypeContext));
         } else {
             setNodes(nds => {
                 const withoutPreview = nds.filter(n => n.id !== BP_PLACEMENT_PREVIEW_ID);
@@ -637,6 +731,7 @@ function BlueprintFlowCanvasInner({
         blueprintMemberVariables,
         blueprintPersistentVariables,
         blueprintMembersSig,
+        variableTypeContext,
         graphKey,
         nodeCatalog,
         revision,
@@ -646,9 +741,14 @@ function BlueprintFlowCanvasInner({
         stableAddDynamicInputPin,
         stableRemoveDynamicInputPin,
         dynamicSelectOptions,
+        dynamicSelectOptionsByNodeId,
+        dynamicSelectOptionsByNodeSig,
         nodeDiagnosticsByNodeId,
         nodeDiagnosticsSig,
         elementPreviews,
+        elementPreviewsSig,
+        displayableTargetVariantsByNodeId,
+        displayableTargetVariantsSig,
         onBindElementLiteral,
         setEdges,
         setNodes,
@@ -710,13 +810,13 @@ function BlueprintFlowCanvasInner({
             sourceHandle: connection.sourceHandle ?? null,
             targetHandle: connection.targetHandle ?? null,
         };
-        return isValidBlueprintIrExecConnection(irRef.current, conn);
+        return isValidBlueprintIrExecConnection(irRef.current, conn, variableTypeContextRef.current);
     }, []);
 
     const onConnect = useCallback(
         (connection: Connection) => {
             const snap = irRef.current;
-            if (!isValidBlueprintIrExecConnection(snap, connection)) {
+            if (!isValidBlueprintIrExecConnection(snap, connection, variableTypeContextRef.current)) {
                 return;
             }
             if (!connection.sourceHandle || !connection.targetHandle) {

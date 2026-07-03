@@ -1,14 +1,32 @@
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, WheelEvent } from "react";
+import { motion, useAnimationControls, type TargetAndTransition } from "motion/react";
 import type { UIElement, UILayout } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import {
+    useWidgetRuntimeElementState,
     useWidgetRuntimeElementKey,
     useWidgetRuntimeStateStore,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+import {
+    buildDisplayableMotionAnimateTarget,
+    buildDisplayableMotionInitialTarget,
+    toDisplayableMotionTransition,
+} from "@/lib/ui-editor/runtime/displayableMotion";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
+import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
+import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import { getWidgetLogicEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
+import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEditorAppearanceInspectorVariant";
+import {
+    type AppearanceResolveContext,
+    resolveButtonCursor,
+    resolveButtonVisualProps,
+    resolveAppearanceDisplayableOpacity,
+    resolveImageDisplayableOpacityKeys,
+} from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
+import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 
 export type EditorNodeLayoutMode = "absolute" | "flow";
 
@@ -19,8 +37,11 @@ type EditorNodeWrapperProps = {
     /** Flow children are laid out by a flex parent (`nl.container` stack/scroll or `nl.list`); skip absolute x/y. */
     layoutMode?: EditorNodeLayoutMode;
     styleOverrides?: CSSProperties;
+    hasRuntimeOpacityOverride?: boolean;
     hostAdapter?: UIHostAdapter;
     interactive?: boolean;
+    keyboardInteractive?: boolean;
+    useAppearanceInspectorPreview?: boolean;
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
     children?: React.ReactNode;
@@ -62,21 +83,89 @@ function keyboardEventPayload(event: KeyboardEvent): Record<string, unknown> {
     };
 }
 
+function displayableOpacityKeysForElement(
+    element: UIElement,
+    appearance: AppearanceModel | null | undefined,
+    ctx: AppearanceResolveContext,
+): readonly string[] {
+    return element.type === "nl.image"
+        ? resolveImageDisplayableOpacityKeys(element, appearance, ctx)
+        : ["transformOpacity"];
+}
+
+export function isElementHoveredByPointer(element: Element | null): boolean {
+    if (!element) {
+        return false;
+    }
+    try {
+        return element.matches(":hover");
+    } catch {
+        return false;
+    }
+}
+
 export function EditorNodeWrapper({
     element,
     layout,
     isRoot = false,
     layoutMode = "absolute",
     styleOverrides,
+    hasRuntimeOpacityOverride = false,
     hostAdapter,
     interactive = true,
+    keyboardInteractive = interactive,
+    useAppearanceInspectorPreview = false,
     listItemScope,
     instanceKey,
     children,
 }: EditorNodeWrapperProps) {
     const widgetRuntimeStore = useWidgetRuntimeStateStore();
     const runtimeElementKey = useWidgetRuntimeElementKey(element.id);
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const interactionDisabled = Boolean(
+        (element.props as { interactionDisabled?: unknown } | undefined)?.interactionDisabled,
+    );
+    const runtimeElementState = useWidgetRuntimeElementState(element.id, interactionDisabled);
+    const displayableMotion = runtimeElementState.displayableMotion;
+    const animationControls = useAnimationControls();
+    const [resetMotionId, setResetMotionId] = useState<string | null>(null);
     const blueprintRuntime = hostAdapter?.blueprintRuntime;
+    const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
+    const appearance = (element.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
+    const listScopedVariantId =
+        typeof (element.extra as { runtimeVariantOverrideId?: unknown } | undefined)?.runtimeVariantOverrideId === "string"
+            ? String((element.extra as { runtimeVariantOverrideId?: unknown }).runtimeVariantOverrideId)
+            : null;
+    const appearanceResolveCtx = {
+        variantOverrideId: listScopedVariantId ?? runtimeElementState.variantOverrideId ?? inspectorVariantId ?? null,
+        signals: runtimeElementState.signals,
+    };
+    const appearanceOpacity = resolveAppearanceDisplayableOpacity(
+        appearance,
+        {
+            ...appearanceResolveCtx,
+            displayableOpacityKeys: displayableOpacityKeysForElement(element, appearance, appearanceResolveCtx),
+        },
+    );
+    const wrapperCursor: CSSProperties["cursor"] | undefined = (() => {
+        if (element.type !== "nl.button") {
+            return undefined;
+        }
+        const visual = resolveButtonVisualProps(element, appearance, appearanceResolveCtx);
+        const canDispatchClick = Boolean(interactive && blueprintRuntime && !interactionDisabled);
+        return resolveButtonCursor(visual.cursor, interactionDisabled, canDispatchClick);
+    })();
+    const layoutOpacity = layout.opacity ?? 1;
+    const effectiveOpacity = hasRuntimeOpacityOverride ? layoutOpacity : appearanceOpacity ?? layoutOpacity;
+    const baseRotation = layout.rotation ?? 0;
+    const isResetPhase = Boolean(displayableMotion?.resetOnComplete && resetMotionId === displayableMotion.id);
+    const motionControlsOpacity = displayableMotion?.target.opacity !== undefined;
+
+    useEffect(() => {
+        if (resetMotionId !== null && (!displayableMotion || resetMotionId !== displayableMotion.id)) {
+            setResetMotionId(null);
+        }
+    }, [displayableMotion, resetMotionId]);
     const eventOptions = useMemo(
         () =>
             listItemScope || instanceKey
@@ -93,36 +182,75 @@ export function EditorNodeWrapper({
         [element.id],
     );
 
+    useLayoutEffect(() => {
+        if (!widgetRuntimeStore) {
+            return undefined;
+        }
+        if (!interactive || isRoot || interactionDisabled) {
+            widgetRuntimeStore.clearHoverIf(runtimeElementKey);
+            return undefined;
+        }
+
+        const syncMountedHover = () => {
+            if (isElementHoveredByPointer(containerRef.current)) {
+                widgetRuntimeStore.setHoverTarget(runtimeElementKey);
+            }
+        };
+        syncMountedHover();
+
+        const view = containerRef.current?.ownerDocument.defaultView;
+        if (typeof view?.requestAnimationFrame !== "function") {
+            return undefined;
+        }
+        const frameId = view.requestAnimationFrame(syncMountedHover);
+        return () => view.cancelAnimationFrame(frameId);
+    }, [interactionDisabled, interactive, isRoot, runtimeElementKey, widgetRuntimeStore]);
+
     const dispatchWidgetEvent = useCallback(
-        (eventName: string, target: EventTarget | null, payload?: Record<string, unknown>) => {
-            if (!interactive || !blueprintRuntime || !isDirectElementEvent(target)) {
+        (
+            eventName: string,
+            target: EventTarget | null,
+            payload?: Record<string, unknown>,
+            eventControl?: BehaviorGraphEventControl,
+        ) => {
+            if (!interactive || !blueprintRuntime || eventControl?.isPropagationStopped() || !isDirectElementEvent(target)) {
                 return false;
             }
             if (!getWidgetLogicEvent(element.type, eventName)) {
                 return false;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName, payload, eventOptions);
+            void blueprintRuntime.dispatchElementBlueprintEvent(
+                element.id,
+                eventName,
+                payload,
+                eventControl ? { ...(eventOptions ?? {}), eventControl } : eventOptions,
+            );
             return true;
         },
         [blueprintRuntime, element.id, element.type, eventOptions, interactive, isDirectElementEvent],
     );
 
     const dispatchMountedWidgetEvent = useCallback(
-        (eventName: string, payload?: Record<string, unknown>) => {
-            if (!interactive || !blueprintRuntime) {
+        (eventName: string, payload?: Record<string, unknown>, eventControl?: BehaviorGraphEventControl) => {
+            if (!keyboardInteractive || !blueprintRuntime || eventControl?.isPropagationStopped()) {
                 return false;
             }
             if (!getWidgetLogicEvent(element.type, eventName)) {
                 return false;
             }
-            void blueprintRuntime.dispatchElementBlueprintEvent(element.id, eventName, payload, eventOptions);
+            void blueprintRuntime.dispatchElementBlueprintEvent(
+                element.id,
+                eventName,
+                payload,
+                eventControl ? { ...(eventOptions ?? {}), eventControl } : eventOptions,
+            );
             return true;
         },
-        [blueprintRuntime, element.id, element.type, eventOptions, interactive],
+        [blueprintRuntime, element.id, element.type, eventOptions, keyboardInteractive],
     );
 
     useEffect(() => {
-        if (!interactive || !blueprintRuntime || typeof window === "undefined") {
+        if (!keyboardInteractive || !blueprintRuntime || typeof window === "undefined") {
             return undefined;
         }
         const canDispatchKeyDown = Boolean(getWidgetLogicEvent(element.type, "keyDown"));
@@ -132,13 +260,15 @@ export function EditorNodeWrapper({
         }
 
         const onKeyDown = (event: KeyboardEvent) => {
+            const eventControl = getOrCreateDomEventPropagationControl(event);
             if (canDispatchKeyDown) {
-                dispatchMountedWidgetEvent("keyDown", keyboardEventPayload(event));
+                dispatchMountedWidgetEvent("keyDown", keyboardEventPayload(event), eventControl);
             }
         };
         const onKeyUp = (event: KeyboardEvent) => {
+            const eventControl = getOrCreateDomEventPropagationControl(event);
             if (canDispatchKeyUp) {
-                dispatchMountedWidgetEvent("keyUp", keyboardEventPayload(event));
+                dispatchMountedWidgetEvent("keyUp", keyboardEventPayload(event), eventControl);
             }
         };
 
@@ -148,7 +278,7 @@ export function EditorNodeWrapper({
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
         };
-    }, [blueprintRuntime, dispatchMountedWidgetEvent, element.type, interactive]);
+    }, [blueprintRuntime, dispatchMountedWidgetEvent, element.type, keyboardInteractive]);
 
     const localMousePayload = useCallback(
         (
@@ -171,16 +301,14 @@ export function EditorNodeWrapper({
     );
 
     const onPointerEnter = useCallback((e: PointerEvent<HTMLDivElement>) => {
-        if (isDirectElementEvent(e.target)) {
-            widgetRuntimeStore?.setHoverTarget(runtimeElementKey);
-        }
-        dispatchWidgetEvent("mouseEnter", e.target, localMousePayload(e));
+        widgetRuntimeStore?.setHoverTarget(runtimeElementKey);
+        dispatchWidgetEvent("mouseEnter", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent));
     }, [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore]);
 
     const onPointerLeave = useCallback(
         (e: PointerEvent<HTMLDivElement>) => {
             if (!widgetRuntimeStore) {
-                dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e));
+                dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent));
                 return;
             }
             const related = e.relatedTarget;
@@ -188,7 +316,7 @@ export function EditorNodeWrapper({
             if (!relatedNode || !e.currentTarget.contains(relatedNode)) {
                 widgetRuntimeStore.clearHoverIf(runtimeElementKey);
                 widgetRuntimeStore.setActivePointerTarget(null);
-                dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e));
+                dispatchWidgetEvent("mouseLeave", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent));
             }
         },
         [dispatchWidgetEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore],
@@ -199,7 +327,12 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setActivePointerTarget(runtimeElementKey);
             }
-            dispatchWidgetEvent("mouseDown", e.target, { ...localMousePayload(e), button: e.button });
+            dispatchWidgetEvent(
+                "mouseDown",
+                e.target,
+                { ...localMousePayload(e), button: e.button },
+                getOrCreateDomEventPropagationControl(e.nativeEvent),
+            );
         },
         [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, runtimeElementKey, widgetRuntimeStore],
     );
@@ -209,7 +342,12 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setActivePointerTarget(null);
             }
-            dispatchWidgetEvent("mouseUp", e.target, { ...localMousePayload(e), button: e.button });
+            dispatchWidgetEvent(
+                "mouseUp",
+                e.target,
+                { ...localMousePayload(e), button: e.button },
+                getOrCreateDomEventPropagationControl(e.nativeEvent),
+            );
         },
         [dispatchWidgetEvent, isDirectElementEvent, localMousePayload, widgetRuntimeStore],
     );
@@ -220,28 +358,33 @@ export function EditorNodeWrapper({
 
     const onPointerMove = useCallback(
         (e: PointerEvent<HTMLDivElement>) => {
-            dispatchWidgetEvent("mouseMove", e.target, localMousePayload(e));
+            dispatchWidgetEvent("mouseMove", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, localMousePayload],
     );
 
     const onClick = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            dispatchWidgetEvent("mouseClick", e.target, localMousePayload(e));
+            dispatchWidgetEvent(
+                "mouseClick",
+                e.target,
+                { ...localMousePayload(e), button: e.button },
+                getOrCreateDomEventPropagationControl(e.nativeEvent),
+            );
         },
         [dispatchWidgetEvent, localMousePayload],
     );
 
     const onDoubleClick = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            dispatchWidgetEvent("mouseDoubleClick", e.target, localMousePayload(e));
+            dispatchWidgetEvent("mouseDoubleClick", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, localMousePayload],
     );
 
     const onContextMenu = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
-            if (dispatchWidgetEvent("rightClick", e.target, localMousePayload(e))) {
+            if (dispatchWidgetEvent("rightClick", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent))) {
                 e.preventDefault();
             }
         },
@@ -254,7 +397,7 @@ export function EditorNodeWrapper({
                 ...localMousePayload(e),
                 deltaX: e.deltaX,
                 deltaY: e.deltaY,
-            });
+            }, getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, localMousePayload],
     );
@@ -264,7 +407,7 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setFocusedTarget(runtimeElementKey);
             }
-            dispatchWidgetEvent("focus", e.target);
+            dispatchWidgetEvent("focus", e.target, undefined, getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, isDirectElementEvent, runtimeElementKey, widgetRuntimeStore],
     );
@@ -274,13 +417,13 @@ export function EditorNodeWrapper({
             if (isDirectElementEvent(e.target)) {
                 widgetRuntimeStore?.setFocusedTarget(null);
             }
-            dispatchWidgetEvent("blur", e.target);
+            dispatchWidgetEvent("blur", e.target, undefined, getOrCreateDomEventPropagationControl(e.nativeEvent));
         },
         [dispatchWidgetEvent, isDirectElementEvent, widgetRuntimeStore],
     );
 
     const containerStyle = useMemo<CSSProperties>(() => {
-        const { x, y, width, height, rotation, opacity = 1 } = layout;
+        const { x, y, width, height, rotation } = layout;
         const normalizedWidth = Math.abs(width);
         const normalizedHeight = Math.abs(height);
         const offsetX = Math.min(0, width);
@@ -292,7 +435,7 @@ export function EditorNodeWrapper({
             top: isFlow ? 0 : y + offsetY,
             width: normalizedWidth,
             height: normalizedHeight,
-            opacity,
+            opacity: motionControlsOpacity ? undefined : effectiveOpacity,
             pointerEvents: isRoot ? "none" : "auto",
             boxSizing: "border-box",
             display: "flex",
@@ -307,7 +450,10 @@ export function EditorNodeWrapper({
             isolation: isRoot ? undefined : "isolate",
             ...styleOverrides,
         };
-        if (rotation) {
+        if (wrapperCursor) {
+            style.cursor = wrapperCursor;
+        }
+        if (rotation && !displayableMotion) {
             const transforms = [];
             if (rotation) {
                 transforms.push(`rotate(${rotation}deg)`);
@@ -316,13 +462,106 @@ export function EditorNodeWrapper({
             style.transformOrigin = "center center";
         }
         return style;
-    }, [layout, isRoot, layoutMode, styleOverrides]);
+    }, [displayableMotion, effectiveOpacity, layout, isRoot, layoutMode, motionControlsOpacity, styleOverrides, wrapperCursor]);
+
+    const motionAnimate = useMemo(() => {
+        if (!displayableMotion) {
+            return undefined;
+        }
+        if (isResetPhase) {
+            return {
+                x: 0,
+                y: 0,
+                scale: 1,
+                rotate: baseRotation,
+                opacity: effectiveOpacity,
+            };
+        }
+        const target = displayableMotion.target;
+        return buildDisplayableMotionAnimateTarget(target, {
+            x: 0,
+            y: 0,
+            scale: 1,
+            rotate: baseRotation,
+            opacity: effectiveOpacity,
+        });
+    }, [baseRotation, displayableMotion, effectiveOpacity, isResetPhase]);
+
+    const motionInitial = useMemo(() => {
+        if (!displayableMotion) {
+            return false;
+        }
+        if (isResetPhase) {
+            return false;
+        }
+        return buildDisplayableMotionInitialTarget(displayableMotion.target, {
+            x: 0,
+            y: 0,
+            scale: 1,
+            rotate: baseRotation,
+            opacity: effectiveOpacity,
+        });
+    }, [baseRotation, displayableMotion, effectiveOpacity, isResetPhase]);
+
+    const motionTransition = useMemo(
+        () => (displayableMotion ? toDisplayableMotionTransition(displayableMotion.transition) : undefined),
+        [displayableMotion],
+    );
+    const motionRunConfigRef = useRef<{
+        animate: Record<string, number | number[]> | undefined;
+        initial: Record<string, number> | false;
+        transition: Record<string, unknown> | undefined;
+    }>({
+        animate: motionAnimate,
+        initial: motionInitial,
+        transition: motionTransition,
+    });
+    const motionRunKey = displayableMotion ? `${displayableMotion.id}:${isResetPhase ? "reset" : "run"}` : null;
+
+    useLayoutEffect(() => {
+        motionRunConfigRef.current = {
+            animate: motionAnimate,
+            initial: motionInitial,
+            transition: motionTransition,
+        };
+    }, [motionAnimate, motionInitial, motionTransition]);
+
+    useLayoutEffect(() => {
+        const { animate, initial, transition } = motionRunConfigRef.current;
+        if (!motionRunKey || !animate) {
+            animationControls.stop();
+            return;
+        }
+        if (initial && !isResetPhase) {
+            animationControls.set(initial as TargetAndTransition);
+        }
+        void animationControls.start({
+            ...animate,
+            ...(transition ? { transition } : {}),
+        } as TargetAndTransition);
+    }, [animationControls, isResetPhase, motionRunKey]);
+
+    const onAnimationComplete = useCallback(() => {
+        if (!displayableMotion?.resetOnComplete) {
+            return;
+        }
+        if (!isResetPhase) {
+            setResetMotionId(displayableMotion.id);
+            return;
+        }
+        widgetRuntimeStore?.completeDisplayableMotion(runtimeElementKey, displayableMotion.id);
+        setResetMotionId(null);
+    }, [displayableMotion, isResetPhase, runtimeElementKey, widgetRuntimeStore]);
 
     return (
-        <div
+        <motion.div
+            ref={containerRef}
             data-ui-element-id={interactive ? element.id : undefined}
             className={`${interactive ? "ui-editor-node" : "ui-editor-node-preview"} ${isRoot ? "ui-editor-node-root" : ""}`}
             style={containerStyle}
+            initial={false}
+            animate={displayableMotion ? animationControls : undefined}
+            onAnimationComplete={onAnimationComplete}
             onPointerEnter={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerEnter : undefined}
             onPointerLeave={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerLeave : undefined}
             onPointerDown={interactive && (widgetRuntimeStore || blueprintRuntime) ? onPointerDown : undefined}
@@ -337,6 +576,6 @@ export function EditorNodeWrapper({
             onBlur={interactive && (widgetRuntimeStore || blueprintRuntime) ? onBlur : undefined}
         >
             {children}
-        </div>
+        </motion.div>
     );
 }

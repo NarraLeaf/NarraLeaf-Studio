@@ -7,6 +7,7 @@ import { ButtonWidgetModule } from "./button";
 import { ListWidgetModule } from "./list";
 import { FrameWidgetModule } from "./frame";
 import { SliderWidgetModule } from "./slider";
+import { DialogSentenceWidgetModule } from "./dialog";
 
 /**
  * All built-in widget modules registered at startup (includes internal `nl.root`).
@@ -21,6 +22,7 @@ export const BuiltinWidgetModules: UIWidgetModule[] = [
     SliderWidgetModule,
     ListWidgetModule,
     FrameWidgetModule,
+    DialogSentenceWidgetModule,
 ];
 
 /** Runs optional `registerBlueprintNodes` on each built-in module (idempotent per module). */

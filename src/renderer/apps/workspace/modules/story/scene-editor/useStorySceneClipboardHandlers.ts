@@ -88,6 +88,9 @@ export function useStorySceneClipboardHandlers(params: {
     }, [params]);
 
     const copySelectionToClipboard = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+        if (isTextInputActive()) {
+            return;
+        }
         const { scene, selectedBlockIds, activeBlockId, characters } = params;
         if (!scene) {
             return;

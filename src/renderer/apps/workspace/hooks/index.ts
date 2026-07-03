@@ -1,5 +1,6 @@
 // Module loader hook
 export { useModuleLoader } from "./useModuleLoader";
+export { useWorkspacePlugins } from "./useWorkspacePlugins";
 
 // UI Service hooks
 export {
@@ -43,4 +44,3 @@ export {
     fromGetter,
     contextual,
 } from "./keybinding";
-

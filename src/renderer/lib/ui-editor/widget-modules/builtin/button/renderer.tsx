@@ -6,12 +6,13 @@ import {
     useRef,
     useState,
     type CSSProperties,
+    type ChangeEvent,
     type FocusEvent,
-    type FormEvent,
     type KeyboardEvent,
     type MouseEvent,
 } from "react";
 import { motion } from "motion/react";
+import { effectShadowStoredToCss } from "@shared/types/ui-editor/effects";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { colorValueToCss } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
@@ -24,6 +25,7 @@ import {
 } from "@/lib/ui-editor/widget-modules/shared/text/textLayoutCss";
 import {
     buttonResolvedVisualToRectangleLike,
+    resolveButtonCursor,
     resolveButtonAppearanceTransitions,
     resolveButtonVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
@@ -37,6 +39,7 @@ import { useEditorAppearanceInspectorVariant } from "@/lib/ui-editor/hooks/useEd
 import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
 import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
+import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
 import { getButtonProps } from "./helpers";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
 import {
@@ -45,15 +48,28 @@ import {
 } from "@/lib/ui-editor/interaction/doubleClickDebug";
 
 const OPENING_BLUR_GRACE_MS = 300;
-import { BLUEPRINT_EVENTS_DISABLED_ATTR } from "@/lib/ui-editor/runtime/blueprintEventTargeting";
+const BUTTON_LABEL_PROP_PATH = "label";
+
+function commitButtonLabelEditValue(documentService: UIDocumentService, elementId: string, nextLabel: string): void {
+    const docEl = documentService.getDocument().elements[elementId];
+    if (docEl?.valueBindings?.[BUTTON_LABEL_PROP_PATH]?.kind === "blueprintValue") {
+        documentService.clearElementBlueprintValueBinding(elementId, BUTTON_LABEL_PROP_PATH);
+    }
+    documentService.updateElementProps(elementId, {
+        label: nextLabel,
+    });
+}
 
 export function ButtonRenderer(props: WidgetRendererProps) {
     const { element, children, surface, hostAdapter, useAppearanceInspectorPreview } = props;
     const stateService = hostAdapter.editorStateService ?? UIEditorStateService.getInstance();
-    const documentService = UIDocumentService.getInstance();
+    const documentService = hostAdapter.editorDocumentService ?? UIDocumentService.getInstance();
+    const initialLabel = getButtonProps(element).label;
     const [interactionOverride, setInteractionOverride] = useState(() => stateService.getInteractionOverride());
-    const draftRef = useRef("");
+    const [draftLabel, setDraftLabel] = useState(initialLabel);
+    const draftRef = useRef(initialLabel);
     const skipBlurCommitRef = useRef(false);
+    const skipOverrideCommitRef = useRef(false);
 
     useEffect(() => {
         return stateService.on("interactionOverrideChanged", payload => {
@@ -82,20 +98,19 @@ export function ButtonRenderer(props: WidgetRendererProps) {
 
             if (isHere && !wasHere) {
                 const docEl = documentService.getDocument().elements[element.id];
-                draftRef.current = docEl ? getButtonProps(docEl).label : "";
+                const nextDraft = docEl ? getButtonProps(docEl).label : "";
+                draftRef.current = nextDraft;
+                setDraftLabel(nextDraft);
             }
 
             if (wasHere && !isHere) {
                 if (skipBlurCommitRef.current) {
                     skipBlurCommitRef.current = false;
+                } else if (skipOverrideCommitRef.current) {
+                    skipOverrideCommitRef.current = false;
                 } else {
-                    const docEl = documentService.getDocument().elements[element.id];
-                    if (docEl) {
-                        documentService.updateElementProps(element.id, {
-                            ...docEl.props,
-                            label: draftRef.current,
-                        });
-                    }
+                    setDraftLabel(draftRef.current);
+                    commitButtonLabelEditValue(documentService, element.id, draftRef.current);
                 }
             }
         });
@@ -148,12 +163,13 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     );
 
     useLayoutEffect(() => {
-        if (!isEditing) {
+        if (isEditing) {
             return;
         }
-        const docEl = documentService.getDocument().elements[element.id];
-        draftRef.current = docEl ? getButtonProps(docEl).label : "";
-    }, [isEditing, documentService, element.id]);
+        const nextDraft = getButtonProps(element).label;
+        draftRef.current = nextDraft;
+        setDraftLabel(nextDraft);
+    }, [element, isEditing]);
 
     const inspectorVariantId = useEditorAppearanceInspectorVariant(element.id, useAppearanceInspectorPreview === true);
     const p = getButtonProps(element);
@@ -172,6 +188,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     const rl = buttonResolvedVisualToRectangleLike(v);
     const rt = hostAdapter.blueprintRuntime;
     const canDispatchClick = Boolean(rt && !interactionDisabled);
+    const resolvedCursor = resolveButtonCursor(v.cursor, interactionDisabled, canDispatchClick);
     const dispatchClick =
         canDispatchClick && !isEditing
             ? () => {
@@ -236,6 +253,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
 
     const color = colorValueToCss({ hex: p.color, alpha: 1 });
     const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
+    const labelTextShadow = effectShadowStoredToCss(v.effects.effectTextShadow, "outer");
     const labelTypography: CSSProperties = {
         margin: 0,
         width: "100%",
@@ -246,9 +264,19 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         textAlign: p.textAlign,
         lineHeight: p.lineHeight,
         ...lineWrapCss(p.textWrapMode),
-        overflow: "hidden",
+        overflow: labelTextShadow ? "visible" : "hidden",
+        ...(labelTextShadow ? { textShadow: labelTextShadow } : {}),
         ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
     };
+
+    const labelTextShadowTransition = firstTransitionForKeys(appearanceTransitions, ["effectTextShadow"]);
+    const labelTextAnimate: Record<string, string> = {};
+    const labelTextTransition: Record<string, unknown> = {};
+    if (labelTextShadowTransition) {
+        labelTextAnimate.textShadow = labelTextShadow || "none";
+        labelTextTransition.textShadow = toRuntimeMotionTransition(labelTextShadowTransition);
+    }
+    const labelTextMotionActive = Object.keys(labelTextTransition).length > 0;
 
     const labelColumnStyle: CSSProperties = {
         flex: 1,
@@ -266,13 +294,13 @@ export function ButtonRenderer(props: WidgetRendererProps) {
 
     const commitLabelAndClose = useCallback(
         (nextLabel: string) => {
-            documentService.updateElementProps(element.id, {
-                ...element.props,
-                label: nextLabel,
-            });
+            draftRef.current = nextLabel;
+            setDraftLabel(nextLabel);
+            commitButtonLabelEditValue(documentService, element.id, nextLabel);
+            skipOverrideCommitRef.current = true;
             stateService.setInteractionOverride(null);
         },
-        [documentService, element.id, element.props, stateService],
+        [documentService, element.id, stateService],
     );
 
     useEffect(() => {
@@ -297,8 +325,10 @@ export function ButtonRenderer(props: WidgetRendererProps) {
         el.select();
     }, [isEditing]);
 
-    const handleTextareaInput = useCallback((e: FormEvent<HTMLTextAreaElement>) => {
-        draftRef.current = e.currentTarget.value;
+    const handleTextareaChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
+        const nextLabel = e.currentTarget.value;
+        draftRef.current = nextLabel;
+        setDraftLabel(nextLabel);
     }, []);
 
     const handleTextareaKeyDown = useCallback(
@@ -352,13 +382,14 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                 }
                 return;
             }
+            draftRef.current = e.currentTarget.value;
             debugUIDoubleClick("ButtonRenderer blur commit", {
                 elementId: element.id,
                 surfaceId: surface.id,
                 openedMsAgo,
                 relatedTarget: describeDoubleClickTarget(relatedTarget),
             });
-            commitLabelAndClose(e.target.value);
+            commitLabelAndClose(e.currentTarget.value);
         },
         [commitLabelAndClose, element.id, surface.id],
     );
@@ -369,7 +400,7 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                 {isEditing ? (
                     <textarea
                         ref={textareaRef}
-                        defaultValue={p.label}
+                        value={draftLabel}
                         style={{
                             ...labelTypography,
                             flex: 1,
@@ -381,12 +412,21 @@ export function ButtonRenderer(props: WidgetRendererProps) {
                             ...(p.textWrapMode === "nowrap" ? { overflowX: "auto", overflowY: "hidden" } : {}),
                             ...(!editorFontFamily ? { fontFamily: "inherit" } : {}),
                         }}
-                        onInput={handleTextareaInput}
+                        onChange={handleTextareaChange}
                         onBlur={handleTextareaBlur}
                         onKeyDown={handleTextareaKeyDown}
                         onClick={e => e.stopPropagation()}
                         onMouseDown={e => e.stopPropagation()}
                     />
+                ) : labelTextMotionActive ? (
+                    <motion.p
+                        style={{ ...labelTypography, flexShrink: 0 }}
+                        initial={false}
+                        animate={labelTextAnimate}
+                        transition={labelTextTransition}
+                    >
+                        {p.label}
+                    </motion.p>
                 ) : (
                     <p style={{ ...labelTypography, flexShrink: 0 }}>{p.label}</p>
                 )}
@@ -424,7 +464,9 @@ export function ButtonRenderer(props: WidgetRendererProps) {
             appearanceTransitions={appearanceTransitions}
             rootOpacityFactor={interactionDisabled ? 0.45 : 1}
             extraRootStyle={{
-                cursor: canDispatchClick ? "pointer" : interactionDisabled ? "not-allowed" : "default",
+                position: "absolute",
+                inset: 0,
+                cursor: resolvedCursor,
             }}
             extraRootProps={{
                 ...blueprintEventRootProps,

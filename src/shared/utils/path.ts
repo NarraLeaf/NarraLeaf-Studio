@@ -77,31 +77,24 @@ class PathPolyfill {
     join(...paths: string[]): string {
         if (paths.length === 0) return '.';
 
-        let joined: string;
-        if (this.isAbsolute(paths[0])) {
-            joined = paths[0];
-        } else {
-            joined = paths[0] || '.';
-        }
+        let joined = '';
 
-        for (let i = 1; i < paths.length; i++) {
+        for (let i = 0; i < paths.length; i++) {
             const path = paths[i];
-            if (path === '') continue;
-
             if (path === undefined || path === null) {
                 throw new PathError('Path must be a string. Received ' + path);
             }
+            if (path === '') continue;
 
-            if (this.isAbsolute(path)) {
+            if (joined === '') {
                 joined = path;
             } else {
-                // Remove leading separator from path if joined ends with separator
-                const normalizedPath = joined.endsWith(this.sep) ? path : path;
-                joined = joined + this.sep + normalizedPath;
+                const normalizedPath = this.stripLeadingSeparators(path);
+                joined = joined + (joined.endsWith(this.sep) ? '' : this.sep) + normalizedPath;
             }
         }
 
-        return this.normalize(joined);
+        return this.normalize(joined || '.');
     }
 
     /**
@@ -325,6 +318,13 @@ class PathPolyfill {
         } else {
             return path.startsWith('/');
         }
+    }
+
+    private stripLeadingSeparators(path: string): string {
+        if (this.isWindows) {
+            return path.replace(/^[\\/]+/, '');
+        }
+        return path.replace(/^\/+/, '');
     }
 
     /**

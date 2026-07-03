@@ -14,9 +14,10 @@ export type PrivilegedCapability = typeof PrivilegedCapability[keyof typeof Priv
 
 export type PrivilegedActor =
     | { kind: "facade"; id: "default" }
-    | { kind: "plugin"; pluginId: string };
+    | { kind: "plugin"; pluginId: string; version?: string };
 
 export type PrivilegedFileSystemCall =
+    | { operation: "selectFile"; filters: string[]; multiple: boolean }
     | { operation: "stat"; path: string }
     | { operation: "list"; path: string }
     | { operation: "details"; path: string }
@@ -50,6 +51,7 @@ export type PrivilegedFileSystemCallResult =
     | FsRequestResult<FileStat[]>
     | FsRequestResult<FileDetails>
     | FsRequestResult<string>
+    | FsRequestResult<string[]>
     | FsRequestResult<void>
     | FsRequestResult<boolean>;
 

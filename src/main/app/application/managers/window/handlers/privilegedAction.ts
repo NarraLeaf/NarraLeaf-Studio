@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import pathModule from "path";
+import { dialog } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
@@ -13,6 +14,7 @@ import {
     authorizeActorCapabilityRequest,
     authorizeActorFileSystemRequest,
 } from "../actorAuthorization";
+import { getRuntimeGrantPolicy } from "../permissions";
 import { IPCHandler } from "./IPCHandler";
 
 function unauthorizedResult<T>(message: string): FsRequestResult<T> {
@@ -62,6 +64,50 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
         data: IPCEvents[IPCEventType.privilegedFsCall]["data"],
     ): Promise<RequestStatus<PrivilegedFileSystemCallResult>> {
         switch (data.operation) {
+            case "selectFile": {
+                if (data.actor.kind !== "facade" || data.actor.id !== "default") {
+                    return this.success(unauthorizedResult<string[]>("Only the default facade can open the file picker"));
+                }
+                const grantPolicy = getRuntimeGrantPolicy(window, "selectFile");
+                if (!grantPolicy) {
+                    return this.success(unauthorizedResult<string[]>("File picker is not allowed for this window"));
+                }
+
+                try {
+                    const dialogOptions: Electron.OpenDialogOptions = {
+                        title: "Select Icon File",
+                        buttonLabel: "Select",
+                        properties: data.multiple ? ["openFile", "multiSelections"] : ["openFile"],
+                        securityScopedBookmarks: true,
+                    };
+
+                    if (data.filters.length > 0) {
+                        dialogOptions.filters = [
+                            { name: "Icon Files", extensions: data.filters },
+                            { name: "All Files", extensions: ["*"] },
+                        ];
+                    }
+
+                    const result = await dialog.showOpenDialog(window.win, dialogOptions);
+                    if (result.canceled) {
+                        return this.success({ ok: true, data: [] });
+                    }
+
+                    for (const [index, filePath] of result.filePaths.entries()) {
+                        window.app.storageManager.grantFileSystemAccess(
+                            window,
+                            filePath,
+                            grantPolicy.mode,
+                            grantPolicy.recursive,
+                            result.bookmarks?.[index],
+                        );
+                    }
+
+                    return this.success({ ok: true, data: result.filePaths });
+                } catch (error) {
+                    return this.success(this.unknownError<string[]>(error));
+                }
+            }
             case "stat": {
                 const denied = await ensureActorPathAllowed<FileStat>(window, data, data.path, "read");
                 return this.success(denied ?? await Fs.stat(data.path));
@@ -71,13 +117,14 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                 if (denied) return this.success(denied);
                 const entries = await Fs.dirEntries(data.path);
                 if (!entries.ok) return this.success(entries as FsRequestResult<FileStat[]>);
+                const stats: FileStat[] = entries.data.map(entry => ({
+                    name: pathModule.parse(entry.name).name,
+                    ext: pathModule.extname(entry.name) || null,
+                    type: entry.isDirectory() ? "directory" : "file",
+                }));
                 return this.success({
                     ok: true,
-                    data: entries.data.map(entry => ({
-                        name: pathModule.parse(entry.name).name,
-                        ext: pathModule.extname(entry.name) || null,
-                        type: entry.isDirectory() ? "directory" : "file",
-                    })),
+                    data: stats,
                 });
             }
             case "details": {
@@ -285,6 +332,14 @@ export class PrivilegedPermissionRequestHandler extends IPCHandler<IPCEventType.
         }
         if (data.actor.kind === "plugin" && data.request.plugin.id !== data.actor.pluginId) {
             return this.failed("Plugin permission request actor does not match request plugin");
+        }
+        if (
+            data.actor.kind === "plugin" &&
+            data.actor.version &&
+            data.request.plugin.version &&
+            data.request.plugin.version !== data.actor.version
+        ) {
+            return this.failed("Plugin permission request version does not match request plugin");
         }
 
         const existingGrant = window.app.pluginPermissionManager.getExistingGrantResult(data.request);

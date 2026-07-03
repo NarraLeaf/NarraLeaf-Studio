@@ -44,6 +44,7 @@ export function buildBlueprintPaletteContext(input: {
     isBlueprintValueGraph?: boolean;
     listItemContextAvailable?: boolean;
     magicElementRefs?: readonly BlueprintMagicElementRefPaletteEntry[];
+    isComponentDefinitionGraph?: boolean;
 }): BlueprintPaletteContext {
     const gk: BlueprintGraphKind = input.graphKind;
     return {
@@ -57,6 +58,7 @@ export function buildBlueprintPaletteContext(input: {
         isBlueprintValueGraph: input.isBlueprintValueGraph,
         listItemContextAvailable: input.listItemContextAvailable,
         magicElementRefs: input.magicElementRefs,
+        isComponentDefinitionGraph: input.isComponentDefinitionGraph,
     };
 }
 

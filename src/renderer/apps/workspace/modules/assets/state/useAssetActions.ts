@@ -32,6 +32,43 @@ export interface UseAssetActionsParams {
     expandGroup?: (groupId: string) => void;
 }
 
+function parseFileUriList(dataTransfer?: DataTransfer): string[] {
+    if (!dataTransfer) {
+        return [];
+    }
+
+    return dataTransfer.getData("text/uri-list")
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0 && !line.startsWith("#"))
+        .flatMap(line => {
+            try {
+                const url = new URL(line);
+                if (url.protocol !== "file:") {
+                    return [];
+                }
+
+                const pathname = decodeURIComponent(url.pathname);
+                return [/^\/[A-Za-z]:\//.test(pathname) ? pathname.slice(1) : pathname];
+            } catch {
+                return [];
+            }
+        });
+}
+
+function summarizeImportFailures(errors: Array<string | undefined>): string {
+    const messages = errors.filter((message): message is string => typeof message === "string" && message.length > 0);
+    if (messages.length === 0) {
+        return "Unknown error";
+    }
+
+    const visibleMessages = messages.slice(0, 3);
+    const remaining = messages.length - visibleMessages.length;
+    return remaining > 0
+        ? `${visibleMessages.join("\n")}\n...and ${remaining} more.`
+        : visibleMessages.join("\n");
+}
+
 export function useAssetActions({
     context,
     inputDialog,
@@ -129,9 +166,23 @@ export function useAssetActions({
         
         await withAssetsService(async (assetsService) => {
             await assetsService.transaction(async (svc) => {
+                const uiService = context.services.get<UIService>(Services.UI);
                 let result;
-                if (files) {
-                    const paths = Array.from(files)
+                if (files && files.length > 0) {
+                    const fileArray = Array.from(files);
+                    const grantResult = await getInterface().fs.grantFileAccessForFiles(fileArray);
+                    if (!grantResult.success) {
+                        uiService.showAlert("Unable to import", grantResult.error || "File access grant failed.");
+                        return;
+                    }
+                    if (!grantResult.data.ok) {
+                        uiService.showAlert("Unable to import", grantResult.data.error.message);
+                        return;
+                    }
+
+                    const paths = grantResult.data.data.length > 0
+                        ? grantResult.data.data
+                        : fileArray
                         .map(f => {
                             const pathFromProp = (f as any).path;
                             if (pathFromProp && pathFromProp.length > 0) return pathFromProp;
@@ -141,19 +192,13 @@ export function useAssetActions({
                         .filter((p): p is string => typeof p === 'string' && p.length > 0);
 
                     if (paths.length === 0) {
-                        // Try parse uri-list
-                        if (dataTransfer) {
-                            const uriList = dataTransfer.getData('text/uri-list');
-                            const uriPaths = uriList.split('\n').filter(l=>l.startsWith('file://')).map(u=> decodeURI(u.replace('file:///', '').replace('file://', '')));
-                            if (uriPaths.length > 0) {
-                                paths.push(...uriPaths);
-                            }
+                        const uriPaths = parseFileUriList(dataTransfer);
+                        if (uriPaths.length > 0) {
+                            paths.push(...uriPaths);
                         }
 
-                        console.log(dataTransfer);
-
                         if (paths.length === 0) {
-                            context.services.get<UIService>(Services.UI).showAlert(
+                            uiService.showAlert(
                                 'Unable to import',
                                 'File path parsing failed.'
                             );
@@ -166,16 +211,30 @@ export function useAssetActions({
                 }
 
                 if (!result.success) {
-                    context.services.get<UIService>(Services.UI).showAlert("Failed to import assets", result.error || "Unknown error");
+                    uiService.showAlert("Failed to import assets", result.error || "Unknown error");
                     return;
                 }
 
-                if (groupId && result.data) {
-                    for (const assetResult of result.data) {
-                        if (assetResult.success && assetResult.data) {
-                            await svc.moveAssetToGroup(assetResult.data, groupId);
+                const importFailures = result.data?.filter(assetResult => !assetResult.success) ?? [];
+                const importedAssets = result.data?.flatMap(assetResult =>
+                    assetResult.success && assetResult.data ? [assetResult.data] : []
+                ) ?? [];
+
+                if (groupId) {
+                    for (const asset of importedAssets) {
+                        const moveResult = await svc.moveAssetToGroup(asset, groupId);
+                        if (!moveResult.success) {
+                            uiService.showAlert("Failed to move imported asset", moveResult.error || "Unknown error");
+                            return;
                         }
                     }
+                }
+
+                if (importFailures.length > 0) {
+                    uiService.showAlert(
+                        importedAssets.length > 0 ? "Some assets failed to import" : "Failed to import assets",
+                        summarizeImportFailures(importFailures.map(assetResult => assetResult.error))
+                    );
                 }
             });
         });

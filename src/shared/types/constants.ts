@@ -4,6 +4,8 @@ export enum AppHost {
     Public = "public",
     Windows = "windows",
     Fs = "fs",
+    Plugins = "plugins",
+    PluginApi = "plugin-api",
 }
 
 // PersistentState constants
@@ -17,4 +19,5 @@ export enum UserDataNamespace {
     Plugins = "plugins",
     Authorization = "authorization",
     BlueprintPersistence = "blueprint-persistence",
+    DevModeSaves = "dev-mode-saves",
 }

@@ -289,16 +289,21 @@ export function Select({
                 onClick={() => !disabled && setIsOpen(!isOpen)}
             >
                 <span
-                    className={`flex min-w-0 flex-1 items-baseline text-left ${
+                    className={`flex min-w-0 flex-1 items-center gap-2 text-left ${
                         selectedOption ? "text-gray-200" : "text-gray-400"
                     }`}
                 >
-                    <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
-                    {selectedOption?.secondaryLabel ? (
-                        <span className="ml-1.5 shrink-0 text-[10px] text-gray-500">
-                            {selectedOption.secondaryLabel}
-                        </span>
+                    {selectedOption?.icon ? (
+                        <span className="shrink-0 text-gray-400">{selectedOption.icon}</span>
                     ) : null}
+                    <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                        <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
+                        {selectedOption?.secondaryLabel ? (
+                            <span className="shrink-0 text-[10px] text-gray-500">
+                                {selectedOption.secondaryLabel}
+                            </span>
+                        ) : null}
+                    </span>
                 </span>
                 <ChevronDown
                     className={`h-4 w-4 shrink-0 text-gray-400 transition-transform duration-150 ${
