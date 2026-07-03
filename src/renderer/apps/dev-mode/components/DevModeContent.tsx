@@ -259,27 +259,36 @@ export function DevModeSurfaceLifecycleLayer(props: {
         if (!bpCore || !hasBlueprintRuntime || !currentHostAdapter?.blueprintRuntime) {
             return;
         }
-        bpCore.executionManager.openScope(runtimeScopeId);
-        const shouldInit = lifecycleRef.current.onSurfaceEnter(runtimeScopeId);
-        if (!shouldInit) {
-            return;
-        }
-        const acc = makeStateAccessors(runtimeScopeId);
-        if (!acc) {
-            return;
-        }
-        void dispatchSurfaceBlueprintEvent({
-            blueprintDocument: bundle.ui.localBlueprints,
-            surfaceId: surface.id,
-            runtimeScopeId,
-            eventName: "surfaceInit",
-            hostAdapter: currentHostAdapter,
-            debug: bpCore.debug,
-            getSurfaceState: acc.get,
-            setSurfaceState: acc.set,
-            executionManager: bpCore.executionManager,
-        });
-    }, [bpCore, bundle, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
+        let cancelled = false;
+        void (async () => {
+            await waitForAnimationFrame();
+            if (cancelled) {
+                return;
+            }
+            bpCore.executionManager.openScope(runtimeScopeId);
+            if (!lifecycleRef.current.onSurfaceEnter(runtimeScopeId)) {
+                return;
+            }
+            const acc = makeStateAccessors(runtimeScopeId);
+            if (!acc) {
+                return;
+            }
+            void dispatchSurfaceBlueprintEvent({
+                blueprintDocument: bundle.ui.localBlueprints,
+                surfaceId: surface.id,
+                runtimeScopeId,
+                eventName: "surfaceInit",
+                hostAdapter: currentHostAdapter,
+                debug: bpCore.debug,
+                getSurfaceState: acc.get,
+                setSurfaceState: acc.set,
+                executionManager: bpCore.executionManager,
+            });
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [bpCore, bundle.ui.localBlueprints, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
 
     useEffect(() => {
         if (!bpCore || !hasBlueprintRuntime) {
@@ -308,7 +317,7 @@ export function DevModeSurfaceLifecycleLayer(props: {
                 allowClosedScopeExecution: true,
             });
         };
-    }, [bpCore, bundle, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
+    }, [bpCore, bundle.ui.localBlueprints, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
 
     return <>{children}</>;
 }

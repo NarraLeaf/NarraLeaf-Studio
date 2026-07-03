@@ -79,17 +79,15 @@ afterEach(() => {
 });
 
 describe("Dev Mode surface lifecycle dispatch order (characterization)", () => {
-    it("dispatches openScope + surfaceInit synchronously with mount effects", async () => {
+    it("defers openScope + surfaceInit by one animation frame", async () => {
         mountLayer({ log: hoisted.log });
-        // Current Dev Mode behavior: no frame-wait — events are already
-        // recorded when the mount commit's effects have flushed.
-        expect(hoisted.log).toEqual([
-            "openScope:scope-1",
-            "dispatch:surfaceInit:scope-1",
-        ]);
+        // Phase 0.2 reconciliation: Dev Mode adopted the game runtime's
+        // frame-wait, so nothing is dispatched at mount-effect flush...
+        expect(hoisted.log).toEqual([]);
         await act(async () => {
             await flushAnimationFrame();
         });
+        // ...and the full init sequence lands after the next frame.
         expect(hoisted.log).toEqual([
             "openScope:scope-1",
             "dispatch:surfaceInit:scope-1",
@@ -157,17 +155,17 @@ describe("Dev Mode surface lifecycle dispatch order (characterization)", () => {
         ]);
     });
 
-    it("StrictMode double-effect: current behavior dispatches a phantom init/unmount cycle", async () => {
+    it("StrictMode double-effect: cancelled guard suppresses the phantom surfaceInit", async () => {
         mountLayer({ log: hoisted.log, strict: true });
         await act(async () => {
             await flushAnimationFrame();
         });
-        // Current Dev Mode behavior under StrictMode (dev builds only):
-        // mount effects run, are torn down, and run again, producing a
-        // phantom surfaceInit + surfaceUnmount pair before the real init.
+        // Phase 0.2 reconciliation: the frame-wait's cancelled guard makes
+        // the StrictMode teardown skip the phantom surfaceInit (previously
+        // Dev Mode dispatched surfaceInit/surfaceUnmount/surfaceInit here).
+        // The unmount effect's cleanup still runs, producing one phantom
+        // closeScope + surfaceUnmount pair before the real init.
         expect(hoisted.log).toEqual([
-            "openScope:scope-1",
-            "dispatch:surfaceInit:scope-1",
             "closeScope:scope-1:Surface unmounted",
             "dispatch:surfaceUnmount:scope-1",
             "openScope:scope-1",
