@@ -93,6 +93,7 @@ import {
 } from "@/lib/ui-editor/runtime/app/nlrDialogReaders";
 import { waitForAnimationFrame } from "@/lib/ui-editor/runtime/app/frameTiming";
 import { dialogSlotRuntimeScopeId, findStageSurfaceForSlot } from "@/lib/ui-editor/runtime/app/stageSlots";
+import { DialogStateBridge } from "@/lib/ui-editor/runtime/app/DialogStateBridge";
 import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
@@ -450,26 +451,6 @@ export function RuntimeSurfaceLifecycleLayer(props: {
     return <>{children}</>;
 }
 
-function RuntimeDialogStateBridge(props: {
-    core: RuntimeCore | null;
-    getCurrentNametag: () => string | null;
-    flushDialogElements: () => void;
-}) {
-    const { core, getCurrentNametag, flushDialogElements } = props;
-    const dialog = useDialog();
-
-    useEffect(() => {
-        if (!core) {
-            return;
-        }
-        const nametag = dialog.isNarrator ? null : getCurrentNametag();
-        core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
-        flushDialogElements();
-    }, [core, dialog.done, dialog.isNarrator, dialog.text, flushDialogElements, getCurrentNametag]);
-
-    return null;
-}
-
 function RuntimeDialogSlotSurface(props: {
     sessionId: string;
     core: RuntimeCore | null;
@@ -711,7 +692,7 @@ function RuntimeDialogSlotSurface(props: {
             ref={setDialogVirtualClickTarget}
             style={{ width: "100%", height: "100%", position: "relative" }}
         >
-            <RuntimeDialogStateBridge
+            <DialogStateBridge
                 core={core}
                 getCurrentNametag={getCurrentNametag}
                 flushDialogElements={flushDialogElements}

@@ -93,6 +93,7 @@ import {
 } from "@/lib/ui-editor/runtime/app/nlrDialogReaders";
 import { waitForAnimationFrame } from "@/lib/ui-editor/runtime/app/frameTiming";
 import { dialogSlotRuntimeScopeId, findStageSurfaceForSlot } from "@/lib/ui-editor/runtime/app/stageSlots";
+import { DialogStateBridge } from "@/lib/ui-editor/runtime/app/DialogStateBridge";
 import { resolveDevModeViewportSize } from "./devModeViewport";
 
 const NLR_BOOT_PRELOAD_TIMEOUT_MS = 15_000;
@@ -243,26 +244,6 @@ export function DevModeSurfaceLifecycleLayer(props: {
     }, [bpCore, bundle.ui.localBlueprints, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
 
     return <>{children}</>;
-}
-
-function StudioDialogStateBridge(props: {
-    bpCore: DevModeBlueprintRuntimeCore | null;
-    getCurrentNametag: () => string | null;
-    flushDialogElements: () => void;
-}) {
-    const { bpCore, getCurrentNametag, flushDialogElements } = props;
-    const dialog = useDialog();
-
-    useEffect(() => {
-        if (!bpCore) {
-            return;
-        }
-        const nametag = dialog.isNarrator ? null : getCurrentNametag();
-        bpCore.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
-        flushDialogElements();
-    }, [bpCore, dialog.done, dialog.isNarrator, dialog.text, flushDialogElements, getCurrentNametag]);
-
-    return null;
 }
 
 function StudioDialogSlotSurface(props: {
@@ -505,8 +486,8 @@ function StudioDialogSlotSurface(props: {
             ref={setDialogVirtualClickTarget}
             style={{ width: "100%", height: "100%", position: "relative" }}
         >
-            <StudioDialogStateBridge
-                bpCore={bpCore}
+            <DialogStateBridge
+                core={bpCore}
                 getCurrentNametag={getCurrentNametag}
                 flushDialogElements={flushDialogElements}
             />
