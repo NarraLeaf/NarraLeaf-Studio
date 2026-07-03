@@ -7,6 +7,10 @@
 import type { UISurface } from "@shared/types/ui-editor/document";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { SurfaceBlueprintBindingContext } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
+import type {
+    SurfaceNavigationEntry,
+    SurfaceNavigationPresentation,
+} from "@/lib/ui-editor/runtime/game/surfaceNavigationController";
 
 export type SurfaceStateAccessors = {
     get: (key: string) => unknown;
@@ -16,7 +20,13 @@ export type SurfaceStateAccessors = {
 export type PageProps = Record<string, unknown>;
 
 export type OpenSurfaceOptions = {
-    presentation?: import("@/lib/ui-editor/runtime/game/surfaceNavigationController").SurfaceNavigationPresentation;
+    presentation?: SurfaceNavigationPresentation;
+};
+
+/** Full navigation entry shape used by the shared game app orchestrator. */
+export type AppNavEntry = SurfaceNavigationEntry<PageProps, SurfaceNavigationPresentation> & {
+    sessionKey: string;
+    runtimeScopeId: string;
 };
 
 /** Per-layer blueprint host wiring created by the host app's factory. */
