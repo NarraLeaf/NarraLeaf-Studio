@@ -365,7 +365,7 @@ app.services.blueprintNodes.register({
 
 当插件数据变化时调用 `app.services.blueprintNodes.notifyDynamicSelectOptionsChanged()`，已打开的 blueprint editor 会刷新下拉选项。
 
-`app.services.get<T>(service)` 仍然暴露 workspace service registry，用于当前项目内部的深度集成。它会返回真实 service 实例，不是隔离 facade；插件文档中应把它标为高级接口，默认不要用它修改内部可变文档，除非插件明确绑定当前 Studio 版本。
+插件 API 是一份白名单：`app.services` 只包含 `storage`、`assets`、`ui`、`widgets`、`blueprintNodes` 这些经过筛选的接口，不再暴露 workspace service registry（旧版的 `app.services.get<T>(service)` 与 `app.services.workspace` 已移除）。信任模型：已安装并启用的插件被信任执行项目作用域内的 UI 与数据操作；任何越界能力（工作区之外的文件系统、bash、权限授予）都必须经由 `app.privileged`，由主进程按插件身份逐次校验。插件通过白名单 API 完成的注册（panel、action、keybinding、widget、动态选项源）由宿主自动记录，插件卸载时会被强制回收，即使插件自身的 cleanup 遗漏了它们。
 
 `app.privileged` 是插件唯一的特权入口：
 

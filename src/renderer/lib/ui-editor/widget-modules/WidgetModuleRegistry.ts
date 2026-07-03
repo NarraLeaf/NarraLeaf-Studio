@@ -25,6 +25,10 @@ export class WidgetModuleRegistry {
         }
     }
 
+    public unregister(type: string): void {
+        this.modules.delete(type);
+    }
+
     public get(type: string): UIWidgetModule | undefined {
         return this.modules.get(type);
     }

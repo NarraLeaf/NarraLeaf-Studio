@@ -1,9 +1,7 @@
 import fs from "fs";
 import { AppEventToken } from "@shared/types/app";
 import { Namespace } from "@shared/types/ipc";
-import { IPCEventType } from "@shared/types/ipcEvents";
 import { App } from "@/app/app";
-import { IPCHandler } from "./handlers/IPCHandler";
 import { WindowEventManager } from "./windowEvents";
 import { WindowInstanceConfig, WindowInstance } from "./windowInstance";
 import { WindowIPC } from "./windowIPC";
@@ -59,10 +57,6 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     }
 
     // Window Event Handling
-    public registerIPCHandler<T extends IPCEventType>(handler: IPCHandler<T>): void {
-        this.getIPC().registerHandler(this, handler);
-    }
-
     public onClose(fn: () => void) {
         return this.getEvents().onClose(fn);
     }
@@ -242,7 +236,6 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
     private initialize(_app: App): void {
         this.app.windowManager.registerWindow(this);
-        this.app.windowManager.registerDefaultIPCHandlers(this);
 
         this.prepareEvents();
     }
@@ -271,7 +264,6 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
             this.getEvents().emit("closed", this);
             this.getApp().windowManager.emitWindowClosed(this);
-            this.getApp().windowManager.unregisterIPCHandlers(this);
             this.getApp().windowManager.unregisterWindow(this);
         });
 

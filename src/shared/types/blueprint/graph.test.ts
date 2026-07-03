@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+    BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_AFTER_SURFACE_ENTER,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_BEFORE_SURFACE_EXIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
     blueprintKeyboardBindingMatchesEvent,
     collectBlueprintEventHeadNodeIdsForDispatch,
+    collectGlobalEventHeadNodeIdsForDispatch,
     collectSurfaceEventHeadNodeIdsForDispatch,
     formatBlueprintKeyboardBinding,
     formatBlueprintKeyboardBindingFromEvent,
@@ -72,5 +76,33 @@ describe("blueprint event head dispatch resolution", () => {
         expect(collectBlueprintEventHeadNodeIdsForDispatch(nodes, "afterSurfaceEnter", "nl.button")).toEqual(["after"]);
         expect(collectBlueprintEventHeadNodeIdsForDispatch(nodes, "unmount", "nl.button")).toEqual(["unmount"]);
         expect(collectBlueprintEventHeadNodeIdsForDispatch(nodes, "unmount", "nl.root")).toEqual([]);
+    });
+
+    it("filters game preference change heads by the selected preference key", () => {
+        const nodes = {
+            any: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED },
+            bgm: {
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
+                params: { [BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY]: "bgmVolume" },
+            },
+            voice: {
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
+                params: { [BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY]: "voiceVolume" },
+            },
+            unconfigured: { type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED },
+        };
+
+        // Global and surface owners both host the shared gamePreferenceChanged event.
+        expect(collectGlobalEventHeadNodeIdsForDispatch(nodes, "gamePreferenceChanged", { key: "bgmVolume" })).toEqual([
+            "any",
+            "bgm",
+        ]);
+        expect(collectSurfaceEventHeadNodeIdsForDispatch(nodes, "gamePreferenceChanged", { key: "voiceVolume" })).toEqual(
+            ["any", "voice"],
+        );
+        // A preference key with no matching specific head still fires the wildcard head.
+        expect(collectGlobalEventHeadNodeIdsForDispatch(nodes, "gamePreferenceChanged", { key: "skip" })).toEqual([
+            "any",
+        ]);
     });
 });

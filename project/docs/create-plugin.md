@@ -960,60 +960,14 @@ app.privileged.bash.execute(command, cwd);
 
 V1 当前会经过权限检查，然后返回未实现错误。
 
-## app.services.get
+## 已移除：app.services.get 与 app.services.workspace
 
-`app.services.get<T>(service)` 返回 workspace 内部 service 实例。这个入口用于深度集成，插件要自行承担和 Studio 内部版本绑定的成本。
+旧版本曾通过 `app.services.get<T>(service)` 和 `app.services.workspace` 暴露 workspace 内部 service registry。这两个入口已移除：插件 API 现在是一份显式白名单（`storage`、`assets`、`ui`、`widgets`、`blueprintNodes`），插件无法再获取宿主内部 service 实例。
 
-如果插件包拿不到 `Services` enum 类型，可以用字符串 key：
+如果白名单 API 无法覆盖你的场景：
 
-```ts
-const story = app.services.get<IStoryService>("story" as any);
-```
-
-可用 service key：
-
-```text
-project
-uuid
-fileSystem
-ui
-globalSettings
-serviceAssets
-panelState
-uiDocument
-runtimeBridge
-uiEditorState
-uiEditorHistory
-uiGraph
-localBlueprint
-uiBlueprintLifecycle
-devMode
-uiEditorFontFace
-blueprintNodeCatalog
-story
-character
-assets
-```
-
-以下是 `services.ts` 里的空接口或注释保留项。V1 不把它们当作可调用插件接口，不要通过 `services.get(...)` 使用：
-
-```text
-storage
-command
-logger
-editor
-texture
-audio
-video
-font
-runtime
-preview
-build
-debug
-localization
-versionControl
-plugin
-```
+- 涉及文件系统、bash、权限的操作走 `app.privileged`（主进程按插件身份逐次校验）。
+- 其他缺口请向 Studio 提 issue，由宿主以白名单 API 的形式补充，而不是恢复 registry 直通。
 
 ### project
 
