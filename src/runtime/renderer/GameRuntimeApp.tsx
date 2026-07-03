@@ -79,6 +79,21 @@ import {
     type SurfaceNavigationPresentation,
 } from "@/lib/ui-editor/runtime/game/surfaceNavigationController";
 import {
+    staticSurfaceHostAdapter,
+    type HostAdapterBundle,
+    type SurfaceStateAccessors,
+} from "@/lib/ui-editor/runtime/app/types";
+import { applyWidgetRuntimePatch } from "@/lib/ui-editor/runtime/app/widgetRuntimePatches";
+import { clonePageProps } from "@/lib/ui-editor/runtime/app/pageProps";
+import { keyboardBlueprintPayload } from "@/lib/ui-editor/runtime/app/keyboardBlueprintPayload";
+import {
+    coerceNametagValue,
+    readNlrCharacterName,
+    readNlrLastDialogSpeaker,
+} from "@/lib/ui-editor/runtime/app/nlrDialogReaders";
+import { waitForAnimationFrame } from "@/lib/ui-editor/runtime/app/frameTiming";
+import { dialogSlotRuntimeScopeId, findStageSurfaceForSlot } from "@/lib/ui-editor/runtime/app/stageSlots";
+import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
 } from "./surfaceResourcePreload";
@@ -96,107 +111,7 @@ type RuntimeOpenSurfaceOptions = {
     presentation?: RuntimePagePresentation;
 };
 
-type RuntimeHostAdapterBundle = {
-    hostAdapter: UIHostAdapter;
-    bindingContext: SurfaceBlueprintBindingContext;
-    runtimeScopeId: string;
-};
-
-function mergeWidgetRuntimePatch(
-    current: Record<string, Record<string, DevModeWidgetRuntimePatch>>,
-    runtimeScopeId: string,
-    elementId: string,
-    patch: DevModeWidgetRuntimePatch,
-): Record<string, Record<string, DevModeWidgetRuntimePatch>> {
-    return {
-        ...current,
-        [runtimeScopeId]: {
-            ...(current[runtimeScopeId] ?? {}),
-            [elementId]: {
-                ...(current[runtimeScopeId]?.[elementId] ?? {}),
-                ...patch,
-            },
-        },
-    };
-}
-
-function applyWidgetRuntimePatch(input: {
-    setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
-    widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
-    runtimeScopeId: string;
-    elementId: string;
-    patch: DevModeWidgetRuntimePatch;
-}): void {
-    const next = mergeWidgetRuntimePatch(
-        input.widgetPatchesByScopeRef.current,
-        input.runtimeScopeId,
-        input.elementId,
-        input.patch,
-    );
-    input.widgetPatchesByScopeRef.current = next;
-    input.setWidgetPatchesByScope(next);
-}
-
-function cloneProps(props: Record<string, unknown> | undefined): Record<string, unknown> {
-    if (!props) {
-        return {};
-    }
-    try {
-        return JSON.parse(JSON.stringify(props)) as Record<string, unknown>;
-    } catch {
-        return {};
-    }
-}
-
-function keyboardBlueprintPayload(event: KeyboardEvent): Record<string, unknown> {
-    return {
-        key: event.key,
-        code: event.code,
-        repeat: event.repeat,
-        altKey: event.altKey,
-        ctrlKey: event.ctrlKey,
-        shiftKey: event.shiftKey,
-        metaKey: event.metaKey,
-    };
-}
-
-type SurfaceStateAccessors = {
-    get: (key: string) => unknown;
-    set: (key: string, value: unknown) => void;
-};
-
-type NlrCharacterLike = {
-    state?: {
-        name?: unknown;
-    };
-};
-
-type NlrLiveGameWithLastDialog = LiveGame & {
-    lastDialog?: {
-        speaker?: unknown;
-    } | null;
-};
-
-function coerceNametagValue(value: unknown): string | null {
-    if (value == null) {
-        return null;
-    }
-    const text = String(value);
-    return text.trim().length > 0 ? text : null;
-}
-
-function readNlrCharacterName(character: unknown): string | null {
-    return coerceNametagValue((character as NlrCharacterLike | null | undefined)?.state?.name);
-}
-
-function readNlrLastDialogSpeaker(liveGame: LiveGame | null): string | null {
-    const lastDialog = (liveGame as NlrLiveGameWithLastDialog | null)?.lastDialog;
-    return lastDialog ? coerceNametagValue(lastDialog.speaker) : null;
-}
-
-function waitForAnimationFrame(): Promise<void> {
-    return new Promise(resolve => requestAnimationFrame(() => resolve()));
-}
+type RuntimeHostAdapterBundle = HostAdapterBundle;
 
 function findSurface(bundle: DevModeBundle, surfaceId: string | undefined): UISurface | null {
     if (surfaceId) {
@@ -207,27 +122,6 @@ function findSurface(bundle: DevModeBundle, surfaceId: string | undefined): UISu
     }
     return bundle.ui.uidoc.surfaces.find(surface => surface.kind === "appSurface") ?? bundle.ui.uidoc.surfaces[0] ?? null;
 }
-
-function findStageSurfaceForSlot(document: UIDocument, slotId: UIStageSlotId): UIStageSurface | null {
-    const matches = document.surfaces.filter((surface): surface is UIStageSurface =>
-        surface.kind === "stageSurface" && surface.mount.slotId === slotId
-    );
-    if (matches.length > 1) {
-        console.warn(
-            `[Runtime][GameUI] Multiple active surfaces found for slot "${slotId}". ` +
-            `Using the first surface in document order: ${matches[0]?.id ?? "(unknown)"}.`,
-        );
-    }
-    return matches[0] ?? null;
-}
-
-function dialogSlotRuntimeScopeId(sessionId: string, surfaceId: string): string {
-    return `nlr:${sessionId}:slot:dialog:${surfaceId}`;
-}
-
-const staticRuntimeHostAdapter = (surface: UISurface): UIHostAdapter => ({
-    host: surface.host,
-});
 
 function createNavEntry(
     surfaceId: string,
@@ -241,7 +135,7 @@ function createNavEntry(
         key,
         surfaceId,
         runtimeScopeId: key,
-        props: cloneProps(props),
+        props: clonePageProps(props),
         direction,
         waitForExit,
         presentation,
@@ -739,7 +633,7 @@ function RuntimeDialogSlotSurface(props: {
     const hostAdapter = useMemo((): UIHostAdapter => {
         if (!core || !hostApi) {
             return {
-                ...staticRuntimeHostAdapter(surface),
+                ...staticSurfaceHostAdapter(surface),
                 gameUiRuntime: { slotId: "dialog" },
             };
         }
@@ -1718,7 +1612,7 @@ export function GameRuntimeApp() {
 
         const { width, height } = activeSurface.designSize;
         const sessionId = `${pack.bundle.bundleId}:${pack.bundle.revision}:${Date.now()}`;
-        const dialogSurface = findStageSurfaceForSlot(pack.bundle.ui.uidoc, "dialog");
+        const dialogSurface = findStageSurfaceForSlot(pack.bundle.ui.uidoc, "dialog", "Runtime");
         const dialogComponent = dialogSurface
             ? createRuntimeDialogComponent({
                   sessionId,
