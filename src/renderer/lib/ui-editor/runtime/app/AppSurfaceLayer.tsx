@@ -25,7 +25,11 @@ import type {
     SurfaceNavigationEntry,
     SurfaceNavigationPresentation,
 } from "@/lib/ui-editor/runtime/game/surfaceNavigationController";
-import type { SurfaceLifecycleManager } from "@/lib/ui-editor/blueprint-runtime/SurfaceLifecycleManager";
+import {
+    executeLifecycleCommands,
+    type LifecycleCommand,
+    type SurfaceLifecycleOrchestrator,
+} from "./lifecycle/surfaceLifecycleOrchestrator";
 import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
 import type { WidgetPatchesByScope } from "./widgetRuntimePatches";
 import type { HostAdapterBundle, PageProps } from "./types";
@@ -46,7 +50,7 @@ type AppSurfaceLayerCommonProps = {
     widgetPatchesByScope: WidgetPatchesByScope;
     widgetPatchesByScopeRef: MutableRefObject<WidgetPatchesByScope>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
-    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
+    lifecycleRef: MutableRefObject<SurfaceLifecycleOrchestrator>;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     blueprintLifecycleReady: boolean;
     reducedMotion: boolean;
@@ -107,19 +111,27 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
         }
     }, [hostAdapterBundle.hostAdapter]);
 
-    const dispatchSurfaceTransitionEvent = useCallback(
-        (eventName: "beforeSurfaceExit" | "afterSurfaceEnter") => {
-            transitionStateRef.current =
-                eventName === "beforeSurfaceExit"
-                    ? { isEntering: false, isExiting: true }
-                    : { isEntering: false, isExiting: false };
-            void hostAdapterBundle.hostAdapter.blueprintRuntime?.dispatchSurfaceBlueprintEvent?.(eventName);
-            setSurfaceLifecycleSignals(prev => ({
-                ...prev,
-                [eventName]: prev[eventName] + 1,
-            }));
+    const runTransitionCommands = useCallback(
+        (commands: readonly LifecycleCommand[]) => {
+            executeLifecycleCommands(commands, {
+                openScope: () => undefined,
+                closeScope: () => undefined,
+                dispatchSurfaceEvent: command => {
+                    void hostAdapterBundle.hostAdapter.blueprintRuntime?.dispatchSurfaceBlueprintEvent?.(command.eventName);
+                },
+                setTransitionState: state => {
+                    transitionStateRef.current = state;
+                },
+                bumpLifecycleSignal: signal => {
+                    setSurfaceLifecycleSignals(prev => ({
+                        ...prev,
+                        [signal]: prev[signal] + 1,
+                    }));
+                },
+                clearInteraction: scopeId => widgetRuntimeStore.clearInteractionStateForScope(scopeId),
+            });
         },
-        [hostAdapterBundle.hostAdapter],
+        [hostAdapterBundle.hostAdapter, widgetRuntimeStore],
     );
 
     const makeStateAccessors = useCallback(
@@ -157,29 +169,38 @@ export function AppSurfaceLayer(props: AppSurfaceLayerCommonProps & {
                 return;
             }
             setSurfaceInteractive(false);
-            widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
             onInteractionReadyChange(entry.key, false);
-            dispatchSurfaceTransitionEvent("beforeSurfaceExit");
+            runTransitionCommands(lifecycleRef.current.beforeExit(hostAdapterBundle.runtimeScopeId, surface.id));
         },
         [
-            dispatchSurfaceTransitionEvent,
             entry.key,
             hostAdapterBundle.runtimeScopeId,
+            lifecycleRef,
             onInteractionReadyChange,
-            widgetRuntimeStore,
+            runTransitionCommands,
+            surface.id,
         ],
     );
 
     const handleEnterComplete = useCallback(
         (entryKey: string) => {
             if (entryKey === entry.key) {
-                dispatchSurfaceTransitionEvent("afterSurfaceEnter");
+                runTransitionCommands(lifecycleRef.current.enterComplete(hostAdapterBundle.runtimeScopeId, surface.id));
                 setSurfaceInteractive(active);
                 onInteractionReadyChange(entry.key, active);
             }
             onEnterComplete(entryKey);
         },
-        [active, dispatchSurfaceTransitionEvent, entry.key, onEnterComplete, onInteractionReadyChange],
+        [
+            active,
+            entry.key,
+            hostAdapterBundle.runtimeScopeId,
+            lifecycleRef,
+            onEnterComplete,
+            onInteractionReadyChange,
+            runTransitionCommands,
+            surface.id,
+        ],
     );
 
     useEffect(() => {
