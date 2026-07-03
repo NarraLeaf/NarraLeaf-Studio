@@ -465,7 +465,8 @@ function RuntimeViewportFrame(props: {
     );
 }
 
-function RuntimeSurfaceLifecycleLayer(props: {
+// Exported for lifecycle characterization tests only.
+export function RuntimeSurfaceLifecycleLayer(props: {
     core: RuntimeCore | null;
     pack: GameRuntimePackV1;
     surface: UISurface;
