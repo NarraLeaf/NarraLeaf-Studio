@@ -1,7 +1,6 @@
 import {IPC, IPCType, OnlyMessage, OnlyRequest, SubNamespace} from "@shared/types/ipc";
 import {IPCEvents, RequestStatus} from "@shared/types/ipcEvents";
 import {ipcMain} from "electron";
-import { AppEventToken } from "@shared/types/app";
 import crypto from "crypto";
 
 export interface IPCWindow {
@@ -10,143 +9,71 @@ export interface IPCWindow {
 }
 
 export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
-    private static handling: Record<string, boolean> = {};
-    private static events: {
-        [key: string]: Array<{
-            handler: (data: any, resolve: (response: Exclude<any, never>) => void) => void,
-            win: IPCWindow
-        }>
-    } = {};
-    private static listeners: {
-        [key: string]: Array<{
-            token: AppEventToken,
-            win: IPCWindow
-        }>
-    } = {};
-
-    /**
-     * Remove all request & message listeners that belong to the specified window
-     * and clean up any ipcMain handlers/listeners if no listeners remain.
-     */
-    public static unregisterWindow(win: IPCWindow): void {
-        // Clean request handlers stored in events map
-        for (const ns of Object.keys(IPCHost.events)) {
-            IPCHost.events[ns] = IPCHost.events[ns].filter(listenerObj => listenerObj.win !== win);
-
-            if (IPCHost.events[ns].length === 0) {
-                delete IPCHost.events[ns];
-                if (IPCHost.handling[ns]) {
-                    delete IPCHost.handling[ns];
-                    try {
-                        ipcMain.removeHandler(ns);
-                    } catch {
-                        /* ignore */
-                    }
-                }
-            }
-        }
-
-        // Clean message listeners stored in listeners map and remove ipcMain listeners when empty
-        for (const eventName of Object.keys(IPCHost.listeners)) {
-            const leftover = IPCHost.listeners[eventName].filter(listenerObj => {
-                if (listenerObj.win === win) {
-                    listenerObj.token.cancel();
-                    return false;
-                }
-                return true;
-            });
-
-            if (leftover.length === 0) {
-                // remove all ipcMain listeners for this event name
-                ipcMain.removeAllListeners(eventName);
-                delete IPCHost.listeners[eventName];
-            } else {
-                IPCHost.listeners[eventName] = leftover;
-            }
-        }
-    }
-
-    static handle<K extends keyof OnlyRequest<IPCEvents, IPCType.Host>>(
-        namespace: string,
-        win: IPCWindow,
-        listener: (
-            data: IPCEvents[K]["data"],
-            resolve: (response: Exclude<IPCEvents[K]["response"], never>) => void
-        ) => Promise<void>
-    ): AppEventToken {
-        if (!IPCHost.handling[namespace]) {
-            IPCHost.handling[namespace] = true;
-            ipcMain.handle(namespace, async (event, data) => {
-                return await IPCHost.emitHandlerBySender(event.sender, namespace, data);
-            });
-        }
-        if (!IPCHost.events[namespace]) {
-            IPCHost.events[namespace] = [];
-        } else if (IPCHost.events[namespace].findIndex(listenerObj => listenerObj.win === win) !== -1) {
-            console.warn(`Duplicate listener for IPC request: ${namespace}`);
-        }
-        IPCHost.events[namespace].push({
-            handler: listener,
-            win
-        });
-
-        return {
-            cancel: () => {
-                const index = IPCHost.events[namespace].findIndex(listenerObj => listenerObj.win === win);
-                if (index !== -1) {
-                    IPCHost.events[namespace].splice(index, 1);
-                }
-            }
-        };
-    }
-
-    static off<K extends keyof OnlyMessage<IPCEvents, IPCType.Host>>(namespace: string, listener: (data: IPCEvents[K]["data"]) => void): void {
-        const index = IPCHost.events[namespace].findIndex(listenerObj => listenerObj.handler === listener);
-        if (index !== -1) {
-            IPCHost.events[namespace].splice(index, 1);
-        }
-    }
-
-    static emitHandlerBySender<K extends keyof OnlyRequest<IPCEvents, IPCType.Host>>(sender: Electron.WebContents, namespace: string, data: IPCEvents[K]["data"]): Promise<IPCEvents[K]["response"]> {
-        return new Promise(resolve => {
-            for (const listener of IPCHost.events[namespace] ?? []) {
-                if (listener.win.isDestroyed()) {
-                    throw new Error(`Window is destroyed. Tried to invoke handler for ${namespace}. (emitHandlerBySender)`);
-                }
-                if (listener.win.getWebContents() !== sender) {
-                    continue;
-                }
-                console.info(`[IPC] Invoking listener for ${namespace}`);
-                listener.handler(data, (data: IPCEvents[K]["response"]) => {
-                    resolve(data);
-                });
-                return;
-            }
-
-            throw new Error(`Unhandled IPC request: ${namespace}`);
-        });
-    }
+    public static readonly DefaultInvokeTimeoutMs = 10_000;
 
     constructor(namespace: string) {
         super(IPCType.Host, namespace);
     }
 
+    /**
+     * Register a process-wide request handler for this event. Called once per
+     * event at app startup; the callback resolves the target window from the
+     * sender webContents.
+     */
+    public handleGlobal<K extends keyof OnlyRequest<IPCEvents, IPCType.Host>>(
+        key: K,
+        handler: (sender: Electron.WebContents, data: IPCEvents[K]["data"]) => Promise<RequestStatus<any>>,
+    ): void {
+        ipcMain.handle(this.getEventName(key), (event, data) => handler(event.sender, data));
+    }
+
+    /**
+     * Register a process-wide message listener for this event. Called once per
+     * event at app startup; the callback resolves the target window from the
+     * sender webContents.
+     */
+    public onMessageGlobal<K extends keyof OnlyMessage<IPCEvents, IPCType.Host>>(
+        key: K,
+        handler: (sender: Electron.WebContents, data: IPCEvents[K]["data"]) => void,
+    ): void {
+        ipcMain.on(this.getEventName(key), (event, data) => handler(event.sender, data));
+    }
+
     invoke<K extends keyof OnlyRequest<IPCEvents, IPCType.Host>>(
         win: IPCWindow,
         key: K,
-        data: IPCEvents[K]["data"]
+        data: IPCEvents[K]["data"],
+        options?: { timeoutMs?: number }
     ): Promise<Exclude<IPCEvents[K]["response"], never>> {
+        const channel = this.getEventName(key);
         if (win.isDestroyed()) {
-            throw new Error(`Window is destroyed. Tried to invoke IPC request: ${this.getEventName(key)}. (invoke)`);
+            throw new Error(`Window is destroyed. Tried to invoke IPC request: ${channel}. (invoke)`);
         }
+        const timeoutMs = options?.timeoutMs ?? IPCHost.DefaultInvokeTimeoutMs;
         const requestId = crypto.randomUUID();
         const replyChannel = this.getEventName(key, SubNamespace.Reply) + "." + requestId;
-        win.getWebContents().send(this.getEventName(key), data, requestId);
-        return new Promise(resolve => {
+        const webContents = win.getWebContents();
+        webContents.send(channel, data, requestId);
+        return new Promise((resolve, reject) => {
+            const cleanup = () => {
+                ipcMain.removeListener(replyChannel, handler);
+                webContents.removeListener("destroyed", onDestroyed);
+                clearTimeout(timer);
+            };
             const handler = (_event: Electron.IpcMainEvent, response: Exclude<IPCEvents[K]["response"], never>) => {
+                cleanup();
                 resolve(response);
             };
+            const onDestroyed = () => {
+                cleanup();
+                reject(new Error(`Window closed before replying to IPC request: ${channel}`));
+            };
+            const timer = setTimeout(() => {
+                cleanup();
+                reject(new Error(`IPC invoke timed out after ${timeoutMs}ms: ${channel}`));
+            }, timeoutMs);
             ipcMain.once(replyChannel, handler);
+            webContents.once("destroyed", onDestroyed);
         });
     }
 
@@ -160,53 +87,6 @@ export class IPCHost extends IPC<IPCEvents, IPCType.Host> {
         }
 
         return win.getWebContents().send(this.getEventName(key), data);
-    }
-
-    onMessage<K extends keyof OnlyMessage<IPCEvents, IPCType.Host>>(
-        win: IPCWindow,
-        key: K,
-        listener: (data: IPCEvents[K]["data"]) => void
-    ): AppEventToken {
-        if (win.isDestroyed()) {
-            throw new Error(`Window is destroyed. Tried to register IPC event listener: ${this.getEventName(key)}. (onMessage)`);
-        }
-
-        const listenerFn = (event: Electron.IpcMainEvent, data: IPCEvents[K]["data"]) => {
-            if (win.isDestroyed()) {
-                throw new Error(`Possible memory leak. Trying to invoke listener for ${this.getEventName(key)} on a destroyed window.`);
-            }
-            if (event.sender !== win.getWebContents()) {
-                return;
-            }
-            listener(data);
-        };
-
-        const token: AppEventToken = {
-            cancel: () => {
-                ipcMain.removeListener(this.getEventName(key), listenerFn);
-            }
-        };
-        const eventName = this.getEventName(key);
-        if (!IPCHost.listeners[eventName]) {
-            IPCHost.listeners[eventName] = [];
-        }
-        IPCHost.listeners[eventName].push({
-            token,
-            win
-        });
-        ipcMain.on(this.getEventName(key), listenerFn);
-
-        return token;
-    }
-
-    onRequest<K extends keyof OnlyRequest<IPCEvents, IPCType.Host>>(
-        win: IPCWindow,
-        key: K,
-        listener: (data: IPCEvents[K]["data"]) => Promise<RequestStatus<Exclude<IPCEvents[K]["response"], never>>>
-    ): AppEventToken {
-        return IPCHost.handle(this.getEventName(key), win, async (data, resolve) => {
-            resolve(await listener(data));
-        });
     }
 
     public failed<T>(err: unknown): RequestStatus<T> {

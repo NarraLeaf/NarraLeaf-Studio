@@ -1,5 +1,5 @@
 // Electron
-import { app } from "electron/main";
+import { app, dialog } from "electron/main";
 
 // Utils
 import fs from "fs";
@@ -33,11 +33,13 @@ export interface BaseAppConfig { }
 
 export type AppEvents = {
     "ready": [];
+    "ready-failed": [error: Error];
 };
 
 export class BaseApp {
     public static Events = {
-        Ready: "ready"
+        Ready: "ready",
+        ReadyFailed: "ready-failed"
     } as const;
 
     public readonly electronApp: Electron.App;
@@ -55,6 +57,7 @@ export class BaseApp {
     public readonly pluginManager: PluginManager;
 
     private initialized: boolean = false;
+    private readyError: Error | null = null;
     protected appInfo: AppInfo | null = null;
     private readonly commandLine = parseMainCommandLine(process.argv);
 
@@ -83,7 +86,7 @@ export class BaseApp {
         this.menuManager = new MenuManager(this);
         this.storageManager = new StorageManager(this);
 
-        this.prepare();
+        void this.prepare().catch((error) => this.failBootstrap(error));
     }
 
     public onReady(fn: (...args: AppEvents["ready"]) => void): AppEventToken {
@@ -110,10 +113,23 @@ export class BaseApp {
      * ```
      */
     public whenReady(): Promise<void> {
-        return new Promise((resolve) => {
-            this.events.once(BaseApp.Events.Ready, () => {
+        if (this.initialized) {
+            return Promise.resolve();
+        }
+        if (this.readyError) {
+            return Promise.reject(this.readyError);
+        }
+        return new Promise((resolve, reject) => {
+            const onReady = () => {
+                this.events.off(BaseApp.Events.ReadyFailed, onFailed);
                 resolve();
-            });
+            };
+            const onFailed = (error: Error) => {
+                this.events.off(BaseApp.Events.Ready, onReady);
+                reject(error);
+            };
+            this.events.once(BaseApp.Events.Ready, onReady);
+            this.events.once(BaseApp.Events.ReadyFailed, onFailed);
         });
     }
 
@@ -199,8 +215,18 @@ export class BaseApp {
         this.electronApp.quit();
     }
 
-    public crash(error: string): void {
-        /* TODO: Implement crash handling */
+    public crash(error: string | Error): void {
+        const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+        this.logger.error("[App] Fatal error, terminating:", message);
+        try {
+            if (this.electronApp.isReady()) {
+                dialog.showErrorBox(`${APP_DISPLAY_NAME} — Fatal Error`, message);
+            } else {
+                console.error(message);
+            }
+        } finally {
+            this.electronApp.exit(1);
+        }
     }
 
     public isDevMode(): boolean {
@@ -257,7 +283,7 @@ export class BaseApp {
         this.logger.info(`[CDP] Enabled on port ${cdp.port}.`);
     }
 
-    private async prepare() {
+    private async prepare(): Promise<void> {
         if (this.initialized) {
             return;
         }
@@ -274,23 +300,41 @@ export class BaseApp {
         this.pluginPermissionManager.initialize();
         this.pluginManager.initialize();
 
-        this.electronApp.whenReady().then(async () => {
-            // Retrieve app info
-            this.appInfo = await this.constructAppInfo();
-            this.configurePlatformAppIcon();
-
-            this.initialized = true;
-            this.logger.info("App initialization completed");
-
-            this.emit(BaseApp.Events.Ready);
-        });
-
         if (this.isDevMode()) {
-            // Listen for reload events from the development server
             this.logger.info("App is running in development mode");
+            void this.setupDevReloadSocket();
+        }
 
+        await this.electronApp.whenReady();
+
+        // Retrieve app info
+        this.appInfo = await this.constructAppInfo();
+        this.configurePlatformAppIcon();
+
+        this.initialized = true;
+        this.logger.info("App initialization completed");
+
+        this.emit(BaseApp.Events.Ready);
+    }
+
+    private failBootstrap(error: unknown): void {
+        const normalized = error instanceof Error ? error : new Error(String(error));
+        this.readyError = normalized;
+        this.emit(BaseApp.Events.ReadyFailed, normalized);
+        this.crash(normalized);
+    }
+
+    /**
+     * Connect to the development reload server. Failures are never fatal:
+     * a missing dev server only disables auto-reload.
+     */
+    private async setupDevReloadSocket(): Promise<void> {
+        try {
             const { WebSocket } = await import("ws");
             const ws = new WebSocket("ws://localhost:5588");
+            ws.onerror = (event) => {
+                this.logger.warn("[Dev] Reload server not reachable; auto-reload disabled.", event.message);
+            };
             ws.onmessage = (event) => {
                 const target = this.parseDevReloadTarget(event.data);
                 this.windowManager.getWindows().forEach((w) => {
@@ -311,6 +355,8 @@ export class BaseApp {
                     }
                 });
             };
+        } catch (error) {
+            this.logger.warn("[Dev] Failed to set up reload socket:", error);
         }
     }
 

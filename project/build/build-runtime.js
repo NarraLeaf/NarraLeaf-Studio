@@ -79,12 +79,38 @@ function runtimeAliasPlugin() {
             shim('doubleClickDebug.ts'),
         ],
     ]);
+    // The game runtime bundle may only reach Studio renderer code through:
+    //   1. an explicit shim alias above,
+    //   2. the shared ui-editor tree, or
+    //   3. a triaged pure module (functions/constants over @shared types only).
+    // Everything else is a Studio module and must fail the build instead of
+    // silently falling through to the tsconfig "@/*" path mapping.
+    const allowedPrefixes = ['@/lib/ui-editor/'];
+    const allowedExact = new Set([
+        // Pure blueprint helpers (no services, no state); candidates to move
+        // under @/lib/ui-editor or @shared eventually.
+        '@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs',
+        '@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation',
+        '@/lib/workspace/services/ui-editor/blueprint/ownerKeys',
+    ]);
     return {
         name: 'runtime-alias',
         setup(build) {
             build.onResolve({ filter: /^@\/(?:apps|lib)\/.*$/ }, args => {
                 const target = exactAliases.get(args.path);
-                return target ? { path: target } : undefined;
+                if (target) {
+                    return { path: target };
+                }
+                if (allowedPrefixes.some(prefix => args.path.startsWith(prefix)) || allowedExact.has(args.path)) {
+                    return undefined; // fall through to tsconfig paths
+                }
+                return {
+                    errors: [{
+                        text: `Runtime bundle must not import "${args.path}" (imported by ${args.importer}). ` +
+                            `Add a shim under src/runtime/renderer/shims + an alias in build-runtime.js, ` +
+                            `or move the code into a shared module under @/lib/ui-editor.`,
+                    }],
+                };
             });
         },
     };

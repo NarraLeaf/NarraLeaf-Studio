@@ -61,8 +61,14 @@ import {
     dispatchGlobalBlueprintEvent,
     dispatchSurfaceBlueprintEvent,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
+import { subscribeGamePreferenceChanges } from "@/lib/ui-editor/blueprint-runtime/gamePreferenceSubscription";
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
-import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import {
+    compileStudioStoryToNlr,
+    createEmptyCompiledNlrStory,
+    type CompiledNlrStory,
+} from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { resolveDefaultLaunchScene } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
 import { collectDialogFlushElementIds } from "@/lib/ui-editor/runtime/game/dialogFlushTargets";
@@ -76,6 +82,8 @@ import {
     preloadRuntimePackAssets,
     type RuntimeSurfacePreloadResult,
 } from "./surfaceResourcePreload";
+
+const NLR_BOOT_PRELOAD_TIMEOUT_MS = 15_000;
 
 type RuntimeCore = BlueprintRuntimeCore;
 
@@ -1114,6 +1122,7 @@ export function GameRuntimeApp() {
     const [prepaintReadyKeys, setPrepaintReadyKeys] = useState<Set<string>>(() => new Set());
     const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
     const [nlrSession, setNlrSession] = useState<NlrStageSession | null>(null);
+    const [nlrPreloadDone, setNlrPreloadDone] = useState(false);
     const [gameStageVisible, setGameStageVisible] = useState(false);
     const [studioPageHiddenForGame, setStudioPageHiddenForGame] = useState(false);
     const [gameHiddenNavKeys, setGameHiddenNavKeys] = useState<Set<string>>(() => new Set());
@@ -1137,7 +1146,16 @@ export function GameRuntimeApp() {
     const lifecycleRef = useRef(new SurfaceLifecycleManager());
     const appBootFiredRef = useRef<string | null>(null);
     const gameReadyFiredRef = useRef<string | null>(null);
-    const storyEntryStartedRef = useRef<string | null>(null);
+    const nlrBootStartedRef = useRef<string | null>(null);
+    // Whether the currently mounted NLR environment has actually entered a game (newGame() called).
+    // The boot preload mounts the environment (fires gameReady) but does NOT enter — this stays false
+    // until Start Game / Load Save.
+    const gameEnteredRef = useRef(false);
+    // Resolves when the Player's preload pass finishes (onEnvironmentReady), gating the surface system.
+    const pendingEnvReadyRef = useRef(new Map<string, { resolve: () => void; reject: (error: Error) => void }>());
+    const startStoryInGameRef = useRef<
+        ((request: DevModeStartStoryRequest, options?: { forceReinit?: boolean }) => Promise<void>) | null
+    >(null);
     const cleanupBundleIdRef = useRef<string | null>(null);
     const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
     const activeStoryRevisionRef = useRef<number | null>(null);
@@ -1146,6 +1164,11 @@ export function GameRuntimeApp() {
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
+    const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
+    const preferenceSnapshotRef = useRef<Record<string, unknown>>({});
+    const dispatchPreferenceChangeRef = useRef<
+        ((key: string, value: unknown, previousValue: unknown) => void) | null
+    >(null);
     const currentDialogNametagRef = useRef<string | null>(null);
     const prefersReducedMotion = useReducedMotion();
 
@@ -1455,6 +1478,8 @@ export function GameRuntimeApp() {
     const rejectPendingGameStarts = useCallback((gameError: Error) => {
         pendingGameStartsRef.current.forEach(pending => pending.reject(gameError));
         pendingGameStartsRef.current.clear();
+        pendingEnvReadyRef.current.forEach(pending => pending.reject(gameError));
+        pendingEnvReadyRef.current.clear();
     }, []);
 
     const clearCurrentDialogNametag = useCallback(() => {
@@ -1550,8 +1575,12 @@ export function GameRuntimeApp() {
         rejectPendingGameStarts(new Error("Quit Game"));
         activeStoryRequestRef.current = null;
         activeStoryRevisionRef.current = null;
+        gameEnteredRef.current = false;
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
+        nlrPreferenceTokenRef.current?.cancel();
+        nlrPreferenceTokenRef.current = null;
+        preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
@@ -1590,6 +1619,7 @@ export function GameRuntimeApp() {
         }
         liveGame.game.router.clear().cleanHistory();
         liveGame.newGame().deserialize(record.savedGame as SavedGame);
+        gameEnteredRef.current = true;
         await liveGame.waitForRouterExit().promise;
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
@@ -1631,9 +1661,11 @@ export function GameRuntimeApp() {
         return toBlueprintImageAsset(registerDevModeSavePreviewImage(id, capture));
     }, [bridge]);
 
-    const startStoryInGame = useCallback(async (request: DevModeStartStoryRequest): Promise<void> => {
-        if (!pack || !activeSurface || !core) {
-            throw new Error("Start Game: runtime surface is not available");
+    const compileStoryRequest = useCallback(async (
+        request: DevModeStartStoryRequest,
+    ): Promise<CompiledNlrStory> => {
+        if (!pack) {
+            throw new Error("Start Game: runtime pack is not available");
         }
         const storyId = String(request.storyId ?? "").trim();
         const sceneId = String(request.sceneId ?? "").trim();
@@ -1652,7 +1684,6 @@ export function GameRuntimeApp() {
         if (!storyDocument.scenes[sceneId]) {
             throw new Error(`Start Game: scene not found: ${sceneId}`);
         }
-
         const compiled = await compileStudioStoryToNlr({
             document: storyDocument,
             sceneId,
@@ -1665,10 +1696,24 @@ export function GameRuntimeApp() {
                 bridge?.log(diagnostic.level === "error" ? "error" : "warning", diagnostic.message);
             }
         }
+        return compiled;
+    }, [bridge, pack]);
 
-        rejectPendingGameStarts(new Error("Start Game superseded by a newer session"));
-        activeStoryRequestRef.current = { storyId, sceneId };
+    // Mount the NLR environment (Game/LiveGame + Player via NlrStageLayer) for the given compiled
+    // story and initialise it: gameReady fires (via onLiveGameReady) and assets preheat, but the
+    // game does NOT enter — liveGame.newGame() is only called later by enterMountedGame(). Resolves
+    // once the Player preload pass completes (onEnvironmentReady). Kept hidden behind the surfaces.
+    const mountNlrSession = useCallback(async (
+        compiled: CompiledNlrStory,
+        options: { storyRequest: DevModeStartStoryRequest | null },
+    ): Promise<string> => {
+        if (!pack || !activeSurface || !core) {
+            throw new Error("Start Game: runtime surface is not available");
+        }
+        rejectPendingGameStarts(new Error("NLR environment superseded by a newer session"));
+        activeStoryRequestRef.current = options.storyRequest;
         activeStoryRevisionRef.current = pack.bundle.revision;
+        gameEnteredRef.current = false;
 
         const { width, height } = activeSurface.designSize;
         const sessionId = `${pack.bundle.bundleId}:${pack.bundle.revision}:${Date.now()}`;
@@ -1685,7 +1730,9 @@ export function GameRuntimeApp() {
                   openSurfaceWithTransition: openSurface,
                   closeLayerWithTransition: closeLayer,
                   quitApplication,
-                  startStoryInGame,
+                  startStoryInGame: request =>
+                      startStoryInGameRef.current?.(request) ??
+                      Promise.reject(new Error("Start Game: runtime is not ready")),
                   writeSaveInGame: (id, metadata, screenshot) => writeSave(id, metadata, screenshot),
                   loadSaveInGame: id => loadSave(id),
                   deleteSaveInGame: id => deleteSave(id),
@@ -1719,8 +1766,8 @@ export function GameRuntimeApp() {
             ...(dialogComponent ? { dialog: dialogComponent, dialogWidth: width, dialogHeight: height } : {}),
         });
         game.keyMap.setKeyBinding(KeyBindingType.nextAction, null);
-        const ready = new Promise<void>((resolve, reject) => {
-            pendingGameStartsRef.current.set(sessionId, { resolve, reject });
+        const environmentReady = new Promise<void>((resolve, reject) => {
+            pendingEnvReadyRef.current.set(sessionId, { resolve, reject });
         });
         setGameStageVisible(false);
         clearGameHiddenStudioPages();
@@ -1733,13 +1780,10 @@ export function GameRuntimeApp() {
             width,
             height,
         });
-        await ready;
-        await waitForAnimationFrame();
-        setGameStageVisible(true);
-        hideCurrentStudioPagesForGame();
+        await environmentReady;
+        return sessionId;
     }, [
         activeSurface,
-        bridge,
         clearGameHiddenStudioPages,
         closeLayer,
         core,
@@ -1748,7 +1792,6 @@ export function GameRuntimeApp() {
         getGamePreferenceInGame,
         getSaveMetadata,
         getSavePreview,
-        hideCurrentStudioPagesForGame,
         hideDialogInGame,
         isInGame,
         lifecycleRef,
@@ -1772,23 +1815,69 @@ export function GameRuntimeApp() {
         writeSave,
     ]);
 
-    useEffect(() => {
-        if (!runtimeReady || !pack || !core || pack.entry.kind !== "story" || !activeSurface) {
-            return;
+    // Enter (start playing) the currently mounted environment: call newGame() on the live game,
+    // wait for the first scene to be visually ready, then reveal the stage over the surfaces.
+    const enterMountedGame = useCallback(async (): Promise<void> => {
+        const liveGame = nlrLiveGameRef.current;
+        const sessionId = nlrLiveGameSessionIdRef.current;
+        if (!liveGame || !sessionId) {
+            throw new Error("Start Game: game environment is not ready");
         }
-        if (activeEntry && !prepaintReadyKeys.has(activeEntry.key)) {
-            return;
-        }
-        const sig = `${pack.bundle.bundleId}:${pack.bundle.revision}:${pack.entry.storyId}:${pack.entry.sceneId}`;
-        if (storyEntryStartedRef.current === sig) {
-            return;
-        }
-        storyEntryStartedRef.current = sig;
-        void startStoryInGame({ storyId: pack.entry.storyId, sceneId: pack.entry.sceneId }).catch(err => {
-            storyEntryStartedRef.current = null;
-            bridge?.log("error", normalizeError(err));
+        const sceneReady = new Promise<void>((resolve, reject) => {
+            pendingGameStartsRef.current.set(sessionId, { resolve, reject });
         });
-    }, [activeEntry, activeSurface, bridge, core, pack, prepaintReadyKeys, runtimeReady, startStoryInGame]);
+        liveGame.newGame();
+        gameEnteredRef.current = true;
+        await sceneReady;
+        await waitForAnimationFrame();
+        setGameStageVisible(true);
+        hideCurrentStudioPagesForGame();
+    }, [hideCurrentStudioPagesForGame]);
+
+    const startStoryInGame = useCallback(async (
+        request: DevModeStartStoryRequest,
+        options?: { forceReinit?: boolean },
+    ): Promise<void> => {
+        if (!pack || !activeSurface || !core) {
+            throw new Error("Start Game: runtime surface is not available");
+        }
+        const storyId = String(request.storyId ?? "").trim();
+        const sceneId = String(request.sceneId ?? "").trim();
+
+        // Fast path: the environment is already mounted with this story from the boot preload and
+        // has not entered a game yet. Just enter it (newGame + reveal) — no recompile, no re-mount,
+        // and gameReady does not fire again.
+        if (
+            !options?.forceReinit &&
+            nlrLiveGameRef.current &&
+            !gameEnteredRef.current &&
+            activeStoryRequestRef.current?.storyId === storyId &&
+            activeStoryRequestRef.current?.sceneId === sceneId
+        ) {
+            await enterMountedGame();
+            return;
+        }
+
+        const compiled = await compileStoryRequest({ storyId, sceneId });
+        await mountNlrSession(compiled, { storyRequest: { storyId, sceneId } });
+        await enterMountedGame();
+    }, [activeSurface, compileStoryRequest, core, enterMountedGame, mountNlrSession, pack]);
+
+    // Boot-time init of the default scene environment: mount + preheat, WITHOUT entering the game.
+    const initDefaultSceneEnvironment = useCallback(async (
+        request: DevModeStartStoryRequest,
+    ): Promise<void> => {
+        const compiled = await compileStoryRequest(request);
+        await mountNlrSession(compiled, { storyRequest: request });
+    }, [compileStoryRequest, mountNlrSession]);
+
+    const startEmptyNlrEnvironment = useCallback(async (): Promise<void> => {
+        await mountNlrSession(createEmptyCompiledNlrStory(), { storyRequest: null });
+    }, [mountNlrSession]);
+
+    useEffect(() => {
+        startStoryInGameRef.current = startStoryInGame;
+    }, [startStoryInGame]);
 
     const createHostAdapterBundle = useCallback((entry: RuntimeNavEntry, surface: UISurface) => {
         if (!pack || !core) {
@@ -1900,6 +1989,73 @@ export function GameRuntimeApp() {
         }
         return createHostAdapterBundle(activeEntry, activeSurface);
     }, [activeEntry, activeSurface, createHostAdapterBundle]);
+
+    // Boot the NarraLeaf React environment as a load step BEFORE the surface system starts:
+    // preload the configured default scene (or launch directly into a story entry), otherwise
+    // boot an empty NLR environment. gameReady fires here, once, at boot. Requires
+    // hostAdapterBundle so NlrStageLayer mounts and can drive onLiveGameReady.
+    useEffect(() => {
+        if (!runtimeReady || !pack || !core || !activeSurface || !hostAdapterBundle) {
+            return;
+        }
+        const sig = pack.bundle.bundleId;
+        if (nlrBootStartedRef.current === sig) {
+            return;
+        }
+        nlrBootStartedRef.current = sig;
+
+        let cancelled = false;
+        const finish = () => {
+            if (!cancelled) {
+                setNlrPreloadDone(true);
+            }
+        };
+        const timeoutId = setTimeout(() => {
+            bridge?.log("warning", "[Runtime] NLR environment preload timed out; starting surface system");
+            finish();
+        }, NLR_BOOT_PRELOAD_TIMEOUT_MS);
+
+        void (async () => {
+            try {
+                if (pack.entry.kind === "story") {
+                    // A direct story launch enters the game immediately after the environment mounts.
+                    await startStoryInGame({ storyId: pack.entry.storyId, sceneId: pack.entry.sceneId });
+                } else {
+                    // Menu launch: initialise the environment (gameReady) and preheat the default
+                    // scene, but do NOT enter the game — the player stays on the menu.
+                    const defaultScene = resolveDefaultLaunchScene(pack.bundle);
+                    if (defaultScene) {
+                        await initDefaultSceneEnvironment(defaultScene);
+                    } else {
+                        await startEmptyNlrEnvironment();
+                    }
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    nlrBootStartedRef.current = null;
+                    bridge?.log("error", normalizeError(err));
+                }
+            } finally {
+                clearTimeout(timeoutId);
+                finish();
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timeoutId);
+        };
+    }, [
+        activeSurface,
+        bridge,
+        core,
+        hostAdapterBundle,
+        initDefaultSceneEnvironment,
+        pack,
+        runtimeReady,
+        startEmptyNlrEnvironment,
+        startStoryInGame,
+    ]);
 
     const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
@@ -2059,21 +2215,35 @@ export function GameRuntimeApp() {
         lifecycleRef.current.reset();
         appBootFiredRef.current = null;
         gameReadyFiredRef.current = null;
-        storyEntryStartedRef.current = null;
     }, [pack?.bundle.bundleId, pack?.bundle.revision]);
 
     useEffect(() => {
-        if (!pack || !activeStoryRequestRef.current) {
+        if (!pack || activeStoryRevisionRef.current === null) {
             return;
         }
         if (activeStoryRevisionRef.current === pack.bundle.revision) {
             return;
         }
+        // Hot reload (new bundle revision): re-mount the environment with the recompiled story,
+        // preserving whether the game had already been entered.
         const request = activeStoryRequestRef.current;
-        void startStoryInGame(request).catch(err => {
-            bridge?.log("error", `[Runtime] Story hot reload restart failed: ${normalizeError(err)}`);
-        });
-    }, [bridge, pack, startStoryInGame]);
+        const wasEntered = gameEnteredRef.current;
+        void (async () => {
+            try {
+                if (request) {
+                    const compiled = await compileStoryRequest(request);
+                    await mountNlrSession(compiled, { storyRequest: request });
+                    if (wasEntered) {
+                        await enterMountedGame();
+                    }
+                } else {
+                    await startEmptyNlrEnvironment();
+                }
+            } catch (err) {
+                bridge?.log("error", `[Runtime] NLR hot reload restart failed: ${normalizeError(err)}`);
+            }
+        })();
+    }, [bridge, compileStoryRequest, enterMountedGame, mountNlrSession, pack, startEmptyNlrEnvironment]);
 
     useEffect(() => {
         const nextBundleId = pack?.bundle.bundleId ?? null;
@@ -2090,12 +2260,18 @@ export function GameRuntimeApp() {
         rejectPendingGameStarts(new Error("Preview runtime session changed"));
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
+        nlrPreferenceTokenRef.current?.cancel();
+        nlrPreferenceTokenRef.current = null;
+        preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         clearCurrentDialogNametag();
         clearDevModeSavePreviewImages();
+        nlrBootStartedRef.current = null;
+        gameEnteredRef.current = false;
+        setNlrPreloadDone(false);
         setNlrSession(null);
         setGameStageVisible(false);
         clearGameHiddenStudioPages();
@@ -2109,6 +2285,9 @@ export function GameRuntimeApp() {
     useEffect(() => {
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
+        nlrPreferenceTokenRef.current?.cancel();
+        nlrPreferenceTokenRef.current = null;
+        preferenceSnapshotRef.current = {};
         nlrDialogVirtualClickTargetRef.current = null;
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
@@ -2120,7 +2299,9 @@ export function GameRuntimeApp() {
         if (!runtimeReady || !pack || !core || !hostAdapterBundle) {
             return;
         }
-        if (activeEntry && !prepaintReadyKeys.has(activeEntry.key)) {
+        // Wait for the initial surface to prepaint, unless the game stage has already been
+        // revealed (a direct story launch covers the surfaces, which then never prepaint).
+        if (activeEntry && !prepaintReadyKeys.has(activeEntry.key) && !gameStageVisible) {
             return;
         }
         const sig = `${pack.bundle.bundleId}:${pack.bundle.revision}`;
@@ -2138,7 +2319,7 @@ export function GameRuntimeApp() {
             setSurfaceState: (key, value) => surfaceStore.set(key, value),
             executionManager: core.executionManager,
         });
-    }, [activeEntry, core, hostAdapterBundle, pack, prepaintReadyKeys, runtimeReady]);
+    }, [activeEntry, core, gameStageVisible, hostAdapterBundle, pack, prepaintReadyKeys, runtimeReady]);
 
     useEffect(() => {
         if (!runtimeReady || !pack || !core || !hostAdapterBundle || !activeSurface || !activeSurfaceKeyboardReady) {
@@ -2187,6 +2368,43 @@ export function GameRuntimeApp() {
         };
     }, [activeSurface, activeSurfaceKeyboardReady, bridge, core, hostAdapterBundle, pack, runtimeReady]);
 
+    // Route game preference changes through a ref-held closure so the subscription
+    // created in onLiveGameReady always dispatches with the current surface context.
+    useEffect(() => {
+        if (!runtimeReady || !pack || !core || !hostAdapterBundle || !activeSurface) {
+            dispatchPreferenceChangeRef.current = null;
+            return;
+        }
+        dispatchPreferenceChangeRef.current = (key, value, previousValue) => {
+            const eventPayload = { key, value: value ?? null, previousValue: previousValue ?? null };
+            const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
+            void dispatchGlobalBlueprintEvent({
+                blueprintDocument: pack.bundle.ui.localBlueprints,
+                eventName: "gamePreferenceChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            }).then(() => dispatchSurfaceBlueprintEvent({
+                blueprintDocument: pack.bundle.ui.localBlueprints,
+                surfaceId: activeSurface.id,
+                runtimeScopeId: hostAdapterBundle.runtimeScopeId,
+                eventName: "gamePreferenceChanged",
+                eventPayload,
+                hostAdapter: hostAdapterBundle.hostAdapter,
+                debug: core.debug,
+                getSurfaceState: stateKey => surfaceStore.get(stateKey),
+                setSurfaceState: (stateKey, stateValue) => surfaceStore.set(stateKey, stateValue),
+                executionManager: core.executionManager,
+            })).catch(err => bridge?.log("error", normalizeError(err)));
+        };
+        return () => {
+            dispatchPreferenceChangeRef.current = null;
+        };
+    }, [activeSurface, bridge, core, hostAdapterBundle, pack, runtimeReady]);
+
     if (error) {
         return <RuntimeErrorScreen message={error} />;
     }
@@ -2195,6 +2413,83 @@ export function GameRuntimeApp() {
     }
     if (!runtimeReady || !core || !hostAdapterBundle) {
         return <RuntimeViewportFrame surface={activeSurface} scale={scale} />;
+    }
+
+    // The NLR stage drives the boot preload (onLiveGameReady → gameReady) and stays mounted
+    // across both the boot-loading frame and the surface system.
+    const nlrStageLayer = (
+        <NlrStageLayer
+            session={nlrSession}
+            interactive={gameStageVisible}
+            onFirstSceneReady={sessionId => {
+                const pending = pendingGameStartsRef.current.get(sessionId);
+                if (!pending) {
+                    return;
+                }
+                pendingGameStartsRef.current.delete(sessionId);
+                pending.resolve();
+            }}
+            onEnvironmentReady={sessionId => {
+                bridge?.log("info", `[Runtime] NLR environment assets preheated: ${sessionId}`);
+            }}
+            onLiveGameReady={async (sessionId, liveGame) => {
+                if (nlrSession?.id !== sessionId) {
+                    return;
+                }
+                nlrCharacterPromptTokenRef.current?.cancel();
+                nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(({ character }) => {
+                    const nametag = readNlrCharacterName(character);
+                    currentDialogNametagRef.current = nametag;
+                    core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
+                });
+                nlrPreferenceTokenRef.current?.cancel();
+                nlrPreferenceTokenRef.current = subscribeGamePreferenceChanges(
+                    liveGame,
+                    preferenceSnapshotRef,
+                    (key, value, previousValue) => dispatchPreferenceChangeRef.current?.(key, value, previousValue),
+                );
+                nlrLiveGameRef.current = liveGame;
+                nlrLiveGameSessionIdRef.current = sessionId;
+                try {
+                    // Environment ready: LiveGame exists. Dispatch gameReady so global blueprints can
+                    // load game settings — BEFORE the game is ever entered (no newGame yet).
+                    if (gameReadyFiredRef.current !== sessionId) {
+                        gameReadyFiredRef.current = sessionId;
+                        const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
+                        await dispatchGlobalBlueprintEvent({
+                            blueprintDocument: pack.bundle.ui.localBlueprints,
+                            eventName: "gameReady",
+                            hostAdapter: hostAdapterBundle.hostAdapter,
+                            debug: core.debug,
+                            getSurfaceState: key => surfaceStore.get(key),
+                            setSurfaceState: (key, value) => surfaceStore.set(key, value),
+                            executionManager: core.executionManager,
+                        });
+                    }
+                } finally {
+                    // Unblock the mount (and the surface system) once the environment is initialised
+                    // and gameReady has run. The game has NOT entered any story.
+                    const pending = pendingEnvReadyRef.current.get(sessionId);
+                    if (pending) {
+                        pendingEnvReadyRef.current.delete(sessionId);
+                        pending.resolve();
+                    }
+                }
+            }}
+            onError={err => {
+                rejectPendingGameStarts(err);
+                bridge?.log("error", normalizeError(err));
+            }}
+        />
+    );
+
+    // Surface system starts only after the NLR environment has finished its boot preload.
+    if (!nlrPreloadDone) {
+        return (
+            <RuntimeViewportFrame surface={activeSurface} scale={scale}>
+                {nlrStageLayer}
+            </RuntimeViewportFrame>
+        );
     }
 
     const visibleSurfaceEntries = pack.bundle.ui.uidoc.surfaces.length > 0
@@ -2209,49 +2504,7 @@ export function GameRuntimeApp() {
 
     return (
         <RuntimeViewportFrame surface={activeSurface} scale={scale}>
-            <NlrStageLayer
-                session={nlrSession}
-                interactive={gameStageVisible}
-                onFirstSceneReady={sessionId => {
-                    const pending = pendingGameStartsRef.current.get(sessionId);
-                    if (!pending) {
-                        return;
-                    }
-                    pendingGameStartsRef.current.delete(sessionId);
-                    pending.resolve();
-                }}
-                onLiveGameReady={async (sessionId, liveGame) => {
-                    if (nlrSession?.id !== sessionId) {
-                        return;
-                    }
-                    nlrCharacterPromptTokenRef.current?.cancel();
-                    nlrCharacterPromptTokenRef.current = liveGame.onCharacterPrompt(({ character }) => {
-                        const nametag = readNlrCharacterName(character);
-                        currentDialogNametagRef.current = nametag;
-                        core.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, nametag);
-                    });
-                    nlrLiveGameRef.current = liveGame;
-                    nlrLiveGameSessionIdRef.current = sessionId;
-                    if (gameReadyFiredRef.current === sessionId) {
-                        return;
-                    }
-                    gameReadyFiredRef.current = sessionId;
-                    const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
-                    await dispatchGlobalBlueprintEvent({
-                        blueprintDocument: pack.bundle.ui.localBlueprints,
-                        eventName: "gameReady",
-                        hostAdapter: hostAdapterBundle.hostAdapter,
-                        debug: core.debug,
-                        getSurfaceState: key => surfaceStore.get(key),
-                        setSurfaceState: (key, value) => surfaceStore.set(key, value),
-                        executionManager: core.executionManager,
-                    });
-                }}
-                onError={err => {
-                    rejectPendingGameStarts(err);
-                    bridge?.log("error", normalizeError(err));
-                }}
-            />
+            {nlrStageLayer}
             <div className="pointer-events-none absolute inset-0 z-10">
                 <AnimatePresence
                     custom={transitionDirectionRef.current}

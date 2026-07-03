@@ -33,6 +33,21 @@ const KEYBOARD_EVENTS: readonly LifecycleEventDef[] = [
     },
 ];
 
+/**
+ * Fires when a NarraLeaf game preference changes on the active live game.
+ * Backed by NarraLeaf React `game.preference.onPreferenceChange`. Shared by the
+ * global and surface owners so settings pages can react without a live game hook.
+ */
+const GAME_PREFERENCE_EVENTS: readonly LifecycleEventDef[] = [
+    {
+        id: "gamePreferenceChanged",
+        displayName: "Game preference changed",
+        description: "Fires when a NarraLeaf game preference (e.g. BGM Volume) changes on the active live game.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.preferenceChanged", "blueprint.event.head.anyPreferenceChanged"],
+    },
+];
+
 // ---------------------------------------------------------------------------
 // Global (app-level) lifecycle
 // ---------------------------------------------------------------------------
@@ -52,6 +67,7 @@ export const GLOBAL_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
         headNodeTypes: ["blueprint.event.head.gameReady"],
     },
     ...KEYBOARD_EVENTS,
+    ...GAME_PREFERENCE_EVENTS,
 ];
 
 export const GLOBAL_LIFECYCLE_API: OwnerLifecycleApi = {
@@ -104,6 +120,7 @@ export const SURFACE_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
         headNodeTypes: ["blueprint.event.head.rightClick"],
     },
     ...KEYBOARD_EVENTS,
+    ...GAME_PREFERENCE_EVENTS,
 ];
 
 export const SURFACE_LIFECYCLE_API: OwnerLifecycleApi = {

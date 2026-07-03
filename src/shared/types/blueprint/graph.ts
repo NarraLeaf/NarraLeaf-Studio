@@ -34,6 +34,8 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN = "blueprint.event.head
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP = "blueprint.event.head.anyKeyUp" as const;
 /** Persisted on On Key event heads: keyboard binding string to match, case-insensitive. */
 export const BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME = "key" as const;
+/** Inspector param key selecting which Game Preference field an `On Preference Changed` head watches. */
+export const BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY = "preferenceKey" as const;
 /** Entry for widget `focus` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus" as const;
 /** Entry for widget `blur` UI event. */
@@ -65,6 +67,10 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY = "blueprint.event.head.g
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT = "blueprint.event.head.surfaceInit" as const;
 /** Entry for surface `surfaceUnmount` lifecycle event (page left). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT = "blueprint.event.head.surfaceUnmount" as const;
+/** Entry for a specific NarraLeaf game preference change (e.g. BGM Volume) on the active live game. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED = "blueprint.event.head.preferenceChanged" as const;
+/** Entry for any NarraLeaf game preference change on the active live game. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED = "blueprint.event.head.anyPreferenceChanged" as const;
 
 const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -106,6 +112,8 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
 ]);
 
 /**
@@ -367,14 +375,29 @@ function isFilteredKeyboardEventHeadType(nodeType: string): boolean {
     return nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN || nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP;
 }
 
+function matchesPreferenceChangeDispatch(
+    node: { params?: Record<string, unknown> },
+    eventPayload?: Record<string, unknown>,
+): boolean {
+    const selectedKey = String(node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY] ?? "").trim();
+    if (!selectedKey) {
+        // An unconfigured head watches nothing; use `On Any Preference Changed` for the wildcard.
+        return false;
+    }
+    return selectedKey === String(eventPayload?.key ?? "");
+}
+
 function matchesDispatchPayload(
     node: { type: string; params?: Record<string, unknown> },
     eventPayload?: Record<string, unknown>,
 ): boolean {
-    if (!isFilteredKeyboardEventHeadType(node.type)) {
-        return true;
+    if (isFilteredKeyboardEventHeadType(node.type)) {
+        return blueprintKeyboardBindingMatchesEvent(node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME], eventPayload);
     }
-    return blueprintKeyboardBindingMatchesEvent(node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME], eventPayload);
+    if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED) {
+        return matchesPreferenceChangeDispatch(node, eventPayload);
+    }
+    return true;
 }
 
 /** All node type ids that may start an event graph chain (for validation / normalization). */
