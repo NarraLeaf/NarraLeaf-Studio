@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DevTools } from "narraleaf-react";
 import type { StoryAnimationAsset, StoryBlock, StoryDocument } from "@shared/types/story";
-import { compileStudioStoryToNlr } from "./storyCompiler";
+import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
 
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
     return {
