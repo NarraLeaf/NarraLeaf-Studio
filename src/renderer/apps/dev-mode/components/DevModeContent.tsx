@@ -77,6 +77,22 @@ import {
     type SurfaceNavigationEntry,
     type SurfaceNavigationPresentation,
 } from "@/lib/ui-editor/runtime/game/surfaceNavigationController";
+import {
+    staticSurfaceHostAdapter,
+    type HostAdapterBundle,
+    type PageProps,
+    type SurfaceStateAccessors,
+} from "@/lib/ui-editor/runtime/app/types";
+import { applyWidgetRuntimePatch } from "@/lib/ui-editor/runtime/app/widgetRuntimePatches";
+import { clonePageProps } from "@/lib/ui-editor/runtime/app/pageProps";
+import { keyboardBlueprintPayload } from "@/lib/ui-editor/runtime/app/keyboardBlueprintPayload";
+import {
+    coerceNametagValue,
+    readNlrCharacterName,
+    readNlrLastDialogSpeaker,
+} from "@/lib/ui-editor/runtime/app/nlrDialogReaders";
+import { waitForAnimationFrame } from "@/lib/ui-editor/runtime/app/frameTiming";
+import { dialogSlotRuntimeScopeId, findStageSurfaceForSlot } from "@/lib/ui-editor/runtime/app/stageSlots";
 import { resolveDevModeViewportSize } from "./devModeViewport";
 
 const NLR_BOOT_PRELOAD_TIMEOUT_MS = 15_000;
@@ -93,71 +109,17 @@ type DevModeContentProps = {
     onDismissSessionError: () => void;
 };
 
-function mergeWidgetRuntimePatch(
-    current: Record<string, Record<string, DevModeWidgetRuntimePatch>>,
-    runtimeScopeId: string,
-    elementId: string,
-    patch: DevModeWidgetRuntimePatch,
-): Record<string, Record<string, DevModeWidgetRuntimePatch>> {
-    return {
-        ...current,
-        [runtimeScopeId]: {
-            ...(current[runtimeScopeId] ?? {}),
-            [elementId]: {
-                ...(current[runtimeScopeId]?.[elementId] ?? {}),
-                ...patch,
-            },
-        },
-    };
-}
-
-function applyWidgetRuntimePatch(input: {
-    setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
-    widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
-    runtimeScopeId: string;
-    elementId: string;
-    patch: DevModeWidgetRuntimePatch;
-}): void {
-    const next = mergeWidgetRuntimePatch(
-        input.widgetPatchesByScopeRef.current,
-        input.runtimeScopeId,
-        input.elementId,
-        input.patch,
-    );
-    input.widgetPatchesByScopeRef.current = next;
-    input.setWidgetPatchesByScope(next);
-}
-
-const staticDevHostAdapter = (surface: UISurface): UIHostAdapter => ({
-    host: surface.host,
-});
-
 const noopHostAdapter: UIHostAdapter = {
     host: "app",
 };
 
-type DevModePageProps = Record<string, unknown>;
+type DevModePageProps = PageProps;
 type DevModePagePresentation = SurfaceNavigationPresentation;
 type DevModeOpenSurfaceOptions = {
     presentation?: DevModePagePresentation;
 };
 
-function cloneDevModePageProps(props: DevModePageProps | undefined): DevModePageProps {
-    if (!props) {
-        return {};
-    }
-    try {
-        return JSON.parse(JSON.stringify(props)) as DevModePageProps;
-    } catch {
-        return {};
-    }
-}
-
-type DevModeHostAdapterBundle = {
-    hostAdapter: UIHostAdapter;
-    bindingContext: SurfaceBlueprintBindingContext;
-    runtimeScopeId: string;
-};
+type DevModeHostAdapterBundle = HostAdapterBundle;
 
 type DevModeNavEntry = SurfaceNavigationEntry<DevModePageProps, DevModePagePresentation> & {
     sessionKey: string;
@@ -165,56 +127,6 @@ type DevModeNavEntry = SurfaceNavigationEntry<DevModePageProps, DevModePagePrese
 };
 
 type DevModeBlueprintRuntimeCore = NonNullable<ReturnType<typeof useDevModeBlueprintRuntime>>;
-
-type SurfaceStateAccessors = {
-    get: (key: string) => unknown;
-    set: (key: string, value: unknown) => void;
-};
-
-type NlrCharacterLike = {
-    state?: {
-        name?: unknown;
-    };
-};
-
-type NlrLiveGameWithLastDialog = LiveGame & {
-    lastDialog?: {
-        speaker?: unknown;
-    } | null;
-};
-
-function coerceNametagValue(value: unknown): string | null {
-    if (value == null) {
-        return null;
-    }
-    const text = String(value);
-    return text.trim().length > 0 ? text : null;
-}
-
-function readNlrCharacterName(character: unknown): string | null {
-    return coerceNametagValue((character as NlrCharacterLike | null | undefined)?.state?.name);
-}
-
-function readNlrLastDialogSpeaker(liveGame: LiveGame | null): string | null {
-    const lastDialog = (liveGame as NlrLiveGameWithLastDialog | null)?.lastDialog;
-    return lastDialog ? coerceNametagValue(lastDialog.speaker) : null;
-}
-
-function keyboardBlueprintPayload(event: KeyboardEvent): Record<string, unknown> {
-    return {
-        key: event.key,
-        code: event.code,
-        repeat: event.repeat,
-        altKey: event.altKey,
-        ctrlKey: event.ctrlKey,
-        shiftKey: event.shiftKey,
-        metaKey: event.metaKey,
-    };
-}
-
-function waitForAnimationFrame(): Promise<void> {
-    return new Promise(resolve => requestAnimationFrame(() => resolve()));
-}
 
 function SessionErrorBanner(props: {
     sessionError: string | null;
@@ -331,23 +243,6 @@ export function DevModeSurfaceLifecycleLayer(props: {
     }, [bpCore, bundle.ui.localBlueprints, hasBlueprintRuntime, lifecycleRef, makeStateAccessors, runtimeScopeId, surface.id]);
 
     return <>{children}</>;
-}
-
-function findStageSurfaceForSlot(document: UIDocument, slotId: UIStageSlotId): UIStageSurface | null {
-    const matches = document.surfaces.filter((surface): surface is UIStageSurface =>
-        surface.kind === "stageSurface" && surface.mount.slotId === slotId
-    );
-    if (matches.length > 1) {
-        console.warn(
-            `[DevMode][GameUI] Multiple active surfaces found for slot "${slotId}". ` +
-            `Using the first surface in document order: ${matches[0]?.id ?? "(unknown)"}.`,
-        );
-    }
-    return matches[0] ?? null;
-}
-
-function dialogSlotRuntimeScopeId(sessionId: string, surfaceId: string): string {
-    return `nlr:${sessionId}:slot:dialog:${surfaceId}`;
 }
 
 function StudioDialogStateBridge(props: {
@@ -532,7 +427,7 @@ function StudioDialogSlotSurface(props: {
     const hostAdapter = useMemo((): UIHostAdapter => {
         if (!bpCore || !hostApi) {
             return {
-                ...staticDevHostAdapter(surface),
+                ...staticSurfaceHostAdapter(surface),
                 gameUiRuntime: { slotId: "dialog" },
             };
         }
@@ -1313,7 +1208,7 @@ export function DevModeContent(props: DevModeContentProps) {
                 surfaceId,
                 direction,
                 waitForExit,
-                props: cloneDevModePageProps(props),
+                props: clonePageProps(props),
                 presentation,
             };
         },
@@ -1704,7 +1599,7 @@ export function DevModeContent(props: DevModeContentProps) {
         nlrSessionSeqRef.current += 1;
         const sessionId = `${bundle.bundleId}:${bundle.revision}:${nlrSessionSeqRef.current}`;
         const { width, height } = activeSurface.designSize;
-        const dialogSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "dialog");
+        const dialogSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "dialog", "DevMode");
         const dialogComponent = dialogSurface
             ? createStudioDialogComponent({
                   sessionId,
@@ -2187,7 +2082,7 @@ export function DevModeContent(props: DevModeContentProps) {
         if (!activeSurface) {
             return noopHostAdapter;
         }
-        return staticDevHostAdapter(activeSurface);
+        return staticSurfaceHostAdapter(activeSurface);
     }, [activeSurface, hostAdapterBundle]);
 
     useEffect(() => {
