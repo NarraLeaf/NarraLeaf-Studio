@@ -681,7 +681,7 @@ function DevModeAppSurfaceLayer(props: {
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     reducedMotion: boolean;
     active: boolean;
-    keyboardInteractive: boolean;
+    blueprintLifecycleReady: boolean;
     onInteractionReadyChange: (entryKey: string, ready: boolean) => void;
     onPrepaintReady: (entryKey: string) => void;
     onEnterComplete: (entryKey: string) => void;
@@ -725,7 +725,7 @@ function DevModeAppSurfaceLayer(props: {
         nestedSurfaceRuntime,
         reducedMotion,
         active,
-        keyboardInteractive,
+        blueprintLifecycleReady,
         onInteractionReadyChange,
         onPrepaintReady,
         onEnterComplete,
@@ -733,13 +733,23 @@ function DevModeAppSurfaceLayer(props: {
     const runtimeScopeId = entry.key || surface.id;
     const hostAdapterRef = useRef<UIHostAdapter | null>(null);
     const [surfaceInteractive, setSurfaceInteractive] = useState(false);
+    const [surfaceRuntimeSubscriptionsReadyKey, setSurfaceRuntimeSubscriptionsReadyKey] = useState<string | null>(null);
     const [surfaceLifecycleSignals, setSurfaceLifecycleSignals] = useState({
         beforeSurfaceExit: 0,
         afterSurfaceEnter: 0,
     });
     const surfaceTransitionStateRef = useRef({ isEntering: true, isExiting: false });
     const effectiveInteractive = active && surfaceInteractive;
-    const effectiveKeyboardInteractive = active && keyboardInteractive;
+    const effectiveKeyboardInteractive = active && blueprintLifecycleReady;
+    const surfaceRuntimeSubscriptionsReady = surfaceRuntimeSubscriptionsReadyKey === entry.key;
+    const surfaceBlueprintLifecycleReady = blueprintLifecycleReady && surfaceRuntimeSubscriptionsReady;
+    // SurfaceAnimationLayer keeps new layers hidden until prepaint is ready. Widget init must run during that
+    // hidden pass so first-frame display/motion patches settle before the layer is revealed.
+    const widgetBlueprintLifecycleReady = true;
+
+    const handleRuntimeSubscriptionsReady = useCallback(() => {
+        setSurfaceRuntimeSubscriptionsReadyKey(entry.key);
+    }, [entry.key]);
 
     const hostApi = useMemo(() => {
         if (!bpCore) {
@@ -952,7 +962,7 @@ function DevModeAppSurfaceLayer(props: {
             onEnterComplete={handleEnterComplete}
         >
             <DevModeSurfaceLifecycleLayer
-                bpCore={bpCore}
+                bpCore={surfaceBlueprintLifecycleReady ? bpCore : null}
                 bundle={bundle}
                 surface={surface}
                 runtimeScopeId={runtimeScopeId}
@@ -974,8 +984,10 @@ function DevModeAppSurfaceLayer(props: {
                         }
                         nestedSurfaceRuntime={nestedSurfaceRuntime}
                         surfaceLifecycleSignals={surfaceLifecycleSignals}
+                        blueprintLifecycleReady={widgetBlueprintLifecycleReady}
                         interactive={effectiveInteractive}
                         keyboardInteractive={effectiveKeyboardInteractive}
+                        onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     />
                 </WidgetRuntimeStateProvider>
             </DevModeSurfaceLifecycleLayer>
@@ -2717,7 +2729,7 @@ export function DevModeContent(props: DevModeContentProps) {
                                         nestedSurfaceRuntime={nestedSurfaceRuntime}
                                         reducedMotion={reducedMotion}
                                         active={entry.key === activeEntry?.key}
-                                        keyboardInteractive={prepaintReadyKeys.has(entry.key)}
+                                        blueprintLifecycleReady={prepaintReadyKeys.has(entry.key)}
                                         onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                         onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                         onEnterComplete={markActiveEnterComplete}
