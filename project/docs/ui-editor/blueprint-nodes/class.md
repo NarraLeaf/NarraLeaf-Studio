@@ -10,7 +10,7 @@ Self 节点和 Element 节点通常使用不同分类：
 ## Events
 
 Events分类具有：
-- Events节点，包括生命周期、元素交互、Surface 点击/右键、Surface 进入/退出动画事件、列表/滑块事件、Page Event，以及 Global / Surface / 控件的 On Key / Any Key 键盘事件
+- Events节点，包括生命周期、`App Boot`、`On Game Ready`、元素交互、Surface 点击/右键、Surface 进入/退出动画事件、列表/滑块事件、Page Event，以及 Global / Surface / 控件的 On Key / Any Key 键盘事件
 - Broadcast节点
 
 ## Flow
@@ -49,7 +49,7 @@ Page分类具有：
 - Page节点
 - `Go Page` 页面导航尾节点，可选传入 Page props；选择 `None` 会清除当前顶层 Page 叠层，游戏状态中打开的 Page 会叠加在游戏舞台之上
 - `Get Page Props` 读取当前 Page props；Global 蓝图不可用
-- `Is Surface Exiting` / `Is Surface Entering` 读取当前 Surface 进退场状态；可用于 Blueprint Value，Global 蓝图不可用
+- `Is Surface Exiting` / `Is Surface Entering` / `Is Surface Transitioning` 读取当前 Surface 进退场状态；可用于 Blueprint Value，Global 蓝图不可用
 - `Quit` 退出当前应用运行时；在 Studio Dev Mode 中停止 Dev Mode 会话，不终止 Studio 主进程
 
 ## Game
@@ -57,7 +57,8 @@ Page分类具有：
 Game 分类具有：
 - `Start Game` 游戏启动尾节点
 - 游戏状态节点：`Is In Game`、`Is Game Overlay`、`Quit Game`
-- Dialog 节点：`Get Nametag`、`Next`、`Skip`、`Show Dialog`、`Hide Dialog`、`Toggle Dialog Display`、`Set Sentence Speed`
+- Dialog 节点：`Get Nametag`、`Next`、`Skip`、`Show Dialog`、`Hide Dialog`、`Toggle Dialog Display`、`Set Sentence Speed`、`Get Sentence Speed`
+- Preference 节点：`Get/Set Auto Forward`、`Get/Set Skip`、`Get/Set Game Speed`、`Get/Set Voice Volume`、`Get/Set Voice Fade Duration`、`Get/Set Voice End Mode`、`Get/Set BGM Volume`、`Get/Set Sound Volume`、`Get/Set Global Volume`、`Get/Set Skip Delay`、`Get/Set Skip Interval`；`showDialog` 继续由现有 Dialog Display 节点覆盖
 - 本地存档节点：`Save Game`、`Load Save`、`Delete Save`、`List Saves`、`Get Save Metadata`、`Get Save Preview`
 
 ## Data

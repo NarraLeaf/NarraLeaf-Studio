@@ -63,9 +63,11 @@ import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "@/lib/ui-edi
 import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
 } from "@shared/types/blueprint/graph";
 import {
     ELEMENT_REF_PARAM_ELEMENT_ID,
@@ -93,6 +95,10 @@ import {
     pasteBlueprintGraphClipboardPayload,
     setBlueprintGraphClipboard,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphClipboard";
+import {
+    BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
+    listBlueprintSetFramePageTargetOptions,
+} from "@/lib/ui-editor/blueprint-nodes/frameTargetSurfaceOptions";
 
 function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
     if (!view || bp.program.kind !== "graph") {
@@ -1221,6 +1227,33 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         return out;
     }, [blueprintDocumentService, editor.graphView, ir, revision, uiDocumentRevision, widgetElement]);
 
+    const dynamicSelectOptionsByNodeId = useMemo(() => {
+        const activeIr = editor.graphView ? ir : null;
+        if (!activeIr) {
+            return {};
+        }
+        const currentDocument = blueprintDocumentService.getDocument();
+        const out: Record<string, Record<string, BlueprintInspectorParamSelectOption[]>> = {};
+        for (const node of Object.values(activeIr.nodes ?? {})) {
+            if (
+                node.type !== BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE &&
+                node.type !== BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE
+            ) {
+                continue;
+            }
+            out[node.id] = {
+                [BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE]: listBlueprintSetFramePageTargetOptions({
+                    document: currentDocument,
+                    owner: bp.owner,
+                    ir: activeIr,
+                    nodeId: node.id,
+                    nodeType: node.type,
+                }),
+            };
+        }
+        return out;
+    }, [blueprintDocumentService, bp.owner, editor.graphView, ir, revision, uiDocumentRevision]);
+
     const contextTitle = useMemo(
         () =>
             [
@@ -1470,6 +1503,7 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                         paletteContext={paletteContext}
                         deleteKeyCode={memberPanelFocusContained ? null : undefined}
                         dynamicSelectOptions={dynamicSelectOptions}
+                        dynamicSelectOptionsByNodeId={dynamicSelectOptionsByNodeId}
                         diagnostics={diagnostics}
                         elementPreviews={elementPreviews}
                         displayableTargetVariantsByNodeId={displayableTargetVariantsByNodeId}

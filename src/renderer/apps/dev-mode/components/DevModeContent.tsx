@@ -36,7 +36,12 @@ import {
 } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
 import { BlueprintRuntimeDebugPanel } from "./BlueprintRuntimeDebugPanel";
 import { useDevModeBlueprintRuntime } from "../hooks/useDevModeBlueprintRuntime";
-import { createDevModeBlueprintHostApi, type DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import {
+    createDevModeBlueprintHostApi,
+    type BlueprintGamePreferenceKey,
+    type BlueprintGamePreferenceValue,
+    type DevModeWidgetRuntimePatch,
+} from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
 import { WidgetRuntimeStateProvider } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
@@ -367,6 +372,8 @@ function StudioDialogSlotSurface(props: {
     hideDialogInGame: () => Promise<void>;
     toggleDialogDisplayInGame: () => Promise<void>;
     setSentenceSpeedInGame: (cps: number) => Promise<void>;
+    getGamePreferenceInGame: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
+    setGamePreferenceInGame: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
     setDialogVirtualClickTarget: (target: HTMLElement | null) => void;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
@@ -399,6 +406,8 @@ function StudioDialogSlotSurface(props: {
         hideDialogInGame,
         toggleDialogDisplayInGame,
         setSentenceSpeedInGame,
+        getGamePreferenceInGame,
+        setGamePreferenceInGame,
         setDialogVirtualClickTarget,
         setWidgetPatchesByScope,
         widgetPatchesByScopeRef,
@@ -447,6 +456,8 @@ function StudioDialogSlotSurface(props: {
             onHideDialog: hideDialogInGame,
             onToggleDialogDisplay: toggleDialogDisplayInGame,
             onSetSentenceSpeed: setSentenceSpeedInGame,
+            onGetGamePreference: getGamePreferenceInGame,
+            onSetGamePreference: setGamePreferenceInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -489,6 +500,8 @@ function StudioDialogSlotSurface(props: {
         hideDialogInGame,
         toggleDialogDisplayInGame,
         setSentenceSpeedInGame,
+        getGamePreferenceInGame,
+        setGamePreferenceInGame,
         surface.id,
         widgetRuntimeStore,
     ]);
@@ -641,6 +654,8 @@ function DevModeAppSurfaceLayer(props: {
     hideDialogInGame: () => Promise<void>;
     toggleDialogDisplayInGame: () => Promise<void>;
     setSentenceSpeedInGame: (cps: number) => Promise<void>;
+    getGamePreferenceInGame: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
+    setGamePreferenceInGame: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScope: Record<string, Record<string, DevModeWidgetRuntimePatch>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
@@ -648,6 +663,7 @@ function DevModeAppSurfaceLayer(props: {
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
     reducedMotion: boolean;
     active: boolean;
+    keyboardInteractive: boolean;
     onInteractionReadyChange: (entryKey: string, ready: boolean) => void;
     onPrepaintReady: (entryKey: string) => void;
     onEnterComplete: (entryKey: string) => void;
@@ -682,6 +698,8 @@ function DevModeAppSurfaceLayer(props: {
         hideDialogInGame,
         toggleDialogDisplayInGame,
         setSentenceSpeedInGame,
+        getGamePreferenceInGame,
+        setGamePreferenceInGame,
         setWidgetPatchesByScope,
         widgetPatchesByScope,
         widgetPatchesByScopeRef,
@@ -689,6 +707,7 @@ function DevModeAppSurfaceLayer(props: {
         nestedSurfaceRuntime,
         reducedMotion,
         active,
+        keyboardInteractive,
         onInteractionReadyChange,
         onPrepaintReady,
         onEnterComplete,
@@ -702,6 +721,7 @@ function DevModeAppSurfaceLayer(props: {
     });
     const surfaceTransitionStateRef = useRef({ isEntering: true, isExiting: false });
     const effectiveInteractive = active && surfaceInteractive;
+    const effectiveKeyboardInteractive = active && keyboardInteractive;
 
     const hostApi = useMemo(() => {
         if (!bpCore) {
@@ -734,6 +754,8 @@ function DevModeAppSurfaceLayer(props: {
             onHideDialog: hideDialogInGame,
             onToggleDialogDisplay: toggleDialogDisplayInGame,
             onSetSentenceSpeed: setSentenceSpeedInGame,
+            onGetGamePreference: getGamePreferenceInGame,
+            onSetGamePreference: setGamePreferenceInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -777,6 +799,8 @@ function DevModeAppSurfaceLayer(props: {
         hideDialogInGame,
         toggleDialogDisplayInGame,
         setSentenceSpeedInGame,
+        getGamePreferenceInGame,
+        setGamePreferenceInGame,
         surface.id,
         uidoc,
         widgetRuntimeStore,
@@ -933,6 +957,7 @@ function DevModeAppSurfaceLayer(props: {
                         nestedSurfaceRuntime={nestedSurfaceRuntime}
                         surfaceLifecycleSignals={surfaceLifecycleSignals}
                         interactive={effectiveInteractive}
+                        keyboardInteractive={effectiveKeyboardInteractive}
                     />
                 </WidgetRuntimeStateProvider>
             </DevModeSurfaceLifecycleLayer>
@@ -958,6 +983,7 @@ export function DevModeContent(props: DevModeContentProps) {
     const [navStack, setNavStack] = useState<DevModeNavEntry[]>([]);
     const [visibleEntries, setVisibleEntries] = useState<DevModeNavEntry[]>([]);
     const [surfacePresenceMode, setSurfacePresenceMode] = useState<"sync" | "wait">("sync");
+    const [prepaintReadyKeys, setPrepaintReadyKeys] = useState<Set<string>>(() => new Set());
     const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
     const navStackRef = useRef<DevModeNavEntry[]>([]);
     const visibleEntriesRef = useRef<DevModeNavEntry[]>([]);
@@ -1008,6 +1034,8 @@ export function DevModeContent(props: DevModeContentProps) {
     const hideDialogInGameRef = useRef<(() => Promise<void>) | null>(null);
     const toggleDialogDisplayInGameRef = useRef<(() => Promise<void>) | null>(null);
     const setSentenceSpeedInGameRef = useRef<((cps: number) => Promise<void>) | null>(null);
+    const getGamePreferenceInGameRef = useRef<((key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue) | null>(null);
+    const setGamePreferenceInGameRef = useRef<((key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>) | null>(null);
     const nlrLiveGameRef = useRef<LiveGame | null>(null);
     const nlrLiveGameSessionIdRef = useRef<string | null>(null);
     const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
@@ -1018,6 +1046,7 @@ export function DevModeContent(props: DevModeContentProps) {
     const closeLayerWithTransitionRef = useRef<(() => Promise<void>) | null>(null);
     const lifecycleRef = useRef<SurfaceLifecycleManager>(new SurfaceLifecycleManager());
     const appBootFiredRef = useRef<string | null>(null);
+    const gameReadyFiredRef = useRef<string | null>(null);
     const persistenceProjectRef = useMemo<BlueprintPersistenceProjectRef | null>(() => {
         if (!projectPath) {
             return null;
@@ -1064,6 +1093,7 @@ export function DevModeContent(props: DevModeContentProps) {
             pendingRemoveAfterEnterKeyRef.current = null;
             transitionDirectionRef.current = "forward";
             setSurfacePresenceMode("sync");
+            setPrepaintReadyKeys(new Set());
             setInteractionReadyKeys(new Set());
             setNavStack([initialEntry]);
             setVisibleEntries([initialEntry]);
@@ -1264,6 +1294,14 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [tryCompleteTransitionWait]);
 
     const handleSurfaceLayerPrepaintReady = useCallback((entryKey: string) => {
+        setPrepaintReadyKeys(prev => {
+            if (prev.has(entryKey)) {
+                return prev;
+            }
+            const next = new Set(prev);
+            next.add(entryKey);
+            return next;
+        });
         if (pendingUnderlayReadyKeyRef.current !== entryKey) {
             return;
         }
@@ -1543,6 +1581,25 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [requireActiveLiveGame]);
     setSentenceSpeedInGameRef.current = setSentenceSpeedInGame;
 
+    const getGamePreferenceInGame = useCallback((key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
+        const preference = requireActiveLiveGame(`Get ${key} Preference`).game.preference as {
+            getPreference: (preferenceKey: BlueprintGamePreferenceKey) => unknown;
+        };
+        return preference.getPreference(key) as BlueprintGamePreferenceValue;
+    }, [requireActiveLiveGame]);
+    getGamePreferenceInGameRef.current = getGamePreferenceInGame;
+
+    const setGamePreferenceInGame = useCallback(async (
+        key: BlueprintGamePreferenceKey,
+        value: BlueprintGamePreferenceValue,
+    ): Promise<void> => {
+        const preference = requireActiveLiveGame(`Set ${key} Preference`).game.preference as {
+            setPreference: (preferenceKey: BlueprintGamePreferenceKey, preferenceValue: BlueprintGamePreferenceValue) => void;
+        };
+        preference.setPreference(key, value);
+    }, [requireActiveLiveGame]);
+    setGamePreferenceInGameRef.current = setGamePreferenceInGame;
+
     const quitGame = useCallback(async (surfaceId: string): Promise<void> => {
         const targetSurfaceId = String(surfaceId ?? "").trim();
         if (!targetSurfaceId) {
@@ -1554,6 +1611,7 @@ export function DevModeContent(props: DevModeContentProps) {
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
         nlrDialogVirtualClickTargetRef.current = null;
+        gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         clearCurrentDialogNametag();
@@ -1776,6 +1834,16 @@ export function DevModeContent(props: DevModeContentProps) {
                   setSentenceSpeedInGame: cps =>
                       setSentenceSpeedInGameRef.current?.(cps) ??
                       Promise.reject(new Error("Set Sentence Speed is not available")),
+                  getGamePreferenceInGame: key => {
+                      const getter = getGamePreferenceInGameRef.current;
+                      if (!getter) {
+                          throw new Error("Get Preference is not available");
+                      }
+                      return getter(key);
+                  },
+                  setGamePreferenceInGame: (key, value) =>
+                      setGamePreferenceInGameRef.current?.(key, value) ??
+                      Promise.reject(new Error("Set Preference is not available")),
                   setDialogVirtualClickTarget: setNlrDialogVirtualClickTarget,
                   setWidgetPatchesByScope,
                   widgetPatchesByScopeRef,
@@ -1835,7 +1903,7 @@ export function DevModeContent(props: DevModeContentProps) {
         pending.resolve();
     }, []);
 
-    const handleNlrLiveGameReady = useCallback((sessionId: string, liveGame: LiveGame) => {
+    const handleNlrLiveGameReady = useCallback(async (sessionId: string, liveGame: LiveGame) => {
         if (nlrSession?.id !== sessionId) {
             return;
         }
@@ -1847,7 +1915,29 @@ export function DevModeContent(props: DevModeContentProps) {
         });
         nlrLiveGameRef.current = liveGame;
         nlrLiveGameSessionIdRef.current = sessionId;
-    }, [bpCore, nlrSession?.id]);
+        if (!bpCore || !bundle || gameReadyFiredRef.current === sessionId) {
+            return;
+        }
+        const currentHostAdapter = hostAdapterRef.current;
+        if (!currentHostAdapter?.blueprintRuntime) {
+            return;
+        }
+        const runtimeScopeId = activeRuntimeScopeId || surface?.id || "";
+        const acc = makeStateAccessors(runtimeScopeId);
+        if (!acc) {
+            return;
+        }
+        gameReadyFiredRef.current = sessionId;
+        await dispatchGlobalBlueprintEvent({
+            blueprintDocument: bundle.ui.localBlueprints,
+            eventName: "gameReady",
+            hostAdapter: currentHostAdapter,
+            debug: bpCore.debug,
+            getSurfaceState: acc.get,
+            setSurfaceState: acc.set,
+            executionManager: bpCore.executionManager,
+        });
+    }, [activeRuntimeScopeId, bpCore, bundle, makeStateAccessors, nlrSession?.id, surface?.id]);
 
     const handleNlrStageError = useCallback((error: Error) => {
         rejectPendingGameStarts(error);
@@ -1874,6 +1964,7 @@ export function DevModeContent(props: DevModeContentProps) {
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
         nlrDialogVirtualClickTargetRef.current = null;
+        gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         clearCurrentDialogNametag();
@@ -1887,6 +1978,7 @@ export function DevModeContent(props: DevModeContentProps) {
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
         nlrDialogVirtualClickTargetRef.current = null;
+        gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         clearCurrentDialogNametag();
@@ -1924,6 +2016,8 @@ export function DevModeContent(props: DevModeContentProps) {
             onHideDialog: hideDialogInGame,
             onToggleDialogDisplay: toggleDialogDisplayInGame,
             onSetSentenceSpeed: setSentenceSpeedInGame,
+            onGetGamePreference: getGamePreferenceInGame,
+            onSetGamePreference: setGamePreferenceInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -1968,6 +2062,8 @@ export function DevModeContent(props: DevModeContentProps) {
         hideDialogInGame,
         toggleDialogDisplayInGame,
         setSentenceSpeedInGame,
+        getGamePreferenceInGame,
+        setGamePreferenceInGame,
         widgetRuntimeStore,
     ]);
 
@@ -1993,14 +2089,14 @@ export function DevModeContent(props: DevModeContentProps) {
         hostAdapterRef.current = hostAdapter;
     }, [hostAdapter]);
 
-    const activeSurfaceInteractionReady = Boolean(
+    const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
-        interactionReadyKeys.has(activeEntry.key) &&
+        prepaintReadyKeys.has(activeEntry.key) &&
         (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)),
     );
 
     useEffect(() => {
-        if (!bpCore || !bundle || !activeSurface || !hostAdapter.blueprintRuntime || !activeSurfaceInteractionReady) {
+        if (!bpCore || !bundle || !activeSurface || !hostAdapter.blueprintRuntime || !activeSurfaceKeyboardReady) {
             return undefined;
         }
 
@@ -2057,7 +2153,7 @@ export function DevModeContent(props: DevModeContentProps) {
     }, [
         activeRuntimeScopeId,
         activeSurface,
-        activeSurfaceInteractionReady,
+        activeSurfaceKeyboardReady,
         bpCore,
         bundle,
         hostAdapter,
@@ -2068,6 +2164,7 @@ export function DevModeContent(props: DevModeContentProps) {
     useEffect(() => {
         lifecycleRef.current.reset();
         appBootFiredRef.current = null;
+        gameReadyFiredRef.current = null;
     }, [bundle?.bundleId, bundle?.revision]);
 
     // Dispatch globalMain appBoot once when runtime becomes available
@@ -2143,6 +2240,8 @@ export function DevModeContent(props: DevModeContentProps) {
                     onHideDialog: hideDialogInGame,
                     onToggleDialogDisplay: toggleDialogDisplayInGame,
                     onSetSentenceSpeed: setSentenceSpeedInGame,
+                    onGetGamePreference: getGamePreferenceInGame,
+                    onSetGamePreference: setGamePreferenceInGame,
                     onWidgetPatch: (elementId, patch) => {
                         applyWidgetRuntimePatch({
                             setWidgetPatchesByScope,
@@ -2240,6 +2339,8 @@ export function DevModeContent(props: DevModeContentProps) {
         hideDialogInGame,
         toggleDialogDisplayInGame,
         setSentenceSpeedInGame,
+        getGamePreferenceInGame,
+        setGamePreferenceInGame,
         uiDocument,
         widgetRuntimeStore,
     ]);
@@ -2353,6 +2454,8 @@ export function DevModeContent(props: DevModeContentProps) {
                                         hideDialogInGame={hideDialogInGame}
                                         toggleDialogDisplayInGame={toggleDialogDisplayInGame}
                                         setSentenceSpeedInGame={setSentenceSpeedInGame}
+                                        getGamePreferenceInGame={getGamePreferenceInGame}
+                                        setGamePreferenceInGame={setGamePreferenceInGame}
                                         setWidgetPatchesByScope={setWidgetPatchesByScope}
                                         widgetPatchesByScope={widgetPatchesByScope}
                                         widgetPatchesByScopeRef={widgetPatchesByScopeRef}
@@ -2360,6 +2463,7 @@ export function DevModeContent(props: DevModeContentProps) {
                                         nestedSurfaceRuntime={nestedSurfaceRuntime}
                                         reducedMotion={reducedMotion}
                                         active={entry.key === activeEntry?.key}
+                                        keyboardInteractive={prepaintReadyKeys.has(entry.key)}
                                         onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                         onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                         onEnterComplete={markActiveEnterComplete}

@@ -79,6 +79,7 @@
 - Blueprint Value runtime 在元素挂载时执行 `init`，并在求值期间记录 Element/property 读取依赖。后续 UIDocument/runtime 同步时只比较这些依赖的属性快照；目标属性变化会排队重跑该 value binding，无关 surface/global state 变化不会强制重跑。没有返回值时保留上一次解析值，或退回 UIDocument 中的字面 props。
 - 内部 widget `nl.frame` 在用户界面显示为 Page。它只出现在 Page surface 的 insert palette overflow 中，Game UI 不显示入口。
 - Page 组件不是 iframe；它通过共享 renderer 在当前 UIDocument 中真实渲染目标 Page。目标必须是另一个 Page，不能指向当前 Page、Game UI、缺失 surface，或形成循环嵌套；非法目标显示占位错误而不是中断渲染。
+- Page 组件的静态 Page 下拉框以及 `Set Frame Page` 节点卡片会在能确定目标 Frame 时过滤掉该 Frame 所在 Page 和会形成循环嵌套的 Page。Element 版 `Set Frame Page` 通过连接到 `element` 输入的 Frame Element Ref 推断过滤上下文。
 - 在 Workspace 编辑器中，Page 组件内部是只读预览，不注入可编辑的子 Page editor chrome，也不会让选择/resize 命中子 Page 的元素。选中 Page 组件时，resize 控制器上方的浮动按钮组显示 Share 图标按钮，用于打开目标 Page 的独立编辑器 tab。
 - Page 组件在属性面板中隐藏通用 Width / Height 行，改用 Scale。Scale 基于目标 Page 的 `designSize` 换算；`100%` 会把 Page 组件布局尺寸设为目标 Page 的真实分辨率。
 - Page 组件首版为静态目标：props 包含 `targetSurfaceId`、`params`、`navigationMode: "static"`，并预留动画字段；不实现 frame-local push / replace / back。嵌入内容仍会渲染子 Page 内已有 widget / appearance 动画能力。

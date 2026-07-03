@@ -9,6 +9,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_GO,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
 } from "@shared/types/blueprint/graph";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
@@ -102,6 +103,19 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         scope: { ownerKinds: ["surfaceMain", "widgetMain", "widgetValue"] },
         pins: [
             { id: "isEntering", kind: "output", semantic: "data", valueType: "boolean", label: "Is Entering" },
+        ],
+        execute: () => ({}),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
+        displayName: "Is Surface Transitioning",
+        category: "Page",
+        keywords: ["page", "surface", "enter", "exit", "animation", "transition", "transitioning"],
+        graphKinds: ["event", "macro"],
+        isPure: true,
+        scope: { ownerKinds: ["surfaceMain", "widgetMain", "widgetValue"] },
+        pins: [
+            { id: "isTransitioning", kind: "output", semantic: "data", valueType: "boolean", label: "Is Transitioning" },
         ],
         execute: () => ({}),
     },

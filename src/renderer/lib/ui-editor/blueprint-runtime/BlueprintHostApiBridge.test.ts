@@ -13,7 +13,12 @@ import {
     createInitialImageAppearanceFromProps,
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 import { ScopeStoreBridge } from "./ScopeStoreBridge";
-import { createDevModeBlueprintHostApi, type DevModeWidgetRuntimePatch } from "./BlueprintHostApiBridge";
+import {
+    createDevModeBlueprintHostApi,
+    type BlueprintGamePreferenceKey,
+    type BlueprintGamePreferenceValue,
+    type DevModeWidgetRuntimePatch,
+} from "./BlueprintHostApiBridge";
 import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
 import type { BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
@@ -154,6 +159,8 @@ function createHostApi(options?: {
     onHideDialog?: () => Promise<void> | void;
     onToggleDialogDisplay?: () => Promise<void> | void;
     onSetSentenceSpeed?: (cps: number) => Promise<void> | void;
+    onGetGamePreference?: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
+    onSetGamePreference?: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void> | void;
     onCloseLayer?: () => Promise<void> | void;
     widgetRuntimeStore?: WidgetRuntimeStateStore;
 }) {
@@ -181,6 +188,8 @@ function createHostApi(options?: {
         onHideDialog: options?.onHideDialog,
         onToggleDialogDisplay: options?.onToggleDialogDisplay,
         onSetSentenceSpeed: options?.onSetSentenceSpeed,
+        onGetGamePreference: options?.onGetGamePreference,
+        onSetGamePreference: options?.onSetGamePreference,
         emit: () => undefined,
         onOpenSurface: options?.onOpenSurface ?? (() => undefined),
         onCloseLayer: options?.onCloseLayer ?? (() => undefined),
@@ -283,6 +292,7 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         const quit = vi.fn();
         const dialogDisplayCalls: string[] = [];
         const cpsValues: number[] = [];
+        const preferenceWrites: Array<{ key: BlueprintGamePreferenceKey; value: BlueprintGamePreferenceValue }> = [];
         const hostApi = createHostApi({
             onGetNametag: () => "Alice",
             onIsInGame: () => true,
@@ -302,6 +312,18 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             onSetSentenceSpeed: cps => {
                 cpsValues.push(cps);
             },
+            onGetGamePreference: key => {
+                if (key === "cps") {
+                    return 24;
+                }
+                if (key === "voiceEndMode") {
+                    return "stop";
+                }
+                return key === "autoForward";
+            },
+            onSetGamePreference: (key, value) => {
+                preferenceWrites.push({ key, value });
+            },
         });
 
         expect(hostApi.game.getNametag()).toBe("Alice");
@@ -314,12 +336,42 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         await hostApi.game.hideDialog();
         await hostApi.game.toggleDialogDisplay();
         await hostApi.game.setSentenceSpeed(24);
+        expect(hostApi.game.getPreference("cps")).toBe(24);
+        expect(hostApi.game.getPreference("voiceEndMode")).toBe("stop");
+        expect(hostApi.game.getPreference("autoForward")).toBe(true);
+        await hostApi.game.setPreference("autoForward", true);
+        await hostApi.game.setPreference("voiceVolume", 0.75);
+        await hostApi.game.setPreference("voiceEndMode", "fade");
 
         expect(quit).toHaveBeenCalledWith("page-b");
         expect(next).toHaveBeenCalledTimes(1);
         expect(skip).toHaveBeenCalledTimes(1);
         expect(dialogDisplayCalls).toEqual(["show", "hide", "toggle"]);
         expect(cpsValues).toEqual([24]);
+        expect(preferenceWrites).toEqual([
+            { key: "autoForward", value: true },
+            { key: "voiceVolume", value: 0.75 },
+            { key: "voiceEndMode", value: "fade" },
+        ]);
+    });
+
+    it("validates game preference keys and values", async () => {
+        const preferenceWrites: Array<{ key: BlueprintGamePreferenceKey; value: BlueprintGamePreferenceValue }> = [];
+        const hostApi = createHostApi({
+            onGetGamePreference: key => key === "voiceEndMode" ? "none" : 1,
+            onSetGamePreference: (key, value) => {
+                preferenceWrites.push({ key, value });
+            },
+        });
+
+        await hostApi.game.setPreference("skipDelay", 0);
+        expect(hostApi.game.getPreference("voiceEndMode")).toBe("none");
+
+        await expect(hostApi.game.setPreference("voiceEndMode", "hold" as BlueprintGamePreferenceValue)).rejects.toThrow(/voiceEndMode/);
+        await expect(hostApi.game.setPreference("skipInterval", 0)).rejects.toThrow(/skipInterval/);
+        await expect(hostApi.game.setPreference("autoForward", 1 as BlueprintGamePreferenceValue)).rejects.toThrow(/autoForward/);
+        expect(() => hostApi.game.getPreference("unknown" as BlueprintGamePreferenceKey)).toThrow(/not supported/);
+        expect(preferenceWrites).toEqual([{ key: "skipDelay", value: 0 }]);
     });
 
     it("routes game save operations through callbacks with normalized ids", async () => {
@@ -1036,6 +1088,53 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         await hostApi.widget.stopDisplayableAnimation(motion.id);
 
         expect(store.getDisplayableMotion("scope\0image")).toBeNull();
+    });
+
+    it("registers explicit Displayable keyframes before waiting for the animation start frame", async () => {
+        vi.useFakeTimers();
+        const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+        const rafCallbacks: Array<(time: number) => void> = [];
+        Object.defineProperty(globalThis, "window", {
+            configurable: true,
+            value: {
+                requestAnimationFrame: (callback: (time: number) => void) => {
+                    rafCallbacks.push(callback);
+                    return rafCallbacks.length;
+                },
+            },
+        });
+        try {
+            const store = new WidgetRuntimeStateStore();
+            const hostApi = createHostApi({ widgetRuntimeStore: store, runtimeScopeId: "scope" });
+
+            const animation = hostApi.widget.animateDisplayable("image", {
+                id: "animation:prepaint",
+                target: { x: [-500, 0] },
+                transition: { type: "tween", durationMs: 100, delayMs: 0, easing: "linear" },
+                resetOnComplete: true,
+            });
+
+            expect(store.getDisplayableMotion("scope\0image")).toMatchObject({
+                id: "animation:prepaint",
+                target: { x: [-500, 0] },
+            });
+            expect(rafCallbacks).toHaveLength(1);
+
+            rafCallbacks.shift()?.(0);
+            expect(rafCallbacks).toHaveLength(1);
+            rafCallbacks.shift()?.(16);
+            await Promise.resolve();
+            await vi.advanceTimersByTimeAsync(200);
+
+            await expect(animation).resolves.toMatchObject({ id: "animation:prepaint" });
+        } finally {
+            if (originalWindowDescriptor) {
+                Object.defineProperty(globalThis, "window", originalWindowDescriptor);
+            } else {
+                delete (globalThis as { window?: unknown }).window;
+            }
+            vi.useRealTimers();
+        }
     });
 
     it("waits for Displayable animation duration before resolving", async () => {

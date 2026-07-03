@@ -16,6 +16,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
@@ -117,7 +118,8 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
     if (
         def.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS ||
         def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING ||
-        def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING
+        def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING ||
+        def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING
     ) {
         return true;
     }
