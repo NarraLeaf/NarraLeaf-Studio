@@ -36,6 +36,7 @@ type DragState = {
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+const WINDOW_TITLEBAR_HEIGHT = 40;
 
 export function ImageCropper({
     visible,
@@ -331,6 +332,7 @@ export function ImageCropper({
 
         const clampValue = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
         const viewportMargin = 12;
+        const viewportTop = WINDOW_TITLEBAR_HEIGHT + viewportMargin;
         const defaultWidth = 720;
         const maxPanelHeight = 640;
 
@@ -342,16 +344,16 @@ export function ImageCropper({
                 const rect = anchorRef.current.getBoundingClientRect();
                 const width = clampValue(rect.width * 1.2, 520, 880);
                 const availableBelow = viewportHeight - rect.bottom - viewportMargin;
-                const availableAbove = rect.top - viewportMargin;
+                const availableAbove = rect.top - viewportTop;
                 const shouldOpenDown = availableBelow >= maxPanelHeight || availableBelow >= availableAbove;
                 let top = shouldOpenDown ? rect.bottom + 8 : rect.top - maxPanelHeight - 8;
-                top = clampValue(top, viewportMargin, viewportHeight - viewportMargin - maxPanelHeight);
+                top = clampValue(top, viewportTop, Math.max(viewportTop, viewportHeight - viewportMargin - maxPanelHeight));
                 const left = clampValue(rect.left, viewportMargin, viewportWidth - viewportMargin - width);
                 setAnchorStyle({ top, left, width });
             } else {
                 const width = defaultWidth;
                 const left = clampValue((viewportWidth - width) / 2, viewportMargin, viewportWidth - viewportMargin - width);
-                const top = clampValue(96, viewportMargin, viewportHeight - viewportMargin - maxPanelHeight);
+                const top = clampValue(96, viewportTop, Math.max(viewportTop, viewportHeight - viewportMargin - maxPanelHeight));
                 setAnchorStyle((prev) => ({ ...prev, top, left, width }));
             }
         };
@@ -406,7 +408,7 @@ export function ImageCropper({
 
     const panel = (
         <div
-            className="fixed inset-0 z-50 bg-black/40"
+            className="nl-window-content-layer z-50 bg-black/40"
             onMouseDown={(e) => {
                 if (e.target === e.currentTarget) {
                     onClose();
@@ -414,7 +416,7 @@ export function ImageCropper({
             }}
         >
             <div
-                style={anchorRef?.current ? { position: "absolute", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
+                style={anchorRef?.current ? { position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
                 className={`${anchorRef?.current ? "" : "mt-10 mx-auto"} bg-[#111218] border border-white/10 rounded-xl shadow-xl text-gray-200 max-h-[640px] flex flex-col ${className}`}
                 onMouseDown={(e) => e.stopPropagation()}
             >
@@ -569,4 +571,3 @@ export function ImageCropper({
 
     return createPortal(panel, document.body);
 }
-

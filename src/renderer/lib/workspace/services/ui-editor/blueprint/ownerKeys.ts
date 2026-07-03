@@ -10,6 +10,10 @@ export function widgetMainOwnerKey(surfaceId: string, elementId: string): string
     return `widgetMain:${surfaceId}:${elementId}`;
 }
 
+export function componentWidgetMainOwnerKey(componentId: string, elementId: string): string {
+    return `componentWidgetMain:${componentId}:${elementId}`;
+}
+
 function encodeOwnerPart(value: string): string {
     return encodeURIComponent(value);
 }
@@ -52,6 +56,8 @@ export function ownerRefToIndexKey(owner: BlueprintOwnerRef): string {
             return widgetMainOwnerKey(owner.surfaceId, owner.elementId);
         case "widgetValue":
             return widgetValueOwnerKey(owner.surfaceId, owner.elementId, owner.propPath);
+        case "componentWidgetMain":
+            return componentWidgetMainOwnerKey(owner.componentId, owner.elementId);
         case "sharedAsset":
             return `sharedAsset:${owner.assetId}`;
         default: {

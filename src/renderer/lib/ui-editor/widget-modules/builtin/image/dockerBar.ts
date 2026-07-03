@@ -23,9 +23,11 @@ const DEFAULT_APPEARANCE_RESOLVE_CONTEXT = {
 };
 
 export function createImageDockerBarItems(ctx: DockerBarContext): DockerBarItem[] {
-    const { element, documentService } = ctx;
+    const { element, documentService, stateService, surfaceId } = ctx;
     const rectItems = createRectangleDockerBarItems(ctx, { resolveProps: getImageWidgetRectangleProps });
-    const props = getImageWidgetRectangleProps(element);
+    const rawAppearance = (element.props as { appearance?: unknown } | undefined)?.appearance;
+    const appearance: AppearanceModel | undefined = isAppearanceModel(rawAppearance) ? rawAppearance : undefined;
+    const props = resolveImageRectangleLike(element, appearance, DEFAULT_APPEARANCE_RESOLVE_CONTEXT);
     const fill = normalizeImageFill(props);
     const mode = fill?.mode ?? "cover";
 
@@ -57,6 +59,15 @@ export function createImageDockerBarItems(ctx: DockerBarContext): DockerBarItem[
                 };
 
                 documentService.updateElementProps(liveElement.id, buildImageFillPropsUpdate(liveElement, nextImageFill));
+                const override = stateService?.getInteractionOverride();
+                if (
+                    nextMode !== "crop" &&
+                    override?.kind === "imageCrop" &&
+                    override.elementId === liveElement.id &&
+                    (!surfaceId || override.surfaceId === surfaceId)
+                ) {
+                    stateService?.setInteractionOverride(null);
+                }
             },
         },
         {

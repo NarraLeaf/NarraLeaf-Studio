@@ -1,7 +1,7 @@
 import { BrowserWindow, WebPreferences } from "electron";
 import { WindowControlPolicy } from "@shared/types/window";
 
-const MACOS_TRAFFIC_LIGHT_POSITION: Electron.Point = { x: 14, y: 14 };
+const MACOS_TRAFFIC_LIGHT_POSITION: Electron.Point = { x: 14, y: 12 };
 
 export interface WindowInstanceConfig {
     isolated: boolean;

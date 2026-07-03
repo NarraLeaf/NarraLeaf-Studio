@@ -4,9 +4,18 @@ import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
-import { DevModeBundle, DevModeEntry, DevModeStatus } from "./devMode";
+import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus } from "./devMode";
+import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
+import type { BlueprintDebugEvent } from "./blueprint/debug";
+import type { DevModeSaveProjectRef, DevModeSaveRecord } from "./devModeSave";
 import type { PreviewStudioBlueprintOpenPayload } from "./previewStudioBlueprintOpen";
 import type { PluginPermissionGrantPayload, PluginPermissionGrantResult, PluginPermissionPromptResult } from "./pluginPermissions";
+import type {
+    PluginApproveResult,
+    PluginInstallResult,
+    PluginListItem,
+    WorkspacePluginDescriptor,
+} from "./plugins";
 import type {
     PrivilegedBashExecutePayload,
     PrivilegedBashExecuteResult,
@@ -15,6 +24,16 @@ import type {
     PrivilegedPermissionRevokePluginPayload,
     PrivilegedPermissionRequestPayload,
 } from "./privileged";
+
+export const WorkspaceMenuAction = {
+    NewWorkspace: "narraleaf-studio:file-new",
+    OpenWorkspace: "narraleaf-studio:file-open",
+    ExportProject: "narraleaf-studio:file-export-project",
+    CloseWorkspace: "narraleaf-studio:file-close-workspace",
+    OpenWelcome: "narraleaf-studio:open-welcome",
+} as const;
+
+export type WorkspaceMenuAction = typeof WorkspaceMenuAction[keyof typeof WorkspaceMenuAction];
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -56,6 +75,7 @@ export enum IPCEventType {
     fsIsDir = "fs.isDir",
     fsSelectFile = "fs.selectFile",
     fsSelectDirectory = "fs.selectDirectory",
+    fsGrantFileAccess = "fs.grantFileAccess",
     fsHash = "fs.hash",
 
     editorLaunch = "editor.launch",
@@ -67,8 +87,13 @@ export enum IPCEventType {
     workspaceLaunch = "workspace.launch",
     workspaceSelectFolder = "workspace.selectFolder",
     workspaceClose = "workspace.close",
+    workspaceExportProjectPackage = "workspace.projectPackage.export",
+    workspaceImportProjectPackage = "workspace.projectPackage.import",
+    workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
+    workspaceBlueprintDebugEvent = "workspace.blueprint.debugEvent",
+    workspaceDevModeConsoleLog = "workspace.devMode.consoleLog",
     
     devModeLaunch = "devMode.launch",
     devModeStop = "devMode.stop",
@@ -77,8 +102,19 @@ export enum IPCEventType {
     devModePayloadUpdate = "devMode.payload.update",
     devModeControlReload = "devMode.control.reload",
     devModeControlError = "devMode.control.error",
+    devModeResolveAssetUrl = "devMode.resolveAssetUrl",
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
     devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
+    devModeForwardBlueprintDebugEvent = "devMode.blueprintDebug.forward",
+    devModeSaveWrite = "devMode.save.write",
+    devModeSaveRead = "devMode.save.read",
+    devModeSaveListIds = "devMode.save.listIds",
+    devModeSaveReadPreview = "devMode.save.readPreview",
+    devModeSaveDelete = "devMode.save.delete",
+
+    previewLaunch = "preview.launch",
+    previewStop = "preview.stop",
+    previewGetStatus = "preview.getStatus",
 
     blueprintPersistenceGetAll = "blueprintPersistence.getAll",
     blueprintPersistenceGetValue = "blueprintPersistence.getValue",
@@ -87,11 +123,21 @@ export enum IPCEventType {
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
+    pluginList = "plugin.list",
+    pluginInstallLocal = "plugin.installLocal",
+    pluginSetEnabled = "plugin.setEnabled",
+    pluginApprove = "plugin.approve",
+    pluginUninstall = "plugin.uninstall",
+    pluginRevoke = "plugin.revoke",
+    pluginWorkspaceList = "plugin.workspaceList",
+    pluginReportLoadError = "plugin.reportLoadError",
 
     privilegedFsCall = "privileged.fs.call",
     privilegedPermissionRequest = "privileged.permission.request",
     privilegedPermissionRevokePlugin = "privileged.permission.revokePlugin",
     privilegedBashExecute = "privileged.bash.execute",
+
+    menuAction = "app.menu.action",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -233,7 +279,7 @@ export type IPCEvents = {
             path: string;
         };
     };
-} & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPrivilegedEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCPrivilegedEvents;
 
 export type IPCFsEvents = {
     [IPCEventType.fsStat]: {
@@ -429,6 +475,14 @@ export type IPCFsEvents = {
         },
         response: FsRequestResult<string[]>;
     };
+    [IPCEventType.fsGrantFileAccess]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            paths: string[];
+        },
+        response: FsRequestResult<string[]>;
+    };
     [IPCEventType.fsHash]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -503,6 +557,41 @@ export type IPCWorkspaceEvents = {
         data: {},
         response: void;
     };
+    [IPCEventType.workspaceExportProjectPackage]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        },
+        response: {
+            canceled: boolean;
+            packagePath?: string;
+            fileCount?: number;
+            byteLength?: number;
+            skippedCount?: number;
+        };
+    };
+    [IPCEventType.workspaceImportProjectPackage]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            canceled: boolean;
+            projectPath?: string;
+            projectName?: string;
+            fileCount?: number;
+            byteLength?: number;
+        };
+    };
+    [IPCEventType.workspaceResolveAssetUrl]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: {
+            assetId: string;
+            assetType?: string;
+        };
+        response: RequestStatus<{ url: string }>;
+    };
     [IPCEventType.workspaceResolveImageAssetUrl]: {
         type: IPCMessageType.request,
         consumer: IPCType.Client,
@@ -515,6 +604,18 @@ export type IPCWorkspaceEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
         data: PreviewStudioBlueprintOpenPayload;
+        response: never;
+    };
+    [IPCEventType.workspaceBlueprintDebugEvent]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: BlueprintDebugEvent;
+        response: never;
+    };
+    [IPCEventType.workspaceDevModeConsoleLog]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: DevModeConsoleLogPayload;
         response: never;
     };
 };
@@ -580,6 +681,17 @@ export type IPCDevModeEvents = {
         },
         response: never;
     };
+    [IPCEventType.devModeResolveAssetUrl]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            assetId: string;
+            assetType?: string;
+        };
+        response: {
+            url: string;
+        };
+    };
     [IPCEventType.devModeResolveImageAssetUrl]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
@@ -597,6 +709,101 @@ export type IPCDevModeEvents = {
             projectPath: string;
         };
         response: void;
+    };
+    [IPCEventType.devModeForwardBlueprintDebugEvent]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: DevModeBlueprintDebugEventPayload;
+        response: never;
+    };
+    [IPCEventType.devModeSaveWrite]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+            id: string;
+            savedGame: unknown;
+            capture?: string;
+            metadata?: unknown;
+        };
+        response: void;
+    };
+    [IPCEventType.devModeSaveRead]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+            id: string;
+        };
+        response: {
+            record: DevModeSaveRecord | null;
+        };
+    };
+    [IPCEventType.devModeSaveListIds]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+        };
+        response: {
+            ids: string[];
+        };
+    };
+    [IPCEventType.devModeSaveReadPreview]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+            id: string;
+        };
+        response: {
+            capture: string | null;
+        };
+    };
+    [IPCEventType.devModeSaveDelete]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectRef: DevModeSaveProjectRef;
+            id: string;
+        };
+        response: {
+            deleted: boolean;
+        };
+    };
+};
+
+export type IPCPreviewEvents = {
+    [IPCEventType.previewLaunch]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            entry: GameRuntimeLaunchEntry;
+        };
+        response: {
+            status: PreviewStatus;
+        };
+    };
+    [IPCEventType.previewStop]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            status: PreviewStatus;
+        };
+    };
+    [IPCEventType.previewGetStatus]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            status: PreviewStatus;
+        };
     };
 };
 
@@ -660,6 +867,73 @@ export type IPCPluginPermissionEvents = {
     };
 };
 
+export type IPCPluginManagerEvents = {
+    [IPCEventType.pluginList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            plugins: PluginListItem[];
+        };
+    };
+    [IPCEventType.pluginInstallLocal]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: PluginInstallResult;
+    };
+    [IPCEventType.pluginSetEnabled]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+            enabled: boolean;
+        },
+        response: PluginListItem;
+    };
+    [IPCEventType.pluginApprove]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+        },
+        response: PluginApproveResult;
+    };
+    [IPCEventType.pluginUninstall]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+        },
+        response: void;
+    };
+    [IPCEventType.pluginRevoke]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+        },
+        response: PluginListItem;
+    };
+    [IPCEventType.pluginWorkspaceList]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            plugins: WorkspacePluginDescriptor[];
+        };
+    };
+    [IPCEventType.pluginReportLoadError]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            pluginId: string;
+            error: string | null;
+        },
+        response: PluginListItem;
+    };
+};
+
 export type IPCPrivilegedEvents = {
     [IPCEventType.privilegedFsCall]: {
         type: IPCMessageType.request,
@@ -684,5 +958,14 @@ export type IPCPrivilegedEvents = {
         consumer: IPCType.Host,
         data: PrivilegedBashExecutePayload,
         response: PrivilegedBashExecuteResult;
+    };
+};
+
+export type IPCMenuEvents = {
+    [IPCEventType.menuAction]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { action: WorkspaceMenuAction },
+        response: never;
     };
 };

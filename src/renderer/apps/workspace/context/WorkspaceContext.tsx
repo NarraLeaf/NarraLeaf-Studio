@@ -11,6 +11,7 @@ import { Services, WorkspaceContext as WorkspaceCtx } from "@/lib/workspace/serv
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { Service } from "@/lib/workspace/services/Service";
+import { ensureWorkspaceProjectCanStart } from "@/lib/workspace/startup/workspaceProjectPreflight";
 
 interface WorkspaceProviderProps {
     children: React.ReactNode;
@@ -25,6 +26,17 @@ interface WorkspaceContextValue {
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
+let workspaceInitQueue: Promise<void> = Promise.resolve();
+
+function enqueueWorkspaceInit<T>(task: () => Promise<T>): Promise<T> {
+    const run = workspaceInitQueue.then(task, task);
+    workspaceInitQueue = run.then(
+        () => undefined,
+        () => undefined,
+    );
+    return run;
+}
+
 /**
  * Provider for workspace context
  * Initializes workspace and all services
@@ -37,24 +49,45 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
 
     useEffect(() => {
         let mounted = true;
+        let cleanupContext: WorkspaceCtx | null = null;
+        let canDispose = false;
+        let disposed = false;
+
+        const disposeWorkspace = async () => {
+            if (!cleanupContext || disposed) {
+                return;
+            }
+            disposed = true;
+            await Service.disposeAll(cleanupContext);
+        };
 
         const initWorkspace = async () => {
             try {
-                // Create workspace context
-                const ctx = await Workspace.createContext();
-                
-                // Initialize all services
-                await Service.initializeAll(ctx);
-                
-                // Activate all services
-                for (const service of ctx.services.getAll()) {
-                    await service.activate(ctx);
-                }
+                await enqueueWorkspaceInit(async () => {
+                    // Create workspace context
+                    const ctx = await Workspace.createContext();
+                    cleanupContext = ctx;
 
-                // Create workspace instance
-                const ws = Workspace.create(ctx);
+                    // Validate the selected folder before booting workspace services.
+                    await ensureWorkspaceProjectCanStart(ctx.project.getConfig().projectPath);
 
-                if (mounted) {
+                    // Initialize all services
+                    await Service.initializeAll(ctx);
+
+                    // Activate all services
+                    for (const service of ctx.services.getAll()) {
+                        await service.activate(ctx);
+                    }
+                    canDispose = true;
+
+                    if (!mounted) {
+                        await disposeWorkspace();
+                        return;
+                    }
+
+                    // Create workspace instance
+                    const ws = Workspace.create(ctx);
+
                     setContext(ctx);
                     setWorkspace(ws);
                     setIsInitialized(true);
@@ -64,9 +97,10 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
                     const projectConfig = projectService.getProjectConfig();
                     const projectPath = ctx.project.getConfig().projectPath;
                     getInterface().app.addRecentProject(projectConfig.name, projectPath);
-                }
+                });
             } catch (err) {
                 console.error("Failed to initialize workspace:", err);
+                await disposeWorkspace();
                 if (mounted) {
                     setError(err instanceof Error ? err : new Error(String(err)));
                 }
@@ -77,11 +111,8 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
 
         return () => {
             mounted = false;
-            // Cleanup services when unmounting
-            if (context) {
-                for (const service of context.services.getAll()) {
-                    service.dispose(context);
-                }
+            if (canDispose) {
+                void enqueueWorkspaceInit(disposeWorkspace);
             }
         };
     }, []);
@@ -92,9 +123,14 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
         }
 
         const assetsService = context.services.get<AssetsService>(Services.Assets);
-        const handler = async ({ assetId }: { assetId: string }): Promise<RequestStatus<{ url: string }>> => {
-            const asset = assetsService.getAssets()[AssetType.Image]?.[assetId]
-                ?? assetsService.getAssets()[AssetType.Font]?.[assetId];
+        const handler = async ({ assetId, assetType }: { assetId: string; assetType?: string }): Promise<RequestStatus<{ url: string }>> => {
+            const assets = assetsService.getAssets();
+            const typedAsset = Object.values(AssetType).includes(assetType as AssetType)
+                ? assets[assetType as AssetType]?.[assetId]
+                : undefined;
+            const asset = typedAsset ?? Object.values(AssetType)
+                .map(type => assets[type]?.[assetId])
+                .find(Boolean);
             if (!asset) {
                 return {
                     success: false,
@@ -133,9 +169,11 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
             };
         };
 
-        const token = getInterface().workspace.onResolveImageAssetUrl(handler);
+        const assetToken = getInterface().workspace.onResolveAssetUrl(handler);
+        const imageToken = getInterface().workspace.onResolveImageAssetUrl(handler);
         return () => {
-            token.cancel();
+            assetToken.cancel();
+            imageToken.cancel();
         };
     }, [context]);
 

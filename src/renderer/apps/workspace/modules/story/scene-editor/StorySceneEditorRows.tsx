@@ -6,6 +6,7 @@ import type { StoryActionPayload, StoryBlock, StoryDocument, StoryScene } from "
 import { useWorkspace } from "@/apps/workspace/context";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
+import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -123,7 +124,7 @@ export function StoryBlockRow(props: {
             </div>
             <div className="min-w-0 py-1.5" style={{ paddingLeft: row.depth * 22 }}>
                 <div className="flex min-h-[28px] min-w-0 items-center gap-2">
-                    <BlockBadge block={block} />
+                    <BlockBadge block={block} characters={characters} />
                     {editing && textSegment ? (
                         <TextEditBox
                             textInputRef={textInputRef}
@@ -152,6 +153,7 @@ export function StoryBlockRow(props: {
                     <ActionInspector
                         block={block}
                         document={document}
+                        sceneId={scene.id}
                         characters={characters}
                         onUpdatePayload={props.onUpdatePayload}
                         onClose={props.onCloseInspector}
@@ -344,7 +346,11 @@ export function InsertRow(props: {
 
 function getActionCommandOptions(query: string) {
     const normalizedQuery = query.trim().toLowerCase();
-    return ACTION_COMMANDS.filter(command => !normalizedQuery || command.label.toLowerCase().includes(normalizedQuery) || command.id.toLowerCase().includes(normalizedQuery));
+    return ACTION_COMMANDS.filter(command => !normalizedQuery ||
+        command.label.toLowerCase().includes(normalizedQuery) ||
+        command.id.toLowerCase().includes(normalizedQuery) ||
+        command.detail.toLowerCase().includes(normalizedQuery) ||
+        command.nlrCapability?.toLowerCase().includes(normalizedQuery));
 }
 
 function getCharacterOptions(characters: Character[], query: string) {
@@ -747,13 +753,86 @@ function CharacterSelectTrigger(props: {
     );
 }
 
-function BlockBadge({ block }: { block: StoryBlock }) {
+function BlockBadge({ block, characters }: { block: StoryBlock; characters: Character[] }) {
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
+    const characterId = block.kind === "nodeAction" && block.payload.action === "dialogue"
+        ? block.payload.characterId
+        : undefined;
+    const character = characterId
+        ? characters.find(next => next.profile.getId() === characterId)
+        : undefined;
+    const thumbnailId = character?.profile.getThumbnail() ?? null;
+    const thumbnailUrl = useServiceAssetObjectUrl(thumbnailId);
+
     return (
-        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border border-white/10 bg-white/[0.04]" title={label} aria-label={label}>
-            <Icon className="h-3.5 w-3.5" style={{ color: iconColor }} />
+        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded border border-white/10 bg-white/[0.04]" title={label} aria-label={label}>
+            {thumbnailUrl ? (
+                <img
+                    src={thumbnailUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    draggable={false}
+                />
+            ) : (
+                <Icon className="h-3.5 w-3.5" style={{ color: iconColor }} />
+            )}
         </span>
     );
+}
+
+function useServiceAssetObjectUrl(fileId: string | null): string | null {
+    const { context, isInitialized } = useWorkspace();
+    const serviceAssets = useMemo(
+        () => context && isInitialized ? context.services.get<ServiceAssetsService>(Services.ServiceAssets) : null,
+        [context, isInitialized],
+    );
+    const [url, setUrl] = useState<string | null>(null);
+    const urlRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (urlRef.current) {
+            URL.revokeObjectURL(urlRef.current);
+            urlRef.current = null;
+        }
+        setUrl(null);
+
+        if (!fileId || !serviceAssets) {
+            return;
+        }
+
+        let cancelled = false;
+
+        (async () => {
+            const result = await serviceAssets.readRaw(fileId);
+            if (!result.ok || cancelled) {
+                return;
+            }
+
+            const objectUrl = URL.createObjectURL(new Blob([new Uint8Array(result.data)]));
+            if (cancelled) {
+                URL.revokeObjectURL(objectUrl);
+                return;
+            }
+
+            urlRef.current = objectUrl;
+            setUrl(objectUrl);
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [fileId, serviceAssets]);
+
+    useEffect(() => {
+        return () => {
+            if (urlRef.current) {
+                URL.revokeObjectURL(urlRef.current);
+                urlRef.current = null;
+            }
+        };
+    }, []);
+
+    return url;
 }
 
 function toSortableTransform(transform: { x: number; y: number; scaleX?: number; scaleY?: number } | null): string | undefined {

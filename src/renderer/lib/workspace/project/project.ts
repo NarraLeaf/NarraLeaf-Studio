@@ -5,6 +5,15 @@ export type Resolution = {
     height: number;
 };
 
+export type ProjectIconPlatform = "macos" | "windows" | "linux";
+
+export interface ProjectIconConfig {
+    path: string;
+    sourceName: string;
+    mediaType: string;
+    updatedAt: string;
+}
+
 export type ProjectMetadata = {
     description: string;
     version: string;
@@ -15,6 +24,7 @@ export type ProjectMetadata = {
     licenseString?: string;
     copyright: string;
     resolution: Resolution;
+    icons: Partial<Record<ProjectIconPlatform, ProjectIconConfig>>;
 };
 
 export interface ProjectProps {

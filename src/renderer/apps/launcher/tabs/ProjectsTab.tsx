@@ -1,12 +1,16 @@
 
 import { getInterface } from "@/lib/app/bridge";
 import { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
-import { FolderOpen, Plus, X } from "lucide-react";
+import { Button } from "@/lib/components/elements";
+import { FolderOpen, Plus, Upload, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function ProjectsTab() {
     const [isOpening, setIsOpening] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
+    const [operationError, setOperationError] = useState<string | null>(null);
     const [recentProjects, setRecentProjects] = useState<RecentlyOpenedProject[]>([]);
+    const isBusy = isOpening || isImporting;
 
     useEffect(() => {
         const loadRecentProjects = async () => {
@@ -15,7 +19,6 @@ export function ProjectsTab() {
                 if (result.success) {
                     setRecentProjects(result.data.value || []);
                 }
-                console.log(result.data);
             } catch (error) {
                 console.error("Failed to load recent projects:", error);
             }
@@ -25,9 +28,10 @@ export function ProjectsTab() {
     }, []);
 
     const handleOpenRecentProject = async (project: RecentlyOpenedProject) => {
-        if (isOpening) return;
+        if (isBusy) return;
 
         setIsOpening(true);
+        setOperationError(null);
         try {
             // Open workspace with the project path
             await getInterface().workspace.launch(
@@ -36,6 +40,7 @@ export function ProjectsTab() {
             );
         } catch (error) {
             console.error("Error opening recent project:", error);
+            setOperationError(error instanceof Error ? error.message : String(error));
         } finally {
             setIsOpening(false);
         }
@@ -66,7 +71,13 @@ export function ProjectsTab() {
     };
 
     const handleNewProject = async () => {
+        if (isBusy) return;
+        setOperationError(null);
         const result = await getInterface().app.launchProjectWizard({});
+        if (!result.success) {
+            setOperationError(result.error || "Failed to create project.");
+            return;
+        }
         if (result.success && result.data?.created) {
             // Open workspace with the selected folder
             await getInterface().workspace.launch(
@@ -77,15 +88,17 @@ export function ProjectsTab() {
     };
 
     const handleOpenFolder = async () => {
-        if (isOpening) return;
+        if (isBusy) return;
         
         setIsOpening(true);
+        setOperationError(null);
         try {
             // Select folder
             const result = await getInterface().selectFolder();
             
             if (!result.success) {
                 console.error("Failed to select folder:", result.error);
+                setOperationError(result.error || "Failed to open folder.");
                 return;
             }
 
@@ -101,8 +114,36 @@ export function ProjectsTab() {
             );
         } catch (error) {
             console.error("Error opening folder:", error);
+            setOperationError(error instanceof Error ? error.message : String(error));
         } finally {
             setIsOpening(false);
+        }
+    };
+
+    const handleImportProject = async () => {
+        if (isBusy) return;
+
+        setIsImporting(true);
+        setOperationError(null);
+        try {
+            const result = await getInterface().workspace.importProjectPackage();
+            if (!result.success) {
+                setOperationError(result.error || "Failed to import project.");
+                return;
+            }
+            if (result.data.canceled || !result.data.projectPath) {
+                return;
+            }
+
+            await getInterface().workspace.launch(
+                { projectPath: result.data.projectPath },
+                true
+            );
+        } catch (error) {
+            console.error("Error importing project:", error);
+            setOperationError(error instanceof Error ? error.message : String(error));
+        } finally {
+            setIsImporting(false);
         }
     };
 
@@ -111,25 +152,47 @@ export function ProjectsTab() {
             <div className="flex items-center justify-between mb-6">
                 <div className="text-lg font-semibold">Projects</div>
                 <div className="flex items-center gap-2">
-                    <button
+                    <Button
+                        variant="ghost"
+                        size="md"
                         onClick={handleOpenFolder}
-                        disabled={isOpening}
-                        className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-white/10 hover:text-white rounded-md transition-colors cursor-default disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={isBusy}
+                        className="h-9 w-9 px-0 text-gray-300"
                         title="Open Folder"
+                        aria-label="Open Folder"
                     >
-                        <FolderOpen className="w-4 h-4" />
-                        <span>{isOpening ? "Opening..." : "Open Folder"}</span>
-                    </button>
-                    <button
+                        <FolderOpen className="w-5 h-5" />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="md"
+                        onClick={handleImportProject}
+                        disabled={isBusy}
+                        className="h-9 w-9 px-0 text-gray-300"
+                        title="Import Project"
+                        aria-label="Import Project"
+                    >
+                        <Upload className="w-5 h-5" />
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="md"
                         onClick={handleNewProject}
-                        className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:bg-white/10 hover:text-white rounded-md transition-colors cursor-default"
+                        disabled={isBusy}
+                        className="text-gray-300"
                         title="New Project"
                     >
                         <Plus className="w-4 h-4" />
                         <span>New Project</span>
-                    </button>
+                    </Button>
                 </div>
             </div>
+
+            {operationError && (
+                <div className="mb-4 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                    {operationError}
+                </div>
+            )}
 
             {recentProjects.length > 0 && (
                 <div className="mb-6">

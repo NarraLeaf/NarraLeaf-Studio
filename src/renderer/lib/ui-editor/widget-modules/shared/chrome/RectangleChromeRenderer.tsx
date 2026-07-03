@@ -35,7 +35,7 @@ type RectangleChromeRendererProps = WidgetRendererProps & {
     extraRootProps?: Omit<HTMLAttributes<HTMLDivElement>, "onDrag" | "onDragStart" | "onDragEnd">;
     /** Optional field-level appearance transitions for motion-capable chrome properties. */
     appearanceTransitions?: Partial<Record<AppearancePropertyKey, AppearanceFieldTransition>>;
-    /** Multiplied with `transformOpacity` on the chrome root (e.g. button disabled). */
+    /** Root chrome opacity factor for interaction states (e.g. button disabled). */
     rootOpacityFactor?: number;
 };
 
@@ -127,8 +127,7 @@ export function RectangleChromeRenderer({
     const ty = Number.isFinite(props.transformOffsetY) ? props.transformOffsetY : 0;
     const ts = Number.isFinite(props.transformScale) && props.transformScale > 0 ? props.transformScale : 1;
     const tr = Number.isFinite(props.transformRotation) ? props.transformRotation : 0;
-    const tOp = Math.max(0, Math.min(1, Number.isFinite(props.transformOpacity) ? props.transformOpacity : 1));
-    const combinedRootOpacity = Math.max(0, Math.min(1, tOp * rootOpacityFactor));
+    const combinedRootOpacity = Math.max(0, Math.min(1, rootOpacityFactor));
     const transformCss = `translate(${tx}px, ${ty}px) scale(${ts}) rotate(${tr}deg)`;
 
     // Ensure first paint matches resolved chrome: motion `animate` alone can miss the initial frame.
@@ -201,11 +200,6 @@ export function RectangleChromeRenderer({
         "rotate",
         firstTransition(appearanceTransitions, ["transformRotation"])
     );
-    assignMotionTransition(
-        rootTransition,
-        "opacity",
-        firstTransition(appearanceTransitions, ["transformOpacity"])
-    );
     if (!effectFilterStoredToCss(effectValues.effectFilter).trim()) {
         assignMotionTransition(
             rootTransition,
@@ -272,7 +266,8 @@ export function RectangleChromeRenderer({
     const displayUrl = assetUrl ?? (legacyImageUrl ? legacyImageUrl : null);
     const shouldRenderImage = props.fillType === "image";
     const isCropEditing =
-        activeMode === "crop" &&
+        Boolean(activeMode) &&
+        activeMode !== "tile" &&
         displayUrl &&
         interactionOverride?.kind === "imageCrop" &&
         interactionOverride.elementId === element.id;
@@ -366,7 +361,7 @@ export function RectangleChromeRenderer({
         if (!shouldRenderImage || !displayUrl || !activeMode || activeMode === "tile") {
             return null;
         }
-        const imagePointerEvents = activeMode === "crop" ? "auto" : "none";
+        const imagePointerEvents = activeMode === "crop" || isCropEditing ? "auto" : "none";
         if (activeMode === "crop") {
             const placement = ensureCropPlacement(activeFill);
             const cropMotionAnimate = {
@@ -398,6 +393,8 @@ export function RectangleChromeRenderer({
                 return (
                     <motion.img
                         data-ui-image-fill="true"
+                        data-ui-image-fill-mode={activeMode}
+                        data-ui-image-fill-asset-id={activeFill?.assetId ?? ""}
                         src={displayUrl}
                         alt=""
                         draggable={false}
@@ -419,6 +416,8 @@ export function RectangleChromeRenderer({
             return (
                 <img
                     data-ui-image-fill="true"
+                    data-ui-image-fill-mode={activeMode}
+                    data-ui-image-fill-asset-id={activeFill?.assetId ?? ""}
                     src={displayUrl}
                     alt=""
                     draggable={false}
@@ -447,6 +446,8 @@ export function RectangleChromeRenderer({
             return (
                 <motion.img
                     data-ui-image-fill="true"
+                    data-ui-image-fill-mode={activeMode}
+                    data-ui-image-fill-asset-id={activeFill?.assetId ?? ""}
                     src={displayUrl}
                     alt=""
                     draggable={false}
@@ -467,7 +468,15 @@ export function RectangleChromeRenderer({
             );
         }
         return (
-            <img data-ui-image-fill="true" src={displayUrl} alt="" draggable={false} style={fillStaticStyle} />
+            <img
+                data-ui-image-fill="true"
+                data-ui-image-fill-mode={activeMode}
+                data-ui-image-fill-asset-id={activeFill?.assetId ?? ""}
+                src={displayUrl}
+                alt=""
+                draggable={false}
+                style={fillStaticStyle}
+            />
         );
     };
 

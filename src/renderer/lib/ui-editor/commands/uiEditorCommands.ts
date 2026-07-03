@@ -21,6 +21,7 @@ import { collectSubtreeElementIds } from "@/lib/workspace/services/ui-editor/uiD
 import { resolveSurfaceRootElementId } from "@/lib/ui-editor/runtime/resolveSurfaceRoot";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 export type UIEditorPasteTarget = {
     parentId: string;
@@ -92,7 +93,7 @@ export function resolvePasteTargetAfterSelection(
     const allowed = collectSubtreeElementIds(document, effectiveRootId);
     const topLevelIds = filterSelectionToTopLevelMovers(document, selection).filter(id => {
         const el = document.elements[id];
-        return el != null && el.type !== "nl.root" && allowed.has(id);
+        return el != null && el.type !== "nl.root" && !isComponentEditorRootElement(el) && allowed.has(id);
     });
     const anchorId = pickPasteAnchorTopLevelId(document, selection, topLevelIds);
     const anchor = anchorId ? document.elements[anchorId] : null;
@@ -373,7 +374,7 @@ export function uiEditorSelectAllInSurface(
         if (!el || !allowed.has(id)) {
             return;
         }
-        if (el.type !== "nl.root") {
+        if (el.type !== "nl.root" && !isComponentEditorRootElement(el)) {
             ids.push(id);
         }
         el.childrenIds.forEach(walk);

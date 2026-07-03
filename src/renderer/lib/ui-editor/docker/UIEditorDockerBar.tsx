@@ -1,6 +1,6 @@
 import React, { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { animate, motion, useMotionValue } from "motion/react";
+import { AnimatePresence, animate, motion, useMotionValue } from "motion/react";
 import { listInsertPaletteEntries } from "../widget-modules/insertPalette";
 import type { InsertPaletteEntry } from "../widget-modules/insertPalette";
 import { widgetModuleRegistry } from "../widget-modules/registryInstance";
@@ -11,21 +11,25 @@ import type {
     DockerBarSelect,
     DockerBarNumberInput,
 } from "../widget-modules/types";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import { isLinkedUIComponentElement, type UIElement } from "@shared/types/ui-editor/document";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import type { UIRuntimeBridgeService } from "@/lib/workspace/services/ui-editor/UIRuntimeBridgeService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
 import type { UITool } from "../editor/types";
 import { DeferredNumberInput } from "@/lib/components/inputs/DeferredNumberInput";
 import { Select } from "@/lib/components/elements/Select";
-import { MoreHorizontal } from "lucide-react";
+import { Component, MoreHorizontal, Search, X } from "lucide-react";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 // Props
 type UIEditorDockerBarProps = {
     surfaceId: string;
     stateService: UIEditorStateService;
     documentService: UIDocumentService;
+    runtimeBridge?: UIRuntimeBridgeService | null;
+    enableComponents?: boolean;
 };
 
 // Palette Mode (no selection)
@@ -33,12 +37,16 @@ function PaletteDockerBar({
     primaryEntries,
     overflowEntries,
     activeInsertType,
+    componentsActive,
     onSelectType,
+    onOpenComponents,
 }: {
     primaryEntries: InsertPaletteEntry[];
     overflowEntries: InsertPaletteEntry[];
     activeInsertType: string | null;
+    componentsActive: boolean;
     onSelectType: (type: string) => void;
+    onOpenComponents?: () => void;
 }) {
     const overflowButtonRef = useRef<HTMLButtonElement | null>(null);
     const overflowMenuRef = useRef<HTMLDivElement | null>(null);
@@ -60,6 +68,10 @@ function PaletteDockerBar({
         },
         [closeOverflow, onSelectType],
     );
+
+    const overflowActive = componentsActive || overflowEntries.some(entry => entry.module.type === activeInsertType);
+    const showComponentsEntry = Boolean(onOpenComponents);
+    const showOverflowMenu = overflowEntries.length > 0 || showComponentsEntry;
 
     useLayoutEffect(() => {
         if (!overflowOpen) {
@@ -130,14 +142,12 @@ function PaletteDockerBar({
     }, [closeOverflow, overflowOpen]);
 
     useEffect(() => {
-        if (overflowEntries.length === 0) {
+        if (!showOverflowMenu) {
             setOverflowOpen(false);
         }
-    }, [overflowEntries.length]);
+    }, [showOverflowMenu]);
 
-    const overflowActive = overflowEntries.some(entry => entry.module.type === activeInsertType);
-
-    const overflowMenu = overflowOpen && overflowEntries.length > 0 ? (
+    const overflowMenu = overflowOpen && showOverflowMenu ? (
         <div
             ref={overflowMenuRef}
             className="min-w-40 rounded-md border border-white/15 bg-[#1e1f22] py-1 shadow-lg shadow-black/30"
@@ -168,6 +178,29 @@ function PaletteDockerBar({
                     </button>
                 );
             })}
+            {showComponentsEntry ? (
+                <>
+                    {overflowEntries.length > 0 ? <div className="my-1 h-px bg-white/10" /> : null}
+                    <button
+                        type="button"
+                        className={`flex h-8 w-full items-center gap-2 px-3 text-left text-xs transition-colors ${
+                            componentsActive
+                                ? "bg-primary/20 text-white"
+                                : "text-gray-300 hover:bg-white/10 hover:text-white"
+                        }`}
+                        title="Open Component Library"
+                        onClick={() => {
+                            onOpenComponents?.();
+                            closeOverflow();
+                        }}
+                        onPointerDown={stopPointerPropagation}
+                        onMouseDown={stopPointerPropagation}
+                    >
+                        <Component className="h-3.5 w-3.5 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">Components</span>
+                    </button>
+                </>
+            ) : null}
         </div>
     ) : null;
 
@@ -196,7 +229,7 @@ function PaletteDockerBar({
                     </button>
                 );
             })}
-            {overflowEntries.length > 0 ? (
+            {showOverflowMenu ? (
                 <>
                     <button
                         ref={overflowButtonRef}
@@ -502,18 +535,247 @@ function MultiSelectDockerBar({ items }: { items: DockerBarItem[] }) {
     );
 }
 
+function ComponentPreview({
+    componentId,
+    runtimeBridge,
+    width,
+    height,
+}: {
+    componentId: string;
+    runtimeBridge?: UIRuntimeBridgeService | null;
+    width: number;
+    height: number;
+}) {
+    const frameRef = useRef<HTMLDivElement | null>(null);
+    const [frameWidth, setFrameWidth] = useState(0);
+
+    useLayoutEffect(() => {
+        const node = frameRef.current;
+        if (!node) {
+            return undefined;
+        }
+        const update = () => setFrameWidth(Math.max(0, node.clientWidth));
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, []);
+
+    const designWidth = Math.max(1, width);
+    const designHeight = Math.max(1, height);
+    const previewHeight = 104;
+    const scale = frameWidth > 0 ? Math.min(frameWidth / designWidth, previewHeight / designHeight) : 0;
+    const content = runtimeBridge?.renderComponent({
+        componentId,
+        hostAdapter: { host: "app" },
+        editorChrome: false,
+    });
+
+    return (
+        <div ref={frameRef} className="h-[104px] overflow-hidden rounded-md border border-white/10 bg-[#05060a]">
+            <div className="relative h-full w-full">
+                {content && scale > 0 ? (
+                    <div
+                        className="pointer-events-none absolute"
+                        style={{
+                            left: Math.max(0, (frameWidth - designWidth * scale) / 2),
+                            top: Math.max(0, (previewHeight - designHeight * scale) / 2),
+                            width: designWidth,
+                            height: designHeight,
+                            transform: `scale(${scale})`,
+                            transformOrigin: "top left",
+                        }}
+                    >
+                        {content}
+                    </div>
+                ) : null}
+            </div>
+        </div>
+    );
+}
+
+function ComponentsLibraryModal({
+    documentService,
+    runtimeBridge,
+    open,
+    activeComponentId,
+    onSelectComponent,
+    onClose,
+}: {
+    documentService: UIDocumentService;
+    runtimeBridge?: UIRuntimeBridgeService | null;
+    open: boolean;
+    activeComponentId: string | null;
+    onSelectComponent: (componentId: string) => void;
+    onClose: () => void;
+}) {
+    const panelRef = useRef<HTMLDivElement | null>(null);
+    const searchRef = useRef<HTMLInputElement | null>(null);
+    const [query, setQuery] = useState("");
+
+    const components = documentService.getDocument().components ?? [];
+    const filtered = useMemo(() => {
+        const needle = query.trim().toLowerCase();
+        if (!needle) {
+            return components;
+        }
+        return components.filter(component => component.name.toLowerCase().includes(needle));
+    }, [components, query]);
+
+    useEffect(() => {
+        if (!open) {
+            return undefined;
+        }
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                onClose();
+            }
+        };
+        document.addEventListener("keydown", handleKeyDown, true);
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown, true);
+        };
+    }, [onClose, open]);
+
+    useEffect(() => {
+        if (!open) {
+            setQuery("");
+            return undefined;
+        }
+        const frame = window.requestAnimationFrame(() => {
+            searchRef.current?.focus();
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [open]);
+
+    const stopPointerPropagation = useCallback((event: React.SyntheticEvent) => {
+        event.stopPropagation();
+    }, []);
+
+    return (
+        <AnimatePresence>
+            {open ? (
+                <motion.div
+                    key="component-library-modal"
+                    className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center p-6"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                    onPointerDown={stopPointerPropagation}
+                    onMouseDown={stopPointerPropagation}
+                >
+                    <motion.div
+                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                        onClick={onClose}
+                    />
+                    <motion.div
+                        ref={panelRef}
+                        tabIndex={-1}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Component Library"
+                        className="relative flex h-[min(760px,calc(100%-3rem))] w-[min(1100px,calc(100%-3rem))] flex-col overflow-hidden rounded-lg border border-white/10 bg-[#1e1e1e] shadow-2xl"
+                        initial={{ opacity: 0, scale: 0.96, y: 10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.98, y: 6 }}
+                        transition={{ type: "tween", duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        onPointerDown={stopPointerPropagation}
+                        onMouseDown={stopPointerPropagation}
+                    >
+                        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-6">
+                            <Component className="h-4 w-4 text-gray-300" />
+                            <div className="min-w-0 flex-1">
+                                <div className="text-sm font-semibold text-white">Component Library</div>
+                            </div>
+                            <div className="relative w-72 max-w-[40vw]">
+                                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500" />
+                                <input
+                                    ref={searchRef}
+                                    value={query}
+                                    onChange={event => setQuery(event.target.value)}
+                                    placeholder="Search components"
+                                    className="h-8 w-full rounded-md border border-white/10 bg-white/[0.04] pl-8 pr-2 text-xs text-gray-200 outline-none focus:border-primary/60"
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                className="grid h-8 w-8 place-items-center rounded-md text-gray-400 hover:bg-white/10 hover:text-white"
+                                onClick={onClose}
+                                title="Close"
+                                aria-label="Close"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                            {filtered.length === 0 ? (
+                                <div className="flex h-full items-center justify-center text-sm text-gray-500">
+                                    {components.length === 0 ? "No components in this project." : "No matching components."}
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3">
+                                    {filtered.map(component => {
+                                        const root = component.elements[component.rootElementId];
+                                        const active = activeComponentId === component.id;
+                                        return (
+                                            <button
+                                                key={component.id}
+                                                type="button"
+                                                className={`rounded-md border p-2 text-left transition ${
+                                                    active
+                                                        ? "border-primary/70 bg-primary/15"
+                                                        : "border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06]"
+                                                }`}
+                                                onClick={() => {
+                                                    onSelectComponent(component.id);
+                                                    onClose();
+                                                }}
+                                            >
+                                                <ComponentPreview
+                                                    componentId={component.id}
+                                                    runtimeBridge={runtimeBridge}
+                                                    width={component.previewMeta?.width ?? root?.layout.width ?? 180}
+                                                    height={component.previewMeta?.height ?? root?.layout.height ?? 104}
+                                                />
+                                                <div className="mt-2 truncate text-xs font-medium text-gray-100">{component.name}</div>
+                                                <div className="text-[11px] text-gray-500">
+                                                    {Math.round(component.previewMeta?.width ?? root?.layout.width ?? 0)}×
+                                                    {Math.round(component.previewMeta?.height ?? root?.layout.height ?? 0)}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                </motion.div>
+            ) : null}
+        </AnimatePresence>
+    );
+}
+
 // ─── Main Docker Bar ────────────────────────────────────────────────────────
 
 export function UIEditorDockerBar({
     surfaceId,
     stateService,
     documentService,
+    runtimeBridge,
+    enableComponents = true,
 }: UIEditorDockerBarProps) {
-    const surfaceKind = useMemo(() => {
-        return documentService.getDocument().surfaces.find(surface => surface.id === surfaceId)?.kind;
+    const surface = useMemo(() => {
+        return documentService.getDocument().surfaces.find(candidate => candidate.id === surfaceId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [documentService, surfaceId]);
-    const paletteEntries = useMemo(() => listInsertPaletteEntries(surfaceKind), [surfaceKind]);
+    const paletteEntries = useMemo(() => listInsertPaletteEntries(surface), [surface]);
     const primaryEntries = useMemo(
         () => paletteEntries.filter(entry => entry.placement === "primary"),
         [paletteEntries],
@@ -525,6 +787,7 @@ export function UIEditorDockerBar({
     const [selection, setSelection] = useState<SelectionState>(stateService.getSelection());
     const [tool, setTool] = useState<UITool>(stateService.getTool());
     const [docVersion, setDocVersion] = useState(0);
+    const [componentsLibraryOpen, setComponentsLibraryOpen] = useState(false);
 
     useEffect(() => {
         const unsub = stateService.on("selectionChanged", selection => {
@@ -551,16 +814,30 @@ export function UIEditorDockerBar({
 
     // Active insert type (if in insert mode)
     const activeInsertType = tool.kind === "insert" ? tool.nodeType : null;
+    const activeComponentId = tool.kind === "insert" ? tool.componentId ?? null : null;
 
     // Handle selecting an insert type from the palette
     const handleSelectType = (type: string) => {
-        if (activeInsertType === type) {
+        if (activeInsertType === type && !activeComponentId) {
             // Toggle off: switch back to select mode
             stateService.setTool({ kind: "select" });
         } else {
             // Enter insert mode with this type
             stateService.setTool({ kind: "insert", nodeType: type });
         }
+    };
+
+    const handleSelectComponent = (componentId: string) => {
+        if (activeComponentId === componentId) {
+            stateService.setTool({ kind: "select" });
+            return;
+        }
+        const component = documentService.getComponent(componentId);
+        const root = component ? component.elements[component.rootElementId] : null;
+        if (!component || !root) {
+            return;
+        }
+        stateService.setTool({ kind: "insert", nodeType: root.type, componentId });
     };
 
     // Resolve selected element(s)
@@ -570,7 +847,9 @@ export function UIEditorDockerBar({
         const doc = documentService.getDocument();
         return selection.data.elementIds
             .map((elementId) => doc.elements[elementId])
-            .filter((element): element is UIElement => Boolean(element));
+            .filter((element): element is UIElement =>
+                Boolean(element) && element.type !== "nl.root" && !isComponentEditorRootElement(element)
+            );
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selection, surfaceId, documentService, docVersion]);
     const selectedElement = selectedElements[selectedElements.length - 1] ?? null;
@@ -587,6 +866,8 @@ export function UIEditorDockerBar({
         return selectedModule.createDockerBarItems({
             element: selectedElement,
             documentService,
+            stateService,
+            surfaceId,
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedElement, selectedModule, documentService, docVersion]);
@@ -595,12 +876,15 @@ export function UIEditorDockerBar({
         if (selectedElements.length < 2) {
             return [];
         }
+        if (selectedElements.some(element => isLinkedUIComponentElement(element))) {
+            return [];
+        }
         const itemGroups = selectedElements.map((element) => {
             const mod = widgetModuleRegistry.get(element.type);
             if (!mod) {
                 return null;
             }
-            const context = { element, documentService };
+            const context = { element, documentService, stateService, surfaceId };
             return (
                 mod.createMultiSelectDockerBarItems?.(context) ??
                 mod.createDockerBarItems?.(context) ??
@@ -639,27 +923,43 @@ export function UIEditorDockerBar({
     const showMultiSelectDocker = multiSelectItems.length > 0;
 
     // Show element docker bar only when there's a selection AND not in insert mode
-    const showElementDocker = selectedElement !== null && dockerItems.length > 0 && tool.kind !== "insert";
+    const showElementDocker =
+        selectedElement !== null &&
+        !isLinkedUIComponentElement(selectedElement) &&
+        dockerItems.length > 0 &&
+        tool.kind !== "insert";
 
     return (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20">
-            <DockerBarAnimatedWidthShell>
-                {showMultiSelectDocker ? (
-                    <MultiSelectDockerBar items={multiSelectItems} />
-                ) : showElementDocker ? (
-                    <ElementDockerBar
-                        items={dockerItems}
-                        moduleName={selectedModule?.displayName ?? "Element"}
-                    />
-                ) : (
-                    <PaletteDockerBar
-                        primaryEntries={primaryEntries}
-                        overflowEntries={selectedElements.length === 0 ? overflowEntries : []}
-                        activeInsertType={activeInsertType}
-                        onSelectType={handleSelectType}
-                    />
-                )}
-            </DockerBarAnimatedWidthShell>
+        <div className="pointer-events-none absolute inset-0 z-20">
+            <div className="pointer-events-auto absolute bottom-3 left-1/2 -translate-x-1/2">
+                <DockerBarAnimatedWidthShell>
+                    {showMultiSelectDocker ? (
+                        <MultiSelectDockerBar items={multiSelectItems} />
+                    ) : showElementDocker ? (
+                        <ElementDockerBar
+                            items={dockerItems}
+                            moduleName={selectedModule?.displayName ?? "Element"}
+                        />
+                    ) : (
+                        <PaletteDockerBar
+                            primaryEntries={primaryEntries}
+                            overflowEntries={selectedElements.length === 0 ? overflowEntries : []}
+                            activeInsertType={activeComponentId ? null : activeInsertType}
+                            componentsActive={componentsLibraryOpen || Boolean(activeComponentId)}
+                            onSelectType={handleSelectType}
+                            onOpenComponents={enableComponents ? () => setComponentsLibraryOpen(true) : undefined}
+                        />
+                    )}
+                </DockerBarAnimatedWidthShell>
+            </div>
+            <ComponentsLibraryModal
+                documentService={documentService}
+                runtimeBridge={runtimeBridge}
+                open={componentsLibraryOpen}
+                activeComponentId={activeComponentId}
+                onSelectComponent={handleSelectComponent}
+                onClose={() => setComponentsLibraryOpen(false)}
+            />
         </div>
     );
 }

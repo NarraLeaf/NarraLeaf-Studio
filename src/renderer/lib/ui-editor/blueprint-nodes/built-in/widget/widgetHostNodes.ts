@@ -82,6 +82,7 @@ export const widgetHostBlueprintNodes: BlueprintNodeDef[] = [
         category: "Widget",
         keywords: ["variant", "appearance", "container", "button", "element"],
         graphKinds: ["event", "macro"],
+        hideInPalette: true,
         isPure: false,
         isLatent: true,
         pins: [
@@ -90,7 +91,6 @@ export const widgetHostBlueprintNodes: BlueprintNodeDef[] = [
         ],
         inspectorParams: [
             { key: "elementId", label: "Target element", kind: "select", dynamicOptionsSource: "elements" },
-            { key: "variantId", label: "Variant", kind: "string" },
         ],
         scope: { ownerKinds: ["widgetMain"] },
         async execute(ctx) {

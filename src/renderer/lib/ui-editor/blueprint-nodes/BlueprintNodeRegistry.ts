@@ -5,12 +5,18 @@
 
 import {
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_LIST_ITEM_REFRESH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
+    BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING,
+    BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
@@ -27,7 +33,15 @@ import { resolveEffectiveBlueprintCatalogEntry } from "./effectivePins";
 
 type BlueprintNodeGraphContextDef = Pick<
     BlueprintNodeDef,
-    "type" | "category" | "graphKinds" | "isPure" | "isLatent" | "role" | "scope"
+    | "type"
+    | "category"
+    | "graphKinds"
+    | "isPure"
+    | "isLatent"
+    | "role"
+    | "scope"
+    | "magicElementTarget"
+    | "inspectorParams"
 >;
 
 const INLINE_LITERAL_VALUE_TYPES = [
@@ -82,7 +96,7 @@ function resolveAllowedWidgetEventHeadTypesForPalette(ctx: BlueprintPaletteConte
 
 export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGraphContextDef): boolean {
     if (def.role === "eventHead") {
-        return def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT;
+        return def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT || def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH;
     }
     if (def.role === "valueReturn" || def.type === BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE) {
         return true;
@@ -94,10 +108,20 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
         return !def.isLatent;
     }
     if (def.category === "Flow") {
-        return !def.isLatent && def.type !== BLUEPRINT_NODE_TYPE_FLOW_DELAY;
+        return !def.isLatent &&
+            def.type !== BLUEPRINT_NODE_TYPE_FLOW_DELAY &&
+            def.type !== BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY;
     }
     if (!def.isPure || def.isLatent) {
         return false;
+    }
+    if (
+        def.type === BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS ||
+        def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING ||
+        def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING ||
+        def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING
+    ) {
+        return true;
     }
     return (
         def.category === "Data" ||
@@ -106,7 +130,8 @@ export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGr
         def.category === "Text" ||
         def.category === "Slider" ||
         def.category === "Displayable" ||
-        def.category === "Element"
+        def.category === "Element" ||
+        def.category === "Game"
     );
 }
 
@@ -123,7 +148,7 @@ function matchesBlueprintNodeScopeValue(
         }
     }
     if (scope.widgetElementTypes && scope.widgetElementTypes.length > 0) {
-        if (ctx.owner.kind !== "widgetMain") {
+        if (ctx.owner.kind !== "widgetMain" && ctx.owner.kind !== "componentWidgetMain") {
             return false;
         }
         const t = ctx.widgetElementType;
@@ -160,8 +185,22 @@ function listCompatibleMagicElementRefs(
         .map(ref => ref.targetPortId === target.inputPinId ? ref : { ...ref, targetPortId: target.inputPinId });
 }
 
+function listMagicElementPaletteTargets(
+    def: BlueprintNodeDef,
+    ctx: BlueprintPaletteContext,
+): Array<BlueprintMagicElementRefPaletteEntry | undefined> {
+    const refs = listCompatibleMagicElementRefs(def, ctx);
+    if (refs.length <= 1) {
+        return refs;
+    }
+    return [undefined];
+}
+
 function canUseImageAssetLiteral(ctx: BlueprintPaletteContext): boolean {
-    if (ctx.owner.kind === "widgetMain" && ctx.widgetElementType === "nl.image") {
+    if (
+        (ctx.owner.kind === "widgetMain" || ctx.owner.kind === "componentWidgetMain") &&
+        ctx.widgetElementType === "nl.image"
+    ) {
         return true;
     }
     return (ctx.magicElementRefs ?? []).some(ref => ref.elementType === "nl.image");
@@ -192,7 +231,7 @@ export function isBlueprintNodeAllowedInGraphContext(
     if (ctx.graphKind === "function" && def.role === "functionEntry" && ctx.hasFunctionEntry) {
         return false;
     }
-    if (def.role === "eventHead" && ctx.owner.kind === "widgetMain") {
+    if (def.role === "eventHead" && (ctx.owner.kind === "widgetMain" || ctx.owner.kind === "componentWidgetMain")) {
         const allowed = resolveAllowedWidgetEventHeadTypesForPalette(ctx);
         if (!allowed.has(def.type)) {
             return false;
@@ -204,8 +243,8 @@ export function isBlueprintNodeAllowedInGraphContext(
 class BlueprintNodeDefinitionsRegistry {
     private readonly byType = new Map<string, BlueprintNodeDef>();
 
-    public register(def: BlueprintNodeDef): void {
-        if (this.byType.has(def.type)) {
+    public register(def: BlueprintNodeDef, options?: { replaceExisting?: boolean }): void {
+        if (this.byType.has(def.type) && !options?.replaceExisting) {
             throw new Error(`[BlueprintNodeRegistry] Duplicate node type: ${def.type}`);
         }
         this.validatePorts(def);
@@ -216,12 +255,12 @@ class BlueprintNodeDefinitionsRegistry {
             type: def.type,
             displayName: def.displayName,
             execute: def.execute,
-        });
+        }, { quietOverwrite: true });
     }
 
-    public registerMany(defs: BlueprintNodeDef[]): void {
+    public registerMany(defs: BlueprintNodeDef[], options?: { replaceExisting?: boolean }): void {
         for (const d of defs) {
-            this.register(d);
+            this.register(d, options);
         }
     }
 
@@ -283,7 +322,7 @@ class BlueprintNodeDefinitionsRegistry {
                 continue;
             }
             if (def.magicElementTarget) {
-                const magicElementRefs = listCompatibleMagicElementRefs(def, ctx);
+                const magicElementRefs = listMagicElementPaletteTargets(def, ctx);
                 if (magicElementRefs.length === 0) {
                     continue;
                 }
@@ -291,7 +330,8 @@ class BlueprintNodeDefinitionsRegistry {
                     continue;
                 }
                 for (const magicElementRef of magicElementRefs) {
-                    out.push({ ...this.toCatalogEntry(def), magicElementRef });
+                    const entry = this.toCatalogEntry(def);
+                    out.push(magicElementRef ? { ...entry, magicElementRef } : entry);
                 }
                 continue;
             }

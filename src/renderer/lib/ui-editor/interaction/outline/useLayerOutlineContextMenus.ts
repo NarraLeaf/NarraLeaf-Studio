@@ -38,6 +38,7 @@ export function useLayerOutlineContextMenus(params: {
     showMenu: (event: MouseEvent<HTMLElement>) => void;
     hideMenu: () => void;
     setMenuItems: (items: ContextMenuDef) => void;
+    allowAddSelectionToComponentLibrary?: boolean;
 }) {
     const {
         surfaceId,
@@ -52,6 +53,7 @@ export function useLayerOutlineContextMenus(params: {
         showMenu,
         hideMenu,
         setMenuItems,
+        allowAddSelectionToComponentLibrary = true,
     } = params;
 
     const openRowContextMenu = useCallback(
@@ -70,7 +72,7 @@ export function useLayerOutlineContextMenus(params: {
             }
             const menuSel = resolveCanvasContextSelection(surfaceId, element.id, stateService.getSelection());
             const doc = documentService.getDocument();
-            const surfaceKind = doc.surfaces.find(surface => surface.id === surfaceId)?.kind;
+            const surface = doc.surfaces.find(candidate => candidate.id === surfaceId);
             const insertParentId = resolveNearestInsertParentInSurface(doc, surfaceId, element.id);
             const canGroup =
                 Boolean(menuSel) &&
@@ -117,10 +119,11 @@ export function useLayerOutlineContextMenus(params: {
                 rowElement: element,
                 menuSelection: menuSel,
                 hasClipboard: hasUiEditorClipboard(),
-                widgetModules: listInsertPaletteModules(surfaceKind),
+                widgetModules: listInsertPaletteModules(surface),
                 documentService,
                 insertParentIdForRow: insertParentId,
                 canAddToGroup: canGroup,
+                allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions,
             });
             setMenuItems(items);
@@ -139,6 +142,7 @@ export function useLayerOutlineContextMenus(params: {
             setMenuItems,
             stateService,
             surfaceId,
+            allowAddSelectionToComponentLibrary,
         ]
     );
 
@@ -154,7 +158,7 @@ export function useLayerOutlineContextMenus(params: {
             }
             const menuSel = resolveCanvasContextSelection(surfaceId, null, stateService.getSelection());
             const doc = documentService.getDocument();
-            const surfaceKind = doc.surfaces.find(surface => surface.id === surfaceId)?.kind;
+            const surface = doc.surfaces.find(candidate => candidate.id === surfaceId);
             const canGroup =
                 Boolean(menuSel) &&
                 canAddRestToLeaderContainer(menuSel!, doc) &&
@@ -198,10 +202,11 @@ export function useLayerOutlineContextMenus(params: {
                 rowElement: null,
                 menuSelection: menuSel,
                 hasClipboard: hasUiEditorClipboard(),
-                widgetModules: listInsertPaletteModules(surfaceKind),
+                widgetModules: listInsertPaletteModules(surface),
                 documentService,
                 insertParentIdForRow: null,
                 canAddToGroup: canGroup,
+                allowAddToComponentLibrary: allowAddSelectionToComponentLibrary,
                 actions,
             });
             setMenuItems(items);
@@ -219,6 +224,7 @@ export function useLayerOutlineContextMenus(params: {
             setMenuItems,
             stateService,
             surfaceId,
+            allowAddSelectionToComponentLibrary,
         ]
     );
 

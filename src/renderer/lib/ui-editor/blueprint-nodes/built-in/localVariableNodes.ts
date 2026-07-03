@@ -1,15 +1,38 @@
 /**
- * Blueprint execution locals (per event dispatch), backed by blueprint.members.variables defaults.
+ * Blueprint lifecycle locals declared by in-graph Var nodes.
  */
 
 import type { BlueprintNodeDef } from "../types";
 import {
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_VARIABLE_TYPE_OPTIONS } from "@shared/types/blueprint/variableTypes";
 import { resolveDataPinValue } from "./graphParamResolvers";
 
+const VARIABLE_TYPE_SELECT_OPTIONS = BLUEPRINT_VARIABLE_TYPE_OPTIONS.map(option => ({
+    value: option.value,
+    label: option.label,
+}));
+
 export const localVariableBlueprintNodes: BlueprintNodeDef[] = [
+    {
+        type: BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+        displayName: "Var",
+        category: "Variables",
+        keywords: ["var", "declare", "definition", "local", "variable", "default"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain", "componentWidgetMain", "sharedAsset"] },
+        pins: [],
+        inspectorParams: [
+            { key: "name", label: "Name", kind: "string" },
+            { key: "valueType", label: "Data type", kind: "select", options: VARIABLE_TYPE_SELECT_OPTIONS },
+            { key: "defaultValue", label: "Default", kind: "literal" },
+        ],
+        execute: () => ({}),
+    },
     {
         type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
         displayName: "Set Var",

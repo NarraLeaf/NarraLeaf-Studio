@@ -37,18 +37,18 @@ export function Switch({
         sm: {
             track: "h-5 w-9",
             thumb: "h-3 w-3",
-            thumbOffset: checked ? "translate-x-5" : "translate-x-1"
+            thumbOffset: checked ? "translate-x-4" : "translate-x-0",
         },
         md: {
             track: "h-6 w-11",
             thumb: "h-4 w-4",
-            thumbOffset: checked ? "translate-x-6" : "translate-x-1"
+            thumbOffset: checked ? "translate-x-5" : "translate-x-0",
         },
         lg: {
             track: "h-7 w-12",
             thumb: "h-5 w-5",
-            thumbOffset: checked ? "translate-x-5.5" : "translate-x-1"
-        }
+            thumbOffset: checked ? "translate-x-5" : "translate-x-0",
+        },
     };
 
     const currentSize = sizeStyles[size];
@@ -61,7 +61,8 @@ export function Switch({
             disabled={disabled || loading}
             onClick={handleClick}
             className={`
-                relative inline-flex items-center rounded-full border transition-colors duration-200
+                relative inline-flex shrink-0 items-center rounded-full border p-0 transition-colors duration-200
+                appearance-none
                 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#40a8c4]
                 ${disabled && !loading ? "opacity-50 cursor-not-allowed" : ""}
                 ${
@@ -76,7 +77,7 @@ export function Switch({
         >
             <span
                 className={`
-                    block rounded-full bg-white shadow-sm transform transition-transform duration-200
+                    pointer-events-none absolute left-1 top-1/2 block -translate-y-1/2 rounded-full bg-white/95 shadow-sm transition-transform duration-200
                     ${currentSize.thumb}
                     ${currentSize.thumbOffset}
                 `}

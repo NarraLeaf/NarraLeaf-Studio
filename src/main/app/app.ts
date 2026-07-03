@@ -2,6 +2,7 @@ import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/w
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
 import { AppWindow, WindowConfig } from "./application/managers/window/appWindow";
 import { DevModeManager } from "./application/managers/devMode/DevModeManager";
+import { PreviewManager } from "./application/managers/preview/PreviewManager";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -14,12 +15,18 @@ export class App extends BaseApp {
     constructor(public readonly config: AppConfig) {
         super(config);
         this.devModeManager = new DevModeManager(this);
+        this.previewManager = new PreviewManager(this);
     }
 
     private readonly devModeManager: DevModeManager;
+    private readonly previewManager: PreviewManager;
 
     public getDevModeManager(): DevModeManager {
         return this.devModeManager;
+    }
+
+    public getPreviewManager(): PreviewManager {
+        return this.previewManager;
     }
 
     private applyWindowIcon(window: AppWindow): void {
@@ -41,9 +48,12 @@ export class App extends BaseApp {
             options: {
                 minWidth: 800,
                 minHeight: 500,
+                maxWidth: 800,
+                maxHeight: 500,
                 width: 800,
                 height: 500,
                 frame: false,
+                resizable: false,
                 maximizable: false,
                 titleBarStyle: 'hidden',
                 show: false,

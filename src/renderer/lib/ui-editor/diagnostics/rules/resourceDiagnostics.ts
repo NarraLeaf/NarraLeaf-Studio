@@ -1,9 +1,10 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { ImageFill } from "@shared/types/ui-editor/imageFill";
-import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
+import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
 import {
     buttonResolvedVisualToRectangleLike,
+    resolveImageRectangleLike,
     resolveButtonVisualProps,
 } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
@@ -21,11 +22,19 @@ function imageFillMissingAsset(fill: ImageFill | undefined): boolean {
     return false;
 }
 
+function getImageDiagnosticProps(el: UIElement) {
+    const rawAppearance = (el.props as { appearance?: unknown } | undefined)?.appearance;
+    return resolveImageRectangleLike(el, isAppearanceModel(rawAppearance) ? rawAppearance : undefined, {
+        variantOverrideId: null,
+        signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+    });
+}
+
 export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiagnostic[] {
     const out: UISurfaceDiagnostic[] = [];
     for (const el of elements) {
         if (el.type === "nl.image") {
-            const props = getImageWidgetRectangleProps(el);
+            const props = getImageDiagnosticProps(el);
             if (props.fillType !== "image") {
                 continue;
             }

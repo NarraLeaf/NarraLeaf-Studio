@@ -5,6 +5,7 @@ export type StoryLibraryIndexVersion = typeof STORY_LIBRARY_INDEX_SCHEMA_VERSION
 export type StoryDocumentVersion = typeof STORY_DOCUMENT_SCHEMA_VERSION;
 
 export type StoryId = string;
+export type StoryAnimationAssetId = string;
 export type StoryChapterId = string;
 export type StorySceneId = string;
 export type StoryBlockId = string;
@@ -68,14 +69,24 @@ export type StoryScene = {
     id: StorySceneId;
     name: string;
     runtimeName: string;
+    description?: string;
+    defaultBackgroundAssetId?: string;
     rootBlockIds: StoryBlockId[];
     blocks: Record<StoryBlockId, StoryBlock>;
     localVariables?: Record<string, StoryVariableDefinition>;
     meta?: StoryMeta;
 };
 
+export type StorySceneUpdate = {
+    name?: string;
+    description?: string;
+    defaultBackgroundAssetId?: string | null;
+};
+
 export type StoryVariableScope = "studioGlobal" | "gamePersistent" | "sceneLocal";
 export type StoryVariableValueType = "boolean" | "number" | "string" | "json";
+export type StoryStageObjectKind = "image" | "text" | "layer" | "video";
+export type StoryDisplayableTargetKind = Exclude<StoryStageObjectKind, "video"> | "character";
 
 export type StoryVariableDefinition = {
     id: string;
@@ -154,13 +165,30 @@ export type StoryActionPayload =
           operation: "enter" | "move" | "exit" | "expression";
           characterId?: string;
           assetId?: string;
+          objectName?: string;
+          formName?: string;
+          variants?: StoryCharacterVariantSelection;
+          transition?: StoryTransitionRef;
           transform?: StoryTransformRef;
       }
     | {
           action: "audio";
-          operation: "setBgm" | "playSound" | "stopSound";
+          operation:
+              | "setBgm"
+              | "playSound"
+              | "stopSound"
+              | "pauseSound"
+              | "resumeSound"
+              | "setVolume"
+              | "setRate"
+              | "muteSound";
+          objectName?: string;
           assetId?: string;
           fadeMs?: number;
+          volume?: number;
+          rate?: number;
+          muted?: boolean;
+          loop?: boolean;
       }
     | {
           action: "setVariable";
@@ -171,6 +199,60 @@ export type StoryActionPayload =
           action: "wait";
           mode: "duration" | "click";
           durationMs?: number;
+      }
+    | {
+          action: "image";
+          operation: "create" | "setSource" | "show" | "hide";
+          objectName: string;
+          assetId?: string;
+          color?: string;
+          layerName?: string;
+          autoFit?: boolean;
+          transition?: StoryTransitionRef;
+          transform?: StoryTransformRef;
+      }
+    | {
+          action: "displayable";
+          operation: "show" | "hide" | "transform";
+          target: StoryDisplayableTargetRef;
+          transform?: StoryTransformRef;
+      }
+    | {
+          action: "text";
+          operation: "create" | "setText" | "show" | "hide" | "setFontSize" | "setFontColor";
+          objectName: string;
+          text?: string;
+          fontSize?: number;
+          fontColor?: string;
+          layerName?: string;
+          transform?: StoryTransformRef;
+      }
+    | {
+          action: "layer";
+          operation: "create" | "setZIndex" | "show" | "hide" | "transform";
+          objectName: string;
+          zIndex?: number;
+          transform?: StoryTransformRef;
+      }
+    | {
+          action: "video";
+          operation: "create" | "show" | "hide" | "play";
+          objectName: string;
+          assetId?: string;
+          muted?: boolean;
+      }
+    | {
+          action: "nvl";
+          transition?: StoryTransformRef;
+      }
+    | {
+          action: "screenEffect";
+          effect: "blink" | "vignette";
+          durationMs?: number;
+          holdMs?: number;
+          color?: string;
+          opacity?: number;
+          easing?: string;
       };
 
 export type StoryControlPayload =
@@ -181,6 +263,11 @@ export type StoryControlPayload =
           control: "conditionBranch";
           branch: "if" | "elseIf" | "else";
           condition?: StoryConditionRef;
+      }
+    | {
+          control: "sequence" | "parallel" | "race" | "repeat";
+          mode?: "do" | "doAsync" | "all" | "allAsync" | "any";
+          times?: number;
       };
 
 export type StoryJumpPayload = {
@@ -211,6 +298,13 @@ export type StoryVariableRef = {
     key: string;
 };
 
+export type StoryDisplayableTargetRef = {
+    kind?: StoryDisplayableTargetKind;
+    name: string;
+};
+
+export type StoryCharacterVariantSelection = string[] | Record<string, string>;
+
 export type StoryConditionRef =
     | {
           kind: "variable";
@@ -223,15 +317,38 @@ export type StoryConditionRef =
           source: string;
       };
 
+export type StoryTransformPreset =
+    | "none"
+    | "left"
+    | "center"
+    | "right"
+    | "custom"
+    | "fadeIn"
+    | "fadeOut"
+    | "slideLeft"
+    | "slideRight"
+    | "slideUp"
+    | "slideDown"
+    | "zoom"
+    | "scale"
+    | "rotate"
+    | "opacity"
+    | "darken"
+    | "circleReveal"
+    | "circleClose"
+    | "wipe";
+
 export type StoryTransformRef = {
-    preset?: "left" | "center" | "right";
+    mode?: "preset" | "animation";
+    preset?: StoryTransformPreset;
     durationMs?: number;
     easing?: string;
     props?: Record<string, StoryLiteralValue>;
+    animationId?: StoryAnimationAssetId;
 };
 
 export type StoryTransitionRef = {
-    kind: "dissolve" | "fadeIn" | "darkness" | "custom";
+    kind: "none" | "dissolve" | "fadeIn" | "maskCircle" | "maskWipe" | "darkness" | "custom";
     durationMs?: number;
     easing?: string;
     props?: Record<string, StoryLiteralValue>;
@@ -241,6 +358,99 @@ export type StoryDiagnosticsMeta = {
     sourceLine?: number;
     sourceColumn?: number;
     tags?: string[];
+};
+
+export type StoryAnimationIndex = {
+    schemaVersion: StoryDocumentVersion;
+    animations: StoryAnimationIndexEntry[];
+    meta?: StoryMeta;
+};
+
+export type StoryAnimationIndexEntry = {
+    id: StoryAnimationAssetId;
+    name: string;
+    targetKind: StoryDisplayableTargetKind;
+    documentPath: string;
+    createdAt: string;
+    updatedAt: string;
+};
+
+export type StoryAnimationAsset = {
+    schemaVersion: StoryDocumentVersion;
+    id: StoryAnimationAssetId;
+    name: string;
+    targetKind: StoryDisplayableTargetKind;
+    timeline?: StoryAnimationTimeline;
+    sequences: StoryAnimationSequence[];
+    config?: StoryAnimationConfig;
+    meta?: StoryMeta;
+};
+
+export type StoryAnimationConfig = {
+    repeat?: number;
+    repeatDelayMs?: number;
+};
+
+export type StoryAnimationSequence = {
+    id: string;
+    props: StoryTransformSequenceProps;
+    options?: StoryAnimationSequenceOptions;
+};
+
+export type StoryAnimationTimeline = {
+    fps?: number;
+    durationMs?: number;
+    tracks: StoryAnimationTrack[];
+};
+
+export type StoryAnimationTrackProperty = keyof StoryTransformSequenceProps;
+
+export type StoryAnimationTrack = {
+    id: string;
+    property: StoryAnimationTrackProperty;
+    keyframes: StoryAnimationKeyframe[];
+};
+
+export type StoryAnimationKeyframe = {
+    id: string;
+    timeMs: number;
+    value: StoryAnimationKeyframeValue;
+    easing?: string;
+};
+
+export type StoryAnimationKeyframeValue = StoryAlignPositionValue | number | string;
+
+export type StoryTransformSequenceProps = {
+    position?: StoryAlignPositionValue;
+    opacity?: number;
+    zoom?: number;
+    scaleX?: number;
+    scaleY?: number;
+    rotation?: number;
+    fontColor?: string;
+    maskImage?: string;
+    maskSize?: string;
+    maskPosition?: string;
+    maskRepeat?: string;
+    maskMode?: string;
+    clipPath?: string;
+    filter?: string;
+    backdropFilter?: string;
+    mixBlendMode?: string;
+};
+
+export type StoryAlignPositionValue = {
+    xalign?: number;
+    yalign?: number;
+    xoffset?: number;
+    yoffset?: number;
+};
+
+export type StoryAnimationSequenceOptions = {
+    durationMs?: number;
+    easing?: string;
+    delayMs?: number;
+    at?: number | `+${number}` | `-${number}`;
 };
 
 export type StoryPackageCapability = {

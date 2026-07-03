@@ -3,6 +3,7 @@ import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { filterToTopLevelMovers } from "@/lib/workspace/services/ui-editor/uiDocumentTreeMove";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import { isComponentEditorRootElement } from "@/lib/ui-editor/componentEditorRoot";
 
 const ROOT_WIDGET_TYPE = "nl.root";
 const PROPERTIES_PANEL_ID = "narraleaf-studio:properties";
@@ -51,7 +52,7 @@ export function canAddRestToLeaderContainer(selection: UIElementSelection, docum
         return false;
     }
     const el = document.elements[leader];
-    return el != null && el.type === "nl.container";
+    return el != null && el.type === "nl.container" && !isComponentEditorRootElement(el);
 }
 
 /**

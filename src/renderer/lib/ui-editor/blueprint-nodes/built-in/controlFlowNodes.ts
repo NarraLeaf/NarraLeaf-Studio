@@ -12,18 +12,32 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_NOOP,
     BLUEPRINT_NODE_TYPE_FLOW_RETURN,
     BLUEPRINT_NODE_TYPE_FLOW_SEQUENCE,
+    BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
     BLUEPRINT_NODE_TYPE_FLOW_WHILE,
 } from "@shared/types/blueprint/graph";
+import { BLUEPRINT_VALUE_TYPE_TIMER, type BlueprintTimerToken } from "@shared/types/blueprint/valueTypes";
 import type { BehaviorNodeExecutionContext } from "../../behavior-graph/BehaviorNodeRegistry";
+import { throwIfBlueprintExecutionCancelled } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef } from "../types";
 import { readDynamicInputPinIds } from "../effectivePins";
+import { writeBlueprintNodeOutputValues } from "../nodeOutputValues";
+import {
+    BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID,
+    createDelayTimerToken,
+    registerPendingDelayTimer,
+    skipDelayTimerToken,
+} from "./flowTimerTokens";
 import { resolveDataPinValue, resolveIfCondition } from "./graphParamResolvers";
 
 const DEFAULT_MAX_ITERATIONS = 1000;
 const IF_ELSE_DYNAMIC_BRANCH_PINS_KEY = "__ifElseBranchPins";
 const IF_ELSE_CONDITION_SUFFIX = "_condition";
 const IF_ELSE_THEN_SUFFIX = "_then";
+const SWITCH_STRING_DYNAMIC_CASE_PINS_KEY = "__switchStringCasePins";
+const SWITCH_STRING_DYNAMIC_CASE_VALUE_SUFFIX = "_value";
+const SWITCH_STRING_DYNAMIC_CASE_OUTPUT_SUFFIX = "_output";
+const SWITCH_STRING_LEGACY_CASE_COUNT = 4;
 
 type LoopState =
     | {
@@ -220,10 +234,75 @@ function executeWhile(ctx: BehaviorNodeExecutionContext) {
 
 async function executeDelay(ctx: BehaviorNodeExecutionContext) {
     const durationSeconds = Math.max(0, toFiniteNumber(resolveInput(ctx, "duration", 0), 0));
-    if (durationSeconds > 0) {
-        await new Promise(resolve => setTimeout(resolve, durationSeconds * 1000));
+    const token = createDelayTimerToken({
+        graphId: ctx.graph.id,
+        nodeId: ctx.node.id,
+        instanceKey: ctx.instanceKey,
+        executionOwner: ctx.executionOwner,
+    });
+    if (ctx.blueprintLocals) {
+        writeBlueprintNodeOutputValues(ctx.blueprintLocals, ctx.node.id, {
+            [BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID]: token,
+        });
     }
-    return { nextPort: "completed" };
+    if (durationSeconds > 0) {
+        await waitForDelayOrSkip(ctx, durationSeconds * 1000, token);
+    }
+    return { nextPort: "completed", outputValues: { [BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID]: token } };
+}
+
+function waitForDelayOrSkip(
+    ctx: BehaviorNodeExecutionContext,
+    durationMs: number,
+    token: BlueprintTimerToken,
+): Promise<void> {
+    throwIfBlueprintExecutionCancelled(ctx.signal, ctx.node.id);
+    const waitMs = Math.max(0, durationMs);
+    if (waitMs <= 0) {
+        return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let unregister: () => void = () => undefined;
+        const cleanup = () => {
+            if (timer !== undefined) {
+                clearTimeout(timer);
+            }
+            ctx.signal?.removeEventListener("abort", onAbort);
+            unregister();
+        };
+        const settle = (fn: () => void) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            cleanup();
+            fn();
+        };
+        const onAbort = () => {
+            settle(() => {
+                try {
+                    throwIfBlueprintExecutionCancelled(ctx.signal, ctx.node.id);
+                } catch (err) {
+                    reject(err);
+                }
+            });
+        };
+        unregister = registerPendingDelayTimer(token, () => settle(resolve));
+        timer = setTimeout(() => settle(resolve), waitMs);
+        if (ctx.signal?.aborted) {
+            onAbort();
+        } else {
+            ctx.signal?.addEventListener("abort", onAbort, { once: true });
+        }
+    });
+}
+
+function executeSkipDelay(ctx: BehaviorNodeExecutionContext) {
+    const timer = resolveInput(ctx, "timer", null);
+    skipDelayTimerToken(timer);
+    return { nextPort: "next" };
 }
 
 function executeBooleanBranch(ctx: BehaviorNodeExecutionContext, truePort: string, falsePort: string) {
@@ -266,10 +345,25 @@ function executeIfElse(ctx: BehaviorNodeExecutionContext) {
 
 function executeSwitchStringLike(ctx: BehaviorNodeExecutionContext) {
     const value = toBlueprintString(resolveInput(ctx, "value", ""));
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < SWITCH_STRING_LEGACY_CASE_COUNT; i += 1) {
         const caseValue = resolveInput(ctx, `case${i}Value`);
         if (caseValue !== undefined && value === toBlueprintString(caseValue)) {
             return { nextPort: `case${i}` };
+        }
+    }
+    const dynamicCasePins = readDynamicInputPinIds(ctx.params, SWITCH_STRING_DYNAMIC_CASE_PINS_KEY);
+    const dynamicCasePinSet = new Set(dynamicCasePins);
+    for (const valuePinId of dynamicCasePins) {
+        if (!valuePinId.endsWith(SWITCH_STRING_DYNAMIC_CASE_VALUE_SUFFIX)) {
+            continue;
+        }
+        const outputPinId = `${valuePinId.slice(0, -SWITCH_STRING_DYNAMIC_CASE_VALUE_SUFFIX.length)}${SWITCH_STRING_DYNAMIC_CASE_OUTPUT_SUFFIX}`;
+        if (!dynamicCasePinSet.has(outputPinId)) {
+            continue;
+        }
+        const caseValue = resolveInput(ctx, valuePinId);
+        if (caseValue !== undefined && value === toBlueprintString(caseValue)) {
+            return { nextPort: outputPinId };
         }
     }
     return { nextPort: "default" };
@@ -372,15 +466,37 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
             { id: "in", kind: "input", semantic: "exec", label: "In" },
             { id: "case0", kind: "output", semantic: "exec", label: "Case 0" },
             { id: "case1", kind: "output", semantic: "exec", label: "Case 1" },
-            { id: "case2", kind: "output", semantic: "exec", label: "Case 2" },
-            { id: "case3", kind: "output", semantic: "exec", label: "Case 3" },
             { id: "default", kind: "output", semantic: "exec", label: "Default" },
             { id: "value", kind: "input", semantic: "data", valueType: "string", label: "Value", allowInlineLiteral: true },
             { id: "case0Value", kind: "input", semantic: "data", valueType: "string", label: "Case 0", allowInlineLiteral: true },
             { id: "case1Value", kind: "input", semantic: "data", valueType: "string", label: "Case 1", allowInlineLiteral: true },
-            { id: "case2Value", kind: "input", semantic: "data", valueType: "string", label: "Case 2", allowInlineLiteral: true },
-            { id: "case3Value", kind: "input", semantic: "data", valueType: "string", label: "Case 3", allowInlineLiteral: true },
         ],
+        dynamicInputPins: {
+            storageKey: SWITCH_STRING_DYNAMIC_CASE_PINS_KEY,
+            fixedDataInputIds: ["value", "case0Value", "case1Value"],
+            generatedIdPrefix: "case",
+            valueType: "string",
+            allowInlineLiteral: true,
+            labelPrefix: "Case",
+            addButtonLabel: "Add Case",
+            outputInsertBeforePinId: "default",
+            generatedPinTemplates: [
+                {
+                    idSuffix: "value",
+                    label: "Case",
+                    kind: "input",
+                    semantic: "data",
+                    valueType: "string",
+                    allowInlineLiteral: true,
+                },
+                {
+                    idSuffix: "output",
+                    label: "Case",
+                    kind: "output",
+                    semantic: "exec",
+                },
+            ],
+        },
         execute: executeSwitchStringLike,
     },
     {
@@ -468,9 +584,30 @@ export const controlFlowBlueprintNodes: BlueprintNodeDef[] = [
         pins: [
             { id: "in", kind: "input", semantic: "exec", label: "In" },
             { id: "completed", kind: "output", semantic: "exec", label: "Completed" },
-            { id: "duration", kind: "input", semantic: "data", valueType: "float", label: "Duration", allowInlineLiteral: true },
+            { id: "duration", kind: "input", semantic: "data", valueType: "float", label: "Duration (s)", allowInlineLiteral: true },
+            {
+                id: BLUEPRINT_FLOW_DELAY_TOKEN_PIN_ID,
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_TIMER,
+                label: "Token",
+            },
         ],
         execute: executeDelay,
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY,
+        displayName: "Skip Delay",
+        category: "Flow",
+        keywords: ["skip", "delay", "timer", "complete", "wait"],
+        graphKinds: ["event", "macro"],
+        isPure: false,
+        pins: [
+            { id: "in", kind: "input", semantic: "exec", label: "In" },
+            { id: "next", kind: "output", semantic: "exec", label: "Next" },
+            { id: "timer", kind: "input", semantic: "data", valueType: BLUEPRINT_VALUE_TYPE_TIMER, label: "Timer" },
+        ],
+        execute: executeSkipDelay,
     },
     {
         type: BLUEPRINT_NODE_TYPE_FLOW_RETURN,

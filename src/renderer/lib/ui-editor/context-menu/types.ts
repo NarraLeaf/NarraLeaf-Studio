@@ -21,6 +21,7 @@ export type UiEditorContextMenuActions = {
     /** Multi or single: set layout.visible */
     setSelectedVisible: (visible: boolean) => void;
     addSelectionToLeaderGroup: () => void;
+    addSelectionToComponentLibrary: () => void;
 };
 
 export type BuildCanvasContextMenuInput = {
@@ -34,6 +35,7 @@ export type BuildCanvasContextMenuInput = {
     actions: UiEditorContextMenuActions;
     /** Leader is first id and is nl.container, multi-select */
     canAddToGroup: boolean;
+    allowAddToComponentLibrary?: boolean;
 };
 
 export type BuildOutlineContextMenuInput = {
@@ -47,6 +49,7 @@ export type BuildOutlineContextMenuInput = {
     widgetModules: UIWidgetModule[];
     documentService: UIDocumentService;
     actions: UiEditorContextMenuActions & {
+        copyElementId: (elementId: string) => void;
         pasteIntoParent: (parentId: string) => void;
         expandAllBranches: () => void;
         collapseAllBranches: () => void;
@@ -54,6 +57,7 @@ export type BuildOutlineContextMenuInput = {
         insertChildInOutline: (type: string) => void;
     };
     canAddToGroup: boolean;
+    allowAddToComponentLibrary?: boolean;
     /** For insert-child submenu on a row */
     insertParentIdForRow: string | null;
 };

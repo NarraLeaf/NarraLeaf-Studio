@@ -1,19 +1,28 @@
 import type {
     StoryActionPayload,
     StoryBlock,
+    StoryCharacterVariantSelection,
     StoryCodePayload,
+    StoryConditionRef,
     StoryControlPayload,
     StoryDocument,
+    StoryDisplayableTargetKind,
+    StoryLiteralValue,
+    StorySceneId,
+    StoryTransitionRef,
     StoryTransformRef,
+    StoryTransformPreset,
     StoryTextSegment,
     StoryVariableScope,
 } from "@shared/types/story";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image as ImageIcon, Palette, Trash2 } from "lucide-react";
+import { Image as ImageIcon, Music, Palette, Trash2, Video } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
+import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { Character } from "@/lib/workspace/services/character/Character";
+import type { CharacterForm } from "@/lib/workspace/services/character/types";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -24,6 +33,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
+import { StoryMotionPicker } from "../../story-motion";
 
 const FIELD_LABEL_CLASS = "block text-xs font-medium text-gray-400 mb-1";
 const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-white/10 bg-[#1e1f22] px-3 py-2 text-sm text-gray-300 outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -35,11 +45,117 @@ const VARIABLE_SCOPE_OPTIONS: SelectOption[] = [
     { value: "gamePersistent", label: "Game persistent" },
 ];
 
-const CHARACTER_PRESET_OPTIONS: SelectOption[] = [
-    { value: "", label: "None" },
+const TRANSFORM_PRESET_OPTIONS: SelectOption[] = [
+    { value: "none", label: "None" },
     { value: "left", label: "Left" },
     { value: "center", label: "Center" },
     { value: "right", label: "Right" },
+    { value: "fadeIn", label: "Fade in" },
+    { value: "fadeOut", label: "Fade out" },
+    { value: "slideLeft", label: "Slide left" },
+    { value: "slideRight", label: "Slide right" },
+    { value: "slideUp", label: "Slide up" },
+    { value: "slideDown", label: "Slide down" },
+    { value: "zoom", label: "Zoom" },
+    { value: "scale", label: "Scale" },
+    { value: "rotate", label: "Rotate" },
+    { value: "opacity", label: "Opacity" },
+    { value: "darken", label: "Darken" },
+    { value: "circleReveal", label: "Circle reveal" },
+    { value: "circleClose", label: "Circle close" },
+    { value: "wipe", label: "Wipe" },
+];
+
+const EASING_OPTIONS: SelectOption[] = [
+    { value: "", label: "Default" },
+    { value: "linear", label: "Linear" },
+    { value: "easeIn", label: "Ease in" },
+    { value: "easeOut", label: "Ease out" },
+    { value: "easeInOut", label: "Ease in/out" },
+    { value: "circIn", label: "Circ in" },
+    { value: "circOut", label: "Circ out" },
+    { value: "circInOut", label: "Circ in/out" },
+    { value: "backIn", label: "Back in" },
+    { value: "backOut", label: "Back out" },
+    { value: "backInOut", label: "Back in/out" },
+    { value: "anticipate", label: "Anticipate" },
+];
+
+const TRANSITION_OPTIONS: SelectOption[] = [
+    { value: "none", label: "None" },
+    { value: "dissolve", label: "Dissolve" },
+    { value: "fadeIn", label: "Fade in" },
+    { value: "maskCircle", label: "Mask circle" },
+    { value: "maskWipe", label: "Mask wipe" },
+];
+
+const DISPLAYABLE_KIND_OPTIONS: SelectOption[] = [
+    { value: "", label: "Infer" },
+    { value: "character", label: "Character" },
+    { value: "image", label: "Image" },
+    { value: "text", label: "Text" },
+    { value: "layer", label: "Layer" },
+];
+
+const IMAGE_OPERATION_OPTIONS: SelectOption[] = [
+    { value: "create", label: "Create / update" },
+    { value: "setSource", label: "Set source" },
+    { value: "show", label: "Show" },
+    { value: "hide", label: "Hide" },
+];
+
+const DISPLAYABLE_OPERATION_OPTIONS: SelectOption[] = [
+    { value: "transform", label: "Transform" },
+    { value: "show", label: "Show" },
+    { value: "hide", label: "Hide" },
+];
+
+const TEXT_OPERATION_OPTIONS: SelectOption[] = [
+    { value: "create", label: "Create / update" },
+    { value: "setText", label: "Set text" },
+    { value: "show", label: "Show" },
+    { value: "hide", label: "Hide" },
+    { value: "setFontSize", label: "Set font size" },
+    { value: "setFontColor", label: "Set font color" },
+];
+
+const LAYER_OPERATION_OPTIONS: SelectOption[] = [
+    { value: "create", label: "Create" },
+    { value: "setZIndex", label: "Set z-index" },
+    { value: "show", label: "Show" },
+    { value: "hide", label: "Hide" },
+    { value: "transform", label: "Transform" },
+];
+
+const VIDEO_OPERATION_OPTIONS: SelectOption[] = [
+    { value: "create", label: "Create" },
+    { value: "show", label: "Show" },
+    { value: "hide", label: "Hide" },
+    { value: "play", label: "Play" },
+];
+
+const AUDIO_OPERATION_OPTIONS: SelectOption[] = [
+    { value: "setBgm", label: "Set BGM" },
+    { value: "playSound", label: "Play sound" },
+    { value: "stopSound", label: "Stop sound" },
+    { value: "pauseSound", label: "Pause sound" },
+    { value: "resumeSound", label: "Resume sound" },
+    { value: "setVolume", label: "Set volume" },
+    { value: "setRate", label: "Set rate" },
+    { value: "muteSound", label: "Mute / unmute" },
+];
+
+const SCREEN_EFFECT_OPTIONS: SelectOption[] = [
+    { value: "blink", label: "Blink" },
+    { value: "vignette", label: "Vignette" },
+];
+
+const CONDITION_OPERATOR_OPTIONS: SelectOption[] = [
+    { value: "isTrue", label: "Is true" },
+    { value: "isFalse", label: "Is false" },
+    { value: "equals", label: "Equals" },
+    { value: "notEquals", label: "Not equals" },
+    { value: "exists", label: "Exists" },
 ];
 
 const WAIT_MODE_OPTIONS: SelectOption[] = [
@@ -62,6 +178,7 @@ const CODE_LANGUAGE_OPTIONS: SelectOption[] = [
 export function ActionInspector(props: {
     block: StoryBlock;
     document: StoryDocument;
+    sceneId: StorySceneId;
     characters: Character[];
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onClose: () => void;
@@ -89,6 +206,7 @@ export function ActionInspector(props: {
             <InspectorFields
                 block={block}
                 document={props.document}
+                sceneId={props.sceneId}
                 characters={props.characters}
                 onUpdatePayload={props.onUpdatePayload}
                 onSetDialogueCharacter={props.onSetDialogueCharacter}
@@ -101,6 +219,7 @@ export function ActionInspector(props: {
 function InspectorFields(props: {
     block: StoryBlock;
     document: StoryDocument;
+    sceneId: StorySceneId;
     characters: Character[];
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
@@ -153,7 +272,16 @@ function InspectorFields(props: {
         }
     }
     if (block.kind === "action") {
-        return <ActionPayloadFields payload={block.payload} onChange={props.onUpdatePayload} />;
+        return (
+            <ActionPayloadFields
+                block={block}
+                document={props.document}
+                sceneId={props.sceneId}
+                payload={block.payload}
+                characters={props.characters}
+                onChange={props.onUpdatePayload}
+            />
+        );
     }
     if (block.kind === "control") {
         return <ControlPayloadFields payload={block.payload} onChange={props.onUpdatePayload} />;
@@ -192,7 +320,14 @@ function InspectorFields(props: {
     return <div className="text-sm text-slate-400">No editable fields for this action yet.</div>;
 }
 
-function ActionPayloadFields(props: { payload: StoryActionPayload; onChange: (payload: StoryBlock["payload"]) => void }) {
+function ActionPayloadFields(props: {
+    block: StoryBlock;
+    document: StoryDocument;
+    sceneId: StorySceneId;
+    payload: StoryActionPayload;
+    characters: Character[];
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
     const payload = props.payload;
     if (payload.action === "setBackground") {
         return (
@@ -204,28 +339,40 @@ function ActionPayloadFields(props: { payload: StoryActionPayload; onChange: (pa
     }
     if (payload.action === "character") {
         return (
-            <div className="grid gap-2 sm:grid-cols-3">
-                <TextField label="Character id" value={payload.characterId ?? ""} onChange={characterId => props.onChange({ ...payload, characterId })} />
-                <TextField label="Asset id" value={payload.assetId ?? ""} onChange={assetId => props.onChange({ ...payload, assetId })} />
-                <TextField
-                    label="Preset"
-                    value={payload.transform?.preset ?? ""}
-                    onChange={preset => props.onChange({ ...payload, transform: { ...payload.transform, preset: preset ? (preset as StoryTransformRef["preset"]) : undefined } })}
-                    options={CHARACTER_PRESET_OPTIONS}
-                />
-                <NumberField
-                    label="Duration ms"
-                    value={payload.transform?.durationMs}
-                    onChange={durationMs => props.onChange({ ...payload, transform: { ...payload.transform, durationMs } })}
-                />
-            </div>
+            <CharacterActionEditor
+                payload={payload}
+                storyId={props.document.id}
+                sceneId={props.sceneId}
+                blockId={props.block.id}
+                storyName={props.document.name}
+                characters={props.characters}
+                onChange={props.onChange}
+            />
         );
     }
     if (payload.action === "audio") {
         return (
-            <div className="grid gap-2 sm:grid-cols-2">
-                <TextField label="Asset id" value={payload.assetId ?? ""} onChange={assetId => props.onChange({ ...payload, assetId })} />
-                <NumberField label="Fade ms" value={payload.fadeMs} onChange={fadeMs => props.onChange({ ...payload, fadeMs })} />
+            <div className="grid gap-3">
+                <div className="grid gap-2 sm:grid-cols-3">
+                    <SelectField
+                        label="Operation"
+                        options={AUDIO_OPERATION_OPTIONS}
+                        value={payload.operation}
+                        onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "audio" }>["operation"] })}
+                    />
+                    <TextField label="Sound name" value={payload.objectName ?? ""} onChange={objectName => props.onChange({ ...payload, objectName })} />
+                    <AssetField
+                        label={payload.operation === "setBgm" ? "BGM asset" : "Sound asset"}
+                        assetType={AssetType.Audio}
+                        assetId={payload.assetId}
+                        onChange={assetId => props.onChange({ ...payload, assetId })}
+                    />
+                    <NumberField label="Fade ms" value={payload.fadeMs} onChange={fadeMs => props.onChange({ ...payload, fadeMs })} />
+                    <NumberField label="Volume" value={payload.volume} onChange={volume => props.onChange({ ...payload, volume })} />
+                    <NumberField label="Rate" value={payload.rate} onChange={rate => props.onChange({ ...payload, rate })} />
+                    <CheckboxField label="Loop" checked={Boolean(payload.loop)} onChange={loop => props.onChange({ ...payload, loop })} />
+                    <CheckboxField label="Muted" checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
+                </div>
             </div>
         );
     }
@@ -256,7 +403,743 @@ function ActionPayloadFields(props: { payload: StoryActionPayload; onChange: (pa
             </div>
         );
     }
+    if (payload.action === "image") {
+        return (
+            <div className="grid gap-3">
+                <div className="grid gap-2 sm:grid-cols-3">
+                    <SelectField
+                        label="Operation"
+                        options={IMAGE_OPERATION_OPTIONS}
+                        value={payload.operation}
+                        onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "image" }>["operation"] })}
+                    />
+                    <TextField label="Image name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
+                    <TextField label="Layer" value={payload.layerName ?? ""} onChange={layerName => props.onChange({ ...payload, layerName: layerName || undefined })} />
+                    <AssetField
+                        label="Image asset"
+                        assetType={AssetType.Image}
+                        assetId={payload.assetId}
+                        onChange={assetId => props.onChange({ ...payload, assetId })}
+                    />
+                    <CheckboxField label="Auto fit" checked={Boolean(payload.autoFit)} onChange={autoFit => props.onChange({ ...payload, autoFit })} />
+                </div>
+                <TransformPresetEditor
+                    value={payload.transform}
+                    motionTargetKind="image"
+                    motionLabel={`${payload.objectName || "Image"} ${payload.operation}`}
+                    storyId={props.document.id}
+                    sceneId={props.sceneId}
+                    blockId={props.block.id}
+                    storyName={props.document.name}
+                    onChange={transform => props.onChange({ ...payload, transform })}
+                />
+                <TransitionEditor value={payload.transition} onChange={transition => props.onChange({ ...payload, transition })} />
+            </div>
+        );
+    }
+    if (payload.action === "displayable") {
+        return (
+            <div className="grid gap-3">
+                <div className="grid gap-2 sm:grid-cols-3">
+                    <SelectField
+                        label="Operation"
+                        options={DISPLAYABLE_OPERATION_OPTIONS}
+                        value={payload.operation}
+                        onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "displayable" }>["operation"] })}
+                    />
+                    <TextField label="Target name" value={payload.target.name} onChange={name => props.onChange({ ...payload, target: { ...payload.target, name } })} />
+                    <SelectField
+                        label="Target kind"
+                        options={DISPLAYABLE_KIND_OPTIONS}
+                        value={payload.target.kind ?? ""}
+                        onChange={kind => props.onChange({ ...payload, target: { ...payload.target, kind: String(kind) ? kind as StoryDisplayableTargetKind : undefined } })}
+                    />
+                </div>
+                <TransformPresetEditor
+                    value={payload.transform}
+                    motionTargetKind={payload.target.kind ?? "image"}
+                    motionLabel={`${payload.target.name || "Displayable"} ${payload.operation}`}
+                    storyId={props.document.id}
+                    sceneId={props.sceneId}
+                    blockId={props.block.id}
+                    storyName={props.document.name}
+                    onChange={transform => props.onChange({ ...payload, transform })}
+                />
+            </div>
+        );
+    }
+    if (payload.action === "text") {
+        return (
+            <div className="grid gap-3">
+                <div className="grid gap-2 sm:grid-cols-3">
+                    <SelectField
+                        label="Operation"
+                        options={TEXT_OPERATION_OPTIONS}
+                        value={payload.operation}
+                        onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "text" }>["operation"] })}
+                    />
+                    <TextField label="Text name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
+                    <TextField label="Layer" value={payload.layerName ?? ""} onChange={layerName => props.onChange({ ...payload, layerName: layerName || undefined })} />
+                    <NumberField label="Font size" value={payload.fontSize} onChange={fontSize => props.onChange({ ...payload, fontSize })} />
+                    <ColorTextField label="Font color" value={payload.fontColor ?? "#ffffff"} onChange={fontColor => props.onChange({ ...payload, fontColor })} />
+                </div>
+                {payload.operation === "create" || payload.operation === "setText" ? (
+                    <LabeledTextarea label="Text" className="min-h-16" value={payload.text ?? ""} onChange={text => props.onChange({ ...payload, text })} />
+                ) : null}
+                <TransformPresetEditor
+                    value={payload.transform}
+                    motionTargetKind="text"
+                    motionLabel={`${payload.objectName || "Text"} ${payload.operation}`}
+                    storyId={props.document.id}
+                    sceneId={props.sceneId}
+                    blockId={props.block.id}
+                    storyName={props.document.name}
+                    onChange={transform => props.onChange({ ...payload, transform })}
+                />
+            </div>
+        );
+    }
+    if (payload.action === "layer") {
+        return (
+            <div className="grid gap-3">
+                <div className="grid gap-2 sm:grid-cols-3">
+                    <SelectField
+                        label="Operation"
+                        options={LAYER_OPERATION_OPTIONS}
+                        value={payload.operation}
+                        onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "layer" }>["operation"] })}
+                    />
+                    <TextField label="Layer name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
+                    <NumberField label="Z-index" value={payload.zIndex} onChange={zIndex => props.onChange({ ...payload, zIndex })} />
+                </div>
+                <TransformPresetEditor
+                    value={payload.transform}
+                    motionTargetKind="layer"
+                    motionLabel={`${payload.objectName || "Layer"} ${payload.operation}`}
+                    storyId={props.document.id}
+                    sceneId={props.sceneId}
+                    blockId={props.block.id}
+                    storyName={props.document.name}
+                    onChange={transform => props.onChange({ ...payload, transform })}
+                />
+            </div>
+        );
+    }
+    if (payload.action === "video") {
+        return (
+            <div className="grid gap-2 sm:grid-cols-3">
+                <SelectField
+                    label="Operation"
+                    options={VIDEO_OPERATION_OPTIONS}
+                    value={payload.operation}
+                    onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "video" }>["operation"] })}
+                />
+                <TextField label="Video name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
+                <AssetField
+                    label="Video asset"
+                    assetType={AssetType.Video}
+                    assetId={payload.assetId}
+                    onChange={assetId => props.onChange({ ...payload, assetId })}
+                />
+                <CheckboxField label="Muted" checked={Boolean(payload.muted)} onChange={muted => props.onChange({ ...payload, muted })} />
+            </div>
+        );
+    }
+    if (payload.action === "nvl") {
+        return (
+            <div className="grid gap-3">
+                <div className="text-sm text-slate-400">Children of this row will run inside NLR NVL mode.</div>
+                <TransformPresetEditor
+                    value={payload.transition}
+                    motionTargetKind="layer"
+                    motionLabel="NVL transition"
+                    storyId={props.document.id}
+                    sceneId={props.sceneId}
+                    blockId={props.block.id}
+                    storyName={props.document.name}
+                    onChange={transition => props.onChange({ ...payload, transition })}
+                />
+            </div>
+        );
+    }
+    if (payload.action === "screenEffect") {
+        return (
+            <div className="grid gap-2 sm:grid-cols-3">
+                <SelectField
+                    label="Effect"
+                    options={SCREEN_EFFECT_OPTIONS}
+                    value={payload.effect}
+                    onChange={effect => props.onChange({ ...payload, effect: effect as Extract<StoryActionPayload, { action: "screenEffect" }>["effect"] })}
+                />
+                <NumberField label="Duration ms" value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                <NumberField label="Hold ms" value={payload.holdMs} onChange={holdMs => props.onChange({ ...payload, holdMs })} />
+                <ColorTextField label="Color" value={payload.color ?? "#000000"} onChange={color => props.onChange({ ...payload, color })} />
+                <NumberField label="Opacity" value={payload.opacity} onChange={opacity => props.onChange({ ...payload, opacity })} />
+                <SelectField
+                    label="Easing"
+                    options={EASING_OPTIONS}
+                    value={payload.easing ?? ""}
+                    onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
+                />
+            </div>
+        );
+    }
     return null;
+}
+
+type CharacterActionPayload = Extract<StoryActionPayload, { action: "character" }>;
+
+function CharacterActionEditor(props: {
+    payload: CharacterActionPayload;
+    storyId: string;
+    sceneId: StorySceneId;
+    blockId: string;
+    storyName: string;
+    characters: Character[];
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const payload = props.payload;
+    const characterOptions: SelectOption[] = [
+        { value: "", label: "Unassigned" },
+        ...props.characters.map(character => ({
+            value: character.profile.getId(),
+            label: character.profile.getName(),
+        })),
+    ];
+    const selectedCharacter = getCharacterById(props.characters, payload.characterId);
+    const selectedForm = selectedCharacter ? getSelectedCharacterForm(selectedCharacter, payload.formName) : null;
+    const formOptions = getFormOptions(selectedCharacter, payload.formName);
+    const formValue = payload.formName ?? "";
+    const showZoom = getTransformNumberProp(payload.transform, "zoom");
+    const showXOffset = getTransformNumberProp(payload.transform, "xoffset");
+    const showYOffset = getTransformNumberProp(payload.transform, "yoffset");
+    const onChange = props.onChange;
+
+    const updatePayload = useCallback((next: CharacterActionPayload) => {
+        onChange(next);
+    }, [onChange]);
+
+    const updateCharacter = useCallback((characterIdValue: string | number) => {
+        const characterId = String(characterIdValue) || undefined;
+        updatePayload({
+            ...payload,
+            characterId,
+            formName: undefined,
+            variants: undefined,
+        });
+    }, [payload, updatePayload]);
+
+    const updateForm = useCallback((formNameValue: string | number) => {
+        const formName = String(formNameValue) || undefined;
+        updatePayload({
+            ...payload,
+            formName,
+            variants: undefined,
+        });
+    }, [payload, updatePayload]);
+
+    const updateVariant = useCallback((groupName: string, variantNameValue: string | number) => {
+        if (!selectedForm) {
+            return;
+        }
+        const current = getVariantSelectionMap(payload.variants, selectedForm);
+        const variantName = String(variantNameValue);
+        if (variantName) {
+            current[groupName] = variantName;
+        } else {
+            delete current[groupName];
+        }
+        const variants = normalizeVariantSelection(current);
+        updatePayload({
+            ...payload,
+            variants,
+        });
+    }, [payload, selectedForm, updatePayload]);
+
+    const updateShowZoom = useCallback((zoom: number | undefined) => {
+        updatePayload({
+            ...payload,
+            transform: setTransformNumberProp(payload.transform, "zoom", zoom, {
+                preset: "center",
+                durationMs: 300,
+            }),
+        });
+    }, [payload, updatePayload]);
+
+    const updateShowXOffset = useCallback((xoffset: number | undefined) => {
+        updatePayload({
+            ...payload,
+            transform: setTransformNumberProp(payload.transform, "xoffset", xoffset, {
+                preset: "center",
+                durationMs: 300,
+            }),
+        });
+    }, [payload, updatePayload]);
+
+    const updateShowYOffset = useCallback((yoffset: number | undefined) => {
+        updatePayload({
+            ...payload,
+            transform: setTransformNumberProp(payload.transform, "yoffset", yoffset, {
+                preset: "center",
+                durationMs: 300,
+            }),
+        });
+    }, [payload, updatePayload]);
+
+    return (
+        <div className="grid gap-3">
+            <div className="grid gap-2 sm:grid-cols-3">
+                <SelectField
+                    label="Character"
+                    options={characterOptions}
+                    value={payload.characterId ?? ""}
+                    onChange={updateCharacter}
+                />
+                <TextField
+                    label="Stage name"
+                    value={payload.objectName ?? payload.characterId ?? ""}
+                    onChange={objectName => updatePayload({ ...payload, objectName })}
+                />
+                <SelectField
+                    label="Form"
+                    options={formOptions}
+                    value={formValue}
+                    onChange={updateForm}
+                />
+                <AssetField
+                    label="Override image"
+                    assetType={AssetType.Image}
+                    assetId={payload.assetId}
+                    onChange={assetId => updatePayload({ ...payload, assetId })}
+                />
+                {payload.operation === "enter" && payload.transform?.mode !== "animation" ? (
+                    <NumberField
+                        label="Zoom"
+                        value={showZoom}
+                        onChange={updateShowZoom}
+                    />
+                ) : null}
+                {payload.operation === "enter" && payload.transform?.mode !== "animation" ? (
+                    <NumberField
+                        label="X Offset"
+                        value={showXOffset}
+                        onChange={updateShowXOffset}
+                    />
+                ) : null}
+                {payload.operation === "enter" && payload.transform?.mode !== "animation" ? (
+                    <NumberField
+                        label="Y Offset"
+                        value={showYOffset}
+                        onChange={updateShowYOffset}
+                    />
+                ) : null}
+            </div>
+            {selectedForm ? (
+                <CharacterVariantSelectors
+                    form={selectedForm}
+                    selection={payload.variants}
+                    onChange={updateVariant}
+                />
+            ) : null}
+            <TransformPresetEditor
+                value={payload.transform}
+                motionTargetKind="character"
+                motionLabel={`${payload.characterId || payload.objectName || "Character"} ${payload.operation}`}
+                storyId={props.storyId}
+                sceneId={props.sceneId}
+                blockId={props.blockId}
+                storyName={props.storyName}
+                onChange={transform => updatePayload({ ...payload, transform })}
+            />
+            <TransitionEditor
+                value={payload.transition}
+                onChange={transition => updatePayload({ ...payload, transition })}
+            />
+        </div>
+    );
+}
+
+function CharacterVariantSelectors(props: {
+    form: CharacterForm;
+    selection: StoryCharacterVariantSelection | undefined;
+    onChange: (groupName: string, variantName: string | number) => void;
+}) {
+    if (props.form.groups.length === 0) {
+        return null;
+    }
+    const selectionMap = getVariantSelectionMap(props.selection, props.form);
+    return (
+        <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
+            <div className="mb-2 text-xs font-medium text-slate-300">Variants</div>
+            <div className="grid gap-2 sm:grid-cols-3">
+                {props.form.groups.map(group => {
+                    const defaultVariant = group.defaultVariant && group.variants.some(variant => variant.name === group.defaultVariant)
+                        ? group.defaultVariant
+                        : group.variants[0]?.name ?? "";
+                    const value = selectionMap[group.name] ?? "";
+                    const options: SelectOption[] = [
+                        {
+                            value: "",
+                            label: defaultVariant ? `Default (${defaultVariant})` : "Default",
+                        },
+                        ...group.variants.map(variant => ({
+                            value: variant.name,
+                            label: variant.name,
+                        })),
+                    ];
+                    return (
+                        <SelectField
+                            key={group.name}
+                            label={group.name}
+                            options={options}
+                            value={value}
+                            onChange={variantName => props.onChange(group.name, variantName)}
+                        />
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function getCharacterById(characters: Character[], characterId: string | undefined): Character | null {
+    if (!characterId) {
+        return null;
+    }
+    return characters.find(character => character.profile.getId() === characterId) ?? null;
+}
+
+function getSelectedCharacterForm(character: Character, formName: string | undefined): CharacterForm | null {
+    const forms = character.profile.appearance.getForms();
+    return forms.find(form => form.name === formName)
+        ?? forms.find(form => form.name === character.profile.getDefaultForm())
+        ?? forms[0]
+        ?? null;
+}
+
+function getFormOptions(character: Character | null, currentFormName: string | undefined): SelectOption[] {
+    if (!character) {
+        return [
+            { value: "", label: "Unassigned" },
+            ...(currentFormName ? [{ value: currentFormName, label: `Missing (${currentFormName})` }] : []),
+        ];
+    }
+    const forms = character.profile.appearance.getForms();
+    const defaultFormName = character.profile.getDefaultForm();
+    const options: SelectOption[] = [
+        {
+            value: "",
+            label: defaultFormName ? `Default (${defaultFormName})` : "Default form",
+        },
+        ...forms.map(form => ({
+            value: form.name,
+            label: form.name,
+        })),
+    ];
+    if (currentFormName && !forms.some(form => form.name === currentFormName)) {
+        options.push({ value: currentFormName, label: `Missing (${currentFormName})` });
+    }
+    return options;
+}
+
+function getVariantSelectionMap(selection: StoryCharacterVariantSelection | undefined, form: CharacterForm): Record<string, string> {
+    if (!selection) {
+        return {};
+    }
+    const validVariantByGroup = new Map(
+        form.groups.map(group => [group.name, new Set(group.variants.map(variant => variant.name))]),
+    );
+    const groupByVariant = new Map<string, string>();
+    form.groups.forEach(group => {
+        group.variants.forEach(variant => {
+            groupByVariant.set(variant.name, group.name);
+        });
+    });
+
+    const result: Record<string, string> = {};
+    if (Array.isArray(selection)) {
+        selection.forEach(variantName => {
+            const groupName = groupByVariant.get(variantName);
+            if (groupName) {
+                result[groupName] = variantName;
+            }
+        });
+        return result;
+    }
+
+    Object.entries(selection).forEach(([groupName, variantName]) => {
+        if (validVariantByGroup.get(groupName)?.has(variantName)) {
+            result[groupName] = variantName;
+        }
+    });
+    return result;
+}
+
+function normalizeVariantSelection(selection: Record<string, string>): StoryCharacterVariantSelection | undefined {
+    const entries = Object.entries(selection).filter(([, variantName]) => variantName.trim());
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function getTransformNumberProp(transform: StoryTransformRef | undefined, key: string): number | undefined {
+    const value = transform?.props?.[key];
+    if (typeof value === "number") {
+        return value;
+    }
+    if (typeof value === "string") {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : undefined;
+    }
+    return undefined;
+}
+
+function setTransformNumberProp(
+    transform: StoryTransformRef | undefined,
+    key: string,
+    value: number | undefined,
+    fallback: Pick<StoryTransformRef, "preset" | "durationMs">,
+): StoryTransformRef {
+    const nextProps = { ...(transform?.props ?? {}) };
+    if (value === undefined) {
+        delete nextProps[key];
+    } else {
+        nextProps[key] = value;
+    }
+    return {
+        mode: "preset",
+        ...fallback,
+        ...transform,
+        props: Object.keys(nextProps).length > 0 ? nextProps : undefined,
+    };
+}
+
+function AssetField(props: {
+    label: string;
+    assetType: AssetType;
+    assetId: string | undefined;
+    onChange: (assetId: string | undefined) => void;
+}) {
+    const { context, isInitialized } = useWorkspace();
+    const assetsService = useMemo(
+        () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
+        [context, isInitialized],
+    );
+    const selectedAsset = props.assetId
+        ? (assetsService?.getAssets()[props.assetType] as Record<string, Asset> | undefined)?.[props.assetId] ?? null
+        : null;
+    const [selectorOpen, setSelectorOpen] = useState(false);
+    const buttonRef = useRef<HTMLButtonElement | null>(null);
+    const Icon = props.assetType === AssetType.Audio ? Music : props.assetType === AssetType.Video ? Video : ImageIcon;
+    const label = selectedAsset?.name ?? (props.assetId ? "Missing asset" : "No asset");
+
+    const handleSelect = useCallback((assets: Asset[]) => {
+        const selected = assets[0];
+        if (!selected) {
+            return;
+        }
+        props.onChange(selected.id);
+        setSelectorOpen(false);
+    }, [props]);
+
+    return (
+        <div>
+            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
+            <div className="flex gap-2">
+                <button
+                    ref={buttonRef}
+                    type="button"
+                    className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md border border-white/10 bg-[#1e1f22] px-3 text-left text-sm text-gray-300 hover:border-primary/40"
+                    onClick={() => setSelectorOpen(true)}
+                >
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                    <span className={["truncate", selectedAsset ? "" : "italic text-gray-500"].join(" ")}>{label}</span>
+                </button>
+                <button
+                    type="button"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04] text-slate-400 hover:border-red-400/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={!props.assetId}
+                    title="Clear asset"
+                    onClick={() => props.onChange(undefined)}
+                >
+                    <Trash2 className="h-3.5 w-3.5" />
+                </button>
+            </div>
+            <AssetSelector
+                visible={selectorOpen}
+                assetType={props.assetType}
+                onClose={() => setSelectorOpen(false)}
+                onConfirm={handleSelect}
+                selectedIds={props.assetId ? [props.assetId] : []}
+                anchorRef={buttonRef}
+                title={`Select ${props.label}`}
+                multiple={false}
+            />
+        </div>
+    );
+}
+
+function TransformPresetEditor(props: {
+    value: StoryTransformRef | undefined;
+    motionTargetKind: StoryDisplayableTargetKind;
+    motionLabel: string;
+    storyId: string;
+    sceneId: StorySceneId;
+    blockId: string;
+    storyName: string;
+    onChange: (value: StoryTransformRef | undefined) => void;
+}) {
+    const value = props.value ?? { preset: "none" as StoryTransformPreset };
+    const propsText = formatPropsText(value.props);
+    return (
+        <div className="grid gap-2">
+            <StoryMotionPicker
+                value={props.value}
+                targetKind={props.motionTargetKind}
+                motionLabel={props.motionLabel}
+                actionContext={{
+                    storyId: props.storyId,
+                    sceneId: props.sceneId,
+                    blockId: props.blockId,
+                    storyName: props.storyName,
+                }}
+                onChange={props.onChange}
+            />
+            {value.mode === "animation" ? null : (
+                <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
+                    <div className="mb-2 text-xs font-medium text-slate-300">Preset Transform</div>
+                    <div className="grid gap-2 sm:grid-cols-4">
+                        <SelectField
+                            label="Preset"
+                            options={TRANSFORM_PRESET_OPTIONS}
+                            value={value.preset ?? "none"}
+                            onChange={preset => props.onChange({
+                                ...value,
+                                mode: "preset",
+                                preset: preset as StoryTransformPreset,
+                            })}
+                        />
+                        <NumberField
+                            label="Duration ms"
+                            value={value.durationMs}
+                            onChange={durationMs => props.onChange({ ...value, durationMs })}
+                        />
+                        <SelectField
+                            label="Easing"
+                            options={EASING_OPTIONS}
+                            value={value.easing ?? ""}
+                            onChange={easing => props.onChange({ ...value, easing: String(easing) || undefined })}
+                        />
+                        <TextField
+                            label="Params"
+                            value={propsText}
+                            onChange={nextProps => props.onChange({ ...value, props: parsePropsText(nextProps) })}
+                        />
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function TransitionEditor(props: {
+    value: StoryTransitionRef | undefined;
+    onChange: (value: StoryTransitionRef | undefined) => void;
+}) {
+    const value = props.value ?? { kind: "none" as const };
+    return (
+        <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
+            <div className="mb-2 text-xs font-medium text-slate-300">Transition</div>
+            <div className="grid gap-2 sm:grid-cols-4">
+                <SelectField
+                    label="Kind"
+                    options={TRANSITION_OPTIONS}
+                    value={value.kind}
+                    onChange={kind => props.onChange(kind === "none" ? undefined : { ...value, kind: kind as StoryTransitionRef["kind"] })}
+                />
+                <NumberField label="Duration ms" value={value.durationMs} onChange={durationMs => props.onChange({ ...value, kind: value.kind === "none" ? "dissolve" : value.kind, durationMs })} />
+                <SelectField
+                    label="Easing"
+                    options={EASING_OPTIONS}
+                    value={value.easing ?? ""}
+                    onChange={easing => props.onChange({ ...value, kind: value.kind === "none" ? "dissolve" : value.kind, easing: String(easing) || undefined })}
+                />
+                <TextField
+                    label="Params"
+                    value={formatPropsText(value.props)}
+                    onChange={nextProps => props.onChange({ ...value, kind: value.kind === "none" ? "dissolve" : value.kind, props: parsePropsText(nextProps) })}
+                />
+            </div>
+        </div>
+    );
+}
+
+function CheckboxField(props: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+    return (
+        <label className="flex h-full min-h-[34px] items-end gap-2 pb-1 text-sm text-slate-300">
+            <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={props.checked}
+                onChange={event => props.onChange(event.target.checked)}
+            />
+            <span>{props.label}</span>
+        </label>
+    );
+}
+
+function ColorTextField(props: { label: string; value: string; onChange: (value: string) => void }) {
+    const parsedColorValue = parseColorValue(props.value, {
+        hex: "#ffffff",
+        alpha: 1,
+    });
+    const colorValue: ColorValue = { hex: parsedColorValue.hex, alpha: 1 };
+    return (
+        <div>
+            <label className={FIELD_LABEL_CLASS}>{props.label}</label>
+            <div className="flex items-center gap-2">
+                <ColorPickerTrigger
+                    value={colorValue}
+                    displayMode="icon"
+                    allowOpacity={false}
+                    onChange={next => props.onChange(colorValueToCss({ hex: next.hex, alpha: 1 }))}
+                />
+                <EnhancedInput value={props.value} onChange={props.onChange} />
+            </div>
+        </div>
+    );
+}
+
+function formatPropsText(props: Record<string, unknown> | undefined): string {
+    if (!props) {
+        return "";
+    }
+    return Object.entries(props)
+        .map(([key, value]) => `${key}=${String(value)}`)
+        .join(", ");
+}
+
+function parsePropsText(value: string): Record<string, string | number | boolean> | undefined {
+    const entries = value
+        .split(",")
+        .map(part => part.trim())
+        .filter(Boolean)
+        .map(part => {
+            const separator = part.indexOf("=");
+            if (separator === -1) {
+                return [part, true] as const;
+            }
+            const key = part.slice(0, separator).trim();
+            const raw = part.slice(separator + 1).trim();
+            return [key, parseScalar(raw)] as const;
+        })
+        .filter(([key]) => key);
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function parseScalar(value: string): string | number | boolean {
+    if (value === "true") return true;
+    if (value === "false") return false;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && value.trim() !== "" ? numeric : value;
 }
 
 function BackgroundActionEditor(props: {
@@ -457,20 +1340,107 @@ function ControlPayloadFields(props: { payload: StoryControlPayload; onChange: (
     if (props.payload.control === "condition") {
         return <div className="text-sm text-slate-400">Condition container. Add condition branches as children.</div>;
     }
+    if (props.payload.control !== "conditionBranch") {
+        const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
+        return (
+            <div className="grid gap-2 sm:grid-cols-3">
+                <SelectField
+                    label="Control"
+                    options={[
+                        { value: "sequence", label: "Sequence" },
+                        { value: "parallel", label: "Parallel all" },
+                        { value: "race", label: "Race any" },
+                        { value: "repeat", label: "Repeat" },
+                    ]}
+                    value={groupPayload.control}
+                    onChange={control => props.onChange({ ...groupPayload, control: control as "sequence" | "parallel" | "race" | "repeat" })}
+                />
+                <SelectField
+                    label="Mode"
+                    options={[
+                        { value: "do", label: "Do" },
+                        { value: "doAsync", label: "Do async" },
+                        { value: "all", label: "All" },
+                        { value: "allAsync", label: "All async" },
+                        { value: "any", label: "Any" },
+                    ]}
+                    value={groupPayload.mode ?? "do"}
+                    onChange={mode => props.onChange({ ...groupPayload, mode: mode as "do" | "doAsync" | "all" | "allAsync" | "any" })}
+                />
+                <NumberField label="Times" value={groupPayload.times} onChange={times => props.onChange({ ...groupPayload, times })} />
+            </div>
+        );
+    }
     const branchPayload = props.payload;
     return (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-3">
             <SelectField
                 label="Branch"
                 options={BRANCH_OPTIONS}
                 value={branchPayload.branch}
                 onChange={branch => props.onChange({ ...branchPayload, branch: branch as "if" | "elseIf" | "else" })}
             />
+            {branchPayload.branch !== "else" ? (
+                <ConditionRefEditor
+                    value={branchPayload.condition}
+                    onChange={condition => props.onChange({ ...branchPayload, condition })}
+                />
+            ) : (
+                <div className="text-sm text-slate-400">Else branch runs when previous branches do not match.</div>
+            )}
+        </div>
+    );
+}
+
+function ConditionRefEditor(props: {
+    value: StoryConditionRef | undefined;
+    onChange: (condition: StoryConditionRef | undefined) => void;
+}) {
+    const value = props.value?.kind === "variable"
+        ? props.value
+        : {
+            kind: "variable" as const,
+            target: { scope: "sceneLocal" as const, key: "variable" },
+            operator: "isTrue" as const,
+        };
+    return (
+        <div className="grid gap-2 sm:grid-cols-4">
             <TextField
-                label="Expression"
-                value={branchPayload.condition?.kind === "expression" ? branchPayload.condition.source : ""}
-                onChange={source => props.onChange({ ...branchPayload, condition: source ? { kind: "expression", source } : undefined })}
+                label="Key"
+                value={value.target.key}
+                onChange={key => props.onChange({ ...value, target: { ...value.target, key } })}
             />
+            <SelectField
+                label="Scope"
+                options={VARIABLE_SCOPE_OPTIONS}
+                value={value.target.scope}
+                onChange={scope => props.onChange({ ...value, target: { ...value.target, scope: scope as StoryVariableScope } })}
+            />
+            <SelectField
+                label="Operator"
+                options={CONDITION_OPERATOR_OPTIONS}
+                value={value.operator}
+                onChange={operator => props.onChange({ ...value, operator: operator as Extract<StoryConditionRef, { kind: "variable" }>["operator"] })}
+            />
+            {value.operator === "equals" || value.operator === "notEquals" ? (
+                <TextField
+                    label="Value"
+                    value={value.value === undefined ? "" : String(value.value)}
+                    onChange={next => props.onChange({ ...value, value: parseScalar(next) as StoryLiteralValue })}
+                />
+            ) : null}
+            {props.value?.kind === "expression" ? (
+                <div className="sm:col-span-4 rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
+                    Legacy expression conditions are preserved in the document but are not part of the NLR action surface.
+                </div>
+            ) : null}
+            <button
+                type="button"
+                className="h-8 w-fit rounded-md border border-white/10 px-2 text-xs text-slate-400 hover:border-red-400/40 hover:text-red-300"
+                onClick={() => props.onChange(undefined)}
+            >
+                Clear condition
+            </button>
         </div>
     );
 }
@@ -570,18 +1540,10 @@ function NumberField(props: { label: string; value: number | undefined; onChange
     return (
         <div>
             <label className={FIELD_LABEL_CLASS}>{props.label}</label>
-            <EnhancedInput
-                value={props.value === undefined ? "" : String(props.value)}
-                onChange={value => {
-                    if (value.trim() === "") {
-                        props.onChange(undefined);
-                        return;
-                    }
-                    const next = Number(value);
-                    if (Number.isFinite(next)) {
-                        props.onChange(next);
-                    }
-                }}
+            <NumericDraftEnhancedInput
+                committedDisplay={props.value === undefined ? "" : String(props.value)}
+                onFiniteNumber={props.onChange}
+                onEmpty={() => props.onChange(undefined)}
                 type="text"
                 inputMode="decimal"
             />

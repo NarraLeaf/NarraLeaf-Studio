@@ -6,6 +6,10 @@ import { readNodeEditorLayout } from "@/lib/workspace/services/ui-editor/bluepri
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintInspectorParamSelectOption } from "@/lib/ui-editor/blueprint-nodes/types";
 import type { BlueprintFlowNodeData, BlueprintFlowNodeDiagnostic } from "./components/BlueprintFlowNode";
+import {
+    withInferredBlueprintVariableValueTypeParam,
+    type BlueprintGraphVariableTypeInferenceContext,
+} from "@/lib/workspace/services/ui-editor/blueprint/graphVariableTypeInference";
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 type BlueprintNodeParamPatch = (
@@ -14,6 +18,11 @@ type BlueprintNodeParamPatch = (
     value: unknown,
     history?: BlueprintNodeParamHistoryOptions,
 ) => void;
+
+export type BlueprintDynamicSelectOptionsByNodeId = Record<
+    string,
+    Record<string, BlueprintInspectorParamSelectOption[]>
+>;
 
 function isBackgroundLayerComment(node: Node<BlueprintFlowNodeData>): boolean {
     return node.data.catalog.role === "comment" && node.data.params.background === false;
@@ -52,15 +61,23 @@ export function blueprintIrToFlowNodes(
     onAddDynamicInputPin?: (nodeId: string) => void,
     onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void,
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
+    dynamicSelectOptionsByNodeId?: BlueprintDynamicSelectOptionsByNodeId,
     nodeDiagnosticsByNodeId?: ReadonlyMap<string, readonly BlueprintFlowNodeDiagnostic[]>,
     elementPreviews?: Record<string, BlueprintFlowNodeData["elementPreview"]>,
+    displayableTargetVariantsByNodeId?: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]>,
     onBindElementLiteral?: (nodeId: string) => void,
 ): Node<BlueprintFlowNodeData>[] {
     const nodes = ir.nodes ?? {};
     const wiredIn = wiredInputPortIdsByNodeId(ir);
+    const variableTypeContext: BlueprintGraphVariableTypeInferenceContext = {
+        memberVariables,
+        persistentVariables,
+    };
     return Object.values(nodes).map(n => {
         const params = n.params ?? {};
-        const catalog = nodeCatalog.resolveCatalogEntryForNode(n.type, params);
+        const inferredParams =
+            withInferredBlueprintVariableValueTypeParam(n.type, params, variableTypeContext) ?? params;
+        const catalog = nodeCatalog.resolveCatalogEntryForNode(n.type, inferredParams);
         const backgroundEnabled = params.background !== false;
         return {
             id: n.id,
@@ -70,16 +87,19 @@ export function blueprintIrToFlowNodes(
             data: {
                 catalog,
                 nodeId: n.id,
-                params,
+                params: inferredParams,
                 onPatchNodeParam,
                 onAddDynamicInputPin,
                 onRemoveDynamicInputPin,
                 memberVariables,
                 persistentVariables,
                 wiredInputPortIds: wiredIn.get(n.id) ?? new Set(),
-                dynamicSelectOptions,
+                dynamicSelectOptions: dynamicSelectOptionsByNodeId?.[n.id]
+                    ? { ...dynamicSelectOptions, ...dynamicSelectOptionsByNodeId[n.id] }
+                    : dynamicSelectOptions,
                 nodeDiagnostics: nodeDiagnosticsByNodeId?.get(n.id) ?? [],
                 elementPreview: elementPreviews?.[n.id],
+                displayableTargetVariants: displayableTargetVariantsByNodeId?.[n.id],
                 onBindElementLiteral,
             },
         };
@@ -116,16 +136,47 @@ export function applyBlueprintFlowNodeSelection(
     return withSelection.map(n => ({ ...n, zIndex: readBlueprintFlowNodeZIndex(n) }));
 }
 
+export function blueprintElementPreviewsSignature(
+    elementPreviews: Record<string, BlueprintFlowNodeData["elementPreview"]> | undefined,
+): string {
+    return Object.entries(elementPreviews ?? {})
+        .map(([nodeId, item]) =>
+            `${nodeId}:${item?.revisionKey ?? ""}:${item?.name ?? ""}:${item?.type ?? ""}:${item?.text ?? ""}:${
+                item?.layout?.width ?? ""
+            }:${item?.layout?.height ?? ""}`,
+        )
+        .sort()
+        .join("\x1e");
+}
+
+export function blueprintDynamicSelectOptionsByNodeSignature(
+    optionsByNodeId: BlueprintDynamicSelectOptionsByNodeId | undefined,
+): string {
+    return Object.entries(optionsByNodeId ?? {})
+        .flatMap(([nodeId, sources]) =>
+            Object.entries(sources).map(([sourceId, options]) =>
+                `${nodeId}:${sourceId}:${options.map(option => `${option.value}:${option.label}`).join("\x1f")}`,
+            ),
+        )
+        .sort()
+        .join("\x1e");
+}
+
 function isDataEdge(
     ir: BlueprintGraphIr,
     e: BlueprintGraphEdge,
     nodeCatalog: IBlueprintNodeCatalogService,
+    variableTypeContext?: BlueprintGraphVariableTypeInferenceContext,
 ): boolean {
     const fromNode = ir.nodes?.[e.from.nodeId];
     if (!fromNode) {
         return false;
     }
-    const cat = nodeCatalog.resolveCatalogEntryForNode(fromNode.type, fromNode.params ?? {});
+    const params =
+        withInferredBlueprintVariableValueTypeParam(fromNode.type, fromNode.params ?? {}, variableTypeContext) ??
+        fromNode.params ??
+        {};
+    const cat = nodeCatalog.resolveCatalogEntryForNode(fromNode.type, params);
     const pin = cat.pins.find(p => p.id === e.from.port && p.kind === "output");
     return pin?.semantic === "data";
 }
@@ -138,10 +189,14 @@ export function blueprintFlowEdgesTopologySignature(edges: Pick<Edge, "source" |
         .join("\x1e");
 }
 
-export function blueprintIrToFlowEdges(ir: BlueprintGraphIr, nodeCatalog: IBlueprintNodeCatalogService): Edge[] {
+export function blueprintIrToFlowEdges(
+    ir: BlueprintGraphIr,
+    nodeCatalog: IBlueprintNodeCatalogService,
+    variableTypeContext?: BlueprintGraphVariableTypeInferenceContext,
+): Edge[] {
     const edges = ir.edges ?? [];
     return edges.map((e, i) => {
-        const data = isDataEdge(ir, e, nodeCatalog);
+        const data = isDataEdge(ir, e, nodeCatalog, variableTypeContext);
         return {
             id: `e:${i}:${e.from.nodeId}:${e.from.port}->${e.to.nodeId}:${e.to.port}`,
             source: e.from.nodeId,
@@ -164,27 +219,38 @@ export function useBlueprintFlowProjection(
     memberVariables?: BlueprintFlowNodeData["memberVariables"],
     persistentVariables?: BlueprintFlowNodeData["persistentVariables"],
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
+    dynamicSelectOptionsByNodeId?: BlueprintDynamicSelectOptionsByNodeId,
     nodeDiagnosticsByNodeId?: ReadonlyMap<string, readonly BlueprintFlowNodeDiagnostic[]>,
+    displayableTargetVariantsByNodeId?: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]>,
 ) {
     const selectedKey = blueprintSelectedNodesDependencyKey(selectedNodeIds);
     return useMemo(
-        () => ({
-            nodes: applyBlueprintFlowNodeSelection(
-                blueprintIrToFlowNodes(
-                    ir,
-                    nodeCatalog,
-                    onPatchNodeParam,
-                    memberVariables,
-                    persistentVariables,
-                    undefined,
-                    undefined,
-                    dynamicSelectOptions,
-                    nodeDiagnosticsByNodeId,
+        () => {
+            const variableTypeContext: BlueprintGraphVariableTypeInferenceContext = {
+                memberVariables,
+                persistentVariables,
+            };
+            return {
+                nodes: applyBlueprintFlowNodeSelection(
+                    blueprintIrToFlowNodes(
+                        ir,
+                        nodeCatalog,
+                        onPatchNodeParam,
+                        memberVariables,
+                        persistentVariables,
+                        undefined,
+                        undefined,
+                        dynamicSelectOptions,
+                        dynamicSelectOptionsByNodeId,
+                        nodeDiagnosticsByNodeId,
+                        undefined,
+                        displayableTargetVariantsByNodeId,
+                    ),
+                    selectedNodeIds,
                 ),
-                selectedNodeIds,
-            ),
-            edges: blueprintIrToFlowEdges(ir, nodeCatalog),
-        }),
+                edges: blueprintIrToFlowEdges(ir, nodeCatalog, variableTypeContext),
+            };
+        },
         [
             ir,
             selectedKey,
@@ -194,7 +260,9 @@ export function useBlueprintFlowProjection(
             persistentVariables,
             selectedNodeIds,
             dynamicSelectOptions,
+            dynamicSelectOptionsByNodeId,
             nodeDiagnosticsByNodeId,
+            displayableTargetVariantsByNodeId,
         ],
     );
 }

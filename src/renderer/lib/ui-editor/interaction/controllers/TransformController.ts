@@ -10,6 +10,7 @@ import type { InteractionController } from "./types";
 interface TransformControllerConfig {
     documentService: UIDocumentService;
     selectionIds: string[];
+    snapExcludedElementIds?: string[];
     selectedTargets: HTMLElement[];
     isGroupSelection: boolean;
     viewportScale: number;
@@ -33,10 +34,17 @@ export function useTransformController(config: TransformControllerConfig): Inter
             isEnabled: () => config.stateService.getSmartSnapEnabled(),
             isSuspended: () => config.snapSuspended(),
             setGuides: (guides: ActiveSnapGuides | null) => config.stateService.setSnapGuides(guides),
-            getExcludedElementIds: () => new Set(config.selectionIds),
+            getExcludedElementIds: () => new Set(config.snapExcludedElementIds ?? config.selectionIds),
             getDetailSettings: () => config.stateService.getSmartSnapDetailSettings(),
         }),
-        [config.selectionIds, config.snapSuspended, config.stateService, config.surfaceDesignSize, config.surfaceId],
+        [
+            config.selectionIds,
+            config.snapExcludedElementIds,
+            config.snapSuspended,
+            config.stateService,
+            config.surfaceDesignSize,
+            config.surfaceId,
+        ],
     );
 
     const handlers = useMoveableHandlers({

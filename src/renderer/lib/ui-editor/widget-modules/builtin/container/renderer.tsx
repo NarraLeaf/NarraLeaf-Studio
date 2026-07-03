@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { motion } from "motion/react";
 import type { WidgetRendererProps } from "@/lib/ui-editor/widget-modules/types";
 import { RectangleChromeRenderer } from "@/lib/ui-editor/widget-modules/shared/chrome/RectangleChromeRenderer";
 import {
@@ -16,6 +17,9 @@ import {
     type ContainerStackJustifyContent,
 } from "@shared/types/ui-editor/container";
 import type { UIListElementExtra } from "@shared/types/ui-editor/list";
+import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
+import { toRuntimeMotionTransition } from "@/lib/ui-editor/widget-modules/shared/appearance/appearanceMotion";
+import { firstTransitionForKeys } from "@/lib/ui-editor/widget-modules/shared/appearance/runtimeMotionHelpers";
 
 function mapAlign(v: ContainerStackAlignItems): CSSProperties["alignItems"] {
     switch (v) {
@@ -54,6 +58,20 @@ function nlStackSelectorValue(id: string): string {
         return CSS.escape(id);
     }
     return id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function finiteOr(value: number, fallback: number): number {
+    return Number.isFinite(value) ? value : fallback;
+}
+
+function rectangleWithoutTransform(rectangleLike: RectangleLikeProps): RectangleLikeProps {
+    return {
+        ...rectangleLike,
+        transformOffsetX: 0,
+        transformOffsetY: 0,
+        transformScale: 1,
+        transformRotation: 0,
+    };
 }
 
 /**
@@ -288,17 +306,51 @@ export function ContainerRenderer(props: WidgetRendererProps) {
     const rectangleLike = resolveContainerRectangleLike(element, p.appearance ?? undefined, resolveCtx);
     const appearanceTransitions = resolveContainerAppearanceTransitions(p.appearance ?? undefined, resolveCtx);
 
-    // Free layout: keep absolute children OUTSIDE appearance transform (scale/rotate on chrome).
-    // Otherwise layout x/y are in unscaled space but the containing block is scaled — parent drags look "proportional".
+    // Free layout: treat the container as a local coordinate system. Its transform moves chrome and absolute
+    // children together, matching the intuitive "group transform" behavior for absolute layouts.
     // Host stays overflow: visible so chrome box-shadow / filter are not clipped; when clipContent is on, only the
     // children layer clips (same bounds as the host).
     if (p.layoutKind === "free") {
+        const offsetX = finiteOr(rectangleLike.transformOffsetX, 0);
+        const offsetY = finiteOr(rectangleLike.transformOffsetY, 0);
+        const resolvedScale = finiteOr(rectangleLike.transformScale, 1);
+        const scale = resolvedScale > 0 ? resolvedScale : 1;
+        const rotation = finiteOr(rectangleLike.transformRotation, 0);
+        const offsetTransitionX = firstTransitionForKeys(appearanceTransitions, ["transformOffsetX"]);
+        const offsetTransitionY = firstTransitionForKeys(appearanceTransitions, ["transformOffsetY"]);
+        const scaleTransition = firstTransitionForKeys(appearanceTransitions, ["transformScale"]);
+        const rotationTransition = firstTransitionForKeys(appearanceTransitions, ["transformRotation"]);
+        const hostAnimate = {
+            x: offsetX,
+            y: offsetY,
+            scale,
+            rotate: rotation,
+        };
+        const hostTransition: Record<string, unknown> = {};
+        if (offsetTransitionX) {
+            hostTransition.x = toRuntimeMotionTransition(offsetTransitionX);
+        }
+        if (offsetTransitionY) {
+            hostTransition.y = toRuntimeMotionTransition(offsetTransitionY);
+        }
+        if (scaleTransition) {
+            hostTransition.scale = toRuntimeMotionTransition(scaleTransition);
+        }
+        if (rotationTransition) {
+            hostTransition.rotate = toRuntimeMotionTransition(rotationTransition);
+        }
+        const hostMotionActive = Object.keys(hostTransition).length > 0;
         const hostStyle: CSSProperties = {
             position: "relative",
             width: "100%",
             height: "100%",
             boxSizing: "border-box",
             overflow: "visible",
+            transformOrigin: "center center",
+        };
+        const hostStaticStyle: CSSProperties = {
+            ...hostStyle,
+            transform: `translate(${offsetX}px, ${offsetY}px) scale(${scale}) rotate(${rotation}deg)`,
         };
         const chromeLayerStyle: CSSProperties = {
             position: "absolute",
@@ -313,20 +365,35 @@ export function ContainerRenderer(props: WidgetRendererProps) {
             pointerEvents: "auto",
             overflow: clip ? "hidden" : "visible",
         };
-        return (
-            <div style={hostStyle}>
+        const chromeRectangleLike = rectangleWithoutTransform(rectangleLike);
+        const chromeAppearanceTransitions = {
+            ...appearanceTransitions,
+            transformOffsetX: undefined,
+            transformOffsetY: undefined,
+            transformScale: undefined,
+            transformRotation: undefined,
+        };
+        const content = (
+            <>
                 <div style={chromeLayerStyle}>
                     <RectangleChromeRenderer
                         {...props}
                         clipContent={false}
-                        rectangleLike={rectangleLike}
-                        appearanceTransitions={appearanceTransitions}
+                        rectangleLike={chromeRectangleLike}
+                        appearanceTransitions={chromeAppearanceTransitions}
                     >
                         {null}
                     </RectangleChromeRenderer>
                 </div>
                 <div style={childrenLayerStyle}>{children}</div>
-            </div>
+            </>
+        );
+        return hostMotionActive ? (
+            <motion.div style={hostStyle} initial={false} animate={hostAnimate} transition={hostTransition}>
+                {content}
+            </motion.div>
+        ) : (
+            <div style={hostStaticStyle}>{content}</div>
         );
     }
 

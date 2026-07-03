@@ -87,6 +87,7 @@ export const BUTTON_ANIMATABLE_KEYS: readonly ButtonAppearancePropertyKey[] = [
     "effectBlur",
     "effectBackgroundBlur",
     "effectShadow",
+    "effectTextShadow",
     "effectInnerShadow",
     "effectBlend",
     "effectGlow",

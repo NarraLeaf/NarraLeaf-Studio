@@ -3,8 +3,13 @@ import { Service } from "../Service";
 import { Services, IUIBlueprintLifecycleCoordinator, WorkspaceContext } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
 import { LocalBlueprintService } from "./LocalBlueprintService";
-import { decodeWidgetValueOwnerKey, widgetMainOwnerKey, widgetValueOwnerKey } from "./blueprint/ownerKeys";
-import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
+import {
+    componentWidgetMainOwnerKey,
+    decodeWidgetValueOwnerKey,
+    widgetMainOwnerKey,
+    widgetValueOwnerKey,
+} from "./blueprint/ownerKeys";
+import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 
 /**
  * Keeps local instance BlueprintDocument (in uigraphs.json) aligned with UIDocument surfaces and widgets.
@@ -56,23 +61,31 @@ export class UIBlueprintLifecycleCoordinator
 
         const validWidgetKeys = new Set<string>();
         const validWidgetValueKeys = new Set<string>();
+        const validComponentWidgetKeys = new Set<string>();
         for (const surface of doc.surfaces) {
             for (const [elementId, el] of Object.entries(doc.elements)) {
-                if (elementId === surface.rootElementId) {
-                    continue;
-                }
                 if (this.owningSurfaceId(elementId, doc) !== surface.id) {
                     continue;
                 }
                 for (const propPath of Object.keys(el.valueBindings ?? {})) {
                     validWidgetValueKeys.add(widgetValueOwnerKey(surface.id, elementId, propPath));
                 }
-                const mod = widgetModuleRegistry.get(el.type);
-                if (!mod?.logicApi?.supportsPrivateBlueprint) {
+                const logicApi = getWidgetLogicApi(el.type);
+                if (!logicApi?.supportsPrivateBlueprint) {
                     continue;
                 }
                 localBp.ensureWidgetMain(surface.id, elementId, el.name, el.type);
                 validWidgetKeys.add(widgetMainOwnerKey(surface.id, elementId));
+            }
+        }
+        for (const component of doc.components ?? []) {
+            for (const [elementId, el] of Object.entries(component.elements)) {
+                const logicApi = getWidgetLogicApi(el.type);
+                if (!logicApi?.supportsPrivateBlueprint) {
+                    continue;
+                }
+                localBp.ensureComponentWidgetMain(component.id, elementId, el.name, el.type);
+                validComponentWidgetKeys.add(componentWidgetMainOwnerKey(component.id, elementId));
             }
         }
 
@@ -80,6 +93,10 @@ export class UIBlueprintLifecycleCoordinator
             const m = /^widgetMain:([^:]+):(.+)$/.exec(key);
             if (m && !validWidgetKeys.has(key)) {
                 localBp.removeWidgetMain(m[1], m[2]);
+            }
+            const cm = /^componentWidgetMain:([^:]+):(.+)$/.exec(key);
+            if (cm && !validComponentWidgetKeys.has(key)) {
+                localBp.removeComponentWidgetMain(cm[1], cm[2]);
             }
             const widgetValue = decodeWidgetValueOwnerKey(key);
             if (widgetValue && !validWidgetValueKeys.has(key)) {

@@ -142,7 +142,7 @@
     - [x] App and Stage surface model
     - [x] Surface list panel
     - [x] Surface editor tab foundation
-    - [x] Main Surface rules (fixed id `narraleaf-studio:main-surface`, guarded delete/rename/id)
+    - [x] Main Surface rules (fixed id `narraleaf-studio:main-surface`, guarded delete/id; display name can be renamed)
     - [ ] Surface templates and presets
   - [ ] Surface editor
     - [x] Canvas selection and transform foundation
@@ -521,7 +521,7 @@
     - [x] App / Stage Surface 模型（含 UIDocument）
     - [x] Surface 列表面板
     - [x] Surface 编辑 Tab 壳层（画布、工具栏接入）
-    - [x] Main Surface 约束（固定 id：`narraleaf-studio:main-surface`；禁止删除；禁止改名/id 漂移，`UIDocumentService` 兜底）
+    - [x] Main Surface 约束（固定 id：`narraleaf-studio:main-surface`；禁止删除/id 漂移；显示名可重命名，`UIDocumentService` 兜底）
     - [ ] Surface 模板与团队级预设库
   - [ ] Surface 编辑器
     - [x] 画布选择与几何变换基础设施

@@ -7,6 +7,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { UIEditorFontFaceService } from "@/lib/workspace/services/ui-editor/UIEditorFontFaceService";
 import { getInterface } from "@/lib/app/bridge";
+import { resolveGameRuntimeAssetUrl } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
 
 export type EditorFontFamilyState = {
     cssFamily: string | null;
@@ -71,6 +72,7 @@ export function useEditorFontFamily(assetId: string | null): EditorFontFamilySta
                 return;
             }
 
+            const gameRuntimeUrl = resolveGameRuntimeAssetUrl(assetId);
             const cached = devModeFontCache.get(assetId);
             if (cached) {
                 setState({ cssFamily: cached.cssFamily, loading: false, error: null });
@@ -82,17 +84,9 @@ export function useEditorFontFamily(assetId: string | null): EditorFontFamilySta
 
             (async () => {
                 try {
-                    const result = await getInterface().devMode.resolveImageAssetUrl(assetId);
-                    if (cancelled) {
-                        return;
-                    }
-                    if (!result.success || !result.data?.url) {
-                        setState({ cssFamily: null, loading: false, error: result.error ?? "Font asset not found" });
-                        return;
-                    }
-
+                    const url = gameRuntimeUrl ?? await resolveDevModeFontUrl(assetId);
                     const cssFamily = devModeCssFamilyForAssetId(assetId);
-                    const fontFace = new FontFace(cssFamily, `url(${result.data.url})`);
+                    const fontFace = new FontFace(cssFamily, `url(${url})`);
                     await fontFace.load();
                     if (cancelled) {
                         return;
@@ -150,4 +144,12 @@ export function useEditorFontFamily(assetId: string | null): EditorFontFamilySta
     }, [assetId, context]);
 
     return state;
+}
+
+async function resolveDevModeFontUrl(assetId: string): Promise<string> {
+    const result = await getInterface().devMode.resolveImageAssetUrl(assetId);
+    if (!result.success || !result.data?.url) {
+        throw new Error(result.error ?? "Font asset not found");
+    }
+    return result.data.url;
 }

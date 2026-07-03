@@ -131,8 +131,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
     }, [activeSurfaceId, blueprintDocument.blueprints, uiDocument]);
 
     const outputLines = useMemo(() => {
-        const src = filterBlueprintDebugEventsByLogLevel(events, outputLogLevels);
-        return src.slice(-200);
+        return filterBlueprintDebugEventsByLogLevel(events, outputLogLevels);
     }, [events, outputLogLevels]);
 
     const toggleExpanded = useCallback((id: string) => {
@@ -317,7 +316,10 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                                 Clear
                             </button>
                         </div>
-                        <div ref={outputScrollRef} className="min-h-0 flex-1 overflow-auto overscroll-contain p-2">
+                        <div
+                            ref={outputScrollRef}
+                            className="nl-selectable-text min-h-0 flex-1 cursor-text overflow-auto overscroll-contain p-2"
+                        >
                             {outputLines.length === 0 ? (
                                 <p className="text-[10px] text-gray-600">No output</p>
                             ) : (
@@ -347,7 +349,12 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                         <div>
                             <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Widget</p>
                             <ul className="space-y-0.5 text-[10px] text-gray-400">
-                                <li>hover · {widgetSnap.hoverTargetId ?? "-"}</li>
+                                <li>
+                                    hover ·{" "}
+                                    {widgetSnap.hoverTargetIds.size === 0
+                                        ? "-"
+                                        : [...widgetSnap.hoverTargetIds].map(id => `${id.slice(0, 6)}…`).join(", ")}
+                                </li>
                                 <li>active · {widgetSnap.activePointerId ?? "-"}</li>
                                 <li>focus · {widgetSnap.focusedId ?? "-"}</li>
                                 <li className="break-all">
@@ -483,6 +490,23 @@ function formatExecutionError(ev: Extract<BlueprintDebugEvent, { type: "executio
     return parts.join(" · ");
 }
 
+function formatExecutionCancelled(ev: Extract<BlueprintDebugEvent, { type: "execution.cancelled" }>): string {
+    const parts = [ev.reason || "cancelled"];
+    if (ev.blueprintId) {
+        parts.push(`bp:${ev.blueprintId.slice(0, 8)}…`);
+    }
+    if (ev.eventId) {
+        parts.push(`evt:${ev.eventId}`);
+    }
+    if (ev.nodeId) {
+        parts.push(`node:${ev.nodeId.slice(0, 10)}…`);
+    }
+    if (ev.graphId) {
+        parts.push(`graph:${String(ev.graphId).slice(0, 14)}…`);
+    }
+    return parts.join(" · ");
+}
+
 export function getBlueprintDebugEventLogLevel(ev: BlueprintDebugEvent): BlueprintOutputLogLevel {
     if (ev.type === "execution.error") {
         return "error";
@@ -540,6 +564,8 @@ function formatEvent(ev: BlueprintDebugEvent): string {
             return `${ev.blueprintId.slice(0, 8)}… / ${ev.executionId.slice(0, 8)}…`;
         case "execution.error":
             return formatExecutionError(ev);
+        case "execution.cancelled":
+            return formatExecutionCancelled(ev);
         case "node.enter":
         case "node.exit":
             return `${ev.nodeId.slice(0, 12)}…`;

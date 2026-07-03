@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from "react";
-import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
@@ -70,7 +70,8 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const [editorMode, setEditorMode] = useState<EditorMode>({ kind: "idle" });
     const [draggingBlockId, setDraggingBlockId] = useState<StoryBlockId | null>(null);
     const [dragSelectActive, setDragSelectActive] = useState(false);
-    const [statusText, setStatusText] = useState("Action row editor. Slash and hash only trigger on the first character.");
+    const [, setStatusText] = useState("Action row editor. Slash and hash only trigger on the first character.");
+    const [characterRevision, setCharacterRevision] = useState(0);
 
     useEffect(() => {
         if (!storyService || !storyId) {
@@ -109,11 +110,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!characterService) {
             return;
         }
-        return characterService.subscribe(() => setStatusText("Character list refreshed."));
+        return characterService.subscribe(() => {
+            setCharacterRevision(revision => revision + 1);
+            setStatusText("Character list refreshed.");
+        });
     }, [characterService]);
 
     const scene = useMemo(() => (document && sceneId ? document.scenes[sceneId] ?? null : null), [document, sceneId]);
-    const characters = useMemo(() => characterService?.listCharacter() ?? [], [characterService, statusText]);
+    const characters = useMemo(() => characterService?.listCharacter() ?? [], [characterRevision, characterService]);
     const visibleRows = useMemo(() => (scene ? buildVisibleRows(scene, collapsedBlockIds) : []), [collapsedBlockIds, document, scene]);
     const rowIndexById = useMemo(() => {
         const result = new Map<StoryBlockId, number>();
@@ -235,8 +239,11 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         uiService?.focus.setFocus(FocusArea.Editor, tabId);
     }, [tabId, uiService]);
 
-    const focusRoot = useCallback(() => {
+    const focusRoot = useCallback((event?: MouseEvent<HTMLElement>) => {
         focusWorkspace();
+        if (event && isInteractiveTarget(event.target)) {
+            return;
+        }
         if (uiService?.dialogs.getActive()) {
             return;
         }
@@ -273,12 +280,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         storyService.replaceScene(storyId, sceneId, state.scene);
+        uiService?.editor.update(tabId, { title: state.scene.name });
         setActiveBlockId(state.activeBlockId);
         setSelectedBlockIds(new Set(state.selectedBlockIds));
         setCollapsedBlockIds(new Set(state.collapsedBlockIds));
         setEditorMode({ kind: "idle" });
         setStatusText(label);
-    }, [sceneId, storyId, storyService]);
+    }, [sceneId, storyId, storyService, tabId, uiService]);
 
     const undoEdit = useCallback(() => {
         const previous = undoStackRef.current.pop();
@@ -316,6 +324,40 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             storyService.updateBlock(storyId, sceneId, blockId, payload);
         }
     }, [recordHistory, scene, sceneId, storyId, storyService]);
+
+    const updateSceneMetadata = useCallback((patch: StorySceneUpdate): boolean => {
+        if (!storyService || !storyId || !sceneId || !scene) {
+            return false;
+        }
+
+        const nextName = patch.name !== undefined ? patch.name.trim() || scene.name || "Untitled Scene" : scene.name;
+        const nextDescription = patch.description !== undefined ? patch.description.trim() : scene.description ?? "";
+        const nextBackgroundAssetId = patch.defaultBackgroundAssetId !== undefined
+            ? patch.defaultBackgroundAssetId?.trim() || undefined
+            : scene.defaultBackgroundAssetId;
+
+        const hasNameChange = patch.name !== undefined && nextName !== scene.name;
+        const hasDescriptionChange = patch.description !== undefined && nextDescription !== (scene.description ?? "");
+        const hasBackgroundChange = patch.defaultBackgroundAssetId !== undefined && nextBackgroundAssetId !== (scene.defaultBackgroundAssetId ?? undefined);
+        if (!hasNameChange && !hasDescriptionChange && !hasBackgroundChange) {
+            return false;
+        }
+
+        recordHistory();
+        const changed = storyService.updateScene(storyId, sceneId, {
+            ...patch,
+            name: patch.name !== undefined ? nextName : undefined,
+            description: patch.description !== undefined ? nextDescription : undefined,
+            defaultBackgroundAssetId: patch.defaultBackgroundAssetId !== undefined ? nextBackgroundAssetId ?? null : undefined,
+        });
+        if (changed) {
+            if (hasNameChange) {
+                uiService?.editor.update(tabId, { title: nextName });
+            }
+            setStatusText("Updated scene details.");
+        }
+        return changed;
+    }, [recordHistory, scene, sceneId, storyId, storyService, tabId, uiService]);
 
     const commitTextEdit = useCallback(() => {
         if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
@@ -695,7 +737,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
         focusRoot, focusWorkspace, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         deleteSelection, startInsertAfter, selectRow, beginDragSelection,
-        extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor,
+        extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateSceneMetadata,
         setDialogueCharacter, commitTextEdit, handleInsertValueChange,
         undoEdit, redoEdit,
         startInsertAfterActive, indentSelection, selectAllRows, moveActiveRowSelection,

@@ -10,6 +10,7 @@ import { WindowIPC } from "./windowIPC";
 import { WindowProxy } from "./windowProxy";
 import { WindowUserHandlers } from "./windowUserHandlers";
 import { WindowProps, WindowAppType, WindowVisibilityStatus, WindowCloseResults, WindowControlPolicy } from "@shared/types/window";
+import { decideWindowNavigation } from "./navigationGuard";
 
 export interface WindowConfig<T extends WindowAppType> {
     windowType: T;
@@ -248,6 +249,7 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
     private prepareEvents(): void {
         const win = this.getInstance().getBrowserWindow();
+        const webContents = win.webContents;
 
         win.on("close", () => {
             this.getEvents().emit("close", this);
@@ -273,7 +275,33 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
             this.getApp().windowManager.unregisterWindow(this);
         });
 
-        win.webContents.on("render-process-gone", (_event, details) => {
+        webContents.on("will-frame-navigate", (event) => {
+            const decision = decideWindowNavigation({
+                url: event.url,
+                currentUrl: webContents.getURL() || undefined,
+                isMainFrame: event.isMainFrame,
+                windowType: this.getWindowType(),
+                appEntryPath: this.getApp().getAppEntry(this.getWindowType()),
+            });
+            if (decision.allowed) {
+                return;
+            }
+
+            event.preventDefault();
+            this.getApp().logger.warn(`[Window] Blocked navigation for ${this.getWindowType()}: ${event.url} (${decision.reason})`);
+        });
+
+        webContents.setWindowOpenHandler((details) => {
+            this.getApp().logger.warn(`[Window] Blocked new window for ${this.getWindowType()}: ${details.url}`);
+            return { action: "deny" };
+        });
+
+        webContents.on("will-attach-webview", (event, _webPreferences, params) => {
+            event.preventDefault();
+            this.getApp().logger.warn(`[Window] Blocked webview attachment for ${this.getWindowType()}: ${params.src ?? ""}`);
+        });
+
+        webContents.on("render-process-gone", (_event, details) => {
             if (!details.reason || details.reason === "clean-exit") {
                 return;
             }

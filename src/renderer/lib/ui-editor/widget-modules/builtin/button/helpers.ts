@@ -1,6 +1,6 @@
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { RectangleLikeProps } from "@shared/types/ui-editor/rectangleLike";
-import { DEFAULT_ELEMENT_EFFECT_VALUES } from "@shared/types/ui-editor/effects";
+import { normalizeElementEffectValues } from "@shared/types/ui-editor/effects";
 import { defaultButtonWidgetProps, type ButtonWidgetProps } from "./types";
 
 export function getButtonProps(element: UIElement): ButtonWidgetProps {
@@ -8,6 +8,7 @@ export function getButtonProps(element: UIElement): ButtonWidgetProps {
     return {
         ...defaultButtonWidgetProps,
         ...p,
+        effects: normalizeElementEffectValues(p?.effects ?? defaultButtonWidgetProps.effects),
     };
 }
 
@@ -42,6 +43,6 @@ export function buttonPropsToImageFillBaseline(p: ButtonWidgetProps): RectangleL
         transformScale: p.transformScale,
         transformRotation: p.transformRotation,
         transformOpacity: p.transformOpacity,
-        effects: { ...DEFAULT_ELEMENT_EFFECT_VALUES },
+        effects: { ...p.effects },
     };
 }

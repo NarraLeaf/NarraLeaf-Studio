@@ -6,7 +6,7 @@ import type {
     UIStageSurface,
     UISurface,
 } from "@shared/types/ui-editor/document";
-import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { colorValueToCss, parseColorValue } from "../framework/utils/colorUtils";
 import type {
     ColorPickerFieldDefinition,
@@ -44,7 +44,12 @@ const DEFAULT_GAME_UI_SLOT_ID: UIStageSlotId = "onStage";
 
 const isGameUi = (surface: UISurface): surface is UIStageSurface => surface.kind === "stageSurface";
 
-const getInterfaceTypeLabel = (surface: UISurface): string => (isGameUi(surface) ? "Game UI" : "Page");
+const getInterfaceTypeLabel = (surface: UISurface): string => {
+    if (surface.id === MAIN_APP_SURFACE_ID) {
+        return DEFAULT_APP_SURFACE_NAME;
+    }
+    return isGameUi(surface) ? "Game UI" : "Page";
+};
 
 const getGameUiSlotLabel = (surface: UISurface): string => {
     if (!isGameUi(surface)) {
@@ -97,15 +102,10 @@ export const scenePropertySchema = createPropertyEditorSchema<SceneEditorContext
             label: "Name",
             getValue: data => data.surface.name,
             setValue: (data, value) => {
-                if (data.surface.id === MAIN_APP_SURFACE_ID) {
-                    return;
-                }
                 if (value === data.surface.name) {
                     return;
                 }
-                data.documentService.updateSurface(data.surface.id, surface => {
-                    surface.name = value;
-                });
+                data.documentService.renameSurface(data.surface.id, value);
             },
         }),
         defineField<SceneEditorContext, ColorPickerFieldDefinition<SceneEditorContext>>({

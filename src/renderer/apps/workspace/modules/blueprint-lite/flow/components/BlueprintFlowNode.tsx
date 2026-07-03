@@ -1,21 +1,46 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    type PointerEvent as ReactPointerEvent,
+    type ReactNode,
+} from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
-import { Image as ImageIcon, Link2, Minus, Plus, X } from "lucide-react";
+import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Plus, X } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import {
+    BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT,
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
     type BlueprintInspectorParamDef,
     type BlueprintInspectorParamSelectOption,
 } from "@/lib/ui-editor/blueprint-nodes/types";
-import { BlueprintLiteralValueControl } from "../../components/BlueprintLiteralValueControl";
+import { BlueprintLiteralValueControl, type LiteralEditMode } from "../../components/BlueprintLiteralValueControl";
 import { BlueprintJsonValueControl } from "../../components/BlueprintJsonValueControl";
 import { BlueprintColorValueControl } from "../../components/BlueprintColorValueControl";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import { Button, Input, TextArea } from "@/lib/components/elements";
-import { BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE } from "@shared/types/blueprint/graph";
+import {
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
+    BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE,
+    BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
+    formatBlueprintKeyboardBinding,
+    formatBlueprintKeyboardBindingFromEvent,
+    normalizeBlueprintKeyboardEventKeyName,
+} from "@shared/types/blueprint/graph";
 import {
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET,
     BLUEPRINT_VALUE_TYPE_IMAGE_ASSET_NULLABLE,
+    BLUEPRINT_VALUE_TYPE_TIMER,
     normalizeBlueprintImageAssetValue,
     type BlueprintImageAsset,
 } from "@shared/types/blueprint/valueTypes";
@@ -26,6 +51,7 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { useWorkspace } from "@/apps/workspace/context";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
+import { ButtonCursorSelect } from "@/lib/ui-editor/widget-modules/shared/appearance/editors/ButtonCursorSelect";
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 type BlueprintNodeParamPatch = (
@@ -84,11 +110,19 @@ export type BlueprintFlowNodeData = {
     nodeDiagnostics?: readonly BlueprintFlowNodeDiagnostic[];
     /** Current UIDocument preview for bound Element Literal nodes. */
     elementPreview?: {
+        revisionKey?: string;
         name: string;
         type: string;
         text?: string;
         layout?: { width: number; height: number };
         preview?: ReactNode;
+    };
+    /** Static Variant choices for Displayable Set Variant cards when the target can be inferred. */
+    displayableTargetVariants?: {
+        supported: boolean;
+        targetLabel?: string;
+        options: BlueprintInspectorParamSelectOption[];
+        message?: string;
     };
     /** Starts the temporary same-Surface element binding flow for Element Literal nodes. */
     onBindElementLiteral?: (nodeId: string) => void;
@@ -96,6 +130,8 @@ export type BlueprintFlowNodeData = {
 
 const EXEC_HANDLE_CLASS = "!h-2 !w-2 !border border-white/30 !bg-cyan-500";
 const DATA_HANDLE_CLASS = "!h-2 !w-2 !border border-amber-200/35 !bg-amber-500";
+const PIN_LABEL_CLASS = "text-gray-400";
+const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-gray-500 italic";
 
 const CARD_INPUT =
     "rounded border-white/15 bg-[#111418] px-1.5 py-1 font-mono text-[10px]";
@@ -329,6 +365,10 @@ function pinCaption(pin: CatalogPin, semantic: "exec" | "data"): string {
     return name;
 }
 
+function pinLabelClass(pin: Pick<CatalogPin, "optional">, isWired: boolean): string {
+    return pin.optional === true && !isWired ? OPTIONAL_UNWIRED_PIN_LABEL_CLASS : PIN_LABEL_CLASS;
+}
+
 function DynamicPinLabelInput({
     pin,
     nodeId,
@@ -515,6 +555,7 @@ function InputPinRow({
     dynamicLabelValues: Record<string, string>;
 }) {
     const handleClass = semantic === "exec" ? EXEC_HANDLE_CLASS : DATA_HANDLE_CLASS;
+    const labelClass = pinLabelClass(pin, isWired);
     const canInlineLiteral =
         semantic === "data" &&
         Boolean(pin.allowInlineLiteral) &&
@@ -554,7 +595,7 @@ function InputPinRow({
                 />
             ) : (
                 <span
-                    className="shrink-0 text-[9px] leading-tight text-gray-400"
+                    className={`shrink-0 text-[9px] leading-tight ${labelClass}`}
                     title={pinLabelOnly(pin)}
                 >
                     {pinLabelOnly(pin)}
@@ -623,7 +664,7 @@ function InputPinRow({
             />
         ) : (
             <span
-                className="min-w-0 shrink truncate text-[9px] leading-tight text-gray-400"
+                className={`min-w-0 shrink truncate text-[9px] leading-tight ${labelClass}`}
                 title={pinCaption(pin, semantic)}
             >
                 {pinCaption(pin, semantic)}
@@ -704,8 +745,177 @@ function OutputPinRow({ pin, semantic }: { pin: CatalogPin; semantic: "exec" | "
     );
 }
 
+function variableValueTypeToLiteralMode(valueType: unknown): LiteralEditMode {
+    if (valueType === "integer" || valueType === "float") {
+        return "number";
+    }
+    if (valueType === "boolean") {
+        return "boolean";
+    }
+    if (valueType === "json" || valueType === "array" || valueType === "any" || valueType === BLUEPRINT_VALUE_TYPE_TIMER) {
+        return "json";
+    }
+    return "string";
+}
+
+const KEYBOARD_MODIFIER_EVENT_KEYS = new Set(["alt", "control", "shift", "meta"]);
+
+function isKeyboardModifierEvent(event: KeyboardEvent): boolean {
+    return KEYBOARD_MODIFIER_EVENT_KEYS.has(normalizeBlueprintKeyboardEventKeyName(event.key));
+}
+
+function KeyboardBindingCardControl({
+    value,
+    onChange,
+}: {
+    value: unknown;
+    onChange: (value: string | undefined) => void;
+}) {
+    const rootRef = useRef<HTMLDivElement | null>(null);
+    const [listening, setListening] = useState(false);
+    const [preview, setPreview] = useState("");
+    const pendingModifierBindingRef = useRef("");
+    const displayValue = formatBlueprintKeyboardBinding(value);
+
+    const stopKeyboardCapture = (event: KeyboardEvent) => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+    };
+
+    const commitBinding = useCallback(
+        (binding: string) => {
+            const normalized = formatBlueprintKeyboardBinding(binding);
+            if (!normalized) {
+                return;
+            }
+            onChange(normalized);
+            pendingModifierBindingRef.current = "";
+            setPreview("");
+            setListening(false);
+        },
+        [onChange],
+    );
+
+    useEffect(() => {
+        if (!listening) {
+            pendingModifierBindingRef.current = "";
+            setPreview("");
+            return undefined;
+        }
+
+        const onKeyDown = (event: KeyboardEvent) => {
+            stopKeyboardCapture(event);
+            const binding = formatBlueprintKeyboardBindingFromEvent(event);
+            if (!binding) {
+                return;
+            }
+            setPreview(binding);
+            if (isKeyboardModifierEvent(event)) {
+                pendingModifierBindingRef.current = binding;
+                return;
+            }
+            commitBinding(binding);
+        };
+        const onKeyUp = (event: KeyboardEvent) => {
+            stopKeyboardCapture(event);
+            if (!isKeyboardModifierEvent(event)) {
+                return;
+            }
+            const pending = pendingModifierBindingRef.current;
+            if (pending) {
+                commitBinding(pending);
+            }
+        };
+        const onPointerDown = (event: PointerEvent) => {
+            const target = event.target;
+            if (target instanceof Node && rootRef.current?.contains(target)) {
+                return;
+            }
+            pendingModifierBindingRef.current = "";
+            setListening(false);
+        };
+        const onBlur = () => {
+            pendingModifierBindingRef.current = "";
+            setListening(false);
+        };
+
+        window.addEventListener("keydown", onKeyDown, true);
+        window.addEventListener("keyup", onKeyUp, true);
+        window.addEventListener("pointerdown", onPointerDown, true);
+        window.addEventListener("blur", onBlur);
+        return () => {
+            window.removeEventListener("keydown", onKeyDown, true);
+            window.removeEventListener("keyup", onKeyUp, true);
+            window.removeEventListener("pointerdown", onPointerDown, true);
+            window.removeEventListener("blur", onBlur);
+        };
+    }, [commitBinding, listening]);
+
+    return (
+        <div ref={rootRef} className="nodrag relative min-w-0">
+            {listening ? (
+                <div className="absolute bottom-full left-0 z-[60] mb-1 w-full rounded border border-cyan-300/35 bg-[#0b1016] px-2 py-1.5 text-left shadow-lg ring-1 ring-black/35">
+                    <div className="truncate font-mono text-[11px] text-cyan-100">
+                        {preview || "Press a key"}
+                    </div>
+                    <div className="mt-0.5 truncate text-[9px] text-gray-400">Any key or combo</div>
+                </div>
+            ) : null}
+            <button
+                type="button"
+                className={`flex min-h-[26px] w-full min-w-0 items-center gap-1.5 rounded border px-2 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50 ${
+                    listening
+                        ? "border-cyan-300/45 bg-cyan-400/10 text-cyan-100"
+                        : "border-white/15 bg-[#111418] text-gray-200 hover:border-cyan-300/35 hover:bg-white/[0.04]"
+                } ${displayValue ? "pr-7" : ""}`}
+                title={displayValue ? `Bound to ${displayValue}` : "Bind keyboard"}
+                aria-label={displayValue ? `Bound to ${displayValue}` : "Bind keyboard"}
+                aria-pressed={listening}
+                onMouseDown={stopFlowNodePointerBubble}
+                onPointerDown={stopFlowNodePointerBubble}
+                onClick={event => {
+                    event.stopPropagation();
+                    pendingModifierBindingRef.current = "";
+                    setPreview("");
+                    setListening(open => !open);
+                }}
+            >
+                <KeyboardIcon className="h-3.5 w-3.5 shrink-0 text-cyan-300/80" aria-hidden />
+                <span className={`min-w-0 flex-1 truncate font-mono text-[10px] ${displayValue ? "" : "text-gray-500"}`}>
+                    {displayValue || "Unbound"}
+                </span>
+            </button>
+            {displayValue ? (
+                <button
+                    type="button"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-gray-500 hover:bg-white/10 hover:text-gray-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/50"
+                    title="Clear binding"
+                    aria-label="Clear binding"
+                    onMouseDown={event => {
+                        event.stopPropagation();
+                        event.preventDefault();
+                    }}
+                    onPointerDown={event => {
+                        event.stopPropagation();
+                    }}
+                    onClick={event => {
+                        event.stopPropagation();
+                        pendingModifierBindingRef.current = "";
+                        setListening(false);
+                        onChange(undefined);
+                    }}
+                >
+                    <X className="h-3 w-3" aria-hidden />
+                </button>
+            ) : null}
+        </div>
+    );
+}
+
 function InspectorParamOnCard({
     spec,
+    nodeType,
     nodeId,
     params,
     onPatchNodeParam,
@@ -714,6 +924,7 @@ function InspectorParamOnCard({
     dynamicSelectOptions,
 }: {
     spec: BlueprintInspectorParamDef;
+    nodeType: string;
     nodeId: string;
     params: Record<string, unknown>;
     onPatchNodeParam: (nodeId: string, key: string, value: unknown) => void;
@@ -735,12 +946,21 @@ function InspectorParamOnCard({
                 : ""
             : undefined;
 
-    const selectOptions: BlueprintInspectorParamSelectOption[] | undefined =
+    const rawSelectOptions: BlueprintInspectorParamSelectOption[] | undefined =
         spec.kind === "select"
             ? spec.options ?? (spec.dynamicOptionsSource ? dynamicSelectOptions?.[spec.dynamicOptionsSource] : undefined)
             : undefined;
+    const selectOptions =
+        rawSelectOptions && spec.dynamicOptionsFilter
+            ? rawSelectOptions.filter(option => (
+                  option.meta?.[spec.dynamicOptionsFilter!.optionMetaKey] === String(params[spec.dynamicOptionsFilter!.paramKey] ?? "")
+              ))
+            : rawSelectOptions;
     const selectComponentOptions: SelectOption[] | undefined = selectOptions
-        ? [{ value: "", label: "-" }, ...selectOptions.map(opt => ({ value: opt.value, label: opt.label }))]
+        ? [
+              { value: "", label: spec.emptyOptionLabel ?? "-" },
+              ...selectOptions.map(opt => ({ value: opt.value, label: opt.label })),
+          ]
         : undefined;
     const variableComponentOptions: SelectOption[] = [
         { value: "", label: "-" },
@@ -757,6 +977,13 @@ function InspectorParamOnCard({
             label: v.name,
         })),
     ];
+    const isVarDefaultValueParam =
+        spec.kind === "literal" && spec.key === "defaultValue" && nodeType === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR;
+    const isReadonlyAnyDefaultValue = isVarDefaultValueParam && params.valueType === "any";
+    const fixedLiteralMode =
+        isVarDefaultValueParam && !isReadonlyAnyDefaultValue
+            ? variableValueTypeToLiteralMode(params.valueType)
+            : undefined;
 
     return (
         <div
@@ -805,10 +1032,21 @@ function InspectorParamOnCard({
                     portalMenu
                     menuPlacement="below"
                 />
+            ) : isReadonlyAnyDefaultValue ? (
+                <Input
+                    className={`${CARD_INPUT} cursor-not-allowed text-gray-500`}
+                    type="text"
+                    value="null"
+                    size="sm"
+                    fullWidth
+                    disabled
+                    readOnly
+                />
             ) : spec.kind === "literal" ? (
                 <BlueprintLiteralValueControl
                     variant="nodeCard"
-                    value={raw ?? ""}
+                    value={fixedLiteralMode ? raw : raw ?? ""}
+                    fixedMode={fixedLiteralMode}
                     onChange={v => onPatchNodeParam(nodeId, spec.key, v)}
                 />
             ) : spec.kind === "json" ? (
@@ -821,6 +1059,16 @@ function InspectorParamOnCard({
                 <BlueprintColorValueControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
             ) : spec.kind === "imageAsset" ? (
                 <ImageAssetPickerCard value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
+            ) : spec.kind === "keyboardBinding" ? (
+                <KeyboardBindingCardControl value={raw} onChange={v => onPatchNodeParam(nodeId, spec.key, v)} />
+            ) : spec.kind === "buttonCursor" ? (
+                <ButtonCursorSelect
+                    value={raw}
+                    size="sm"
+                    portalMenu
+                    menuPlacement="below"
+                    onChange={v => onPatchNodeParam(nodeId, spec.key, v)}
+                />
             ) : (
                 <Input
                     className={
@@ -839,6 +1087,603 @@ function InspectorParamOnCard({
                     }}
                 />
             )}
+        </div>
+    );
+}
+
+const DISPLAYABLE_ANIMATE_PROPERTY_OPTIONS: SelectOption[] = [
+    { value: "opacity", label: "Opacity" },
+    { value: "offsetX", label: "Offset X" },
+    { value: "offsetY", label: "Offset Y" },
+    { value: "x", label: "X" },
+    { value: "y", label: "Y" },
+    { value: "scale", label: "Scale" },
+    { value: "rotation", label: "Rotation" },
+];
+
+const DISPLAYABLE_ANIMATE_EASING_OPTIONS: SelectOption[] = [
+    { value: "linear", label: "Linear" },
+    { value: "easeIn", label: "Ease In" },
+    { value: "easeOut", label: "Ease Out" },
+    { value: "easeInOut", label: "Ease In Out" },
+    { value: "circIn", label: "Circ In" },
+    { value: "circOut", label: "Circ Out" },
+    { value: "circInOut", label: "Circ In Out" },
+];
+
+const DISPLAYABLE_ANIMATE_AFTER_OPTIONS: SelectOption[] = [
+    { value: "hold", label: "Hold" },
+    { value: "reset", label: "Reset" },
+];
+
+const DISPLAYABLE_GET_PROPERTY_OPTIONS: SelectOption[] = [
+    { value: "position", label: "Position" },
+    { value: "size", label: "Size" },
+    { value: "bounds", label: "Bounds" },
+    { value: "x", label: "X" },
+    { value: "y", label: "Y" },
+    { value: "offsetX", label: "Offset X" },
+    { value: "offsetY", label: "Offset Y" },
+    { value: "width", label: "Width" },
+    { value: "height", label: "Height" },
+    { value: "rotation", label: "Rotation" },
+    { value: "opacity", label: "Opacity" },
+    { value: "visible", label: "Visible" },
+];
+
+const DISPLAYABLE_SET_PROPERTY_OPTIONS: SelectOption[] = [
+    { value: "x", label: "X" },
+    { value: "y", label: "Y" },
+    { value: "offsetX", label: "Offset X" },
+    { value: "offsetY", label: "Offset Y" },
+    { value: "width", label: "Width" },
+    { value: "height", label: "Height" },
+    { value: "rotation", label: "Rotation" },
+    { value: "opacity", label: "Opacity" },
+    { value: "visible", label: "Visible" },
+];
+
+const DISPLAYABLE_VISIBLE_OPTIONS: SelectOption[] = [
+    { value: "true", label: "Visible" },
+    { value: "false", label: "Hidden" },
+];
+
+const DISPLAYABLE_SET_VARIANT_WAIT_OPTIONS: SelectOption[] = [
+    { value: "continue", label: "No" },
+    { value: "wait", label: "Yes" },
+];
+
+function numericParam(params: Record<string, unknown>, key: string, fallback: number): string {
+    const value = params[key];
+    return typeof value === "number" && Number.isFinite(value) ? String(value) : String(fallback);
+}
+
+function optionalNumericParam(params: Record<string, unknown>, key: string): string {
+    const value = params[key];
+    return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+}
+
+function formatCompactNumber(value: number): string {
+    return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
+}
+
+function opacityPercentParam(params: Record<string, unknown>, key: string, fallbackPercent: number): string {
+    const value = params[key];
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+        return String(fallbackPercent);
+    }
+    return formatCompactNumber(value > 1 ? value : value * 100);
+}
+
+function CardFieldLabel({ children }: { children: ReactNode }) {
+    return <div className="mb-0.5 text-[9px] uppercase tracking-wide text-gray-500">{children}</div>;
+}
+
+function CardNumberInput({
+    value,
+    unit,
+    ariaLabel,
+    disabled = false,
+    onCommit,
+}: {
+    value: string;
+    unit?: string;
+    ariaLabel: string;
+    disabled?: boolean;
+    onCommit: (raw: string) => void;
+}) {
+    const [draft, setDraft] = useState(value);
+    const editingRef = useRef(false);
+    const draftRef = useRef(value);
+    const valueRef = useRef(value);
+    const onCommitRef = useRef(onCommit);
+
+    useEffect(() => {
+        valueRef.current = value;
+        if (!editingRef.current) {
+            draftRef.current = value;
+            setDraft(value);
+        }
+    }, [value]);
+
+    useEffect(() => {
+        onCommitRef.current = onCommit;
+    }, [onCommit]);
+
+    const commitDraft = useCallback(() => {
+        if (disabled) {
+            editingRef.current = false;
+            draftRef.current = valueRef.current;
+            setDraft(valueRef.current);
+            return;
+        }
+        const next = draftRef.current;
+        editingRef.current = false;
+        if (next !== valueRef.current) {
+            valueRef.current = next;
+            onCommitRef.current(next);
+            return;
+        }
+        setDraft(valueRef.current);
+    }, [disabled]);
+
+    useEffect(() => {
+        const commitIfEditing = () => {
+            if (editingRef.current) {
+                commitDraft();
+            }
+        };
+        const onVisibilityChange = () => {
+            if (document.visibilityState === "hidden") {
+                commitIfEditing();
+            }
+        };
+        window.addEventListener("blur", commitIfEditing);
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        return () => {
+            window.removeEventListener("blur", commitIfEditing);
+            document.removeEventListener("visibilitychange", onVisibilityChange);
+            commitIfEditing();
+        };
+    }, [commitDraft]);
+
+    return (
+        <div className="relative">
+            <input
+                className={`nodrag block w-full rounded border border-white/15 bg-[#111418] px-1.5 py-1 font-mono text-[10px] text-gray-200 transition-colors focus:border-[#40a8c4] focus:outline-none ${
+                    unit ? "pr-8" : ""
+                } ${disabled ? "cursor-not-allowed opacity-55" : ""} ${INPUT_NUMBER_NO_SPINNER}`}
+                type="text"
+                inputMode="decimal"
+                value={draft}
+                aria-label={ariaLabel}
+                disabled={disabled}
+                onFocus={() => {
+                    editingRef.current = true;
+                }}
+                onChange={e => {
+                    draftRef.current = e.target.value;
+                    setDraft(e.target.value);
+                }}
+                onBlur={commitDraft}
+                onKeyDown={e => {
+                    if (e.key === "Enter") {
+                        e.currentTarget.blur();
+                    } else if (e.key === "Escape") {
+                        editingRef.current = false;
+                        draftRef.current = valueRef.current;
+                        setDraft(valueRef.current);
+                        e.currentTarget.blur();
+                    }
+                }}
+            />
+            {unit ? (
+                <span className="pointer-events-none absolute inset-y-0 right-1.5 flex items-center font-mono text-[9px] text-gray-500">
+                    {unit}
+                </span>
+            ) : null}
+        </div>
+    );
+}
+
+function displayableSetPropertyDefaultValue(property: string): number | boolean {
+    switch (property) {
+        case "width":
+        case "height":
+            return 100;
+        case "opacity":
+            return 100;
+        case "visible":
+            return true;
+        case "x":
+        case "y":
+        case "offsetX":
+        case "offsetY":
+        case "rotation":
+        default:
+            return 0;
+    }
+}
+
+function displayableSetPropertyUnit(property: string): string | undefined {
+    switch (property) {
+        case "x":
+        case "y":
+        case "offsetX":
+        case "offsetY":
+        case "width":
+        case "height":
+            return "px";
+        case "rotation":
+            return "deg";
+        case "opacity":
+            return "%";
+        default:
+            return undefined;
+    }
+}
+
+function displayableAnimatePropertyUnit(property: string): string | undefined {
+    switch (property) {
+        case "opacity":
+            return "%";
+        case "offsetX":
+        case "offsetY":
+        case "x":
+        case "y":
+            return "px";
+        case "scale":
+            return "x";
+        case "rotation":
+            return "deg";
+        default:
+            return undefined;
+    }
+}
+
+function booleanParam(params: Record<string, unknown>, key: string, fallback: boolean): string {
+    const value = params[key];
+    if (typeof value === "boolean") {
+        return value ? "true" : "false";
+    }
+    if (typeof value === "string" && (value === "true" || value === "false")) {
+        return value;
+    }
+    return fallback ? "true" : "false";
+}
+
+function DisplayableGetPropertyCard({
+    nodeId,
+    params,
+    onPatchNodeParam,
+}: {
+    nodeId: string;
+    params: Record<string, unknown>;
+    onPatchNodeParam: BlueprintNodeParamPatch;
+}) {
+    const property = typeof params.property === "string" ? params.property : "position";
+    return (
+        <div
+            className="mt-1.5 border-t border-white/5 pt-1.5"
+            onMouseDownCapture={stopFlowNodePointerBubble}
+            onPointerDownCapture={stopFlowNodePointerBubble}
+        >
+            <CardFieldLabel>Property</CardFieldLabel>
+            <Select
+                fullWidth
+                size="sm"
+                options={DISPLAYABLE_GET_PROPERTY_OPTIONS}
+                value={property}
+                onChange={value => onPatchNodeParam(nodeId, "property", String(value) || "position")}
+                portalMenu
+                menuPlacement="below"
+            />
+        </div>
+    );
+}
+
+function DisplayableSetPropertyCard({
+    nodeId,
+    params,
+    valueWired,
+    onPatchNodeParam,
+}: {
+    nodeId: string;
+    params: Record<string, unknown>;
+    valueWired: boolean;
+    onPatchNodeParam: BlueprintNodeParamPatch;
+}) {
+    const property = typeof params.property === "string" ? params.property : "opacity";
+    const isVisible = property === "visible";
+    const isOpacity = property === "opacity";
+    const valueUnit = displayableSetPropertyUnit(property);
+    const patchNumber = (raw: string) => {
+        const value = Number(raw);
+        onPatchNodeParam(
+            nodeId,
+            "value",
+            Number.isFinite(value) ? value : displayableSetPropertyDefaultValue(property),
+            {
+                mergeKey: `set-displayable-property:${nodeId}:value`,
+                mergeWindowMs: 600,
+            },
+        );
+    };
+    const onChangeProperty = (raw: string | number) => {
+        const nextProperty = String(raw) || "opacity";
+        onPatchNodeParam(nodeId, "property", nextProperty);
+        if (valueWired) {
+            return;
+        }
+        const defaultValue = displayableSetPropertyDefaultValue(nextProperty);
+        const currentValue = params.value;
+        const shouldReset =
+            nextProperty === "visible"
+                ? typeof currentValue !== "boolean" && currentValue !== "true" && currentValue !== "false"
+                : typeof currentValue !== "number" || !Number.isFinite(currentValue);
+        if (shouldReset) {
+            onPatchNodeParam(nodeId, "value", defaultValue);
+        }
+    };
+
+    return (
+        <div
+            className="mt-1.5 border-t border-white/5 pt-1.5"
+            onMouseDownCapture={stopFlowNodePointerBubble}
+            onPointerDownCapture={stopFlowNodePointerBubble}
+        >
+            <CardFieldLabel>Property</CardFieldLabel>
+            <Select
+                fullWidth
+                size="sm"
+                options={DISPLAYABLE_SET_PROPERTY_OPTIONS}
+                value={property}
+                onChange={onChangeProperty}
+                portalMenu
+                menuPlacement="below"
+            />
+            <div className="mt-1.5">
+                <CardFieldLabel>Value</CardFieldLabel>
+                {isVisible ? (
+                    <Select
+                        fullWidth
+                        size="sm"
+                        options={DISPLAYABLE_VISIBLE_OPTIONS}
+                        value={booleanParam(params, "value", true)}
+                        disabled={valueWired}
+                        onChange={value => onPatchNodeParam(nodeId, "value", value === "true")}
+                        portalMenu
+                        menuPlacement="below"
+                    />
+                ) : (
+                    <CardNumberInput
+                        value={
+                            isOpacity
+                                ? opacityPercentParam(
+                                      params,
+                                      "value",
+                                      displayableSetPropertyDefaultValue(property) as number,
+                                  )
+                                : numericParam(
+                                      params,
+                                      "value",
+                                      displayableSetPropertyDefaultValue(property) as number,
+                                  )
+                        }
+                        unit={valueUnit}
+                        ariaLabel="Displayable property value"
+                        disabled={valueWired}
+                        onCommit={patchNumber}
+                    />
+                )}
+            </div>
+        </div>
+    );
+}
+
+function DisplayableSetVariantCard({
+    nodeId,
+    params,
+    onPatchNodeParam,
+    elementTarget,
+    targetVariants,
+}: {
+    nodeId: string;
+    params: Record<string, unknown>;
+    onPatchNodeParam: BlueprintNodeParamPatch;
+    elementTarget: boolean;
+    targetVariants?: BlueprintFlowNodeData["displayableTargetVariants"];
+}) {
+    const variantId = typeof params.variantId === "string" ? params.variantId : "";
+    const waitForTransition = params.waitForTransition === "wait" || params.waitForTransition === true
+        ? "wait"
+        : "continue";
+    const options = (targetVariants?.options ?? []).map(option => ({
+        value: option.value,
+        label: option.label,
+    }));
+    const selectedValue = options.some(option => option.value === variantId) ? variantId : "";
+    const message = (
+        targetVariants?.message ??
+        (targetVariants
+            ? targetVariants.supported
+                ? options.length > 0
+                    ? targetVariants.targetLabel
+                    : "Target has no variants"
+                : "Target does not support variants"
+            : elementTarget
+              ? "Connect an Element ref to preview variants"
+              : "Current widget variants unavailable")
+    ) || "Variant target unavailable";
+    const disabled = !targetVariants?.supported || options.length === 0;
+    const selectOptions: SelectOption[] = disabled
+        ? [{ value: "", label: message, disabled: true }]
+        : options;
+
+    return (
+        <div
+            className="mt-1.5 border-t border-white/5 pt-1.5"
+            onMouseDownCapture={stopFlowNodePointerBubble}
+            onPointerDownCapture={stopFlowNodePointerBubble}
+        >
+            <CardFieldLabel>Variant</CardFieldLabel>
+            <Select
+                fullWidth
+                size="sm"
+                options={selectOptions}
+                value={disabled ? "" : selectedValue}
+                placeholder="Select variant"
+                disabled={disabled}
+                onChange={value => onPatchNodeParam(nodeId, "variantId", String(value))}
+                portalMenu
+                menuPlacement="below"
+            />
+            <div className="mt-1.5">
+                <CardFieldLabel>Wait For Animation</CardFieldLabel>
+                <Select
+                    fullWidth
+                    size="sm"
+                    options={DISPLAYABLE_SET_VARIANT_WAIT_OPTIONS}
+                    value={waitForTransition}
+                    onChange={value => onPatchNodeParam(nodeId, "waitForTransition", String(value) || "continue")}
+                    portalMenu
+                    menuPlacement="below"
+                />
+            </div>
+            {message ? (
+                <div
+                    className={`mt-1 truncate text-[9px] ${
+                        targetVariants?.supported === false ? "text-amber-300" : "text-gray-500"
+                    }`}
+                    title={message}
+                >
+                    {message}
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+function DisplayableAnimatePropertyCard({
+    nodeId,
+    params,
+    onPatchNodeParam,
+}: {
+    nodeId: string;
+    params: Record<string, unknown>;
+    onPatchNodeParam: BlueprintNodeParamPatch;
+}) {
+    const property = typeof params.property === "string" ? params.property : "opacity";
+    const easing = typeof params.easing === "string" ? params.easing : "easeOut";
+    const after = typeof params.after === "string" ? params.after : "hold";
+    const valueUnit = displayableAnimatePropertyUnit(property);
+    const toFallback = property === "opacity" ? 100 : property === "scale" ? 1 : 0;
+    const isLegacyAbsolutePositionFromDefault =
+        (property === "x" || property === "y") &&
+        params[BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT] !== true &&
+        Number(params.from) === 0;
+    const patchNumber = (key: string, raw: string, fallback: number) => {
+        const value = Number(raw);
+        onPatchNodeParam(nodeId, key, Number.isFinite(value) ? value : fallback, {
+            mergeKey: `animate-property:${nodeId}:${key}`,
+            mergeWindowMs: 600,
+        });
+    };
+    const patchOptionalNumber = (key: string, raw: string) => {
+        const trimmed = raw.trim();
+        const value = trimmed.length > 0 ? Number(trimmed) : undefined;
+        onPatchNodeParam(nodeId, key, value !== undefined && Number.isFinite(value) ? value : undefined, {
+            mergeKey: `animate-property:${nodeId}:${key}`,
+            mergeWindowMs: 600,
+        });
+    };
+
+    return (
+        <div
+            className="mt-1.5 border-t border-white/5 pt-1.5"
+            onMouseDownCapture={stopFlowNodePointerBubble}
+            onPointerDownCapture={stopFlowNodePointerBubble}
+        >
+            <div>
+                <CardFieldLabel>Property</CardFieldLabel>
+                <Select
+                    fullWidth
+                    size="sm"
+                    options={DISPLAYABLE_ANIMATE_PROPERTY_OPTIONS}
+                    value={property}
+                    onChange={value => onPatchNodeParam(nodeId, "property", String(value) || "opacity")}
+                    portalMenu
+                    menuPlacement="below"
+                />
+            </div>
+            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                <div>
+                    <CardFieldLabel>From</CardFieldLabel>
+                    <CardNumberInput
+                        value={
+                            isLegacyAbsolutePositionFromDefault
+                                ? ""
+                                : optionalNumericParam(params, "from")
+                        }
+                        unit={valueUnit}
+                        ariaLabel="Animation start value"
+                        onCommit={raw => patchOptionalNumber("from", raw)}
+                    />
+                </div>
+                <div>
+                    <CardFieldLabel>To</CardFieldLabel>
+                    <CardNumberInput
+                        value={numericParam(params, "to", toFallback)}
+                        unit={valueUnit}
+                        ariaLabel="Animation target value"
+                        onCommit={raw => patchNumber("to", raw, toFallback)}
+                    />
+                </div>
+                <div>
+                    <CardFieldLabel>Duration</CardFieldLabel>
+                    <CardNumberInput
+                        value={numericParam(params, "duration", 0.3)}
+                        unit="s"
+                        ariaLabel="Animation duration"
+                        onCommit={raw => patchNumber("duration", raw, 0.3)}
+                    />
+                </div>
+                <div>
+                    <CardFieldLabel>Delay</CardFieldLabel>
+                    <CardNumberInput
+                        value={numericParam(params, "delay", 0)}
+                        unit="s"
+                        ariaLabel="Animation delay"
+                        onCommit={raw => patchNumber("delay", raw, 0)}
+                    />
+                </div>
+            </div>
+            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                <div>
+                    <CardFieldLabel>Easing</CardFieldLabel>
+                    <Select
+                        fullWidth
+                        size="sm"
+                        options={DISPLAYABLE_ANIMATE_EASING_OPTIONS}
+                        value={easing}
+                        onChange={value => onPatchNodeParam(nodeId, "easing", String(value) || "easeOut")}
+                        portalMenu
+                        menuPlacement="below"
+                    />
+                </div>
+                <div>
+                    <CardFieldLabel>After</CardFieldLabel>
+                    <Select
+                        fullWidth
+                        size="sm"
+                        options={DISPLAYABLE_ANIMATE_AFTER_OPTIONS}
+                        value={after}
+                        onChange={value => onPatchNodeParam(nodeId, "after", String(value) || "hold")}
+                        portalMenu
+                        menuPlacement="below"
+                    />
+                </div>
+            </div>
         </div>
     );
 }
@@ -1152,6 +1997,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
         dynamicSelectOptions,
         nodeDiagnostics,
         elementPreview,
+        displayableTargetVariants,
         onBindElementLiteral,
     } = data as BlueprintFlowNodeData;
     const wired = wiredInputPortIds ?? new Set<string>();
@@ -1161,12 +2007,31 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     const dataOuts = catalog.pins.filter(p => p.kind === "output" && p.semantic === "data");
 
     const isEventHead = catalog.role === "eventHead";
+    const isVarDeclare = catalog.type === BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR;
     const isTerminalNode = execIns.length > 0 && execOuts.length === 0;
     const firstNodeError = nodeDiagnostics?.find(d => d.severity === "error");
     const showAddInputRow =
         Boolean(catalog.supportsDynamicInputPins) && Boolean(onAddDynamicInputPin);
     const inspectorParams = catalog.inspectorParams ?? [];
-    const showCardInspector = Boolean(onPatchNodeParam) && inspectorParams.length > 0;
+    const showAnimatePropertyCard =
+        Boolean(onPatchNodeParam) &&
+        (catalog.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY ||
+            catalog.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY);
+    const showGetPropertyCard =
+        Boolean(onPatchNodeParam) &&
+        (catalog.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY ||
+            catalog.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY);
+    const showSetPropertyCard =
+        Boolean(onPatchNodeParam) &&
+        (catalog.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY ||
+            catalog.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY);
+    const showSetVariantCard =
+        Boolean(onPatchNodeParam) &&
+        (catalog.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT ||
+            catalog.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT);
+    const showCustomCardInspector =
+        showAnimatePropertyCard || showGetPropertyCard || showSetPropertyCard || showSetVariantCard;
+    const showCardInspector = Boolean(onPatchNodeParam) && inspectorParams.length > 0 && !showCustomCardInspector;
     const dynamicLabelValues = useMemo(
         () => readDynamicPinLabelValues(params, catalog.dynamicInputPinLabelParamKey),
         [catalog.dynamicInputPinLabelParamKey, params],
@@ -1185,7 +2050,12 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     /** When only one side has pins, that column must span full card width so handles align to the true edge. */
     const onlyRightPins = !hasLeftColumn && rightPins.length > 0;
     const onlyLeftPins = hasLeftColumn && rightPins.length === 0;
-    const offsetRightPinsForIfElse = catalog.type === BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE;
+    const rightPinSpacerRows =
+        catalog.type === BLUEPRINT_NODE_TYPE_FLOW_SWITCH_STRING
+            ? 2
+            : catalog.type === BLUEPRINT_NODE_TYPE_FLOW_IF_ELSE
+              ? 1
+              : 0;
 
     if (catalog.role === "comment") {
         return (
@@ -1229,7 +2099,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
     return (
         <div
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-[#1a1d21] text-xs shadow-md ${
-                isEventHead ? "border-l-2" : ""
+                isEventHead || isVarDeclare ? "border-l-2" : ""
             } ${isTerminalNode ? "border-r-2" : ""} ${
                 firstNodeError
                     ? "border-red-400/85 ring-1 ring-red-500/40"
@@ -1237,6 +2107,8 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                       ? "border-cyan-400/80 ring-1 ring-cyan-500/40"
                       : "border-white/15"
             } ${!firstNodeError && isEventHead ? "border-l-cyan-400/70" : ""} ${
+                !firstNodeError && isVarDeclare ? "border-l-amber-500/80" : ""
+            } ${
                 !firstNodeError && isTerminalNode ? "border-r-cyan-400/70" : ""
             }`}
             title={firstNodeError?.message}
@@ -1245,11 +2117,43 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
             <div className="border-b border-white/5 px-2 py-1.5">
                 <div className="text-[10px] uppercase tracking-wide text-gray-500">{catalog.category}</div>
                 <div className="font-medium leading-tight text-gray-100">{catalog.displayName}</div>
+                {showAnimatePropertyCard && onPatchNodeParam ? (
+                    <DisplayableAnimatePropertyCard
+                        nodeId={nodeId}
+                        params={params}
+                        onPatchNodeParam={onPatchNodeParam}
+                    />
+                ) : null}
+                {showGetPropertyCard && onPatchNodeParam ? (
+                    <DisplayableGetPropertyCard
+                        nodeId={nodeId}
+                        params={params}
+                        onPatchNodeParam={onPatchNodeParam}
+                    />
+                ) : null}
+                {showSetPropertyCard && onPatchNodeParam ? (
+                    <DisplayableSetPropertyCard
+                        nodeId={nodeId}
+                        params={params}
+                        valueWired={wired.has("value")}
+                        onPatchNodeParam={onPatchNodeParam}
+                    />
+                ) : null}
+                {showSetVariantCard && onPatchNodeParam ? (
+                    <DisplayableSetVariantCard
+                        nodeId={nodeId}
+                        params={params}
+                        onPatchNodeParam={onPatchNodeParam}
+                        elementTarget={catalog.type === BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT}
+                        targetVariants={displayableTargetVariants}
+                    />
+                ) : null}
                 {showCardInspector && onPatchNodeParam
                     ? inspectorParams.map(spec => (
                           <InspectorParamOnCard
                               key={spec.key}
                               spec={spec}
+                              nodeType={catalog.type}
                               nodeId={nodeId}
                               params={params}
                               onPatchNodeParam={onPatchNodeParam}
@@ -1308,7 +2212,9 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
                         <div
                             className={`flex min-w-0 flex-col gap-0.5 ${onlyRightPins ? "w-full min-w-0 flex-1" : "shrink-0"}`}
                         >
-                            {offsetRightPinsForIfElse ? <div className="min-h-[20px]" aria-hidden /> : null}
+                            {Array.from({ length: rightPinSpacerRows }).map((_, index) => (
+                                <div key={`right-pin-spacer-${index}`} className="min-h-[20px]" aria-hidden />
+                            ))}
                             {rightPins.map(({ pin, semantic }) => (
                                 <OutputPinRow key={`out-${pin.id}`} pin={pin} semantic={semantic} />
                             ))}

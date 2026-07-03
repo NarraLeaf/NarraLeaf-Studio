@@ -1,10 +1,12 @@
 import type { CSSProperties, ReactNode } from "react";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintHostApiContractVersion } from "@shared/types/blueprint/hostApi";
-import type { UISurfaceId } from "@shared/types/ui-editor/document";
+import type { UIDocument, UIComponentId, UISurfaceId, UIStageSlotId } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
+import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
+import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 
 export type UIHost = "app" | "player";
 
@@ -19,6 +21,7 @@ export type UIHostAdapterBlueprintRuntime = {
     setSurfaceState: (key: string, value: unknown) => void;
     getSurfaceState: (key: string) => unknown;
     emitDebug: (event: BlueprintDebugEvent) => void;
+    getSurfaceTransitionState?: () => { isEntering: boolean; isExiting: boolean };
     /** Dispatch a widget private event slot (for example `init` or `mouseClick`) on the owner-local blueprint. */
     dispatchElementBlueprintEvent: (
         elementId: string,
@@ -27,8 +30,26 @@ export type UIHostAdapterBlueprintRuntime = {
         options?: {
             listItemScope?: UIListItemScope | null;
             instanceKey?: string;
+            componentId?: UIComponentId;
+            eventControl?: BehaviorGraphEventControl;
+            allowClosedScopeExecution?: boolean;
         },
     ) => Promise<void>;
+    /** Continue the current widget event from this element to its structural parent. */
+    continueElementEventBubble?: (
+        elementId: string,
+        eventName: string,
+        payload?: Record<string, unknown>,
+        options?: {
+            listItemScope?: UIListItemScope | null;
+            instanceKey?: string;
+            componentId?: UIComponentId;
+            eventControl?: BehaviorGraphEventControl;
+            allowClosedScopeExecution?: boolean;
+        },
+    ) => Promise<boolean>;
+    /** Dispatch a surface-level event on the current surfaceMain blueprint. */
+    dispatchSurfaceBlueprintEvent?: (eventName: string, payload?: Record<string, unknown>) => Promise<void>;
     dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
     getBroadcastListenerCount?: (eventName: string) => number;
     frame?: {
@@ -47,6 +68,9 @@ export type UIHostAdapter = {
     host: UIHost;
     navigate?: (target: unknown) => Promise<void> | void;
     resolveSlot?: (slotId: string) => { mount: (node: ReactNode) => void } | null;
+    gameUiRuntime?: {
+        slotId: UIStageSlotId;
+    };
     /**
      * M1 latch: which frozen BlueprintHostApiContract generation this adapter targets.
      * Does not imply all capabilities are implemented yet.
@@ -56,10 +80,24 @@ export type UIHostAdapter = {
     blueprintRuntime?: UIHostAdapterBlueprintRuntime;
     /** Editor preview: use the active workspace service instance for canvas-local interaction overrides. */
     editorStateService?: UIEditorStateService;
+    /** Editor preview: use the active document service, including component-editor adapters. */
+    editorDocumentService?: UIDocumentService;
 };
 
 export type RenderSurfaceOptions = {
     surfaceId: UISurfaceId;
+    hostAdapter: UIHostAdapter;
+    className?: string;
+    style?: CSSProperties;
+    editorChrome?: boolean;
+};
+
+export type RenderDocumentSurfaceOptions = RenderSurfaceOptions & {
+    document: UIDocument;
+};
+
+export type RenderComponentOptions = {
+    componentId: UIComponentId;
     hostAdapter: UIHostAdapter;
     className?: string;
     style?: CSSProperties;

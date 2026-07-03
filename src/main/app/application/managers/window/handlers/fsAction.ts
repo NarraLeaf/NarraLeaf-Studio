@@ -540,6 +540,47 @@ export class FsSelectDirectoryHandler extends IPCHandler<IPCEventType.fsSelectDi
     }
 }
 
+export class FsGrantFileAccessHandler extends IPCHandler<IPCEventType.fsGrantFileAccess> {
+    readonly name = IPCEventType.fsGrantFileAccess;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow, { paths }: IPCEvents[IPCEventType.fsGrantFileAccess]["data"]): Promise<RequestStatus<FsRequestResult<string[]>>> {
+        const grantPolicy = getRuntimeGrantPolicy(window, "droppedFile");
+        if (!grantPolicy) {
+            return this.success(unauthorizedPathResult<string[]>("dropped file"));
+        }
+
+        const uniquePaths = Array.from(new Set(
+            (Array.isArray(paths) ? paths : []).filter(path => typeof path === "string" && path.length > 0)
+        ));
+        const grantedPaths: string[] = [];
+
+        for (const filePath of uniquePaths) {
+            const fileCheck = await Fs.isFile(filePath);
+            if (!fileCheck.ok) {
+                return this.success(fileCheck as FsRequestResult<string[]>);
+            }
+            if (!fileCheck.data) {
+                return this.success({
+                    ok: false,
+                    error: {
+                        code: FsRejectErrorCode.NOT_A_FILE,
+                        message: `Dropped path is not a file: ${filePath}`,
+                    },
+                });
+            }
+
+            window.app.storageManager.grantFileSystemAccess(window, filePath, grantPolicy.mode, grantPolicy.recursive);
+            grantedPaths.push(filePath);
+        }
+
+        return this.success({
+            ok: true,
+            data: grantedPaths,
+        });
+    }
+}
+
 export class FsHashHandler extends IPCHandler<IPCEventType.fsHash> {
     readonly name = IPCEventType.fsHash;
     readonly type = IPCMessageType.request;

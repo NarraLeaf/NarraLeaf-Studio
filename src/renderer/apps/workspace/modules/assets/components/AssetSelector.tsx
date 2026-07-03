@@ -47,6 +47,7 @@ const ASSET_TYPE_LABELS = {
 };
 
 const ASSET_SELECTOR_STATE_ID = "narraleaf-studio:asset-selector";
+const WINDOW_TITLEBAR_HEIGHT = 40;
 
 interface AssetSelectorState {
     expandedGroupIdsByType?: Partial<Record<AssetType, string[]>>;
@@ -221,6 +222,7 @@ export function AssetSelector({
 
         const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
         const viewportMargin = 12;
+        const viewportTop = WINDOW_TITLEBAR_HEIGHT + viewportMargin;
         const maxPanelHeight = 560; // matches max-h
 
         const updatePosition = () => {
@@ -232,11 +234,11 @@ export function AssetSelector({
                 const rect = anchorRef.current.getBoundingClientRect();
                 const width = clamp(rect.width, 320, 480);
                 const availableBelow = viewportHeight - rect.bottom - viewportMargin;
-                const availableAbove = rect.top - viewportMargin;
+                const availableAbove = rect.top - viewportTop;
 
                 const shouldOpenDown = availableBelow >= panelHeight || availableBelow >= availableAbove;
                 let top = shouldOpenDown ? rect.bottom + 8 : rect.top - panelHeight - 8;
-                top = clamp(top, viewportMargin, viewportHeight - viewportMargin - panelHeight);
+                top = clamp(top, viewportTop, Math.max(viewportTop, viewportHeight - viewportMargin - panelHeight));
                 const left = clamp(rect.left, viewportMargin, viewportWidth - viewportMargin - width);
 
                 setAnchorStyle({
@@ -247,7 +249,7 @@ export function AssetSelector({
             } else {
                 const width = 420;
                 const left = clamp((viewportWidth - width) / 2, viewportMargin, viewportWidth - viewportMargin - width);
-                const top = clamp(96, viewportMargin, viewportHeight - viewportMargin - maxPanelHeight);
+                const top = clamp(96, viewportTop, Math.max(viewportTop, viewportHeight - viewportMargin - maxPanelHeight));
                 setAnchorStyle((prev) => ({ ...prev, top, left, width }));
             }
         };
@@ -598,7 +600,7 @@ export function AssetSelector({
 
     const panel = (
         <div
-            className="fixed inset-0 z-50 bg-black/40"
+            className="nl-window-content-layer z-50 bg-black/40"
             onMouseDown={(e) => {
                 if (e.target === e.currentTarget) {
                     onClose();
@@ -607,7 +609,7 @@ export function AssetSelector({
         >
             <div
                 ref={panelRef}
-                style={anchorRef?.current ? { position: "absolute", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
+                style={anchorRef?.current ? { position: "fixed", top: anchorStyle.top, left: anchorStyle.left, width: anchorStyle.width } : { width: anchorStyle.width }}
                 className={`${anchorRef?.current ? "" : "mt-12 mx-auto"} bg-[#0b0d12] border border-white/20 rounded-lg shadow-2xl text-gray-200 max-h-[560px] flex flex-col ${className}`}
                 onMouseDown={(e) => e.stopPropagation()}
             >

@@ -1,4 +1,4 @@
-import { Clock, Code, FileText, GitBranch, Image, MessageSquare, Music, Route, Settings2, StickyNote, UserRound, Variable } from "lucide-react";
+import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Music, Route, Settings2, Sparkles, StickyNote, Type, UserRound, Variable, Video } from "lucide-react";
 import type { StoryBlock, StoryBlockId, StoryScene, StoryTextSegment } from "@shared/types/story";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
@@ -114,7 +114,9 @@ export function canAcceptChildren(block: StoryBlock | undefined): boolean {
     if (!block) {
         return false;
     }
-    return block.kind === "control" || (block.kind === "nodeAction" && (block.payload.action === "choice" || block.payload.action === "choiceOption"));
+    return block.kind === "control" ||
+        (block.kind === "action" && block.payload.action === "nvl") ||
+        (block.kind === "nodeAction" && (block.payload.action === "choice" || block.payload.action === "choiceOption"));
 }
 
 export function isTextEditableBlock(block: StoryBlock): boolean {
@@ -138,7 +140,14 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
         if (block.payload.action === "character") return withCategory("Character", UserRound, "character");
         if (block.payload.action === "audio") return withCategory("Audio", Music, "media");
         if (block.payload.action === "setVariable") return withCategory("Variable", Variable, "data");
-        return withCategory("Wait", Clock, "control");
+        if (block.payload.action === "wait") return withCategory("Wait", Clock, "control");
+        if (block.payload.action === "image") return withCategory("Image", Image, "image");
+        if (block.payload.action === "displayable") return withCategory("Displayable", Eye, "image");
+        if (block.payload.action === "text") return withCategory("Text", Type, "text");
+        if (block.payload.action === "layer") return withCategory("Layer", Layers, "layer");
+        if (block.payload.action === "video") return withCategory("Video", Video, "video");
+        if (block.payload.action === "nvl") return withCategory("NVL", FileText, "scene");
+        return withCategory("Effect", Sparkles, "effects");
     }
     if (block.kind === "control") return withCategory("Control", Settings2, "control");
     if (block.kind === "jump") return withCategory("Jump", Route, "scene");
@@ -158,13 +167,22 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
     if (block.kind === "action") {
         const payload = block.payload;
         if (payload.action === "setBackground") return `Set background ${payload.assetId || payload.color || "unassigned"}`;
-        if (payload.action === "character") return `${payload.operation} character ${payload.characterId || "unassigned"}`;
-        if (payload.action === "audio") return `${payload.operation} ${payload.assetId || "unassigned"}`;
+        if (payload.action === "character") return `${payload.operation} character ${payload.characterId || payload.objectName || "unassigned"}`;
+        if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || "unassigned"}`;
         if (payload.action === "setVariable") return `${payload.target.key} = ${String(payload.value)}`;
-        return payload.mode === "duration" ? `Wait ${payload.durationMs ?? 0}ms` : "Wait for click";
+        if (payload.action === "wait") return payload.mode === "duration" ? `Wait ${payload.durationMs ?? 0}ms` : "Wait for click";
+        if (payload.action === "image") return `${payload.operation} image ${payload.objectName || "unnamed"}`;
+        if (payload.action === "displayable") return `${payload.operation} ${payload.target.name || "target"}`;
+        if (payload.action === "text") return `${payload.operation} text ${payload.objectName || "unnamed"}`;
+        if (payload.action === "layer") return `${payload.operation} layer ${payload.objectName || "unnamed"}`;
+        if (payload.action === "video") return `${payload.operation} video ${payload.objectName || "unnamed"}`;
+        if (payload.action === "nvl") return "NVL block";
+        return `${payload.effect} screen effect`;
     }
     if (block.kind === "control") {
-        return block.payload.control === "condition" ? "Condition" : `${block.payload.branch} branch`;
+        if (block.payload.control === "condition") return "Condition";
+        if (block.payload.control === "conditionBranch") return `${block.payload.branch} branch`;
+        return block.payload.control;
     }
     if (block.kind === "jump") {
         return `Jump ${block.payload.targetSceneId || "unassigned"}`;

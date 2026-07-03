@@ -3,8 +3,17 @@ import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
     BLUEPRINT_NODE_TYPE_DATA_TO_JSON,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY,
+    BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
+    BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_STRING_FORMAT,
@@ -210,6 +219,47 @@ describe("blueprint graph editing", () => {
         ).toBe(true);
     });
 
+    it("validates Get Var connections from inferred variable types without mutating params", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                getScore: {
+                    id: "getScore",
+                    type: BLUEPRINT_NODE_TYPE_LOCAL_GET,
+                    params: { variableId: "score" },
+                },
+                format: { id: "format", type: BLUEPRINT_NODE_TYPE_STRING_FORMAT },
+            },
+            edges: [],
+        };
+
+        expect(
+            isValidBlueprintIrExecConnection(
+                ir,
+                {
+                    source: "getScore",
+                    sourceHandle: "value",
+                    target: "format",
+                    targetHandle: "values",
+                },
+                { memberVariables: [{ value: "score", valueType: "float" }] },
+            ),
+        ).toBe(false);
+        expect(
+            isValidBlueprintIrExecConnection(
+                ir,
+                {
+                    source: "getScore",
+                    sourceHandle: "value",
+                    target: "format",
+                    targetHandle: "values",
+                },
+                { memberVariables: [{ value: "score", valueType: "json" }] },
+            ),
+        ).toBe(true);
+        expect(ir.nodes?.getScore?.params).toEqual({ variableId: "score" });
+    });
+
     it("creates Make JSON Object with one editable field pair", () => {
         const node = createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT, "jsonObject");
 
@@ -217,6 +267,17 @@ describe("blueprint graph editing", () => {
             __jsonObjectInputPins: ["field_1_name", "field_1_value"],
             __inlineLiteralPins: ["field_1_name"],
             field_1_name: "field1",
+        });
+    });
+
+    it("creates Var declarations with stable variable defaults", () => {
+        const node = createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR, "varNode");
+
+        expect(node.params).toMatchObject({
+            variableId: "varNode",
+            name: "var_varNode",
+            valueType: "string",
+            defaultValue: "",
         });
     });
 
@@ -230,5 +291,49 @@ describe("blueprint graph editing", () => {
             width: 360,
             height: 180,
         });
+    });
+
+    it("creates Displayable Animate Property with editable motion defaults", () => {
+        expect(createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY, "animate").params).toEqual({
+            property: "opacity",
+            from: 0,
+            to: 100,
+            duration: 0.3,
+            delay: 0,
+            easing: "easeOut",
+            after: "hold",
+        });
+        expect(createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY, "animateElement").params)
+            .toMatchObject({
+                property: "opacity",
+                duration: 0.3,
+                easing: "easeOut",
+            });
+    });
+
+    it("creates Displayable Get/Set Property with compact editor defaults", () => {
+        expect(createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_PROPERTY, "getProperty").params).toEqual({
+            property: "position",
+        });
+        expect(createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_PROPERTY, "getElementProperty").params)
+            .toEqual({
+                property: "position",
+        });
+        expect(createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY, "setProperty").params).toEqual({
+            property: "opacity",
+            value: 100,
+        });
+        expect(createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_PROPERTY, "setElementProperty").params)
+            .toEqual({
+                property: "opacity",
+                value: 100,
+            });
+        expect(createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT, "setVariant").params).toEqual({
+            waitForTransition: "continue",
+        });
+        expect(createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT, "setElementVariant").params)
+            .toEqual({
+                waitForTransition: "continue",
+            });
     });
 });

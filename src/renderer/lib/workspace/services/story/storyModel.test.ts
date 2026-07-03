@@ -1,20 +1,31 @@
 import { describe, expect, it } from "vitest";
 import type { StoryBlock } from "@shared/types/story";
 import {
+    createEmptyStoryAnimationIndex,
     createEmptyStoryDocument,
     createEmptyStoryLibraryIndex,
     deleteBlockFromScene,
     insertBlockInScene,
     moveBlockInScene,
+    normalizeStoryAnimationAsset,
+    normalizeStoryAnimationIndex,
     normalizeStoryDocument,
     normalizeStoryLibraryIndex,
+    storyAnimationDocumentRelativePath,
     storyDocumentRelativePath,
     updateBlockPayload,
 } from "./storyModel";
 
-function idFactory(prefix = "id") {
-    let next = 0;
-    return () => `${prefix}-${++next}`;
+const STORY_ID_1 = "00000000-0000-4000-8000-000000000001";
+const STORY_ID_2 = "00000000-0000-4000-8000-000000000002";
+const STORY_ID_3 = "00000000-0000-4000-8000-000000000003";
+
+let nextFactoryBase = 1000;
+
+function idFactory(_prefix = "id") {
+    let next = nextFactoryBase;
+    nextFactoryBase += 1000;
+    return () => `00000000-0000-4000-8000-${(++next).toString(16).padStart(12, "0")}`;
 }
 
 function narrationBlock(id: string, textId: string, value: string): StoryBlock {
@@ -46,23 +57,251 @@ describe("storyModel", () => {
     it("creates independent story documents and paths", () => {
         const ids = idFactory("story-a");
         const first = createEmptyStoryDocument({
-            id: "story-1",
+            id: STORY_ID_1,
             name: "First",
             now: "2026-06-08T00:00:00.000Z",
             generateId: ids,
         });
         const second = createEmptyStoryDocument({
-            id: "story-2",
+            id: STORY_ID_2,
             name: "Second",
             now: "2026-06-08T00:00:00.000Z",
             generateId: idFactory("story-b"),
         });
 
-        expect(first.id).toBe("story-1");
-        expect(second.id).toBe("story-2");
-        expect(storyDocumentRelativePath(first.id)).toBe("editor/story/stories/story-1/storydoc.json");
-        expect(storyDocumentRelativePath(second.id)).toBe("editor/story/stories/story-2/storydoc.json");
+        expect(first.id).toBe(STORY_ID_1);
+        expect(second.id).toBe(STORY_ID_2);
+        expect(storyDocumentRelativePath(first.id)).toBe(`editor/story/stories/${STORY_ID_1}/storydoc.json`);
+        expect(storyDocumentRelativePath(second.id)).toBe(`editor/story/stories/${STORY_ID_2}/storydoc.json`);
         expect(first.entrySceneId).not.toBe(second.entrySceneId);
+    });
+
+    it("keeps only UUID story ids and canonical document paths in the library index", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const index = {
+            schemaVersion: 1 as const,
+            defaultStoryId: "story-1",
+            stories: [
+                {
+                    id: "story-1",
+                    name: "Legacy",
+                    documentPath: "../../outside.json",
+                    createdAt: now,
+                    updatedAt: now,
+                },
+                {
+                    id: STORY_ID_1,
+                    name: "Safe",
+                    documentPath: "/tmp/outside.json",
+                    createdAt: now,
+                    updatedAt: now,
+                },
+                {
+                    id: STORY_ID_1,
+                    name: "Duplicate",
+                    documentPath: `editor/story/stories/${STORY_ID_1}/duplicate.json`,
+                    createdAt: now,
+                    updatedAt: now,
+                },
+            ],
+        };
+
+        const normalized = normalizeStoryLibraryIndex(index, now);
+
+        expect(normalized.defaultStoryId).toBeUndefined();
+        expect(normalized.stories.map(story => story.id)).toEqual([STORY_ID_1]);
+        expect(normalized.stories[0]?.documentPath).toBe(`editor/story/stories/${STORY_ID_1}/storydoc.json`);
+    });
+
+    it("normalizes the hidden story animation index to canonical asset paths", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const empty = createEmptyStoryAnimationIndex(now);
+        const index = {
+            schemaVersion: 1 as const,
+            animations: [
+                {
+                    id: "motion-1",
+                    name: "Legacy",
+                    targetKind: "character",
+                    documentPath: "../../outside.json",
+                    createdAt: now,
+                    updatedAt: now,
+                },
+                {
+                    id: STORY_ID_1,
+                    name: "",
+                    targetKind: "bad",
+                    documentPath: "/tmp/outside.json",
+                    createdAt: now,
+                    updatedAt: now,
+                },
+                {
+                    id: STORY_ID_1,
+                    name: "Duplicate",
+                    targetKind: "image",
+                    documentPath: `editor/story/animations/${STORY_ID_1}.json`,
+                    createdAt: now,
+                    updatedAt: now,
+                },
+            ],
+        };
+
+        const normalized = normalizeStoryAnimationIndex(index as any, now);
+
+        expect(empty.animations).toEqual([]);
+        expect(storyAnimationDocumentRelativePath(STORY_ID_1)).toBe(`editor/story/animations/${STORY_ID_1}.json`);
+        expect(normalized.animations).toEqual([
+            expect.objectContaining({
+                id: STORY_ID_1,
+                name: "Untitled Motion",
+                targetKind: "image",
+                documentPath: `editor/story/animations/${STORY_ID_1}.json`,
+            }),
+        ]);
+    });
+
+    it("normalizes story animation assets without leaking unsupported sequence fields", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const normalized = normalizeStoryAnimationAsset({
+            schemaVersion: 1,
+            id: STORY_ID_2,
+            name: "",
+            targetKind: "bad",
+            sequences: [
+                {
+                    id: "",
+                    props: {
+                        position: {
+                            xalign: 0.25,
+                            yalign: "bad",
+                            xoffset: 12,
+                        },
+                        opacity: "bad",
+                        zoom: 0.9,
+                        filter: "blur(2px)",
+                    },
+                    options: {
+                        durationMs: -1,
+                        delayMs: 50,
+                        easing: "easeOut",
+                        at: "+120",
+                    },
+                    unknown: true,
+                },
+            ],
+            config: {
+                repeat: 0,
+                repeatDelayMs: -20,
+            },
+        } as any, now);
+
+        expect(normalized.name).toBe("Untitled Motion");
+        expect(normalized.targetKind).toBe("image");
+        expect(normalized.config).toEqual({});
+        expect(normalized.sequences).toEqual([
+            {
+                id: "step-1",
+                props: {
+                    position: {
+                        xalign: 0.25,
+                        xoffset: 12,
+                    },
+                    zoom: 0.9,
+                    filter: "blur(2px)",
+                },
+                options: {
+                    durationMs: undefined,
+                    delayMs: 50,
+                    easing: "easeOut",
+                    at: "+120",
+                },
+            },
+        ]);
+        const positionTrack = normalized.timeline?.tracks.find(track => track.property === "position");
+        const zoomTrack = normalized.timeline?.tracks.find(track => track.property === "zoom");
+        expect(normalized.timeline?.fps).toBeUndefined();
+        expect(positionTrack?.keyframes).toEqual([
+            expect.objectContaining({
+                timeMs: 470,
+                value: {
+                    xalign: 0.25,
+                    xoffset: 12,
+                },
+                easing: "easeOut",
+            }),
+        ]);
+        expect(zoomTrack?.keyframes).toEqual([
+            expect.objectContaining({
+                timeMs: 470,
+                value: 0.9,
+            }),
+        ]);
+    });
+
+    it("keeps keyframe timelines as the canonical story animation editor model", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const normalized = normalizeStoryAnimationAsset({
+            schemaVersion: 1,
+            id: STORY_ID_2,
+            name: "Slide",
+            targetKind: "character",
+            sequences: [],
+            timeline: {
+                durationMs: 500,
+                tracks: [
+                    {
+                        id: "",
+                        property: "position",
+                        keyframes: [
+                            {
+                                id: "",
+                                timeMs: 500,
+                                value: {
+                                    xalign: 0.5,
+                                    yalign: 0.55,
+                                    xoffset: -80,
+                                    bad: true,
+                                },
+                                easing: "easeOut",
+                            },
+                        ],
+                    },
+                    {
+                        id: "bad",
+                        property: "unknown",
+                        keyframes: [{ id: "bad", timeMs: 200, value: 1 }],
+                    },
+                ],
+            },
+        } as any, now);
+
+        expect(normalized.timeline).toEqual({
+            durationMs: 500,
+            tracks: [
+                {
+                    id: "track-position-1",
+                    property: "position",
+                    keyframes: [
+                        {
+                            id: "kf-position-500-1",
+                            timeMs: 500,
+                            value: {
+                                xalign: 0.5,
+                                yalign: 0.55,
+                                xoffset: -80,
+                            },
+                            easing: "easeOut",
+                        },
+                    ],
+                },
+            ],
+        });
+    });
+
+    it("rejects unsafe story ids before building document paths", () => {
+        expect(() => storyDocumentRelativePath("story-1")).toThrow(/UUID v4/);
+        expect(() => storyDocumentRelativePath("../story")).toThrow(/UUID v4/);
+        expect(() => storyAnimationDocumentRelativePath("motion-1")).toThrow(/UUID v4/);
     });
 
     it("rejects future story schemas", () => {
@@ -71,7 +310,7 @@ describe("storyModel", () => {
         expect(() => normalizeStoryLibraryIndex(index, "2026-06-08T00:00:00.000Z")).toThrow(/newer/);
 
         const document = createEmptyStoryDocument({
-            id: "story",
+            id: STORY_ID_1,
             name: "Story",
             now: "2026-06-08T00:00:00.000Z",
             generateId: idFactory(),
@@ -82,7 +321,7 @@ describe("storyModel", () => {
 
     it("keeps block trees legal when inserting, moving, and deleting blocks", () => {
         const document = createEmptyStoryDocument({
-            id: "story",
+            id: STORY_ID_1,
             name: "Story",
             now: "2026-06-08T00:00:00.000Z",
             generateId: idFactory(),
@@ -140,7 +379,7 @@ describe("storyModel", () => {
 
     it("preserves text ids when text payload changes", () => {
         const document = createEmptyStoryDocument({
-            id: "story",
+            id: STORY_ID_2,
             name: "Story",
             now: "2026-06-08T00:00:00.000Z",
             generateId: idFactory(),
@@ -167,7 +406,7 @@ describe("storyModel", () => {
 
     it("does not allow jump blocks to own children", () => {
         const document = createEmptyStoryDocument({
-            id: "story",
+            id: STORY_ID_3,
             name: "Story",
             now: "2026-06-08T00:00:00.000Z",
             generateId: idFactory(),
