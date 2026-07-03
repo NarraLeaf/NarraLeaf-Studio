@@ -43,11 +43,13 @@ import { blueprintFlowNodeTypes } from "./nodeTypes";
 import {
     applyBlueprintFlowNodeSelection,
     applyFlowPositionsToIr,
+    blueprintDynamicSelectOptionsByNodeSignature,
     blueprintElementPreviewsSignature,
     blueprintIrToFlowEdges,
     blueprintIrToFlowNodes,
     blueprintSelectedNodesDependencyKey,
     blueprintSelectionIdsEqual,
+    type BlueprintDynamicSelectOptionsByNodeId,
 } from "./useBlueprintFlowProjection";
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 import { BlueprintFlowZoomControls } from "./components/BlueprintFlowZoomControls";
@@ -155,6 +157,8 @@ type BlueprintFlowCanvasInnerProps = {
      * Populated from workspace context and forwarded to node cards.
      */
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>;
+    /** Per-node dynamic select option overrides for cards whose choices depend on node wiring. */
+    dynamicSelectOptionsByNodeId?: BlueprintDynamicSelectOptionsByNodeId;
     /** Active graph diagnostics, used to mark invalid nodes in-place. */
     diagnostics?: readonly BlueprintGraphEditorDiagnostic[];
     /** Preview data for bound Element Literal nodes by node id. */
@@ -232,6 +236,7 @@ function BlueprintFlowCanvasInner({
     paletteContext,
     deleteKeyCode = ["Backspace", "Delete"],
     dynamicSelectOptions,
+    dynamicSelectOptionsByNodeId,
     diagnostics,
     elementPreviews,
     displayableTargetVariantsByNodeId,
@@ -253,6 +258,10 @@ function BlueprintFlowCanvasInner({
     const displayableTargetVariantsSig = useMemo(
         () => displayableTargetVariantsSignature(displayableTargetVariantsByNodeId),
         [displayableTargetVariantsByNodeId],
+    );
+    const dynamicSelectOptionsByNodeSig = useMemo(
+        () => blueprintDynamicSelectOptionsByNodeSignature(dynamicSelectOptionsByNodeId),
+        [dynamicSelectOptionsByNodeId],
     );
     const elementPreviewsSig = useMemo(
         () => blueprintElementPreviewsSignature(elementPreviews),
@@ -484,6 +493,7 @@ function BlueprintFlowCanvasInner({
         diagnosticsSig: string;
         elementPreviewsSig: string;
         displayableTargetVariantsSig: string;
+        dynamicSelectOptionsByNodeSig: string;
     } | null>(null);
     const lastNodeCatalogRef = useRef(nodeCatalog);
 
@@ -639,7 +649,8 @@ function BlueprintFlowCanvasInner({
             prevStruct.membersSig !== blueprintMembersSig ||
             prevStruct.diagnosticsSig !== nodeDiagnosticsSig ||
             prevStruct.elementPreviewsSig !== elementPreviewsSig ||
-            prevStruct.displayableTargetVariantsSig !== displayableTargetVariantsSig;
+            prevStruct.displayableTargetVariantsSig !== displayableTargetVariantsSig ||
+            prevStruct.dynamicSelectOptionsByNodeSig !== dynamicSelectOptionsByNodeSig;
 
         if (structural) {
             lastStructuralRef.current = {
@@ -649,6 +660,7 @@ function BlueprintFlowCanvasInner({
                 diagnosticsSig: nodeDiagnosticsSig,
                 elementPreviewsSig,
                 displayableTargetVariantsSig,
+                dynamicSelectOptionsByNodeSig,
             };
             setNodes(prevNodes => {
                 const base = blueprintIrToFlowNodes(
@@ -660,6 +672,7 @@ function BlueprintFlowCanvasInner({
                     stableAddDynamicInputPin,
                     stableRemoveDynamicInputPin,
                     dynamicSelectOptions,
+                    dynamicSelectOptionsByNodeId,
                     nodeDiagnosticsByNodeId,
                     elementPreviews,
                     displayableTargetVariantsByNodeId,
@@ -728,6 +741,8 @@ function BlueprintFlowCanvasInner({
         stableAddDynamicInputPin,
         stableRemoveDynamicInputPin,
         dynamicSelectOptions,
+        dynamicSelectOptionsByNodeId,
+        dynamicSelectOptionsByNodeSig,
         nodeDiagnosticsByNodeId,
         nodeDiagnosticsSig,
         elementPreviews,

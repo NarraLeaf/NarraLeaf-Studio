@@ -89,9 +89,9 @@ Appearance Variant 的 `transformOpacity` 会投影到同一套 Displayable `opa
 
 Frame Widget Property 用于操作 `nl.frame` 组件自身的目标 Page 和参数：
 - `blueprint.frameWidget.getTargetPage` / `blueprint.element.frame.getTargetPage` - 读取目标 Page surface id
-- `blueprint.frameWidget.setTargetPage` / `blueprint.element.frame.setTargetPage` - `Set Frame Page`，设置目标 Page surface id；卡片内的 `Page` 参数使用 Page 下拉选择，空选项清除目标。可选 `Page props` 输入会写入该 Frame 的 `params`，作为被嵌入目标 Page 的 props；未连接时保留当前 `params`。Self 形态只在 `nl.frame` 私有蓝图中出现；Element 形态可从绑定到 `nl.frame` 的 Element Literal / Element Flush / Element Click 派生，调用目标就是该 Frame 引用。切换后由 Frame 控件走现有进场/出场动画。
+- `blueprint.frameWidget.setTargetPage` / `blueprint.element.frame.setTargetPage` - `Set Frame Page`，设置目标 Page surface id；卡片内的 `Page` 参数使用 Page 下拉选择，空选项清除目标。下拉框会过滤该 Frame 所在 Page 和会形成循环嵌套的 Page；Element 形态在连接了 Frame Element Ref 时按该 Ref 所在 Page 过滤。可选 `Page props` 输入会写入该 Frame 的 `params`，作为被嵌入目标 Page 的 props；未连接时保留当前 `params`。Self 形态只在 `nl.frame` 私有蓝图中出现；Element 形态可从绑定到 `nl.frame` 的 Element Literal / Element Flush / Element Click 派生，调用目标就是该 Frame 引用。切换后由 Frame 控件走现有进场/出场动画。
 - `blueprint.frameWidget.getParams` / `blueprint.element.frame.getParams` - 读取传给目标 Page 的参数 object
 - `blueprint.frameWidget.setParams` / `blueprint.element.frame.setParams` - 设置传给目标 Page 的参数 object；非 object 值会归一为空 object
 - Common Visible / Enabled
 
-Page 导航、状态和嵌入通信节点 `blueprint.page.go`、`blueprint.page.getProps`、`blueprint.page.isSurfaceExiting`、`blueprint.page.isSurfaceEntering`、`blueprint.frame.emit` 记录在 `node.page.md`。旧图中的 `blueprint.frame.getParam` 仍兼容执行，但新增节点面板不再显示。
+Page 导航、状态和嵌入通信节点 `blueprint.page.go`、`blueprint.page.getProps`、`blueprint.page.isSurfaceExiting`、`blueprint.page.isSurfaceEntering`、`blueprint.page.isSurfaceTransitioning`、`blueprint.frame.emit` 记录在 `node.page.md`。旧图中的 `blueprint.frame.getParam` 仍兼容执行，但新增节点面板不再显示。

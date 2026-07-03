@@ -176,7 +176,7 @@ describe("SurfaceElementTree", () => {
         expect(buttonWrapper?.props.hostAdapter).toBe(hostAdapter);
     });
 
-    it("passes disabled surface interactivity into element wrappers", () => {
+    it("passes pointer and keyboard interactivity separately into element wrappers", () => {
         const document: UIDocument = {
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
             id: "doc",
@@ -232,6 +232,7 @@ describe("SurfaceElementTree", () => {
             rendererRegistry,
             hostAdapter,
             interactive: false,
+            keyboardInteractive: true,
         });
 
         const wrappers = flattenNodes(tree).filter(
@@ -241,6 +242,7 @@ describe("SurfaceElementTree", () => {
         const buttonWrapper = wrappers.find(node => node.props.element.id === "button");
 
         expect(buttonWrapper?.props.interactive).toBe(false);
+        expect(buttonWrapper?.props.keyboardInteractive).toBe(true);
     });
 
     it("applies runtime button cursor to the authored wrapper bounds", () => {

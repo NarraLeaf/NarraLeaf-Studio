@@ -2,7 +2,9 @@
 
 Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog 推进，以及访问当前 Studio 项目隔离的本地存档。除非额外声明，所有参数均为传入引脚值；标注（传出引脚）的参数为传出值。
 
-本页节点均通过 Blueprint Host API 执行。`Get Nametag`、`Is In Game` 与 `Is Game Overlay` 是纯读取节点，可用于 Blueprint Value；其余 Game 执行节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
+本页节点均通过 Blueprint Host API 执行。`Get Nametag`、`Is In Game`、`Is Game Overlay` 与 Preference Getter 是纯读取节点，可用于 Blueprint Value；Preference Setter、Dialog 控制、推进、存档写入/删除等执行节点都是 latent 节点，只用于 `event` 和 `macro` 图，不用于 `function` 图。
+
+Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(...)` / `setPreference(...)` 访问当前活动 `LiveGame`。它们需要 NarraLeaf React 游戏环境已经准备就绪；在新游戏启动时初始化偏好，请使用全局蓝图的 `On Game Ready`，不要依赖可能早于 `LiveGame` 创建的 `App Boot`。
 
 ## Start Game
 
@@ -121,6 +123,37 @@ Game 节点用于控制当前 Dev Mode 中的 NarraLeaf 游戏运行时、Dialog
 - `next` - 偏好写入完成后的执行出口
 
 `CPS` 必须是大于 0 的有限数字；没有活动 game runtime 时执行失败。
+
+## Get Sentence Speed
+
+`blueprint.game.getCps` - Get Sentence Speed
+
+读取当前游戏的 sentence `cps`（characters per second）偏好。该节点是 pure 节点，可用于 `event`、`function`、`macro` 图和 Blueprint Value；对应写入继续使用现有 `Set Sentence Speed` 节点，不新增第二个 CPS setter。
+
+- `cps` / `CPS` - 正数 `float`（传出引脚），当前 `cps` preference key 的值
+
+没有活动 game runtime 时执行失败。
+
+## Game Preference Getter / Setter
+
+以下节点直接对应 NarraLeaf React `GamePreference` 字段。Getter 是 pure 节点，只有一个传出值引脚；Setter 是 latent 执行节点，具有 `in`、偏好值输入和 `next`。除 `Get Sentence Speed` 外，每个字段都有成对的 Getter/Setter。`showDialog` 不在本组中注册新的 Getter/Setter，继续由现有 `Show Dialog`、`Hide Dialog`、`Toggle Dialog Display` 节点覆盖。
+
+| Preference key | Getter | Setter | Pin | Validation |
+| --- | --- | --- | --- | --- |
+| `autoForward` | `Get Auto Forward` (`blueprint.game.getAutoForward`) | `Set Auto Forward` (`blueprint.game.setAutoForward`) | `autoForward` / `Auto Forward`, `boolean` | 必须是 boolean |
+| `skip` | `Get Skip` (`blueprint.game.getSkip`) | `Set Skip` (`blueprint.game.setSkip`) | `skip` / `Skip`, `boolean` | 必须是 boolean |
+| `gameSpeed` | `Get Game Speed` (`blueprint.game.getGameSpeed`) | `Set Game Speed` (`blueprint.game.setGameSpeed`) | `gameSpeed` / `Game Speed`, `float` | 必须是大于 0 的有限数字 |
+| `cps` | `Get Sentence Speed` (`blueprint.game.getCps`) | 使用 `Set Sentence Speed` (`blueprint.game.setSentenceSpeed`) | `cps` / `CPS`, `float` | 必须是大于 0 的有限数字 |
+| `voiceVolume` | `Get Voice Volume` (`blueprint.game.getVoiceVolume`) | `Set Voice Volume` (`blueprint.game.setVoiceVolume`) | `voiceVolume` / `Voice Volume`, `float` | 必须是大于等于 0 的有限数字 |
+| `voiceFadeDuration` | `Get Voice Fade Duration` (`blueprint.game.getVoiceFadeDuration`) | `Set Voice Fade Duration` (`blueprint.game.setVoiceFadeDuration`) | `voiceFadeDuration` / `Voice Fade`, `float` | 必须是大于等于 0 的有限数字，单位 ms |
+| `voiceEndMode` | `Get Voice End Mode` (`blueprint.game.getVoiceEndMode`) | `Set Voice End Mode` (`blueprint.game.setVoiceEndMode`) | `voiceEndMode` / `Voice End Mode`, `string` | 必须是 `"fade"`、`"stop"` 或 `"none"` |
+| `bgmVolume` | `Get BGM Volume` (`blueprint.game.getBgmVolume`) | `Set BGM Volume` (`blueprint.game.setBgmVolume`) | `bgmVolume` / `BGM Volume`, `float` | 必须是大于等于 0 的有限数字 |
+| `soundVolume` | `Get Sound Volume` (`blueprint.game.getSoundVolume`) | `Set Sound Volume` (`blueprint.game.setSoundVolume`) | `soundVolume` / `Sound Volume`, `float` | 必须是大于等于 0 的有限数字 |
+| `globalVolume` | `Get Global Volume` (`blueprint.game.getGlobalVolume`) | `Set Global Volume` (`blueprint.game.setGlobalVolume`) | `globalVolume` / `Global Volume`, `float` | 必须是大于等于 0 的有限数字 |
+| `skipDelay` | `Get Skip Delay` (`blueprint.game.getSkipDelay`) | `Set Skip Delay` (`blueprint.game.setSkipDelay`) | `skipDelay` / `Skip Delay`, `float` | 必须是大于等于 0 的有限数字，单位 ms |
+| `skipInterval` | `Get Skip Interval` (`blueprint.game.getSkipInterval`) | `Set Skip Interval` (`blueprint.game.setSkipInterval`) | `skipInterval` / `Skip Interval`, `float` | 必须是大于 0 的有限数字，单位 ms |
+
+所有 Preference Getter/Setter 在没有活动 game runtime 时执行失败。初始化新游戏偏好时，将这些 Setter 接到 `On Game Ready`，这样写入会发生在 `LiveGame` 已存在且第一段剧情开始前。
 
 ## Save Game
 

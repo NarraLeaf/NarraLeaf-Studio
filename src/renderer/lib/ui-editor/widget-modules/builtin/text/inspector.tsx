@@ -99,7 +99,6 @@ function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
       : createInitialTextAppearance(f);
     if (next !== appearance) {
       documentService.updateElementProps(element.id, {
-        ...element.props,
         appearance: next,
       });
     }
@@ -114,7 +113,6 @@ function TextAppearanceField(props: CustomFieldProps<UIInspectorData>) {
       appearance={panelAppearance}
       onReplace={next => {
         documentService.updateElementProps(element.id, {
-          ...element.props,
           appearance: next,
         });
       }}

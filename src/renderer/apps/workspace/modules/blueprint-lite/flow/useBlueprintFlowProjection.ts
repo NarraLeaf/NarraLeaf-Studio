@@ -19,6 +19,11 @@ type BlueprintNodeParamPatch = (
     history?: BlueprintNodeParamHistoryOptions,
 ) => void;
 
+export type BlueprintDynamicSelectOptionsByNodeId = Record<
+    string,
+    Record<string, BlueprintInspectorParamSelectOption[]>
+>;
+
 function isBackgroundLayerComment(node: Node<BlueprintFlowNodeData>): boolean {
     return node.data.catalog.role === "comment" && node.data.params.background === false;
 }
@@ -56,6 +61,7 @@ export function blueprintIrToFlowNodes(
     onAddDynamicInputPin?: (nodeId: string) => void,
     onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void,
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
+    dynamicSelectOptionsByNodeId?: BlueprintDynamicSelectOptionsByNodeId,
     nodeDiagnosticsByNodeId?: ReadonlyMap<string, readonly BlueprintFlowNodeDiagnostic[]>,
     elementPreviews?: Record<string, BlueprintFlowNodeData["elementPreview"]>,
     displayableTargetVariantsByNodeId?: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]>,
@@ -88,7 +94,9 @@ export function blueprintIrToFlowNodes(
                 memberVariables,
                 persistentVariables,
                 wiredInputPortIds: wiredIn.get(n.id) ?? new Set(),
-                dynamicSelectOptions,
+                dynamicSelectOptions: dynamicSelectOptionsByNodeId?.[n.id]
+                    ? { ...dynamicSelectOptions, ...dynamicSelectOptionsByNodeId[n.id] }
+                    : dynamicSelectOptions,
                 nodeDiagnostics: nodeDiagnosticsByNodeId?.get(n.id) ?? [],
                 elementPreview: elementPreviews?.[n.id],
                 displayableTargetVariants: displayableTargetVariantsByNodeId?.[n.id],
@@ -136,6 +144,19 @@ export function blueprintElementPreviewsSignature(
             `${nodeId}:${item?.revisionKey ?? ""}:${item?.name ?? ""}:${item?.type ?? ""}:${item?.text ?? ""}:${
                 item?.layout?.width ?? ""
             }:${item?.layout?.height ?? ""}`,
+        )
+        .sort()
+        .join("\x1e");
+}
+
+export function blueprintDynamicSelectOptionsByNodeSignature(
+    optionsByNodeId: BlueprintDynamicSelectOptionsByNodeId | undefined,
+): string {
+    return Object.entries(optionsByNodeId ?? {})
+        .flatMap(([nodeId, sources]) =>
+            Object.entries(sources).map(([sourceId, options]) =>
+                `${nodeId}:${sourceId}:${options.map(option => `${option.value}:${option.label}`).join("\x1f")}`,
+            ),
         )
         .sort()
         .join("\x1e");
@@ -198,6 +219,7 @@ export function useBlueprintFlowProjection(
     memberVariables?: BlueprintFlowNodeData["memberVariables"],
     persistentVariables?: BlueprintFlowNodeData["persistentVariables"],
     dynamicSelectOptions?: Record<string, BlueprintInspectorParamSelectOption[]>,
+    dynamicSelectOptionsByNodeId?: BlueprintDynamicSelectOptionsByNodeId,
     nodeDiagnosticsByNodeId?: ReadonlyMap<string, readonly BlueprintFlowNodeDiagnostic[]>,
     displayableTargetVariantsByNodeId?: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]>,
 ) {
@@ -219,6 +241,7 @@ export function useBlueprintFlowProjection(
                         undefined,
                         undefined,
                         dynamicSelectOptions,
+                        dynamicSelectOptionsByNodeId,
                         nodeDiagnosticsByNodeId,
                         undefined,
                         displayableTargetVariantsByNodeId,
@@ -237,6 +260,7 @@ export function useBlueprintFlowProjection(
             persistentVariables,
             selectedNodeIds,
             dynamicSelectOptions,
+            dynamicSelectOptionsByNodeId,
             nodeDiagnosticsByNodeId,
             displayableTargetVariantsByNodeId,
         ],

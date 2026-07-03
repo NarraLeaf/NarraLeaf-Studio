@@ -21,7 +21,11 @@ import {
     throwIfBlueprintExecutionCancelled,
 } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
-import type { BlueprintHostApiRuntime } from "./BlueprintHostApiBridge";
+import type {
+    BlueprintGamePreferenceKey,
+    BlueprintGamePreferenceValue,
+    BlueprintHostApiRuntime,
+} from "./BlueprintHostApiBridge";
 import type { BlueprintExecutionHandle, BlueprintExecutionManager } from "./BlueprintExecutionManager";
 import { adaptBlueprintGraphIr } from "./adaptBlueprintGraphIr";
 import { acquireBlueprintExecutionLocals } from "./blueprintWidgetLocals";
@@ -253,6 +257,21 @@ function createScriptExecutionContext(input: {
                 setSentenceSpeed: async (_cps: number) => {
                     input.debug.emit({ type: "function.call", functionId: "game.setSentenceSpeed" });
                     input.debug.emit({ type: "function.return", functionId: "game.setSentenceSpeed" });
+                },
+                getPreference: (key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
+                    input.debug.emit({ type: "function.call", functionId: "game.getPreference" });
+                    input.debug.emit({ type: "function.return", functionId: "game.getPreference" });
+                    if (key === "autoForward" || key === "skip" || key === "showDialog") {
+                        return false;
+                    }
+                    if (key === "voiceEndMode") {
+                        return "stop";
+                    }
+                    return 0;
+                },
+                setPreference: async (_key: BlueprintGamePreferenceKey, _value: BlueprintGamePreferenceValue) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.setPreference" });
+                    input.debug.emit({ type: "function.return", functionId: "game.setPreference" });
                 },
             },
         },
@@ -1198,7 +1217,7 @@ export async function dispatchSurfaceBlueprintEvent(options: {
 
 /**
  * Dispatch a lifecycle event into the globalMain blueprint.
- * Used for the "appBoot" event that fires once on application start.
+ * Used for global lifecycle events such as "appBoot" and "gameReady".
  */
 export async function dispatchGlobalBlueprintEvent(options: {
     blueprintDocument: BlueprintDocument;

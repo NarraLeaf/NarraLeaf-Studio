@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { blueprintElementPreviewsSignature } from "./useBlueprintFlowProjection";
+import {
+    blueprintElementPreviewsSignature,
+    blueprintIrToFlowNodes,
+} from "./useBlueprintFlowProjection";
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 
 type ElementPreview = NonNullable<BlueprintFlowNodeData["elementPreview"]>;
@@ -29,5 +32,41 @@ describe("blueprintElementPreviewsSignature", () => {
         const b: ElementPreview = { revisionKey: "b:1", name: "B", type: "nl.image" };
 
         expect(blueprintElementPreviewsSignature({ a, b })).toBe(blueprintElementPreviewsSignature({ b, a }));
+    });
+});
+
+describe("blueprintIrToFlowNodes", () => {
+    it("lets per-node dynamic select options override shared sources", () => {
+        const nodes = blueprintIrToFlowNodes(
+            {
+                nodes: {
+                    target: { id: "target", type: "test.node", params: {} },
+                },
+                edges: [],
+            },
+            {
+                resolveCatalogEntryForNode: () => ({
+                    type: "test.node",
+                    displayName: "Test",
+                    category: "Test",
+                    pins: [],
+                }),
+            } as any,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            {
+                pages: [{ value: "global", label: "Global" }],
+            },
+            {
+                target: {
+                    pages: [{ value: "node", label: "Node" }],
+                },
+            },
+        );
+
+        expect(nodes[0]?.data.dynamicSelectOptions?.pages).toEqual([{ value: "node", label: "Node" }]);
     });
 });

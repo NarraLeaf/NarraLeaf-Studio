@@ -45,7 +45,6 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
         const next = ensureButtonAppearanceHasAllKeys(appearance, f);
         if (next !== appearance) {
             documentService.updateElementProps(element.id, {
-                ...element.props,
                 appearance: next,
             });
         }
@@ -58,7 +57,6 @@ function ButtonAppearanceField(props: CustomFieldProps<UIInspectorData>) {
             appearance={appearance ?? null}
             onReplace={next => {
                 documentService.updateElementProps(element.id, {
-                    ...element.props,
                     appearance: next,
                 });
             }}

@@ -47,6 +47,8 @@ import {
 } from "@/lib/ui-editor/runtime/devModeSavePreviewAssets";
 import {
     createDevModeBlueprintHostApi,
+    type BlueprintGamePreferenceKey,
+    type BlueprintGamePreferenceValue,
     type DevModeWidgetRuntimePatch,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDevModeBlueprintHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/devModeBlueprintHostAdapter";
@@ -596,6 +598,8 @@ function RuntimeDialogSlotSurface(props: {
     hideDialogInGame: () => Promise<void>;
     toggleDialogDisplayInGame: () => Promise<void>;
     setSentenceSpeedInGame: (cps: number) => Promise<void>;
+    getGamePreferenceInGame: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
+    setGamePreferenceInGame: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
     setDialogVirtualClickTarget: (target: HTMLElement | null) => void;
     setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
@@ -628,6 +632,8 @@ function RuntimeDialogSlotSurface(props: {
         hideDialogInGame,
         toggleDialogDisplayInGame,
         setSentenceSpeedInGame,
+        getGamePreferenceInGame,
+        setGamePreferenceInGame,
         setDialogVirtualClickTarget,
         setWidgetPatchesByScope,
         widgetPatchesByScopeRef,
@@ -670,6 +676,8 @@ function RuntimeDialogSlotSurface(props: {
             onHideDialog: hideDialogInGame,
             onToggleDialogDisplay: toggleDialogDisplayInGame,
             onSetSentenceSpeed: setSentenceSpeedInGame,
+            onGetGamePreference: getGamePreferenceInGame,
+            onSetGamePreference: setGamePreferenceInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -706,6 +714,8 @@ function RuntimeDialogSlotSurface(props: {
         quitGame,
         runtimeScopeId,
         setSentenceSpeedInGame,
+        getGamePreferenceInGame,
+        setGamePreferenceInGame,
         setWidgetPatchesByScope,
         showDialogInGame,
         skipInGame,
@@ -884,7 +894,12 @@ function RuntimeSurfaceLayer(props: {
     });
     const transitionStateRef = useRef({ isEntering: true, isExiting: false });
     const effectiveInteractive = active && surfaceInteractive;
+    const effectiveKeyboardInteractive = active && blueprintLifecycleReady;
     const surfaceRuntimeSubscriptionsReady = surfaceRuntimeSubscriptionsReadyKey === entry.key;
+    const surfaceBlueprintLifecycleReady = blueprintLifecycleReady && surfaceRuntimeSubscriptionsReady;
+    // SurfaceAnimationLayer keeps new layers hidden until prepaint is ready. Widget init must run during that
+    // hidden pass so first-frame display/motion patches settle before the layer is revealed.
+    const widgetBlueprintLifecycleReady = true;
 
     const handleRuntimeSubscriptionsReady = useCallback(() => {
         setSurfaceRuntimeSubscriptionsReadyKey(entry.key);
@@ -1009,7 +1024,7 @@ function RuntimeSurfaceLayer(props: {
             onEnterComplete={handleEnterComplete}
         >
             <RuntimeSurfaceLifecycleLayer
-                core={blueprintLifecycleReady && surfaceRuntimeSubscriptionsReady ? core : null}
+                core={surfaceBlueprintLifecycleReady ? core : null}
                 pack={pack}
                 surface={surface}
                 runtimeScopeId={hostAdapterBundle.runtimeScopeId}
@@ -1037,8 +1052,9 @@ function RuntimeSurfaceLayer(props: {
                         }
                         nestedSurfaceRuntime={nestedSurfaceRuntime}
                         surfaceLifecycleSignals={surfaceLifecycleSignals}
-                        blueprintLifecycleReady={blueprintLifecycleReady}
+                        blueprintLifecycleReady={widgetBlueprintLifecycleReady}
                         interactive={effectiveInteractive}
+                        keyboardInteractive={effectiveKeyboardInteractive}
                         onRuntimeSubscriptionsReady={handleRuntimeSubscriptionsReady}
                     />
                 </WidgetRuntimeStateProvider>
@@ -1120,6 +1136,7 @@ export function GameRuntimeApp() {
     const gameHiddenNavKeysRef = useRef(gameHiddenNavKeys);
     const lifecycleRef = useRef(new SurfaceLifecycleManager());
     const appBootFiredRef = useRef<string | null>(null);
+    const gameReadyFiredRef = useRef<string | null>(null);
     const storyEntryStartedRef = useRef<string | null>(null);
     const cleanupBundleIdRef = useRef<string | null>(null);
     const activeStoryRequestRef = useRef<DevModeStartStoryRequest | null>(null);
@@ -1508,6 +1525,23 @@ export function GameRuntimeApp() {
         requireActiveLiveGame("Set Sentence Speed").game.preference.setPreference("cps", value);
     }, [requireActiveLiveGame]);
 
+    const getGamePreferenceInGame = useCallback((key: BlueprintGamePreferenceKey): BlueprintGamePreferenceValue => {
+        const preference = requireActiveLiveGame(`Get ${key} Preference`).game.preference as {
+            getPreference: (preferenceKey: BlueprintGamePreferenceKey) => unknown;
+        };
+        return preference.getPreference(key) as BlueprintGamePreferenceValue;
+    }, [requireActiveLiveGame]);
+
+    const setGamePreferenceInGame = useCallback(async (
+        key: BlueprintGamePreferenceKey,
+        value: BlueprintGamePreferenceValue,
+    ): Promise<void> => {
+        const preference = requireActiveLiveGame(`Set ${key} Preference`).game.preference as {
+            setPreference: (preferenceKey: BlueprintGamePreferenceKey, preferenceValue: BlueprintGamePreferenceValue) => void;
+        };
+        preference.setPreference(key, value);
+    }, [requireActiveLiveGame]);
+
     const quitGame = useCallback(async (surfaceId: string): Promise<void> => {
         const targetSurfaceId = String(surfaceId ?? "").trim();
         if (!targetSurfaceId) {
@@ -1519,6 +1553,7 @@ export function GameRuntimeApp() {
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
         nlrDialogVirtualClickTargetRef.current = null;
+        gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         clearCurrentDialogNametag();
@@ -1666,6 +1701,8 @@ export function GameRuntimeApp() {
                   hideDialogInGame,
                   toggleDialogDisplayInGame,
                   setSentenceSpeedInGame,
+                  getGamePreferenceInGame,
+                  setGamePreferenceInGame,
                   setDialogVirtualClickTarget: setNlrDialogVirtualClickTarget,
                   setWidgetPatchesByScope,
                   widgetPatchesByScopeRef,
@@ -1687,6 +1724,7 @@ export function GameRuntimeApp() {
         });
         setGameStageVisible(false);
         clearGameHiddenStudioPages();
+        gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         setNlrSession({
             id: sessionId,
@@ -1707,6 +1745,7 @@ export function GameRuntimeApp() {
         core,
         deleteSave,
         getCurrentNametag,
+        getGamePreferenceInGame,
         getSaveMetadata,
         getSavePreview,
         hideCurrentStudioPagesForGame,
@@ -1725,6 +1764,7 @@ export function GameRuntimeApp() {
         rendererRegistry,
         setNlrDialogVirtualClickTarget,
         setSentenceSpeedInGame,
+        setGamePreferenceInGame,
         showDialogInGame,
         skipInGame,
         toggleDialogDisplayInGame,
@@ -1783,6 +1823,8 @@ export function GameRuntimeApp() {
             onHideDialog: hideDialogInGame,
             onToggleDialogDisplay: toggleDialogDisplayInGame,
             onSetSentenceSpeed: setSentenceSpeedInGame,
+            onGetGamePreference: getGamePreferenceInGame,
+            onSetGamePreference: setGamePreferenceInGame,
             onWidgetPatch: (elementId, patch) => {
                 applyWidgetRuntimePatch({
                     setWidgetPatchesByScope,
@@ -1830,6 +1872,7 @@ export function GameRuntimeApp() {
         core,
         deleteSave,
         getCurrentNametag,
+        getGamePreferenceInGame,
         getSaveMetadata,
         getSavePreview,
         hideDialogInGame,
@@ -1842,6 +1885,7 @@ export function GameRuntimeApp() {
         quitApplication,
         quitGame,
         setSentenceSpeedInGame,
+        setGamePreferenceInGame,
         showDialogInGame,
         skipInGame,
         startStoryInGame,
@@ -1857,9 +1901,9 @@ export function GameRuntimeApp() {
         return createHostAdapterBundle(activeEntry, activeSurface);
     }, [activeEntry, activeSurface, createHostAdapterBundle]);
 
-    const activeSurfaceInteractionReady = Boolean(
+    const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
-        interactionReadyKeys.has(activeEntry.key) &&
+        prepaintReadyKeys.has(activeEntry.key) &&
         (!studioPageHiddenForGame || !gameHiddenNavKeys.has(activeEntry.key)),
     );
 
@@ -1911,6 +1955,8 @@ export function GameRuntimeApp() {
                     onHideDialog: hideDialogInGame,
                     onToggleDialogDisplay: toggleDialogDisplayInGame,
                     onSetSentenceSpeed: setSentenceSpeedInGame,
+                    onGetGamePreference: getGamePreferenceInGame,
+                    onSetGamePreference: setGamePreferenceInGame,
                     onWidgetPatch: (elementId, patch) => {
                         applyWidgetRuntimePatch({
                             setWidgetPatchesByScope,
@@ -1987,6 +2033,7 @@ export function GameRuntimeApp() {
         core,
         deleteSave,
         getCurrentNametag,
+        getGamePreferenceInGame,
         getSaveMetadata,
         getSavePreview,
         hideDialogInGame,
@@ -1999,6 +2046,7 @@ export function GameRuntimeApp() {
         quitApplication,
         quitGame,
         setSentenceSpeedInGame,
+        setGamePreferenceInGame,
         showDialogInGame,
         skipInGame,
         startStoryInGame,
@@ -2010,6 +2058,7 @@ export function GameRuntimeApp() {
     useEffect(() => {
         lifecycleRef.current.reset();
         appBootFiredRef.current = null;
+        gameReadyFiredRef.current = null;
         storyEntryStartedRef.current = null;
     }, [pack?.bundle.bundleId, pack?.bundle.revision]);
 
@@ -2042,6 +2091,7 @@ export function GameRuntimeApp() {
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
         nlrDialogVirtualClickTargetRef.current = null;
+        gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         clearCurrentDialogNametag();
@@ -2060,6 +2110,7 @@ export function GameRuntimeApp() {
         nlrCharacterPromptTokenRef.current?.cancel();
         nlrCharacterPromptTokenRef.current = null;
         nlrDialogVirtualClickTargetRef.current = null;
+        gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         clearCurrentDialogNametag();
@@ -2090,7 +2141,7 @@ export function GameRuntimeApp() {
     }, [activeEntry, core, hostAdapterBundle, pack, prepaintReadyKeys, runtimeReady]);
 
     useEffect(() => {
-        if (!runtimeReady || !pack || !core || !hostAdapterBundle || !activeSurface || !activeSurfaceInteractionReady) {
+        if (!runtimeReady || !pack || !core || !hostAdapterBundle || !activeSurface || !activeSurfaceKeyboardReady) {
             return;
         }
         const dispatchKeyboardEvent = (eventName: "keyDown" | "keyUp", event: KeyboardEvent) => {
@@ -2134,7 +2185,7 @@ export function GameRuntimeApp() {
             window.removeEventListener("keydown", onKeyDown);
             window.removeEventListener("keyup", onKeyUp);
         };
-    }, [activeSurface, activeSurfaceInteractionReady, bridge, core, hostAdapterBundle, pack, runtimeReady]);
+    }, [activeSurface, activeSurfaceKeyboardReady, bridge, core, hostAdapterBundle, pack, runtimeReady]);
 
     if (error) {
         return <RuntimeErrorScreen message={error} />;
@@ -2169,7 +2220,7 @@ export function GameRuntimeApp() {
                     pendingGameStartsRef.current.delete(sessionId);
                     pending.resolve();
                 }}
-                onLiveGameReady={(sessionId, liveGame) => {
+                onLiveGameReady={async (sessionId, liveGame) => {
                     if (nlrSession?.id !== sessionId) {
                         return;
                     }
@@ -2181,6 +2232,20 @@ export function GameRuntimeApp() {
                     });
                     nlrLiveGameRef.current = liveGame;
                     nlrLiveGameSessionIdRef.current = sessionId;
+                    if (gameReadyFiredRef.current === sessionId) {
+                        return;
+                    }
+                    gameReadyFiredRef.current = sessionId;
+                    const surfaceStore = core.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
+                    await dispatchGlobalBlueprintEvent({
+                        blueprintDocument: pack.bundle.ui.localBlueprints,
+                        eventName: "gameReady",
+                        hostAdapter: hostAdapterBundle.hostAdapter,
+                        debug: core.debug,
+                        getSurfaceState: key => surfaceStore.get(key),
+                        setSurfaceState: (key, value) => surfaceStore.set(key, value),
+                        executionManager: core.executionManager,
+                    });
                 }}
                 onError={err => {
                     rejectPendingGameStarts(err);

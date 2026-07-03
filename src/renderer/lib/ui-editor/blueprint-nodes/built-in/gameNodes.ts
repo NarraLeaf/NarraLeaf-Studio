@@ -1,5 +1,17 @@
 import {
+    BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
+    BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
@@ -11,7 +23,18 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
+    BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD,
+    BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_SET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL,
+    BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_FADE_DURATION,
+    BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG,
     BLUEPRINT_NODE_TYPE_GAME_SKIP,
     BLUEPRINT_NODE_TYPE_GAME_START_STORY,
@@ -23,6 +46,10 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
+import type {
+    BlueprintGamePreferenceKey,
+    BlueprintGamePreferenceValue,
+} from "../../blueprint-runtime/BlueprintHostApiBridge";
 import { resolveDataPinValue } from "./graphParamResolvers";
 import { requireHostApi } from "./hostApi";
 
@@ -61,6 +88,195 @@ const sentenceCpsIn: BlueprintNodePinDef = {
     allowInlineLiteral: true,
 };
 const GRAPH_KINDS = ["event", "macro"] as const;
+const PURE_GRAPH_KINDS = ["event", "function", "macro"] as const;
+
+type GamePreferenceNodeKey = Exclude<BlueprintGamePreferenceKey, "showDialog">;
+
+type GamePreferenceNodeMeta = {
+    key: GamePreferenceNodeKey;
+    getterType: string;
+    setterType?: string;
+    getterDisplayName: string;
+    setterDisplayName?: string;
+    pinId: string;
+    pinLabel: string;
+    valueType: "boolean" | "float" | "string";
+    defaultValue: BlueprintGamePreferenceValue;
+    min?: number;
+    minExclusive?: boolean;
+    keywords: string[];
+};
+
+const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
+    {
+        key: "autoForward",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD,
+        getterDisplayName: "Get Auto Forward",
+        setterDisplayName: "Set Auto Forward",
+        pinId: "autoForward",
+        pinLabel: "Auto Forward",
+        valueType: "boolean",
+        defaultValue: false,
+        keywords: ["game", "preference", "auto", "forward", "dialog", "nlr"],
+    },
+    {
+        key: "skip",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED,
+        getterDisplayName: "Get Skip",
+        setterDisplayName: "Set Skip",
+        pinId: "skip",
+        pinLabel: "Skip",
+        valueType: "boolean",
+        defaultValue: true,
+        keywords: ["game", "preference", "skip", "dialog", "nlr"],
+    },
+    {
+        key: "gameSpeed",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED,
+        getterDisplayName: "Get Game Speed",
+        setterDisplayName: "Set Game Speed",
+        pinId: "gameSpeed",
+        pinLabel: "Game Speed",
+        valueType: "float",
+        defaultValue: 1,
+        min: 0,
+        minExclusive: true,
+        keywords: ["game", "preference", "speed", "multiplier", "dialog", "nlr"],
+    },
+    {
+        key: "cps",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
+        getterDisplayName: "Get Sentence Speed",
+        pinId: "cps",
+        pinLabel: "CPS",
+        valueType: "float",
+        defaultValue: 10,
+        min: 0,
+        minExclusive: true,
+        keywords: ["game", "preference", "sentence", "speed", "cps", "dialog", "nlr"],
+    },
+    {
+        key: "voiceVolume",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_VOLUME,
+        getterDisplayName: "Get Voice Volume",
+        setterDisplayName: "Set Voice Volume",
+        pinId: "voiceVolume",
+        pinLabel: "Voice Volume",
+        valueType: "float",
+        defaultValue: 1,
+        min: 0,
+        keywords: ["game", "preference", "voice", "volume", "audio", "nlr"],
+    },
+    {
+        key: "voiceFadeDuration",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_FADE_DURATION,
+        getterDisplayName: "Get Voice Fade Duration",
+        setterDisplayName: "Set Voice Fade Duration",
+        pinId: "voiceFadeDuration",
+        pinLabel: "Voice Fade",
+        valueType: "float",
+        defaultValue: 0,
+        min: 0,
+        keywords: ["game", "preference", "voice", "fade", "duration", "audio", "nlr"],
+    },
+    {
+        key: "voiceEndMode",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE,
+        getterDisplayName: "Get Voice End Mode",
+        setterDisplayName: "Set Voice End Mode",
+        pinId: "voiceEndMode",
+        pinLabel: "Voice End Mode",
+        valueType: "string",
+        defaultValue: "stop",
+        keywords: ["game", "preference", "voice", "end", "mode", "fade", "stop", "none", "audio", "nlr"],
+    },
+    {
+        key: "bgmVolume",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME,
+        getterDisplayName: "Get BGM Volume",
+        setterDisplayName: "Set BGM Volume",
+        pinId: "bgmVolume",
+        pinLabel: "BGM Volume",
+        valueType: "float",
+        defaultValue: 1,
+        min: 0,
+        keywords: ["game", "preference", "bgm", "music", "volume", "audio", "nlr"],
+    },
+    {
+        key: "soundVolume",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME,
+        getterDisplayName: "Get Sound Volume",
+        setterDisplayName: "Set Sound Volume",
+        pinId: "soundVolume",
+        pinLabel: "Sound Volume",
+        valueType: "float",
+        defaultValue: 1,
+        min: 0,
+        keywords: ["game", "preference", "sound", "sfx", "volume", "audio", "nlr"],
+    },
+    {
+        key: "globalVolume",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_GLOBAL_VOLUME,
+        getterDisplayName: "Get Global Volume",
+        setterDisplayName: "Set Global Volume",
+        pinId: "globalVolume",
+        pinLabel: "Global Volume",
+        valueType: "float",
+        defaultValue: 1,
+        min: 0,
+        keywords: ["game", "preference", "global", "master", "volume", "audio", "nlr"],
+    },
+    {
+        key: "skipDelay",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY,
+        getterDisplayName: "Get Skip Delay",
+        setterDisplayName: "Set Skip Delay",
+        pinId: "skipDelay",
+        pinLabel: "Skip Delay",
+        valueType: "float",
+        defaultValue: 500,
+        min: 0,
+        keywords: ["game", "preference", "skip", "delay", "dialog", "nlr"],
+    },
+    {
+        key: "skipInterval",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL,
+        setterType: BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL,
+        getterDisplayName: "Get Skip Interval",
+        setterDisplayName: "Set Skip Interval",
+        pinId: "skipInterval",
+        pinLabel: "Skip Interval",
+        valueType: "float",
+        defaultValue: 100,
+        min: 0,
+        minExclusive: true,
+        keywords: ["game", "preference", "skip", "interval", "dialog", "nlr"],
+    },
+];
+
+function createPreferenceDataPin(meta: GamePreferenceNodeMeta, kind: "input" | "output"): BlueprintNodePinDef {
+    const pin: BlueprintNodePinDef = {
+        id: meta.pinId,
+        kind,
+        semantic: "data",
+        valueType: meta.valueType,
+        label: meta.pinLabel,
+    };
+    if (kind === "input" && (meta.valueType === "float" || meta.valueType === "string")) {
+        pin.allowInlineLiteral = true;
+    }
+    return pin;
+}
 
 function resolveSaveId(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): string {
     const value = resolveDataPinValue(ctx.graph, ctx.node.id, "id", ctx.params, ctx.blueprintLocals, 0, {
@@ -133,6 +349,90 @@ function resolveSentenceCps(ctx: Parameters<NonNullable<BlueprintNodeDef["execut
     }
     return cps;
 }
+
+function resolvePreferenceValue(
+    ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0],
+    meta: GamePreferenceNodeMeta,
+): BlueprintGamePreferenceValue {
+    const resolvedValue = resolveDataPinValue(ctx.graph, ctx.node.id, meta.pinId, ctx.params, ctx.blueprintLocals, 0, {
+        hostAdapter: ctx.hostAdapter,
+        eventPayload: ctx.eventPayload,
+        listItemScope: ctx.listItemScope,
+        instanceKey: ctx.instanceKey,
+        executionOwner: ctx.executionOwner,
+    });
+    const value = resolvedValue === undefined ? meta.defaultValue : resolvedValue;
+    if (meta.valueType === "boolean") {
+        if (typeof value !== "boolean") {
+            throw new BlueprintGraphExecutionError(`${meta.pinLabel} must be a boolean`, ctx.node.id);
+        }
+        return value;
+    }
+    if (meta.valueType === "string") {
+        const text = String(value ?? "").trim();
+        if (meta.key === "voiceEndMode" && text !== "fade" && text !== "stop" && text !== "none") {
+            throw new BlueprintGraphExecutionError('Voice End Mode must be "fade", "stop", or "none"', ctx.node.id);
+        }
+        return text as BlueprintGamePreferenceValue;
+    }
+    const numberValue = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(numberValue)) {
+        throw new BlueprintGraphExecutionError(`${meta.pinLabel} must be a finite number`, ctx.node.id);
+    }
+    if (typeof meta.min === "number") {
+        const invalid = meta.minExclusive ? numberValue <= meta.min : numberValue < meta.min;
+        if (invalid) {
+            const suffix = meta.minExclusive ? `greater than ${meta.min}` : `${meta.min} or greater`;
+            throw new BlueprintGraphExecutionError(`${meta.pinLabel} must be ${suffix}`, ctx.node.id);
+        }
+    }
+    return numberValue;
+}
+
+function createPreferenceGetterNode(meta: GamePreferenceNodeMeta): BlueprintNodeDef {
+    return {
+        type: meta.getterType,
+        displayName: meta.getterDisplayName,
+        category: "Game",
+        keywords: meta.keywords,
+        graphKinds: [...PURE_GRAPH_KINDS],
+        isPure: true,
+        isLatent: false,
+        pins: [createPreferenceDataPin(meta, "output")],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    [meta.pinId]: requireHostApi(ctx).game.getPreference(meta.key),
+                },
+            };
+        },
+    };
+}
+
+function createPreferenceSetterNode(meta: GamePreferenceNodeMeta): BlueprintNodeDef | null {
+    if (!meta.setterType || !meta.setterDisplayName) {
+        return null;
+    }
+    return {
+        type: meta.setterType,
+        displayName: meta.setterDisplayName,
+        category: "Game",
+        keywords: meta.keywords,
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext, createPreferenceDataPin(meta, "input")],
+        async execute(ctx) {
+            await requireHostApi(ctx).game.setPreference(meta.key, resolvePreferenceValue(ctx, meta));
+            return { nextPort: "next" };
+        },
+    };
+}
+
+const gamePreferenceBlueprintNodes: BlueprintNodeDef[] = GAME_PREFERENCE_NODE_META.flatMap(meta => {
+    const setterNode = createPreferenceSetterNode(meta);
+    return setterNode ? [createPreferenceGetterNode(meta), setterNode] : [createPreferenceGetterNode(meta)];
+});
 
 export const gameBlueprintNodes: BlueprintNodeDef[] = [
     {
@@ -360,6 +660,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             return { nextPort: "next" };
         },
     },
+    ...gamePreferenceBlueprintNodes,
     {
         type: BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
         displayName: "Save Game",

@@ -70,7 +70,11 @@ import {
 } from "@/apps/workspace/modules/blueprint-lite/elementBindingSession";
 import type { EditorLayout } from "@/apps/workspace/registry/types";
 import type { UISurface } from "@shared/types/ui-editor/document";
-import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
+import {
+    EDITOR_SURFACE_LOW_OPACITY_OUTLINE,
+    getEditorSurfaceAreaBackgroundColor,
+    shouldShowEditorSurfaceLowOpacityOutline,
+} from "@/lib/ui-editor/runtime/surfaceBackground";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const getSurfaceTabId = (targetSurfaceId: string) => `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
@@ -80,7 +84,15 @@ function getEditorSurfaceStyle(surface: UISurface | null | undefined): CSSProper
         return undefined;
     }
     const backgroundColor = getEditorSurfaceAreaBackgroundColor(surface);
-    return backgroundColor ? { backgroundColor } : undefined;
+    const style: CSSProperties = {};
+    if (backgroundColor) {
+        style.backgroundColor = backgroundColor;
+    }
+    if (shouldShowEditorSurfaceLowOpacityOutline(surface)) {
+        style.outline = EDITOR_SURFACE_LOW_OPACITY_OUTLINE;
+        style.outlineOffset = "0px";
+    }
+    return Object.keys(style).length > 0 ? style : undefined;
 }
 
 function findEditorGroupIdByTabId(layout: EditorLayout, tabId: string): string | null {

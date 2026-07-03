@@ -44,6 +44,13 @@ export const GLOBAL_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
         dispatchKind: "lifecycle",
         headNodeTypes: ["blueprint.event.head.appBoot"],
     },
+    {
+        id: "gameReady",
+        displayName: "Game ready",
+        description: "Fires after the NarraLeaf live game runtime is available for preference writes.",
+        dispatchKind: "lifecycle",
+        headNodeTypes: ["blueprint.event.head.gameReady"],
+    },
     ...KEYBOARD_EVENTS,
 ];
 

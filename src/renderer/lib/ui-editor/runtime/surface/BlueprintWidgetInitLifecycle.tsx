@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { UIBehaviorBinding } from "@shared/types/ui-editor/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import type { UIComponentId } from "@shared/types/ui-editor/document";
@@ -20,6 +20,14 @@ type Props = {
     instanceKey?: string;
     surfaceLifecycleSignals?: SurfaceLifecycleSignals;
 };
+
+function enqueuePrepaintTask(task: () => void): void {
+    if (typeof queueMicrotask === "function") {
+        queueMicrotask(task);
+        return;
+    }
+    void Promise.resolve().then(task);
+}
 
 function blueprintIdsFromWiringKey(key: string): string[] {
     if (!key) {
@@ -101,7 +109,7 @@ export function BlueprintWidgetInitLifecycle({
             .join("|");
     }, [behavior?.events]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         latestDispatchRef.current = {
             rt,
             elementId,
@@ -123,7 +131,7 @@ export function BlueprintWidgetInitLifecycle({
         };
     }, [surfaceId, runtimeScopeId, elementId, hasBlueprintRuntime, localsWiringKey]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!rt || !initSig) {
             return;
         }
@@ -138,15 +146,21 @@ export function BlueprintWidgetInitLifecycle({
         if (dispatchedInitKeyRef.current === initDispatchKey) {
             return;
         }
-        const timeoutId = setTimeout(() => {
+        let cancelled = false;
+        enqueuePrepaintTask(() => {
+            if (cancelled || dispatchedInitKeyRef.current === initDispatchKey) {
+                return;
+            }
             dispatchedInitKeyRef.current = initDispatchKey;
             void rt.dispatchElementBlueprintEvent(elementId, "init", undefined, {
                 componentId,
                 instanceKey,
                 listItemScope,
             });
-        }, 0);
-        return () => clearTimeout(timeoutId);
+        });
+        return () => {
+            cancelled = true;
+        };
     }, [componentId, elementId, initSig, instanceKey, listItemScope, listItemScopeSig, rt, runtimeScopeId]);
 
     useEffect(() => {

@@ -113,7 +113,7 @@ export function NlrStageLayer(props: {
     session: NlrStageSession | null;
     interactive: boolean;
     onFirstSceneReady: (sessionId: string) => void;
-    onLiveGameReady: (sessionId: string, liveGame: LiveGame) => void;
+    onLiveGameReady: (sessionId: string, liveGame: LiveGame) => Promise<void> | void;
     onError: (error: Error) => void;
 }) {
     const { session, interactive, onFirstSceneReady, onLiveGameReady, onError } = props;
@@ -125,14 +125,24 @@ export function NlrStageLayer(props: {
             return;
         }
         startedSessionRef.current = session.id;
+        const sessionId = session.id;
         if (typeof devToolsWithStaticId.setStaticId !== "function") {
             for (const binding of session.compiled.actionIdBindings) {
                 DevTools.setActionId(binding.action, binding.staticId);
             }
         }
-        onLiveGameReady(session.id, ctx.liveGame);
-        ctx.liveGame.newGame();
-    }, [onLiveGameReady, session]);
+        void (async () => {
+            try {
+                await onLiveGameReady(sessionId, ctx.liveGame);
+            } catch (error) {
+                onError(error instanceof Error ? error : new Error(String(error)));
+            } finally {
+                if (startedSessionRef.current === sessionId) {
+                    ctx.liveGame.newGame();
+                }
+            }
+        })();
+    }, [onError, onLiveGameReady, session]);
 
     const handleFirstSceneReady = useCallback((_ctx: PlayerLifecycleEventContext) => {
         if (!session) {

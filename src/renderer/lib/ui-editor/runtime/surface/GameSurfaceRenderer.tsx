@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -26,6 +26,7 @@ export type GameSurfaceRendererProps = {
     surfaceLifecycleSignals?: SurfaceLifecycleSignals;
     blueprintLifecycleReady?: boolean;
     interactive?: boolean;
+    keyboardInteractive?: boolean;
     onRuntimeSubscriptionsReady?: () => void;
 };
 
@@ -43,6 +44,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         surfaceLifecycleSignals,
         blueprintLifecycleReady,
         interactive = true,
+        keyboardInteractive = interactive,
         onRuntimeSubscriptionsReady,
     } = props;
     const [, setBindingRenderTick] = useState(0);
@@ -57,7 +59,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         return store.subscribe(() => setBindingRenderTick(tick => tick + 1));
     }, [blueprintBindingContext?.surfaceState]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!widgetRuntimeStore) {
             return undefined;
         }
@@ -158,6 +160,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
                     surfaceLifecycleSignals={surfaceLifecycleSignals}
                     blueprintLifecycleReady={blueprintLifecycleReady}
                     interactive={interactive}
+                    keyboardInteractive={keyboardInteractive}
                 />
             </div>
         </div>

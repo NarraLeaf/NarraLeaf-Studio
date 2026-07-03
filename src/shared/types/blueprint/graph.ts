@@ -59,6 +59,8 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED = "blueprint.ev
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END = "blueprint.event.head.sliderDragEnd" as const;
 /** Entry for global `appBoot` lifecycle event (application start). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT = "blueprint.event.head.appBoot" as const;
+/** Entry for global NarraLeaf game runtime readiness. */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY = "blueprint.event.head.gameReady" as const;
 /** Entry for surface `surfaceInit` lifecycle event (page entered). */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT = "blueprint.event.head.surfaceInit" as const;
 /** Entry for surface `surfaceUnmount` lifecycle event (page left). */
@@ -101,6 +103,7 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
 ]);
@@ -621,6 +624,7 @@ export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS = "blueprint.page.getProps" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING = "blueprint.page.isSurfaceExiting" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING = "blueprint.page.isSurfaceEntering" as const;
+export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING = "blueprint.page.isSurfaceTransitioning" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_QUIT = "blueprint.page.quit" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_START_STORY = "blueprint.game.startStory" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME = "blueprint.game.isInGame" as const;
@@ -639,6 +643,29 @@ export const BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG = "blueprint.game.showDialog" 
 export const BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG = "blueprint.game.hideDialog" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY = "blueprint.game.toggleDialogDisplay" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED = "blueprint.game.setSentenceSpeed" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD = "blueprint.game.getAutoForward" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD = "blueprint.game.setAutoForward" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED = "blueprint.game.getSkip" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_ENABLED = "blueprint.game.setSkip" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED = "blueprint.game.getGameSpeed" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_GAME_SPEED = "blueprint.game.setGameSpeed" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED = "blueprint.game.getCps" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME = "blueprint.game.getVoiceVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_VOLUME = "blueprint.game.setVoiceVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION = "blueprint.game.getVoiceFadeDuration" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_FADE_DURATION = "blueprint.game.setVoiceFadeDuration" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_END_MODE = "blueprint.game.getVoiceEndMode" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_VOICE_END_MODE = "blueprint.game.setVoiceEndMode" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME = "blueprint.game.getBgmVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_BGM_VOLUME = "blueprint.game.setBgmVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SOUND_VOLUME = "blueprint.game.getSoundVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SOUND_VOLUME = "blueprint.game.setSoundVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME = "blueprint.game.getGlobalVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_GLOBAL_VOLUME = "blueprint.game.setGlobalVolume" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY = "blueprint.game.getSkipDelay" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_DELAY = "blueprint.game.setSkipDelay" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_INTERVAL = "blueprint.game.getSkipInterval" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_SET_SKIP_INTERVAL = "blueprint.game.setSkipInterval" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM = "blueprint.frame.getParam" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_EMIT = "blueprint.frame.emit" as const;
 export const BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE = "blueprint.frameWidget.setTargetPage" as const;
@@ -815,6 +842,7 @@ export type BlueprintGraphKindRules = {
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_DOWN
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT
+        | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_GAME_READY
         | typeof BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT
         | typeof BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY;
     /** Whether UI may bind widget events directly to this graph slot */
