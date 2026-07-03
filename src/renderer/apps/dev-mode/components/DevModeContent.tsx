@@ -28,7 +28,10 @@ import type { BlueprintPersistenceProjectRef } from "@shared/types/ipcEvents";
 import type { DevModeSaveProjectRef } from "@shared/types/devModeSave";
 import { toBlueprintImageAsset, type BlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
-import type { NestedSurfaceRuntime } from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
+import type {
+    NestedSurfaceRuntime,
+    SurfaceBlueprintBindingContext,
+} from "@/lib/ui-editor/runtime/surface/SurfaceElementTree";
 import { DevModeSurfaceRenderer } from "./DevModeSurfaceRenderer";
 import {
     SURFACE_PREPAINT_TIMEOUT_MS,
@@ -149,6 +152,12 @@ function cloneDevModePageProps(props: DevModePageProps | undefined): DevModePage
         return {};
     }
 }
+
+type DevModeHostAdapterBundle = {
+    hostAdapter: UIHostAdapter;
+    bindingContext: SurfaceBlueprintBindingContext;
+    runtimeScopeId: string;
+};
 
 type DevModeNavEntry = SurfaceNavigationEntry<DevModePageProps, DevModePagePresentation> & {
     sessionKey: string;
@@ -638,106 +647,56 @@ function createStudioDialogComponent(options: ComponentProps<typeof StudioDialog
 }
 
 function DevModeAppSurfaceLayer(props: {
-    entry: DevModeNavEntry;
-    layerIndex: number;
-    bpCore: DevModeBlueprintRuntimeCore | null;
     bundle: DevModeBundle;
     uidoc: UIDocument;
+    bpCore: DevModeBlueprintRuntimeCore;
+    entry: DevModeNavEntry;
+    layerIndex: number;
     surface: UISurface;
     rendererRegistry: ElementRendererRegistry;
     scale: number;
-    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
-    makeStateAccessors: (surfaceId: string) => SurfaceStateAccessors | null;
-    openSurfaceWithTransition: (
-        surfaceId: string,
-        props?: DevModePageProps,
-        options?: DevModeOpenSurfaceOptions,
-    ) => Promise<void>;
-    closeLayerWithTransition: () => Promise<void>;
-    quitApplication: () => Promise<void>;
-    startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
-    writeSaveInGame: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
-    loadSaveInGame: (id: string) => Promise<void>;
-    deleteSaveInGame: (id: string) => Promise<void>;
-    listSaveIds: () => Promise<string[]>;
-    getSaveMetadata: (id: string) => Promise<unknown>;
-    getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
-    getCurrentNametag: () => string | null;
-    isInGame: () => boolean;
-    quitGame: (surfaceId: string) => Promise<void>;
-    nextInGame: () => Promise<void>;
-    skipInGame: () => Promise<void>;
-    showDialogInGame: () => Promise<void>;
-    hideDialogInGame: () => Promise<void>;
-    toggleDialogDisplayInGame: () => Promise<void>;
-    setSentenceSpeedInGame: (cps: number) => Promise<void>;
-    getGamePreferenceInGame: (key: BlueprintGamePreferenceKey) => BlueprintGamePreferenceValue;
-    setGamePreferenceInGame: (key: BlueprintGamePreferenceKey, value: BlueprintGamePreferenceValue) => Promise<void>;
-    setWidgetPatchesByScope: Dispatch<SetStateAction<Record<string, Record<string, DevModeWidgetRuntimePatch>>>>;
+    hostAdapterBundle: DevModeHostAdapterBundle;
     widgetPatchesByScope: Record<string, Record<string, DevModeWidgetRuntimePatch>>;
     widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
     widgetRuntimeStore: WidgetRuntimeStateStore;
+    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
     nestedSurfaceRuntime?: NestedSurfaceRuntime;
+    blueprintLifecycleReady: boolean;
     reducedMotion: boolean;
     active: boolean;
-    blueprintLifecycleReady: boolean;
     onInteractionReadyChange: (entryKey: string, ready: boolean) => void;
     onPrepaintReady: (entryKey: string) => void;
     onEnterComplete: (entryKey: string) => void;
-}) {
+}): ReactNode {
     const {
-        entry,
-        layerIndex,
-        bpCore,
         bundle,
         uidoc,
+        bpCore,
+        entry,
+        layerIndex,
         surface,
         rendererRegistry,
         scale,
-        lifecycleRef,
-        makeStateAccessors,
-        openSurfaceWithTransition,
-        closeLayerWithTransition,
-        quitApplication,
-        startStoryInGame,
-        writeSaveInGame,
-        loadSaveInGame,
-        deleteSaveInGame,
-        listSaveIds,
-        getSaveMetadata,
-        getSavePreview,
-        getCurrentNametag,
-        isInGame,
-        quitGame,
-        nextInGame,
-        skipInGame,
-        showDialogInGame,
-        hideDialogInGame,
-        toggleDialogDisplayInGame,
-        setSentenceSpeedInGame,
-        getGamePreferenceInGame,
-        setGamePreferenceInGame,
-        setWidgetPatchesByScope,
+        hostAdapterBundle,
         widgetPatchesByScope,
         widgetPatchesByScopeRef,
         widgetRuntimeStore,
+        lifecycleRef,
         nestedSurfaceRuntime,
+        blueprintLifecycleReady,
         reducedMotion,
         active,
-        blueprintLifecycleReady,
         onInteractionReadyChange,
         onPrepaintReady,
         onEnterComplete,
     } = props;
-    const runtimeScopeId = entry.runtimeScopeId || surface.id;
-    const hostAdapterRef = useRef<UIHostAdapter | null>(null);
     const [surfaceInteractive, setSurfaceInteractive] = useState(false);
     const [surfaceRuntimeSubscriptionsReadyKey, setSurfaceRuntimeSubscriptionsReadyKey] = useState<string | null>(null);
     const [surfaceLifecycleSignals, setSurfaceLifecycleSignals] = useState({
         beforeSurfaceExit: 0,
         afterSurfaceEnter: 0,
     });
-    const surfaceTransitionStateRef = useRef({ isEntering: true, isExiting: false });
+    const transitionStateRef = useRef({ isEntering: true, isExiting: false });
     const effectiveInteractive = active && surfaceInteractive;
     const effectiveKeyboardInteractive = active && blueprintLifecycleReady;
     const surfaceRuntimeSubscriptionsReady = surfaceRuntimeSubscriptionsReadyKey === entry.key;
@@ -750,132 +709,37 @@ function DevModeAppSurfaceLayer(props: {
         setSurfaceRuntimeSubscriptionsReadyKey(entry.key);
     }, [entry.key]);
 
-    const hostApi = useMemo(() => {
-        if (!bpCore) {
-            return null;
-        }
-        return createDevModeBlueprintHostApi({
-            document: uidoc,
-            scope: bpCore.scopeBridge,
-            activeSurfaceId: surface.id,
-            runtimeScopeId,
-            pageProps: entry.props,
-            emit: e => bpCore.debug.emit(e),
-            onOpenSurface: openSurfaceWithTransition,
-            onCloseLayer: closeLayerWithTransition,
-            onQuitApplication: quitApplication,
-            onStartStory: startStoryInGame,
-            onWriteSave: writeSaveInGame,
-            onLoadSave: loadSaveInGame,
-            onDeleteSave: deleteSaveInGame,
-            onListSaveIds: listSaveIds,
-            onGetSaveMetadata: getSaveMetadata,
-            onGetSavePreview: getSavePreview,
-            onGetNametag: getCurrentNametag,
-            onIsInGame: isInGame,
-            onIsGameOverlay: () => entry.presentation === "gameOverlay",
-            onQuitGame: quitGame,
-            onNext: nextInGame,
-            onSkip: skipInGame,
-            onShowDialog: showDialogInGame,
-            onHideDialog: hideDialogInGame,
-            onToggleDialogDisplay: toggleDialogDisplayInGame,
-            onSetSentenceSpeed: setSentenceSpeedInGame,
-            onGetGamePreference: getGamePreferenceInGame,
-            onSetGamePreference: setGamePreferenceInGame,
-            onWidgetPatch: (elementId, patch) => {
-                applyWidgetRuntimePatch({
-                    setWidgetPatchesByScope,
-                    widgetPatchesByScopeRef,
-                    runtimeScopeId,
-                    elementId,
-                    patch,
-                });
-            },
-            onElementFlush: (elementId, payload) => {
-                void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
-                    elementId,
-                    "flush",
-                    payload,
-                );
-            },
-            widgetRuntimeStore,
-        });
-    }, [
-        bpCore,
-        closeLayerWithTransition,
-        entry.props,
-        entry.presentation,
-        openSurfaceWithTransition,
-        quitApplication,
-        runtimeScopeId,
-        setWidgetPatchesByScope,
-        startStoryInGame,
-        writeSaveInGame,
-        loadSaveInGame,
-        deleteSaveInGame,
-        listSaveIds,
-        getSaveMetadata,
-        getSavePreview,
-        getCurrentNametag,
-        isInGame,
-        quitGame,
-        nextInGame,
-        skipInGame,
-        showDialogInGame,
-        hideDialogInGame,
-        toggleDialogDisplayInGame,
-        setSentenceSpeedInGame,
-        getGamePreferenceInGame,
-        setGamePreferenceInGame,
-        surface.id,
-        uidoc,
-        widgetRuntimeStore,
-    ]);
-
-    const hostAdapter = useMemo((): UIHostAdapter => {
-        const adapter =
-            !bpCore || !hostApi
-                ? staticDevHostAdapter(surface)
-                : createDevModeBlueprintHostAdapter({
-                      bundle,
-                      surface,
-                      runtimeScopeId,
-                      scopeBridge: bpCore.scopeBridge,
-                      debug: bpCore.debug,
-                      hostApi,
-                      executionManager: bpCore.executionManager,
-                  });
-        if (adapter.blueprintRuntime) {
-            adapter.blueprintRuntime.getSurfaceTransitionState = () => surfaceTransitionStateRef.current;
-        }
-        return adapter;
-    }, [bpCore, bundle, hostApi, runtimeScopeId, surface]);
-
     useEffect(() => {
-        hostAdapterRef.current = hostAdapter;
-    }, [hostAdapter]);
-
-    const globalStateReader = useMemo(() => {
-        if (!bpCore) {
-            return undefined;
+        if (hostAdapterBundle.hostAdapter.blueprintRuntime) {
+            hostAdapterBundle.hostAdapter.blueprintRuntime.getSurfaceTransitionState = () => transitionStateRef.current;
         }
-        return {
-            get: (key: string) => bpCore.scopeBridge.globalGet(key),
-            subscribe: (listener: () => void) => bpCore.scopeBridge.subscribeGlobals(listener),
-        };
-    }, [bpCore]);
+    }, [hostAdapterBundle.hostAdapter]);
 
-    const bindingContext =
-        bpCore != null
-            ? {
-                  blueprintDocument: bundle.ui.localBlueprints,
-                  surfaceState: bpCore.scopeBridge.getSurfaceStore(runtimeScopeId),
-                  debug: bpCore.debug,
-                  coalescer: bpCore.bindingDebugCoalescer,
-                  globalState: globalStateReader,
-              }
-            : null;
+    const dispatchSurfaceTransitionEvent = useCallback(
+        (eventName: "beforeSurfaceExit" | "afterSurfaceEnter") => {
+            transitionStateRef.current =
+                eventName === "beforeSurfaceExit"
+                    ? { isEntering: false, isExiting: true }
+                    : { isEntering: false, isExiting: false };
+            void hostAdapterBundle.hostAdapter.blueprintRuntime?.dispatchSurfaceBlueprintEvent?.(eventName);
+            setSurfaceLifecycleSignals(prev => ({
+                ...prev,
+                [eventName]: prev[eventName] + 1,
+            }));
+        },
+        [hostAdapterBundle.hostAdapter],
+    );
+
+    const makeStateAccessors = useCallback(
+        (runtimeScopeId: string) => {
+            const store = bpCore.scopeBridge.getSurfaceStore(runtimeScopeId);
+            return {
+                get: (key: string) => store.get(key),
+                set: (key: string, value: unknown) => store.set(key, value),
+            };
+        },
+        [bpCore.scopeBridge],
+    );
 
     const pageMotion = useMemo(
         () => resolvePageAnimationMotion({
@@ -895,32 +759,23 @@ function DevModeAppSurfaceLayer(props: {
         [reducedMotion, surface.settings?.pageAnimation],
     );
 
-    const dispatchSurfaceTransitionEvent = useCallback(
-        (eventName: "beforeSurfaceExit" | "afterSurfaceEnter") => {
-            surfaceTransitionStateRef.current =
-                eventName === "beforeSurfaceExit"
-                    ? { isEntering: false, isExiting: true }
-                    : { isEntering: false, isExiting: false };
-            void hostAdapter.blueprintRuntime?.dispatchSurfaceBlueprintEvent?.(eventName);
-            setSurfaceLifecycleSignals(prev => ({
-                ...prev,
-                [eventName]: prev[eventName] + 1,
-            }));
-        },
-        [hostAdapter],
-    );
-
     const handleBeforeExit = useCallback(
         (entryKey: string) => {
             if (entryKey !== entry.key) {
                 return;
             }
             setSurfaceInteractive(false);
-            widgetRuntimeStore.clearInteractionStateForScope(runtimeScopeId);
+            widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
             onInteractionReadyChange(entry.key, false);
             dispatchSurfaceTransitionEvent("beforeSurfaceExit");
         },
-        [dispatchSurfaceTransitionEvent, entry.key, onInteractionReadyChange, runtimeScopeId, widgetRuntimeStore],
+        [
+            dispatchSurfaceTransitionEvent,
+            entry.key,
+            hostAdapterBundle.runtimeScopeId,
+            onInteractionReadyChange,
+            widgetRuntimeStore,
+        ],
     );
 
     const handleEnterComplete = useCallback(
@@ -940,14 +795,20 @@ function DevModeAppSurfaceLayer(props: {
             return;
         }
         setSurfaceInteractive(false);
-        widgetRuntimeStore.clearInteractionStateForScope(runtimeScopeId);
+        widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
         onInteractionReadyChange(entry.key, false);
-    }, [active, entry.key, onInteractionReadyChange, runtimeScopeId, widgetRuntimeStore]);
+    }, [
+        active,
+        entry.key,
+        hostAdapterBundle.runtimeScopeId,
+        onInteractionReadyChange,
+        widgetRuntimeStore,
+    ]);
 
     useEffect(() => () => {
-        widgetRuntimeStore.clearInteractionStateForScope(runtimeScopeId);
+        widgetRuntimeStore.clearInteractionStateForScope(hostAdapterBundle.runtimeScopeId);
         onInteractionReadyChange(entry.key, false);
-    }, [entry.key, onInteractionReadyChange, runtimeScopeId, widgetRuntimeStore]);
+    }, [entry.key, hostAdapterBundle.runtimeScopeId, onInteractionReadyChange, widgetRuntimeStore]);
 
     return (
         <SurfaceAnimationLayer
@@ -970,8 +831,8 @@ function DevModeAppSurfaceLayer(props: {
                 bpCore={surfaceBlueprintLifecycleReady ? bpCore : null}
                 bundle={bundle}
                 surface={surface}
-                runtimeScopeId={runtimeScopeId}
-                hostAdapter={hostAdapter}
+                runtimeScopeId={hostAdapterBundle.runtimeScopeId}
+                hostAdapter={hostAdapterBundle.hostAdapter}
                 lifecycleRef={lifecycleRef}
                 makeStateAccessors={makeStateAccessors}
             >
@@ -981,11 +842,17 @@ function DevModeAppSurfaceLayer(props: {
                         surface={surface}
                         rendererRegistry={rendererRegistry}
                         scale={scale}
-                        hostAdapter={hostAdapter}
-                        blueprintBindingContext={bindingContext}
-                        widgetRuntimePatches={widgetPatchesByScopeRef.current[runtimeScopeId] ?? widgetPatchesByScope[runtimeScopeId] ?? {}}
+                        hostAdapter={hostAdapterBundle.hostAdapter}
+                        blueprintBindingContext={hostAdapterBundle.bindingContext}
+                        widgetRuntimePatches={
+                            widgetPatchesByScopeRef.current[entry.runtimeScopeId] ??
+                            widgetPatchesByScope[entry.runtimeScopeId] ??
+                            {}
+                        }
                         getWidgetRuntimePatches={() =>
-                            widgetPatchesByScopeRef.current[runtimeScopeId] ?? widgetPatchesByScope[runtimeScopeId] ?? {}
+                            widgetPatchesByScopeRef.current[entry.runtimeScopeId] ??
+                            widgetPatchesByScope[entry.runtimeScopeId] ??
+                            {}
                         }
                         nestedSurfaceRuntime={nestedSurfaceRuntime}
                         surfaceLifecycleSignals={surfaceLifecycleSignals}
@@ -998,6 +865,44 @@ function DevModeAppSurfaceLayer(props: {
             </DevModeSurfaceLifecycleLayer>
         </SurfaceAnimationLayer>
     );
+}
+
+function DevModeAppSurfaceLayerWithAdapter(props: {
+    bundle: DevModeBundle;
+    uidoc: UIDocument;
+    bpCore: DevModeBlueprintRuntimeCore | null;
+    entry: DevModeNavEntry;
+    layerIndex: number;
+    surface: UISurface;
+    rendererRegistry: ElementRendererRegistry;
+    scale: number;
+    createHostAdapterBundle: (entry: DevModeNavEntry, surface: UISurface) => DevModeHostAdapterBundle | null;
+    widgetPatchesByScope: Record<string, Record<string, DevModeWidgetRuntimePatch>>;
+    widgetPatchesByScopeRef: MutableRefObject<Record<string, Record<string, DevModeWidgetRuntimePatch>>>;
+    widgetRuntimeStore: WidgetRuntimeStateStore;
+    lifecycleRef: MutableRefObject<SurfaceLifecycleManager>;
+    nestedSurfaceRuntime?: NestedSurfaceRuntime;
+    blueprintLifecycleReady: boolean;
+    reducedMotion: boolean;
+    active: boolean;
+    onInteractionReadyChange: (entryKey: string, ready: boolean) => void;
+    onPrepaintReady: (entryKey: string) => void;
+    onEnterComplete: (entryKey: string) => void;
+}) {
+    const {
+        bpCore,
+        entry,
+        surface,
+        createHostAdapterBundle,
+    } = props;
+    const hostAdapterBundle = useMemo(
+        () => createHostAdapterBundle(entry, surface),
+        [createHostAdapterBundle, entry, surface],
+    );
+    if (!hostAdapterBundle || !bpCore) {
+        return null;
+    }
+    return <DevModeAppSurfaceLayer {...props} bpCore={bpCore} hostAdapterBundle={hostAdapterBundle} />;
 }
 
 export function DevModeContent(props: DevModeContentProps) {
@@ -2161,22 +2066,26 @@ export function DevModeContent(props: DevModeContentProps) {
         clearCurrentDialogNametag();
     }, [clearCurrentDialogNametag, nlrSession?.id]);
 
-    const hostApi = useMemo(() => {
-        if (!bpCore || !uiDocument || !activeSurface) {
+    const createHostAdapterBundle = useCallback((entry: DevModeNavEntry, surface: UISurface) => {
+        if (!bundle || !bpCore || !uiDocument) {
             return null;
         }
-        const runtimeScopeId = activeRuntimeScopeId || activeSurface.id;
-        return createDevModeBlueprintHostApi({
+        const runtimeScopeId = entry.runtimeScopeId;
+        let hostAdapter: UIHostAdapter | null = null;
+        const hostApi = createDevModeBlueprintHostApi({
             document: uiDocument,
             scope: bpCore.scopeBridge,
-            activeSurfaceId: activeSurface.id,
+            activeSurfaceId: surface.id,
             runtimeScopeId,
-            pageProps: activeEntry?.props,
-            emit: e => bpCore.debug.emit(e),
+            pageProps: entry.props,
+            emit: event => bpCore.debug.emit(event),
             onOpenSurface: openSurfaceWithTransition,
             onCloseLayer: closeLayerWithTransition,
             onQuitApplication: quitApplication,
             onStartStory: startStoryInGame,
+            onIsInGame: isInGame,
+            onIsGameOverlay: () => entry.presentation === "gameOverlay",
+            onQuitGame: quitGame,
             onWriteSave: writeSaveInGame,
             onLoadSave: loadSaveInGame,
             onDeleteSave: deleteSaveInGame,
@@ -2184,9 +2093,6 @@ export function DevModeContent(props: DevModeContentProps) {
             onGetSaveMetadata: getSaveMetadata,
             onGetSavePreview: getSavePreview,
             onGetNametag: getCurrentNametag,
-            onIsInGame: isInGame,
-            onIsGameOverlay: () => activeEntry?.presentation === "gameOverlay",
-            onQuitGame: quitGame,
             onNext: nextInGame,
             onSkip: skipInGame,
             onShowDialog: showDialogInGame,
@@ -2205,7 +2111,7 @@ export function DevModeContent(props: DevModeContentProps) {
                 });
             },
             onElementFlush: (elementId, payload) => {
-                void hostAdapterRef.current?.blueprintRuntime?.dispatchElementBlueprintEvent(
+                void hostAdapter?.blueprintRuntime?.dispatchElementBlueprintEvent(
                     elementId,
                     "flush",
                     payload,
@@ -2213,54 +2119,76 @@ export function DevModeContent(props: DevModeContentProps) {
             },
             widgetRuntimeStore,
         });
-    }, [
-        activeRuntimeScopeId,
-        activeEntry?.props,
-        activeEntry?.presentation,
-        bpCore,
-        uiDocument,
-        activeSurface,
-        openSurfaceWithTransition,
-        closeLayerWithTransition,
-        quitApplication,
-        startStoryInGame,
-        writeSaveInGame,
-        loadSaveInGame,
-        deleteSaveInGame,
-        listSaveIds,
-        getSaveMetadata,
-        getSavePreview,
-        getCurrentNametag,
-        isInGame,
-        quitGame,
-        nextInGame,
-        skipInGame,
-        showDialogInGame,
-        hideDialogInGame,
-        toggleDialogDisplayInGame,
-        setSentenceSpeedInGame,
-        getGamePreferenceInGame,
-        setGamePreferenceInGame,
-        widgetRuntimeStore,
-    ]);
-
-    const hostAdapter = useMemo((): UIHostAdapter => {
-        if (!activeSurface) {
-            return noopHostAdapter;
-        }
-        if (!bpCore || !hostApi || !bundle) {
-            return staticDevHostAdapter(activeSurface);
-        }
-        return createDevModeBlueprintHostAdapter({
+        hostAdapter = createDevModeBlueprintHostAdapter({
             bundle,
-            surface: activeSurface,
-            runtimeScopeId: activeRuntimeScopeId || activeSurface.id,
+            surface,
+            runtimeScopeId,
             scopeBridge: bpCore.scopeBridge,
             debug: bpCore.debug,
             hostApi,
             executionManager: bpCore.executionManager,
         });
-    }, [activeRuntimeScopeId, bundle, activeSurface, bpCore, hostApi]);
+        const bindingContext: SurfaceBlueprintBindingContext = {
+            blueprintDocument: bundle.ui.localBlueprints,
+            surfaceState: bpCore.scopeBridge.getSurfaceStore(runtimeScopeId),
+            debug: bpCore.debug,
+            coalescer: bpCore.bindingDebugCoalescer,
+            globalState: {
+                get: key => bpCore.scopeBridge.globalGet(key),
+                subscribe: listener => bpCore.scopeBridge.subscribeGlobals(listener),
+            },
+        };
+        return {
+            hostAdapter,
+            bindingContext,
+            runtimeScopeId,
+        } satisfies DevModeHostAdapterBundle;
+    }, [
+        bpCore,
+        bundle,
+        closeLayerWithTransition,
+        deleteSaveInGame,
+        getCurrentNametag,
+        getGamePreferenceInGame,
+        getSaveMetadata,
+        getSavePreview,
+        hideDialogInGame,
+        isInGame,
+        listSaveIds,
+        loadSaveInGame,
+        nextInGame,
+        openSurfaceWithTransition,
+        quitApplication,
+        quitGame,
+        setSentenceSpeedInGame,
+        setGamePreferenceInGame,
+        setWidgetPatchesByScope,
+        showDialogInGame,
+        skipInGame,
+        startStoryInGame,
+        toggleDialogDisplayInGame,
+        uiDocument,
+        widgetPatchesByScopeRef,
+        widgetRuntimeStore,
+        writeSaveInGame,
+    ]);
+
+    const hostAdapterBundle = useMemo(() => {
+        if (!activeEntry || !activeSurface) {
+            return null;
+        }
+        return createHostAdapterBundle(activeEntry, activeSurface);
+    }, [activeEntry, activeSurface, createHostAdapterBundle]);
+
+    const hostAdapter = useMemo((): UIHostAdapter => {
+        if (hostAdapterBundle) {
+            return hostAdapterBundle.hostAdapter;
+        }
+        if (!activeSurface) {
+            return noopHostAdapter;
+        }
+        return staticDevHostAdapter(activeSurface);
+    }, [activeSurface, hostAdapterBundle]);
 
     useEffect(() => {
         hostAdapterRef.current = hostAdapter;
@@ -2390,7 +2318,12 @@ export function DevModeContent(props: DevModeContentProps) {
 
     // Dispatch globalMain appBoot once when runtime becomes available
     useEffect(() => {
-        if (!bpCore || !bundle || !hostAdapter.blueprintRuntime) {
+        if (!bpCore || !bundle || !hostAdapterBundle) {
+            return;
+        }
+        // Wait for the initial surface to prepaint, unless the game stage has already been
+        // revealed (a direct story launch covers the surfaces, which then never prepaint).
+        if (activeEntry && !prepaintReadyKeys.has(activeEntry.key) && !gameStageVisible) {
             return;
         }
         const sig = `${bundle.bundleId}:${bundle.revision}`;
@@ -2398,20 +2331,17 @@ export function DevModeContent(props: DevModeContentProps) {
             return;
         }
         appBootFiredRef.current = sig;
-        const acc = makeStateAccessors((activeRuntimeScopeId || surface?.id) ?? "");
-        if (!acc) {
-            return;
-        }
+        const surfaceStore = bpCore.scopeBridge.getSurfaceStore(hostAdapterBundle.runtimeScopeId);
         void dispatchGlobalBlueprintEvent({
             blueprintDocument: bundle.ui.localBlueprints,
             eventName: "appBoot",
-            hostAdapter,
+            hostAdapter: hostAdapterBundle.hostAdapter,
             debug: bpCore.debug,
-            getSurfaceState: acc.get,
-            setSurfaceState: acc.set,
+            getSurfaceState: key => surfaceStore.get(key),
+            setSurfaceState: (key, value) => surfaceStore.set(key, value),
             executionManager: bpCore.executionManager,
         });
-    }, [activeRuntimeScopeId, bpCore, bundle, hostAdapter, makeStateAccessors, surface?.id]);
+    }, [activeEntry, bpCore, bundle, gameStageVisible, hostAdapterBundle, prepaintReadyKeys]);
 
     // Boot the NarraLeaf React environment as a load step BEFORE the surface system starts:
     // preload the configured default scene, otherwise boot an empty NLR environment. gameReady
@@ -2698,47 +2628,25 @@ export function DevModeContent(props: DevModeContentProps) {
                             >
                                 {nlrPreloadDone
                                     ? visibleSurfaceEntries.map(({ entry, surface: visibleSurface }, layerIndex) => (
-                                    <DevModeAppSurfaceLayer
+                                    <DevModeAppSurfaceLayerWithAdapter
                                         key={entry.key}
-                                        entry={entry}
-                                        layerIndex={layerIndex}
-                                        bpCore={bpCore}
                                         bundle={bundle}
                                         uidoc={uidoc}
+                                        bpCore={bpCore}
+                                        entry={entry}
+                                        layerIndex={layerIndex}
                                         surface={visibleSurface}
                                         rendererRegistry={rendererRegistry}
                                         scale={scale}
-                                        lifecycleRef={lifecycleRef}
-                                        makeStateAccessors={makeStateAccessors}
-                                        openSurfaceWithTransition={openSurfaceWithTransition}
-                                        closeLayerWithTransition={closeLayerWithTransition}
-                                        quitApplication={quitApplication}
-                                        startStoryInGame={startStoryInGame}
-                                        writeSaveInGame={writeSaveInGame}
-                                        loadSaveInGame={loadSaveInGame}
-                                        deleteSaveInGame={deleteSaveInGame}
-                                        listSaveIds={listSaveIds}
-                                        getSaveMetadata={getSaveMetadata}
-                                        getSavePreview={getSavePreview}
-                                        getCurrentNametag={getCurrentNametag}
-                                        isInGame={isInGame}
-                                        quitGame={quitGame}
-                                        nextInGame={nextInGame}
-                                        skipInGame={skipInGame}
-                                        showDialogInGame={showDialogInGame}
-                                        hideDialogInGame={hideDialogInGame}
-                                        toggleDialogDisplayInGame={toggleDialogDisplayInGame}
-                                        setSentenceSpeedInGame={setSentenceSpeedInGame}
-                                        getGamePreferenceInGame={getGamePreferenceInGame}
-                                        setGamePreferenceInGame={setGamePreferenceInGame}
-                                        setWidgetPatchesByScope={setWidgetPatchesByScope}
+                                        createHostAdapterBundle={createHostAdapterBundle}
                                         widgetPatchesByScope={widgetPatchesByScope}
                                         widgetPatchesByScopeRef={widgetPatchesByScopeRef}
                                         widgetRuntimeStore={widgetRuntimeStore}
+                                        lifecycleRef={lifecycleRef}
                                         nestedSurfaceRuntime={nestedSurfaceRuntime}
+                                        blueprintLifecycleReady={prepaintReadyKeys.has(entry.key)}
                                         reducedMotion={reducedMotion}
                                         active={entry.key === activeEntry?.key}
-                                        blueprintLifecycleReady={prepaintReadyKeys.has(entry.key)}
                                         onInteractionReadyChange={handleSurfaceInteractionReadyChange}
                                         onPrepaintReady={handleSurfaceLayerPrepaintReady}
                                         onEnterComplete={markActiveEnterComplete}
