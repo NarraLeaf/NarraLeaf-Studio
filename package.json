@@ -56,6 +56,8 @@
     "transliteration": "^2.3.5"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
     "@types/electron-store": "^3.2.2",
     "@types/mime-types": "^3.0.1",
     "@types/msgpack-lite": "^0.1.12",
@@ -71,6 +73,7 @@
     "electron-builder": "^26.0.12",
     "esbuild": "^0.25.11",
     "esbuild-postcss": "^0.0.4",
+    "jsdom": "^29.1.1",
     "postcss": "^8.5.6",
     "postcss-import": "^16.1.1",
     "rimraf": "^6.0.1",

@@ -231,7 +231,8 @@ function SessionErrorBanner(props: {
     );
 }
 
-function DevModeSurfaceLifecycleLayer(props: {
+// Exported for lifecycle characterization tests only.
+export function DevModeSurfaceLifecycleLayer(props: {
     bpCore: DevModeBlueprintRuntimeCore | null;
     bundle: DevModeBundle;
     surface: UISurface;
