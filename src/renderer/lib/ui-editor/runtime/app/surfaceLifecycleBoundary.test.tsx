@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 /**
- * Characterization test: CURRENT surface lifecycle dispatch order of the
- * Dev Mode lifecycle layer. This is the behavior oracle for the Dev Mode /
- * game-runtime unification refactor — expectations here describe what the
- * code does today, not necessarily what is ideal. When a phase intentionally
- * changes Dev Mode semantics (e.g. adopting the runtime's frame-wait before
- * surfaceInit), this file is updated in the same commit with a note.
+ * Behavior contract for the shared surface lifecycle boundary, carried over
+ * from the (now unified) Dev Mode / game-runtime characterization tests:
+ * one-frame deferred surfaceInit with a StrictMode-safe cancelled guard,
+ * closeScope + surfaceUnmount on unmount, and core-gating (the host passes
+ * core=null until the surface renderer reports subscriptions ready).
  */
 import { StrictMode, type ReactNode } from "react";
 import { render, cleanup } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act } from "react";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import {
     createRecordingCore,
     ensureAnimationFramePolyfill,
@@ -40,9 +40,11 @@ vi.mock("@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher", async importOri
     };
 });
 
-import { DevModeSurfaceLifecycleLayer } from "./DevModeContent";
+import { SurfaceLifecycleBoundary } from "./SurfaceLifecycleBoundary";
 
-function mountLayer(input: {
+const blueprintDocument = makeTestBundle().ui.localBlueprints as BlueprintDocument;
+
+function mountBoundary(input: {
     log: LifecycleEventLog;
     strict?: boolean;
     lifecycleRef?: { current: SurfaceLifecycleManager };
@@ -52,9 +54,9 @@ function mountLayer(input: {
     const lifecycleRef = input.lifecycleRef ?? { current: new SurfaceLifecycleManager() };
     const accessors = makeStateAccessors();
     const element = (
-        <DevModeSurfaceLifecycleLayer
-            bpCore={core}
-            bundle={makeTestBundle()}
+        <SurfaceLifecycleBoundary
+            core={core}
+            blueprintDocument={blueprintDocument}
             surface={makeTestSurface("surface-a")}
             runtimeScopeId="scope-1"
             hostAdapter={makeBlueprintHostAdapter()}
@@ -62,7 +64,7 @@ function mountLayer(input: {
             makeStateAccessors={() => accessors}
         >
             <div data-testid="content" />
-        </DevModeSurfaceLifecycleLayer>
+        </SurfaceLifecycleBoundary>
     );
     const wrap = (node: ReactNode) => (input.strict ? <StrictMode>{node}</StrictMode> : node);
     const utils = render(wrap(element));
@@ -78,16 +80,13 @@ afterEach(() => {
     hoisted.log.length = 0;
 });
 
-describe("Dev Mode surface lifecycle dispatch order (characterization)", () => {
+describe("SurfaceLifecycleBoundary dispatch order", () => {
     it("defers openScope + surfaceInit by one animation frame", async () => {
-        mountLayer({ log: hoisted.log });
-        // Phase 0.2 reconciliation: Dev Mode adopted the game runtime's
-        // frame-wait, so nothing is dispatched at mount-effect flush...
+        mountBoundary({ log: hoisted.log });
         expect(hoisted.log).toEqual([]);
         await act(async () => {
             await flushAnimationFrame();
         });
-        // ...and the full init sequence lands after the next frame.
         expect(hoisted.log).toEqual([
             "openScope:scope-1",
             "dispatch:surfaceInit:scope-1",
@@ -95,7 +94,7 @@ describe("Dev Mode surface lifecycle dispatch order (characterization)", () => {
     });
 
     it("dispatches closeScope + surfaceUnmount on unmount", async () => {
-        const { unmount } = mountLayer({ log: hoisted.log });
+        const { unmount } = mountBoundary({ log: hoisted.log });
         await act(async () => {
             await flushAnimationFrame();
         });
@@ -109,13 +108,13 @@ describe("Dev Mode surface lifecycle dispatch order (characterization)", () => {
 
     it("re-dispatches surfaceInit when the same scope remounts after exit", async () => {
         const lifecycleRef = { current: new SurfaceLifecycleManager() };
-        const first = mountLayer({ log: hoisted.log, lifecycleRef });
+        const first = mountBoundary({ log: hoisted.log, lifecycleRef });
         await act(async () => {
             await flushAnimationFrame();
         });
         first.unmount();
         hoisted.log.length = 0;
-        mountLayer({ log: hoisted.log, lifecycleRef });
+        mountBoundary({ log: hoisted.log, lifecycleRef });
         await act(async () => {
             await flushAnimationFrame();
         });
@@ -126,7 +125,7 @@ describe("Dev Mode surface lifecycle dispatch order (characterization)", () => {
     });
 
     it("does nothing while core is null and initializes once core arrives", async () => {
-        const { rerender } = mountLayer({ log: hoisted.log, core: null });
+        const { rerender } = mountBoundary({ log: hoisted.log, core: null });
         await act(async () => {
             await flushAnimationFrame();
         });
@@ -134,9 +133,9 @@ describe("Dev Mode surface lifecycle dispatch order (characterization)", () => {
         const core = createRecordingCore(hoisted.log);
         const accessors = makeStateAccessors();
         rerender(
-            <DevModeSurfaceLifecycleLayer
-                bpCore={core}
-                bundle={makeTestBundle()}
+            <SurfaceLifecycleBoundary
+                core={core}
+                blueprintDocument={blueprintDocument}
                 surface={makeTestSurface("surface-a")}
                 runtimeScopeId="scope-1"
                 hostAdapter={makeBlueprintHostAdapter()}
@@ -144,7 +143,7 @@ describe("Dev Mode surface lifecycle dispatch order (characterization)", () => {
                 makeStateAccessors={() => accessors}
             >
                 <div />
-            </DevModeSurfaceLifecycleLayer>,
+            </SurfaceLifecycleBoundary>,
         );
         await act(async () => {
             await flushAnimationFrame();
@@ -156,15 +155,10 @@ describe("Dev Mode surface lifecycle dispatch order (characterization)", () => {
     });
 
     it("StrictMode double-effect: cancelled guard suppresses the phantom surfaceInit", async () => {
-        mountLayer({ log: hoisted.log, strict: true });
+        mountBoundary({ log: hoisted.log, strict: true });
         await act(async () => {
             await flushAnimationFrame();
         });
-        // Phase 0.2 reconciliation: the frame-wait's cancelled guard makes
-        // the StrictMode teardown skip the phantom surfaceInit (previously
-        // Dev Mode dispatched surfaceInit/surfaceUnmount/surfaceInit here).
-        // The unmount effect's cleanup still runs, producing one phantom
-        // closeScope + surfaceUnmount pair before the real init.
         expect(hoisted.log).toEqual([
             "closeScope:scope-1:Surface unmounted",
             "dispatch:surfaceUnmount:scope-1",
