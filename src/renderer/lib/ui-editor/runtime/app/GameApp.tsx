@@ -211,6 +211,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         studioPageHiddenForGameRef.current = false;
         setStudioPageHiddenForGame(false);
         setGameStageVisible(false);
+        // Reset the NLR boot preload for this session. This runs on mount and on every
+        // bundle/entry-surface change, and its deps are stable per session, so it does NOT
+        // thrash on ordinary re-renders. Crucially it re-runs on the React.StrictMode
+        // mount/unmount/mount cycle (the dev host mounts under StrictMode): the first boot is
+        // cancelled by the unmount, this reset clears nlrBootStartedRef, and the second mount's
+        // boot effect re-runs to completion. Without it the boot guard would stick and
+        // nlrPreloadDone would never flip true, leaving the surface stack blank.
+        nlrBootStartedRef.current = null;
+        gameReadyFiredRef.current = null;
+        nlrLiveGameRef.current = null;
+        nlrLiveGameSessionIdRef.current = null;
+        gameEnteredRef.current = false;
+        setNlrPreloadDone(false);
+        setNlrSession(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [bundle, createNavEntry, host.entrySurfaceId, navigation]);
 
