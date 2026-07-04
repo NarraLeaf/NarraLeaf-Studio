@@ -138,6 +138,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     const appBootFiredRef = useRef<string | null>(null);
     const gameReadyFiredRef = useRef<string | null>(null);
     const nlrBootStartedRef = useRef<string | null>(null);
+    // Holds the current boot-launch closure. The boot effect calls it through this ref so its
+    // own deps stay minimal ([bootReady, bundle.bundleId]) and it does NOT re-run (and cancel an
+    // in-flight boot) when nlrSession / hostAdapterBundle identities churn — the boot itself
+    // mutates nlrSession, which would otherwise self-cancel before nlrPreloadDone is ever set.
+    const runBootRef = useRef<(() => Promise<void>) | null>(null);
     // Whether the currently mounted NLR environment has actually entered a game (newGame() called).
     // The boot preload mounts the environment (fires gameReady) but does NOT enter — this stays false
     // until Start Game / Load Save.
@@ -877,10 +882,31 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     // Boot the NarraLeaf React environment as a load step BEFORE the surface system starts:
     // preload the configured default scene (or launch directly into a story entry), otherwise
-    // boot an empty NLR environment. gameReady fires here, once, at boot. Requires
-    // hostAdapterBundle so NlrStageLayer mounts and can drive onLiveGameReady.
+    // boot an empty NLR environment. gameReady fires here, once, at boot.
+    runBootRef.current = async () => {
+        if (host.bootAction.kind === "story") {
+            // A direct story launch enters the game immediately after the environment mounts.
+            await startStoryInGame({ storyId: host.bootAction.storyId, sceneId: host.bootAction.sceneId });
+        } else {
+            // Menu launch: initialise the environment (gameReady) and preheat the default
+            // scene, but do NOT enter the game — the player stays on the menu.
+            const defaultScene = resolveDefaultLaunchScene(bundle);
+            if (defaultScene) {
+                await initDefaultSceneEnvironment(defaultScene);
+            } else {
+                await startEmptyNlrEnvironment();
+            }
+        }
+    };
+
+    // Requires hostAdapterBundle so NlrStageLayer mounts and can drive onLiveGameReady. The deps
+    // are intentionally only the readiness signal and the bundle id: the boot mutates nlrSession
+    // (and therefore hostAdapterBundle), and re-running on that churn would cancel the in-flight
+    // boot before nlrPreloadDone is set. StrictMode re-boot safety comes from the per-session
+    // nav-reset effect clearing nlrBootStartedRef, not from this effect's deps.
+    const bootReady = Boolean(host.ready && core && activeSurface && hostAdapterBundle);
     useEffect(() => {
-        if (!host.ready || !core || !activeSurface || !hostAdapterBundle) {
+        if (!bootReady) {
             return;
         }
         const sig = bundle.bundleId;
@@ -902,19 +928,7 @@ export function GameApp(props: GameAppProps): ReactNode {
 
         void (async () => {
             try {
-                if (host.bootAction.kind === "story") {
-                    // A direct story launch enters the game immediately after the environment mounts.
-                    await startStoryInGame({ storyId: host.bootAction.storyId, sceneId: host.bootAction.sceneId });
-                } else {
-                    // Menu launch: initialise the environment (gameReady) and preheat the default
-                    // scene, but do NOT enter the game — the player stays on the menu.
-                    const defaultScene = resolveDefaultLaunchScene(bundle);
-                    if (defaultScene) {
-                        await initDefaultSceneEnvironment(defaultScene);
-                    } else {
-                        await startEmptyNlrEnvironment();
-                    }
-                }
+                await runBootRef.current?.();
             } catch (err) {
                 if (!cancelled) {
                     nlrBootStartedRef.current = null;
@@ -930,16 +944,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             cancelled = true;
             clearTimeout(timeoutId);
         };
-    }, [
-        activeSurface,
-        bundle,
-        core,
-        host,
-        hostAdapterBundle,
-        initDefaultSceneEnvironment,
-        startEmptyNlrEnvironment,
-        startStoryInGame,
-    ]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [bootReady, bundle.bundleId]);
 
     const activeSurfaceKeyboardReady = Boolean(
         activeEntry &&
