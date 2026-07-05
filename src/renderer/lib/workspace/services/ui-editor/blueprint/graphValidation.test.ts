@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
-import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { BlueprintDocument, BlueprintGraphIr, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
+    BLUEPRINT_NODE_PARAM_FN_NAME,
+    BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_IDS,
+    BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_LABELS,
+    BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_TYPES,
+    BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_IDS,
+    BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_LABELS,
+    BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_TYPES,
+    BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
+    BLUEPRINT_NODE_TYPE_FN_HEAD,
+    BLUEPRINT_NODE_TYPE_FN_RETURN,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_NORMALIZED_VALUE,
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
@@ -16,6 +27,8 @@ import {
     BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
 } from "@shared/types/blueprint/graph";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
+import { createBlueprintFnRef } from "./fnCatalog";
+import { ownerRefToIndexKey } from "./ownerKeys";
 import { validateBlueprintDocumentGraphs, validateBlueprintGraphIr } from "./graphValidation";
 
 describe("blueprint graph validation", () => {
@@ -461,5 +474,277 @@ describe("blueprint graph validation", () => {
 
         expect(diagnostics.map(d => d.code)).not.toContain("edge.pin_multiple");
         expect(diagnostics.map(d => d.code)).not.toContain("node.context_invalid");
+    });
+});
+
+describe("blueprint fn validation", () => {
+    function fnHeadNode(name: string): { type: string; params: Record<string, unknown> } {
+        return {
+            type: BLUEPRINT_NODE_TYPE_FN_HEAD,
+            params: {
+                [BLUEPRINT_NODE_PARAM_FN_NAME]: name,
+                [BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_IDS]: ["param_1_value"],
+                [BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_LABELS]: { param_1_value: "input" },
+                [BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_TYPES]: { param_1_value: "string" },
+            },
+        };
+    }
+
+    function fnReturnNode(valueType = "string"): { type: string; params: Record<string, unknown> } {
+        return {
+            type: BLUEPRINT_NODE_TYPE_FN_RETURN,
+            params: {
+                [BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_IDS]: ["ret_1_value"],
+                [BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_LABELS]: { ret_1_value: "result" },
+                [BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_TYPES]: { ret_1_value: valueType },
+            },
+        };
+    }
+
+    function fnDocument(
+        blueprints: Record<string, { owner: BlueprintOwnerRef; ir: BlueprintGraphIr }>,
+    ): BlueprintDocument {
+        const docBlueprints: BlueprintDocument["blueprints"] = {};
+        const ownerRecords: BlueprintDocument["ownerRecords"] = {};
+        for (const [id, entry] of Object.entries(blueprints)) {
+            docBlueprints[id] = {
+                id,
+                name: id,
+                owner: entry.owner,
+                frontend: "visual",
+                programKind: "graph",
+                members: { variables: {}, fields: {}, functions: {} },
+                bindings: {},
+                program: {
+                    kind: "graph",
+                    graphs: { events: { main: { id: "main", graph: entry.ir } }, functions: {} },
+                },
+            };
+            ownerRecords[ownerRefToIndexKey(entry.owner)] = {
+                activeBlueprintId: id,
+                privateBlueprintIds: [id],
+            };
+        }
+        return {
+            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+            persistentVariables: {},
+            blueprints: docBlueprints,
+            ownerRecords,
+        };
+    }
+
+    it("accepts event graphs containing only fn declarations", () => {
+        registerCoreBlueprintNodes();
+        const doc = fnDocument({
+            "bp-a": {
+                owner: { kind: "surfaceMain", surfaceId: "s1" },
+                ir: { nodes: { head: { id: "head", ...fnHeadNode("Echo") } }, edges: [] },
+            },
+        });
+
+        const diagnostics = validateBlueprintDocumentGraphs(doc, "bp-a");
+        expect(diagnostics.map(d => d.code)).not.toContain("event.missing_event_nodes");
+    });
+
+    it("reports fn.call_target_not_found for calls pasted into another surface", () => {
+        registerCoreBlueprintNodes();
+        const fnRef = createBlueprintFnRef("bp-a", "head");
+        const doc = fnDocument({
+            "bp-a": {
+                owner: { kind: "widgetMain", surfaceId: "s1", elementId: "button" },
+                ir: { nodes: { head: { id: "head", ...fnHeadNode("Echo") } }, edges: [] },
+            },
+            "bp-b": {
+                owner: { kind: "surfaceMain", surfaceId: "s2" },
+                ir: {
+                    nodes: {
+                        init: { id: "init", type: "blueprint.event.head.surfaceInit" },
+                        call: { id: "call", type: BLUEPRINT_NODE_TYPE_FN_CALL, params: { fnRef } },
+                    },
+                    edges: [],
+                },
+            },
+        });
+
+        const diagnostics = validateBlueprintDocumentGraphs(doc, "bp-b");
+        const notFound = diagnostics.find(d => d.code === "fn.call_target_not_found");
+        expect(notFound?.severity).toBe("error");
+        expect(notFound?.target).toMatchObject({ kind: "node", nodeId: "call" });
+
+        // Same fnRef is fine when called from the declaring surface.
+        const sameSurface = fnDocument({
+            "bp-a": {
+                owner: { kind: "widgetMain", surfaceId: "s1", elementId: "button" },
+                ir: { nodes: { head: { id: "head", ...fnHeadNode("Echo") } }, edges: [] },
+            },
+            "bp-c": {
+                owner: { kind: "surfaceMain", surfaceId: "s1" },
+                ir: {
+                    nodes: {
+                        init: { id: "init", type: "blueprint.event.head.surfaceInit" },
+                        call: { id: "call", type: BLUEPRINT_NODE_TYPE_FN_CALL, params: { fnRef } },
+                    },
+                    edges: [],
+                },
+            },
+        });
+        expect(validateBlueprintDocumentGraphs(sameSurface, "bp-c").map(d => d.code)).not.toContain(
+            "fn.call_target_not_found",
+        );
+    });
+
+    it("reports fn.call_unset for calls without a picked function", () => {
+        registerCoreBlueprintNodes();
+        const doc = fnDocument({
+            "bp-a": {
+                owner: { kind: "surfaceMain", surfaceId: "s1" },
+                ir: {
+                    nodes: {
+                        init: { id: "init", type: "blueprint.event.head.surfaceInit" },
+                        call: { id: "call", type: BLUEPRINT_NODE_TYPE_FN_CALL },
+                    },
+                    edges: [],
+                },
+            },
+        });
+        expect(validateBlueprintDocumentGraphs(doc, "bp-a").map(d => d.code)).toContain("fn.call_unset");
+    });
+
+    it("reports fn.call_signature_stale when the cached snapshot drifts", () => {
+        registerCoreBlueprintNodes();
+        const fnRef = createBlueprintFnRef("bp-a", "head");
+        const doc = fnDocument({
+            "bp-a": {
+                owner: { kind: "surfaceMain", surfaceId: "s1" },
+                ir: {
+                    nodes: {
+                        head: { id: "head", ...fnHeadNode("Echo") },
+                        call: {
+                            id: "call",
+                            type: BLUEPRINT_NODE_TYPE_FN_CALL,
+                            params: {
+                                fnRef,
+                                [BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT]: {
+                                    name: "Echo",
+                                    params: [{ pinId: "param_1_value", name: "input", valueType: "integer" }],
+                                    returns: [],
+                                },
+                            },
+                        },
+                    },
+                    edges: [],
+                },
+            },
+        });
+        expect(validateBlueprintDocumentGraphs(doc, "bp-a").map(d => d.code)).toContain("fn.call_signature_stale");
+    });
+
+    it("reports orphan and multi-owner Fn Return nodes", () => {
+        registerCoreBlueprintNodes();
+        const orphan = fnDocument({
+            "bp-a": {
+                owner: { kind: "surfaceMain", surfaceId: "s1" },
+                ir: {
+                    nodes: {
+                        head: { id: "head", ...fnHeadNode("Echo") },
+                        ret: { id: "ret", ...fnReturnNode() },
+                    },
+                    edges: [],
+                },
+            },
+        });
+        expect(validateBlueprintDocumentGraphs(orphan, "bp-a").map(d => d.code)).toContain("fn.return_orphan");
+
+        const shared = fnDocument({
+            "bp-a": {
+                owner: { kind: "surfaceMain", surfaceId: "s1" },
+                ir: {
+                    nodes: {
+                        headA: { id: "headA", ...fnHeadNode("A") },
+                        headB: { id: "headB", ...fnHeadNode("B") },
+                        ret: { id: "ret", ...fnReturnNode() },
+                    },
+                    edges: [
+                        { from: { nodeId: "headA", port: "then" }, to: { nodeId: "ret", port: "in" } },
+                        { from: { nodeId: "headB", port: "then" }, to: { nodeId: "ret", port: "in" } },
+                    ],
+                },
+            },
+        });
+        expect(validateBlueprintDocumentGraphs(shared, "bp-a").map(d => d.code)).toContain("fn.return_orphan");
+    });
+
+    it("reports conflicting Fn Return signatures for one head", () => {
+        registerCoreBlueprintNodes();
+        const doc = fnDocument({
+            "bp-a": {
+                owner: { kind: "surfaceMain", surfaceId: "s1" },
+                ir: {
+                    nodes: {
+                        head: { id: "head", ...fnHeadNode("Echo") },
+                        branch: { id: "branch", type: "blueprint.flow.sequence" },
+                        ret1: { id: "ret1", ...fnReturnNode("string") },
+                        ret2: { id: "ret2", ...fnReturnNode("integer") },
+                    },
+                    edges: [
+                        { from: { nodeId: "head", port: "then" }, to: { nodeId: "branch", port: "in" } },
+                        { from: { nodeId: "branch", port: "then0" }, to: { nodeId: "ret1", port: "in" } },
+                        { from: { nodeId: "branch", port: "then1" }, to: { nodeId: "ret2", port: "in" } },
+                    ],
+                },
+            },
+        });
+        expect(validateBlueprintDocumentGraphs(doc, "bp-a").map(d => d.code)).toContain(
+            "fn.return_signature_conflict",
+        );
+    });
+
+    it("warns on duplicate fn names in the same scope", () => {
+        registerCoreBlueprintNodes();
+        const doc = fnDocument({
+            "bp-a": {
+                owner: { kind: "surfaceMain", surfaceId: "s1" },
+                ir: {
+                    nodes: {
+                        headA: { id: "headA", ...fnHeadNode("Echo") },
+                        headB: { id: "headB", ...fnHeadNode("echo") },
+                    },
+                    edges: [],
+                },
+            },
+        });
+        const diagnostics = validateBlueprintDocumentGraphs(doc, "bp-a");
+        expect(diagnostics.filter(d => d.code === "fn.duplicate_name").length).toBeGreaterThan(0);
+    });
+
+    it("warns on statically recursive fn calls", () => {
+        registerCoreBlueprintNodes();
+        const fnRef = createBlueprintFnRef("bp-a", "head");
+        const doc = fnDocument({
+            "bp-a": {
+                owner: { kind: "surfaceMain", surfaceId: "s1" },
+                ir: {
+                    nodes: {
+                        head: { id: "head", ...fnHeadNode("Loop") },
+                        call: { id: "call", type: BLUEPRINT_NODE_TYPE_FN_CALL, params: { fnRef } },
+                    },
+                    edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "call", port: "in" } }],
+                },
+            },
+        });
+        expect(validateBlueprintDocumentGraphs(doc, "bp-a").map(d => d.code)).toContain("fn.recursive_call");
+    });
+
+    it("rejects fn heads in Blueprint Value graphs via node.context_invalid", () => {
+        registerCoreBlueprintNodes();
+        const doc = fnDocument({
+            "bp-a": {
+                owner: { kind: "widgetValue", surfaceId: "s1", elementId: "text", propPath: "props.text" },
+                ir: { nodes: { head: { id: "head", ...fnHeadNode("Echo") } }, edges: [] },
+            },
+        });
+        const diagnostics = validateBlueprintDocumentGraphs(doc, "bp-a");
+        const contextInvalid = diagnostics.find(d => d.code === "node.context_invalid");
+        expect(contextInvalid?.target).toMatchObject({ kind: "node", nodeId: "head" });
     });
 });

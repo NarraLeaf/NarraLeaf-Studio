@@ -314,6 +314,8 @@ export function normalizeStoryAnimationAsset(asset: StoryAnimationAsset, now: st
         timeline: normalizeAnimationTimeline(asset.timeline, normalizedSequences, asset.id),
         sequences: normalizedSequences,
         config: Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined)),
+        previewAssetId: normalizeOptionalString(asset.previewAssetId),
+        previewBackgroundAssetId: normalizeOptionalString(asset.previewBackgroundAssetId),
         meta: {
             ...asset.meta,
             updatedAt: asset.meta?.updatedAt ?? now,

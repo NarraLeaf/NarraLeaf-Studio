@@ -10,6 +10,8 @@ export type ElementRendererProps = {
     hostAdapter: UIHostAdapter;
     children?: ReactNode;
     instanceKey?: string;
+    /** Current list item scope when this element renders inside a list-like item template. */
+    listItemScope?: UIListItemScope | null;
     renderChildren?: (options?: {
         childrenIds?: string[];
         listItemScope?: UIListItemScope | null;

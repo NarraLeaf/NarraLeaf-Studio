@@ -9,6 +9,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_SET_TEXT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
@@ -284,6 +285,40 @@ describe("Blueprint Value evaluator", () => {
             returned: true,
             value: 42,
             dependencies: [{ surfaceId: "surface", elementId: "slider-b", propPath: "props.value" }],
+        });
+    });
+
+    it("allows Call Fn in value graphs and returns the fn result", async () => {
+        const graph: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, params: {} },
+                call: {
+                    id: "call",
+                    type: BLUEPRINT_NODE_TYPE_FN_CALL,
+                    params: {
+                        fnRef: "fn:bp-widget:fn-head",
+                        __fnSignatureSnapshot: {
+                            name: "Echo",
+                            params: [],
+                            returns: [{ pinId: "ret_1_value", name: "result", valueType: "string" }],
+                        },
+                    },
+                },
+                ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "call", port: "in" } },
+                { from: { nodeId: "call", port: "next" }, to: { nodeId: "ret", port: "in" } },
+                { from: { nodeId: "call", port: "ret_1_value" }, to: { nodeId: "ret", port: "value" } },
+            ],
+        };
+        const adapter = hostAdapter();
+        adapter.blueprintRuntime!.invokeBlueprintFn = async () => ({ returns: { ret_1_value: "from-fn" } });
+
+        expect(validateBlueprintValueGraphSafe(graph)).toHaveLength(0);
+        await expect(evalValue(valueDocument(graph), adapter)).resolves.toMatchObject({
+            returned: true,
+            value: "from-fn",
         });
     });
 

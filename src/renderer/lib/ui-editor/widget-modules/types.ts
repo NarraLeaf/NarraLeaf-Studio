@@ -22,6 +22,8 @@ export type WidgetRendererProps = {
     children?: ReactNode;
     /** Stable suffix for repeated structural renderers such as list item previews. */
     instanceKey?: string;
+    /** Current list item scope when this element renders inside a list-like item template. */
+    listItemScope?: UIListItemScope | null;
     /**
      * Structural widgets may render children lazily with an instance scope.
      * `nl.list` uses this to repeat one authored item template without cloning UIDocument elements.

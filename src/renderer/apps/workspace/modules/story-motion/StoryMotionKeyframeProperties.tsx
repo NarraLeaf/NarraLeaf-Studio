@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { Trash2 } from "lucide-react";
+import { formatStoryBezierEasing, parseStoryEasing } from "@shared/utils/storyEasing";
 import type {
     StoryAlignPositionValue,
     StoryAnimationAsset,
@@ -16,15 +18,19 @@ import {
     SurfaceEditorToolbarSegButton,
 } from "../ui-editor/editors/SurfaceEditorToolbarButtonGroup";
 import {
+    STORY_MOTION_EASING_OPTIONS,
     STORY_MOTION_MAX_DURATION_MS,
     clampStoryMotionTimeMs,
     deleteStoryMotionKeyframe,
     formatStoryMotionTime,
     getStoryMotionPropertyMeta,
     getStoryMotionTimeline,
-    isStoryMotionEditableProperty,
+    isStoryMotionBezierEasing,
     updateStoryMotionKeyframe,
 } from "./storyMotionTimeline";
+
+const CUSTOM_EASING_OPTION = "__custom";
+const DEFAULT_CUSTOM_BEZIER = "cubic-bezier(0.42, 0, 0.58, 1)";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
     isStoryMotionKeyframeSelectionData,
@@ -92,10 +98,10 @@ export function StoryMotionKeyframeProperties(props: {
         }
         const timeline = getStoryMotionTimeline(asset);
         const track = timeline.tracks.find(item => item.id === selection.trackId);
-        if (!track || !isStoryMotionEditableProperty(track.property)) {
+        if (!track) {
             return null;
         }
-        const keyframe = track?.keyframes.find(item => item.id === selection.keyframeId);
+        const keyframe = track.keyframes.find(item => item.id === selection.keyframeId);
         return track && keyframe ? { track, keyframe } : null;
     }, [asset, selection.keyframeId, selection.trackId]);
 
@@ -197,20 +203,39 @@ function createStoryMotionKeyframeSchema(
                 label: "Easing",
                 options: [
                     { value: "", label: "Default" },
-                    { value: "linear", label: "Linear" },
-                    { value: "easeIn", label: "Ease in" },
-                    { value: "easeOut", label: "Ease out" },
-                    { value: "easeInOut", label: "Ease in out" },
-                    { value: "backOut", label: "Back out" },
+                    ...STORY_MOTION_EASING_OPTIONS,
+                    { value: CUSTOM_EASING_OPTION, label: "Custom" },
                 ],
-                getValue: data => data.keyframe.easing ?? "",
-                setValue: (_data, value) => {
-                    const easing = String(value || "");
+                getValue: data => {
+                    const easing = data.keyframe.easing ?? "";
+                    return isStoryMotionBezierEasing(easing) ? CUSTOM_EASING_OPTION : easing;
+                },
+                setValue: (data, value) => {
+                    const raw = String(value || "");
+                    const easing = raw === CUSTOM_EASING_OPTION
+                        ? (isStoryMotionBezierEasing(data.keyframe.easing) ? data.keyframe.easing : DEFAULT_CUSTOM_BEZIER)
+                        : raw || undefined;
                     updateKeyframe(keyframe => ({
                         ...keyframe,
-                        easing: easing || undefined,
+                        easing,
                     }));
                 },
+            }),
+            defineField<StoryMotionKeyframeInspectorData, FieldDefinition<StoryMotionKeyframeInspectorData>>({
+                id: "easing-curve",
+                type: "custom",
+                hidden: data => !isStoryMotionBezierEasing(data.keyframe.easing),
+                component: ({ data }) => (
+                    <StoryMotionBezierEditor
+                        easing={data.keyframe.easing ?? DEFAULT_CUSTOM_BEZIER}
+                        onChange={easing => {
+                            updateKeyframe(keyframe => ({
+                                ...keyframe,
+                                easing,
+                            }));
+                        }}
+                    />
+                ),
             }),
             defineField<StoryMotionKeyframeInspectorData, FieldDefinition<StoryMotionKeyframeInspectorData>>({
                 id: "value",
@@ -236,6 +261,19 @@ function createStoryMotionKeyframeSchema(
                         step: 0.01,
                         hidden: data => getStoryMotionPropertyMeta(data.track.property).valueKind !== "number",
                         getValue: data => typeof data.keyframe.value === "number" ? data.keyframe.value : 0,
+                        setValue: (_data, value) => {
+                            updateKeyframe(keyframe => ({
+                                ...keyframe,
+                                value,
+                            }));
+                        },
+                    }),
+                    defineField<StoryMotionKeyframeInspectorData, FieldDefinition<StoryMotionKeyframeInspectorData>>({
+                        id: "text",
+                        type: "text",
+                        label: "Value",
+                        hidden: data => getStoryMotionPropertyMeta(data.track.property).valueKind !== "text",
+                        getValue: data => typeof data.keyframe.value === "string" ? data.keyframe.value : "",
                         setValue: (_data, value) => {
                             updateKeyframe(keyframe => ({
                                 ...keyframe,
@@ -322,6 +360,87 @@ function readPositionValue(
     return value && typeof value === "object" && Number.isFinite(Number(value[key]))
         ? Number(value[key])
         : fallback;
+}
+
+const BEZIER_VIEW_SIZE = 160;
+const BEZIER_Y_MIN = -0.5;
+const BEZIER_Y_MAX = 1.5;
+
+function StoryMotionBezierEditor(props: { easing: string; onChange: (easing: string) => void }) {
+    const svgRef = useRef<SVGSVGElement | null>(null);
+    const points = useMemo<[number, number, number, number]>(() => {
+        const parsed = parseStoryEasing(props.easing);
+        return Array.isArray(parsed) ? parsed : [0.42, 0, 0.58, 1];
+    }, [props.easing]);
+
+    const toX = (value: number) => value * BEZIER_VIEW_SIZE;
+    const toY = (value: number) => (BEZIER_Y_MAX - value) / (BEZIER_Y_MAX - BEZIER_Y_MIN) * BEZIER_VIEW_SIZE;
+
+    const startHandleDrag = (event: ReactPointerEvent<SVGCircleElement>, handle: 0 | 1) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const svg = svgRef.current;
+        if (!svg) {
+            return;
+        }
+        const onMove = (moveEvent: PointerEvent) => {
+            const rect = svg.getBoundingClientRect();
+            const x = Math.min(1, Math.max(0, (moveEvent.clientX - rect.left) / rect.width));
+            const y = BEZIER_Y_MAX - (moveEvent.clientY - rect.top) / rect.height * (BEZIER_Y_MAX - BEZIER_Y_MIN);
+            const clampedY = Math.min(BEZIER_Y_MAX, Math.max(BEZIER_Y_MIN, y));
+            const next: [number, number, number, number] = handle === 0
+                ? [x, clampedY, points[2], points[3]]
+                : [points[0], points[1], x, clampedY];
+            props.onChange(formatStoryBezierEasing(next));
+        };
+        const onUp = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+        };
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+    };
+
+    return (
+        <div className="grid gap-1.5">
+            <svg
+                ref={svgRef}
+                viewBox={`0 0 ${BEZIER_VIEW_SIZE} ${BEZIER_VIEW_SIZE}`}
+                className="w-full touch-none rounded border border-white/10 bg-black/20"
+            >
+                <rect x={0} y={toY(1)} width={BEZIER_VIEW_SIZE} height={toY(0) - toY(1)} fill="rgba(255,255,255,0.03)" />
+                <line x1={0} y1={toY(0)} x2={BEZIER_VIEW_SIZE} y2={toY(0)} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                <line x1={0} y1={toY(1)} x2={BEZIER_VIEW_SIZE} y2={toY(1)} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                <line x1={toX(0)} y1={toY(0)} x2={toX(points[0])} y2={toY(points[1])} stroke="rgba(148,163,184,0.5)" strokeWidth={1} />
+                <line x1={toX(1)} y1={toY(1)} x2={toX(points[2])} y2={toY(points[3])} stroke="rgba(148,163,184,0.5)" strokeWidth={1} />
+                <path
+                    d={`M ${toX(0)} ${toY(0)} C ${toX(points[0])} ${toY(points[1])}, ${toX(points[2])} ${toY(points[3])}, ${toX(1)} ${toY(1)}`}
+                    fill="none"
+                    stroke="#1f9eff"
+                    strokeWidth={2}
+                />
+                <circle
+                    cx={toX(points[0])}
+                    cy={toY(points[1])}
+                    r={5}
+                    fill="#1f9eff"
+                    stroke="rgba(255,255,255,0.8)"
+                    className="cursor-grab"
+                    onPointerDown={event => startHandleDrag(event, 0)}
+                />
+                <circle
+                    cx={toX(points[2])}
+                    cy={toY(points[3])}
+                    r={5}
+                    fill="#1f9eff"
+                    stroke="rgba(255,255,255,0.8)"
+                    className="cursor-grab"
+                    onPointerDown={event => startHandleDrag(event, 1)}
+                />
+            </svg>
+            <div className="text-center text-[11px] tabular-nums text-slate-500">{formatStoryBezierEasing(points)}</div>
+        </div>
+    );
 }
 
 function clearStoryMotionKeyframeSelection(uiService: UIService, selection: StoryMotionKeyframeSelection): void {

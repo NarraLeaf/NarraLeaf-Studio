@@ -52,6 +52,16 @@ export type UIHostAdapterBlueprintRuntime = {
     dispatchSurfaceBlueprintEvent?: (eventName: string, payload?: Record<string, unknown>) => Promise<void>;
     dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
     getBroadcastListenerCount?: (eventName: string) => number;
+    /** Invoke a declared blueprint fn (Call Fn node); awaits the fn body and returns its Fn Return values. */
+    invokeBlueprintFn?: (input: {
+        fnRef: string;
+        args: Record<string, unknown>;
+        depth: number;
+        /** Surface of the calling execution; global callers omit it and only see global fns. */
+        callerSurfaceId?: string;
+        signal?: AbortSignal;
+        callerExecutionId?: string;
+    }) => Promise<{ returns: Record<string, unknown> }>;
     frame?: {
         getParam: (key: string) => unknown;
         emit: (eventName: string, data: unknown) => Promise<void> | void;

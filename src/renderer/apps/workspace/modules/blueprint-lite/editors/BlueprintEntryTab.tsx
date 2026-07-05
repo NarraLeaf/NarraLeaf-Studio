@@ -21,7 +21,7 @@ import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/docume
 import type { StoryDocument } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
-import { getUIListChildSlot } from "@shared/types/ui-editor/list";
+import { getUIListChildSlot, isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import {
     applyBlueprintIrConnection,
     createGraphNodeForPalette,
@@ -61,14 +61,25 @@ import type {
 } from "@/lib/ui-editor/blueprint-nodes/types";
 import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
+    BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
+    readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
+import {
+    buildBlueprintFnSignatureSnapshot,
+    findBlueprintFnByRef,
+    isBlueprintFnSnapshotStale,
+    isBlueprintFnVisibleToOwner,
+    listCallableBlueprintFnOptions,
+} from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import {
     ELEMENT_REF_PARAM_ELEMENT_ID,
     ELEMENT_REF_PARAM_ELEMENT_TYPE,
@@ -133,7 +144,7 @@ function isListItemContextElement(document: UIDocument, element: UIElement | und
         if (!parent) {
             return false;
         }
-        if (parent.type === "nl.list") {
+        if (isListLikeWidgetType(parent.type)) {
             const slot = getUIListChildSlot(child.extra);
             return slot == null || slot === "itemTemplate";
         }
@@ -421,7 +432,36 @@ function ElementLiteralSurfacePreview({
     );
 }
 
-export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
+/**
+ * Guard wrapper: resolves the target blueprint and only mounts the editor when it exists.
+ * If the blueprint is deleted while open (e.g. a Blueprint Value binding is reverted to a
+ * literal), this unmounts the inner editor as a whole instead of returning early between its
+ * hooks — which would otherwise trip React's "rendered fewer hooks than expected" error.
+ */
+export function BlueprintEntryTab(props: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
+    const { context, isInitialized } = useWorkspace();
+    // Subscribe so the wrapper re-evaluates (and can unmount the inner editor) on deletion.
+    useBlueprintDocumentRevision();
+
+    if (!isInitialized || !context || !props.payload?.blueprintId) {
+        return (
+            <div className="flex h-full items-center justify-center p-6 text-sm text-gray-400">
+                Blueprint tab is invalid.
+            </div>
+        );
+    }
+    const localBp = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+    if (!localBp.getBlueprintDocument().blueprints[props.payload.blueprintId]) {
+        return (
+            <div className="flex h-full items-center justify-center p-6 text-sm text-amber-400">
+                Blueprint not found: {props.payload.blueprintId}
+            </div>
+        );
+    }
+    return <BlueprintEntryTabInner key={props.payload.blueprintId} {...props} />;
+}
+
+function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<BlueprintEntryTabPayload | undefined>) {
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const revision = useBlueprintDocumentRevision();
@@ -504,14 +544,9 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         };
     }, [storyService]);
     const doc = localBp.getBlueprintDocument();
-    const bp = doc.blueprints[payload.blueprintId];
-    if (!bp) {
-        return (
-            <div className="flex h-full items-center justify-center p-6 text-sm text-amber-400">
-                Blueprint not found: {payload.blueprintId}
-            </div>
-        );
-    }
+    // Existence is guaranteed by the BlueprintEntryTab wrapper, which unmounts this component
+    // when the blueprint is deleted (avoids an early return between the hooks below).
+    const bp = doc.blueprints[payload.blueprintId]!;
 
     const uiDocument = blueprintDocumentService.getDocument();
     const widgetElement =
@@ -682,13 +717,14 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             ir: activeIr,
             payload: getBlueprintGraphClipboard(),
             generateId: () => uuid.generate(),
+            targetBlueprintId: payload.blueprintId,
         });
         if (!pasted) {
             return;
         }
         commitIr(pasted.ir);
         editor.setSelectedNodeIds(pasted.newNodeIds);
-    }, [commitIr, editor, uuid]);
+    }, [commitIr, editor, uuid, payload.blueprintId]);
 
     const blueprintKeybindings = useMemo(
         () => [
@@ -1350,6 +1386,11 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
             surfaces: surfaceOptions,
             stories: storyOptions,
             storyScenes: storySceneOptions,
+            callableFns: listCallableBlueprintFnOptions({
+                blueprintDocument: doc,
+                uiDocument,
+                caller: bp.owner,
+            }),
             ...nodeCatalog.getDynamicSelectOptions(),
         };
         if (
@@ -1385,7 +1426,64 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
         storyLibraryRevision,
         nodeCatalog,
         dynamicSelectOptionsRevision,
+        doc,
+        bp.owner,
     ]);
+
+    const resolveCallableFnSignature = useCallback(
+        (fnRef: string) => {
+            const currentDoc = localBp.getBlueprintDocument();
+            const decl = findBlueprintFnByRef(currentDoc, fnRef);
+            if (!decl || !isBlueprintFnVisibleToOwner(decl.owner, bp.owner)) {
+                return null;
+            }
+            return buildBlueprintFnSignatureSnapshot(decl);
+        },
+        [localBp, bp.owner],
+    );
+
+    // Heal stale Call Fn signature snapshots when this blueprint is opened. Cross-blueprint
+    // signature changes are pull-based: same-graph edits sync on commit, other graphs are
+    // covered by the fn.call_signature_stale diagnostic until reopened or re-picked.
+    useEffect(() => {
+        const currentDoc = localBp.getBlueprintDocument();
+        const currentBp = currentDoc.blueprints[payload.blueprintId];
+        if (!currentBp || currentBp.program.kind !== "graph") {
+            return;
+        }
+        for (const [graphId, eventGraph] of Object.entries(currentBp.program.graphs.events ?? {})) {
+            const staleSnapshots = new Map<string, ReturnType<typeof buildBlueprintFnSignatureSnapshot>>();
+            for (const [nodeId, node] of Object.entries(eventGraph.graph?.nodes ?? {})) {
+                if (node.type !== BLUEPRINT_NODE_TYPE_FN_CALL) {
+                    continue;
+                }
+                const fnRef = node.params?.[BLUEPRINT_NODE_PARAM_FN_REF];
+                if (typeof fnRef !== "string" || fnRef.length === 0) {
+                    continue;
+                }
+                const decl = findBlueprintFnByRef(currentDoc, fnRef);
+                if (!decl || !isBlueprintFnVisibleToOwner(decl.owner, currentBp.owner)) {
+                    // Missing/out-of-scope targets stay untouched — validation reports the error.
+                    continue;
+                }
+                if (isBlueprintFnSnapshotStale(readBlueprintFnSignatureSnapshot(node.params), decl)) {
+                    staleSnapshots.set(nodeId, buildBlueprintFnSignatureSnapshot(decl));
+                }
+            }
+            if (staleSnapshots.size === 0) {
+                continue;
+            }
+            localBp.updateEventGraphIr(payload.blueprintId, graphId, draft => {
+                for (const [nodeId, snapshot] of staleSnapshots) {
+                    const node = draft.nodes?.[nodeId];
+                    if (!node) {
+                        continue;
+                    }
+                    node.params = { ...(node.params ?? {}), [BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT]: snapshot };
+                }
+            });
+        }
+    }, [localBp, payload.blueprintId]);
 
     const [memberPanelFocusContained, setMemberPanelFocusContained] = useState(false);
 
@@ -1510,6 +1608,8 @@ export function BlueprintEntryTab({ tabId, payload }: EditorComponentProps<Bluep
                         onBindElementLiteral={onBindElementLiteral}
                         initialViewport={initialFlowViewport}
                         onViewportChange={onFlowViewportChange}
+                        currentBlueprintId={payload.blueprintId}
+                        resolveCallableFnSignature={resolveCallableFnSignature}
                     />
                 </div>
             </div>

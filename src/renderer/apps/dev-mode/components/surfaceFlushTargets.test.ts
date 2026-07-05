@@ -7,9 +7,9 @@ import {
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UISurface } from "@shared/types/ui-editor/document";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { widgetMainOwnerKey } from "@/lib/workspace/services/ui-editor/blueprint/ownerKeys";
-import { collectDialogFlushElementIds } from "./dialogFlushTargets";
+import { collectSurfaceFlushElementIds } from "./surfaceFlushTargets";
 
-describe("collectDialogFlushElementIds", () => {
+describe("collectSurfaceFlushElementIds", () => {
     it("includes value-bound elements and widgets with flush logic", () => {
         const surface: UISurface = {
             id: "dialog",
@@ -119,7 +119,7 @@ describe("collectDialogFlushElementIds", () => {
             },
         };
 
-        expect(collectDialogFlushElementIds({ document, blueprintDocument, surface })).toEqual([
+        expect(collectSurfaceFlushElementIds({ document, blueprintDocument, surface })).toEqual([
             "value",
             "flush",
             "legacy",

@@ -54,7 +54,7 @@ function hasWidgetFlushBlueprint(
     );
 }
 
-export function collectDialogFlushElementIds(input: {
+export function collectSurfaceFlushElementIds(input: {
     document: UIDocument;
     blueprintDocument: BlueprintDocument;
     surface: UISurface;

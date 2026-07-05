@@ -7,13 +7,28 @@ import type {
 } from "@shared/types/blueprint/document";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import {
+    BLUEPRINT_NODE_PARAM_FN_NAME,
+    BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
+    BLUEPRINT_NODE_TYPE_FN_HEAD,
+    BLUEPRINT_NODE_TYPE_FN_RETURN,
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     isBlueprintEventDispatchHeadType,
+    readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
+import {
+    collectDeclaredBlueprintFns,
+    collectExecReachableNodeIds,
+    findBlueprintFnByRef,
+    isBlueprintFnSnapshotStale,
+    isBlueprintFnVisibleToOwner,
+    readBlueprintFnReturnPinDecls,
+    type BlueprintFnDeclaration,
+} from "./fnCatalog";
 import { listUiSlotsWiredToBlueprintLayer } from "@/lib/ui-editor/blueprint-runtime/widgetBlueprintLayerSlots";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBehaviorGraphEntry";
@@ -155,6 +170,204 @@ function describeNodeContextError(def: BlueprintNodeDef, ctx: BlueprintPaletteCo
     return `Node "${def.displayName}" is not allowed in this ${ctx.owner.kind} ${ctx.graphKind} graph.${valueGraphHint}`;
 }
 
+function fnPinDeclSignature(decls: ReturnType<typeof readBlueprintFnReturnPinDecls>): string {
+    return decls.map(d => `${d.pinId}\0${d.name}\0${d.valueType}`).join("\x1e");
+}
+
+/** fnRefs participating in a cycle of the document-wide fn call graph (fnRef transitively calls itself). */
+function collectRecursiveFnRefs(decls: readonly BlueprintFnDeclaration[]): ReadonlySet<string> {
+    const calleesByFnRef = new Map<string, string[]>();
+    for (const decl of decls) {
+        const reachable = collectExecReachableNodeIds(decl.ir, decl.headNodeId);
+        const callees: string[] = [];
+        for (const [nodeId, node] of Object.entries(decl.ir.nodes ?? {})) {
+            if (node.type !== BLUEPRINT_NODE_TYPE_FN_CALL || !reachable.has(nodeId)) {
+                continue;
+            }
+            const ref = node.params?.[BLUEPRINT_NODE_PARAM_FN_REF];
+            if (typeof ref === "string" && ref.trim().length > 0) {
+                callees.push(ref.trim());
+            }
+        }
+        calleesByFnRef.set(decl.fnRef, callees);
+    }
+    const recursive = new Set<string>();
+    for (const start of calleesByFnRef.keys()) {
+        const stack = [...(calleesByFnRef.get(start) ?? [])];
+        const visited = new Set<string>();
+        while (stack.length > 0) {
+            const current = stack.pop() as string;
+            if (current === start) {
+                recursive.add(start);
+                break;
+            }
+            if (visited.has(current)) {
+                continue;
+            }
+            visited.add(current);
+            stack.push(...(calleesByFnRef.get(current) ?? []));
+        }
+    }
+    return recursive;
+}
+
+/**
+ * Fn node rules: head naming, Return ownership/consistency, Call target resolution
+ * (incl. the paste-into-another-surface case), snapshot staleness, and static recursion.
+ */
+function validateBlueprintFnRules(
+    ir: BlueprintGraphIr,
+    ctx: {
+        blueprintId: string;
+        graphKind: "event" | "function";
+        graphId: string;
+        blueprintOwner?: BlueprintOwnerRef;
+        blueprintDocument?: BlueprintDocument;
+    },
+    out: BlueprintGraphEditorDiagnostic[],
+): void {
+    const doc = ctx.blueprintDocument;
+    if (!doc || ctx.graphKind !== "event") {
+        return;
+    }
+    const nodes = ir.nodes ?? {};
+    const headEntries = Object.entries(nodes)
+        .filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_FN_HEAD)
+        .sort(([a], [b]) => a.localeCompare(b));
+    const returnEntries = Object.entries(nodes)
+        .filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_FN_RETURN)
+        .sort(([a], [b]) => a.localeCompare(b));
+    const callEntries = Object.entries(nodes)
+        .filter(([, n]) => n.type === BLUEPRINT_NODE_TYPE_FN_CALL)
+        .sort(([a], [b]) => a.localeCompare(b));
+    if (headEntries.length === 0 && returnEntries.length === 0 && callEntries.length === 0) {
+        return;
+    }
+    const nodeTarget = (nodeId: string): BlueprintGraphDiagnosticTarget => ({
+        kind: "node",
+        graphKind: ctx.graphKind,
+        graphId: ctx.graphId,
+        nodeId,
+    });
+
+    const allDecls = collectDeclaredBlueprintFns(doc);
+    const visibleDecls = ctx.blueprintOwner
+        ? allDecls.filter(decl => isBlueprintFnVisibleToOwner(decl.owner, ctx.blueprintOwner!))
+        : allDecls;
+
+    for (const [nodeId, node] of headEntries) {
+        const name = String(node.params?.[BLUEPRINT_NODE_PARAM_FN_NAME] ?? "").trim();
+        if (!name) {
+            out.push({
+                severity: "warning",
+                code: "fn.name_missing",
+                message: `Fn "${nodeId}": set a function name.`,
+                target: nodeTarget(nodeId),
+            });
+            continue;
+        }
+        const nameKey = name.toLowerCase();
+        const hasDuplicate = visibleDecls.some(
+            decl =>
+                decl.name.trim().toLowerCase() === nameKey &&
+                !(decl.blueprintId === ctx.blueprintId && decl.headNodeId === nodeId),
+        );
+        if (hasDuplicate) {
+            out.push({
+                severity: "warning",
+                code: "fn.duplicate_name",
+                message: `Fn name "${name}" is used by another function in scope (calls bind by id).`,
+                target: nodeTarget(nodeId),
+            });
+        }
+    }
+
+    if (returnEntries.length > 0) {
+        const reachableByHead = new Map(
+            headEntries.map(([headId]) => [headId, collectExecReachableNodeIds(ir, headId)] as const),
+        );
+        for (const [nodeId] of returnEntries) {
+            const owners = headEntries.filter(([headId]) => reachableByHead.get(headId)?.has(nodeId));
+            if (owners.length === 0) {
+                out.push({
+                    severity: "error",
+                    code: "fn.return_orphan",
+                    message: "Fn Return must be reachable from a Fn head.",
+                    target: nodeTarget(nodeId),
+                });
+            } else if (owners.length > 1) {
+                out.push({
+                    severity: "error",
+                    code: "fn.return_orphan",
+                    message: "Fn Return is reachable from multiple Fn heads.",
+                    target: nodeTarget(nodeId),
+                });
+            }
+        }
+        for (const [headId] of headEntries) {
+            const reachable = reachableByHead.get(headId);
+            const owned = returnEntries.filter(([returnId]) => reachable?.has(returnId));
+            if (owned.length < 2) {
+                continue;
+            }
+            const authoritative = fnPinDeclSignature(readBlueprintFnReturnPinDecls(owned[0][1].params));
+            for (const [returnId, returnNode] of owned.slice(1)) {
+                if (fnPinDeclSignature(readBlueprintFnReturnPinDecls(returnNode.params)) !== authoritative) {
+                    out.push({
+                        severity: "error",
+                        code: "fn.return_signature_conflict",
+                        message: `Fn Return "${returnId}" declares different results than the first Return of this fn.`,
+                        target: nodeTarget(returnId),
+                    });
+                }
+            }
+        }
+    }
+
+    const recursiveFnRefs = callEntries.length > 0 ? collectRecursiveFnRefs(allDecls) : new Set<string>();
+    for (const [nodeId, node] of callEntries) {
+        const fnRefRaw = node.params?.[BLUEPRINT_NODE_PARAM_FN_REF];
+        const fnRef = typeof fnRefRaw === "string" ? fnRefRaw.trim() : "";
+        if (!fnRef) {
+            out.push({
+                severity: "warning",
+                code: "fn.call_unset",
+                message: `Node "${nodeId}": pick a function.`,
+                target: nodeTarget(nodeId),
+            });
+            continue;
+        }
+        const decl = findBlueprintFnByRef(doc, fnRef);
+        const visible = decl && (!ctx.blueprintOwner || isBlueprintFnVisibleToOwner(decl.owner, ctx.blueprintOwner));
+        if (!decl || !visible) {
+            const snapshotName = readBlueprintFnSignatureSnapshot(node.params)?.name;
+            out.push({
+                severity: "error",
+                code: "fn.call_target_not_found",
+                message: `Fn "${snapshotName ?? fnRef}" does not exist in this scope.`,
+                target: nodeTarget(nodeId),
+            });
+            continue;
+        }
+        if (isBlueprintFnSnapshotStale(readBlueprintFnSignatureSnapshot(node.params), decl)) {
+            out.push({
+                severity: "warning",
+                code: "fn.call_signature_stale",
+                message: `Function signature changed; re-select "${decl.name}" to sync pins.`,
+                target: nodeTarget(nodeId),
+            });
+        }
+        if (recursiveFnRefs.has(decl.fnRef)) {
+            out.push({
+                severity: "warning",
+                code: "fn.recursive_call",
+                message: `Fn "${decl.name}" calls itself (directly or indirectly); the runtime aborts deep recursion.`,
+                target: nodeTarget(nodeId),
+            });
+        }
+    }
+}
+
 /** Cross-checks widget private blueprint compatibility and any legacy event hooks (Workspace-only). */
 export function validateBlueprintWidgetMainEventWiring(
     doc: BlueprintDocument,
@@ -227,6 +440,8 @@ export function validateBlueprintGraphIr(
         blueprintOwner?: BlueprintOwnerRef;
         isBlueprintValueGraph?: boolean;
         isComponentDefinitionGraph?: boolean;
+        /** Whole document; enables cross-blueprint checks such as Fn call target resolution. */
+        blueprintDocument?: BlueprintDocument;
     },
 ): BlueprintGraphEditorDiagnostic[] {
     const out: BlueprintGraphEditorDiagnostic[] = [];
@@ -249,7 +464,10 @@ export function validateBlueprintGraphIr(
     }
 
     if (ctx.graphKind === "event") {
-        const headNodes = Object.entries(nodes).filter(([, n]) => isBlueprintEventDispatchHeadType(n.type));
+        // Fn heads are valid entry points too — a graph containing only fn declarations is fine.
+        const headNodes = Object.entries(nodes).filter(
+            ([, n]) => isBlueprintEventDispatchHeadType(n.type) || n.type === BLUEPRINT_NODE_TYPE_FN_HEAD,
+        );
         if (headNodes.length === 0) {
             out.push({
                 severity: "error",
@@ -477,6 +695,8 @@ export function validateBlueprintGraphIr(
         }
     }
 
+    validateBlueprintFnRules(ir, ctx, out);
+
     return out;
 }
 
@@ -572,6 +792,7 @@ export function validateBlueprintDocumentGraphs(
                 blueprintOwner: bp.owner,
                 isBlueprintValueGraph: bp.owner.kind === "widgetValue",
                 isComponentDefinitionGraph: options?.isComponentDefinitionGraph,
+                blueprintDocument: doc,
             }),
         );
     }

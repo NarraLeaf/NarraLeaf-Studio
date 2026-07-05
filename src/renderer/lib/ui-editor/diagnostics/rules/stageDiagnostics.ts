@@ -1,20 +1,21 @@
 import type { UISurface } from "@shared/types/ui-editor/document";
+import { isUIStageSlotId, UI_STAGE_SLOT_IDS, UI_STAGE_SLOT_LABELS } from "@shared/types/ui-editor/stageSlots";
 import type { UISurfaceDiagnostic } from "../types";
 
-const VALID_GAME_UI_SLOTS = new Set(["onStage", "dialog", "notification", "choice"]);
+const VALID_SLOT_LABEL_LIST = UI_STAGE_SLOT_IDS.map(slotId => UI_STAGE_SLOT_LABELS[slotId]).join(", ");
 
 export function collectStageDiagnostics(surface: UISurface): UISurfaceDiagnostic[] {
     const out: UISurfaceDiagnostic[] = [];
     if (surface.kind !== "stageSurface") {
         return out;
     }
-    if (!VALID_GAME_UI_SLOTS.has(surface.mount.slotId)) {
+    if (!isUIStageSlotId(surface.mount.slotId)) {
         out.push({
             id: `game-ui:slot-invalid:${surface.id}`,
             severity: "error",
             source: "stage",
             message: "Game UI uses an unknown slot",
-            hint: "Choose On Stage, Dialog, Notification, or Choice.",
+            hint: `Choose ${VALID_SLOT_LABEL_LIST}.`,
         });
     }
     return out;

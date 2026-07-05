@@ -89,6 +89,12 @@ export type BlueprintNodeDynamicInputPinsConfig = {
     pinLabelParamKey?: string;
     /** Optional prefix used when initializing labels in pinLabelParamKey. */
     defaultPinLabelPrefix?: string;
+    /** Optional param key storing per-pin valueType overrides (Record<pinId, valueType>). */
+    pinValueTypeParamKey?: string;
+    /** Allowed valueTypes for the on-card per-pin type picker; presence enables the picker. */
+    pinValueTypeOptions?: readonly string[];
+    /** When true, generated OUTPUT pins also get remove/label/type controls (default: inputs only). */
+    editableGeneratedOutputPins?: boolean;
 };
 
 export type BlueprintJsonValueSchema = {
@@ -171,6 +177,7 @@ export type BlueprintNodeScope = {
 export type BlueprintNodeRole =
     | "normal"
     | "eventHead"
+    | "fnHead"
     | "functionEntry"
     | "reroute"
     | "dataLiteral"
@@ -288,6 +295,12 @@ export type BlueprintNodeEditorCatalogEntry = {
     dynamicInputPinAddLabel?: string;
     /** Param key storing user-visible labels for dynamic input pins, if editable. */
     dynamicInputPinLabelParamKey?: string;
+    /** Param key storing per-pin valueType overrides for dynamic pins, if editable. */
+    dynamicInputPinTypeParamKey?: string;
+    /** Allowed valueTypes for the on-card per-pin type picker. */
+    dynamicInputPinTypeOptions?: readonly string[];
+    /** When true, generated dynamic pins are outputs; the add-pin button renders in the output column. */
+    dynamicPinsGenerateOutputs?: boolean;
     /** Present when this palette entry was derived from a bound Element output. */
     magicElementRef?: BlueprintMagicElementRefPaletteEntry;
 };

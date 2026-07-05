@@ -41,6 +41,7 @@ import type {
     StoryTransformRef,
     StoryVariableRef,
 } from "@shared/types/story";
+import { parseStoryEasing } from "@shared/utils/storyEasing";
 
 export type NlrStoryCompileDiagnostic = {
     level: "warning" | "error";
@@ -991,7 +992,7 @@ function timelineToNlrTransformSequences(timeline: StoryAnimationTimeline): { pr
                 props: {},
                 options: cleanObject({
                     duration: durationMs,
-                    ease: keyframe.easing,
+                    ease: parseStoryEasing(keyframe.easing),
                     at: startMs,
                 }),
             };
@@ -1073,7 +1074,7 @@ function cleanTransformSequenceOptions(sequence: StoryAnimationSequence): Record
     const options = sequence.options ?? {};
     const next: Record<string, unknown> = {};
     assignDefined(next, "duration", options.durationMs);
-    assignDefined(next, "ease", options.easing);
+    assignDefined(next, "ease", parseStoryEasing(options.easing));
     assignDefined(next, "delay", options.delayMs);
     assignDefined(next, "at", options.at);
     return next;

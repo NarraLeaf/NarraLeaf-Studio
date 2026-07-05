@@ -26,12 +26,17 @@ import {
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
+    BLUEPRINT_NODE_PARAM_FN_REF,
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
+    BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
+    readBlueprintFnSignatureSnapshot,
+    type BlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
 import { resolveBlueprintVariableDefaultValue } from "@shared/types/blueprint/variableTypes";
 import {
@@ -59,7 +64,12 @@ import {
     getDynamicInputPinRemovalIds,
     readDynamicInputPinIds,
     readDynamicInputPinLabels,
+    readDynamicInputPinValueTypes,
 } from "@/lib/ui-editor/blueprint-nodes/effectivePins";
+import {
+    buildBlueprintFnSignatureSnapshotFromIr,
+    parseBlueprintFnRef,
+} from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import {
     BLUEPRINT_NODE_PARAM_DISPLAYABLE_ANIMATION_FROM_EXPLICIT,
     BLUEPRINT_NODE_PARAMS_INLINE_LITERAL_PINS_KEY,
@@ -171,6 +181,10 @@ type BlueprintFlowCanvasInnerProps = {
     initialViewport?: BlueprintFlowViewport | null;
     /** Called after pan/zoom changes so the owning editor tab can persist the view. */
     onViewportChange?: (viewport: BlueprintFlowViewport) => void;
+    /** Active blueprint id; enables same-graph Fn signature snapshot sync on Call Fn nodes. */
+    currentBlueprintId?: string;
+    /** Resolves a callable fn signature (cross-blueprint) when a Call Fn picks a fnRef. */
+    resolveCallableFnSignature?: (fnRef: string) => BlueprintFnSignatureSnapshot | null;
 };
 
 export type BlueprintFlowViewport = {
@@ -221,6 +235,35 @@ function displayableTargetVariantsSignature(
         .join("\x1e");
 }
 
+/**
+ * Keep Call Fn signature snapshots in sync with fn heads declared in the SAME graph.
+ * Runs on every IR commit (covers param edits, pin add/remove, wiring, and Return node changes).
+ * Cross-graph staleness is healed by the entry tab on open + the validation warning.
+ */
+function syncSameGraphFnCallSnapshots(ir: BlueprintGraphIr, currentBlueprintId: string | undefined): void {
+    if (!currentBlueprintId) {
+        return;
+    }
+    for (const node of Object.values(ir.nodes ?? {})) {
+        if (node.type !== BLUEPRINT_NODE_TYPE_FN_CALL) {
+            continue;
+        }
+        const parsed = parseBlueprintFnRef(node.params?.[BLUEPRINT_NODE_PARAM_FN_REF]);
+        if (!parsed || parsed.blueprintId !== currentBlueprintId) {
+            continue;
+        }
+        const snapshot = buildBlueprintFnSignatureSnapshotFromIr(ir, parsed.headNodeId);
+        if (!snapshot) {
+            continue;
+        }
+        const current = readBlueprintFnSignatureSnapshot(node.params);
+        if (current && JSON.stringify(current) === JSON.stringify(snapshot)) {
+            continue;
+        }
+        node.params = { ...(node.params ?? {}), [BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT]: snapshot };
+    }
+}
+
 function BlueprintFlowCanvasInner({
     nodeCatalog,
     graphKey,
@@ -243,6 +286,8 @@ function BlueprintFlowCanvasInner({
     onBindElementLiteral,
     initialViewport,
     onViewportChange,
+    currentBlueprintId,
+    resolveCallableFnSignature,
 }: BlueprintFlowCanvasInnerProps) {
     const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
@@ -281,10 +326,11 @@ function BlueprintFlowCanvasInner({
 
     const commitBlueprintIr = useCallback(
         (next: BlueprintGraphIr, history?: { mergeKey?: string; mergeWindowMs?: number }) => {
+            syncSameGraphFnCallSnapshots(next, currentBlueprintId);
             irRef.current = next;
             onCommitIr(next, history);
         },
-        [onCommitIr],
+        [currentBlueprintId, onCommitIr],
     );
 
     const patchNodeParam = useCallback(
@@ -351,10 +397,23 @@ function BlueprintFlowCanvasInner({
                     delete next[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE];
                 }
             }
+            if (n.type === BLUEPRINT_NODE_TYPE_FN_CALL && key === BLUEPRINT_NODE_PARAM_FN_REF) {
+                // Snapshot the selected fn signature so pins render without document access
+                // (same-graph refs are re-synced on every commit; cross-blueprint refs need this resolver).
+                const snapshot =
+                    typeof value === "string" && value.length > 0
+                        ? resolveCallableFnSignature?.(value) ?? null
+                        : null;
+                if (snapshot) {
+                    next[BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT] = snapshot;
+                } else {
+                    delete next[BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT];
+                }
+            }
             n.params = next;
             commitBlueprintIr(snap, history);
         },
-        [blueprintMemberVariables, blueprintPersistentVariables, commitBlueprintIr],
+        [blueprintMemberVariables, blueprintPersistentVariables, commitBlueprintIr, resolveCallableFnSignature],
     );
 
     const patchNodeParamRef = useRef(patchNodeParam);
@@ -450,6 +509,17 @@ function BlueprintFlowCanvasInner({
                     params[d.pinLabelParamKey] = labels;
                 } else {
                     delete params[d.pinLabelParamKey];
+                }
+            }
+            if (d.pinValueTypeParamKey) {
+                const valueTypes = readDynamicInputPinValueTypes(params, d.pinValueTypeParamKey);
+                for (const removalId of removalIds) {
+                    delete valueTypes[removalId];
+                }
+                if (Object.keys(valueTypes).length > 0) {
+                    params[d.pinValueTypeParamKey] = valueTypes;
+                } else {
+                    delete params[d.pinValueTypeParamKey];
                 }
             }
             n.params = params;

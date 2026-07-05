@@ -10,6 +10,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_FLOW_DELAY,
     BLUEPRINT_NODE_TYPE_FLOW_SKIP_DELAY,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
@@ -97,6 +98,11 @@ function resolveAllowedWidgetEventHeadTypesForPalette(ctx: BlueprintPaletteConte
 export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGraphContextDef): boolean {
     if (def.role === "eventHead") {
         return def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT || def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH;
+    }
+    // Call Fn is deliberately allowed despite being latent/impure: value graphs call
+    // fns with their host widget identity (fn body side effects are the author's choice).
+    if (def.type === BLUEPRINT_NODE_TYPE_FN_CALL) {
+        return true;
     }
     if (def.role === "valueReturn" || def.type === BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE) {
         return true;
@@ -403,6 +409,12 @@ class BlueprintNodeDefinitionsRegistry {
         }
         if (d.pinLabelParamKey !== undefined && !d.pinLabelParamKey.trim()) {
             throw new Error(`[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.pinLabelParamKey is empty`);
+        }
+        if (d.pinValueTypeParamKey !== undefined && !d.pinValueTypeParamKey.trim()) {
+            throw new Error(`[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.pinValueTypeParamKey is empty`);
+        }
+        if (d.pinValueTypeOptions !== undefined && d.pinValueTypeOptions.length === 0) {
+            throw new Error(`[BlueprintNodeRegistry] Node ${def.type} dynamicInputPins.pinValueTypeOptions is empty`);
         }
         if (d.outputInsertBeforePinId !== undefined) {
             const outputIds = new Set(def.pins.filter(p => p.kind === "output").map(p => p.id));

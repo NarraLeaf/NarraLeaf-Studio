@@ -1,9 +1,13 @@
 import {
+    BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_AUTO_FORWARD,
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
+    BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
+    BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+    BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
@@ -508,6 +512,114 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
                     isGameOverlay: requireHostApi(ctx).game.isGameOverlay(),
                 },
             };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
+        displayName: "Get Notifications",
+        category: "Game",
+        keywords: ["game", "notification", "toast", "message", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "notifications",
+                kind: "output",
+                semantic: "data",
+                valueType: BLUEPRINT_VALUE_TYPE_ARRAY,
+                label: "Notifications",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    notifications: requireHostApi(ctx).game.getNotifications(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
+        displayName: "Get Choice Count",
+        category: "Game",
+        keywords: ["game", "choice", "menu", "count", "options", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "count",
+                kind: "output",
+                semantic: "data",
+                valueType: "integer",
+                label: "Count",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    count: requireHostApi(ctx).game.getChoiceCount(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+        displayName: "Is NVL Mode",
+        category: "Game",
+        keywords: ["game", "nvl", "novel", "mode", "dialog", "nlr"],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "isNvlMode",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "NVL Mode",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    isNvlMode: requireHostApi(ctx).game.isNvlMode(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
+        displayName: "Select Choice",
+        category: "Game",
+        keywords: ["game", "choice", "menu", "select", "choose", "nlr"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [
+            execIn,
+            execNext,
+            {
+                id: "index",
+                kind: "input",
+                semantic: "data",
+                valueType: "integer",
+                label: "Index",
+                allowInlineLiteral: true,
+            },
+        ],
+        async execute(ctx) {
+            const wired = resolveDataPinValue(ctx.graph, ctx.node.id, "index", ctx.params, ctx.blueprintLocals);
+            const index = Number(wired ?? ctx.params.index);
+            if (!Number.isInteger(index) || index < 0) {
+                throw new BlueprintGraphExecutionError(
+                    "Select Choice: index must be a non-negative integer",
+                    ctx.node.id,
+                );
+            }
+            await requireHostApi(ctx).game.choose(index);
+            return { nextPort: "next" };
         },
     },
     {

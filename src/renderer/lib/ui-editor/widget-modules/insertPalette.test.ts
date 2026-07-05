@@ -12,6 +12,10 @@ const DEFAULT_MODULE_TYPES = [
     "nl.container",
     "nl.text",
     "nl.dialog.sentence",
+    "nl.notification.list",
+    "nl.choice.list",
+    "nl.nvl.list",
+    "nl.nvl.texts",
     "nl.image",
     "nl.button",
     "nl.slider",
@@ -100,7 +104,7 @@ describe("insert palette", () => {
         expect(dialogTypes).toContain("nl.dialog.sentence");
         expect(dialogTypes).not.toContain("nl.dialog.nametag");
 
-        for (const slotId of ["onStage", "choice", "notification"] as const) {
+        for (const slotId of ["onStage", "choice", "notification", "nvl"] as const) {
             const types = resolveInsertPaletteEntries(
                 DEFAULT_INSERT_PALETTE_CONFIG,
                 resolver,
@@ -117,6 +121,44 @@ describe("insert palette", () => {
         ).map(entry => entry.module.type);
         expect(appTypes).not.toContain("nl.dialog.sentence");
         expect(appTypes).not.toContain("nl.dialog.nametag");
+    });
+
+    it("gates the Game UI slot widgets to their own stage slots", () => {
+        const resolver = createResolver(DEFAULT_MODULE_TYPES);
+        const slotWidgets = [
+            { type: "nl.notification.list", slotId: "notification" as const },
+            { type: "nl.choice.list", slotId: "choice" as const },
+            { type: "nl.nvl.list", slotId: "nvl" as const },
+            { type: "nl.nvl.texts", slotId: "nvl" as const },
+        ];
+
+        for (const widget of slotWidgets) {
+            const ownSlotTypes = resolveInsertPaletteEntries(
+                DEFAULT_INSERT_PALETTE_CONFIG,
+                resolver,
+                createStageSurface(widget.slotId),
+            ).map(entry => entry.module.type);
+            expect(ownSlotTypes).toContain(widget.type);
+
+            for (const otherSlotId of ["onStage", "dialog", "notification", "choice", "nvl"] as const) {
+                if (otherSlotId === widget.slotId) {
+                    continue;
+                }
+                const otherTypes = resolveInsertPaletteEntries(
+                    DEFAULT_INSERT_PALETTE_CONFIG,
+                    resolver,
+                    createStageSurface(otherSlotId),
+                ).map(entry => entry.module.type);
+                expect(otherTypes).not.toContain(widget.type);
+            }
+
+            const appTypes = resolveInsertPaletteEntries(
+                DEFAULT_INSERT_PALETTE_CONFIG,
+                resolver,
+                "appSurface",
+            ).map(entry => entry.module.type);
+            expect(appTypes).not.toContain(widget.type);
+        }
     });
 
     it("keeps overflow entries in the resolved palette entries", () => {

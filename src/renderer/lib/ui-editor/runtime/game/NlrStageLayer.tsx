@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, type ReactNode } from "react";
 import {
     DevTools,
     GameProviders,
@@ -16,6 +16,8 @@ export type NlrStageSession = {
     compiled: CompiledNlrStory;
     width: number;
     height: number;
+    /** On-Stage Game UI node rendered as Player children (mounted inside NLR's RootLayout). */
+    onStageNode?: ReactNode;
 };
 
 const devToolsWithStaticId = DevTools as typeof DevTools & { setStaticId?: unknown };
@@ -113,6 +115,12 @@ export function NlrStageLayer(props: {
     session: NlrStageSession | null;
     interactive: boolean;
     /**
+     * Whether the On-Stage Game UI (Player children) should render. Gated on the game stage being
+     * visible so on-stage elements never show during the pre-game boot preload or between app
+     * page transitions before a story is entered.
+     */
+    renderOnStage: boolean;
+    /**
      * The Player has initialised and the `LiveGame` is available (Player `onReady`). This is the
      * "environment ready" signal used to dispatch the `gameReady` blueprint event and store the
      * live game. The game has NOT entered any story yet — `liveGame.newGame()` is only called by
@@ -130,7 +138,7 @@ export function NlrStageLayer(props: {
     onFirstSceneReady: (sessionId: string) => void;
     onError: (error: Error) => void;
 }) {
-    const { session, interactive, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onError } = props;
+    const { session, interactive, renderOnStage, onFirstSceneReady, onEnvironmentReady, onLiveGameReady, onError } = props;
     const startedSessionRef = useRef<string | null>(null);
     const stageRootRef = useRef<HTMLDivElement>(null);
 
@@ -200,7 +208,9 @@ export function NlrStageLayer(props: {
                     onPreloadComplete={handlePreloadComplete}
                     onFirstSceneReady={handleFirstSceneReady}
                     onError={(error) => onError(error)}
-                />
+                >
+                    {renderOnStage ? session.onStageNode ?? null : null}
+                </Player>
             </GameProviders>
         </div>
     );

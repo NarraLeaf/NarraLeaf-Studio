@@ -14,16 +14,21 @@ import { Services } from "../services";
 import { UIDocumentService } from "./UIDocumentService";
 import {
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
+    BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
+    BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
 } from "@shared/types/blueprint/graph";
 
@@ -97,13 +102,21 @@ function createHarness(options: { withLocalBlueprint?: boolean } = {}) {
                 surfaceId,
                 elementId,
             }),
-        ensureWidgetValueBlueprint: (input: { surfaceId: string; elementId: string; propPath: string; displayName?: string }) =>
-            createGraphBlueprint(`widget-value-${input.elementId}-${input.propPath}`, input.displayName ?? "Value", {
+        ensureWidgetValueBlueprint: (input: { surfaceId: string; elementId: string; propPath: string; displayName?: string }) => {
+            const id = createGraphBlueprint(`widget-value-${input.elementId}-${input.propPath}`, input.displayName ?? "Value", {
                 kind: "widgetValue",
                 surfaceId: input.surfaceId,
                 elementId: input.elementId,
                 propPath: input.propPath,
-            }),
+            });
+            const blueprint = blueprintDocument.blueprints[id];
+            blueprint.program.graphs.events.init = blueprint.program.graphs.events.init ?? {
+                id: "init",
+                name: "Init",
+                graph: { nodes: {}, edges: [] },
+            };
+            return id;
+        },
         applyBlueprintMutation: (mutator: (doc: any) => void) => mutator(blueprintDocument),
         getBlueprintDocument: () => blueprintDocument,
     };
@@ -289,6 +302,146 @@ describe("UIDocumentService surface creation", () => {
         expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_FLOW_IF)).toBe(true);
         expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY)).toBe(true);
         expect(nametagNodeTypes.has(BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT)).toBe(true);
+    });
+
+    it("creates Notification Game UI with a list-driven template and message value binding", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+
+        const notification = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "Notification",
+            stageMount: { kind: "slot", slotId: "notification" },
+        }) as UIStageSurface;
+        const doc = service.getDocument();
+        const root = doc.elements[notification.rootElementId]!;
+        const list = doc.elements[root.childrenIds[0]!]!;
+        const itemContainer = doc.elements[list.childrenIds[0]!]!;
+        const itemText = doc.elements[itemContainer.childrenIds[0]!]!;
+
+        expect(notification.mount.slotId).toBe("notification");
+        expect(list.type).toBe("nl.notification.list");
+        expect(list.props).toMatchObject({ itemKeyPath: "id", itemGap: 12 });
+        expect(itemContainer.type).toBe("nl.container");
+        expect(itemContainer.extra?.listSlot).toBe("itemTemplate");
+        expect(itemText.type).toBe("nl.text");
+        expect(itemText.valueBindings?.text).toMatchObject({ kind: "blueprintValue", valueType: "string" });
+
+        const valueBlueprint = blueprintDocument.blueprints[`widget-value-${itemText.id}-text`];
+        const valueGraph = valueBlueprint.program.graphs.events.init.graph;
+        const valueNodes = Object.values(valueGraph.nodes) as any[];
+        expect(valueNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS)).toBe(true);
+        expect(valueNodes.some((node: any) =>
+            node.type === BLUEPRINT_NODE_TYPE_DATA_JSON_GET && node.params?.path === "message"
+        )).toBe(true);
+        expect(valueNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)).toBe(true);
+    });
+
+    it("creates Choice Game UI with select wiring and item text value binding", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+
+        const choice = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "Choice",
+            stageMount: { kind: "slot", slotId: "choice" },
+        }) as UIStageSurface;
+        const doc = service.getDocument();
+        const root = doc.elements[choice.rootElementId]!;
+        const list = doc.elements[root.childrenIds[0]!]!;
+        const itemContainer = doc.elements[list.childrenIds[0]!]!;
+        const itemText = doc.elements[itemContainer.childrenIds[0]!]!;
+
+        expect(choice.mount.slotId).toBe("choice");
+        expect(list.type).toBe("nl.choice.list");
+        expect(list.props).toMatchObject({ itemKeyPath: "index", itemGap: 16 });
+        expect(itemContainer.extra?.listSlot).toBe("itemTemplate");
+        expect(itemText.valueBindings?.text).toMatchObject({ kind: "blueprintValue", valueType: "string" });
+
+        const valueBlueprint = blueprintDocument.blueprints[`widget-value-${itemText.id}-text`];
+        const valueNodes = Object.values(valueBlueprint.program.graphs.events.init.graph.nodes) as any[];
+        expect(valueNodes.some((node: any) =>
+            node.type === BLUEPRINT_NODE_TYPE_DATA_JSON_GET && node.params?.path === "text"
+        )).toBe(true);
+
+        const listBlueprint = blueprintDocument.blueprints[`widget-main-${list.id}`];
+        expect(Object.keys(listBlueprint.program.graphs.events)).toEqual(["choiceSelect"]);
+        const selectGraph = listBlueprint.program.graphs.events.choiceSelect.graph;
+        const selectNodes = Object.values(selectGraph.nodes) as any[];
+        expect(selectNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toBe(true);
+        expect(selectNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_GAME_CHOOSE)).toBe(true);
+        const edgeKeys = selectGraph.edges.map((edge: any) =>
+            `${edge.from.port}->${edge.to.port}`
+        );
+        expect(edgeKeys).toEqual(expect.arrayContaining(["then->in", "index->index"]));
+    });
+
+    it("creates NVL Game UI with next wiring, nametag binding, and the NVL texts leaf", () => {
+        const { service, blueprintDocument } = createHarness({ withLocalBlueprint: true });
+
+        const nvl = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "NVL",
+            stageMount: { kind: "slot", slotId: "nvl" },
+        }) as UIStageSurface;
+        const doc = service.getDocument();
+        const root = doc.elements[nvl.rootElementId]!;
+        const interactionLayer = doc.elements[root.childrenIds[0]!]!;
+        const panel = doc.elements[root.childrenIds[1]!]!;
+        const list = doc.elements[panel.childrenIds[0]!]!;
+        const nametag = doc.elements[list.childrenIds[0]!]!;
+        const texts = doc.elements[list.childrenIds[1]!]!;
+
+        expect(nvl.mount.slotId).toBe("nvl");
+        expect(interactionLayer.type).toBe("nl.container");
+        expect(list.type).toBe("nl.nvl.list");
+        expect(nametag.type).toBe("nl.text");
+        expect(nametag.extra?.listSlot).toBe("itemTemplate");
+        expect(texts.type).toBe("nl.nvl.texts");
+        expect(texts.extra?.listSlot).toBe("itemTemplate");
+        expect(nametag.valueBindings?.text).toMatchObject({ kind: "blueprintValue", valueType: "string" });
+
+        const valueBlueprint = blueprintDocument.blueprints[`widget-value-${nametag.id}-text`];
+        const valueNodes = Object.values(valueBlueprint.program.graphs.events.init.graph.nodes) as any[];
+        expect(valueNodes.some((node: any) =>
+            node.type === BLUEPRINT_NODE_TYPE_DATA_JSON_GET && node.params?.path === "nametag"
+        )).toBe(true);
+
+        // Advancement graph is hosted on the Panel (nl.container) because the NVL List is a
+        // collection widget without a Mouse Click head.
+        expect(blueprintDocument.blueprints[`widget-main-${list.id}`]).toBeUndefined();
+        const panelBlueprint = blueprintDocument.blueprints[`widget-main-${panel.id}`];
+        expect(Object.keys(panelBlueprint.program.graphs.events)).toEqual(["nvlNext"]);
+        const nextGraph = panelBlueprint.program.graphs.events.nvlNext.graph;
+        const nextNodes = Object.values(nextGraph.nodes) as any[];
+        expect(nextNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_GAME_NEXT)).toBe(true);
+        expect(nextNodes.some((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
+        expect(nextNodes.some((node: any) =>
+            node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP &&
+            node.params?.[BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME] === " "
+        )).toBe(true);
+        const elementClickTargets = nextNodes
+            .filter((node: any) => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK)
+            .map((node: any) => node.params?.elementId);
+        expect(elementClickTargets).toEqual([interactionLayer.id]);
+    });
+
+    it("creates On-Stage Game UI as a bare transparent root", () => {
+        const { service } = createHarness({ withLocalBlueprint: true });
+
+        const onStage = service.createSurface({
+            kind: "stageSurface",
+            host: "player",
+            name: "HUD",
+            stageMount: { kind: "slot", slotId: "onStage" },
+        }) as UIStageSurface;
+        const doc = service.getDocument();
+        const root = doc.elements[onStage.rootElementId]!;
+
+        expect(onStage.mount.slotId).toBe("onStage");
+        expect(onStage.settings?.backgroundColor).toBe("transparent");
+        expect(root.childrenIds).toEqual([]);
     });
 
     it("returns the existing active Game UI when creating a duplicate slot", () => {

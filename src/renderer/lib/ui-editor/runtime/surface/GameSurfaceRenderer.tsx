@@ -28,6 +28,14 @@ export type GameSurfaceRendererProps = {
     interactive?: boolean;
     keyboardInteractive?: boolean;
     onRuntimeSubscriptionsReady?: () => void;
+    /**
+     * When "none", the surface shell/scaler divs are click-through so empty areas do not block
+     * whatever renders behind them. Widget elements re-enable pointer events themselves via their
+     * node wrappers. Used by the On-Stage slot, whose NLR RootLayout host forces
+     * `pointer-events: auto` on all descendants via a universal-selector CSS rule that only an
+     * inline style can override.
+     */
+    surfacePointerEvents?: CSSProperties["pointerEvents"];
 };
 
 export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
@@ -46,6 +54,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         interactive = true,
         keyboardInteractive = interactive,
         onRuntimeSubscriptionsReady,
+        surfacePointerEvents,
     } = props;
     const [, setBindingRenderTick] = useState(0);
     const [, setRuntimePatchRenderTick] = useState(0);
@@ -127,6 +136,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         width: scaledWidth,
         height: scaledHeight,
         overflow: "hidden",
+        ...(surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
     };
     const surfaceStyle: CSSProperties = {
         position: "relative",
@@ -136,6 +146,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         backgroundColor: getSurfaceBackgroundColor(surface),
         transform: `scale(${safeScale})`,
         transformOrigin: "top left",
+        ...(surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
     };
 
     return (

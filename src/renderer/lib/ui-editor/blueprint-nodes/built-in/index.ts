@@ -12,6 +12,7 @@ import { dataBlueprintNodes } from "./dataNodes";
 import { devtoolsBlueprintNodes } from "./devtoolsNodes";
 import { elementBlueprintNodes } from "./elementNodes";
 import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
+import { fnBlueprintNodes } from "./fnNodes";
 import { frameBlueprintNodes } from "./frameNodes";
 import { gameBlueprintNodes } from "./gameNodes";
 import { listBlueprintNodes } from "./listNodes";
@@ -31,6 +32,7 @@ export { dataBlueprintNodes } from "./dataNodes";
 export { devtoolsBlueprintNodes } from "./devtoolsNodes";
 export { elementBlueprintNodes } from "./elementNodes";
 export { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
+export { fnBlueprintNodes } from "./fnNodes";
 export { frameBlueprintNodes } from "./frameNodes";
 export { gameBlueprintNodes } from "./gameNodes";
 export { listBlueprintNodes } from "./listNodes";
@@ -49,6 +51,7 @@ export { imageAssetBlueprintNodes, widgetPropertyBlueprintNodes } from "./widget
 export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...eventHeadBlueprintNodes,
     ...broadcastBlueprintNodes,
+    ...fnBlueprintNodes,
     ...frameBlueprintNodes,
     ...gameBlueprintNodes,
     ...controlFlowBlueprintNodes,

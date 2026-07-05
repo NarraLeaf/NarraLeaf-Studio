@@ -33,6 +33,11 @@ export type InsertPaletteEntry = {
 export const DEFAULT_INSERT_PALETTE_CONFIG = [
     { type: "nl.container" },
     { type: "nl.text" },
+    { type: "nl.dialog.sentence", surfaceKinds: ["stageSurface"], stageSlots: ["dialog"] },
+    { type: "nl.notification.list", surfaceKinds: ["stageSurface"], stageSlots: ["notification"] },
+    { type: "nl.choice.list", surfaceKinds: ["stageSurface"], stageSlots: ["choice"] },
+    { type: "nl.nvl.list", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
+    { type: "nl.nvl.texts", surfaceKinds: ["stageSurface"], stageSlots: ["nvl"] },
     { type: "nl.image" },
     { type: "nl.button" },
     { type: "nl.slider", placement: "overflow" },
@@ -46,6 +51,7 @@ export const DEFAULT_INSERT_PALETTE_CONFIG = [
 - `type`: 已注册的 widget module type，例如 `nl.text`。
 - `placement`: 可选。省略时等同于 `primary`。
 - `surfaceKinds`: 可选。限制 entry 只在指定 surface kind 中出现；不设置表示 Page 和 Game UI 都可见。
+- `stageSlots`: 可选。限制 entry 只在指定 Game UI slot 的 stage surface 中出现（slot 私有控件使用）。
 - `primary`: 直接显示在 Docker Bar 主栏。
 - `overflow`: 收进主栏最后的三个点按钮；点击后三点按钮上方显示垂直菜单，菜单项包含 icon 和 display name。
 

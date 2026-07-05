@@ -59,6 +59,8 @@ export type BehaviorNodeExecutionContext = {
     };
     persistentVariables?: Record<string, BlueprintPersistentVariable>;
     valueExecution?: BehaviorGraphValueExecution;
+    /** Nesting depth of blueprint fn invocations; guards runaway recursion in the dispatcher. */
+    fnCallDepth?: number;
 };
 
 export type BehaviorNodeDefinition = {

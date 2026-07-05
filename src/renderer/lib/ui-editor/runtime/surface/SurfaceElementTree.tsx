@@ -8,7 +8,7 @@ import {
     getUIComponentLink,
     isUIElementFlowLayoutChild,
 } from "@shared/types/ui-editor/document";
-import type { UIListItemScope } from "@shared/types/ui-editor/list";
+import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
@@ -873,7 +873,7 @@ function renderElementTree(
         .filter((node): node is ReactNode => node !== null);
     };
 
-    const children = resolved.type === "nl.list" || resolved.type === "nl.slider" ? [] : renderChildren();
+    const children = isListLikeWidgetType(resolved.type) || resolved.type === "nl.slider" ? [] : renderChildren();
 
     const renderer = rendererRegistry.get(resolved.type);
     const linkedComponentContent = renderLinkedComponentInstanceContent({
@@ -918,6 +918,7 @@ function renderElementTree(
                   />
               ),
               instanceKey,
+              listItemScope: listItemScope ?? null,
               runtimeData: blueprintBindingContext
                   ? {
                         surfaceState: blueprintBindingContext.surfaceState,
