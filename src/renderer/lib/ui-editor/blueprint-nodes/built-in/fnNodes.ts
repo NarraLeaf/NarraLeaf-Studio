@@ -91,7 +91,8 @@ export const fnBlueprintNodes: BlueprintNodeDef[] = [
             fixedDataInputIds: [],
             generatedIdPrefix: "ret",
             valueType: "string",
-            allowInlineLiteral: true,
+            // Return results must be wired from a value source; no on-card inline literal.
+            allowInlineLiteral: false,
             addButtonLabel: "Add return value",
             pinLabelParamKey: BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_LABELS,
             defaultPinLabelPrefix: "result",
@@ -104,7 +105,6 @@ export const fnBlueprintNodes: BlueprintNodeDef[] = [
                     kind: "input",
                     semantic: "data",
                     valueType: "string",
-                    allowInlineLiteral: true,
                 },
             ],
         },

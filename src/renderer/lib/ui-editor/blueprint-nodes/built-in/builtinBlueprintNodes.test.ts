@@ -6522,14 +6522,14 @@ describe("fn blueprint nodes", () => {
         expect(resolveEffectiveBlueprintNodePins(callDef, {}).map(pin => pin.id)).toEqual(["in", "next"]);
     });
 
-    it("gates Fn Return inline literals by the picked value type", () => {
+    it("never offers inline literals on Fn Return result pins", () => {
         const returnDef = fnBlueprintNodes.find(def => def.type === FN_RETURN_TYPE)!;
         const pins = resolveEffectiveBlueprintNodePins(returnDef, {
             __fnReturnPinIds: ["ret_1_value", "ret_2_value"],
             __fnReturnPinTypes: { ret_2_value: "json" },
         });
 
-        expect(pins.find(pin => pin.id === "ret_1_value")?.allowInlineLiteral).toBe(true);
+        expect(pins.find(pin => pin.id === "ret_1_value")?.allowInlineLiteral).toBe(false);
         expect(pins.find(pin => pin.id === "ret_2_value")?.allowInlineLiteral).toBe(false);
     });
 
