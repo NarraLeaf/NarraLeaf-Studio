@@ -5,7 +5,7 @@ import type {
     PointerEvent as ReactPointerEvent,
     WheelEvent as ReactWheelEvent,
 } from "react";
-import { Activity, Pause, Play, Plus, Trash2 } from "lucide-react";
+import { Diamond, Pause, Play, Plus, Spline, Trash2 } from "lucide-react";
 import type {
     StoryAnimationAsset,
     StoryAnimationKeyframe,
@@ -16,6 +16,7 @@ import type {
     StoryDocument,
 } from "@shared/types/story";
 import { FocusArea, type EditorTabComponentProps } from "@/lib/workspace/services/ui/types";
+import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import type { EditorTabDefinition } from "../../registry/types";
 import { useWorkspace } from "../../context";
 import { Services } from "@/lib/workspace/services/services";
@@ -27,6 +28,7 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { Button } from "@/lib/components/elements/Button";
 import { Select, type SelectOption } from "@/lib/components/elements/Select";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
+import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
     isStoryMotionKeyframeSelectionData,
@@ -34,31 +36,43 @@ import {
 } from "./storyMotionTypes";
 import {
     STORY_MOTION_FPS,
-    STORY_MOTION_MAX_DURATION_MS,
     STORY_MOTION_PROPERTIES,
     clampStoryMotionTimeMs,
+    deleteStoryMotionKeyframe,
     deleteStoryMotionTrack,
     ensureStoryMotionTrack,
     formatStoryMotionTime,
     getStoryMotionDurationMs,
     getStoryMotionPropertyMeta,
     getStoryMotionTimeline,
-    isStoryMotionEditableProperty,
     sampleStoryMotionPreview,
+    sampleStoryMotionTrackValue,
+    snapStoryMotionTimeToFrame,
+    stepStoryMotionTimeByFrames,
     updateStoryMotionKeyframe,
     upsertStoryMotionKeyframe,
 } from "./storyMotionTimeline";
-import { StoryMotionStagePreview } from "./StoryMotionStagePreview";
+import { StoryMotionStagePreview, type StoryMotionPreviewDragMode } from "./StoryMotionStagePreview";
 import { resolveStoryMotionPreviewTarget } from "./storyMotionPreviewTarget";
 
 const ICON_BUTTON_CLASS = controlButtonClass();
-const ROW_HEIGHT = 34;
 const MIN_TIMELINE_WIDTH = 760;
 const DEFAULT_STAGE_SIZE = { width: 1280, height: 720 };
 const PREVIEW_CANVAS_PADDING = 2048;
 const MIN_STAGE_ZOOM = 0.2;
 const MAX_STAGE_ZOOM = 4;
 const STORY_MOTION_EDITOR_STATE_PREFIX = "storyMotion.editorState";
+const TIMELINE_LEFT_COL_PX = 180;
+const DEFAULT_TIMELINE_PX_PER_MS = 0.18;
+const MIN_TIMELINE_PX_PER_MS = 0.002;
+const MAX_TIMELINE_PX_PER_MS = 5;
+const TIMELINE_TICK_STEPS = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000];
+const TIMELINE_TICK_MIN_PX = 70;
+const TIMELINE_TICK_BUFFER_PX = 200;
+const TIMELINE_SCROLL_HEADROOM_PX = 240;
+const TIMELINE_PLAYHEAD_SNAP_PX = 8;
+const TIMELINE_UNDO_LIMIT = 100;
+const TIMELINE_UNDO_COALESCE_MS = 800;
 
 type StoryMotionPreviewViewportState = {
     scrollLeft: number;
@@ -71,13 +85,14 @@ type StoryMotionEditorPanelState = {
     playheadMs?: number;
     selectedKeyframeId?: string | null;
     selectedAddProperty?: StoryAnimationTrackProperty;
+    timelinePxPerMs?: number;
 };
 
 export function createStoryMotionEditorTab(payload: StoryMotionEditorPayload): EditorTabDefinition<StoryMotionEditorPayload> {
     return {
         id: `story-motion:${payload.animationId}`,
         title: "Story Motion",
-        icon: <Activity className="h-4 w-4" />,
+        icon: <Spline className="h-4 w-4" />,
         component: StoryMotionEditorTab,
         payload,
         closable: true,
@@ -129,13 +144,23 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
     const [loadError, setLoadError] = useState<string | null>(null);
     const [playheadMs, setPlayheadMs] = useState(0);
     const [playing, setPlaying] = useState(false);
-    const timelineZoom = 1;
+    const [timelinePxPerMs, setTimelinePxPerMs] = useState<number | null>(null);
+    const [timelineViewport, setTimelineViewport] = useState({ width: 0, scrollLeft: 0 });
+    const [keyframeDrag, setKeyframeDrag] = useState<{ keyframeId: string; timeMs: number } | null>(null);
     const [stageZoom, setStageZoom] = useState(1);
     const [previewPanning, setPreviewPanning] = useState(false);
     const autoKey = true;
     const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
     const [selectedAddProperty, setSelectedAddProperty] = useState<StoryAnimationTrackProperty>("position");
     const [previewOverride, setPreviewOverride] = useState<Partial<ReturnType<typeof sampleStoryMotionPreview>> | null>(null);
+    const timelineScrollRef = useRef<HTMLDivElement | null>(null);
+    const timelineFitInitializedRef = useRef<string | null>(null);
+    const playheadRef = useRef(0);
+    const durationRef = useRef(0);
+    const undoStackRef = useRef<StoryAnimationTimeline[]>([]);
+    const redoStackRef = useRef<StoryAnimationTimeline[]>([]);
+    const lastObservedTimelineRef = useRef<{ json: string; timeline: StoryAnimationTimeline } | null>(null);
+    const lastTimelineRecordAtRef = useRef(0);
 
     useEffect(() => {
         if (!storyService || !payload?.animationId) {
@@ -232,10 +257,13 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
 
     const timeline = useMemo(() => getStoryMotionTimeline(asset), [asset]);
     const durationMs = getStoryMotionDurationMs(timeline);
-    const timelineDurationMs = STORY_MOTION_MAX_DURATION_MS;
-    const pxPerMs = 0.18 * timelineZoom;
-    const timelineWidth = Math.max(MIN_TIMELINE_WIDTH, timelineDurationMs * pxPerMs + 80);
-    const tracks = useMemo(() => orderTracks(timeline.tracks.filter(track => isStoryMotionEditableProperty(track.property))), [timeline.tracks]);
+    const pxPerMs = timelinePxPerMs ?? DEFAULT_TIMELINE_PX_PER_MS;
+    const timelineWidth = Math.max(
+        timelineViewport.width - TIMELINE_LEFT_COL_PX,
+        MIN_TIMELINE_WIDTH,
+        durationMs * pxPerMs + Math.max(TIMELINE_SCROLL_HEADROOM_PX, (timelineViewport.width - TIMELINE_LEFT_COL_PX) * 0.5),
+    );
+    const tracks = useMemo(() => orderTracks(timeline.tracks), [timeline.tracks]);
     const selected = useMemo(() => findKeyframe(timeline, selectedKeyframeId), [selectedKeyframeId, timeline]);
     const addPropertyOptions = useMemo<SelectOption[]>(() => {
         const existing = new Set(tracks.map(track => track.property));
@@ -246,7 +274,23 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
                 label: item.label,
             }));
     }, [tracks]);
-    const preview = sampleStoryMotionPreview(timeline, playheadMs);
+    const previewTimeline = useMemo(() => {
+        if (!keyframeDrag) {
+            return timeline;
+        }
+        return {
+            ...timeline,
+            tracks: timeline.tracks.map(track => track.keyframes.some(keyframe => keyframe.id === keyframeDrag.keyframeId)
+                ? {
+                    ...track,
+                    keyframes: track.keyframes.map(keyframe => keyframe.id === keyframeDrag.keyframeId
+                        ? { ...keyframe, timeMs: keyframeDrag.timeMs }
+                        : keyframe),
+                }
+                : track),
+        };
+    }, [keyframeDrag, timeline]);
+    const preview = sampleStoryMotionPreview(previewTimeline, playheadMs);
     const visiblePreview = previewOverride
         ? { ...preview, ...previewOverride, position: previewOverride.position ?? preview.position }
         : preview;
@@ -256,8 +300,26 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
         blockId: payload?.actionContext?.blockId,
         fallbackKind: asset?.targetKind ?? "image",
         fallbackLabel: asset?.name ?? "Displayable",
-    }), [asset?.name, asset?.targetKind, document, payload?.actionContext?.blockId, payload?.actionContext?.sceneId]);
-    const stageSize = useMemo(() => resolveProjectStageSize(projectService), [projectService]);
+        previewAssetId: asset?.previewAssetId,
+    }), [asset?.name, asset?.previewAssetId, asset?.targetKind, document, payload?.actionContext?.blockId, payload?.actionContext?.sceneId]);
+    const stageSize = useMemo(() => resolveStoryMotionStageSize(projectService), [projectService]);
+    const { url: previewBackgroundUrl } = useAssetObjectUrl(asset?.previewBackgroundAssetId ?? null);
+    const positionPath = useMemo(() => {
+        const track = previewTimeline.tracks.find(item => item.property === "position");
+        if (!track || track.keyframes.length < 2) {
+            return [];
+        }
+        return [...track.keyframes]
+            .sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id))
+            .map(keyframe => {
+                const value = keyframe.value && typeof keyframe.value === "object" ? keyframe.value : {};
+                return {
+                    id: keyframe.id,
+                    x: (value.xalign ?? 0.5) * stageSize.width + (value.xoffset ?? 0),
+                    y: (value.yalign ?? 0.55) * stageSize.height + (value.yoffset ?? 0),
+                };
+            });
+    }, [previewTimeline, stageSize]);
 
     useEffect(() => {
         if (selectedKeyframeId && !selected) {
@@ -292,21 +354,66 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
     }, [editorStatePanelId, panelStateService, readEditorPanelState]);
 
     useEffect(() => {
+        playheadRef.current = playheadMs;
+    }, [playheadMs]);
+
+    useEffect(() => {
+        durationRef.current = durationMs;
+    }, [durationMs]);
+
+    useEffect(() => {
         if (!playing) {
             return;
         }
-        const startedAt = performance.now() - playheadMs;
-        const timer = window.setInterval(() => {
-            const next = performance.now() - startedAt;
-            if (next >= durationMs) {
-                setPlayheadMs(durationMs);
+        let frame = 0;
+        const startedAt = performance.now() - playheadRef.current;
+        const tick = (now: number) => {
+            const next = now - startedAt;
+            if (next >= durationRef.current) {
+                setPlayheadMs(durationRef.current);
                 setPlaying(false);
                 return;
             }
             setPlayheadMs(next);
-        }, 16);
-        return () => window.clearInterval(timer);
-    }, [durationMs, playing, playheadMs]);
+            frame = requestAnimationFrame(tick);
+        };
+        frame = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(frame);
+    }, [playing]);
+
+    useEffect(() => {
+        undoStackRef.current = [];
+        redoStackRef.current = [];
+        lastObservedTimelineRef.current = null;
+        lastTimelineRecordAtRef.current = 0;
+        timelineFitInitializedRef.current = null;
+    }, [payload?.animationId]);
+
+    useEffect(() => {
+        if (!asset) {
+            lastObservedTimelineRef.current = null;
+            return;
+        }
+        const json = JSON.stringify(getStoryMotionTimeline(asset));
+        const previous = lastObservedTimelineRef.current;
+        if (!previous) {
+            lastObservedTimelineRef.current = { json, timeline: JSON.parse(json) as StoryAnimationTimeline };
+            return;
+        }
+        if (previous.json === json) {
+            return;
+        }
+        const now = Date.now();
+        if (now - lastTimelineRecordAtRef.current > TIMELINE_UNDO_COALESCE_MS) {
+            undoStackRef.current.push(previous.timeline);
+            if (undoStackRef.current.length > TIMELINE_UNDO_LIMIT) {
+                undoStackRef.current.shift();
+            }
+        }
+        lastTimelineRecordAtRef.current = now;
+        redoStackRef.current = [];
+        lastObservedTimelineRef.current = { json, timeline: JSON.parse(json) as StoryAnimationTimeline };
+    }, [asset]);
 
     useEffect(() => {
         editorRootRef.current?.focus();
@@ -322,7 +429,8 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
         }
         const saved = readEditorPanelState();
         setStageZoom(saved.previewViewport?.zoom ?? 1);
-        setPlayheadMs(clampNumber(saved.playheadMs, 0, timelineDurationMs, 0));
+        setTimelinePxPerMs(saved.timelinePxPerMs ?? null);
+        setPlayheadMs(clampStoryMotionTimeMs(saved.playheadMs ?? 0));
         setSelectedKeyframeId(saved.selectedKeyframeId && findKeyframe(timeline, saved.selectedKeyframeId)
             ? saved.selectedKeyframeId
             : null);
@@ -331,7 +439,7 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
         }
         restoredEditorStateRef.current = restoreKey;
         initializedPreviewViewportRef.current = null;
-    }, [asset, editorStatePanelId, payload?.animationId, readEditorPanelState, timeline, timelineDurationMs]);
+    }, [asset, editorStatePanelId, payload?.animationId, readEditorPanelState, timeline]);
 
     useEffect(() => {
         if (!asset || !payload?.animationId) {
@@ -366,6 +474,60 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
     }, [asset, editorStatePanelId, payload?.animationId, readEditorPanelState, stageSize, stageZoom]);
 
     useEffect(() => {
+        if (!asset || !payload?.animationId) {
+            return;
+        }
+        const restoreKey = `${editorStatePanelId}:${payload.animationId}`;
+        if (restoredEditorStateRef.current !== restoreKey || timelineFitInitializedRef.current === restoreKey) {
+            return;
+        }
+        if (timelinePxPerMs !== null) {
+            timelineFitInitializedRef.current = restoreKey;
+            return;
+        }
+        const container = timelineScrollRef.current;
+        if (!container) {
+            return;
+        }
+        const frame = window.requestAnimationFrame(() => {
+            const visibleWidth = container.clientWidth - TIMELINE_LEFT_COL_PX;
+            const duration = durationRef.current;
+            const headroom = Math.max(duration * 0.15, 500);
+            if (visibleWidth > 0) {
+                setTimelinePxPerMs(clampTimelinePxPerMs(visibleWidth / (duration + headroom)));
+            }
+            timelineFitInitializedRef.current = restoreKey;
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [asset, editorStatePanelId, payload?.animationId, timelinePxPerMs]);
+
+    const hasAsset = Boolean(asset);
+    useEffect(() => {
+        if (!hasAsset) {
+            return;
+        }
+        const container = timelineScrollRef.current;
+        if (!container) {
+            return;
+        }
+        const update = () => {
+            const width = container.clientWidth;
+            const scrollLeft = Math.round(container.scrollLeft / 25) * 25;
+            setTimelineViewport(current => current.width === width && current.scrollLeft === scrollLeft
+                ? current
+                : { width, scrollLeft });
+        };
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(container);
+        container.addEventListener("scroll", update, { passive: true });
+        return () => {
+            observer.disconnect();
+            container.removeEventListener("scroll", update);
+        };
+    }, [hasAsset]);
+
+    useEffect(() => {
         const viewport = previewViewportRef.current;
         latestEditorStateRef.current = {
             previewViewport: viewport
@@ -378,8 +540,9 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
             playheadMs,
             selectedKeyframeId,
             selectedAddProperty,
+            timelinePxPerMs: timelinePxPerMs ?? latestEditorStateRef.current.timelinePxPerMs,
         };
-    }, [playheadMs, selectedAddProperty, selectedKeyframeId, stageZoom]);
+    }, [playheadMs, selectedAddProperty, selectedKeyframeId, stageZoom, timelinePxPerMs]);
 
     useEffect(() => () => {
         const viewport = previewViewportRef.current;
@@ -449,15 +612,18 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
         }));
     }, [updateAsset]);
 
-    const scrubToClientX = useCallback((clientX: number, rect: DOMRect) => {
-        const next = clampStoryMotionTimeMs((clientX - rect.left) / pxPerMs);
-        setPlayheadMs(next);
+    const scrubToClientX = useCallback((clientX: number, rect: DOMRect, snap: boolean) => {
+        const raw = (clientX - rect.left) / pxPerMs;
+        const value = snap ? snapStoryMotionTimeToFrame(raw, STORY_MOTION_FPS) : clampStoryMotionTimeMs(raw);
+        // The playhead stays inside the timeline; dragging past the end must not
+        // extend the lane or spawn phantom horizontal scroll.
+        setPlayheadMs(Math.min(durationRef.current, Math.max(0, value)));
     }, [pxPerMs]);
 
     const startPlayheadDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
         const rect = event.currentTarget.getBoundingClientRect();
-        scrubToClientX(event.clientX, rect);
-        const onMove = (moveEvent: PointerEvent) => scrubToClientX(moveEvent.clientX, rect);
+        scrubToClientX(event.clientX, rect, !event.altKey);
+        const onMove = (moveEvent: PointerEvent) => scrubToClientX(moveEvent.clientX, rect, !moveEvent.altKey);
         const onUp = () => {
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
@@ -489,21 +655,171 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
         selectKeyframe(track, keyframe);
         const startX = event.clientX;
         const startTime = keyframe.timeMs;
+        let lastTime = startTime;
         const onMove = (moveEvent: PointerEvent) => {
-            const nextTime = clampStoryMotionTimeMs(startTime + (moveEvent.clientX - startX) / pxPerMs);
-            updateTimeline(current => updateStoryMotionKeyframe(current, keyframe.id, currentKeyframe => ({
-                ...currentKeyframe,
-                timeMs: nextTime,
-            })));
-            setPlayheadMs(nextTime);
+            const raw = clampStoryMotionTimeMs(startTime + (moveEvent.clientX - startX) / pxPerMs);
+            lastTime = moveEvent.altKey ? raw : snapStoryMotionTimeToFrame(raw, STORY_MOTION_FPS);
+            setKeyframeDrag({ keyframeId: keyframe.id, timeMs: lastTime });
+            setPlayheadMs(lastTime);
         };
         const onUp = () => {
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
+            if (lastTime !== startTime) {
+                updateTimeline(current => updateStoryMotionKeyframe(current, keyframe.id, currentKeyframe => ({
+                    ...currentKeyframe,
+                    timeMs: lastTime,
+                })));
+            }
+            setKeyframeDrag(null);
         };
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
     }, [pxPerMs, selectKeyframe, updateTimeline]);
+
+    const addKeyframeAtTime = useCallback((track: StoryAnimationTrack, timeMs: number) => {
+        const time = clampStoryMotionTimeMs(timeMs);
+        const value = sampleStoryMotionTrackValue(track, time);
+        if (value === undefined) {
+            return;
+        }
+        updateTimeline(current => upsertStoryMotionKeyframe(current, track.property, time, value));
+    }, [updateTimeline]);
+
+    const handleLaneDoubleClick = useCallback((event: ReactMouseEvent<HTMLDivElement>, track: StoryAnimationTrack) => {
+        if ((event.target as HTMLElement | null)?.closest("button")) {
+            return;
+        }
+        const raw = clampStoryMotionTimeMs((event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerMs);
+        const timeMs = Math.abs(raw - playheadMs) * pxPerMs <= TIMELINE_PLAYHEAD_SNAP_PX
+            ? playheadMs
+            : event.altKey ? raw : snapStoryMotionTimeToFrame(raw, STORY_MOTION_FPS);
+        addKeyframeAtTime(track, timeMs);
+        setPlayheadMs(timeMs);
+    }, [addKeyframeAtTime, playheadMs, pxPerMs]);
+
+    const deleteSelectedKeyframe = useCallback(() => {
+        if (!selected) {
+            return;
+        }
+        const keyframeId = selected.keyframe.id;
+        setSelectedKeyframeId(null);
+        const selection = uiService?.getStore().getSelection();
+        if (
+            selection?.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE
+            && isStoryMotionKeyframeSelectionData(selection.data)
+            && selection.data.keyframeId === keyframeId
+        ) {
+            uiService?.getStore().setSelection({ type: null, data: null });
+        }
+        updateTimeline(current => deleteStoryMotionKeyframe(current, keyframeId));
+    }, [selected, uiService, updateTimeline]);
+
+    const restoreTimeline = useCallback((snapshot: StoryAnimationTimeline) => {
+        if (!storyService || !asset) {
+            return;
+        }
+        const nextAsset = storyService.updateAnimationAsset(asset.id, current => ({
+            ...current,
+            timeline: JSON.parse(JSON.stringify(snapshot)) as StoryAnimationTimeline,
+        }));
+        const json = JSON.stringify(getStoryMotionTimeline(nextAsset));
+        lastObservedTimelineRef.current = { json, timeline: JSON.parse(json) as StoryAnimationTimeline };
+        lastTimelineRecordAtRef.current = 0;
+        setAsset(nextAsset);
+    }, [asset, storyService]);
+
+    const undoTimelineEdit = useCallback(() => {
+        const snapshot = undoStackRef.current.pop();
+        if (!snapshot || !asset) {
+            return;
+        }
+        redoStackRef.current.push(lastObservedTimelineRef.current?.timeline ?? getStoryMotionTimeline(asset));
+        restoreTimeline(snapshot);
+    }, [asset, restoreTimeline]);
+
+    const redoTimelineEdit = useCallback(() => {
+        const snapshot = redoStackRef.current.pop();
+        if (!snapshot || !asset) {
+            return;
+        }
+        undoStackRef.current.push(lastObservedTimelineRef.current?.timeline ?? getStoryMotionTimeline(asset));
+        restoreTimeline(snapshot);
+    }, [asset, restoreTimeline]);
+
+    const stepPlayhead = useCallback((frames: number) => {
+        setPlayheadMs(current => Math.min(durationRef.current, stepStoryMotionTimeByFrames(current, frames, STORY_MOTION_FPS)));
+    }, []);
+
+    const keybindings = useMemo<KeybindingDefinition[]>(() => [
+        {
+            id: "undo",
+            key: "ctrl+z",
+            description: "Undo story motion edit",
+            handler: undoTimelineEdit,
+        },
+        {
+            id: "redo",
+            key: "ctrl+shift+z",
+            description: "Redo story motion edit",
+            handler: redoTimelineEdit,
+        },
+        {
+            id: "delete",
+            key: "delete",
+            description: "Delete selected keyframe",
+            handler: deleteSelectedKeyframe,
+        },
+        {
+            id: "backspace",
+            key: "backspace",
+            description: "Delete selected keyframe",
+            handler: deleteSelectedKeyframe,
+        },
+        {
+            id: "prev-frame",
+            key: "arrowleft",
+            description: "Step playhead back one frame",
+            handler: () => stepPlayhead(-1),
+        },
+        {
+            id: "next-frame",
+            key: "arrowright",
+            description: "Step playhead forward one frame",
+            handler: () => stepPlayhead(1),
+        },
+        {
+            id: "prev-frames",
+            key: "shift+arrowleft",
+            description: "Step playhead back ten frames",
+            handler: () => stepPlayhead(-10),
+        },
+        {
+            id: "next-frames",
+            key: "shift+arrowright",
+            description: "Step playhead forward ten frames",
+            handler: () => stepPlayhead(10),
+        },
+        {
+            id: "playhead-start",
+            key: "home",
+            description: "Move playhead to start",
+            handler: () => setPlayheadMs(0),
+        },
+        {
+            id: "playhead-end",
+            key: "end",
+            description: "Move playhead to end",
+            handler: () => setPlayheadMs(durationRef.current),
+        },
+    ], [deleteSelectedKeyframe, redoTimelineEdit, stepPlayhead, undoTimelineEdit]);
+
+    useKeybindings({
+        keybindings,
+        enabled: Boolean(asset && storyService),
+        when: whenEditorFocused(tabId),
+        idPrefix: `story-motion-editor-${tabId}`,
+    });
 
     const deleteTrack = useCallback((track: StoryAnimationTrack) => {
         if (selectedKeyframeId && track.keyframes.some(keyframe => keyframe.id === selectedKeyframeId)) {
@@ -521,7 +837,7 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
         updateTimeline(current => deleteStoryMotionTrack(current, track.id));
     }, [payload?.animationId, selectedKeyframeId, uiService, updateTimeline]);
 
-    const startPreviewDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>, mode: "position" | "zoom" | "rotation") => {
+    const startPreviewDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>, mode: StoryMotionPreviewDragMode) => {
         if (event.button !== 0) {
             return;
         }
@@ -533,24 +849,37 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
         let latestValue: StoryAnimationKeyframeValue | null = null;
         let latestProperty: StoryAnimationTrackProperty | null = null;
         const onMove = (moveEvent: PointerEvent) => {
-            const dx = (moveEvent.clientX - startX) / stageZoom;
-            const dy = (moveEvent.clientY - startY) / stageZoom;
+            // Position tracks the cursor in stage space (compensate the stage zoom);
+            // scale/zoom/rotation follow raw screen movement so sensitivity stays
+            // constant regardless of how far the stage is zoomed out.
+            const screenDx = moveEvent.clientX - startX;
+            const screenDy = moveEvent.clientY - startY;
             if (mode === "position") {
                 const position = {
                     ...startPreview.position,
-                    xoffset: startPreview.position.xoffset + dx,
-                    yoffset: startPreview.position.yoffset + dy,
+                    xoffset: startPreview.position.xoffset + screenDx / stageZoom,
+                    yoffset: startPreview.position.yoffset + screenDy / stageZoom,
                 };
                 latestProperty = "position";
                 latestValue = position;
                 setPreviewOverride({ position });
             } else if (mode === "zoom") {
-                const zoomValue = Math.max(0.1, startPreview.zoom + dx / 180);
+                const zoomValue = Math.max(0.1, startPreview.zoom + screenDx / 180);
                 latestProperty = "zoom";
                 latestValue = Number(zoomValue.toFixed(3));
                 setPreviewOverride({ zoom: zoomValue });
+            } else if (mode === "scaleX") {
+                const scaleX = Math.max(0.05, startPreview.scaleX + screenDx / 180);
+                latestProperty = "scaleX";
+                latestValue = Number(scaleX.toFixed(3));
+                setPreviewOverride({ scaleX });
+            } else if (mode === "scaleY") {
+                const scaleY = Math.max(0.05, startPreview.scaleY + screenDy / 180);
+                latestProperty = "scaleY";
+                latestValue = Number(scaleY.toFixed(3));
+                setPreviewOverride({ scaleY });
             } else {
-                const rotation = startPreview.rotation + dx / 2;
+                const rotation = startPreview.rotation + screenDx / 2;
                 latestProperty = "rotation";
                 latestValue = Number(rotation.toFixed(2));
                 setPreviewOverride({ rotation });
@@ -558,7 +887,7 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
         };
         const onUp = () => {
             if (autoKey && latestProperty && latestValue !== null) {
-                updateTimeline(current => upsertStoryMotionKeyframe(current, latestProperty!, playheadMs, latestValue!, "easeOut"));
+                updateTimeline(current => upsertStoryMotionKeyframe(current, latestProperty!, playheadMs, latestValue!));
             }
             setPreviewOverride(null);
             window.removeEventListener("pointermove", onMove);
@@ -691,17 +1020,44 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
     }, [persistCurrentPreviewViewport]);
 
     const handleTimelineWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
-        if (!event.shiftKey) {
+        if (event.ctrlKey) {
+            const container = timelineScrollRef.current;
+            if (!container) {
+                return;
+            }
+            event.preventDefault();
+            const rect = container.getBoundingClientRect();
+            const pointerX = Math.max(TIMELINE_LEFT_COL_PX, event.clientX - rect.left);
+            const scrollLeft = container.scrollLeft;
+            setTimelinePxPerMs(current => {
+                const base = current ?? DEFAULT_TIMELINE_PX_PER_MS;
+                const next = clampTimelinePxPerMs(base * Math.exp(-event.deltaY * 0.0015));
+                if (next === base) {
+                    return current;
+                }
+                const timeAtPointer = Math.max(0, (scrollLeft + pointerX - TIMELINE_LEFT_COL_PX) / base);
+                window.requestAnimationFrame(() => {
+                    container.scrollLeft = timeAtPointer * next + TIMELINE_LEFT_COL_PX - pointerX;
+                });
+                persistEditorPanelState({ timelinePxPerMs: next });
+                return next;
+            });
+            return;
+        }
+        const container = event.currentTarget;
+        const horizontalIntent = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
+        const noVerticalOverflow = container.scrollHeight <= container.clientHeight + 1;
+        if (!horizontalIntent && !noVerticalOverflow) {
             return;
         }
         const rawDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-        const delta = normalizeWheelDelta(rawDelta, event.deltaMode, event.currentTarget.clientWidth);
+        const delta = normalizeWheelDelta(rawDelta, event.deltaMode, container.clientWidth);
         if (delta === 0) {
             return;
         }
         event.preventDefault();
-        event.currentTarget.scrollLeft += delta;
-    }, []);
+        container.scrollLeft += delta;
+    }, [persistEditorPanelState]);
 
     if (!asset) {
         return (
@@ -730,10 +1086,13 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
                     className="h-1.5 min-w-32 flex-1 accent-primary"
                     type="range"
                     min={0}
-                    max={timelineDurationMs}
-                    value={Math.min(playheadMs, timelineDurationMs)}
-                    onChange={event => setPlayheadMs(clampNumber(Number(event.target.value), 0, timelineDurationMs, 0))}
+                    max={durationMs}
+                    value={Math.min(playheadMs, durationMs)}
+                    onChange={event => setPlayheadMs(clampNumber(Number(event.target.value), 0, durationMs, 0))}
                 />
+                <span className="shrink-0 text-[11px] tabular-nums text-slate-500">
+                    {formatStoryMotionTime(Math.min(playheadMs, durationMs))}
+                </span>
             </div>
 
             <div className="grid min-h-0 flex-1 grid-cols-1">
@@ -780,7 +1139,29 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
                                         onPointerDrag={startPreviewDrag}
                                         stageSize={stageSize}
                                         showLabel={false}
+                                        backgroundUrl={previewBackgroundUrl}
+                                        allowOverflow
+                                        canvasScale={stageZoom}
                                     />
+                                    {positionPath.length > 1 ? (
+                                        <svg
+                                            className="pointer-events-none absolute left-0 top-0"
+                                            width={stageSize.width}
+                                            height={stageSize.height}
+                                            viewBox={`0 0 ${stageSize.width} ${stageSize.height}`}
+                                        >
+                                            <polyline
+                                                points={positionPath.map(point => `${point.x},${point.y}`).join(" ")}
+                                                fill="none"
+                                                stroke="rgba(31,158,255,0.55)"
+                                                strokeWidth={2}
+                                                strokeDasharray="6 6"
+                                            />
+                                            {positionPath.map(point => (
+                                                <circle key={point.id} cx={point.x} cy={point.y} r={4} fill="#1f9eff" stroke="rgba(255,255,255,0.7)" />
+                                            ))}
+                                        </svg>
+                                    ) : null}
                                 </div>
                             </div>
                         </div>
@@ -804,7 +1185,7 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
                                 variant="secondary"
                                 size="md"
                                 type="button"
-                                onClick={() => updateTimeline(current => ensureStoryMotionTrack(current, selectedAddProperty))}
+                                onClick={() => updateTimeline(current => ensureStoryMotionTrack(current, selectedAddProperty, playheadMs))}
                                 disabled={addPropertyOptions.length === 0}
                                 className="shrink-0"
                             >
@@ -812,20 +1193,20 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
                                 Add property
                             </Button>
                         </div>
-                        <div className="h-[calc(100%-48px)] overflow-auto overscroll-contain" onWheel={handleTimelineWheel}>
+                        <div ref={timelineScrollRef} className="h-[calc(100%-48px)] overflow-auto overscroll-contain" onWheel={handleTimelineWheel}>
                             <div
                                 className="grid"
                                 style={{
-                                    width: 180 + timelineWidth,
+                                    width: TIMELINE_LEFT_COL_PX + timelineWidth,
                                     minWidth: "100%",
-                                    gridTemplateColumns: `180px ${timelineWidth}px`,
+                                    gridTemplateColumns: `${TIMELINE_LEFT_COL_PX}px ${timelineWidth}px`,
                                 }}
                             >
                                 <div className="sticky left-0 top-0 z-40 flex h-8 items-center border-r border-b border-white/10 bg-[#0f1013] px-3 text-xs font-medium text-slate-300">
                                     Property
                                 </div>
                                 <div className="sticky top-0 z-30 h-8 border-b border-white/10 bg-[#0f1013]" onPointerDown={startPlayheadDrag}>
-                                    {buildTicks(timelineDurationMs, timelineZoom, STORY_MOTION_FPS).map(tick => (
+                                    {buildTicks(pxPerMs, timelineWidth, timelineViewport, STORY_MOTION_FPS).map(tick => (
                                         <div key={tick.timeMs} className="absolute top-0 h-full border-l border-white/10" style={{ left: tick.timeMs * pxPerMs }}>
                                             <span className="ml-1 text-[10px] text-slate-500">{tick.label}</span>
                                         </div>
@@ -840,6 +1221,19 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
                                             <span className="min-w-0 flex-1 truncate">{getStoryMotionPropertyMeta(track.property).label}</span>
                                             <button
                                                 type="button"
+                                                className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-500 opacity-0 transition group-hover:opacity-100 hover:bg-primary/10 hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                                                onClick={event => {
+                                                    event.stopPropagation();
+                                                    addKeyframeAtTime(track, playheadMs);
+                                                }}
+                                                onPointerDown={event => event.stopPropagation()}
+                                                title="Add keyframe at playhead"
+                                                aria-label={`Add ${getStoryMotionPropertyMeta(track.property).label} keyframe at playhead`}
+                                            >
+                                                <Diamond className="h-3.5 w-3.5" />
+                                            </button>
+                                            <button
+                                                type="button"
                                                 className="grid h-6 w-6 shrink-0 place-items-center rounded text-slate-500 opacity-0 transition group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-red-400/50"
                                                 onClick={event => {
                                                     event.stopPropagation();
@@ -852,7 +1246,10 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
                                                 <Trash2 className="h-3.5 w-3.5" />
                                             </button>
                                         </div>
-                                        <div className="relative h-[34px] border-b border-white/[0.06]">
+                                        <div
+                                            className="relative h-[34px] border-b border-white/[0.06]"
+                                            onDoubleClick={event => handleLaneDoubleClick(event, track)}
+                                        >
                                             <div className="absolute top-0 z-20 h-full w-px bg-orange-400/90" style={{ left: playheadMs * pxPerMs }} />
                                             {track.keyframes.map(keyframe => (
                                                 <button
@@ -864,7 +1261,9 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
                                                             ? "border-orange-300 bg-orange-400"
                                                             : "border-primary/80 bg-[#1f9eff]",
                                                     ].join(" ")}
-                                                    style={{ left: keyframe.timeMs * pxPerMs }}
+                                                    style={{
+                                                        left: (keyframeDrag?.keyframeId === keyframe.id ? keyframeDrag.timeMs : keyframe.timeMs) * pxPerMs,
+                                                    }}
                                                     onClick={() => selectKeyframe(track, keyframe)}
                                                     onPointerDown={event => startKeyframeDrag(event, track, keyframe)}
                                                     title={`${getStoryMotionPropertyMeta(track.property).label} ${formatStoryMotionTime(keyframe.timeMs, STORY_MOTION_FPS)}`}
@@ -889,9 +1288,6 @@ function findKeyframe(timeline: StoryAnimationTimeline, keyframeId: string | nul
         return null;
     }
     for (const track of timeline.tracks) {
-        if (!isStoryMotionEditableProperty(track.property)) {
-            continue;
-        }
         const keyframe = track.keyframes.find(item => item.id === keyframeId);
         if (keyframe) {
             return { track, keyframe };
@@ -932,6 +1328,10 @@ function normalizeStoryMotionEditorPanelState(raw: unknown): StoryMotionEditorPa
     if (isStoryMotionTrackPropertyValue(record.selectedAddProperty)) {
         state.selectedAddProperty = record.selectedAddProperty;
     }
+    const timelinePxPerMs = Number(record.timelinePxPerMs);
+    if (Number.isFinite(timelinePxPerMs) && timelinePxPerMs > 0) {
+        state.timelinePxPerMs = clampTimelinePxPerMs(timelinePxPerMs);
+    }
     return state;
 }
 
@@ -954,7 +1354,7 @@ function normalizeStoryMotionPreviewViewport(raw: unknown): StoryMotionPreviewVi
 }
 
 function isStoryMotionTrackPropertyValue(value: unknown): value is StoryAnimationTrackProperty {
-    return typeof value === "string" && isStoryMotionEditableProperty(value as StoryAnimationTrackProperty);
+    return typeof value === "string" && STORY_MOTION_PROPERTIES.some(item => item.property === value);
 }
 
 function centerPreviewViewport(
@@ -987,24 +1387,43 @@ function normalizeWheelDelta(delta: number, deltaMode: number, pageSize: number)
     return delta;
 }
 
-function buildTicks(durationMs: number, zoom: number, fps: number): { timeMs: number; label: string }[] {
-    const step = zoom > 1.5 ? 500 : zoom > 0.85 ? 1000 : 2500;
+function buildTicks(
+    pxPerMs: number,
+    laneWidth: number,
+    viewport: { width: number; scrollLeft: number },
+    fps: number,
+): { timeMs: number; label: string }[] {
+    const step = TIMELINE_TICK_STEPS.find(candidate => candidate * pxPerMs >= TIMELINE_TICK_MIN_PX)
+        ?? TIMELINE_TICK_STEPS[TIMELINE_TICK_STEPS.length - 1];
+    const maxTimeMs = laneWidth / pxPerMs;
+    // Buffer a full viewport on each side so fast horizontal scrolls never outrun
+    // the generated window (the scroll position is sampled in coarse steps).
+    const bufferPx = Math.max(TIMELINE_TICK_BUFFER_PX, viewport.width);
+    const startMs = viewport.width > 0
+        ? Math.max(0, (viewport.scrollLeft - TIMELINE_LEFT_COL_PX - bufferPx) / pxPerMs)
+        : 0;
+    const endMs = viewport.width > 0
+        ? Math.min(maxTimeMs, (viewport.scrollLeft + viewport.width - TIMELINE_LEFT_COL_PX + bufferPx) / pxPerMs)
+        : maxTimeMs;
     const ticks: { timeMs: number; label: string }[] = [];
-    for (let timeMs = 0; timeMs <= durationMs + step; timeMs += step) {
-        const clamped = Math.min(durationMs, timeMs);
-        const frame = Math.round((clamped / 1000) * fps);
+    for (let timeMs = Math.floor(startMs / step) * step; timeMs <= endMs; timeMs += step) {
+        const frame = Math.round((timeMs / 1000) * fps);
         ticks.push({
-            timeMs: clamped,
-            label: `${(clamped / 1000).toFixed(clamped % 1000 === 0 ? 0 : 2)}s f${frame}`,
+            timeMs,
+            label: `${(timeMs / 1000).toFixed(timeMs % 1000 === 0 ? 0 : 2)}s f${frame}`,
         });
-        if (clamped === durationMs) {
-            break;
-        }
     }
     return ticks;
 }
 
-function resolveProjectStageSize(projectService: ProjectService | null): { width: number; height: number } {
+function clampTimelinePxPerMs(value: number): number {
+    if (!Number.isFinite(value)) {
+        return DEFAULT_TIMELINE_PX_PER_MS;
+    }
+    return Math.min(MAX_TIMELINE_PX_PER_MS, Math.max(MIN_TIMELINE_PX_PER_MS, value));
+}
+
+export function resolveStoryMotionStageSize(projectService: ProjectService | null): { width: number; height: number } {
     try {
         const resolution = projectService?.getProjectConfig().metadata.resolution as unknown;
         if (!resolution) {

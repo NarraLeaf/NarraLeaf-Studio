@@ -22,6 +22,17 @@ export function resolveStoryMotionPreviewTarget(input: {
     blockId: StoryBlockId | undefined;
     fallbackKind: StoryDisplayableTargetKind;
     fallbackLabel: string;
+    previewAssetId?: string;
+}): StoryMotionPreviewTarget {
+    return withPreviewAsset(resolveTargetWithoutPreview(input), input.previewAssetId);
+}
+
+function resolveTargetWithoutPreview(input: {
+    document: StoryDocument | null | undefined;
+    sceneId: StorySceneId | undefined;
+    blockId: StoryBlockId | undefined;
+    fallbackKind: StoryDisplayableTargetKind;
+    fallbackLabel: string;
 }): StoryMotionPreviewTarget {
     const fallback: StoryMotionPreviewTarget = {
         kind: input.fallbackKind,
@@ -46,6 +57,13 @@ export function resolveStoryMotionPreviewTarget(input: {
         ...fallback,
         ...resolveDisplayableFromScene(scene, input.blockId, direct),
     };
+}
+
+function withPreviewAsset(target: StoryMotionPreviewTarget, previewAssetId: string | undefined): StoryMotionPreviewTarget {
+    if (target.assetId || !previewAssetId) {
+        return target;
+    }
+    return { ...target, assetId: previewAssetId };
 }
 
 function previewTargetFromBlock(block: StoryBlock): StoryMotionPreviewTarget | null {

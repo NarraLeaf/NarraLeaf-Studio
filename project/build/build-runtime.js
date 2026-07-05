@@ -91,6 +91,7 @@ function runtimeAliasPlugin() {
         // under @/lib/ui-editor or @shared eventually.
         '@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs',
         '@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation',
+        '@/lib/workspace/services/ui-editor/blueprint/fnCatalog',
         '@/lib/workspace/services/ui-editor/blueprint/ownerKeys',
     ]);
     return {

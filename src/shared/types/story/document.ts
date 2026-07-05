@@ -383,6 +383,14 @@ export type StoryAnimationAsset = {
     timeline?: StoryAnimationTimeline;
     sequences: StoryAnimationSequence[];
     config?: StoryAnimationConfig;
+    /**
+     * Editor-only image asset rendered as the motion target in the Story Motion preview.
+     * This is a visualization hint and is NOT an animation target binding — it is
+     * ignored by the compiler and never affects the produced Transform.
+     */
+    previewAssetId?: string;
+    /** Editor-only image asset rendered as the stage background in the Story Motion preview. */
+    previewBackgroundAssetId?: string;
     meta?: StoryMeta;
 };
 

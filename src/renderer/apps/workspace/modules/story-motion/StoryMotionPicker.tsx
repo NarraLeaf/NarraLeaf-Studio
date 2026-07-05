@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, Check, Edit3, Plus, Search, X } from "lucide-react";
+import { Check, Edit3, Plus, Search, Spline, X } from "lucide-react";
 import type {
     StoryAnimationAsset,
     StoryAnimationIndexEntry,
@@ -21,7 +21,6 @@ import {
     createStoryMotionTemplateTimeline,
     getStoryMotionDurationMs,
     getStoryMotionPropertyMeta,
-    isStoryMotionEditableProperty,
 } from "./storyMotionTimeline";
 
 const ICON_BUTTON_CLASS = controlButtonClass();
@@ -56,8 +55,8 @@ export function StoryMotionPicker(props: {
             setAssets([]);
             return;
         }
-        setAssets(storyService.listAnimationAssets());
-        return storyService.onAnimationsChanged(index => setAssets(index.animations));
+        setAssets([...storyService.listAnimationAssets()]);
+        return storyService.onAnimationsChanged(index => setAssets([...index.animations]));
     }, [storyService]);
 
     useEffect(() => {
@@ -137,7 +136,7 @@ export function StoryMotionPicker(props: {
                     className={TOOL_BUTTON_CLASS}
                     onClick={() => setPickerOpen(value => !value)}
                 >
-                    <Activity className="h-3.5 w-3.5" />
+                    <Spline className="h-3.5 w-3.5" />
                     {animationId ? "Change" : "Choose"}
                 </button>
             </div>
@@ -145,7 +144,7 @@ export function StoryMotionPicker(props: {
             {animationId ? (
                 <div className="flex min-w-0 items-center gap-2 rounded border border-primary/25 bg-primary/10 p-2">
                     <span className="grid h-8 w-8 shrink-0 place-items-center rounded border border-primary/25 bg-primary/15 text-primary">
-                        <Activity className="h-4 w-4" />
+                        <Spline className="h-4 w-4" />
                     </span>
                     <div className="min-w-0 flex-1">
                         <div className="truncate text-xs font-medium text-primary">{selectedAsset?.name ?? props.motionLabel}</div>
@@ -209,7 +208,7 @@ export function StoryMotionPicker(props: {
                                 onClick={() => bindAsset(asset.id)}
                             >
                                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded border border-white/10 bg-white/[0.04] text-primary">
-                                    <Activity className="h-3.5 w-3.5" />
+                                    <Spline className="h-3.5 w-3.5" />
                                 </span>
                                 <span className="min-w-0 flex-1">
                                     <span className="block truncate text-xs font-medium text-slate-200">{asset.name}</span>
@@ -227,7 +226,7 @@ export function StoryMotionPicker(props: {
 
 function motionSummary(asset: StoryAnimationAsset): string {
     const durationMs = getStoryMotionDurationMs(asset.timeline);
-    const tracks = (asset.timeline?.tracks ?? []).filter(track => isStoryMotionEditableProperty(track.property));
+    const tracks = asset.timeline?.tracks ?? [];
     const labels = tracks
         .slice(0, 3)
         .map(track => getStoryMotionPropertyMeta(track.property).label)

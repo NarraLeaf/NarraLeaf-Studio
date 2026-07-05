@@ -71,16 +71,21 @@ import type {
 import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME,
+    BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
     BLUEPRINT_NODE_TYPE_DATA_NOT_NULL,
+    BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
+    BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
+    BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT,
 } from "@shared/types/blueprint/graph";
 import {
@@ -90,7 +95,7 @@ import {
     DEFAULT_UI_SURFACE_SIZE,
     MAIN_APP_SURFACE_ID,
 } from "@shared/constants/ui-editor";
-import type { UIListElementExtra } from "@shared/types/ui-editor/list";
+import { isListLikeWidgetType, type UIListElementExtra } from "@shared/types/ui-editor/list";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
 import { normalizeUIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import {
@@ -99,6 +104,7 @@ import {
 } from "@shared/types/ui-editor/stageSlots";
 import { defaultContainerWidgetProps, type ContainerWidgetProps } from "@shared/types/ui-editor/container";
 import { defaultTextWidgetProps, type TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
+import { defaultListWidgetProps, type ListWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/list/types";
 import {
     createInitialContainerAppearance,
     createInitialTextAppearance,
@@ -144,6 +150,10 @@ const DEFAULT_STAGE_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 const COMPONENT_LINKED_LAYOUT_KEYS = new Set<keyof UILayout>(["x", "y", "width", "height", "rotation"]);
 const DEFAULT_COMPONENT_SIZE: UISurfaceDesignSize = { width: 240, height: 120 };
 const DIALOG_SENTENCE_WIDGET_TYPE = "nl.dialog.sentence";
+const NOTIFICATION_LIST_WIDGET_TYPE = "nl.notification.list";
+const CHOICE_LIST_WIDGET_TYPE = "nl.choice.list";
+const NVL_LIST_WIDGET_TYPE = "nl.nvl.list";
+const NVL_TEXTS_WIDGET_TYPE = "nl.nvl.texts";
 
 type DialogStageTemplate = {
     elements: Record<UIElementId, UIElement>;
@@ -152,6 +162,35 @@ type DialogStageTemplate = {
     stackId: UIElementId;
     nametagId: UIElementId;
     sentenceId: UIElementId;
+};
+
+type NotificationStageTemplate = {
+    elements: Record<UIElementId, UIElement>;
+    listId: UIElementId;
+    itemContainerId: UIElementId;
+    itemTextId: UIElementId;
+};
+
+type ChoiceStageTemplate = {
+    elements: Record<UIElementId, UIElement>;
+    listId: UIElementId;
+    itemContainerId: UIElementId;
+    itemTextId: UIElementId;
+};
+
+type NvlStageTemplate = {
+    elements: Record<UIElementId, UIElement>;
+    interactionLayerId: UIElementId;
+    panelId: UIElementId;
+    listId: UIElementId;
+    nametagId: UIElementId;
+    textsId: UIElementId;
+};
+
+/** One stage-slot creation template: authored elements plus post-insert blueprint seeding. */
+type StageSlotTemplate = {
+    elements: Record<UIElementId, UIElement>;
+    configure: (surfaceId: UISurfaceId) => void;
 };
 
 function getComponentPreviewDesignSize(component: UIComponentDefinition): UISurfaceDesignSize {
@@ -288,6 +327,20 @@ function createTextTemplateProps(overrides: Partial<TextWidgetProps>): TextWidge
     return props;
 }
 
+function createListTemplateProps(overrides: Partial<ListWidgetProps>): ListWidgetProps {
+    const props: ListWidgetProps = {
+        ...cloneJson(defaultListWidgetProps),
+        ...overrides,
+    };
+    if (overrides.scrollbar) {
+        props.scrollbar = {
+            ...cloneJson(defaultListWidgetProps.scrollbar),
+            ...overrides.scrollbar,
+        };
+    }
+    return props;
+}
+
 function ensureElementSerializedAppearance(element: UIElement): boolean {
     if (element.type === "nl.container") {
         const props: ContainerWidgetProps = {
@@ -303,7 +356,8 @@ function ensureElementSerializedAppearance(element: UIElement): boolean {
     }
     const isTextLike =
         element.type === "nl.text" ||
-        element.type === DIALOG_SENTENCE_WIDGET_TYPE;
+        element.type === DIALOG_SENTENCE_WIDGET_TYPE ||
+        element.type === NVL_TEXTS_WIDGET_TYPE;
     if (isTextLike) {
         const props: TextWidgetProps = {
             ...cloneJson(defaultTextWidgetProps),
@@ -762,7 +816,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.mutateDocument(doc => {
             applyPlannedMove(doc, planned.plan);
             const targetParent = doc.elements[targetParentId];
-            if (targetParent?.type === "nl.list") {
+            if (isListLikeWidgetType(targetParent?.type)) {
                 for (const elementId of elementIds) {
                     const moved = doc.elements[elementId];
                     const slot = moved?.extra?.listSlot;
@@ -974,6 +1028,9 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         if (document.schemaVersion === 9) {
             return this.migrateFromV9Document(document);
         }
+        if (document.schemaVersion === 10) {
+            return this.migrateFromV10Document(document);
+        }
         throw new RendererError("UI document migration is not implemented");
     }
 
@@ -1062,6 +1119,14 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /** P11: `nvl` stage slot plus list-like Game UI slot widgets. */
+    private migrateFromV10Document(document: UIDocument): UIDocument {
+        return this.normalizeSpecialChildSlots({
+            ...document,
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        });
+    }
+
     private normalizeSpecialChildSlots(document: UIDocument): UIDocument {
         document = this.withComponentLibrary(document);
         for (const surface of document.surfaces) {
@@ -1083,7 +1148,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
         for (const element of Object.values(document.elements)) {
             ensureElementSerializedAppearance(element);
-            if (element.type === "nl.list") {
+            if (isListLikeWidgetType(element.type)) {
                 const props = (element.props ?? {}) as Record<string, unknown>;
                 const scrollbar = props.scrollbar && typeof props.scrollbar === "object"
                     ? props.scrollbar as Record<string, unknown>
@@ -1276,20 +1341,18 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                   };
 
         const rootElement = this.createRootElement(rootElementId, designSize);
-        const dialogTemplate =
-            kind === "stageSurface" && effectiveMount?.slotId === "dialog"
-                ? this.createDialogStageTemplate(rootElement, designSize)
+        const stageTemplate =
+            kind === "stageSurface" && effectiveMount
+                ? this.createStageSlotTemplate(effectiveMount.slotId, rootElement, designSize)
                 : null;
-        const templateElements = dialogTemplate?.elements ?? {};
+        const templateElements = stageTemplate?.elements ?? {};
 
         this.mutateDocument(document => {
             document.elements[rootElementId] = rootElement;
             Object.assign(document.elements, templateElements);
             document.surfaces.push(surface);
         });
-        if (dialogTemplate) {
-            this.configureDefaultDialogBlueprints(surface.id, dialogTemplate);
-        }
+        stageTemplate?.configure(surface.id);
 
         return surface;
     }
@@ -2499,7 +2562,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             style: defaultElement.style,
             behavior: defaultElement.behavior,
             extra:
-                parent.type === "nl.list"
+                isListLikeWidgetType(parent.type)
                     ? ({
                           ...(defaultElement.extra ?? {}),
                           listSlot: "itemTemplate",
@@ -2636,7 +2699,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 if (copy.valueBindings) {
                     copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
                 }
-                if (isTop && parentEl.type === "nl.list") {
+                if (isTop && isListLikeWidgetType(parentEl.type)) {
                     const slot = copy.extra?.listSlot;
                     if (slot !== "itemTemplate" && slot !== "scrollbarTrack" && slot !== "scrollbarThumb") {
                         copy.extra = {
@@ -3303,6 +3366,714 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     id: "nametagUpdate",
                     name: "Update Nametag",
                     graph: this.createNametagUpdateGraph(),
+                },
+            };
+        });
+    }
+
+    /** Resolves the default creation template (elements + blueprint seeding) for a Game UI slot. */
+    private createStageSlotTemplate(
+        slotId: UIStageSlotId,
+        rootElement: UIElement,
+        designSize: UISurfaceDesignSize,
+    ): StageSlotTemplate | null {
+        switch (slotId) {
+            case "dialog": {
+                const template = this.createDialogStageTemplate(rootElement, designSize);
+                return {
+                    elements: template.elements,
+                    configure: surfaceId => this.configureDefaultDialogBlueprints(surfaceId, template),
+                };
+            }
+            case "notification": {
+                const template = this.createNotificationStageTemplate(rootElement, designSize);
+                return {
+                    elements: template.elements,
+                    configure: () => this.configureDefaultNotificationBlueprints(template),
+                };
+            }
+            case "choice": {
+                const template = this.createChoiceStageTemplate(rootElement, designSize);
+                return {
+                    elements: template.elements,
+                    configure: surfaceId => this.configureDefaultChoiceBlueprints(surfaceId, template),
+                };
+            }
+            case "nvl": {
+                const template = this.createNvlStageTemplate(rootElement, designSize);
+                return {
+                    elements: template.elements,
+                    configure: surfaceId => this.configureDefaultNvlBlueprints(surfaceId, template),
+                };
+            }
+            case "onStage":
+                // On-Stage stays a bare transparent click-through root.
+                return null;
+        }
+    }
+
+    private createNotificationStageTemplate(
+        rootElement: UIElement,
+        designSize: UISurfaceDesignSize,
+    ): NotificationStageTemplate {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const listId = uuidService.generate();
+        const itemContainerId = uuidService.generate();
+        const itemTextId = uuidService.generate();
+        const listWidth = Math.round(designSize.width * 0.28);
+        const listHeight = Math.round(designSize.height * 0.5);
+        const itemWidth = Math.min(420, listWidth);
+
+        rootElement.childrenIds = [listId];
+
+        const list: UIElement = {
+            id: listId,
+            type: NOTIFICATION_LIST_WIDGET_TYPE,
+            name: "Notification List",
+            parentId: rootElement.id,
+            childrenIds: [itemContainerId],
+            layout: roundUILayoutGeometryFields({
+                x: 24,
+                y: 24,
+                width: listWidth,
+                height: listHeight,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createListTemplateProps({
+                itemKeyPath: "id",
+                itemGap: 12,
+                previewItems: [
+                    { id: "preview-1", message: "Notification message" },
+                    { id: "preview-2", message: "Another message" },
+                ],
+                scrollbar: {
+                    ...cloneJson(defaultListWidgetProps.scrollbar),
+                    enabled: false,
+                    visibility: "hidden",
+                },
+            }),
+        };
+
+        const itemContainer: UIElement = {
+            id: itemContainerId,
+            type: "nl.container",
+            name: "Notification Item",
+            parentId: listId,
+            childrenIds: [itemTextId],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: itemWidth,
+                height: 56,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createContainerTemplateProps({
+                layoutKind: "stack",
+                stackDirection: "vertical",
+                stackGap: 0,
+                stackPaddingTop: 12,
+                stackPaddingRight: 20,
+                stackPaddingBottom: 12,
+                stackPaddingLeft: 20,
+                backgroundColor: "#0b0d12",
+                fillOpacity: 0.72,
+                borderRadius: 999,
+                borderRadiusTL: 999,
+                borderRadiusTR: 999,
+                borderRadiusBL: 999,
+                borderRadiusBR: 999,
+                strokeVisible: false,
+                borderWidth: 0,
+                clipContent: true,
+            }),
+            extra: { listSlot: "itemTemplate" },
+        };
+
+        const itemText: UIElement = {
+            id: itemTextId,
+            type: "nl.text",
+            name: "Notification Message",
+            parentId: itemContainerId,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: Math.max(1, itemWidth - 40),
+                height: 32,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createTextTemplateProps({
+                text: "Notification message",
+                fontSize: 20,
+                color: "#f8fafc",
+                lineHeight: 1.3,
+                textVerticalAlign: "center",
+            }),
+        };
+
+        return {
+            elements: {
+                [list.id]: list,
+                [itemContainer.id]: itemContainer,
+                [itemText.id]: itemText,
+            },
+            listId,
+            itemContainerId,
+            itemTextId,
+        };
+    }
+
+    private createChoiceStageTemplate(
+        rootElement: UIElement,
+        designSize: UISurfaceDesignSize,
+    ): ChoiceStageTemplate {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const listId = uuidService.generate();
+        const itemContainerId = uuidService.generate();
+        const itemTextId = uuidService.generate();
+        const listWidth = Math.round(designSize.width * 0.5);
+        const listHeight = Math.round(designSize.height * 0.6);
+        const listX = Math.round((designSize.width - listWidth) / 2);
+        const listY = Math.round((designSize.height - listHeight) / 2);
+
+        rootElement.childrenIds = [listId];
+
+        const list: UIElement = {
+            id: listId,
+            type: CHOICE_LIST_WIDGET_TYPE,
+            name: "Choice List",
+            parentId: rootElement.id,
+            childrenIds: [itemContainerId],
+            layout: roundUILayoutGeometryFields({
+                x: listX,
+                y: listY,
+                width: listWidth,
+                height: listHeight,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createListTemplateProps({
+                itemKeyPath: "index",
+                itemGap: 16,
+                previewItems: [
+                    { text: "Choice A", index: 0, disabled: false },
+                    { text: "Choice B", index: 1, disabled: false },
+                    { text: "Choice C", index: 2, disabled: true },
+                ],
+                scrollbar: {
+                    ...cloneJson(defaultListWidgetProps.scrollbar),
+                    enabled: false,
+                    visibility: "hidden",
+                },
+            }),
+        };
+
+        const itemContainer: UIElement = {
+            id: itemContainerId,
+            type: "nl.container",
+            name: "Choice Item",
+            parentId: listId,
+            childrenIds: [itemTextId],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: listWidth,
+                height: 64,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createContainerTemplateProps({
+                layoutKind: "stack",
+                stackDirection: "vertical",
+                stackGap: 0,
+                stackPaddingTop: 14,
+                stackPaddingRight: 24,
+                stackPaddingBottom: 14,
+                stackPaddingLeft: 24,
+                backgroundColor: "#f8fafc",
+                fillOpacity: 0.92,
+                borderRadius: 8,
+                borderRadiusTL: 8,
+                borderRadiusTR: 8,
+                borderRadiusBL: 8,
+                borderRadiusBR: 8,
+                strokeVisible: false,
+                borderWidth: 0,
+                clipContent: true,
+            }),
+            extra: { listSlot: "itemTemplate" },
+        };
+
+        const itemText: UIElement = {
+            id: itemTextId,
+            type: "nl.text",
+            name: "Choice Text",
+            parentId: itemContainerId,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: Math.max(1, listWidth - 48),
+                height: 36,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createTextTemplateProps({
+                text: "Choice",
+                fontSize: 24,
+                color: "#0b0d12",
+                lineHeight: 1.3,
+                textAlign: "center",
+                textVerticalAlign: "center",
+            }),
+        };
+
+        return {
+            elements: {
+                [list.id]: list,
+                [itemContainer.id]: itemContainer,
+                [itemText.id]: itemText,
+            },
+            listId,
+            itemContainerId,
+            itemTextId,
+        };
+    }
+
+    private createNvlStageTemplate(
+        rootElement: UIElement,
+        designSize: UISurfaceDesignSize,
+    ): NvlStageTemplate {
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        const interactionLayerId = uuidService.generate();
+        const panelId = uuidService.generate();
+        const listId = uuidService.generate();
+        const nametagId = uuidService.generate();
+        const textsId = uuidService.generate();
+        const panelWidth = Math.round(designSize.width * 0.86);
+        const panelHeight = Math.round(designSize.height * 0.88);
+        const panelX = Math.round((designSize.width - panelWidth) / 2);
+        const panelY = Math.round(designSize.height * 0.06);
+        const listInset = 32;
+        const listWidth = Math.max(1, panelWidth - listInset * 2);
+        const listHeight = Math.max(1, panelHeight - listInset * 2);
+
+        rootElement.childrenIds = [interactionLayerId, panelId];
+
+        const interactionLayer: UIElement = {
+            id: interactionLayerId,
+            type: "nl.container",
+            name: "NVL Interaction Layer",
+            parentId: rootElement.id,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: designSize.width,
+                height: designSize.height,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createContainerTemplateProps({
+                layoutKind: "free",
+                backgroundColor: "transparent",
+                fillVisible: false,
+                fillOpacity: 0,
+                strokeVisible: false,
+                borderWidth: 0,
+                stackPaddingTop: 0,
+                stackPaddingRight: 0,
+                stackPaddingBottom: 0,
+                stackPaddingLeft: 0,
+                clipContent: false,
+            }),
+        };
+
+        const panel: UIElement = {
+            id: panelId,
+            type: "nl.container",
+            name: "NVL Panel",
+            parentId: rootElement.id,
+            childrenIds: [listId],
+            layout: roundUILayoutGeometryFields({
+                x: panelX,
+                y: panelY,
+                width: panelWidth,
+                height: panelHeight,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createContainerTemplateProps({
+                layoutKind: "free",
+                backgroundColor: "#0b0d12",
+                fillOpacity: 0.82,
+                borderRadius: 12,
+                borderRadiusTL: 12,
+                borderRadiusTR: 12,
+                borderRadiusBL: 12,
+                borderRadiusBR: 12,
+                strokeVisible: false,
+                borderWidth: 0,
+                clipContent: true,
+            }),
+        };
+
+        const list: UIElement = {
+            id: listId,
+            type: NVL_LIST_WIDGET_TYPE,
+            name: "NVL List",
+            parentId: panelId,
+            childrenIds: [nametagId, textsId],
+            layout: roundUILayoutGeometryFields({
+                x: listInset,
+                y: listInset,
+                width: listWidth,
+                height: listHeight,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createListTemplateProps({
+                itemKeyPath: "index",
+                itemGap: 18,
+                templateDirection: "vertical",
+                templateGap: 6,
+                previewItems: [
+                    { nametag: "Speaker", index: 0, isActive: false },
+                    { nametag: "", index: 1, isActive: true },
+                ],
+            }),
+        };
+
+        const nametag: UIElement = {
+            id: nametagId,
+            type: "nl.text",
+            name: "NVL Nametag",
+            parentId: listId,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: 320,
+                height: 30,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createTextTemplateProps({
+                text: "Speaker",
+                fontSize: 20,
+                color: "#f8d37a",
+                fontWeight: "600",
+                lineHeight: 1.2,
+                textVerticalAlign: "center",
+            }),
+            extra: { listSlot: "itemTemplate" },
+        };
+
+        const texts: UIElement = {
+            id: textsId,
+            type: NVL_TEXTS_WIDGET_TYPE,
+            name: "NVL Texts",
+            parentId: listId,
+            childrenIds: [],
+            layout: roundUILayoutGeometryFields({
+                x: 0,
+                y: 0,
+                width: Math.max(1, listWidth - 8),
+                height: 64,
+                opacity: 1,
+                visible: true,
+            }),
+            props: createTextTemplateProps({
+                text: "The dialog entry text will appear here.",
+                fontSize: 22,
+                color: "#f8fafc",
+                lineHeight: 1.5,
+            }),
+            extra: { listSlot: "itemTemplate" },
+        };
+
+        return {
+            elements: {
+                [interactionLayer.id]: interactionLayer,
+                [panel.id]: panel,
+                [list.id]: list,
+                [nametag.id]: nametag,
+                [texts.id]: texts,
+            },
+            interactionLayerId,
+            panelId,
+            listId,
+            nametagId,
+            textsId,
+        };
+    }
+
+    /** Value graph: `Init -> Return Value` fed by `Get List Item Props -> Get JSON Field(propsPath)`. */
+    private createListItemPropsValueGraph(propsPath: string): BlueprintGraphIr {
+        const headId = "listItemValue.init";
+        const getPropsId = "listItemValue.getItemProps";
+        const getFieldId = "listItemValue.getField";
+        const returnId = "listItemValue.return";
+        return {
+            nodes: {
+                [headId]: {
+                    id: headId,
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+                    params: {},
+                    meta: { editorLayout: { x: 80, y: 120 } },
+                } satisfies BlueprintGraphNode,
+                [getPropsId]: {
+                    id: getPropsId,
+                    type: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
+                    params: {},
+                    meta: { editorLayout: { x: 300, y: 20 } },
+                } satisfies BlueprintGraphNode,
+                [getFieldId]: {
+                    id: getFieldId,
+                    type: BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
+                    params: { path: propsPath },
+                    meta: { editorLayout: { x: 540, y: 30 } },
+                } satisfies BlueprintGraphNode,
+                [returnId]: {
+                    id: returnId,
+                    type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
+                    params: {},
+                    meta: { editorLayout: { x: 800, y: 120 } },
+                } satisfies BlueprintGraphNode,
+            },
+            edges: [
+                {
+                    from: { nodeId: headId, port: "then" },
+                    to: { nodeId: returnId, port: "in" },
+                },
+                {
+                    from: { nodeId: getPropsId, port: "props" },
+                    to: { nodeId: getFieldId, port: "json" },
+                },
+                {
+                    from: { nodeId: getFieldId, port: "result" },
+                    to: { nodeId: returnId, port: "value" },
+                },
+            ],
+            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+        };
+    }
+
+    /**
+     * Creates a Blueprint Value binding on a template text element whose init graph reads the
+     * current list item props field instead of a literal.
+     */
+    private seedListItemTextValueBinding(
+        elementId: UIElementId,
+        propsPath: string,
+        displayName: string,
+        literalValue: string,
+    ): void {
+        const localBp = this.getOptionalLocalBlueprintService();
+        if (!localBp) {
+            return;
+        }
+        const { blueprintId } = this.ensureElementBlueprintValueBinding(elementId, "text", {
+            valueType: "string",
+            displayName,
+            literalValue,
+        });
+        localBp.applyBlueprintMutation(doc => {
+            const blueprint = doc.blueprints[blueprintId];
+            if (!blueprint || blueprint.program.kind !== "graph") {
+                return;
+            }
+            const initEntry = blueprint.program.graphs.events?.init;
+            if (!initEntry) {
+                return;
+            }
+            initEntry.graph = this.createListItemPropsValueGraph(propsPath);
+        });
+    }
+
+    /** Event graph: `Item Click(index) -> Select Choice(index)`. */
+    private createChoiceSelectGraph(): BlueprintGraphIr {
+        const itemClickHeadId = "choice.select.itemClick";
+        const chooseId = "choice.select.choose";
+        return {
+            nodes: {
+                [itemClickHeadId]: {
+                    id: itemClickHeadId,
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
+                    params: {},
+                    meta: { editorLayout: { x: 80, y: 60 } },
+                } satisfies BlueprintGraphNode,
+                [chooseId]: {
+                    id: chooseId,
+                    type: BLUEPRINT_NODE_TYPE_GAME_CHOOSE,
+                    params: {},
+                    meta: { editorLayout: { x: 560, y: 80 } },
+                } satisfies BlueprintGraphNode,
+            },
+            edges: [
+                {
+                    from: { nodeId: itemClickHeadId, port: "then" },
+                    to: { nodeId: chooseId, port: "in" },
+                },
+                {
+                    from: { nodeId: itemClickHeadId, port: "index" },
+                    to: { nodeId: chooseId, port: "index" },
+                },
+            ],
+            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+        };
+    }
+
+    /**
+     * Event graph mirroring the Dialog advancement wiring for the NVL slot. Hosted on the NVL
+     * Panel (`nl.container`) because collection widgets like `nl.nvl.list` do not expose a
+     * `Mouse Click` head; the panel's own Mouse Click plus Element Click on the interaction layer
+     * and the list cover every click region.
+     */
+    private createNvlNextGraph(
+        surfaceId: UISurfaceId,
+        targets: {
+            interactionLayerId: UIElementId;
+        },
+    ): BlueprintGraphIr {
+        // The panel's own Mouse Click catches every click inside the panel via DOM bubbling
+        // (children re-dispatch but never DOM-stopPropagation); the interaction layer Element Click
+        // catches clicks in the full-screen area outside the panel.
+        const panelClickHeadId = "nvl.next.panelMouseClick";
+        const spaceHeadId = "nvl.next.spaceKeyUp";
+        const nextId = "nvl.next";
+        const elementClickTargets = [
+            {
+                nodeId: "nvl.next.interactionLayerElementClick",
+                elementId: targets.interactionLayerId,
+                elementType: "nl.container",
+                y: 210,
+            },
+        ] as const;
+        const nodes: Record<string, BlueprintGraphNode> = {
+            [panelClickHeadId]: {
+                id: panelClickHeadId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+                params: {},
+                meta: { editorLayout: { x: 80, y: 40 } },
+            },
+            [spaceHeadId]: {
+                id: spaceHeadId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_UP,
+                params: {
+                    [BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME]: " ",
+                },
+                meta: { editorLayout: { x: 80, y: 550 } },
+            },
+            [nextId]: {
+                id: nextId,
+                type: BLUEPRINT_NODE_TYPE_GAME_NEXT,
+                params: {},
+                meta: { editorLayout: { x: 560, y: 295 } },
+            },
+        };
+        const edges: NonNullable<BlueprintGraphIr["edges"]> = [
+            {
+                from: { nodeId: panelClickHeadId, port: "then" },
+                to: { nodeId: nextId, port: "in" },
+            },
+            {
+                from: { nodeId: spaceHeadId, port: "then" },
+                to: { nodeId: nextId, port: "in" },
+            },
+        ];
+        for (const target of elementClickTargets) {
+            nodes[target.nodeId] = {
+                id: target.nodeId,
+                type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+                params: {
+                    surfaceId,
+                    elementId: target.elementId,
+                    elementType: target.elementType,
+                },
+                meta: { editorLayout: { x: 80, y: target.y } },
+            };
+            edges.push({
+                from: { nodeId: target.nodeId, port: "then" },
+                to: { nodeId: nextId, port: "in" },
+            });
+        }
+        return {
+            nodes,
+            edges,
+            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+        };
+    }
+
+    private configureDefaultNotificationBlueprints(template: NotificationStageTemplate): void {
+        this.seedListItemTextValueBinding(
+            template.itemTextId,
+            "message",
+            "Notification Message",
+            "Notification message",
+        );
+    }
+
+    private configureDefaultChoiceBlueprints(surfaceId: UISurfaceId, template: ChoiceStageTemplate): void {
+        const localBp = this.getOptionalLocalBlueprintService();
+        if (!localBp) {
+            return;
+        }
+
+        this.seedListItemTextValueBinding(template.itemTextId, "text", "Choice Text", "Choice");
+
+        const listBlueprintId = localBp.ensureWidgetMain(
+            surfaceId,
+            template.listId,
+            "Choice List",
+            CHOICE_LIST_WIDGET_TYPE,
+        );
+        localBp.applyBlueprintMutation(doc => {
+            const blueprint = doc.blueprints[listBlueprintId];
+            if (!blueprint || blueprint.program.kind !== "graph") {
+                return;
+            }
+            blueprint.program.graphs.events = {
+                choiceSelect: {
+                    id: "choiceSelect",
+                    name: "Select Choice",
+                    graph: this.createChoiceSelectGraph(),
+                },
+            };
+        });
+    }
+
+    private configureDefaultNvlBlueprints(surfaceId: UISurfaceId, template: NvlStageTemplate): void {
+        const localBp = this.getOptionalLocalBlueprintService();
+        if (!localBp) {
+            return;
+        }
+
+        this.seedListItemTextValueBinding(template.nametagId, "nametag", "NVL Nametag", "Speaker");
+
+        // Advancement graph hosted on the Panel (nl.container) — collection widgets like the NVL
+        // List do not expose a Mouse Click head.
+        const panelBlueprintId = localBp.ensureWidgetMain(
+            surfaceId,
+            template.panelId,
+            "NVL Panel",
+            "nl.container",
+        );
+        localBp.applyBlueprintMutation(doc => {
+            const blueprint = doc.blueprints[panelBlueprintId];
+            if (!blueprint || blueprint.program.kind !== "graph") {
+                return;
+            }
+            blueprint.program.graphs.events = {
+                nvlNext: {
+                    id: "nvlNext",
+                    name: "NVL Next",
+                    graph: this.createNvlNextGraph(surfaceId, {
+                        interactionLayerId: template.interactionLayerId,
+                    }),
                 },
             };
         });

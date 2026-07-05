@@ -43,6 +43,7 @@ import {
     BLUEPRINT_VALUE_TYPE_ARRAY,
     blueprintElementValueType,
 } from "@shared/types/blueprint/valueTypes";
+import { UI_LIST_LIKE_WIDGET_TYPES } from "@shared/types/ui-editor/list";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
@@ -56,9 +57,11 @@ const LIST_MAGIC_TARGET: NonNullable<BlueprintNodeDef["magicElementTarget"]> = {
     inputPinId: "list",
     elementTypes: [LIST_ELEMENT_TYPE],
 };
+// Self nodes are available on every list-like widget's own private blueprint (including the
+// Game UI slot wrappers); Element-targeted derived nodes stay `nl.list`-only for now.
 const LIST_SCOPE: BlueprintNodeDef["scope"] = {
     ownerKinds: ["widgetMain"],
-    widgetElementTypes: [LIST_ELEMENT_TYPE],
+    widgetElementTypes: [...UI_LIST_LIKE_WIDGET_TYPES],
 };
 
 const execIn: BlueprintNodePinDef = { id: "in", kind: "input", semantic: "exec", label: "In" };

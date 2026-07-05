@@ -643,6 +643,82 @@ export const BLUEPRINT_NODE_TYPE_STRING_NORMALIZE_LINE_BREAKS = "blueprint.strin
 
 export const BLUEPRINT_NODE_TYPE_BROADCAST_SEND = "blueprint.broadcast.send" as const;
 export const BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT = "blueprint.broadcast.getListenerCount" as const;
+
+/**
+ * Fn nodes: surface-scoped callable functions declared by a head node in event graphs.
+ * The fn identity is the head node id; callers reference it via an encoded fnRef param.
+ * Deliberately NOT part of EVENT_DISPATCH_HEAD_TYPES — fn bodies only run via explicit invocation.
+ */
+export const BLUEPRINT_NODE_TYPE_FN_HEAD = "blueprint.fn.head" as const;
+export const BLUEPRINT_NODE_TYPE_FN_CALL = "blueprint.fn.call" as const;
+export const BLUEPRINT_NODE_TYPE_FN_RETURN = "blueprint.fn.return" as const;
+/** Fn head inspector param: user-visible function name. */
+export const BLUEPRINT_NODE_PARAM_FN_NAME = "name" as const;
+/** Call Fn inspector param: encoded (blueprintId, headNodeId) reference. */
+export const BLUEPRINT_NODE_PARAM_FN_REF = "fnRef" as const;
+/** Call Fn cached signature { name, params[], returns[] } used to render pins without document access. */
+export const BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT = "__fnSignatureSnapshot" as const;
+/** Fn head dynamic parameter pins: ordered ids / labels by id / value types by id. */
+export const BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_IDS = "__fnParamPinIds" as const;
+export const BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_LABELS = "__fnParamPinLabels" as const;
+export const BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_TYPES = "__fnParamPinTypes" as const;
+/** Fn Return dynamic result pins: ordered ids / labels by id / value types by id. */
+export const BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_IDS = "__fnReturnPinIds" as const;
+export const BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_LABELS = "__fnReturnPinLabels" as const;
+export const BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_TYPES = "__fnReturnPinTypes" as const;
+
+export type BlueprintFnPinSnapshot = {
+    pinId: string;
+    name: string;
+    valueType: string;
+};
+
+/** Serialized on Call Fn node params so pins render without resolving the target fn. */
+export type BlueprintFnSignatureSnapshot = {
+    name: string;
+    params: BlueprintFnPinSnapshot[];
+    returns: BlueprintFnPinSnapshot[];
+};
+
+function sanitizeBlueprintFnPinSnapshots(raw: unknown): BlueprintFnPinSnapshot[] {
+    if (!Array.isArray(raw)) {
+        return [];
+    }
+    const out: BlueprintFnPinSnapshot[] = [];
+    for (const entry of raw) {
+        if (!entry || typeof entry !== "object") {
+            continue;
+        }
+        const pinId = (entry as { pinId?: unknown }).pinId;
+        if (typeof pinId !== "string" || pinId.trim().length === 0) {
+            continue;
+        }
+        const name = (entry as { name?: unknown }).name;
+        const valueType = (entry as { valueType?: unknown }).valueType;
+        out.push({
+            pinId,
+            name: typeof name === "string" && name.trim().length > 0 ? name : pinId,
+            valueType: typeof valueType === "string" && valueType.trim().length > 0 ? valueType : "any",
+        });
+    }
+    return out;
+}
+
+/** Tolerant reader for the Call Fn signature snapshot param (serialized user data). */
+export function readBlueprintFnSignatureSnapshot(
+    params: Record<string, unknown> | undefined,
+): BlueprintFnSignatureSnapshot | undefined {
+    const raw = params?.[BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return undefined;
+    }
+    const name = (raw as { name?: unknown }).name;
+    return {
+        name: typeof name === "string" && name.trim().length > 0 ? name : "Fn",
+        params: sanitizeBlueprintFnPinSnapshots((raw as { params?: unknown }).params),
+        returns: sanitizeBlueprintFnPinSnapshots((raw as { returns?: unknown }).returns),
+    };
+}
 export const BLUEPRINT_NODE_TYPE_PAGE_GO = "blueprint.page.go" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS = "blueprint.page.getProps" as const;
 export const BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING = "blueprint.page.isSurfaceExiting" as const;
@@ -660,6 +736,10 @@ export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW = "blueprint.game.save.ge
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE = "blueprint.game.save.delete" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA = "blueprint.game.save.getMetadata" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG = "blueprint.game.getNametag" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS = "blueprint.game.getNotifications" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT = "blueprint.game.getChoiceCount" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE = "blueprint.game.isNvlMode" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG = "blueprint.game.showDialog" as const;

@@ -315,6 +315,36 @@ const baseCommands: readonly WidgetLogicCommandDef[] = [
     },
 ];
 
+/**
+ * Collection widgets share the `nl.list` logic surface: collection event heads, runtime item
+ * state, and item-template rendering. The Game UI slot wrappers reuse this API so their private
+ * blueprints expose the same events and readable state as `nl.list`.
+ */
+function createCollectionWidgetLogicApi(blueprintLabel: string): WidgetLogicApi {
+    return {
+        supportsPrivateBlueprint: true,
+        blueprintLabel,
+        events: COLLECTION_WIDGET_EVENTS,
+        commands: [
+            {
+                id: "refreshItems",
+                displayName: "Refresh items",
+                availability: "planned",
+            },
+        ],
+        readableState: [
+            { id: "itemCount", displayName: "Item count" },
+            { id: "scrollOffset", displayName: "Scroll offset" },
+            { id: "selectedIndex", displayName: "Selected index" },
+        ],
+        writableProps: [
+            { propPath: "itemsBinding", displayName: "Items binding" },
+            { propPath: "previewCount", displayName: "Preview count" },
+            { propPath: "selectedIndex", displayName: "Selected index" },
+        ],
+    };
+}
+
 function createTextWidgetLogicApi(blueprintLabel: string): WidgetLogicApi {
     return {
         supportsPrivateBlueprint: true,
@@ -441,28 +471,11 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
             { propPath: "interactionDisabled", displayName: "Interaction disabled" },
         ],
     },
-    "nl.list": {
-        supportsPrivateBlueprint: true,
-        blueprintLabel: "List logic",
-        events: COLLECTION_WIDGET_EVENTS,
-        commands: [
-            {
-                id: "refreshItems",
-                displayName: "Refresh items",
-                availability: "planned",
-            },
-        ],
-        readableState: [
-            { id: "itemCount", displayName: "Item count" },
-            { id: "scrollOffset", displayName: "Scroll offset" },
-            { id: "selectedIndex", displayName: "Selected index" },
-        ],
-        writableProps: [
-            { propPath: "itemsBinding", displayName: "Items binding" },
-            { propPath: "previewCount", displayName: "Preview count" },
-            { propPath: "selectedIndex", displayName: "Selected index" },
-        ],
-    },
+    "nl.list": createCollectionWidgetLogicApi("List logic"),
+    "nl.notification.list": createCollectionWidgetLogicApi("Notification list logic"),
+    "nl.choice.list": createCollectionWidgetLogicApi("Choice list logic"),
+    "nl.nvl.list": createCollectionWidgetLogicApi("NVL list logic"),
+    "nl.nvl.texts": createTextWidgetLogicApi("NVL text logic"),
     "nl.slider": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Slider logic",

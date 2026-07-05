@@ -9,14 +9,16 @@ import type {
     BlueprintNodeEditorCatalogEntry,
     BlueprintNodePinDef,
 } from "./types";
-import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "./types";
+import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN, BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES } from "./types";
 import {
     BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE,
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
+    readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
 import { blueprintElementValueType } from "@shared/types/blueprint/valueTypes";
 
@@ -39,6 +41,27 @@ export function readDynamicInputPinIds(
 
 /** Read dynamic input pin labels from node.params. */
 export function readDynamicInputPinLabels(
+    params: Record<string, unknown> | undefined,
+    storageKey: string | undefined,
+): Record<string, string> {
+    if (!params || !storageKey) {
+        return {};
+    }
+    const raw = params[storageKey];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return {};
+    }
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof value === "string" && value.trim().length > 0) {
+            out[key] = value.trim();
+        }
+    }
+    return out;
+}
+
+/** Read per-pin valueType overrides from node.params. */
+export function readDynamicInputPinValueTypes(
     params: Record<string, unknown> | undefined,
     storageKey: string | undefined,
 ): Record<string, string> {
@@ -195,6 +218,32 @@ export function resolveEffectiveBlueprintNodePins(
                 : pin,
         );
     }
+    if (def.type === BLUEPRINT_NODE_TYPE_FN_CALL) {
+        const snapshot = readBlueprintFnSignatureSnapshot(params);
+        if (!snapshot) {
+            return typedBasePins;
+        }
+        const execInputPins = typedBasePins.filter(p => p.kind === "input" && p.semantic === "exec");
+        const execOutputPins = typedBasePins.filter(p => p.kind === "output" && p.semantic === "exec");
+        const paramInputs: BlueprintNodePinDef[] = snapshot.params.map(param => ({
+            id: param.pinId,
+            kind: "input",
+            semantic: "data",
+            valueType: param.valueType,
+            label: param.name,
+            allowInlineLiteral: (BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES as readonly string[]).includes(
+                param.valueType,
+            ),
+        }));
+        const returnOutputs: BlueprintNodePinDef[] = snapshot.returns.map(ret => ({
+            id: ret.pinId,
+            kind: "output",
+            semantic: "data",
+            valueType: ret.valueType,
+            label: ret.name,
+        }));
+        return [...execInputPins, ...paramInputs, ...execOutputPins, ...returnOutputs];
+    }
     const cfg = def.dynamicInputPins;
     if (!cfg || !params) {
         return typedBasePins;
@@ -210,6 +259,7 @@ export function resolveEffectiveBlueprintNodePins(
     );
 
     const labels = readDynamicInputPinLabels(params, cfg.pinLabelParamKey);
+    const valueTypes = readDynamicInputPinValueTypes(params, cfg.pinValueTypeParamKey);
     const dynamicPins: BlueprintNodePinDef[] = [];
     let dynOrdinal = 0;
     for (const id of extraIds) {
@@ -221,14 +271,17 @@ export function resolveEffectiveBlueprintNodePins(
         const kind = template?.kind ?? "input";
         const semantic = template?.semantic ?? "data";
         const isDataPin = semantic === "data";
+        const valueType = isDataPin ? valueTypes[id] ?? template?.valueType ?? cfg.valueType : undefined;
         dynamicPins.push({
             id,
             kind,
             semantic,
-            valueType: isDataPin ? template?.valueType ?? cfg.valueType : undefined,
+            valueType,
             optional: template?.optional,
             allowInlineLiteral: kind === "input" && isDataPin
-                ? template?.allowInlineLiteral ?? cfg.allowInlineLiteral
+                ? (template?.allowInlineLiteral ?? cfg.allowInlineLiteral) &&
+                  (!cfg.pinValueTypeParamKey ||
+                      (BLUEPRINT_PIN_INLINE_LITERAL_VALUE_TYPES as readonly string[]).includes(valueType ?? ""))
                 : undefined,
             label:
                 labels[id] ??
@@ -288,6 +341,9 @@ export function resolveEffectiveBlueprintCatalogEntry(
         scope: def.scope,
         dynamicInputPinLabelParamKey: cfg?.pinLabelParamKey,
         dynamicInputPinAddLabel: cfg?.addButtonLabel,
+        dynamicInputPinTypeParamKey: cfg?.pinValueTypeParamKey,
+        dynamicInputPinTypeOptions: cfg?.pinValueTypeOptions,
+        dynamicPinsGenerateOutputs: cfg?.editableGeneratedOutputPins,
     };
 
     const effective = resolveEffectiveBlueprintNodePins(def, params);
@@ -298,8 +354,8 @@ export function resolveEffectiveBlueprintCatalogEntry(
     const pins: EffectiveCatalogPin[] = effective.map(p => {
         const removable =
             Boolean(cfg) &&
-            p.kind === "input" &&
             p.semantic === "data" &&
+            (p.kind === "input" || Boolean(cfg?.editableGeneratedOutputPins)) &&
             dynamicIdSet.has(p.id);
         return pinDefToCatalogPin(p, removable);
     });
