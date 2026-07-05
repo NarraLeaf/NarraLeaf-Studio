@@ -9,6 +9,7 @@ import {
     dispatchBlueprintBroadcastEvent,
     dispatchSurfaceBlueprintEvent,
     dispatchBlueprintUiEvent,
+    invokeBlueprintFnCall,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintDispatcher";
 import type { DebugBridge } from "@/lib/ui-editor/blueprint-runtime/DebugBridge";
 import type { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
@@ -318,6 +319,22 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             blueprintDocument,
             surfaceId: surface.id,
             eventName,
+        });
+
+    blueprintRuntime.invokeBlueprintFn = async input =>
+        invokeBlueprintFnCall({
+            blueprintDocument,
+            // Visibility follows the calling execution, not this adapter's surface
+            // (global callers pass no surface and only see global fns).
+            surfaceId: input.callerSurfaceId,
+            runtimeScopeId: effectiveRuntimeScopeId,
+            hostAdapter: adapter,
+            debug,
+            fnRef: input.fnRef,
+            args: input.args,
+            depth: input.depth,
+            signal: input.signal,
+            callerExecutionId: input.callerExecutionId,
         });
 
     return adapter;

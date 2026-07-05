@@ -1,8 +1,17 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 17 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 18 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
+
+/** Global runtime state key mirrored from the NarraLeaf notification slot bridge. */
+export const BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY = "game.notifications" as const;
+
+/** Global runtime state key mirrored from the NarraLeaf choice (menu) slot bridge. */
+export const BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY = "game.choice.count" as const;
+
+/** Global runtime state key mirrored from the NarraLeaf NVL slot bridge. */
+export const BLUEPRINT_GAME_NVL_MODE_STATE_KEY = "game.nvl.active" as const;
 
 export type BlueprintHostApiContractVersion = typeof BLUEPRINT_HOST_API_CONTRACT_VERSION;
 
@@ -282,6 +291,38 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: true,
             async: false,
             input: {},
+            output: null,
+        },
+        getNotifications: {
+            capabilityId: "game.getNotifications",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: [],
+        },
+        getChoiceCount: {
+            capabilityId: "game.getChoiceCount",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: 0,
+        },
+        isNvlMode: {
+            capabilityId: "game.isNvlMode",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: false,
+        },
+        choose: {
+            capabilityId: "game.choose",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { index: 0 },
             output: null,
         },
         next: {

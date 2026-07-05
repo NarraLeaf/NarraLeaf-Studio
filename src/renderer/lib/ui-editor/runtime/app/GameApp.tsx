@@ -22,6 +22,7 @@ import type { PageAnimationNavigationDirection } from "@/lib/ui-editor/runtime/p
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import {
     createDevModeBlueprintHostApi,
+    type BlueprintGameNotification,
     type BlueprintGamePreferenceKey,
     type BlueprintGamePreferenceValue,
     type DevModeWidgetRuntimePatch,
@@ -58,6 +59,11 @@ import {
     type AppSurfaceLayerNavEntry,
 } from "./AppSurfaceLayer";
 import { createDialogSlotComponent } from "./DialogSlotSurface";
+import { createNotificationSlotComponent } from "./NotificationSlotSurface";
+import { createChoiceSlotComponent, type ChoiceSlotRuntime } from "./ChoiceSlotSurface";
+import { createNvlSlotComponent } from "./NvlSlotSurface";
+import { createOnStageSlotNode } from "./OnStageSlotSurface";
+import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -166,6 +172,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         ((key: string, value: unknown, previousValue: unknown) => void) | null
     >(null);
     const currentDialogNametagRef = useRef<string | null>(null);
+    const choiceRuntimeRef = useRef<ChoiceSlotRuntime | null>(null);
     const prefersReducedMotion = useReducedMotion();
 
     useEffect(() => {
@@ -394,6 +401,46 @@ export function GameApp(props: GameAppProps): ReactNode {
         return liveGameSpeaker ?? currentDialogNametagRef.current;
     }, []);
 
+    const setChoiceRuntime = useCallback((runtime: ChoiceSlotRuntime | null): void => {
+        choiceRuntimeRef.current = runtime;
+    }, []);
+
+    const getNotificationsInGame = useCallback((): BlueprintGameNotification[] => {
+        const gameState = nlrLiveGameRef.current?.getGameState?.();
+        const manager = (gameState as { notificationMgr?: { toArray?: () => unknown } } | null | undefined)
+            ?.notificationMgr;
+        const raw = typeof manager?.toArray === "function" ? manager.toArray() : null;
+        if (!Array.isArray(raw)) {
+            return [];
+        }
+        return raw.flatMap(entry => {
+            if (!entry || typeof entry !== "object") {
+                return [];
+            }
+            const record = entry as Record<string, unknown>;
+            return [{ id: String(record.id ?? ""), message: String(record.message ?? "") }];
+        });
+    }, []);
+
+    const getChoiceCountInGame = useCallback((): number => {
+        return choiceRuntimeRef.current?.count ?? 0;
+    }, []);
+
+    const isNvlModeInGame = useCallback((): boolean => {
+        const gameState = nlrLiveGameRef.current?.getGameState?.();
+        const nvlState = (gameState as { getNvlState?: () => { active?: unknown } } | null | undefined)
+            ?.getNvlState?.();
+        return nvlState?.active === true;
+    }, []);
+
+    const selectChoiceInGame = useCallback(async (index: number): Promise<void> => {
+        const runtime = choiceRuntimeRef.current;
+        if (!runtime) {
+            throw new Error("Select Choice: no active choice menu");
+        }
+        runtime.choose(index);
+    }, []);
+
     const isInGame = useCallback((): boolean => {
         return Boolean(gameStageVisible && nlrSession?.id);
     }, [gameStageVisible, nlrSession?.id]);
@@ -487,6 +534,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
+        choiceRuntimeRef.current = null;
         clearCurrentDialogNametag();
         setGameStageVisible(false);
         await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
@@ -605,44 +653,68 @@ export function GameApp(props: GameAppProps): ReactNode {
 
         const { width, height } = activeSurface.designSize;
         const sessionId = `${bundle.bundleId}:${bundle.revision}:${Date.now()}`;
+        // One shared host-callback bundle for every Game UI slot surface of this session.
+        const slotHostOptions: GameUiSlotHostOptions = {
+            sessionId,
+            core,
+            bundle,
+            rendererRegistry,
+            lifecycleRef,
+            makeStateAccessors,
+            openSurfaceWithTransition: openSurface,
+            closeLayerWithTransition: closeLayer,
+            quitApplication: host.quitApplication,
+            startStoryInGame: request =>
+                startStoryInGameRef.current?.(request) ??
+                Promise.reject(new Error("Start Game: runtime is not ready")),
+            writeSaveInGame: (id, metadata, screenshot) => writeSave(id, metadata, screenshot),
+            loadSaveInGame: id => loadSave(id),
+            deleteSaveInGame: id => deleteSave(id),
+            listSaveIds,
+            getSaveMetadata,
+            getSavePreview,
+            getCurrentNametag,
+            getNotificationsInGame,
+            getChoiceCountInGame,
+            isNvlModeInGame,
+            selectChoiceInGame,
+            isInGame,
+            quitGame,
+            nextInGame,
+            skipInGame,
+            showDialogInGame,
+            hideDialogInGame,
+            toggleDialogDisplayInGame,
+            setSentenceSpeedInGame,
+            getGamePreferenceInGame,
+            setGamePreferenceInGame,
+            setWidgetPatchesByScope,
+            widgetPatchesByScopeRef,
+            widgetRuntimeStore,
+        };
         const dialogSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "dialog", host.id);
+        const notificationSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "notification", host.id);
+        const choiceSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "choice", host.id);
+        const nvlSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "nvl", host.id);
+        const onStageSurface = findStageSurfaceForSlot(bundle.ui.uidoc, "onStage", host.id);
         const dialogComponent = dialogSurface
             ? createDialogSlotComponent({
-                  sessionId,
-                  core,
-                  bundle,
+                  options: slotHostOptions,
                   surface: dialogSurface,
-                  rendererRegistry,
-                  lifecycleRef,
-                  makeStateAccessors,
-                  openSurfaceWithTransition: openSurface,
-                  closeLayerWithTransition: closeLayer,
-                  quitApplication: host.quitApplication,
-                  startStoryInGame: request =>
-                      startStoryInGameRef.current?.(request) ??
-                      Promise.reject(new Error("Start Game: runtime is not ready")),
-                  writeSaveInGame: (id, metadata, screenshot) => writeSave(id, metadata, screenshot),
-                  loadSaveInGame: id => loadSave(id),
-                  deleteSaveInGame: id => deleteSave(id),
-                  listSaveIds,
-                  getSaveMetadata,
-                  getSavePreview,
-                  getCurrentNametag,
-                  isInGame,
-                  quitGame,
-                  nextInGame,
-                  skipInGame,
-                  showDialogInGame,
-                  hideDialogInGame,
-                  toggleDialogDisplayInGame,
-                  setSentenceSpeedInGame,
-                  getGamePreferenceInGame,
-                  setGamePreferenceInGame,
                   setDialogVirtualClickTarget: setNlrDialogVirtualClickTarget,
-                  setWidgetPatchesByScope,
-                  widgetPatchesByScopeRef,
-                  widgetRuntimeStore,
               })
+            : undefined;
+        const notificationComponent = notificationSurface
+            ? createNotificationSlotComponent(slotHostOptions, notificationSurface)
+            : undefined;
+        const choiceComponent = choiceSurface
+            ? createChoiceSlotComponent(slotHostOptions, choiceSurface, setChoiceRuntime)
+            : undefined;
+        const nvlComponent = nvlSurface
+            ? createNvlSlotComponent(slotHostOptions, nvlSurface)
+            : undefined;
+        const onStageNode = onStageSurface
+            ? createOnStageSlotNode(slotHostOptions, onStageSurface)
             : undefined;
         const game = new Game({
             app: { debug: false },
@@ -652,6 +724,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             ratioUpdateInterval: 0,
             contentContainerId: `__nlr_preview_stage_${sessionId.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
             ...(dialogComponent ? { dialog: dialogComponent, dialogWidth: width, dialogHeight: height } : {}),
+            ...(notificationComponent ? { notification: notificationComponent } : {}),
+            ...(choiceComponent ? { menu: choiceComponent } : {}),
+            ...(nvlComponent ? { nvlDialog: nvlComponent } : {}),
         });
         game.keyMap.setKeyBinding(KeyBindingType.nextAction, null);
         const environmentReady = new Promise<void>((resolve, reject) => {
@@ -661,12 +736,14 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearGameHiddenStudioPages();
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
+        choiceRuntimeRef.current = null;
         setNlrSession({
             id: sessionId,
             game,
             compiled,
             width,
             height,
+            onStageNode,
         });
         await environmentReady;
         return sessionId;
@@ -677,14 +754,17 @@ export function GameApp(props: GameAppProps): ReactNode {
         closeLayer,
         core,
         deleteSave,
+        getChoiceCountInGame,
         getCurrentNametag,
         getGamePreferenceInGame,
+        getNotificationsInGame,
         getSaveMetadata,
         getSavePreview,
         hideDialogInGame,
         host.id,
         host.quitApplication,
         isInGame,
+        isNvlModeInGame,
         listSaveIds,
         loadSave,
         makeStateAccessors,
@@ -693,6 +773,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         quitGame,
         rejectPendingGameStarts,
         rendererRegistry,
+        selectChoiceInGame,
+        setChoiceRuntime,
         setNlrDialogVirtualClickTarget,
         setSentenceSpeedInGame,
         setGamePreferenceInGame,
@@ -794,6 +876,10 @@ export function GameApp(props: GameAppProps): ReactNode {
             onGetSaveMetadata: getSaveMetadata,
             onGetSavePreview: getSavePreview,
             onGetNametag: getCurrentNametag,
+            onGetNotifications: getNotificationsInGame,
+            onGetChoiceCount: getChoiceCountInGame,
+            onIsNvlMode: isNvlModeInGame,
+            onSelectChoice: selectChoiceInGame,
             onNext: nextInGame,
             onSkip: skipInGame,
             onShowDialog: showDialogInGame,
@@ -849,18 +935,22 @@ export function GameApp(props: GameAppProps): ReactNode {
         closeLayer,
         core,
         deleteSave,
+        getChoiceCountInGame,
         getCurrentNametag,
         getGamePreferenceInGame,
+        getNotificationsInGame,
         getSaveMetadata,
         getSavePreview,
         hideDialogInGame,
         host.quitApplication,
         isInGame,
+        isNvlModeInGame,
         listSaveIds,
         loadSave,
         nextInGame,
         openSurface,
         quitGame,
+        selectChoiceInGame,
         setSentenceSpeedInGame,
         setGamePreferenceInGame,
         setWidgetPatchesByScope,
@@ -995,6 +1085,10 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onGetSaveMetadata: getSaveMetadata,
                     onGetSavePreview: getSavePreview,
                     onGetNametag: getCurrentNametag,
+                    onGetNotifications: getNotificationsInGame,
+                    onGetChoiceCount: getChoiceCountInGame,
+                    onIsNvlMode: isNvlModeInGame,
+                    onSelectChoice: selectChoiceInGame,
                     onNext: nextInGame,
                     onSkip: skipInGame,
                     onShowDialog: showDialogInGame,
@@ -1080,18 +1174,22 @@ export function GameApp(props: GameAppProps): ReactNode {
         closeLayer,
         core,
         deleteSave,
+        getChoiceCountInGame,
         getCurrentNametag,
         getGamePreferenceInGame,
+        getNotificationsInGame,
         getSaveMetadata,
         getSavePreview,
         hideDialogInGame,
         host.quitApplication,
         isInGame,
+        isNvlModeInGame,
         listSaveIds,
         loadSave,
         nextInGame,
         openSurface,
         quitGame,
+        selectChoiceInGame,
         setSentenceSpeedInGame,
         setGamePreferenceInGame,
         showDialogInGame,
@@ -1158,6 +1256,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
+        choiceRuntimeRef.current = null;
         clearCurrentDialogNametag();
         clearDevModeSavePreviewImages();
         nlrBootStartedRef.current = null;
@@ -1183,6 +1282,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
+        choiceRuntimeRef.current = null;
         clearCurrentDialogNametag();
     }, [clearCurrentDialogNametag, nlrSession?.id]);
 
@@ -1322,6 +1422,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         <NlrStageLayer
             session={nlrSession}
             interactive={gameStageVisible}
+            renderOnStage={gameStageVisible}
             onFirstSceneReady={sessionId => {
                 const pending = pendingGameStartsRef.current.get(sessionId);
                 if (!pending) {

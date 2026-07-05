@@ -1,4 +1,4 @@
-import { Activity } from "lucide-react";
+import { Spline } from "lucide-react";
 import { PanelPosition } from "../../registry/types";
 import type { PanelModule } from "../types";
 import { StoryMotionPanel } from "./StoryMotionPanel";
@@ -16,7 +16,7 @@ export const storyMotionPanelModule: PanelModule<StoryMotionPanelPayload> = {
     metadata: {
         id: STORY_MOTION_PANEL_ID,
         title: "Story Motion",
-        icon: <Activity className="w-4 h-4" />,
+        icon: <Spline className="w-4 h-4" />,
         position: PanelPosition.Bottom,
         defaultVisible: false,
         order: 8,

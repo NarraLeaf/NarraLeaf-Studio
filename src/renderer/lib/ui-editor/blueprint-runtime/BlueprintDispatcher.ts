@@ -9,6 +9,8 @@ import {
     collectGlobalEventHeadNodeIdsForDispatch,
     isBlueprintEventDispatchHeadType,
 } from "@shared/types/blueprint/graph";
+import { findBlueprintFnByRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
+import { writeBlueprintNodeOutputValues } from "@/lib/ui-editor/blueprint-nodes/nodeOutputValues";
 import type { BlueprintElementRef } from "@shared/types/blueprint/valueTypes";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
@@ -1001,6 +1003,104 @@ export async function dispatchBlueprintBroadcastEvent(options: {
             execution?.finish();
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Fn invocation (Call Fn node)
+// ---------------------------------------------------------------------------
+
+/** Backstop against runaway fn recursion; the per-call maxSteps guard still applies. */
+export const MAX_BLUEPRINT_FN_CALL_DEPTH = 32;
+
+/**
+ * Invoke a declared blueprint fn on behalf of a Call Fn node.
+ * The fn body runs as part of the caller execution: the caller's abort signal and
+ * executionId propagate, errors bubble to the caller, and the caller awaits completion.
+ * Visibility: globalMain fns everywhere; surfaceMain/widgetMain fns only from their surface.
+ */
+export async function invokeBlueprintFnCall(options: {
+    blueprintDocument: BlueprintDocument;
+    surfaceId?: string;
+    runtimeScopeId?: string;
+    fnRef: string;
+    args: Record<string, unknown>;
+    depth: number;
+    signal?: AbortSignal;
+    callerExecutionId?: string;
+    hostAdapter: UIHostAdapter;
+    debug: DebugBridge;
+    maxSteps?: number;
+}): Promise<{ returns: Record<string, unknown> }> {
+    const { blueprintDocument, surfaceId, runtimeScopeId, fnRef, args, depth, hostAdapter, debug } = options;
+
+    // Plain errors: the GraphExecutor wraps them with the Call Fn node id in the caller graph.
+    if (depth >= MAX_BLUEPRINT_FN_CALL_DEPTH) {
+        throw new Error(`Fn call depth exceeded ${MAX_BLUEPRINT_FN_CALL_DEPTH} (recursive call?)`);
+    }
+
+    const decl = findBlueprintFnByRef(blueprintDocument, fnRef);
+    if (!decl) {
+        throw new Error(`Fn does not exist: ${fnRef}`);
+    }
+    const visible =
+        decl.owner.kind === "globalMain" ||
+        ((decl.owner.kind === "surfaceMain" || decl.owner.kind === "widgetMain") &&
+            Boolean(surfaceId) &&
+            decl.owner.surfaceId === surfaceId);
+    if (!visible) {
+        throw new Error(`Fn "${decl.name}" is not available in this scope`);
+    }
+
+    const declElementId = decl.owner.kind === "widgetMain" ? decl.owner.elementId : undefined;
+    const blueprintLocals = acquireBlueprintExecutionLocals(
+        decl.owner.kind === "globalMain"
+            ? { blueprintDocument, currentBlueprintId: decl.blueprintId }
+            : {
+                  blueprintDocument,
+                  currentBlueprintId: decl.blueprintId,
+                  surfaceId,
+                  runtimeScopeId,
+                  elementId: declElementId,
+              },
+    );
+    // Seed declared parameter pins with caller args (bound by stable pinId; extras ignored).
+    const seededArgs: Record<string, unknown> = {};
+    for (const param of decl.params) {
+        seededArgs[param.pinId] = args[param.pinId];
+    }
+    writeBlueprintNodeOutputValues(blueprintLocals, decl.headNodeId, seededArgs);
+
+    const graph = adaptBlueprintGraphIr(decl.ir, `fnCall:${decl.blueprintId}:${decl.graphId}`);
+    const executionOwner =
+        decl.owner.kind === "globalMain"
+            ? { blueprintId: decl.blueprintId }
+            : { surfaceId, elementId: declElementId, blueprintId: decl.blueprintId };
+
+    const result = await executeGraph({
+        graph,
+        entry: { start: { nodeId: decl.headNodeId, port: "then" as const } },
+        hostAdapter,
+        blueprintLocals,
+        executionOwner,
+        persistentVariables: blueprintDocument.persistentVariables,
+        maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
+        signal: options.signal,
+        fnCallDepth: depth + 1,
+        trace: options.callerExecutionId
+            ? {
+                  executionId: options.callerExecutionId,
+                  graphId: graph.id,
+                  blueprintId: decl.blueprintId,
+                  emit: e => debug.emit(e),
+              }
+            : undefined,
+    });
+
+    const returns =
+        result.returnValueSet && result.returnValue && typeof result.returnValue === "object" && !Array.isArray(result.returnValue)
+            ? (result.returnValue as Record<string, unknown>)
+            : {};
+    return { returns };
 }
 
 // ---------------------------------------------------------------------------

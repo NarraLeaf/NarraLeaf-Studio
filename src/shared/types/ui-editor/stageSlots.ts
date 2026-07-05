@@ -1,6 +1,6 @@
 import type { UIStageSlotId } from "./document";
 
-export const UI_STAGE_SLOT_IDS = ["onStage", "dialog", "notification", "choice"] as const satisfies readonly UIStageSlotId[];
+export const UI_STAGE_SLOT_IDS = ["onStage", "dialog", "notification", "choice", "nvl"] as const satisfies readonly UIStageSlotId[];
 
 export const DEFAULT_UI_STAGE_SLOT_ID: UIStageSlotId = "onStage";
 
@@ -9,6 +9,7 @@ export const UI_STAGE_SLOT_LABELS: Record<UIStageSlotId, string> = {
     dialog: "Dialog",
     notification: "Notification",
     choice: "Choice",
+    nvl: "NVL",
 };
 
 export const UI_STAGE_SLOT_DESCRIPTIONS: Record<UIStageSlotId, string> = {
@@ -16,6 +17,7 @@ export const UI_STAGE_SLOT_DESCRIPTIONS: Record<UIStageSlotId, string> = {
     dialog: "The main conversation or narration interface.",
     notification: "Short runtime messages and prompts.",
     choice: "Player choice menus and decision prompts.",
+    nvl: "Full-screen novel-mode dialog history.",
 };
 
 export function isUIStageSlotId(value: unknown): value is UIStageSlotId {

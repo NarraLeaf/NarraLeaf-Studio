@@ -56,6 +56,53 @@ describe("resolveStoryMotionPreviewTarget", () => {
         }));
     });
 
+    it("falls back to the preview image only when no target asset resolves", () => {
+        const standalone = resolveStoryMotionPreviewTarget({
+            document: null,
+            sceneId: undefined,
+            blockId: undefined,
+            fallbackKind: "image",
+            fallbackLabel: "Motion",
+            previewAssetId: "asset-preview",
+        });
+        expect(standalone.assetId).toBe("asset-preview");
+
+        const document = documentWith({
+            create: {
+                id: "create",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "image",
+                    operation: "create",
+                    objectName: "hero",
+                    assetId: "asset-hero",
+                },
+            },
+            move: {
+                id: "move",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "displayable",
+                    operation: "transform",
+                    target: { name: "hero", kind: "image" },
+                },
+            },
+        }, ["create", "move"]);
+        const bound = resolveStoryMotionPreviewTarget({
+            document,
+            sceneId: "scene-1",
+            blockId: "move",
+            fallbackKind: "image",
+            fallbackLabel: "Motion",
+            previewAssetId: "asset-preview",
+        });
+        expect(bound.assetId).toBe("asset-hero");
+    });
+
     it("looks backward for displayable image preview context", () => {
         const document = documentWith({
             create: {

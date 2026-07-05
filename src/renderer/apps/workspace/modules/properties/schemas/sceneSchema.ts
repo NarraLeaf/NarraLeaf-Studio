@@ -7,6 +7,7 @@ import type {
     UISurface,
 } from "@shared/types/ui-editor/document";
 import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
+import { DEFAULT_UI_STAGE_SLOT_ID, UI_STAGE_SLOT_IDS, UI_STAGE_SLOT_LABELS } from "@shared/types/ui-editor/stageSlots";
 import { colorValueToCss, parseColorValue } from "../framework/utils/colorUtils";
 import type {
     ColorPickerFieldDefinition,
@@ -26,21 +27,14 @@ export type SceneEditorContext = {
     documentService: UIDocumentService;
 };
 
-const GAME_UI_SLOT_LABELS: Record<UIStageSlotId, string> = {
-    onStage: "On Stage",
-    dialog: "Dialog",
-    notification: "Notification",
-    choice: "Choice",
-};
+const GAME_UI_SLOT_LABELS: Record<UIStageSlotId, string> = UI_STAGE_SLOT_LABELS;
 
-const GAME_UI_SLOT_OPTIONS: { value: UIStageSlotId; label: string }[] = [
-    { value: "onStage", label: "On Stage" },
-    { value: "dialog", label: "Dialog" },
-    { value: "notification", label: "Notification" },
-    { value: "choice", label: "Choice" },
-];
+const GAME_UI_SLOT_OPTIONS: { value: UIStageSlotId; label: string }[] = UI_STAGE_SLOT_IDS.map(slotId => ({
+    value: slotId,
+    label: UI_STAGE_SLOT_LABELS[slotId],
+}));
 
-const DEFAULT_GAME_UI_SLOT_ID: UIStageSlotId = "onStage";
+const DEFAULT_GAME_UI_SLOT_ID: UIStageSlotId = DEFAULT_UI_STAGE_SLOT_ID;
 
 const isGameUi = (surface: UISurface): surface is UIStageSurface => surface.kind === "stageSurface";
 

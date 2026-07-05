@@ -17,6 +17,10 @@ export function findStageSurfaceForSlot(
     return matches[0] ?? null;
 }
 
+export function stageSlotRuntimeScopeId(sessionId: string, slotId: UIStageSlotId, surfaceId: string): string {
+    return `nlr:${sessionId}:slot:${slotId}:${surfaceId}`;
+}
+
 export function dialogSlotRuntimeScopeId(sessionId: string, surfaceId: string): string {
-    return `nlr:${sessionId}:slot:dialog:${surfaceId}`;
+    return stageSlotRuntimeScopeId(sessionId, "dialog", surfaceId);
 }

@@ -10,9 +10,12 @@
 - 底层仍保留 `appSurface` / `stageSurface` 作为内部数据边界：`appSurface` 映射 Page，`stageSurface` 映射 Game UI。
 - UI document 由 `UIDocumentService` 负责 `editor/ui/uidoc.json` 的创建、迁移、编辑、保存。
 - UI 管理器边栏按 Page / Game UI 创建和浏览界面；Page 创建时可设置画布尺寸，Game UI 固定使用项目分辨率并选择插槽。
-- Dialog Game UI 是 `stageSurface` 的 `dialog` slot。创建时会生成透明背景、底部 dialog panel、`Nametag` 和 `Sentence` 模板；同一 slot 只允许一个 active Game UI。
+- Game UI slot 共五个：`onStage`、`dialog`、`notification`、`choice`、`nvl`；同一 slot 只允许一个 active Game UI。
+- Dialog Game UI 是 `stageSurface` 的 `dialog` slot。创建时会生成透明背景、底部 dialog panel、`Nametag` 和 `Sentence` 模板。
+- Notification / Choice / NVL Game UI 创建时生成 list 驱动的默认模板：Notification 为左上角深色胶囊堆叠（item 模板 = 胶囊 Container + Text 读 `item.message`）；Choice 为居中垂直堆叠（浅色条目 + 居中 Text 读 `item.text`，Choice List 蓝图预接 `Item Click → Select Choice`）；NVL 为全屏半透明黑 panel + NVL 列表（普通 Text 读 `item.nametag` + 私有 `NVL Texts` 叶子）。NVL 推进接线（点击/Space → `Next`）挂在 **NVL Panel（`nl.container`）** 的 widgetMain 上，而不是 NVL List——collection widget 不暴露 `Mouse Click` 事件头；panel 自身 Mouse Click 借 DOM 冒泡覆盖 panel 内所有点击，Interaction Layer 的 Element Click 覆盖 panel 外区域。On-Stage 创建为透明空根，点击穿透。
 - 已有 canvas 编辑、outline、inspector、拖拽/缩放、复制粘贴、分组排列、undo/redo、图片拖放、静态诊断、card preview。
-- 已有 widget module registry 和内置 widget 渲染。插入栏主区包含 Container、Text、Image、Button；Slider、List 和 Page 收在 overflow 菜单。Dialog slot 私有控件只保留 `Sentence`；说话人名使用普通 Text 配合 Game `Get Nametag` 蓝图节点。
+- 已有 widget module registry 和内置 widget 渲染。插入栏主区包含 Container、Text、Image、Button；Slider、List 和 Page 收在 overflow 菜单。slot 私有控件按 slot 过滤：Dialog 的 `Sentence`（`nl.dialog.sentence`）、Notification 的 `Notification List`（`nl.notification.list`）、Choice 的 `Choice List`（`nl.choice.list`）、NVL 的 `NVL List`（`nl.nvl.list`）与 `NVL Texts`（`nl.nvl.texts`）。说话人名使用普通 Text 配合 Game `Get Nametag` 蓝图节点。
+- Notification / Choice / NVL 的包装控件复用 `nl.list` 的 item template 机制（`isListLikeWidgetType`）：item 模板子树、per-item scope 隔离、`listItemRefresh`、item context 纯读取节点、List Self 节点全部可用；运行时 items 由 slot bridge 注入（Notification `{id,message}`、Choice `{text,index,disabled}`（hidden 已过滤，index 为原始选项序号）、NVL `{nametag,isActive,index}`），编辑器画布回退到 `previewItems` 占位。`element:nl.list` 派生节点仍只针对 `nl.list`（后续跟进）。
 - 已有 local blueprint document：`UIGraphService` 持久化 `editor/ui/uigraphs.json`，`LocalBlueprintService` 操作 private blueprint。
 - 已有 Blueprint Lite editor，可编辑 Page / Game UI / widget private blueprint 的 event graph、variables、fields、TypeScript module source。
 - 已有 Dev Mode UI runtime，可读取磁盘 bundle、执行最小 blueprint runtime、应用 Host API 变更并展示 debug panel。
@@ -46,7 +49,7 @@
 - UIGraph / local blueprint 路径：`editor/ui/uigraphs.json`
 - Main Page 使用稳定 id，运行时按 id 查找，不按 name 查找。
 - Page 底层为 `appSurface`，host 为 `app`。
-- Game UI 底层为 `stageSurface`，host 为 `player`，插槽为 `onStage`、`dialog`、`notification`、`choice`。
+- Game UI 底层为 `stageSurface`，host 为 `player`，插槽为 `onStage`、`dialog`、`notification`、`choice`、`nvl`。
 - Dialog Game UI 默认模板把推进逻辑集中在 Dialog Content 的 widgetMain 蓝图中：Content 自己的 `Mouse Click`、绑定全屏透明 Dialog Interaction Layer、可见 Dialog Panel 和默认内容子控件的 `Element Click`、以及 Space `keyUp` 都连接到同一个 Game `Next` 节点，触发 NarraLeaf virtual click 路径。全屏透明 `nl.container` 只作为工具控件负责命中面板外点击；Dialog Panel 是视觉壳，Dialog Content 是实际顶层点击区。句子仍使用私有 `nl.dialog.sentence` 映射 NarraLeaf React `<Texts />`；说话人名使用普通 `nl.text`，通过自身 `Init` / `On Flush` 事件图读取 Game `Get Nametag` 并在空值时隐藏，不再提供特殊私有 `Nametag` widget，也不再依赖 Blueprint Value。Dialog hook 在文本/说话人变化时会对带 Blueprint Value 或 `On Flush` 逻辑的 Dialog 元素派发 flush，因此 Dialog 不重新挂载时也会更新。
 - Game UI 不再暴露 link 或 layer 配置；Page 在游戏内作为叠层显示的互通由后续 page/layer API 内部管理。
 - Flow parent 主要包括 `nl.stack`、`nl.scroll`、`nl.listRepeater`。
@@ -75,7 +78,10 @@
 - Workspace preview 中 Slider 只读显示当前字面值或 Blueprint Value 初始值推导出的 handle 位置，不通过指针拖拽改值。Dev Mode / 运行时可通过真实交互或 Slider Host API 更新运行时值。
 - 启动 Dev Mode 前，调用方需要确保 dirty UIDocument/UIGraph 已保存；Dev Mode 主进程从磁盘读取 `uidoc.json` 和 `uigraphs.json`。
 - Dev Mode 的 runtime、Host API trace、binding evaluation、debug event bus 在 `src/renderer/apps/dev-mode/` 与 `src/renderer/lib/ui-editor/blueprint-runtime/`。
-- Dev Mode 启动 NarraLeaf 故事时会查找第一个 `mount.slotId: "dialog"` 的 Game UI surface。存在时，会把 Studio Dialog component 注入 `new Game({ dialog })`；该 component 使用独立 runtime scope `nlr:<sessionId>:slot:dialog:<surfaceId>`，接入 Blueprint binding、widget runtime patches 和 surface init/unmount lifecycle。不存在 Dialog Game UI 时，继续使用 NarraLeaf 默认 Dialog。
+- Dev Mode 启动 NarraLeaf 故事时会查找每个 slot 的第一个 active Game UI surface，并按 slot 注入：`dialog` → `new Game({ dialog })`、`notification` → `new Game({ notification })`、`choice` → `new Game({ menu })`、`nvl` → `new Game({ nvlDialog })`；`onStage` 没有 NLR 注入点，作为 `<Player>` children 挂进 NLR RootLayout。缺失某 slot 的 Game UI 时该 slot 继续使用 NarraLeaf 默认组件。
+- On-Stage 只在游戏舞台可见时渲染（`NlrStageLayer` 的 `renderOnStage={gameStageVisible}`），避免 boot preload 阶段或游戏外 Page 过渡时露出 on-stage 元素。它的 surface shell 用 inline `pointer-events: none` 保证点击穿透——NLR RootLayout 用通配符 CSS 规则 `.pointer-events-auto-rest *` 强制所有后代 `pointer-events: auto`，只有 inline 样式能压过它（`GameSurfaceRenderer` 的 `surfacePointerEvents` prop 负责这点）；空白区域点击穿透到舞台，元素自身经 node wrapper 恢复 pointer events。全屏交互容器仍会挡住舞台点击。
+- 每个 slot surface 使用独立 runtime scope `nlr:<sessionId>:slot:<slotId>:<surfaceId>`，共用一份 host callbacks（`StageSlotSurfaceShell` 的 `GameUiSlotHostOptions`），接入 Blueprint binding、widget runtime patches 和 surface init/unmount lifecycle。`StageSlotSurfaceBody` 复刻 app surface 的协调：在 surface renderer 注册好 blueprint runtime 订阅（`onRuntimeSubscriptionsReady`）之前扣留 `core`，避免 Dev Mode StrictMode 的 throwaway mount 提前 `closeScope` 而 abort 真正 mount 的 widget `init` 派发。
+- slot bridge 负责把 NLR 数据镜像到 Blueprint runtime：Notification 把 `{id,message}[]` 写入 widget runtime list store + `game.notifications` global state；Choice 把评估后的可见选项写入 list store + `game.choice.count`，`Select Choice` 通过注册的 choice runtime 调用 NLR `choose`（hidden/disabled 选项拒绝）；NVL 把 `{nametag,isActive,index}` 写入 list store + `game.nvl.active`，原始 NvlDialogProxy 只通过 React context 交给 `nl.nvl.texts` 渲染打字效果，条目增加时自动滚动到底。每次镜像后对该 surface 的 value-bound / flush 元素派发 flush（收集器 `collectSurfaceFlushElementIds` 与 Dialog 共用）。
 - Blueprint Value runtime 在元素挂载时执行 `init`，并在求值期间记录 Element/property 读取依赖。后续 UIDocument/runtime 同步时只比较这些依赖的属性快照；目标属性变化会排队重跑该 value binding，无关 surface/global state 变化不会强制重跑。没有返回值时保留上一次解析值，或退回 UIDocument 中的字面 props。
 - 内部 widget `nl.frame` 在用户界面显示为 Page。它只出现在 Page surface 的 insert palette overflow 中，Game UI 不显示入口。
 - Page 组件不是 iframe；它通过共享 renderer 在当前 UIDocument 中真实渲染目标 Page。目标必须是另一个 Page，不能指向当前 Page、Game UI、缺失 surface，或形成循环嵌套；非法目标显示占位错误而不是中断渲染。

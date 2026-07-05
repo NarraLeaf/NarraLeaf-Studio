@@ -6,8 +6,14 @@ import {
     type BlueprintImageAsset,
 } from "@shared/types/blueprint/valueTypes";
 import { truncateDebugEventMessage } from "./DebugBridge";
-import { BLUEPRINT_GAME_NAMETAG_STATE_KEY } from "@shared/types/blueprint/hostApi";
+import {
+    BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY,
+    BLUEPRINT_GAME_NAMETAG_STATE_KEY,
+    BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY,
+    BLUEPRINT_GAME_NVL_MODE_STATE_KEY,
+} from "@shared/types/blueprint/hostApi";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
 import type {
     UIDisplayableMotionOverride,
@@ -242,6 +248,10 @@ export type BlueprintHostApiRuntime = {
         getSaveMetadata: (id: string) => Promise<unknown>;
         getSavePreview: (id: string) => Promise<BlueprintImageAsset | null>;
         getNametag: () => string | null;
+        getNotifications: () => BlueprintGameNotification[];
+        getChoiceCount: () => number;
+        isNvlMode: () => boolean;
+        choose: (index: number) => Promise<void>;
         next: () => Promise<void>;
         skip: () => Promise<void>;
         showDialog: () => Promise<void>;
@@ -275,6 +285,10 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSavePreview?: (id: string) => Promise<BlueprintImageAsset | null> | BlueprintImageAsset | null;
     onGetNametag?: () => string | null;
+    onGetNotifications?: () => BlueprintGameNotification[];
+    onGetChoiceCount?: () => number;
+    onIsNvlMode?: () => boolean;
+    onSelectChoice?: (index: number) => Promise<void> | void;
     onNext?: () => Promise<void> | void;
     onSkip?: () => Promise<void> | void;
     onShowDialog?: () => Promise<void> | void;
@@ -496,7 +510,7 @@ function assertSliderElement(document: UIDocument, elementId: string) {
 
 function assertListElement(document: UIDocument, elementId: string) {
     const el = requireDocumentElement(document, elementId, "list");
-    if (el.type !== "nl.list") {
+    if (!isListLikeWidgetType(el.type)) {
         throw new Error(`list: element is not a List widget: ${el.type}`);
     }
     return el;
@@ -903,6 +917,35 @@ function normalizeBlueprintNametag(value: unknown): string | null {
     return text.trim().length > 0 ? text : null;
 }
 
+/** One NarraLeaf notification mirrored into the blueprint runtime. */
+export type BlueprintGameNotification = {
+    id: string;
+    message: string;
+};
+
+function normalizeBlueprintGameNotifications(value: unknown): BlueprintGameNotification[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    const out: BlueprintGameNotification[] = [];
+    for (const item of value) {
+        if (!item || typeof item !== "object") {
+            continue;
+        }
+        const record = item as Record<string, unknown>;
+        out.push({
+            id: String(record.id ?? ""),
+            message: String(record.message ?? ""),
+        });
+    }
+    return out;
+}
+
+function normalizeBlueprintChoiceCount(value: unknown): number {
+    const count = Number(value);
+    return Number.isInteger(count) && count > 0 ? count : 0;
+}
+
 function normalizeNullableString(raw: unknown): string | null {
     if (raw === null) {
         return null;
@@ -1193,6 +1236,10 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetSaveMetadata,
         onGetSavePreview,
         onGetNametag,
+        onGetNotifications,
+        onGetChoiceCount,
+        onIsNvlMode,
+        onSelectChoice,
         onNext,
         onSkip,
         onShowDialog,
@@ -2249,6 +2296,54 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     const value = onGetNametag ? onGetNametag() : scope.globalGet(BLUEPRINT_GAME_NAMETAG_STATE_KEY);
                     return normalizeBlueprintNametag(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getNotifications: () => {
+                const cap = "game.getNotifications";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onGetNotifications
+                        ? onGetNotifications()
+                        : scope.globalGet(BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY);
+                    return normalizeBlueprintGameNotifications(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getChoiceCount: () => {
+                const cap = "game.getChoiceCount";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onGetChoiceCount
+                        ? onGetChoiceCount()
+                        : scope.globalGet(BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY);
+                    return normalizeBlueprintChoiceCount(value);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isNvlMode: () => {
+                const cap = "game.isNvlMode";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = onIsNvlMode
+                        ? onIsNvlMode()
+                        : scope.globalGet(BLUEPRINT_GAME_NVL_MODE_STATE_KEY);
+                    return value === true;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            choose: async (index: number) => {
+                const cap = "game.choose";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onSelectChoice) {
+                        throw new Error("choose: choice runtime is not available");
+                    }
+                    await onSelectChoice(index);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
