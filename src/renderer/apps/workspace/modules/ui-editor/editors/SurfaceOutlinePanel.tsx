@@ -61,7 +61,7 @@ export function SurfaceOutlinePanel({
     return (
         <>
             <div className={panelClasses}>
-                <div className="px-3 py-2 border-b border-white/10 text-xs uppercase text-gray-500 flex items-center justify-between">
+                <div className="px-3 py-2 border-b border-white/10 text-xs text-gray-500 flex items-center justify-between">
                     <span>UI Outline</span>
                     <button
                         type="button"

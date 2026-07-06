@@ -302,7 +302,7 @@ export function ImageFillField<TData extends UIInspectorData>({
 
                       <div className="space-y-3">
                           <div>
-                              <span className="text-xs text-gray-400 uppercase tracking-widest">Mode</span>
+                              <span className="text-xs text-gray-400 tracking-widest">Mode</span>
                               <Select
                                   options={modeOptionsForUi.map(option => ({ value: option.value, label: option.label }))}
                                   value={normalizedFill.mode}
@@ -315,7 +315,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                           </div>
 
                           <div>
-                              <span className="text-xs text-gray-400 uppercase tracking-widest">Preview</span>
+                              <span className="text-xs text-gray-400 tracking-widest">Preview</span>
                               <button
                                   ref={previewRef}
                                   type="button"
@@ -340,7 +340,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                                           Loading…
                                       </div>
                                   )}
-                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 text-[10px] uppercase tracking-[0.3em] text-white transition hover:opacity-100">
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 text-[10px] tracking-[0.3em] text-white transition hover:opacity-100">
                                       Change image
                                   </div>
                               </button>
@@ -383,7 +383,7 @@ export function ImageFillField<TData extends UIInspectorData>({
                         )}
                         <div className="flex items-center justify-between text-xs text-gray-400">
                             <span>{previewLabel}</span>
-                            <span className="uppercase tracking-[0.2em]">{panelModeLabel}</span>
+                            <span className="tracking-[0.2em]">{panelModeLabel}</span>
                         </div>
                         <div className="text-[10px] text-gray-500">Click to open editor</div>
                     </div>

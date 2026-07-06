@@ -58,6 +58,8 @@ interface ColorPickerTriggerProps {
     disabled?: boolean;
     readOnly?: boolean;
     onChange: (value: ColorValue) => void;
+    /** Fired once when the picker panel closes, with the final settled color. */
+    onCommit?: (value: ColorValue) => void;
 }
 
 function rgbToHsl(r: number, g: number, b: number) {
@@ -236,6 +238,7 @@ export function ColorPickerTrigger({
     disabled = false,
     readOnly = false,
     onChange,
+    onCommit,
 }: ColorPickerTriggerProps) {
     const triggerRef = useRef<HTMLButtonElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
@@ -250,6 +253,8 @@ export function ColorPickerTrigger({
     const [hexDraft, setHexDraft] = useState(() => colorState.hex);
     const [isEditingHex, setIsEditingHex] = useState(false);
     const colorStateRef = useRef(colorState);
+    const onCommitRef = useRef(onCommit);
+    onCommitRef.current = onCommit;
     const pendingPushHexRef = useRef<string | null>(null);
     const lastMapPushAtRef = useRef(0);
     const lastMapInteractionRef = useRef(false);
@@ -418,6 +423,7 @@ export function ColorPickerTrigger({
         setIsDragging(false);
         setIsOpen(false);
         setAnchorRect(null);
+        onCommitRef.current?.({ hex: colorStateRef.current.hex, alpha: colorStateRef.current.alpha });
     }, [flushPendingMapDragNotify]);
 
     useEffect(() => {

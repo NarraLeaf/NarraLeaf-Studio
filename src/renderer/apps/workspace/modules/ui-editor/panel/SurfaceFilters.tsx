@@ -12,7 +12,7 @@ export function SurfaceFilters({
 }: SurfaceFiltersProps) {
     return (
         <div className="px-2 pt-2 pb-1">
-            <div className="text-xs font-semibold uppercase text-gray-400">Interface Type</div>
+            <div className="text-xs font-semibold text-gray-400">Interface Type</div>
             <div className="mt-2 flex gap-2">
                 {SURFACE_KIND_OPTIONS.map(option => (
                     <button

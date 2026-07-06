@@ -491,12 +491,17 @@ async function compileCharacterStageAction(
     }
 
     const image = getImage(ctx, name, { autoFit: true, src });
-    const sourceChain = image.char(src as any, createTransition(payload.transition, ctx, block.id) as any);
     if (payload.operation === "enter") {
-        statements.push(recordStatement(ctx, sourceChain.show(createShowTransform(payload.transform, ctx, block.id) as any), block));
+        // An entering character has no prior image to transition from, so `enter` never uses a
+        // transition — its entrance is driven entirely by the show transform. (A transition only
+        // applies to `expression`, which swaps a visible character's source.)
+        const chain = image.char(src as any).show(createShowTransform(payload.transform, ctx, block.id) as any);
+        statements.push(recordStatement(ctx, chain, block));
         return statements;
     }
 
+    // expression: swap a visible character's appearance, optionally with an image transition.
+    const sourceChain = image.char(src as any, createTransition(payload.transition, ctx, block.id) as any);
     statements.push(recordStatement(ctx, sourceChain, block));
     return statements;
 }

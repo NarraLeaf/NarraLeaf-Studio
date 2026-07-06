@@ -42,7 +42,7 @@ function useActiveOutlineGapData(): OutlineGapDropData | null {
 function getOutlineElementLabel(element: UIElement): string {
     return element.type === OUTLINE_ROOT_WIDGET_TYPE
         ? DEFAULT_UI_ROOT_NAME
-        : element.name ?? element.type ?? element.id;
+        : element.name ?? element.type;
 }
 
 export type OutlineRowBase = {
