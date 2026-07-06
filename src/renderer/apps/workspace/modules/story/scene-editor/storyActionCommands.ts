@@ -145,7 +145,7 @@ export const ACTION_COMMANDS: ActionCommand[] = [
     { id: "imageSetSource", category: "image", label: "Image source", detail: "Change a named image source", icon: Image, nlrCapability: "Image.char" },
     { id: "imageShow", category: "image", label: "Image show", detail: "Show a named image", icon: Eye, nlrCapability: "Displayable.show" },
     { id: "imageHide", category: "image", label: "Image hide", detail: "Hide a named image", icon: EyeOff, nlrCapability: "Displayable.hide" },
-    { id: "displayableTransform", category: "image", label: "Transform", detail: "Move, scale, rotate, opacity, or effect preset", icon: Move, nlrCapability: "Displayable.transform" },
+    { id: "displayableTransform", category: "image", label: "Transform displayable", detail: "Move, scale, rotate, opacity, or effect preset", icon: Move, nlrCapability: "Displayable.transform" },
     { id: "displayableShow", category: "image", label: "Displayable show", detail: "Show any named displayable", icon: Eye, nlrCapability: "Displayable.show" },
     { id: "displayableHide", category: "image", label: "Displayable hide", detail: "Hide any named displayable", icon: EyeOff, nlrCapability: "Displayable.hide" },
     { id: "displayableEffect", category: "effects", label: "Displayable effect", detail: "Mask, filter, clip, darken, circle reveal/close, or wipe", icon: Sparkles, nlrCapability: "Displayable.mask/filter/wipe" },

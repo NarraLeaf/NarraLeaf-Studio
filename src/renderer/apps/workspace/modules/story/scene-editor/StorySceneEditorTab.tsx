@@ -22,6 +22,7 @@ import {
 } from "./storyActionCreatorEvents";
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
+import { StoryEditorTextStyleProvider } from "./storyEditorTextStyle";
 import { getTextSegment } from "./storySceneBlockUtils";
 import { getStoryEditorScroll, setStoryEditorScroll } from "./storyEditorSessionStore";
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
@@ -422,6 +423,7 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
     };
 
     return (
+        <StoryEditorTextStyleProvider>
         <div
             ref={editor.rootRef}
             tabIndex={0}
@@ -539,5 +541,6 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
                 <div aria-hidden style={{ height: "calc(100% - 40px)" }} />
             </div>
         </div>
+        </StoryEditorTextStyleProvider>
     );
 }
