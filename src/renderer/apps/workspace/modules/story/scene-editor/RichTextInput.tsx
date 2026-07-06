@@ -90,11 +90,14 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         if (!el) {
             return;
         }
-        el.focus();
+        // Capture the selection BEFORE focusing (focusing can collapse it). When focus is on a
+        // portal popover (color palette) the live selection is gone, so fall back to the last
+        // saved range.
         const range = getSelectionUnitRange(el) ?? savedRange.current;
         if (!range) {
             return;
         }
+        el.focus();
         const result = fn(domToRuns(el), range);
         if (!result) {
             return;
