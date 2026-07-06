@@ -602,6 +602,41 @@ describe("compileStudioStoryToNlr", () => {
         ]);
     });
 
+    it("compiles rich dialogue runs into a sentence prompt", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            say: {
+                id: "say",
+                kind: "nodeAction",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "dialogue",
+                    characterId: "char-alice",
+                    text: {
+                        textId: "text-say",
+                        value: "Hello brave world",
+                        role: "dialogue",
+                        rich: [
+                            { text: "Hello " },
+                            { text: "brave", marks: { bold: true, color: "#ff0000" } },
+                            { pause: 200 },
+                            { text: " world", marks: { italic: true } },
+                        ],
+                    },
+                },
+            },
+        };
+
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("say");
+    });
+
     it("compiles dialogue pauseAfter without diagnostics", async () => {
         const blocks: Record<string, StoryBlock> = {
             say: {

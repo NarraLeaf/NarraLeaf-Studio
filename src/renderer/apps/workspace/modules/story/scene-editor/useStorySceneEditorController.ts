@@ -24,6 +24,7 @@ import {
     updateTextPayload,
 } from "./storySceneBlockUtils";
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
+import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
 
@@ -54,7 +55,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const rootRef = useRef<HTMLDivElement | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const insertInputRef = useRef<HTMLTextAreaElement | null>(null);
-    const textInputRef = useRef<HTMLTextAreaElement | null>(null);
+    const textInputRef = useRef<RichTextInputHandle | null>(null);
     const dragSelectionStartRef = useRef<StoryBlockId | null>(null);
     const dragSelectPointerRef = useRef<{ x: number; y: number } | null>(null);
     const dragSelectAutoScrollRef = useRef<number | null>(null);
@@ -138,7 +139,6 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (editorMode.kind === "text") {
             window.requestAnimationFrame(() => {
                 textInputRef.current?.focus();
-                textInputRef.current?.select();
             });
         }
     }, [editorFocusKey]);
@@ -365,7 +365,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         const block = scene.blocks[editorMode.blockId];
-        const payload = block ? updateTextPayload(block, editorMode.value) : null;
+        const payload = block ? updateTextPayload(block, editorMode.value, editorMode.rich) : null;
         if (payload) {
             const changed = JSON.stringify(block.payload) !== JSON.stringify(payload);
             if (!changed) {
@@ -412,7 +412,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         recordHistory();
-        const updatedPayload = updateTextPayload(currentBlock, editorMode.value);
+        const updatedPayload = updateTextPayload(currentBlock, editorMode.value, editorMode.rich);
         if (updatedPayload) {
             storyService.updateBlock(storyId, sceneId, currentBlock.id, updatedPayload);
         }

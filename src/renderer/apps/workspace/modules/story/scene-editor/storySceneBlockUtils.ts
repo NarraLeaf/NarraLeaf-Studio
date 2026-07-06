@@ -1,5 +1,6 @@
 import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Music, Route, Settings2, Sparkles, StickyNote, Type, UserRound, Variable, Video } from "lucide-react";
-import type { StoryBlock, StoryBlockId, StoryScene, StoryTextSegment } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StoryTextSegment } from "@shared/types/story";
+import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
 import { getActionCommandCategory, type ActionCommandCategoryId } from "./storyActionCommands";
@@ -36,18 +37,29 @@ export function getTextSegment(block: StoryBlock): StoryTextSegment | null {
     return null;
 }
 
-export function updateTextPayload(block: StoryBlock, value: string): StoryBlock["payload"] | null {
+function mergeSegment(text: StoryTextSegment, value: string, rich: StoryRichRun[] | undefined): StoryTextSegment {
+    const meaningful = rich ? richIfMeaningful(rich) : undefined;
+    const next: StoryTextSegment = { ...text, value };
+    if (meaningful) {
+        next.rich = meaningful;
+    } else {
+        delete next.rich;
+    }
+    return next;
+}
+
+export function updateTextPayload(block: StoryBlock, value: string, rich?: StoryRichRun[]): StoryBlock["payload"] | null {
     if (block.kind === "note") {
-        return { ...block.payload, text: { ...block.payload.text, value } };
+        return { ...block.payload, text: mergeSegment(block.payload.text, value, rich) };
     }
     if (block.kind !== "nodeAction") {
         return null;
     }
     if ("text" in block.payload) {
-        return { ...block.payload, text: { ...block.payload.text, value } };
+        return { ...block.payload, text: mergeSegment(block.payload.text, value, rich) };
     }
     if (block.payload.action === "choice" && block.payload.prompt) {
-        return { ...block.payload, prompt: { ...block.payload.prompt, value } };
+        return { ...block.payload, prompt: mergeSegment(block.payload.prompt, value, rich) };
     }
     return null;
 }

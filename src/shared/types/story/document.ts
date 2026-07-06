@@ -316,9 +316,29 @@ export type StoryNotePayload = {
 
 export type StoryTextSegment = {
     textId: StoryTextId;
+    /** Plain-text projection of the segment (concatenation of rich text runs). Always kept in sync. */
     value: string;
     role: "narration" | "dialogue" | "choicePrompt" | "choiceText" | "note";
+    /**
+     * Optional rich-text runs. When absent the segment is plain (`value`). When present, `value`
+     * is the derived plain-text projection and `rich` is the source of truth for styling. Maps to
+     * NarraLeaf `Sentence`/`Word`/`Pause` at compile time.
+     */
+    rich?: StoryRichRun[];
 };
+
+export type StoryTextMarks = {
+    bold?: boolean;
+    italic?: boolean;
+    color?: string;
+    ruby?: string;
+    cps?: number;
+    fontSize?: number;
+};
+
+export type StoryRichRun =
+    | { text: string; marks?: StoryTextMarks }
+    | { pause: number | true };
 
 export type StoryVariableRef = {
     scope: StoryVariableScope;

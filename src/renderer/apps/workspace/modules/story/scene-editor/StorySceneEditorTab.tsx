@@ -449,7 +449,6 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
                                     active={editor.activeBlockId === row.block.id}
                                     collapsed={editor.collapsedBlockIds.has(row.block.id)}
                                     editing={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id}
-                                    editValue={editor.editorMode.kind === "text" && editor.editorMode.blockId === row.block.id ? editor.editorMode.value : ""}
                                     textInputRef={editor.textInputRef}
                                     inspectorOpen={editor.editorMode.kind === "inspector" && editor.editorMode.blockId === row.block.id}
                                     onSelect={event => editor.selectRow(row.block.id, event)}
@@ -459,13 +458,13 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
                                     onStartTextEdit={() => {
                                         const text = getTextSegment(row.block);
                                         if (text) {
-                                            editor.setEditorMode({ kind: "text", blockId: row.block.id, value: text.value });
+                                            editor.setEditorMode({ kind: "text", blockId: row.block.id, value: text.value, rich: text.rich });
                                         }
                                     }}
-                                    onEditValueChange={value =>
+                                    onEditRichChange={(value, rich) =>
                                         editor.setEditorMode(current =>
                                             current.kind === "text" && current.blockId === row.block.id
-                                                ? { ...current, value }
+                                                ? { ...current, value, rich }
                                                 : current,
                                         )
                                     }
