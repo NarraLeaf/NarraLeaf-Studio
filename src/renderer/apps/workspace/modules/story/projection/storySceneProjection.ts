@@ -3,8 +3,10 @@ import type {
     StoryBlock,
     StoryBlockId,
     StoryConditionRef,
+    StoryDocument,
     StoryNodeActionPayload,
     StoryScene,
+    StoryVariableRef,
 } from "@shared/types/story";
 
 export type EditableStoryLineKind = "narration" | "dialogue" | "note";
@@ -38,7 +40,7 @@ export type StoryLineTextChange =
           lineNumber?: number;
       };
 
-export function buildStorySceneTextProjection(scene: StoryScene): StorySceneTextProjection {
+export function buildStorySceneTextProjection(scene: StoryScene, document?: StoryDocument): StorySceneTextProjection {
     const lines: StorySceneProjectionLine[] = [];
     const textLines: string[] = [];
 
@@ -47,7 +49,7 @@ export function buildStorySceneTextProjection(scene: StoryScene): StorySceneText
         if (!block) {
             return;
         }
-        const projected = projectBlockLine(block, depth);
+        const projected = projectBlockLine(block, depth, scene, document);
         const lineNumber = textLines.length + 1;
         textLines.push(projected.text);
         lines.push({
@@ -152,17 +154,19 @@ export function updateBlockTextValue(block: StoryBlock, value: string): StoryBlo
 function projectBlockLine(
     block: StoryBlock,
     depth: number,
+    scene: StoryScene,
+    document?: StoryDocument,
 ): { text: string; editable: boolean; editableKind?: EditableStoryLineKind; prefix: string } {
     const indent = "  ".repeat(depth);
     if (block.kind === "nodeAction") {
         return projectNodeActionLine(block.payload, indent);
     }
     if (block.kind === "action") {
-        return { text: `${indent}${formatAction(block.payload)}`, editable: false, prefix: "" };
+        return { text: `${indent}${formatAction(block.payload, scene, document)}`, editable: false, prefix: "" };
     }
     if (block.kind === "control") {
         if (block.payload.control === "conditionBranch") {
-            const label = block.payload.branch === "else" ? "else" : `${block.payload.branch} ${formatCondition(block.payload.condition)}`;
+            const label = block.payload.branch === "else" ? "else" : `${block.payload.branch} ${formatCondition(block.payload.condition, scene, document)}`;
             return { text: `${indent}/${label}`, editable: false, prefix: "" };
         }
         return { text: `${indent}/condition`, editable: false, prefix: "" };
@@ -218,7 +222,7 @@ function projectNodeActionLine(
     };
 }
 
-function formatAction(payload: StoryActionPayload): string {
+function formatAction(payload: StoryActionPayload, scene: StoryScene, document?: StoryDocument): string {
     if (payload.action === "setBackground") {
         return `/background ${payload.assetId ?? payload.color ?? ""}`.trimEnd();
     }
@@ -229,7 +233,7 @@ function formatAction(payload: StoryActionPayload): string {
         return `/audio ${payload.operation}${payload.objectName ? ` ${payload.objectName}` : payload.assetId ? ` ${payload.assetId}` : ""}`;
     }
     if (payload.action === "setVariable") {
-        return `/set ${payload.target.key} ${String(payload.value)}`;
+        return `/set ${describeVariableRef(payload.target, scene, document)} ${String(payload.value)}`;
     }
     if (payload.action === "wait") {
         return payload.mode === "duration" ? `/wait ${payload.durationMs ?? 0}ms` : "/wait click";
@@ -252,17 +256,31 @@ function formatAction(payload: StoryActionPayload): string {
     if (payload.action === "nvl") {
         return "/nvl";
     }
+    if (payload.action === "blueprint") {
+        return "/blueprint";
+    }
     return `/effect ${payload.effect}`;
 }
 
-function formatCondition(condition: StoryConditionRef | undefined): string {
+function formatCondition(condition: StoryConditionRef | undefined, scene: StoryScene, document?: StoryDocument): string {
     if (!condition) {
         return "<condition>";
     }
     if (condition.kind === "expression") {
         return condition.source || "<expression>";
     }
-    return `${condition.target.key} ${condition.operator}${condition.value !== undefined ? ` ${String(condition.value)}` : ""}`;
+    return `${describeVariableRef(condition.target, scene, document)} ${condition.operator}${condition.value !== undefined ? ` ${String(condition.value)}` : ""}`;
+}
+
+/** Compact, user-safe label for a variable reference (never exposes internal ids). */
+function describeVariableRef(ref: StoryVariableRef, scene: StoryScene, document?: StoryDocument): string {
+    if (ref.scope === "scene") {
+        return scene.sceneVariables?.[ref.variableId]?.name ?? "variable";
+    }
+    if (ref.scope === "saved") {
+        return document?.savedVariables?.[ref.variableId]?.name ?? "variable";
+    }
+    return "persistent";
 }
 
 function splitEditorText(value: string): string[] {

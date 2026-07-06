@@ -12,7 +12,9 @@ import type {
     StoryTransformRef,
     StoryTransformPreset,
     StoryTextSegment,
+    StoryVariableRef,
     StoryVariableScope,
+    StoryVariableValueType,
 } from "@shared/types/story";
 import { resolveDisplayableTargetRef } from "@shared/types/story";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -30,6 +32,8 @@ import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
+import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
@@ -41,10 +45,132 @@ const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-white/10 bg-
 const SELECT_CLASS = "[&>button]:h-9 [&>button]:min-h-[34px] [&>button]:py-0";
 
 const VARIABLE_SCOPE_OPTIONS: SelectOption[] = [
-    { value: "sceneLocal", label: "Scene local" },
-    { value: "studioGlobal", label: "Studio global" },
-    { value: "gamePersistent", label: "Game persistent" },
+    { value: "scene", label: "Scene" },
+    { value: "saved", label: "Saved" },
+    { value: "persistent", label: "Persistent" },
 ];
+
+type DeclaredVariableOption = { id: string; name: string; valueType: StoryVariableValueType };
+
+type StoryVariableOptions = {
+    scene: DeclaredVariableOption[];
+    saved: DeclaredVariableOption[];
+    persistent: DeclaredVariableOption[];
+};
+
+/** Read declared scene/saved variables (from the story document) and persistent variables (shared blueprint store). */
+function useStoryVariableOptions(document: StoryDocument, sceneId: StorySceneId): StoryVariableOptions {
+    const { context, isInitialized } = useWorkspace();
+    const [persistent, setPersistent] = useState<DeclaredVariableOption[]>([]);
+    useEffect(() => {
+        if (!context || !isInitialized) return;
+        const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const read = () => {
+            const bpDoc = service.getBlueprintDocument();
+            setPersistent(
+                Object.values(bpDoc.persistentVariables ?? {}).map(variable => ({
+                    id: variable.storageKey,
+                    name: variable.name,
+                    valueType: (variable.valueType as StoryVariableValueType) ?? "string",
+                })),
+            );
+        };
+        read();
+        return service.onBlueprintHistoryChanged(read);
+    }, [context, isInitialized]);
+    return useMemo(() => {
+        const scene = Object.values(document.scenes[sceneId]?.sceneVariables ?? {}).map(variable => ({
+            id: variable.id,
+            name: variable.name,
+            valueType: variable.valueType,
+        }));
+        const saved = Object.values(document.savedVariables ?? {}).map(variable => ({
+            id: variable.id,
+            name: variable.name,
+            valueType: variable.valueType,
+        }));
+        return { scene, saved, persistent };
+    }, [document, sceneId, persistent]);
+}
+
+function refVariableId(ref: StoryVariableRef): string {
+    return ref.scope === "persistent" ? ref.storageKey : ref.variableId;
+}
+
+function makeVariableRef(scope: StoryVariableScope, id: string): StoryVariableRef {
+    return scope === "persistent" ? { scope: "persistent", storageKey: id } : { scope, variableId: id };
+}
+
+function resolveRefValueType(ref: StoryVariableRef, options: StoryVariableOptions): StoryVariableValueType {
+    const id = refVariableId(ref);
+    return options[ref.scope].find(option => option.id === id)?.valueType ?? "string";
+}
+
+/** Scope + declared-variable picker. Shows variable names; internal ids are never displayed. */
+function VariableRefPicker(props: {
+    value: StoryVariableRef;
+    options: StoryVariableOptions;
+    onChange: (ref: StoryVariableRef) => void;
+}) {
+    const scope = props.value.scope;
+    const declared = props.options[scope];
+    const variableOptions: SelectOption[] = declared.length
+        ? declared.map(option => ({ value: option.id, label: option.name }))
+        : [{ value: "", label: "No variables declared" }];
+    return (
+        <>
+            <SelectField
+                label="Scope"
+                options={VARIABLE_SCOPE_OPTIONS}
+                value={scope}
+                onChange={next => props.onChange(makeVariableRef(next as StoryVariableScope, ""))}
+            />
+            <SelectField
+                label="Variable"
+                options={variableOptions}
+                value={refVariableId(props.value)}
+                onChange={id => props.onChange(makeVariableRef(scope, String(id)))}
+            />
+        </>
+    );
+}
+
+/** Value editor whose control matches the declared variable type. */
+function VariableValueField(props: {
+    valueType: StoryVariableValueType;
+    value: StoryLiteralValue;
+    onChange: (value: StoryLiteralValue) => void;
+}) {
+    if (props.valueType === "boolean") {
+        return <CheckboxField label="Value" checked={props.value === true} onChange={checked => props.onChange(checked)} />;
+    }
+    if (props.valueType === "number") {
+        return (
+            <NumberField
+                label="Value"
+                value={typeof props.value === "number" ? props.value : undefined}
+                onChange={value => props.onChange(value ?? 0)}
+            />
+        );
+    }
+    if (props.valueType === "json") {
+        const text = typeof props.value === "string" ? props.value : JSON.stringify(props.value ?? null);
+        return (
+            <LabeledTextarea
+                label="Value (JSON)"
+                value={text}
+                onChange={next => {
+                    try {
+                        props.onChange(JSON.parse(next) as StoryLiteralValue);
+                    } catch {
+                        props.onChange(next);
+                    }
+                }}
+            />
+        );
+    }
+    return <TextField label="Value" value={String(props.value ?? "")} onChange={value => props.onChange(value)} />;
+}
 
 const TRANSFORM_PRESET_OPTIONS: SelectOption[] = [
     { value: "none", label: "None" },
@@ -353,6 +479,8 @@ function InspectorFields(props: {
                             <div>
                                 <div className={FIELD_LABEL_CLASS}>Hidden when</div>
                                 <ConditionRefEditor
+                                    document={props.document}
+                                    sceneId={props.sceneId}
                                     value={payload.hiddenWhen}
                                     onChange={hiddenWhen => props.onUpdatePayload({ ...payload, hiddenWhen })}
                                 />
@@ -360,6 +488,8 @@ function InspectorFields(props: {
                             <div>
                                 <div className={FIELD_LABEL_CLASS}>Disabled when</div>
                                 <ConditionRefEditor
+                                    document={props.document}
+                                    sceneId={props.sceneId}
                                     value={payload.disabledWhen}
                                     onChange={disabledWhen => props.onUpdatePayload({ ...payload, disabledWhen })}
                                 />
@@ -384,7 +514,7 @@ function InspectorFields(props: {
         );
     }
     if (block.kind === "control") {
-        return <ControlPayloadFields payload={block.payload} onChange={props.onUpdatePayload} />;
+        return <ControlPayloadFields document={props.document} sceneId={props.sceneId} payload={block.payload} onChange={props.onUpdatePayload} />;
     }
     if (block.kind === "jump") {
         const payload = block.payload;
@@ -418,6 +548,64 @@ function InspectorFields(props: {
         );
     }
     return <div className="text-sm text-slate-400">No editable fields for this action yet.</div>;
+}
+
+function SetVariableEditor(props: {
+    document: StoryDocument;
+    sceneId: StorySceneId;
+    payload: Extract<StoryActionPayload, { action: "setVariable" }>;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const options = useStoryVariableOptions(props.document, props.sceneId);
+    const valueType = resolveRefValueType(props.payload.target, options);
+    return (
+        <div className="grid gap-2 sm:grid-cols-3">
+            <VariableRefPicker
+                value={props.payload.target}
+                options={options}
+                onChange={target => props.onChange({ ...props.payload, target })}
+            />
+            <VariableValueField
+                valueType={valueType}
+                value={props.payload.value}
+                onChange={value => props.onChange({ ...props.payload, value })}
+            />
+        </div>
+    );
+}
+
+function StoryActionBlueprintEditor(props: {
+    payload: Extract<StoryActionPayload, { action: "blueprint" }>;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { context, isInitialized } = useWorkspace();
+    const openBlueprint = useOpenBlueprintTarget();
+    const handleOpen = useCallback(() => {
+        if (!context || !isInitialized) return;
+        const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        let blueprintId = props.payload.blueprintId;
+        if (!blueprintId) {
+            blueprintId = service.ensureStoryActionBlueprint();
+            props.onChange({ ...props.payload, blueprintId });
+        }
+        openBlueprint({ blueprintId, ownerKind: "storyAction", title: "Story Action" });
+    }, [context, isInitialized, openBlueprint, props]);
+    return (
+        <Section title="Blueprint">
+            <div className="flex flex-col gap-2">
+                <div className="text-[11px] text-slate-500">
+                    Runs a Story Action Blueprint. Open the editor to author its On Call logic.
+                </div>
+                <button
+                    type="button"
+                    className="h-8 w-fit rounded-md border border-white/10 px-3 text-xs text-slate-200 hover:border-primary/50 hover:text-white"
+                    onClick={handleOpen}
+                >
+                    Open blueprint editor
+                </button>
+            </div>
+        </Section>
+    );
 }
 
 function ActionPayloadFields(props: {
@@ -477,18 +665,10 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "setVariable") {
-        return (
-            <div className="grid gap-2 sm:grid-cols-3">
-                <TextField label="Key" value={payload.target.key} onChange={key => props.onChange({ ...payload, target: { ...payload.target, key } })} />
-                <SelectField
-                    label="Scope"
-                    options={VARIABLE_SCOPE_OPTIONS}
-                    value={payload.target.scope}
-                    onChange={scope => props.onChange({ ...payload, target: { ...payload.target, scope: scope as StoryVariableScope } })}
-                />
-                <TextField label="Value" value={String(payload.value ?? "")} onChange={value => props.onChange({ ...payload, value })} />
-            </div>
-        );
+        return <SetVariableEditor document={props.document} sceneId={props.sceneId} payload={payload} onChange={props.onChange} />;
+    }
+    if (payload.action === "blueprint") {
+        return <StoryActionBlueprintEditor payload={payload} onChange={props.onChange} />;
     }
     if (payload.action === "wait") {
         return (
@@ -1373,7 +1553,7 @@ function BackgroundActionEditor(props: {
     );
 }
 
-function ControlPayloadFields(props: { payload: StoryControlPayload; onChange: (payload: StoryBlock["payload"]) => void }) {
+function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySceneId; payload: StoryControlPayload; onChange: (payload: StoryBlock["payload"]) => void }) {
     if (props.payload.control === "condition") {
         return <div className="text-sm text-slate-400">Condition container. Add condition branches as children.</div>;
     }
@@ -1419,6 +1599,8 @@ function ControlPayloadFields(props: { payload: StoryControlPayload; onChange: (
             />
             {branchPayload.branch !== "else" ? (
                 <ConditionRefEditor
+                    document={props.document}
+                    sceneId={props.sceneId}
                     value={branchPayload.condition}
                     onChange={condition => props.onChange({ ...branchPayload, condition })}
                 />
@@ -1430,28 +1612,26 @@ function ControlPayloadFields(props: { payload: StoryControlPayload; onChange: (
 }
 
 function ConditionRefEditor(props: {
+    document: StoryDocument;
+    sceneId: StorySceneId;
     value: StoryConditionRef | undefined;
     onChange: (condition: StoryConditionRef | undefined) => void;
 }) {
-    const value = props.value?.kind === "variable"
+    const options = useStoryVariableOptions(props.document, props.sceneId);
+    const value: Extract<StoryConditionRef, { kind: "variable" }> = props.value?.kind === "variable"
         ? props.value
         : {
             kind: "variable" as const,
-            target: { scope: "sceneLocal" as const, key: "variable" },
+            target: { scope: "scene" as const, variableId: "" },
             operator: "isTrue" as const,
         };
+    const valueType = resolveRefValueType(value.target, options);
     return (
         <div className="grid gap-2 sm:grid-cols-4">
-            <TextField
-                label="Key"
-                value={value.target.key}
-                onChange={key => props.onChange({ ...value, target: { ...value.target, key } })}
-            />
-            <SelectField
-                label="Scope"
-                options={VARIABLE_SCOPE_OPTIONS}
-                value={value.target.scope}
-                onChange={scope => props.onChange({ ...value, target: { ...value.target, scope: scope as StoryVariableScope } })}
+            <VariableRefPicker
+                value={value.target}
+                options={options}
+                onChange={target => props.onChange({ ...value, target })}
             />
             <SelectField
                 label="Operator"
@@ -1460,10 +1640,10 @@ function ConditionRefEditor(props: {
                 onChange={operator => props.onChange({ ...value, operator: operator as Extract<StoryConditionRef, { kind: "variable" }>["operator"] })}
             />
             {value.operator === "equals" || value.operator === "notEquals" ? (
-                <TextField
-                    label="Value"
-                    value={value.value === undefined ? "" : String(value.value)}
-                    onChange={next => props.onChange({ ...value, value: parseScalar(next) as StoryLiteralValue })}
+                <VariableValueField
+                    valueType={valueType}
+                    value={value.value ?? ""}
+                    onChange={next => props.onChange({ ...value, value: next })}
                 />
             ) : null}
             {props.value?.kind === "expression" ? (

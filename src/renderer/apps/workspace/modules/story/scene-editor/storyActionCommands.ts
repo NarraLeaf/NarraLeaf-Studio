@@ -247,7 +247,7 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
         case "muteSound":
             return { ...base, kind: "action", payload: { action: "audio", operation: "muteSound", objectName: "sound", muted: true } };
         case "setVariable":
-            return { ...base, kind: "action", payload: { action: "setVariable", target: { scope: "sceneLocal", key: "variable" }, value: initialText || true } };
+            return { ...base, kind: "action", payload: { action: "setVariable", target: { scope: "scene", variableId: "" }, value: initialText || true } };
         case "imageCreate":
             return { ...base, kind: "action", payload: { action: "image", operation: "create", objectName: "image", transform: { preset: "center" } } };
         case "imageSetSource":

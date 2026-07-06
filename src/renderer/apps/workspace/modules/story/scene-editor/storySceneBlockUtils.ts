@@ -1,5 +1,5 @@
-import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Route, Settings2, Sparkles, StickyNote, Type, UserRound, Variable, Video } from "lucide-react";
-import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StoryTextSegment } from "@shared/types/story";
+import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, Type, UserRound, Variable, Video } from "lucide-react";
+import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
 import { resolveDisplayableTargetRef } from "@shared/types/story";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -163,12 +163,24 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
         if (block.payload.action === "layer") return withCategory("Layer", Layers, "layer");
         if (block.payload.action === "video") return withCategory("Video", Video, "video");
         if (block.payload.action === "nvl") return withCategory("NVL", FileText, "scene");
+        if (block.payload.action === "blueprint") return withCategory("Blueprint", Puzzle, "data");
         return withCategory("Effect", Sparkles, "effects");
     }
     if (block.kind === "control") return withCategory("Control", Settings2, "control");
     if (block.kind === "jump") return withCategory("Jump", Route, "scene");
     if (block.kind === "code") return withCategory("Code", Code, "utils");
     return withCategory("Note", StickyNote, "utils");
+}
+
+/** Short, user-safe label for a variable reference (never exposes internal ids). */
+function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene): string {
+    if (ref.scope === "scene") {
+        return scene?.sceneVariables?.[ref.variableId]?.name ?? "variable";
+    }
+    if (ref.scope === "saved") {
+        return "saved variable";
+    }
+    return "persistent";
 }
 
 export function describeBlock(block: StoryBlock, characters: Character[], scene?: StoryScene): string {
@@ -187,7 +199,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
             return `${payload.operation} ${name}`;
         }
         if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || "unassigned"}`;
-        if (payload.action === "setVariable") return `${payload.target.key} = ${String(payload.value)}`;
+        if (payload.action === "setVariable") return `${variableRefShortLabel(payload.target, scene)} = ${String(payload.value)}`;
         if (payload.action === "wait") return payload.mode === "duration" ? `Wait ${payload.durationMs ?? 0}ms` : "Wait for click";
         if (payload.action === "image") return `${payload.operation} image ${payload.objectName || "unnamed"}`;
         if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).name || "target"}`;
@@ -195,6 +207,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         if (payload.action === "layer") return `${payload.operation} layer ${payload.objectName || "unnamed"}`;
         if (payload.action === "video") return `${payload.operation} video ${payload.objectName || "unnamed"}`;
         if (payload.action === "nvl") return "NVL block";
+        if (payload.action === "blueprint") return "Blueprint";
         return `${payload.effect} screen effect`;
     }
     if (block.kind === "control") {

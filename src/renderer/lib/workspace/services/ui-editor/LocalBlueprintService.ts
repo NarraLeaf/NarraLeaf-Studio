@@ -15,6 +15,7 @@ import {
     BLUEPRINT_GRAPH_IR_META_KIND,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
     BLUEPRINT_NODE_TYPE_LITERAL_FLOAT,
     BLUEPRINT_NODE_TYPE_LITERAL_JSON,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
@@ -55,6 +56,7 @@ import {
 import {
     componentWidgetMainOwnerKey,
     ownerRefToIndexKey,
+    storyActionOwnerKey,
     surfaceMainOwnerKey,
     widgetMainOwnerKey,
     widgetValueOwnerKey,
@@ -574,6 +576,70 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     public getWidgetValueBlueprintId(surfaceId: string, elementId: string, propPath: string): string | undefined {
         const key = widgetValueOwnerKey(surfaceId, elementId, propPath);
         return getActiveBlueprintId(this.getBlueprintDocument(), key);
+    }
+
+    /**
+     * Ensure the implicit Story Action Blueprint exists for a story action. Self-referential owner:
+     * the owner key equals the blueprint id. Seeds a single "On Call" event graph. Returns the id.
+     */
+    public ensureStoryActionBlueprint(input?: { blueprintId?: string; displayName?: string }): string {
+        const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
+        const id = input?.blueprintId || uuid.generate();
+        const key = storyActionOwnerKey(id);
+        let outId = id;
+        this.applyBlueprintMutation(doc => {
+            const active = getActiveBlueprintId(doc, key);
+            if (active && doc.blueprints[active]) {
+                outId = active;
+                return;
+            }
+            const blueprint = createMainBlueprint({
+                id,
+                name: input?.displayName ?? "Story Action",
+                owner: { kind: "storyAction", blueprintId: id },
+            });
+            if (blueprint.program.kind === "graph") {
+                const headId = uuid.generate();
+                blueprint.program.graphs.events = {
+                    onCall: {
+                        id: "onCall",
+                        name: "On Call",
+                        graph: {
+                            nodes: { [headId]: { id: headId, type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL, params: {} } },
+                            edges: [],
+                            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+                        },
+                    },
+                };
+            }
+            doc.blueprints[id] = blueprint;
+            registerPrivateBlueprintAsActive(doc, key, id, "visual");
+            outId = id;
+        });
+        return outId;
+    }
+
+    public removeStoryActionBlueprint(blueprintId: string): void {
+        const key = storyActionOwnerKey(blueprintId);
+        this.applyBlueprintMutation(doc => {
+            const rec = doc.ownerRecords[key];
+            if (!rec) {
+                return;
+            }
+            for (const bid of rec.privateBlueprintIds) {
+                delete doc.blueprints[bid];
+            }
+            delete doc.ownerRecords[key];
+        });
+    }
+
+    public getStoryActionBlueprintId(blueprintId: string): string | undefined {
+        return getActiveBlueprintId(this.getBlueprintDocument(), storyActionOwnerKey(blueprintId));
+    }
+
+    /** All project-level persistent variable definitions (shared with the Story editor). */
+    public listPersistentVariables(): BlueprintDocument["persistentVariables"][string][] {
+        return Object.values(this.getBlueprintDocument().persistentVariables ?? {});
     }
 
     public getSurfaceMainBlueprintId(surfaceId: string): string | undefined {

@@ -128,6 +128,24 @@ export const SURFACE_LIFECYCLE_API: OwnerLifecycleApi = {
 };
 
 // ---------------------------------------------------------------------------
+// Story Action Blueprint lifecycle (no surface; the only event is "On Call")
+// ---------------------------------------------------------------------------
+
+export const STORY_ACTION_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
+    {
+        id: "onCall",
+        displayName: "On Call",
+        description: "Fires when the story invokes this blueprint (as an action, or to compute a value).",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.onCall"],
+    },
+];
+
+export const STORY_ACTION_LIFECYCLE_API: OwnerLifecycleApi = {
+    events: STORY_ACTION_LIFECYCLE_EVENTS,
+};
+
+// ---------------------------------------------------------------------------
 // Lookup helpers
 // ---------------------------------------------------------------------------
 

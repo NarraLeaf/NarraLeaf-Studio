@@ -71,6 +71,12 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT = "blueprint.event.h
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED = "blueprint.event.head.preferenceChanged" as const;
 /** Entry for any NarraLeaf game preference change on the active live game. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED = "blueprint.event.head.anyPreferenceChanged" as const;
+/**
+ * Entry for a Story Action Blueprint's single "On Call" event. Deliberately kept OUT of
+ * EVENT_DISPATCH_HEAD_TYPES — story-action graphs run via the story compiler's Script wrapper,
+ * never through the UI dispatch paths.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL = "blueprint.event.head.onCall" as const;
 
 const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
@@ -481,6 +487,26 @@ export function collectGlobalEventHeadNodeIdsForDispatch(
         .map(([id]) => id)
         .sort();
 }
+
+/** True if this node type is the Story Action Blueprint "On Call" entry head. */
+export function isStoryActionCallHeadType(nodeType: string): boolean {
+    return nodeType === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL;
+}
+
+/**
+ * Pick graph node ids that are valid "On Call" entry heads for a Story Action Blueprint.
+ * Kept separate from the UI dispatch collectors so the story-action world never leaks into them.
+ */
+export function collectStoryActionEventHeadNodeIdsForDispatch(
+    nodes: Record<string, { type: string; params?: Record<string, unknown> }> | undefined,
+): string[] {
+    const n = nodes ?? {};
+    return Object.entries(n)
+        .filter(([, node]) => isStoryActionCallHeadType(node.type))
+        .map(([id]) => id)
+        .sort();
+}
+
 export const BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY = "blueprint.function.entry" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL = "blueprint.data.literal" as const;
 export const BLUEPRINT_NODE_TYPE_LITERAL_STRING = "blueprint.data.stringLiteral" as const;
@@ -565,6 +591,14 @@ export const BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR = "blueprint.local.declareVar
 export const BLUEPRINT_NODE_TYPE_PERSISTENT_GET = "blueprint.persistent.get" as const;
 /** Async write to project-level persistent storage. */
 export const BLUEPRINT_NODE_TYPE_PERSISTENT_SET = "blueprint.persistent.set" as const;
+/** Read a Story scene variable (NLR Scene.local); story-action blueprints only. */
+export const BLUEPRINT_NODE_TYPE_SCENE_GET = "blueprint.scene.get" as const;
+/** Write a Story scene variable (NLR Scene.local); story-action blueprints only. */
+export const BLUEPRINT_NODE_TYPE_SCENE_SET = "blueprint.scene.set" as const;
+/** Read a Story saved variable (NLR Storable, per save-file); story-action blueprints only. */
+export const BLUEPRINT_NODE_TYPE_SAVED_GET = "blueprint.saved.get" as const;
+/** Write a Story saved variable (NLR Storable, per save-file); story-action blueprints only. */
+export const BLUEPRINT_NODE_TYPE_SAVED_SET = "blueprint.saved.set" as const;
 /** Persisted helper param for variableRef nodes whose pin type follows the selected variable. */
 export const BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE = "__variableValueType" as const;
 /** Console log from wired data pin (Studio / Dev Mode). */

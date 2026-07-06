@@ -55,7 +55,7 @@ export const fnBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: ["event"],
         isPure: false,
         role: "fnHead",
-        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain", "storyAction"] },
         pins: [{ id: "then", kind: "output", semantic: "exec", label: "Body" }],
         dynamicInputPins: {
             storageKey: BLUEPRINT_NODE_PARAMS_FN_PARAM_PIN_IDS,
@@ -84,7 +84,7 @@ export const fnBlueprintNodes: BlueprintNodeDef[] = [
         keywords: ["fn", "function", "return", "result", "end"],
         graphKinds: ["event"],
         isPure: false,
-        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain"] },
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain", "storyAction"] },
         pins: [{ id: "in", kind: "input", semantic: "exec", label: "In" }],
         dynamicInputPins: {
             storageKey: BLUEPRINT_NODE_PARAMS_FN_RETURN_PIN_IDS,
@@ -135,7 +135,7 @@ export const fnBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: ["event"],
         isPure: false,
         isLatent: true,
-        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain", "widgetValue"] },
+        scope: { ownerKinds: ["globalMain", "surfaceMain", "widgetMain", "widgetValue", "storyAction"] },
         pins: [
             { id: "in", kind: "input", semantic: "exec", label: "In" },
             { id: "next", kind: "output", semantic: "exec", label: "Next" },

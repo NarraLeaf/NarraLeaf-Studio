@@ -1038,7 +1038,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         (layerId: string) => {
             const wasActive = editor.graphView?.kind === "event" && editor.graphView.graphId === layerId;
             localBp.runBlueprintHistoryTransaction(payload.blueprintId, () => {
-                blueprintDocumentService.stripBlueprintLayerBindings(payload.surfaceId, payload.blueprintId, layerId);
+                blueprintDocumentService.stripBlueprintLayerBindings(payload.surfaceId ?? "", payload.blueprintId, layerId);
                 localBp.removeEventGraph(payload.blueprintId, layerId);
             });
             if (wasActive) {

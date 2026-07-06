@@ -626,6 +626,13 @@ export function GameApp(props: GameAppProps): ReactNode {
             characters: bundle.storyLibrary?.characters,
             animations: bundle.storyLibrary?.animations,
             resolveAssetUrl: host.resolveStoryAssetUrl,
+            blueprintDocument: bundle.ui.localBlueprints,
+            persistence: core
+                ? {
+                      get: key => core.scopeBridge.persistenceGet(key),
+                      set: (key, value) => core.scopeBridge.persistenceSet(key, value),
+                  }
+                : undefined,
         });
         if (compiled.diagnostics.length > 0) {
             for (const diagnostic of compiled.diagnostics) {
@@ -633,7 +640,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             }
         }
         return compiled;
-    }, [bundle, host]);
+    }, [bundle, core, host]);
 
     // Mount the NLR environment (Game/LiveGame + Player via NlrStageLayer) for the given compiled
     // story and initialise it: gameReady fires (via onLiveGameReady) and assets preheat, but the

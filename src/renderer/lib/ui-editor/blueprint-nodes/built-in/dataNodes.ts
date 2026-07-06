@@ -262,9 +262,10 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: ["event"],
         isPure: false,
         role: "valueReturn",
-        scope: { ownerKinds: ["widgetValue"] },
+        scope: { ownerKinds: ["widgetValue", "storyAction"] },
         pins: [
             { id: "in", kind: "input", semantic: "exec", label: "In" },
+            { id: "next", kind: "output", semantic: "exec", label: "Next" },
             anyIn("value", "Value"),
         ],
         execute: ctx => {
@@ -277,7 +278,9 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
                 valueExecution: ctx.valueExecution,
             });
             ctx.valueExecution?.returnValue(value);
-            return { nextPort: undefined };
+            // Capture-and-continue: an unconnected `next` still ends the chain, but the story-action
+            // form can keep running side-effect nodes after producing its return value.
+            return { nextPort: "next" };
         },
     },
     dataNode({

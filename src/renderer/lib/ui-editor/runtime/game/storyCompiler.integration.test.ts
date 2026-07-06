@@ -5,7 +5,7 @@ import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompi
 
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
     return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: "story-1",
         name: "Story",
         chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1", "scene-2"] }],
@@ -16,6 +16,10 @@ function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[]
                 runtimeName: "Scene 1",
                 rootBlockIds,
                 blocks,
+                sceneVariables: {
+                    locked: { id: "locked", name: "locked", valueType: "boolean", storageKey: "locked" },
+                    started: { id: "started", name: "started", valueType: "boolean", storageKey: "started" },
+                },
             },
             "scene-2": {
                 id: "scene-2",
@@ -676,7 +680,7 @@ describe("compileStudioStoryToNlr", () => {
                 text: { textId: "text-option", value: "Go", role: "choiceText" },
                 disabledWhen: {
                     kind: "variable",
-                    target: { scope: "sceneLocal", key: "locked" },
+                    target: { scope: "scene", variableId: "locked" },
                     operator: "isTrue",
                 },
             },
@@ -698,7 +702,7 @@ describe("compileStudioStoryToNlr", () => {
             childrenIds: [],
             payload: {
                 action: "setVariable",
-                target: { scope: "sceneLocal", key: "locked" },
+                target: { scope: "scene", variableId: "locked" },
                 value: true,
             },
         };
@@ -712,7 +716,7 @@ describe("compileStudioStoryToNlr", () => {
                 branch: "if",
                 condition: {
                     kind: "variable",
-                    target: { scope: "sceneLocal", key: "started" },
+                    target: { scope: "scene", variableId: "started" },
                     operator: "isFalse",
                 },
             },

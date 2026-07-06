@@ -46,6 +46,11 @@ const LABELS: Record<BlueprintOwnerRef["kind"], OwnerLabelSet> = {
         titlePrefix: "Shared",
         description: "Shared asset.",
     },
+    storyAction: {
+        label: "Story Action",
+        titlePrefix: "Story Action",
+        description: "Logic for a single story action.",
+    },
 };
 
 export function getOwnerLabel(kind: BlueprintOwnerRef["kind"]): OwnerLabelSet {
