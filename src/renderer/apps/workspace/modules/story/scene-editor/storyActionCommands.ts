@@ -52,6 +52,7 @@ export type ActionCommandId =
     | "displayableTransform"
     | "displayableShow"
     | "displayableHide"
+    | "displayableEffect"
     | "textCreate"
     | "textSet"
     | "textShow"
@@ -145,6 +146,7 @@ export const ACTION_COMMANDS: ActionCommand[] = [
     { id: "displayableTransform", category: "image", label: "Transform", detail: "Move, scale, rotate, opacity, or effect preset", icon: Move, nlrCapability: "Displayable.transform" },
     { id: "displayableShow", category: "image", label: "Displayable show", detail: "Show any named displayable", icon: Eye, nlrCapability: "Displayable.show" },
     { id: "displayableHide", category: "image", label: "Displayable hide", detail: "Hide any named displayable", icon: EyeOff, nlrCapability: "Displayable.hide" },
+    { id: "displayableEffect", category: "effects", label: "Displayable effect", detail: "Mask, filter, clip, darken, circle reveal/close, or wipe", icon: Sparkles, nlrCapability: "Displayable.mask/filter/wipe" },
     { id: "textCreate", category: "text", label: "Text", detail: "Create or update named stage text", icon: Type, nlrCapability: "Text" },
     { id: "textSet", category: "text", label: "Set text", detail: "Change a named text overlay", icon: Type, nlrCapability: "Text.setText" },
     { id: "textShow", category: "text", label: "Text show", detail: "Show text overlay", icon: Eye, nlrCapability: "Text.show" },
@@ -232,6 +234,8 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "action", payload: { action: "displayable", operation: "show", target: { name: "image" }, transform: { preset: "fadeIn", durationMs: 250 } } };
         case "displayableHide":
             return { ...base, kind: "action", payload: { action: "displayable", operation: "hide", target: { name: "image" }, transform: { preset: "fadeOut", durationMs: 250 } } };
+        case "displayableEffect":
+            return { ...base, kind: "action", payload: { action: "displayable", operation: "circleReveal", target: { name: "image" }, durationMs: 600 } };
         case "textCreate":
             return { ...base, kind: "action", payload: { action: "text", operation: "create", objectName: "text", text: initialText || "Text", fontSize: 32, fontColor: "#ffffff", transform: { preset: "center" } } };
         case "textSet":

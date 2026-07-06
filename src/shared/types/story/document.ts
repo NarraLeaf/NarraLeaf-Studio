@@ -141,6 +141,8 @@ export type StoryNodeActionPayload =
           characterId?: string;
           text: StoryTextSegment;
           voiceAssetId?: string;
+          /** Auto-pause after the line: `true` waits for a click, a number waits that many ms. */
+          pauseAfter?: boolean | number;
       }
     | {
           action: "choice";
@@ -213,9 +215,35 @@ export type StoryActionPayload =
       }
     | {
           action: "displayable";
-          operation: "show" | "hide" | "transform";
+          operation:
+              | "show"
+              | "hide"
+              | "transform"
+              | "mask"
+              | "clearMask"
+              | "clip"
+              | "clearClip"
+              | "filter"
+              | "clearFilter"
+              | "darken"
+              | "circleReveal"
+              | "circleClose"
+              | "wipe";
           target: StoryDisplayableTargetRef;
           transform?: StoryTransformRef;
+          /** Image mask source (image asset) for the `mask` operation. */
+          maskAssetId?: string;
+          /** CSS clip-path for the `clip` operation. */
+          clipPath?: string;
+          /** CSS filter for the `filter` operation. */
+          filter?: string;
+          /** Darkness 0..1 for the `darken` operation (image/character targets only). */
+          darkness?: number;
+          /** Shared effect timing. */
+          durationMs?: number;
+          easing?: string;
+          /** Effect-specific params, e.g. circle center/from/to or wipe direction/reverse. */
+          effectProps?: Record<string, StoryLiteralValue>;
       }
     | {
           action: "text";
