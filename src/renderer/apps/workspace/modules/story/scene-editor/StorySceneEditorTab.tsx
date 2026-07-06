@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FileText, Image as ImageIcon, ListPlus, Plus, Trash2 } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -23,6 +23,7 @@ import {
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { getTextSegment } from "./storySceneBlockUtils";
+import { getStoryEditorScroll, setStoryEditorScroll } from "./storyEditorSessionStore";
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
 
 const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-[11px] font-medium text-slate-500";
@@ -366,6 +367,17 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
         return () => window.removeEventListener(STORY_ACTION_CREATE_REQUEST_EVENT, handleCreateRequest);
     }, [editor.createActionFromSidebar, tabId]);
 
+    // Restore the saved scroll position once the scene's rows are laid out (keeps the author's
+    // place across tab switches / remounts).
+    const scrollContainerRef = editor.scrollContainerRef;
+    useLayoutEffect(() => {
+        const el = scrollContainerRef.current;
+        const saved = getStoryEditorScroll(tabId);
+        if (el && saved != null) {
+            el.scrollTop = saved;
+        }
+    }, [scrollContainerRef, tabId, editor.scene?.id]);
+
     if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
         return (
             <div className="flex h-full items-center justify-center p-6 text-sm text-gray-400">
@@ -429,7 +441,12 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
                 </div>
             </div>
 
-            <div ref={editor.scrollContainerRef} className="min-h-0 flex-1 overflow-auto py-2" onMouseDown={editor.focusRoot}>
+            <div
+                ref={editor.scrollContainerRef}
+                className="min-h-0 flex-1 overflow-auto py-2"
+                onMouseDown={editor.focusRoot}
+                onScroll={event => setStoryEditorScroll(tabId, event.currentTarget.scrollTop)}
+            >
                 <StorySceneOverviewBlock
                     document={document}
                     scene={scene}
