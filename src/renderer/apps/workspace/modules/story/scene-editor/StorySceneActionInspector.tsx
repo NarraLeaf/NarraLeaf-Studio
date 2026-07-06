@@ -1,7 +1,6 @@
 import type {
     StoryActionPayload,
     StoryBlock,
-    StoryCharacterVariantSelection,
     StoryCodePayload,
     StoryConditionRef,
     StoryControlPayload,
@@ -22,7 +21,6 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { Character } from "@/lib/workspace/services/character/Character";
-import type { CharacterForm } from "@/lib/workspace/services/character/types";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -33,6 +31,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
+import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
 import { MotionField } from "../../story-motion";
 
 const FIELD_LABEL_CLASS = "block text-xs font-medium text-gray-400 mb-1";
@@ -711,6 +710,7 @@ function CharacterActionEditor(props: {
     onChange: (payload: StoryBlock["payload"]) => void;
 }) {
     const payload = props.payload;
+    const onChange = props.onChange;
     const characterOptions: SelectOption[] = [
         { value: "", label: "Unassigned" },
         ...props.characters.map(character => ({
@@ -719,88 +719,20 @@ function CharacterActionEditor(props: {
         })),
     ];
     const selectedCharacter = getCharacterById(props.characters, payload.characterId);
-    const selectedForm = selectedCharacter ? getSelectedCharacterForm(selectedCharacter, payload.formName) : null;
-    const formOptions = getFormOptions(selectedCharacter, payload.formName);
-    const formValue = payload.formName ?? "";
-    const showZoom = getTransformNumberProp(payload.transform, "zoom");
-    const showXOffset = getTransformNumberProp(payload.transform, "xoffset");
-    const showYOffset = getTransformNumberProp(payload.transform, "yoffset");
-    const onChange = props.onChange;
-
-    const updatePayload = useCallback((next: CharacterActionPayload) => {
-        onChange(next);
-    }, [onChange]);
 
     const updateCharacter = useCallback((characterIdValue: string | number) => {
         const characterId = String(characterIdValue) || undefined;
-        updatePayload({
-            ...payload,
-            characterId,
-            formName: undefined,
-            variants: undefined,
-        });
-    }, [payload, updatePayload]);
-
-    const updateForm = useCallback((formNameValue: string | number) => {
-        const formName = String(formNameValue) || undefined;
-        updatePayload({
-            ...payload,
-            formName,
-            variants: undefined,
-        });
-    }, [payload, updatePayload]);
-
-    const updateVariant = useCallback((groupName: string, variantNameValue: string | number) => {
-        if (!selectedForm) {
-            return;
-        }
-        const current = getVariantSelectionMap(payload.variants, selectedForm);
-        const variantName = String(variantNameValue);
-        if (variantName) {
-            current[groupName] = variantName;
-        } else {
-            delete current[groupName];
-        }
-        const variants = normalizeVariantSelection(current);
-        updatePayload({
-            ...payload,
-            variants,
-        });
-    }, [payload, selectedForm, updatePayload]);
-
-    const updateShowZoom = useCallback((zoom: number | undefined) => {
-        updatePayload({
-            ...payload,
-            transform: setTransformNumberProp(payload.transform, "zoom", zoom, {
-                preset: "center",
-                durationMs: 300,
-            }),
-        });
-    }, [payload, updatePayload]);
-
-    const updateShowXOffset = useCallback((xoffset: number | undefined) => {
-        updatePayload({
-            ...payload,
-            transform: setTransformNumberProp(payload.transform, "xoffset", xoffset, {
-                preset: "center",
-                durationMs: 300,
-            }),
-        });
-    }, [payload, updatePayload]);
-
-    const updateShowYOffset = useCallback((yoffset: number | undefined) => {
-        updatePayload({
-            ...payload,
-            transform: setTransformNumberProp(payload.transform, "yoffset", yoffset, {
-                preset: "center",
-                durationMs: 300,
-            }),
-        });
-    }, [payload, updatePayload]);
+        const nextCharacter = getCharacterById(props.characters, characterId);
+        const previousName = getCharacterById(props.characters, payload.characterId)?.profile.getName();
+        // Auto-fill the stage name with the character's name, unless the author set a custom one.
+        const autofill = !payload.objectName || payload.objectName === previousName || payload.objectName === payload.characterId;
+        const objectName = autofill ? nextCharacter?.profile.getName() ?? payload.objectName : payload.objectName;
+        onChange({ ...payload, characterId, objectName, formName: undefined, variants: undefined });
+    }, [onChange, payload, props.characters]);
 
     return (
         <div className="grid gap-3">
-            <div className="grid gap-2 sm:grid-cols-3">
+            <FieldGrid cols={2}>
                 <SelectField
                     label="Character"
                     options={characterOptions}
@@ -809,107 +741,50 @@ function CharacterActionEditor(props: {
                 />
                 <TextField
                     label="Stage name"
-                    value={payload.objectName ?? payload.characterId ?? ""}
-                    onChange={objectName => updatePayload({ ...payload, objectName })}
+                    value={payload.objectName ?? ""}
+                    onChange={objectName => onChange({ ...payload, objectName })}
                 />
-                <SelectField
-                    label="Form"
-                    options={formOptions}
-                    value={formValue}
-                    onChange={updateForm}
-                />
-                <AssetField
-                    label="Override image"
-                    assetType={AssetType.Image}
-                    assetId={payload.assetId}
-                    onChange={assetId => updatePayload({ ...payload, assetId })}
-                />
-                {payload.operation === "enter" && payload.transform?.mode !== "animation" ? (
-                    <NumberField
-                        label="Zoom"
-                        value={showZoom}
-                        onChange={updateShowZoom}
+            </FieldGrid>
+            {selectedCharacter ? (
+                <Section title="Appearance">
+                    <CharacterAppearancePicker
+                        character={selectedCharacter}
+                        formName={payload.formName}
+                        variants={payload.variants}
+                        onChange={next => onChange({ ...payload, formName: next.formName, variants: next.variants })}
                     />
-                ) : null}
-                {payload.operation === "enter" && payload.transform?.mode !== "animation" ? (
-                    <NumberField
-                        label="X Offset"
-                        value={showXOffset}
-                        onChange={updateShowXOffset}
-                    />
-                ) : null}
-                {payload.operation === "enter" && payload.transform?.mode !== "animation" ? (
-                    <NumberField
-                        label="Y Offset"
-                        value={showYOffset}
-                        onChange={updateShowYOffset}
-                    />
-                ) : null}
-            </div>
-            {selectedForm ? (
-                <CharacterVariantSelectors
-                    form={selectedForm}
-                    selection={payload.variants}
-                    onChange={updateVariant}
-                />
-            ) : null}
+                </Section>
+            ) : (
+                <div className="text-xs text-slate-500">Choose a character to pick its appearance.</div>
+            )}
             <TransformPresetEditor
                 value={payload.transform}
                 motionTargetKind="character"
-                motionLabel={`${payload.characterId || payload.objectName || "Character"} ${payload.operation}`}
+                motionLabel={`${selectedCharacter?.profile.getName() ?? payload.objectName ?? "Character"} ${payload.operation}`}
                 storyId={props.storyId}
                 sceneId={props.sceneId}
                 blockId={props.blockId}
                 storyName={props.storyName}
-                onChange={transform => updatePayload({ ...payload, transform })}
+                onChange={transform => onChange({ ...payload, transform })}
             />
-            <TransitionEditor
-                value={payload.transition}
-                onChange={transition => updatePayload({ ...payload, transition })}
-            />
+            {payload.operation === "enter" ? null : (
+                <TransitionEditor
+                    value={payload.transition}
+                    onChange={transition => onChange({ ...payload, transition })}
+                />
+            )}
+            <details>
+                <summary className="cursor-pointer select-none text-[11px] font-medium uppercase tracking-wide text-slate-500 hover:text-slate-300">Advanced</summary>
+                <div className="mt-2 max-w-sm">
+                    <AssetField
+                        label="Override image"
+                        assetType={AssetType.Image}
+                        assetId={payload.assetId}
+                        onChange={assetId => onChange({ ...payload, assetId })}
+                    />
+                </div>
+            </details>
         </div>
-    );
-}
-
-function CharacterVariantSelectors(props: {
-    form: CharacterForm;
-    selection: StoryCharacterVariantSelection | undefined;
-    onChange: (groupName: string, variantName: string | number) => void;
-}) {
-    if (props.form.groups.length === 0) {
-        return null;
-    }
-    const selectionMap = getVariantSelectionMap(props.selection, props.form);
-    return (
-        <Section title="Variants">
-            <FieldGrid>
-                {props.form.groups.map(group => {
-                    const defaultVariant = group.defaultVariant && group.variants.some(variant => variant.name === group.defaultVariant)
-                        ? group.defaultVariant
-                        : group.variants[0]?.name ?? "";
-                    const value = selectionMap[group.name] ?? "";
-                    const options: SelectOption[] = [
-                        {
-                            value: "",
-                            label: defaultVariant ? `Default (${defaultVariant})` : "Default",
-                        },
-                        ...group.variants.map(variant => ({
-                            value: variant.name,
-                            label: variant.name,
-                        })),
-                    ];
-                    return (
-                        <SelectField
-                            key={group.name}
-                            label={group.name}
-                            options={options}
-                            value={value}
-                            onChange={variantName => props.onChange(group.name, variantName)}
-                        />
-                    );
-                })}
-            </FieldGrid>
-        </Section>
     );
 }
 
@@ -918,77 +793,6 @@ function getCharacterById(characters: Character[], characterId: string | undefin
         return null;
     }
     return characters.find(character => character.profile.getId() === characterId) ?? null;
-}
-
-function getSelectedCharacterForm(character: Character, formName: string | undefined): CharacterForm | null {
-    const forms = character.profile.appearance.getForms();
-    return forms.find(form => form.name === formName)
-        ?? forms.find(form => form.name === character.profile.getDefaultForm())
-        ?? forms[0]
-        ?? null;
-}
-
-function getFormOptions(character: Character | null, currentFormName: string | undefined): SelectOption[] {
-    if (!character) {
-        return [
-            { value: "", label: "Unassigned" },
-            ...(currentFormName ? [{ value: currentFormName, label: `Missing (${currentFormName})` }] : []),
-        ];
-    }
-    const forms = character.profile.appearance.getForms();
-    const defaultFormName = character.profile.getDefaultForm();
-    const options: SelectOption[] = [
-        {
-            value: "",
-            label: defaultFormName ? `Default (${defaultFormName})` : "Default form",
-        },
-        ...forms.map(form => ({
-            value: form.name,
-            label: form.name,
-        })),
-    ];
-    if (currentFormName && !forms.some(form => form.name === currentFormName)) {
-        options.push({ value: currentFormName, label: `Missing (${currentFormName})` });
-    }
-    return options;
-}
-
-function getVariantSelectionMap(selection: StoryCharacterVariantSelection | undefined, form: CharacterForm): Record<string, string> {
-    if (!selection) {
-        return {};
-    }
-    const validVariantByGroup = new Map(
-        form.groups.map(group => [group.name, new Set(group.variants.map(variant => variant.name))]),
-    );
-    const groupByVariant = new Map<string, string>();
-    form.groups.forEach(group => {
-        group.variants.forEach(variant => {
-            groupByVariant.set(variant.name, group.name);
-        });
-    });
-
-    const result: Record<string, string> = {};
-    if (Array.isArray(selection)) {
-        selection.forEach(variantName => {
-            const groupName = groupByVariant.get(variantName);
-            if (groupName) {
-                result[groupName] = variantName;
-            }
-        });
-        return result;
-    }
-
-    Object.entries(selection).forEach(([groupName, variantName]) => {
-        if (validVariantByGroup.get(groupName)?.has(variantName)) {
-            result[groupName] = variantName;
-        }
-    });
-    return result;
-}
-
-function normalizeVariantSelection(selection: Record<string, string>): StoryCharacterVariantSelection | undefined {
-    const entries = Object.entries(selection).filter(([, variantName]) => variantName.trim());
-    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function getTransformNumberProp(transform: StoryTransformRef | undefined, key: string): number | undefined {
@@ -1188,30 +992,54 @@ function TransformPresetEditor(props: {
                     onChange={props.onChange}
                 />
             ) : (
-                <FieldGrid cols={4}>
-                    <SelectField
-                        label="Preset"
-                        options={TRANSFORM_PRESET_OPTIONS}
-                        value={value.preset ?? "none"}
-                        onChange={preset => props.onChange({ ...value, mode: "preset", preset: preset as StoryTransformPreset })}
-                    />
-                    <NumberField
-                        label="Duration ms"
-                        value={value.durationMs}
-                        onChange={durationMs => props.onChange({ ...value, durationMs })}
-                    />
-                    <SelectField
-                        label="Easing"
-                        options={EASING_OPTIONS}
-                        value={value.easing ?? ""}
-                        onChange={easing => props.onChange({ ...value, easing: String(easing) || undefined })}
-                    />
-                    <TextField
-                        label="Params"
-                        value={propsText}
-                        onChange={nextProps => props.onChange({ ...value, props: parsePropsText(nextProps) })}
-                    />
-                </FieldGrid>
+                <div className="grid gap-2">
+                    <FieldGrid cols={3}>
+                        <SelectField
+                            label="Preset"
+                            options={TRANSFORM_PRESET_OPTIONS}
+                            value={value.preset ?? "none"}
+                            onChange={preset => props.onChange({ ...value, mode: "preset", preset: preset as StoryTransformPreset })}
+                        />
+                        <NumberField
+                            label="Duration ms"
+                            value={value.durationMs}
+                            onChange={durationMs => props.onChange({ ...value, durationMs })}
+                        />
+                        <SelectField
+                            label="Easing"
+                            options={EASING_OPTIONS}
+                            value={value.easing ?? ""}
+                            onChange={easing => props.onChange({ ...value, easing: String(easing) || undefined })}
+                        />
+                    </FieldGrid>
+                    <FieldGrid cols={3}>
+                        <NumberField
+                            label="Zoom"
+                            value={getTransformNumberProp(value, "zoom")}
+                            onChange={zoom => props.onChange(setTransformNumberProp(value, "zoom", zoom, { preset: value.preset ?? "none" }))}
+                        />
+                        <NumberField
+                            label="X offset"
+                            value={getTransformNumberProp(value, "xoffset")}
+                            onChange={xoffset => props.onChange(setTransformNumberProp(value, "xoffset", xoffset, { preset: value.preset ?? "none" }))}
+                        />
+                        <NumberField
+                            label="Y offset"
+                            value={getTransformNumberProp(value, "yoffset")}
+                            onChange={yoffset => props.onChange(setTransformNumberProp(value, "yoffset", yoffset, { preset: value.preset ?? "none" }))}
+                        />
+                    </FieldGrid>
+                    <details>
+                        <summary className="cursor-pointer select-none text-[11px] font-medium uppercase tracking-wide text-slate-500 hover:text-slate-300">Advanced params</summary>
+                        <div className="mt-1.5">
+                            <TextField
+                                label="Params"
+                                value={propsText}
+                                onChange={nextProps => props.onChange({ ...value, props: parsePropsText(nextProps) })}
+                            />
+                        </div>
+                    </details>
+                </div>
             )}
         </Section>
     );

@@ -179,7 +179,10 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
     if (block.kind === "action") {
         const payload = block.payload;
         if (payload.action === "setBackground") return `Set background ${payload.assetId || payload.color || "unassigned"}`;
-        if (payload.action === "character") return `${payload.operation} character ${payload.characterId || payload.objectName || "unassigned"}`;
+        if (payload.action === "character") {
+            const name = payload.characterId ? getCharacterName(characters, payload.characterId) : (payload.objectName || "character");
+            return `${payload.operation} ${name}`;
+        }
         if (payload.action === "audio") return `${payload.operation} ${payload.objectName || payload.assetId || "unassigned"}`;
         if (payload.action === "setVariable") return `${payload.target.key} = ${String(payload.value)}`;
         if (payload.action === "wait") return payload.mode === "duration" ? `Wait ${payload.durationMs ?? 0}ms` : "Wait for click";
