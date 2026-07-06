@@ -22,6 +22,7 @@ import {
 import { ActionInspector } from "./StorySceneActionInspector";
 import { RichTextInput, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
+import { RichTextView } from "./RichTextView";
 import { segmentToRuns } from "./richText";
 import type { EditorMode, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
@@ -193,9 +194,28 @@ function TextEditBox(props: {
         ? props.block.payload
         : null;
     const initialRuns = useMemo(() => segmentToRuns(getTextSegment(props.block)), [props.block]);
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    // While a toolbar popover (color palette, pause config) is open, blur must not commit.
+    const commitGuardRef = useRef(false);
+
+    const handleBlur = () => {
+        // Defer so focus can settle: a toolbar button click briefly moves focus but ends back on
+        // the editor, and only a true focus-out of the whole editing group should commit.
+        window.setTimeout(() => {
+            if (commitGuardRef.current) {
+                return;
+            }
+            const active = globalThis.document.activeElement;
+            if (containerRef.current && active && containerRef.current.contains(active)) {
+                return;
+            }
+            props.onCommitTextEdit();
+        }, 0);
+    };
+
     return (
-        <div className="relative flex min-w-0 flex-1 items-stretch overflow-visible rounded border border-primary/50 bg-black/30">
-            <RichTextToolbar editor={props.editorRef} />
+        <div ref={containerRef} className="relative flex min-w-0 flex-1 items-stretch overflow-visible rounded border border-primary/50 bg-black/30">
+            <RichTextToolbar editor={props.editorRef} commitGuard={commitGuardRef} />
             {dialoguePayload ? (
                 <CharacterSelectTrigger
                     characters={props.characters}
@@ -210,7 +230,7 @@ function TextEditBox(props: {
                 className="min-h-[28px] flex-1 whitespace-pre-wrap break-words bg-transparent px-2 py-1 text-sm text-slate-100 outline-none empty:before:italic empty:before:text-slate-500 empty:before:content-[attr(data-placeholder)]"
                 placeholder={editorPlaceholder(props.block)}
                 onChange={props.onEditRichChange}
-                onCommit={props.onCommitTextEdit}
+                onBlur={handleBlur}
                 onCancel={props.onCancelTextEdit}
                 onEnter={() => { props.onCommitTextEdit(); props.onInsertAfter(); }}
                 onShiftEnter={dialoguePayload ? props.onInsertDialogueAfterCurrent : undefined}
@@ -865,7 +885,7 @@ function BlockPreview(props: {
                     event.stopPropagation();
                     props.onTextDoubleClick();
                 }}>
-                    {text?.value || "Double-click to enter dialogue"}
+                    {hasValue && text ? <RichTextView segment={text} /> : "Double-click to enter dialogue"}
                 </span>
             </div>
         );
@@ -878,7 +898,7 @@ function BlockPreview(props: {
                 event.stopPropagation();
                 props.onTextDoubleClick();
             }}>
-                {text.value || getEmptyTextPlaceholder(block)}
+                {hasValue ? <RichTextView segment={text} /> : getEmptyTextPlaceholder(block)}
             </span>
         );
     }
