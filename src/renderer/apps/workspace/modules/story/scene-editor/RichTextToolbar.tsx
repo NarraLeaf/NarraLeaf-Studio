@@ -3,11 +3,13 @@ import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Bold, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Type } from "lucide-react";
 import { ProjectPalette } from "@/apps/workspace/modules/properties/framework/fields/ProjectPalette";
+import { addRecentColor } from "@/apps/workspace/modules/properties/framework/fields/recentColors";
 import { useRichToolbarExpanded } from "./storyEditorSessionStore";
-import type { RichTextInputHandle } from "./RichTextInput";
+import type { ActiveMarks, RichTextInputHandle } from "./RichTextInput";
 
 const SWATCHES = ["#ffffff", "#f87171", "#fb923c", "#facc15", "#4ade80", "#38bdf8", "#a78bfa"];
 const BTN = "grid h-6 w-6 place-items-center rounded text-slate-300 hover:bg-white/10 hover:text-white";
+const BTN_ACTIVE = "grid h-6 w-6 place-items-center rounded bg-primary/25 text-primary";
 
 /** Keep the contentEditable selection alive when a toolbar control is pressed. */
 function keepFocus(event: { preventDefault: () => void }) {
@@ -17,20 +19,25 @@ function keepFocus(event: { preventDefault: () => void }) {
 /**
  * Floating rich-text control strip shown above the row being edited. Rendered in a portal with a
  * high z-index (positioned from the edit box) so it always reliably receives clicks regardless of
- * row stacking, rather than floating inside the row flow. Collapsed to a small chip by default; its
- * expanded state is shared across the whole Studio session (see {@link useRichToolbarExpanded}).
+ * row stacking. Collapsed to a small chip by default; its expanded state is shared across the whole
+ * Studio session (see {@link useRichToolbarExpanded}).
  */
 export function RichTextToolbar(props: {
     editor: RefObject<RichTextInputHandle | null>;
     anchorRef: RefObject<HTMLElement | null>;
     commitGuard?: RefObject<boolean>;
+    active?: ActiveMarks;
 }) {
     const [expanded, setExpanded] = useRichToolbarExpanded();
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
     const [palette, setPalette] = useState<{ top: number; left: number } | null>(null);
     const paletteBtnRef = useRef<HTMLButtonElement | null>(null);
+    const lastCustomColorRef = useRef<string | null>(null);
+    const active = props.active ?? { bold: false, italic: false };
 
     useLayoutEffect(() => {
+        let raf1 = 0;
+        let raf2 = 0;
         const update = () => {
             const anchor = props.anchorRef.current;
             if (!anchor) {
@@ -41,24 +48,42 @@ export function RichTextToolbar(props: {
             setPos({ top: Math.max(4, rect.top - (expanded ? 34 : 28)), left: rect.left });
         };
         update();
+        // Re-measure across the next frames: entering edit mode focuses the row, which can scroll
+        // it into view after the first measure — without this the toolbar can appear misplaced /
+        // off-screen until the next scroll.
+        raf1 = requestAnimationFrame(() => {
+            update();
+            raf2 = requestAnimationFrame(update);
+        });
         window.addEventListener("scroll", update, true);
         window.addEventListener("resize", update);
         return () => {
+            cancelAnimationFrame(raf1);
+            cancelAnimationFrame(raf2);
             window.removeEventListener("scroll", update, true);
             window.removeEventListener("resize", update);
         };
     }, [props.anchorRef, expanded]);
 
+    const applyColor = (color: string) => {
+        props.editor.current?.setColor(color);
+        addRecentColor(color);
+    };
     const openPalette = () => {
         const rect = paletteBtnRef.current?.getBoundingClientRect();
+        lastCustomColorRef.current = null;
         if (props.commitGuard) {
             props.commitGuard.current = true;
         }
         setPalette(rect
-            ? { top: Math.min(rect.bottom + 6, window.innerHeight - 220), left: Math.max(8, Math.min(rect.left, window.innerWidth - 224)) }
+            ? { top: Math.min(rect.bottom + 6, window.innerHeight - 260), left: Math.max(8, Math.min(rect.left, window.innerWidth - 224)) }
             : { top: 120, left: 120 });
     };
     const closePalette = () => {
+        if (lastCustomColorRef.current) {
+            addRecentColor(lastCustomColorRef.current);
+            lastCustomColorRef.current = null;
+        }
         if (props.commitGuard) {
             props.commitGuard.current = false;
         }
@@ -80,10 +105,10 @@ export function RichTextToolbar(props: {
                 <ChevronDown className="h-3.5 w-3.5" />
             </button>
             <div className="mx-0.5 h-4 w-px bg-white/10" />
-            <button type="button" className={BTN} onClick={() => props.editor.current?.toggleMark("bold")} title="Bold">
+            <button type="button" className={active.bold ? BTN_ACTIVE : BTN} onClick={() => props.editor.current?.toggleMark("bold")} title="Bold">
                 <Bold className="h-3.5 w-3.5" />
             </button>
-            <button type="button" className={BTN} onClick={() => props.editor.current?.toggleMark("italic")} title="Italic">
+            <button type="button" className={active.italic ? BTN_ACTIVE : BTN} onClick={() => props.editor.current?.toggleMark("italic")} title="Italic">
                 <Italic className="h-3.5 w-3.5" />
             </button>
             <div className="mx-0.5 h-4 w-px bg-white/10" />
@@ -93,7 +118,7 @@ export function RichTextToolbar(props: {
                     type="button"
                     className="h-4 w-4 rounded-full border border-white/25 transition-transform hover:scale-110"
                     style={{ backgroundColor: color }}
-                    onClick={() => props.editor.current?.setColor(color)}
+                    onClick={() => applyColor(color)}
                     title={`Text color ${color}`}
                 />
             ))}
@@ -136,7 +161,10 @@ export function RichTextToolbar(props: {
                             onPick={(color, commit) => {
                                 props.editor.current?.setColor(color);
                                 if (commit) {
+                                    addRecentColor(color);
                                     closePalette();
+                                } else {
+                                    lastCustomColorRef.current = color;
                                 }
                             }}
                         />
