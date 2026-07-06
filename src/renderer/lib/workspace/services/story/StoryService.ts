@@ -14,9 +14,13 @@ import {
     StoryId,
     StoryLibraryEntry,
     StoryLibraryIndex,
+    StoryLiteralValue,
+    StorySavedVariableDefinition,
     StoryScene,
     StorySceneId,
     StorySceneUpdate,
+    StorySceneVariableDefinition,
+    StoryVariableValueType,
 } from "@shared/types/story";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
@@ -635,6 +639,151 @@ export class StoryService extends Service<StoryService> implements IStoryService
             scene.name = trimmed;
             scene.runtimeName = scene.runtimeName || this.toRuntimeName(trimmed);
             scene.meta = { ...scene.meta, updatedAt: new Date().toISOString() };
+            changed = true;
+        });
+        return changed;
+    }
+
+    // -----------------------------------------------------------------------
+    // Scene variables (backed by NLR Scene.local)
+    // -----------------------------------------------------------------------
+
+    public createSceneVariable(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        input: { name: string; valueType: StoryVariableValueType; defaultValue?: StoryLiteralValue },
+    ): StorySceneVariableDefinition | null {
+        const id = this.getUuidService().generate();
+        let created: StorySceneVariableDefinition | null = null;
+        this.mutateDocument(storyId, document => {
+            const scene = document.scenes[sceneId];
+            if (!scene) return;
+            const definition: StorySceneVariableDefinition = {
+                id,
+                name: this.cleanName(input.name, "variable"),
+                valueType: input.valueType,
+                defaultValue: input.defaultValue,
+                storageKey: id,
+            };
+            scene.sceneVariables = { ...(scene.sceneVariables ?? {}), [id]: definition };
+            created = definition;
+        });
+        return created;
+    }
+
+    public renameSceneVariable(storyId: StoryId, sceneId: StorySceneId, variableId: string, name: string): boolean {
+        return this.updateSceneVariable(storyId, sceneId, variableId, definition => {
+            definition.name = this.cleanName(name, definition.name);
+        });
+    }
+
+    public retypeSceneVariable(storyId: StoryId, sceneId: StorySceneId, variableId: string, valueType: StoryVariableValueType): boolean {
+        return this.updateSceneVariable(storyId, sceneId, variableId, definition => {
+            definition.valueType = valueType;
+            definition.defaultValue = undefined;
+        });
+    }
+
+    public setSceneVariableDefault(storyId: StoryId, sceneId: StorySceneId, variableId: string, value: StoryLiteralValue): boolean {
+        return this.updateSceneVariable(storyId, sceneId, variableId, definition => {
+            definition.defaultValue = value;
+        });
+    }
+
+    public deleteSceneVariable(storyId: StoryId, sceneId: StorySceneId, variableId: string): boolean {
+        let changed = false;
+        this.mutateDocument(storyId, document => {
+            const scene = document.scenes[sceneId];
+            if (!scene?.sceneVariables?.[variableId]) return;
+            const next = { ...scene.sceneVariables };
+            delete next[variableId];
+            scene.sceneVariables = next;
+            changed = true;
+        });
+        return changed;
+    }
+
+    private updateSceneVariable(
+        storyId: StoryId,
+        sceneId: StorySceneId,
+        variableId: string,
+        mutate: (definition: StorySceneVariableDefinition) => void,
+    ): boolean {
+        let changed = false;
+        this.mutateDocument(storyId, document => {
+            const definition = document.scenes[sceneId]?.sceneVariables?.[variableId];
+            if (!definition) return;
+            mutate(definition);
+            changed = true;
+        });
+        return changed;
+    }
+
+    // -----------------------------------------------------------------------
+    // Saved variables (document-level, backed by NLR Storable)
+    // -----------------------------------------------------------------------
+
+    public createSavedVariable(
+        storyId: StoryId,
+        input: { name: string; valueType: StoryVariableValueType; defaultValue?: StoryLiteralValue },
+    ): StorySavedVariableDefinition | null {
+        const id = this.getUuidService().generate();
+        let created: StorySavedVariableDefinition | null = null;
+        this.mutateDocument(storyId, document => {
+            const definition: StorySavedVariableDefinition = {
+                id,
+                name: this.cleanName(input.name, "variable"),
+                valueType: input.valueType,
+                defaultValue: input.defaultValue,
+                storageKey: id,
+            };
+            document.savedVariables = { ...(document.savedVariables ?? {}), [id]: definition };
+            created = definition;
+        });
+        return created;
+    }
+
+    public renameSavedVariable(storyId: StoryId, variableId: string, name: string): boolean {
+        return this.updateSavedVariable(storyId, variableId, definition => {
+            definition.name = this.cleanName(name, definition.name);
+        });
+    }
+
+    public retypeSavedVariable(storyId: StoryId, variableId: string, valueType: StoryVariableValueType): boolean {
+        return this.updateSavedVariable(storyId, variableId, definition => {
+            definition.valueType = valueType;
+            definition.defaultValue = undefined;
+        });
+    }
+
+    public setSavedVariableDefault(storyId: StoryId, variableId: string, value: StoryLiteralValue): boolean {
+        return this.updateSavedVariable(storyId, variableId, definition => {
+            definition.defaultValue = value;
+        });
+    }
+
+    public deleteSavedVariable(storyId: StoryId, variableId: string): boolean {
+        let changed = false;
+        this.mutateDocument(storyId, document => {
+            if (!document.savedVariables?.[variableId]) return;
+            const next = { ...document.savedVariables };
+            delete next[variableId];
+            document.savedVariables = next;
+            changed = true;
+        });
+        return changed;
+    }
+
+    private updateSavedVariable(
+        storyId: StoryId,
+        variableId: string,
+        mutate: (definition: StorySavedVariableDefinition) => void,
+    ): boolean {
+        let changed = false;
+        this.mutateDocument(storyId, document => {
+            const definition = document.savedVariables?.[variableId];
+            if (!definition) return;
+            mutate(definition);
             changed = true;
         });
         return changed;

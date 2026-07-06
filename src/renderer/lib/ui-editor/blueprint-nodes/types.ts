@@ -119,6 +119,8 @@ export type BlueprintInspectorParamKind =
     | "literal"
     | "variableRef"
     | "persistentVariableRef"
+    | "sceneVariableRef"
+    | "savedVariableRef"
     | "select"
     | "imageAsset"
     | "buttonCursor";

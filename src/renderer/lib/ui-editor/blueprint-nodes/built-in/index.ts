@@ -20,6 +20,7 @@ import { localVariableBlueprintNodes } from "./localVariableNodes";
 import { mathBlueprintNodes } from "./mathNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { sliderBlueprintNodes } from "./sliderNodes";
+import { storyVariableBlueprintNodes } from "./storyVariableNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
 import { widgetPropertyBlueprintNodes } from "./widgetPropertyNodes";
@@ -39,6 +40,7 @@ export { listBlueprintNodes } from "./listNodes";
 export { localVariableBlueprintNodes } from "./localVariableNodes";
 export { mathBlueprintNodes } from "./mathNodes";
 export { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
+export { storyVariableBlueprintNodes } from "./storyVariableNodes";
 export { sliderBlueprintNodes } from "./sliderNodes";
 export { navigationBlueprintNodes } from "./navigationNodes";
 export { stringBlueprintNodes } from "./stringNodes";
@@ -61,6 +63,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...elementBlueprintNodes,
     ...localVariableBlueprintNodes,
     ...persistentVariableBlueprintNodes,
+    ...storyVariableBlueprintNodes,
     ...mathBlueprintNodes,
     ...booleanCompareBlueprintNodes,
     ...stringBlueprintNodes,

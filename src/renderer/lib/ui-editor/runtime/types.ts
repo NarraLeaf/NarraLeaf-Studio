@@ -88,10 +88,29 @@ export type UIHostAdapter = {
     blueprintHostApiVersion?: BlueprintHostApiContractVersion;
     /** M3-min: optional Blueprint runtime surface (Dev Mode). */
     blueprintRuntime?: UIHostAdapterBlueprintRuntime;
+    /**
+     * Story Action Blueprint runtime surface. Present only while a story-action blueprint graph
+     * runs inside a compiled NLR `Script`; resolves scene/saved variable ids to their NLR backing
+     * (`Scene.local` / `Storable`). Absent for UI blueprints.
+     */
+    storyRuntime?: UIHostAdapterStoryRuntime;
     /** Editor preview: use the active workspace service instance for canvas-local interaction overrides. */
     editorStateService?: UIEditorStateService;
     /** Editor preview: use the active document service, including component-editor adapters. */
     editorDocumentService?: UIDocumentService;
+};
+
+/** Read/write access to one class of Story variables, resolving ids to their NLR backing store. */
+export type StoryVariableRuntimeAccess = {
+    /** Resolve `variableId` to its stored value, or the declared default when unset. */
+    get: (variableId: string) => unknown;
+    /** Resolve `variableId` and write `value` to the backing store. */
+    set: (variableId: string, value: unknown) => void;
+};
+
+export type UIHostAdapterStoryRuntime = {
+    sceneVar: StoryVariableRuntimeAccess;
+    savedVar: StoryVariableRuntimeAccess;
 };
 
 export type RenderSurfaceOptions = {
