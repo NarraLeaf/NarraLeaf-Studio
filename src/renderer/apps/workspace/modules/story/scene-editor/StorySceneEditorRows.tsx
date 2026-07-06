@@ -198,7 +198,22 @@ function TextEditBox(props: {
     const containerRef = useRef<HTMLDivElement | null>(null);
     // While a toolbar popover (color palette, pause config) is open, blur must not commit.
     const commitGuardRef = useRef(false);
+    // Timestamp of the most recent pointerdown on the floating toolbar. Any blur that follows
+    // shortly after is a toolbar interaction (bold/italic/color/pause/expand) and must NOT commit —
+    // this is robust even when the pressed control (e.g. the collapse chip) unmounts and focus
+    // falls to <body>.
+    const lastToolbarInteractRef = useRef(0);
     const [pauseEdit, setPauseEdit] = useState<PauseClickInfo | null>(null);
+
+    useEffect(() => {
+        const onPointerDown = (event: PointerEvent) => {
+            if ((event.target as HTMLElement | null)?.closest?.("[data-rt-toolbar]")) {
+                lastToolbarInteractRef.current = performance.now();
+            }
+        };
+        globalThis.document.addEventListener("pointerdown", onPointerDown, true);
+        return () => globalThis.document.removeEventListener("pointerdown", onPointerDown, true);
+    }, []);
 
     const openPause = (info: PauseClickInfo) => {
         commitGuardRef.current = true;
@@ -211,9 +226,13 @@ function TextEditBox(props: {
     };
 
     const handleBlur = () => {
-        // Defer so focus can settle: a toolbar button click briefly moves focus but ends back on
-        // the editor, and only a true focus-out of the whole editing group should commit.
+        // Defer so focus can settle.
         window.setTimeout(() => {
+            if (performance.now() - lastToolbarInteractRef.current < 500) {
+                // Toolbar interaction — keep editing and restore focus to the editor.
+                props.editorRef.current?.focus();
+                return;
+            }
             if (commitGuardRef.current) {
                 return;
             }
@@ -227,7 +246,7 @@ function TextEditBox(props: {
 
     return (
         <div ref={containerRef} className="relative flex min-w-0 flex-1 items-stretch overflow-visible rounded border border-primary/50 bg-black/30">
-            <RichTextToolbar editor={props.editorRef} commitGuard={commitGuardRef} />
+            <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} />
             {dialoguePayload ? (
                 <CharacterSelectTrigger
                     characters={props.characters}
