@@ -1,7 +1,8 @@
 import type { StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
 
 /** Pause chip class (a literal so Tailwind's content scan can see it). */
-const PAUSE_CHIP_CLASS = "story-rt-pause mx-0.5 inline-block select-none rounded bg-primary/20 px-1 text-[11px] align-middle text-primary";
+const PAUSE_CHIP_CLASS = "story-rt-pause mx-0.5 inline-flex cursor-pointer select-none items-center rounded bg-primary/20 px-1 py-0.5 align-middle text-[10px] font-medium text-primary hover:bg-primary/30";
+const PAUSE_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1"></rect><rect x="6" y="4" width="4" height="16" rx="1"></rect></svg>';
 
 export function isTextRun(run: StoryRichRun): run is { text: string; marks?: StoryTextMarks } {
     return "text" in run;
@@ -148,10 +149,14 @@ function createMarkSpan(text: string, marks: StoryTextMarks): HTMLSpanElement {
 
 export function createPauseChip(pause: number | true): HTMLSpanElement {
     const span = globalThis.document.createElement("span");
-    span.dataset.pause = pause === true ? "click" : String(pause);
+    span.dataset.pause = pause === true ? "click" : String(Math.round(pause as number));
     span.contentEditable = "false";
     span.className = PAUSE_CHIP_CLASS;
-    span.textContent = pause === true ? "⏸" : `⏸${pause}`;
+    span.setAttribute("role", "button");
+    span.title = pause === true ? "Pause — waits for a click" : `Pause — waits ${Math.round(pause)}ms`;
+    const label = pause === true ? "" : `<span class="ml-0.5">${Math.round(pause)}ms</span>`;
+    // PAUSE_ICON_SVG is a trusted static string; the label only interpolates a rounded number.
+    span.innerHTML = `${PAUSE_ICON_SVG}${label}`;
     return span;
 }
 
@@ -196,4 +201,197 @@ export function domToRuns(root: HTMLElement): StoryRichRun[] {
     };
     walk(root, undefined);
     return normalizeRuns(runs);
+}
+
+// ---------------------------------------------------------------------------
+// Unit model: a text run contributes `text.length` units; a pause run is 1 unit.
+// Marks are applied over unit ranges, which guarantees correct "mixed word"
+// splitting when styles overlap (e.g. bold over [0,8) and color over [4,12)
+// yields a middle run carrying both).
+// ---------------------------------------------------------------------------
+
+function runLength(run: StoryRichRun): number {
+    return isTextRun(run) ? run.text.length : 1;
+}
+
+export function totalUnits(runs: StoryRichRun[]): number {
+    return runs.reduce((sum, run) => sum + runLength(run), 0);
+}
+
+function sliceRuns(runs: StoryRichRun[], start: number, end: number): StoryRichRun[] {
+    if (start >= end) {
+        return [];
+    }
+    const out: StoryRichRun[] = [];
+    let pos = 0;
+    for (const run of runs) {
+        const len = runLength(run);
+        const runStart = pos;
+        const runEnd = pos + len;
+        pos = runEnd;
+        if (runEnd <= start || runStart >= end) {
+            continue;
+        }
+        if (!isTextRun(run)) {
+            out.push(run);
+            continue;
+        }
+        const localStart = Math.max(0, start - runStart);
+        const localEnd = Math.min(len, end - runStart);
+        const text = run.text.slice(localStart, localEnd);
+        out.push(run.marks ? { text, marks: run.marks } : { text });
+    }
+    return out;
+}
+
+/** Replace units [start, end) with `insert` and normalize. */
+export function spliceRuns(runs: StoryRichRun[], start: number, end: number, insert: StoryRichRun[]): StoryRichRun[] {
+    const total = totalUnits(runs);
+    return normalizeRuns([
+        ...sliceRuns(runs, 0, start),
+        ...insert,
+        ...sliceRuns(runs, end, total),
+    ]);
+}
+
+/** True when every text unit in [start, end) already carries the given mark. */
+export function rangeHasMark(runs: StoryRichRun[], start: number, end: number, key: keyof StoryTextMarks): boolean {
+    let pos = 0;
+    let hasAny = false;
+    let allHave = true;
+    for (const run of runs) {
+        const len = runLength(run);
+        const runStart = pos;
+        const runEnd = pos + len;
+        pos = runEnd;
+        if (runEnd <= start || runStart >= end || !isTextRun(run)) {
+            continue;
+        }
+        hasAny = true;
+        if (!(run.marks && run.marks[key])) {
+            allHave = false;
+        }
+    }
+    return hasAny && allHave;
+}
+
+/** Apply a marks patch to the text units in [start, end), splitting runs at the boundaries. */
+export function applyMarkToRange(
+    runs: StoryRichRun[],
+    start: number,
+    end: number,
+    patch: (marks: StoryTextMarks) => StoryTextMarks,
+): StoryRichRun[] {
+    if (start >= end) {
+        return runs;
+    }
+    const out: StoryRichRun[] = [];
+    let pos = 0;
+    for (const run of runs) {
+        const len = runLength(run);
+        const runStart = pos;
+        const runEnd = pos + len;
+        pos = runEnd;
+        if (!isTextRun(run) || runEnd <= start || runStart >= end) {
+            out.push(run);
+            continue;
+        }
+        const localStart = Math.max(0, start - runStart);
+        const localEnd = Math.min(len, end - runStart);
+        const text = run.text;
+        if (localStart > 0) {
+            out.push(run.marks ? { text: text.slice(0, localStart), marks: run.marks } : { text: text.slice(0, localStart) });
+        }
+        const midMarks = cleanMarks(patch({ ...(run.marks ?? {}) }));
+        const midText = text.slice(localStart, localEnd);
+        out.push(midMarks ? { text: midText, marks: midMarks } : { text: midText });
+        if (localEnd < len) {
+            out.push(run.marks ? { text: text.slice(localEnd), marks: run.marks } : { text: text.slice(localEnd) });
+        }
+    }
+    return normalizeRuns(out);
+}
+
+// ---------------------------------------------------------------------------
+// DOM ↔ unit-offset mapping (pause chips count as a single atomic unit).
+// ---------------------------------------------------------------------------
+
+function countUnits(node: Node): number {
+    let total = 0;
+    node.childNodes.forEach(child => {
+        if (child.nodeType === Node.TEXT_NODE) {
+            total += child.textContent?.length ?? 0;
+        } else if (child.nodeType === Node.ELEMENT_NODE) {
+            const el = child as HTMLElement;
+            total += el.dataset.pause !== undefined ? 1 : countUnits(el);
+        }
+    });
+    return total;
+}
+
+export function getSelectionUnitRange(root: HTMLElement): { start: number; end: number } | null {
+    const selection = globalThis.window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+        return null;
+    }
+    const range = selection.getRangeAt(0);
+    if (!root.contains(range.commonAncestorContainer)) {
+        return null;
+    }
+    const measure = (container: Node, offset: number): number => {
+        const measured = globalThis.document.createRange();
+        measured.setStart(root, 0);
+        measured.setEnd(container, offset);
+        return countUnits(measured.cloneContents());
+    };
+    const start = measure(range.startContainer, range.startOffset);
+    const end = measure(range.endContainer, range.endOffset);
+    return { start: Math.min(start, end), end: Math.max(start, end) };
+}
+
+function pointAt(root: HTMLElement, target: number): { node: Node; offset: number } {
+    let remaining = target;
+    let result: { node: Node; offset: number } | null = null;
+    const walk = (node: Node) => {
+        const children = Array.from(node.childNodes);
+        for (let index = 0; index < children.length && !result; index += 1) {
+            const child = children[index];
+            if (child.nodeType === Node.TEXT_NODE) {
+                const len = child.textContent?.length ?? 0;
+                if (remaining <= len) {
+                    result = { node: child, offset: remaining };
+                    return;
+                }
+                remaining -= len;
+            } else if (child.nodeType === Node.ELEMENT_NODE) {
+                const el = child as HTMLElement;
+                if (el.dataset.pause !== undefined) {
+                    if (remaining === 0) {
+                        result = { node, offset: index };
+                        return;
+                    }
+                    remaining -= 1;
+                    if (remaining === 0) {
+                        result = { node, offset: index + 1 };
+                        return;
+                    }
+                } else {
+                    walk(el);
+                }
+            }
+        }
+    };
+    walk(root);
+    return result ?? { node: root, offset: root.childNodes.length };
+}
+
+export function setSelectionUnitRange(root: HTMLElement, start: number, end: number): void {
+    const startPoint = pointAt(root, start);
+    const endPoint = pointAt(root, end);
+    const range = globalThis.document.createRange();
+    range.setStart(startPoint.node, startPoint.offset);
+    range.setEnd(endPoint.node, endPoint.offset);
+    const selection = globalThis.window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
 }
