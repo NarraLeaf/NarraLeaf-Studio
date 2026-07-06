@@ -11,7 +11,14 @@ import {
     setSelectionUnitRange,
     spliceRuns,
     totalUnits,
+    unitOffsetOfElement,
 } from "./richText";
+
+export type PauseClickInfo = {
+    unit: number;
+    value: number | true;
+    anchor: { top: number; left: number; bottom: number };
+};
 
 export type RichTextInputHandle = {
     focus: () => void;
@@ -33,6 +40,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     onEnter: () => void;
     onCancel: () => void;
     onBlur: () => void;
+    onPauseClick?: (info: PauseClickInfo) => void;
 }>(function RichTextInput(props, ref) {
     const editorRef = useRef<HTMLDivElement | null>(null);
     const savedRange = useRef<{ start: number; end: number } | null>(null);
@@ -97,6 +105,22 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         emitChange();
     }, [emitChange]);
 
+    // Splice by explicit unit range without focusing the editor (so a pause popover's input keeps
+    // focus). Caret is only restored when the editor already holds focus.
+    const spliceUnits = useCallback((start: number, deleteCount: number, insert: StoryRichRun[], caretAfter: boolean) => {
+        const el = editorRef.current;
+        if (!el) {
+            return;
+        }
+        const runs = spliceRuns(domToRuns(el), start, start + deleteCount, insert);
+        renderRunsToElement(el, runs);
+        if (globalThis.document.activeElement === el) {
+            const pos = caretAfter ? start + insert.length : start;
+            setSelectionUnitRange(el, pos, pos);
+        }
+        emitChange();
+    }, [emitChange]);
+
     useImperativeHandle(ref, () => ({
         focus: () => { editorRef.current?.focus(); },
         toggleMark: (mark) => mutate((runs, range) => {
@@ -118,15 +142,9 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             runs: spliceRuns(runs, range.start, range.end, [{ pause }]),
             caret: [range.start + 1, range.start + 1],
         })),
-        updatePauseAt: (unit, pause) => mutate(runs => ({
-            runs: spliceRuns(runs, unit, unit + 1, [{ pause }]),
-            caret: [unit + 1, unit + 1],
-        })),
-        removePauseAt: (unit) => mutate(runs => ({
-            runs: spliceRuns(runs, unit, unit + 1, []),
-            caret: [unit, unit],
-        })),
-    }), [mutate]);
+        updatePauseAt: (unit, pause) => spliceUnits(unit, 1, [{ pause }], true),
+        removePauseAt: (unit) => spliceUnits(unit, 1, [], false),
+    }), [mutate, spliceUnits]);
 
     return (
         <div
@@ -137,7 +155,19 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             role="textbox"
             aria-multiline="false"
             data-placeholder={props.placeholder ?? ""}
-            onClick={event => event.stopPropagation()}
+            onClick={event => {
+                event.stopPropagation();
+                const el = editorRef.current;
+                const chip = (event.target as HTMLElement).closest?.("[data-pause]") as HTMLElement | null;
+                if (el && chip && el.contains(chip) && props.onPauseClick) {
+                    const rect = chip.getBoundingClientRect();
+                    props.onPauseClick({
+                        unit: unitOffsetOfElement(el, chip),
+                        value: chip.dataset.pause === "click" ? true : Number(chip.dataset.pause) || true,
+                        anchor: { top: rect.top, left: rect.left, bottom: rect.bottom },
+                    });
+                }
+            }}
             onInput={emitChange}
             onKeyUp={saveSelection}
             onMouseUp={saveSelection}

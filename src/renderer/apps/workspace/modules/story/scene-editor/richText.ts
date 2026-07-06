@@ -385,6 +385,14 @@ function pointAt(root: HTMLElement, target: number): { node: Node; offset: numbe
     return result ?? { node: root, offset: root.childNodes.length };
 }
 
+/** Unit offset of an element (e.g. a pause chip) within the editor root. */
+export function unitOffsetOfElement(root: HTMLElement, el: HTMLElement): number {
+    const range = globalThis.document.createRange();
+    range.setStart(root, 0);
+    range.setEndBefore(el);
+    return countUnits(range.cloneContents());
+}
+
 export function setSelectionUnitRange(root: HTMLElement, start: number, end: number): void {
     const startPoint = pointAt(root, start);
     const endPoint = pointAt(root, end);
