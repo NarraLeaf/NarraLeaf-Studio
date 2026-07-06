@@ -14,6 +14,7 @@ import type {
     StoryTextSegment,
     StoryVariableScope,
 } from "@shared/types/story";
+import { resolveDisplayableTargetRef } from "@shared/types/story";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronRight, Image as ImageIcon, Music, Palette, Trash2, Video, X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
@@ -32,6 +33,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
+import { DisplayableTargetField } from "./DisplayableTargetField";
 import { MotionField } from "../../story-motion";
 
 const FIELD_LABEL_CLASS = "block text-xs font-medium text-gray-400 mb-1";
@@ -101,14 +103,6 @@ const TRANSITION_HINTS: Record<string, string> = {
     maskCircle: "Circular reveal / close driven by an animated mask radius.",
     maskWipe: "Directional wipe reveal driven by an animated mask.",
 };
-
-const DISPLAYABLE_KIND_OPTIONS: SelectOption[] = [
-    { value: "", label: "Infer" },
-    { value: "character", label: "Character" },
-    { value: "image", label: "Image" },
-    { value: "text", label: "Text" },
-    { value: "layer", label: "Layer" },
-];
 
 const IMAGE_OPERATION_OPTIONS: SelectOption[] = [
     { value: "create", label: "Create / update" },
@@ -249,7 +243,7 @@ export function ActionInspector(props: {
                 </span>
                 <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-slate-100">{label}</div>
-                    <div className="truncate text-xs text-slate-500">{describeBlock(block, props.characters)}</div>
+                    <div className="truncate text-xs text-slate-500">{describeBlock(block, props.characters, props.document.scenes[props.sceneId])}</div>
                 </div>
                 <button
                     type="button"
@@ -545,21 +539,22 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "displayable") {
         const isEffect = DISPLAYABLE_EFFECT_OPERATIONS.has(payload.operation);
+        const resolvedTarget = resolveDisplayableTargetRef(props.document.scenes[props.sceneId], payload.target);
         return (
             <div className="grid gap-3">
-                <FieldGrid>
+                <FieldGrid cols={2}>
                     <SelectField
                         label="Operation"
                         options={DISPLAYABLE_OPERATION_OPTIONS}
                         value={payload.operation}
                         onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "displayable" }>["operation"] })}
                     />
-                    <TextField label="Target name" value={payload.target.name} onChange={name => props.onChange({ ...payload, target: { ...payload.target, name } })} />
-                    <SelectField
-                        label="Target kind"
-                        options={DISPLAYABLE_KIND_OPTIONS}
-                        value={payload.target.kind ?? ""}
-                        onChange={kind => props.onChange({ ...payload, target: { ...payload.target, kind: String(kind) ? kind as StoryDisplayableTargetKind : undefined } })}
+                    <DisplayableTargetField
+                        document={props.document}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        target={payload.target}
+                        onChange={target => props.onChange({ ...payload, target })}
                     />
                 </FieldGrid>
                 {isEffect ? (
@@ -567,8 +562,8 @@ function ActionPayloadFields(props: {
                 ) : (
                     <TransformPresetEditor
                         value={payload.transform}
-                        motionTargetKind={payload.target.kind ?? "image"}
-                        motionLabel={`${payload.target.name || "Displayable"} ${payload.operation}`}
+                        motionTargetKind={resolvedTarget.kind ?? "image"}
+                        motionLabel={`${resolvedTarget.name || "Displayable"} ${payload.operation}`}
                         storyId={props.document.id}
                         sceneId={props.sceneId}
                         blockId={props.block.id}

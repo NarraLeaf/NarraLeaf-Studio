@@ -45,7 +45,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "ui.compactMode": false,
     "ui.reduceMotion": false,
     "editor.fontSize": 14,
-    "editor.fontFamily": "inter",
+    "editor.fontFamily": "Default",
     "editor.lineNumbers": true,
     "editor.softWrap": false,
     "workspace.restoreLastWorkspace": true,

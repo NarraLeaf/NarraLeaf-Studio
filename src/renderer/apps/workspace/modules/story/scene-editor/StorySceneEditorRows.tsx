@@ -27,6 +27,7 @@ import { RichTextToolbar } from "./RichTextToolbar";
 import { RichTextView } from "./RichTextView";
 import { PausePopover } from "./PausePopover";
 import { segmentToRuns } from "./richText";
+import { useStoryEditorTextStyle } from "./storyEditorTextStyle";
 import type { EditorMode, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
     canAcceptChildren,
@@ -210,6 +211,7 @@ function TextEditBox(props: {
     const lastToolbarInteractRef = useRef(0);
     const [pauseEdit, setPauseEdit] = useState<PauseClickInfo | null>(null);
     const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false });
+    const textStyle = useStoryEditorTextStyle();
 
     useEffect(() => {
         const onPointerDown = (event: PointerEvent) => {
@@ -259,12 +261,14 @@ function TextEditBox(props: {
                     characterId={dialoguePayload.characterId}
                     onChoose={props.onSetDialogueCharacter}
                     className="min-w-[128px] max-w-[200px] rounded-r-none border-r border-white/10 px-2"
+                    style={textStyle}
                 />
             ) : null}
             <RichTextInput
                 ref={props.editorRef}
                 initialRuns={initialRuns}
-                className="min-h-[28px] flex-1 whitespace-pre-wrap break-words bg-transparent px-2 py-1 text-sm text-slate-100 outline-none empty:before:italic empty:before:text-slate-500 empty:before:content-[attr(data-placeholder)]"
+                className="min-h-[28px] flex-1 whitespace-pre-wrap break-words bg-transparent px-2 py-1 text-slate-100 outline-none empty:before:italic empty:before:text-slate-500 empty:before:content-[attr(data-placeholder)]"
+                style={textStyle}
                 placeholder={editorPlaceholder(props.block)}
                 onChange={props.onEditRichChange}
                 onBlur={handleBlur}
@@ -323,6 +327,7 @@ export function InsertRow(props: {
     const characterOptions = useMemo(() => getCharacterOptions(props.characters, chooserQuery), [props.characters, chooserQuery]);
     const actionMenu = useActionCommandMenuState(actionOptions);
     const characterMenu = useCharacterPickerState(characterOptions);
+    const textStyle = useStoryEditorTextStyle();
 
     return (
         <div className="relative grid min-h-[40px] grid-cols-[44px_28px_1fr] items-start pr-3">
@@ -333,7 +338,8 @@ export function InsertRow(props: {
             <div ref={menuAnchorRef} className="relative py-1.5">
                 <textarea
                     ref={props.inputRef}
-                    className="min-h-[30px] w-full resize-none rounded border border-primary/40 bg-black/30 px-2 py-1 text-sm text-slate-100 outline-none placeholder:italic placeholder:text-slate-500"
+                    className="min-h-[30px] w-full resize-none rounded border border-primary/40 bg-black/30 px-2 py-1 text-slate-100 outline-none placeholder:italic placeholder:text-slate-500"
+                    style={textStyle}
                     rows={1}
                     value={props.mode.value}
                     placeholder="Type narration, / for actions, # for characters..."
@@ -754,6 +760,7 @@ function CharacterSelectTrigger(props: {
     characterId: string | undefined;
     onChoose: (characterId: string | undefined) => void;
     className?: string;
+    style?: CSSProperties;
 }) {
     const rootRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(false);
@@ -790,6 +797,7 @@ function CharacterSelectTrigger(props: {
                     unassigned ? "italic text-slate-500 hover:text-primary" : "text-primary",
                     props.className ?? "",
                 ].join(" ")}
+                style={props.style}
                 onMouseDown={event => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -926,16 +934,18 @@ function BlockPreview(props: {
 }) {
     const block = props.block;
     const text = getTextSegment(block);
+    const textStyle = useStoryEditorTextStyle();
     if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
         const hasValue = Boolean(text?.value);
         return (
-            <div className="flex min-w-0 items-center gap-2 text-sm">
+            <div className="flex min-w-0 items-start gap-2 text-sm">
                 <CharacterSelectTrigger
                     characters={props.characters}
                     characterId={block.payload.characterId}
                     onChoose={props.onSetDialogueCharacter}
+                    style={textStyle}
                 />
-                <span className={["min-w-0 flex-1 truncate", hasValue ? "text-slate-100" : "italic text-slate-500"].join(" ")} onDoubleClick={event => {
+                <span className={["min-w-0 flex-1 whitespace-pre-wrap break-words", hasValue ? "text-slate-100" : "italic text-slate-500"].join(" ")} style={textStyle} onDoubleClick={event => {
                     event.stopPropagation();
                     props.onTextDoubleClick();
                 }}>
@@ -948,7 +958,7 @@ function BlockPreview(props: {
         const hasValue = Boolean(text.value);
         const note = block.kind === "note";
         return (
-            <span className={["min-w-0 flex-1 truncate text-sm", note ? "italic text-slate-400" : hasValue ? "text-slate-100" : "italic text-slate-500"].join(" ")} onDoubleClick={event => {
+            <span className={["min-w-0 flex-1 whitespace-pre-wrap break-words", note ? "italic text-slate-400" : hasValue ? "text-slate-100" : "italic text-slate-500"].join(" ")} style={textStyle} onDoubleClick={event => {
                 event.stopPropagation();
                 props.onTextDoubleClick();
             }}>
@@ -971,11 +981,12 @@ function BlockPreview(props: {
             />
         );
     }
-    return <span className="min-w-0 flex-1 truncate text-sm text-slate-300">{describeBlock(block, props.characters, props.scene)}</span>;
+    return <span className="min-w-0 flex-1 truncate text-sm text-slate-300" style={textStyle}>{describeBlock(block, props.characters, props.scene)}</span>;
 }
 
 function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPayload, { action: "setBackground" }> }) {
     const { context, isInitialized } = useWorkspace();
+    const textStyle = useStoryEditorTextStyle();
     const assetsService = useMemo(
         () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
         [context, isInitialized],
@@ -986,7 +997,7 @@ function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPaylo
     const isColor = !payload.assetId && Boolean(payload.color);
 
     return (
-        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-300">
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-300" style={textStyle}>
             {payload.assetId ? (
                 <span className="h-5 w-8 shrink-0 overflow-hidden rounded border border-white/10 bg-[#0f1115]">
                     {url ? (
@@ -1024,6 +1035,7 @@ function DisplayableTransformPreview(props: {
     fallback: string;
 }) {
     const { context, isInitialized } = useWorkspace();
+    const textStyle = useStoryEditorTextStyle();
     const assetsService = useMemo(
         () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
         [context, isInitialized],
@@ -1038,7 +1050,7 @@ function DisplayableTransformPreview(props: {
             fallbackKind: target.kind ?? "image",
             fallbackLabel: target.name,
         }),
-        [props.document, props.sceneId, props.blockId, target.kind, target.name],
+        [props.document, props.sceneId, props.blockId, target.kind, target.name, target.sourceBlockId],
     );
 
     // Character displayables usually carry no assetId on their actions (the image comes from the
@@ -1055,15 +1067,16 @@ function DisplayableTransformPreview(props: {
     const assetId = resolved.assetId ?? characterThumbId;
     const asset = assetId ? assetsService?.getAssets()[AssetType.Image]?.[assetId] ?? null : null;
     const { url } = useAssetObjectUrl(assetId ?? null);
-    const name = target.name || resolved.label;
+    // `resolved.label` already follows the stable anchor (and falls back to the stored name).
+    const name = resolved.label;
 
     // No resolvable image (e.g. a text/layer target or an unresolved name) — keep the plain description.
     if (!assetId) {
-        return <span className="min-w-0 flex-1 truncate text-sm text-slate-300">{props.fallback}</span>;
+        return <span className="min-w-0 flex-1 truncate text-sm text-slate-300" style={textStyle}>{props.fallback}</span>;
     }
 
     return (
-        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-300">
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-300" style={textStyle}>
             <span className="h-5 w-8 shrink-0 overflow-hidden rounded border border-white/10 bg-[#0f1115]">
                 {url ? (
                     <img
