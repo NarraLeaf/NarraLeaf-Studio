@@ -48,7 +48,7 @@
     "monaco-editor": "^0.55.1",
     "motion": "^11",
     "msgpack-lite": "^0.1.26",
-    "narraleaf-react": "file:../narraleaf-react/narraleaf-react-0.10.0.tgz",
+    "narraleaf-react": "0.10.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-moveable": "^0.56.0",
