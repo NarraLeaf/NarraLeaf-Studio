@@ -1,4 +1,4 @@
-import type { StoryBlock, StoryBlockId } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryRichRun } from "@shared/types/story";
 
 export type StoryBlockTarget = {
     parentId: StoryBlockId | null;
@@ -18,7 +18,7 @@ export type InsertSlot = {
 
 export type EditorMode =
     | { kind: "idle" }
-    | { kind: "text"; blockId: StoryBlockId; value: string }
+    | { kind: "text"; blockId: StoryBlockId; value: string; rich?: StoryRichRun[] }
     | { kind: "insert"; slot: InsertSlot; value: string; chooser: "none" | "action" | "character" }
     | { kind: "inspector"; blockId: StoryBlockId };
 

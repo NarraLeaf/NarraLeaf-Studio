@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject, MouseEvent } from "react";
 import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Plus } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
-import type { StoryActionPayload, StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -20,6 +20,9 @@ import {
     type ActionCommandId,
 } from "./storyActionCommands";
 import { ActionInspector } from "./StorySceneActionInspector";
+import { RichTextInput, type RichTextInputHandle } from "./RichTextInput";
+import { RichTextToolbar } from "./RichTextToolbar";
+import { segmentToRuns } from "./richText";
 import type { EditorMode, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
     canAcceptChildren,
@@ -39,15 +42,14 @@ export function StoryBlockRow(props: {
     active: boolean;
     collapsed: boolean;
     editing: boolean;
-    editValue: string;
-    textInputRef: RefObject<HTMLTextAreaElement | null>;
+    textInputRef: RefObject<RichTextInputHandle | null>;
     inspectorOpen: boolean;
     onSelect: (event: MouseEvent) => void;
     onMouseDown: (event: MouseEvent) => void;
     onMouseEnter: () => void;
     onToggleCollapsed: () => void;
     onStartTextEdit: () => void;
-    onEditValueChange: (value: string) => void;
+    onEditRichChange: (value: string, runs: StoryRichRun[]) => void;
     onCommitTextEdit: () => void;
     onCancelTextEdit: () => void;
     onInsertDialogueAfterCurrent: () => void;
@@ -58,7 +60,7 @@ export function StoryBlockRow(props: {
     generateTextId: () => string;
     onInsertAfter: () => void;
 }) {
-    const { row, scene, document, characters, selected, active, collapsed, editing, editValue, textInputRef, inspectorOpen } = props;
+    const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef, inspectorOpen } = props;
     const block = row.block;
     const canFold = block.childrenIds.length > 0 && canAcceptChildren(block);
     const textSegment = getTextSegment(block);
@@ -127,9 +129,8 @@ export function StoryBlockRow(props: {
                     <BlockBadge block={block} characters={characters} />
                     {editing && textSegment ? (
                         <TextEditBox
-                            textInputRef={textInputRef}
-                            editValue={editValue}
-                            onEditValueChange={props.onEditValueChange}
+                            editorRef={textInputRef}
+                            onEditRichChange={props.onEditRichChange}
                             onCommitTextEdit={props.onCommitTextEdit}
                             onCancelTextEdit={props.onCancelTextEdit}
                             onInsertDialogueAfterCurrent={props.onInsertDialogueAfterCurrent}
@@ -166,10 +167,20 @@ export function StoryBlockRow(props: {
     );
 }
 
+function editorPlaceholder(block: StoryBlock): string {
+    switch (getTextSegment(block)?.role) {
+        case "dialogue": return "Dialogue…";
+        case "narration": return "Narration…";
+        case "choicePrompt": return "Choice prompt…";
+        case "choiceText": return "Option text…";
+        case "note": return "Note…";
+        default: return "Text…";
+    }
+}
+
 function TextEditBox(props: {
-    textInputRef: RefObject<HTMLTextAreaElement | null>;
-    editValue: string;
-    onEditValueChange: (value: string) => void;
+    editorRef: RefObject<RichTextInputHandle | null>;
+    onEditRichChange: (value: string, runs: StoryRichRun[]) => void;
     onCommitTextEdit: () => void;
     onCancelTextEdit: () => void;
     onInsertDialogueAfterCurrent: () => void;
@@ -181,8 +192,10 @@ function TextEditBox(props: {
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
         ? props.block.payload
         : null;
+    const initialRuns = useMemo(() => segmentToRuns(getTextSegment(props.block)), [props.block]);
     return (
-        <div className="flex min-w-0 flex-1 items-stretch overflow-visible rounded border border-primary/50 bg-black/30">
+        <div className="relative flex min-w-0 flex-1 items-stretch overflow-visible rounded border border-primary/50 bg-black/30">
+            <RichTextToolbar editor={props.editorRef} />
             {dialoguePayload ? (
                 <CharacterSelectTrigger
                     characters={props.characters}
@@ -191,30 +204,16 @@ function TextEditBox(props: {
                     className="min-w-[128px] max-w-[200px] rounded-r-none border-r border-white/10 px-2"
                 />
             ) : null}
-            <textarea
-                ref={props.textInputRef}
-                className="min-h-[28px] flex-1 resize-none bg-transparent px-2 py-1 text-sm text-slate-100 outline-none"
-                value={props.editValue}
-                rows={1}
-                onClick={event => event.stopPropagation()}
-                onChange={event => props.onEditValueChange(event.target.value)}
-                onBlur={props.onCommitTextEdit}
-                onKeyDown={event => {
-                    if (event.key === "Escape") {
-                        event.preventDefault();
-                        props.onCancelTextEdit();
-                    }
-                    if (event.key === "Enter" && event.shiftKey && dialoguePayload) {
-                        event.preventDefault();
-                        props.onInsertDialogueAfterCurrent();
-                        return;
-                    }
-                    if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        props.onCommitTextEdit();
-                        props.onInsertAfter();
-                    }
-                }}
+            <RichTextInput
+                ref={props.editorRef}
+                initialRuns={initialRuns}
+                className="min-h-[28px] flex-1 whitespace-pre-wrap break-words bg-transparent px-2 py-1 text-sm text-slate-100 outline-none empty:before:italic empty:before:text-slate-500 empty:before:content-[attr(data-placeholder)]"
+                placeholder={editorPlaceholder(props.block)}
+                onChange={props.onEditRichChange}
+                onCommit={props.onCommitTextEdit}
+                onCancel={props.onCancelTextEdit}
+                onEnter={() => { props.onCommitTextEdit(); props.onInsertAfter(); }}
+                onShiftEnter={dialoguePayload ? props.onInsertDialogueAfterCurrent : undefined}
             />
         </div>
     );
