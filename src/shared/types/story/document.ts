@@ -349,6 +349,14 @@ export type StoryVariableRef = {
 export type StoryDisplayableTargetRef = {
     kind?: StoryDisplayableTargetKind;
     name: string;
+    /**
+     * Stable identity of the displayable: the id of the action block that introduced it
+     * (character enter / image / text / layer). Displayables can only be declared statically,
+     * so this always points at a real creator block. When present it is the source of truth —
+     * the current stage name is resolved from that block, so the reference survives renames.
+     * `name` remains as a legacy fallback and last-known label when the source is unresolvable.
+     */
+    sourceBlockId?: StoryBlockId;
 };
 
 export type StoryCharacterVariantSelection = string[] | Record<string, string>;

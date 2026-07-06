@@ -1,5 +1,6 @@
 import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Route, Settings2, Sparkles, StickyNote, Type, UserRound, Variable, Video } from "lucide-react";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StoryTextSegment } from "@shared/types/story";
+import { resolveDisplayableTargetRef } from "@shared/types/story";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
@@ -171,7 +172,6 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
 }
 
 export function describeBlock(block: StoryBlock, characters: Character[], scene?: StoryScene): string {
-    void scene;
     if (block.kind === "nodeAction") {
         const payload = block.payload;
         if (payload.action === "narration") return payload.text.value || "Narration";
@@ -190,7 +190,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         if (payload.action === "setVariable") return `${payload.target.key} = ${String(payload.value)}`;
         if (payload.action === "wait") return payload.mode === "duration" ? `Wait ${payload.durationMs ?? 0}ms` : "Wait for click";
         if (payload.action === "image") return `${payload.operation} image ${payload.objectName || "unnamed"}`;
-        if (payload.action === "displayable") return `${payload.operation} ${payload.target.name || "target"}`;
+        if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).name || "target"}`;
         if (payload.action === "text") return `${payload.operation} text ${payload.objectName || "unnamed"}`;
         if (payload.action === "layer") return `${payload.operation} layer ${payload.objectName || "unnamed"}`;
         if (payload.action === "video") return `${payload.operation} video ${payload.objectName || "unnamed"}`;

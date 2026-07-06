@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import type { StoryRichRun } from "@shared/types/story";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import {
@@ -33,6 +34,7 @@ export type RichTextInputHandle = {
 export const RichTextInput = forwardRef<RichTextInputHandle, {
     initialRuns: StoryRichRun[];
     className?: string;
+    style?: CSSProperties;
     placeholder?: string;
     /** When set, Shift+Enter calls this; otherwise Shift+Enter inserts a line break. */
     onShiftEnter?: () => void;
@@ -194,7 +196,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         <div
             ref={editorRef}
             className={props.className}
-            style={{ caretColor: caretColor ?? undefined }}
+            style={{ ...props.style, caretColor: caretColor ?? undefined }}
             contentEditable
             suppressContentEditableWarning
             role="textbox"

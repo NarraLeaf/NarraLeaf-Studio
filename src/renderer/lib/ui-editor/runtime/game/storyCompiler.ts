@@ -45,6 +45,7 @@ import type {
     StoryTransformRef,
     StoryVariableRef,
 } from "@shared/types/story";
+import { resolveDisplayableTargetRef } from "@shared/types/story";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
 
 export type NlrStoryCompileDiagnostic = {
@@ -417,9 +418,10 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     }
 
     if (payload.action === "displayable") {
-        const target = getDisplayable(ctx, payload.target.name, payload.target.kind);
+        const resolvedTarget = resolveDisplayableTargetRef(ctx.scene, payload.target);
+        const target = getDisplayable(ctx, resolvedTarget.name, resolvedTarget.kind);
         if (!target) {
-            diagnostic(ctx, "warning", block.id, `Displayable target not found: ${payload.target.name || "(empty)"}`);
+            diagnostic(ctx, "warning", block.id, `Displayable target not found: ${resolvedTarget.name || "(empty)"}`);
             return [];
         }
         if (isDisplayableEffectOperation(payload.operation)) {
