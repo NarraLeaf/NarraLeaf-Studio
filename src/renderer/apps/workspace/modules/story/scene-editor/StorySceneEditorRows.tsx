@@ -20,9 +20,10 @@ import {
     type ActionCommandId,
 } from "./storyActionCommands";
 import { ActionInspector } from "./StorySceneActionInspector";
-import { RichTextInput, type RichTextInputHandle } from "./RichTextInput";
+import { RichTextInput, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
 import { RichTextView } from "./RichTextView";
+import { PausePopover } from "./PausePopover";
 import { segmentToRuns } from "./richText";
 import type { EditorMode, VisibleStoryRow } from "./storySceneEditorTypes";
 import {
@@ -197,6 +198,17 @@ function TextEditBox(props: {
     const containerRef = useRef<HTMLDivElement | null>(null);
     // While a toolbar popover (color palette, pause config) is open, blur must not commit.
     const commitGuardRef = useRef(false);
+    const [pauseEdit, setPauseEdit] = useState<PauseClickInfo | null>(null);
+
+    const openPause = (info: PauseClickInfo) => {
+        commitGuardRef.current = true;
+        setPauseEdit(info);
+    };
+    const closePause = () => {
+        commitGuardRef.current = false;
+        setPauseEdit(null);
+        props.editorRef.current?.focus();
+    };
 
     const handleBlur = () => {
         // Defer so focus can settle: a toolbar button click briefly moves focus but ends back on
@@ -234,7 +246,23 @@ function TextEditBox(props: {
                 onCancel={props.onCancelTextEdit}
                 onEnter={() => { props.onCommitTextEdit(); props.onInsertAfter(); }}
                 onShiftEnter={dialoguePayload ? props.onInsertDialogueAfterCurrent : undefined}
+                onPauseClick={openPause}
             />
+            {pauseEdit ? (
+                <PausePopover
+                    anchor={pauseEdit.anchor}
+                    value={pauseEdit.value}
+                    onChange={pause => {
+                        props.editorRef.current?.updatePauseAt(pauseEdit.unit, pause);
+                        setPauseEdit(current => (current ? { ...current, value: pause } : current));
+                    }}
+                    onRemove={() => {
+                        props.editorRef.current?.removePauseAt(pauseEdit.unit);
+                        closePause();
+                    }}
+                    onClose={closePause}
+                />
+            ) : null}
         </div>
     );
 }
