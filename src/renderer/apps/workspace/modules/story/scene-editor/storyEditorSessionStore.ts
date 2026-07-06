@@ -39,3 +39,15 @@ export function useRichToolbarExpanded(): [boolean, (next: boolean) => void] {
     const value = useSyncExternalStore(subscribe, getRichToolbarExpanded, getRichToolbarExpanded);
     return [value, setRichToolbarExpanded];
 }
+
+// Per-tab scroll position (keyed by scene-editor tab id) so switching tabs / remounting keeps the
+// author's place. Session-scoped, not persisted.
+const scrollPositions = new Map<string, number>();
+
+export function getStoryEditorScroll(key: string): number | undefined {
+    return scrollPositions.get(key);
+}
+
+export function setStoryEditorScroll(key: string, top: number): void {
+    scrollPositions.set(key, top);
+}
