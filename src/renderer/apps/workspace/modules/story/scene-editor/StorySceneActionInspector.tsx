@@ -15,7 +15,7 @@ import type {
     StoryVariableScope,
 } from "@shared/types/story";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Image as ImageIcon, Music, Palette, Trash2, Video, X } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Music, Palette, Trash2, Video, X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
@@ -773,9 +773,8 @@ function CharacterActionEditor(props: {
                     onChange={transition => onChange({ ...payload, transition })}
                 />
             )}
-            <details>
-                <summary className="cursor-pointer select-none text-[11px] font-medium uppercase tracking-wide text-slate-500 hover:text-slate-300">Advanced</summary>
-                <div className="mt-2 max-w-sm">
+            <Disclosure title="Advanced">
+                <div className="max-w-sm">
                     <AssetField
                         label="Override image"
                         assetType={AssetType.Image}
@@ -783,7 +782,7 @@ function CharacterActionEditor(props: {
                         onChange={assetId => onChange({ ...payload, assetId })}
                     />
                 </div>
-            </details>
+            </Disclosure>
         </div>
     );
 }
@@ -1029,16 +1028,13 @@ function TransformPresetEditor(props: {
                             onChange={yoffset => props.onChange(setTransformNumberProp(value, "yoffset", yoffset, { preset: value.preset ?? "none" }))}
                         />
                     </FieldGrid>
-                    <details>
-                        <summary className="cursor-pointer select-none text-[11px] font-medium uppercase tracking-wide text-slate-500 hover:text-slate-300">Advanced params</summary>
-                        <div className="mt-1.5">
-                            <TextField
-                                label="Params"
-                                value={propsText}
-                                onChange={nextProps => props.onChange({ ...value, props: parsePropsText(nextProps) })}
-                            />
-                        </div>
-                    </details>
+                    <Disclosure title="Advanced params">
+                        <TextField
+                            label="Params"
+                            value={propsText}
+                            onChange={nextProps => props.onChange({ ...value, props: parsePropsText(nextProps) })}
+                        />
+                    </Disclosure>
                 </div>
             )}
         </Section>
@@ -1623,6 +1619,19 @@ function Section(props: { title?: string; right?: ReactNode; className?: string;
             ) : null}
             {props.children}
         </section>
+    );
+}
+
+/** Collapsible disclosure using the project chevron (matches the story panel accordion). */
+function Disclosure(props: { title: string; children: ReactNode }) {
+    return (
+        <details className="group">
+            <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500 transition-colors hover:text-slate-300 [&::-webkit-details-marker]:hidden">
+                <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                {props.title}
+            </summary>
+            <div className="mt-2">{props.children}</div>
+        </details>
     );
 }
 

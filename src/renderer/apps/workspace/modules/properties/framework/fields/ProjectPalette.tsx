@@ -1,11 +1,12 @@
 import { ColorPickerTrigger } from "./ColorPickerField";
 import type { ColorValue } from "../types";
 import { colorValueToCss, parseColorValue } from "../utils/colorUtils";
+import { useRecentColors } from "./recentColors";
 
 /**
  * Project Palette — a curated color palette built on top of the project color picker. It offers
- * quick base / common / web swatches plus a full custom picker, and is reusable anywhere a color
- * needs to be chosen from a consistent, opinionated set.
+ * quick base / common swatches, a session "recent colors" section, and a full custom picker, and is
+ * reusable anywhere a color needs to be chosen from a consistent, opinionated set.
  */
 export const PROJECT_PALETTE_SECTIONS: { label: string; colors: string[] }[] = [
     {
@@ -19,14 +20,19 @@ export const PROJECT_PALETTE_SECTIONS: { label: string; colors: string[] }[] = [
             "#06b6d4", "#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899", "#f43f5e",
         ],
     },
-    {
-        label: "Web",
-        colors: [
-            "#800000", "#008000", "#000080", "#808000", "#800080", "#008080", "#c0c0c0", "#808080",
-            "#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff", "#ffa500", "#a52a2a",
-        ],
-    },
 ];
+
+function Swatch(props: { color: string; onPick: (color: string, commit: boolean) => void }) {
+    return (
+        <button
+            type="button"
+            className="h-5 w-5 rounded border border-white/20 transition-transform hover:scale-110"
+            style={{ backgroundColor: props.color }}
+            title={props.color}
+            onClick={() => props.onPick(props.color, true)}
+        />
+    );
+}
 
 export function ProjectPalette(props: {
     value?: string;
@@ -36,25 +42,27 @@ export function ProjectPalette(props: {
 }) {
     const parsed = parseColorValue(props.value ?? "#ffffff", { hex: "#ffffff", alpha: 1 });
     const colorValue: ColorValue = { hex: parsed.hex, alpha: 1 };
+    const recent = useRecentColors();
     return (
         <div className={props.className}>
             {PROJECT_PALETTE_SECTIONS.map(section => (
-                <div key={section.label} className="mb-2 last:mb-0">
+                <div key={section.label} className="mb-2">
                     <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">{section.label}</div>
                     <div className="flex flex-wrap gap-1">
-                        {section.colors.map(color => (
-                            <button
-                                key={color}
-                                type="button"
-                                className="h-5 w-5 rounded border border-white/20 transition-transform hover:scale-110"
-                                style={{ backgroundColor: color }}
-                                title={color}
-                                onClick={() => props.onPick(color, true)}
-                            />
-                        ))}
+                        {section.colors.map(color => <Swatch key={color} color={color} onPick={props.onPick} />)}
                     </div>
                 </div>
             ))}
+            <div className="mb-2">
+                <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">Recent</div>
+                {recent.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                        {recent.map(color => <Swatch key={color} color={color} onPick={props.onPick} />)}
+                    </div>
+                ) : (
+                    <div className="text-[10px] text-slate-600">No recent colors yet</div>
+                )}
+            </div>
             <div className="mt-2 flex items-center gap-2 border-t border-white/10 pt-2">
                 <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Custom</span>
                 <ColorPickerTrigger

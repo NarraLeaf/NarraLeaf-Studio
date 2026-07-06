@@ -20,7 +20,7 @@ import {
     type ActionCommandId,
 } from "./storyActionCommands";
 import { ActionInspector } from "./StorySceneActionInspector";
-import { RichTextInput, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
+import { RichTextInput, type ActiveMarks, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
 import { RichTextView } from "./RichTextView";
 import { PausePopover } from "./PausePopover";
@@ -204,6 +204,7 @@ function TextEditBox(props: {
     // falls to <body>.
     const lastToolbarInteractRef = useRef(0);
     const [pauseEdit, setPauseEdit] = useState<PauseClickInfo | null>(null);
+    const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false });
 
     useEffect(() => {
         const onPointerDown = (event: PointerEvent) => {
@@ -246,7 +247,7 @@ function TextEditBox(props: {
 
     return (
         <div ref={containerRef} className="relative flex min-w-0 flex-1 items-stretch overflow-visible rounded border border-primary/50 bg-black/30">
-            <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} />
+            <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} />
             {dialoguePayload ? (
                 <CharacterSelectTrigger
                     characters={props.characters}
@@ -266,6 +267,7 @@ function TextEditBox(props: {
                 onEnter={() => { props.onCommitTextEdit(); props.onInsertAfter(); }}
                 onShiftEnter={dialoguePayload ? props.onInsertDialogueAfterCurrent : undefined}
                 onPauseClick={openPause}
+                onActiveMarksChange={setActiveMarks}
             />
             {pauseEdit ? (
                 <PausePopover
