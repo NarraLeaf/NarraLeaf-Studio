@@ -14,6 +14,7 @@ import {
     Pause,
     Persistent,
     Scene,
+    Script,
     Sound,
     Story,
     Text,
@@ -46,7 +47,21 @@ import type {
     StoryVariableRef,
 } from "@shared/types/story";
 import { resolveDisplayableTargetRef } from "@shared/types/story";
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
+import { compileStoryActionBlueprintToScript, collectSceneStoryActionFns, type StoryActionFnCatalog } from "./storyActionBlueprint";
+
+/**
+ * App-level persistent variable bridge (shared with UI blueprints). `get` reads a cached snapshot
+ * synchronously (for conditions); `set` may be async. Absent outside Dev Mode host persistence.
+ */
+export type StoryPersistenceBridge = {
+    get: (storageKey: string) => unknown;
+    set: (storageKey: string, value: unknown) => void | Promise<void>;
+};
+
+/** Single NLR Storable namespace holding all Story "saved" variables. */
+const SAVED_PERSISTENT_NAMESPACE = "__nlr_story_saved__";
 
 export type NlrStoryCompileDiagnostic = {
     level: "warning" | "error";
@@ -90,7 +105,14 @@ type SceneCompileContext = {
     allScenes: Record<string, Scene>;
     characters: Map<string, Character>;
     characterSummaries: Map<string, DevModeCharacterSummary>;
-    persistentByNamespace: Map<string, Persistent<Record<string, StoryLiteralValue>>>;
+    /** Single NLR Persistent (Storable-backed, per-save) holding all "saved" variables. */
+    savedPersistent: Persistent<Record<string, StoryLiteralValue>>;
+    /** App-level persistent bridge (shared with UI blueprints); absent outside Dev Mode host. */
+    persistence?: StoryPersistenceBridge;
+    /** Blueprint document for compiling story-action blueprints referenced by this scene. */
+    blueprintDocument?: BlueprintDocument;
+    /** Fn declarations shared across all story-action blueprints in this scene. */
+    sceneFnCatalog: StoryActionFnCatalog;
     images: Map<string, Image>;
     texts: Map<string, Text>;
     layers: Map<string, Layer>;
@@ -110,6 +132,10 @@ type CompileInput = {
     characters?: readonly DevModeCharacterSummary[];
     animations?: Record<string, StoryAnimationAsset>;
     resolveAssetUrl?: (assetId: string, assetType?: StoryAssetKind) => Promise<string | null | undefined> | string | null | undefined;
+    /** Blueprint document; enables Story Action Blueprints and shared Persistent resolution. */
+    blueprintDocument?: BlueprintDocument;
+    /** App-level persistent bridge (shared with UI blueprints); from the Dev Mode scope-store bridge. */
+    persistence?: StoryPersistenceBridge;
 };
 
 const EMPTY_IMAGE_SRC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'></svg>";
@@ -151,7 +177,6 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
     const characters = new Map<string, Character>();
     const characterSummaries = new Map((input.characters ?? []).map(character => [character.id, character]));
     const animations = new Map(Object.entries(input.animations ?? {}));
-    const persistentByNamespace = new Map<string, Persistent<Record<string, StoryLiteralValue>>>();
     const assetUrlCache = new Map<string, string | null>();
     let actionIndex = 0;
     const resolveAssetUrl = input.resolveAssetUrl ?? ((assetId: string) => assetId);
@@ -162,14 +187,20 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         diagnostics,
     });
 
-    for (const persistent of Object.values(input.document.gamePersistents ?? {})) {
-        const namespace = normalizePersistentNamespace(persistent.namespace);
-        const nlrPersistent = nlrStory.createPersistent(namespace, persistent.defaultContent ?? {});
-        persistentByNamespace.set(namespace, nlrPersistent);
+    // Single Storable-backed namespace seeded with every saved variable's default.
+    const savedDefaults: Record<string, StoryLiteralValue> = {};
+    for (const saved of Object.values(input.document.savedVariables ?? {})) {
+        savedDefaults[saved.storageKey] = saved.defaultValue ?? null;
     }
+    const savedPersistent = nlrStory.createPersistent(SAVED_PERSISTENT_NAMESPACE, savedDefaults);
 
     for (const scene of Object.values(input.document.scenes)) {
         const nlrScene = allScenes[scene.id];
+        const sceneFnCatalog = collectSceneStoryActionFns({
+            document: input.document,
+            blueprintDocument: input.blueprintDocument,
+            scene,
+        });
         const ctx: SceneCompileContext = {
             document: input.document,
             nlrStory,
@@ -178,7 +209,10 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             allScenes,
             characters,
             characterSummaries,
-            persistentByNamespace,
+            savedPersistent,
+            persistence: input.persistence,
+            blueprintDocument: input.blueprintDocument,
+            sceneFnCatalog,
             images: new Map(),
             texts: new Map(),
             layers: new Map(),
@@ -358,6 +392,8 @@ function buildSentencePrompt(segment: StoryTextSegment): string | unknown[] {
             prompt.push(run.pause === true ? new Pause() : Pause.wait(run.pause));
             continue;
         }
+        // PHASE 2 (reserved): a future `{ blueprintRef }` rich run compiles here to an NLR DynamicWord
+        // via `compileStoryActionBlueprintToValue`, wrapping the Return Value as inline interpolation.
         if (!run.text) {
             continue;
         }
@@ -404,6 +440,25 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     if (payload.action === "setVariable") {
         const chain = setVariable(ctx, payload.target, payload.value, block.id);
         return chain ? [recordStatement(ctx, chain, block)] : [];
+    }
+
+    if (payload.action === "blueprint") {
+        if (!ctx.blueprintDocument) {
+            diagnostic(ctx, "warning", block.id, "Story Action Blueprint needs the project blueprint document; the action was skipped.");
+            return [];
+        }
+        const script = compileStoryActionBlueprintToScript({
+            blueprintDocument: ctx.blueprintDocument,
+            blueprintId: payload.blueprintId,
+            nlrScene: ctx.nlrScene,
+            sceneFnCatalog: ctx.sceneFnCatalog,
+            sceneVariables: ctx.scene.sceneVariables ?? {},
+            savedVariables: ctx.document.savedVariables ?? {},
+            savedNamespace: SAVED_PERSISTENT_NAMESPACE,
+            persistence: ctx.persistence,
+            onDiagnostic: message => diagnostic(ctx, "warning", block.id, message),
+        });
+        return script ? [recordStatement(ctx, script, block)] : [];
     }
 
     if (payload.action === "wait") {
@@ -1333,14 +1388,32 @@ function createTransition(transition: StoryTransitionRef | undefined, ctx: Scene
 }
 
 function setVariable(ctx: SceneCompileContext, target: StoryVariableRef, value: StoryLiteralValue, blockId: string): NlrStatement | null {
-    if (target.scope === "studioGlobal") {
-        diagnostic(ctx, "warning", blockId, `studioGlobal variable "${target.key}" is editor-only and was not written to NLR runtime.`);
+    if (target.scope === "scene") {
+        const def = ctx.scene.sceneVariables?.[target.variableId];
+        if (!def) {
+            diagnostic(ctx, "warning", blockId, "Scene variable not found; the assignment was skipped.");
+            return null;
+        }
+        return ctx.nlrScene.local.set(def.storageKey, value as any);
+    }
+    if (target.scope === "saved") {
+        const def = ctx.document.savedVariables?.[target.variableId];
+        if (!def) {
+            diagnostic(ctx, "warning", blockId, "Saved variable not found; the assignment was skipped.");
+            return null;
+        }
+        return ctx.savedPersistent.set(def.storageKey, value as any);
+    }
+    // Persistent (app-level, host-managed, shared with UI blueprints).
+    const persistence = ctx.persistence;
+    if (!persistence) {
+        diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence and were skipped.");
         return null;
     }
-    if (target.scope === "sceneLocal") {
-        return ctx.nlrScene.local.set(target.key, value as any);
-    }
-    return getPersistent(ctx, target.namespace).set(target.key, value as any);
+    const storageKey = target.storageKey;
+    return Script.execute(() => {
+        void persistence.set(storageKey, value);
+    });
 }
 
 function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRef | undefined, blockId: string): NlrCondition | undefined {
@@ -1351,46 +1424,77 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
         diagnostic(ctx, "warning", blockId, "Expression condition was skipped because raw script is outside the NLR Story action surface.");
         return falseCondition;
     }
-    if (condition.target.scope === "studioGlobal") {
-        diagnostic(ctx, "warning", blockId, `studioGlobal condition "${condition.target.key}" is editor-only and evaluates false in NLR.`);
-        return falseCondition;
+    const target = condition.target;
+    if (target.scope === "persistent") {
+        return persistentCondition(ctx, target.storageKey, condition.operator, condition.value);
     }
-    const persistent = (
-        condition.target.scope === "sceneLocal"
-            ? ctx.nlrScene.local
-            : getPersistent(ctx, condition.target.namespace)
-    ) as Persistent<any>;
+    let persistent: Persistent<any>;
+    let storageKey: string;
+    if (target.scope === "scene") {
+        const def = ctx.scene.sceneVariables?.[target.variableId];
+        if (!def) {
+            diagnostic(ctx, "warning", blockId, "Scene variable not found; condition evaluates false.");
+            return falseCondition;
+        }
+        persistent = ctx.nlrScene.local as Persistent<any>;
+        storageKey = def.storageKey;
+    } else {
+        const def = ctx.document.savedVariables?.[target.variableId];
+        if (!def) {
+            diagnostic(ctx, "warning", blockId, "Saved variable not found; condition evaluates false.");
+            return falseCondition;
+        }
+        persistent = ctx.savedPersistent as Persistent<any>;
+        storageKey = def.storageKey;
+    }
     switch (condition.operator) {
         case "isTrue":
-            return persistent.isTrue(condition.target.key);
+            return persistent.isTrue(storageKey);
         case "isFalse":
-            return persistent.isFalse(condition.target.key);
+            return persistent.isFalse(storageKey);
         case "equals":
-            return persistent.equals(condition.target.key, condition.value as any);
+            return persistent.equals(storageKey, condition.value as any);
         case "notEquals":
-            return persistent.notEquals(condition.target.key, condition.value as any);
+            return persistent.notEquals(storageKey, condition.value as any);
         case "exists":
-            return persistent.isNotNull(condition.target.key);
+            return persistent.isNotNull(storageKey);
         default:
             return falseCondition;
     }
 }
 
-function falseCondition(): boolean {
-    return false;
+/** App-level persistent condition: a runtime closure reading the shared host snapshot. */
+function persistentCondition(
+    ctx: SceneCompileContext,
+    storageKey: string,
+    operator: Extract<StoryConditionRef, { kind: "variable" }>["operator"],
+    value: StoryLiteralValue | undefined,
+): NlrCondition {
+    const persistence = ctx.persistence;
+    if (!persistence) {
+        return falseCondition;
+    }
+    return () => {
+        const current = persistence.get(storageKey);
+        switch (operator) {
+            case "isTrue":
+                return current === true;
+            case "isFalse":
+                return current === false;
+            case "equals":
+                return current === value;
+            case "notEquals":
+                return current !== value;
+            case "exists":
+                return current !== null && current !== undefined;
+            default:
+                return false;
+        }
+    };
 }
 
-function getPersistent(ctx: SceneCompileContext, namespace: string | undefined): Persistent<Record<string, StoryLiteralValue>> {
-    const normalized = normalizePersistentNamespace(namespace);
-    const existing = ctx.persistentByNamespace.get(normalized);
-    if (existing) {
-        return existing;
-    }
-    const definition = Object.values(ctx.document.gamePersistents ?? {}).find(candidate => normalizePersistentNamespace(candidate.namespace) === normalized);
-    const persistent = new Persistent(normalized, definition?.defaultContent ?? {});
-    ctx.persistentByNamespace.set(normalized, persistent);
-    ctx.nlrStory.registerPersistent(persistent);
-    return persistent;
+function falseCondition(): boolean {
+    return false;
 }
 
 async function resolveCharacterImageUrl(

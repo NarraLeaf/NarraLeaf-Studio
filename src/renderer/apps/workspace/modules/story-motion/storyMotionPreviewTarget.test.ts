@@ -5,7 +5,7 @@ import { listSceneDisplayableTargets, resolveStoryMotionPreviewTarget } from "./
 
 function documentWith(blocks: Record<string, StoryBlock>, rootBlockIds: string[]): StoryDocument {
     return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         id: "story-1",
         name: "Story",
         chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1"] }],

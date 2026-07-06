@@ -46,6 +46,8 @@ function ownerKeyForTest(owner: BlueprintOwnerRef): string {
             return `componentWidgetMain:${owner.componentId}:${owner.elementId}`;
         case "sharedAsset":
             return `sharedAsset:${owner.assetId}`;
+        case "storyAction":
+            return `storyAction:${owner.blueprintId}`;
         default: {
             const _exhaustive: never = owner;
             return _exhaustive;

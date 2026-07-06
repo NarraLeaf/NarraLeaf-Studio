@@ -105,6 +105,7 @@ const FN_DECL_OWNER_KINDS: ReadonlySet<BlueprintOwnerRef["kind"]> = new Set([
     "globalMain",
     "surfaceMain",
     "widgetMain",
+    "storyAction",
 ]);
 
 function readPinDecls(
@@ -341,12 +342,18 @@ export function isBlueprintFnVisibleToOwner(
             caller.kind === "globalMain" ||
             caller.kind === "surfaceMain" ||
             caller.kind === "widgetMain" ||
-            caller.kind === "widgetValue"
+            caller.kind === "widgetValue" ||
+            caller.kind === "storyAction"
         );
     }
     if (declOwner.kind === "surfaceMain" || declOwner.kind === "widgetMain") {
         const surfaceId = callerSurfaceId(caller);
         return Boolean(surfaceId) && surfaceId === declOwner.surfaceId;
+    }
+    // Story-action fns: the editor catalog shows all story-action fns to story-action callers.
+    // Scene-scoped visibility is enforced at runtime by the story compiler's fn catalog.
+    if (declOwner.kind === "storyAction") {
+        return caller.kind === "storyAction";
     }
     return false;
 }

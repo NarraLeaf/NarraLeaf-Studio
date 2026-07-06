@@ -1,8 +1,11 @@
 export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
-export const STORY_DOCUMENT_SCHEMA_VERSION = 1 as const;
+export const STORY_DOCUMENT_SCHEMA_VERSION = 2 as const;
+/** Story animation index/asset schema version (independent of the story document version). */
+export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
 export type StoryLibraryIndexVersion = typeof STORY_LIBRARY_INDEX_SCHEMA_VERSION;
 export type StoryDocumentVersion = typeof STORY_DOCUMENT_SCHEMA_VERSION;
+export type StoryAnimationSchemaVersion = typeof STORY_ANIMATION_SCHEMA_VERSION;
 
 export type StoryId = string;
 export type StoryAnimationAssetId = string;
@@ -47,8 +50,8 @@ export type StoryDocument = {
     entrySceneId?: StorySceneId;
     chapters: StoryChapter[];
     scenes: Record<StorySceneId, StoryScene>;
-    studioGlobals?: Record<string, StoryVariableDefinition>;
-    gamePersistents?: Record<string, StoryPersistentDefinition>;
+    /** Document-level saved variables (per save-file, backed by NLR Storable). */
+    savedVariables?: Record<string, StorySavedVariableDefinition>;
     meta?: StoryMeta;
 };
 
@@ -73,7 +76,8 @@ export type StoryScene = {
     defaultBackgroundAssetId?: string;
     rootBlockIds: StoryBlockId[];
     blocks: Record<StoryBlockId, StoryBlock>;
-    localVariables?: Record<string, StoryVariableDefinition>;
+    /** Per-scene variables (backed by NLR Scene.local). */
+    sceneVariables?: Record<string, StorySceneVariableDefinition>;
     meta?: StoryMeta;
 };
 
@@ -83,27 +87,61 @@ export type StorySceneUpdate = {
     defaultBackgroundAssetId?: string | null;
 };
 
-export type StoryVariableScope = "studioGlobal" | "gamePersistent" | "sceneLocal";
+/**
+ * Story-declarable variable classes:
+ *  - "scene": per-scene, backed by NLR `Scene.local` (survives save/load); declared on `StoryScene`.
+ *  - "saved": per save-file, backed by NLR `Storable`; declared on `StoryDocument`; serializable-only.
+ *  - "persistent": app-level, shared with UI blueprints (`BlueprintDocument.persistentVariables`),
+ *     referenced by stable `storageKey`; serializable-only. Not stored in the story document.
+ * The blueprint-local "var" class is a Blueprint concern (`Blueprint.members.variables`), not a story scope.
+ */
+export type StoryVariableScope = "scene" | "saved" | "persistent";
 export type StoryVariableValueType = "boolean" | "number" | "string" | "json";
 export type StoryStageObjectKind = "image" | "text" | "layer" | "video";
 export type StoryDisplayableTargetKind = Exclude<StoryStageObjectKind, "video"> | "character";
 
-export type StoryVariableDefinition = {
+/** Declaration for a scene variable (backed by NLR `Scene.local`). */
+export type StorySceneVariableDefinition = {
+    id: string;
+    /** Author-facing, proper-case label. Displayed to users; the id/storageKey are never shown. */
+    name: string;
+    valueType: StoryVariableValueType;
+    defaultValue?: StoryLiteralValue;
+    /** Stable runtime key; defaults to `id` and never changes on rename so saves stay valid. */
+    storageKey: string;
+    meta?: StoryMeta;
+};
+
+/** Declaration for a saved variable (per save-file, backed by NLR `Storable`). Serializable-only. */
+export type StorySavedVariableDefinition = {
     id: string;
     name: string;
-    scope: StoryVariableScope;
+    valueType: StoryVariableValueType;
+    defaultValue?: StoryLiteralValue;
+    /** Stable runtime key within the saved namespace; defaults to `id`, unchanged on rename. */
+    storageKey: string;
+    meta?: StoryMeta;
+};
+
+export type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | { [key: string]: StoryLiteralValue };
+
+// --- Legacy (schema v1) shapes, retained only as migration input. ---
+export type StoryVariableScopeLegacy = "studioGlobal" | "gamePersistent" | "sceneLocal";
+
+export type StoryVariableDefinitionLegacy = {
+    id: string;
+    name: string;
+    scope: StoryVariableScopeLegacy;
     valueType: StoryVariableValueType;
     defaultValue?: StoryLiteralValue;
     meta?: StoryMeta;
 };
 
-export type StoryPersistentDefinition = {
+export type StoryPersistentDefinitionLegacy = {
     namespace: string;
     defaultContent: Record<string, StoryLiteralValue>;
     meta?: StoryMeta;
 };
-
-export type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | { [key: string]: StoryLiteralValue };
 
 export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "code" | "note";
 
@@ -281,6 +319,11 @@ export type StoryActionPayload =
           color?: string;
           opacity?: number;
           easing?: string;
+      }
+    | {
+          action: "blueprint";
+          /** Owner blueprint id of the implicit Story Action Blueprint bound 1:1 to this action. */
+          blueprintId: string;
       };
 
 export type StoryControlPayload =
@@ -340,8 +383,14 @@ export type StoryRichRun =
     | { text: string; marks?: StoryTextMarks }
     | { pause: number | true };
 
-export type StoryVariableRef = {
-    scope: StoryVariableScope;
+export type StoryVariableRef =
+    | { scope: "scene"; variableId: string }
+    | { scope: "saved"; variableId: string }
+    | { scope: "persistent"; storageKey: string };
+
+/** Legacy (schema v1) free-form variable reference, retained for migration + picker safety-net. */
+export type StoryVariableRefLegacy = {
+    scope: StoryVariableScopeLegacy;
     namespace?: string;
     key: string;
 };
@@ -417,7 +466,7 @@ export type StoryDiagnosticsMeta = {
 };
 
 export type StoryAnimationIndex = {
-    schemaVersion: StoryDocumentVersion;
+    schemaVersion: StoryAnimationSchemaVersion;
     animations: StoryAnimationIndexEntry[];
     meta?: StoryMeta;
 };
@@ -432,7 +481,7 @@ export type StoryAnimationIndexEntry = {
 };
 
 export type StoryAnimationAsset = {
-    schemaVersion: StoryDocumentVersion;
+    schemaVersion: StoryAnimationSchemaVersion;
     id: StoryAnimationAssetId;
     name: string;
     targetKind: StoryDisplayableTargetKind;

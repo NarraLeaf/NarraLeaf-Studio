@@ -44,6 +44,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_END,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_DRAG_START,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SLIDER_VALUE_CHANGED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT,
@@ -303,6 +304,18 @@ function preferenceEventHead(input: {
 }
 
 export const eventHeadBlueprintNodes: BlueprintNodeDef[] = [
+    {
+        type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+        displayName: "On Call",
+        category: "Events",
+        keywords: ["call", "invoke", "story", "action", "interpolation", "entry"],
+        graphKinds: ["event"],
+        isPure: false,
+        role: "eventHead",
+        scope: { ownerKinds: ["storyAction"] },
+        pins: [THEN_PIN],
+        execute: eventHeadExecute,
+    },
     {
         type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
         displayName: "App Boot",
