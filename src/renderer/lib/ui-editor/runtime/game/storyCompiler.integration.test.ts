@@ -512,6 +512,122 @@ describe("compileStudioStoryToNlr", () => {
         expect(layerTransform?.sequences?.at(-1)?.props).not.toHaveProperty("opacity");
     });
 
+    it("compiles displayable visual effects on an existing stage image", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            show: {
+                id: "show",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "image", operation: "show", objectName: "hero" },
+            },
+            reveal: {
+                id: "reveal",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "displayable",
+                    operation: "circleReveal",
+                    target: { name: "hero", kind: "image" },
+                    durationMs: 600,
+                    effectProps: { from: 0, to: 150 },
+                },
+            },
+            darken: {
+                id: "darken",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "displayable",
+                    operation: "darken",
+                    target: { name: "hero", kind: "image" },
+                    darkness: 0.6,
+                    durationMs: 200,
+                },
+            },
+            wipe: {
+                id: "wipe",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "displayable",
+                    operation: "wipe",
+                    target: { name: "hero", kind: "image" },
+                    effectProps: { direction: "right", reverse: true },
+                },
+            },
+        };
+
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["show", "reveal", "darken", "wipe"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual(expect.arrayContaining([
+            "reveal",
+            "darken",
+            "wipe",
+        ]));
+    });
+
+    it("warns when a mask effect has no image asset", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            show: {
+                id: "show",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "image", operation: "show", objectName: "hero" },
+            },
+            mask: {
+                id: "mask",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "displayable", operation: "mask", target: { name: "hero", kind: "image" } },
+            },
+        };
+
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["show", "mask"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "warning", blockId: "mask", message: "Mask effect has no image asset." },
+        ]);
+    });
+
+    it("compiles dialogue pauseAfter without diagnostics", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            say: {
+                id: "say",
+                kind: "nodeAction",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "dialogue",
+                    characterId: "char-alice",
+                    pauseAfter: 500,
+                    text: { textId: "text-say", value: "Hello", role: "dialogue" },
+                },
+            },
+        };
+
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["say"]),
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice" }],
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("say");
+    });
+
     it("compiles choice, condition, variables, and skips script-only blocks with diagnostics", async () => {
         const optionChild = narrationBlock("option-child", "text-option-child", "Selected");
         optionChild.parentId = "option";

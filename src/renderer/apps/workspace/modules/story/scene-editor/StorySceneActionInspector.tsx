@@ -122,7 +122,34 @@ const DISPLAYABLE_OPERATION_OPTIONS: SelectOption[] = [
     { value: "transform", label: "Transform" },
     { value: "show", label: "Show" },
     { value: "hide", label: "Hide" },
+    { value: "mask", label: "Mask" },
+    { value: "clearMask", label: "Clear mask" },
+    { value: "clip", label: "Clip path" },
+    { value: "clearClip", label: "Clear clip" },
+    { value: "filter", label: "Filter" },
+    { value: "clearFilter", label: "Clear filter" },
+    { value: "darken", label: "Darken" },
+    { value: "circleReveal", label: "Circle reveal" },
+    { value: "circleClose", label: "Circle close" },
+    { value: "wipe", label: "Wipe" },
 ];
+
+const DISPLAYABLE_EFFECT_OPERATIONS = new Set([
+    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "darken", "circleReveal", "circleClose", "wipe",
+]);
+
+const DISPLAYABLE_EFFECT_HINTS: Record<string, string> = {
+    mask: "Applies an image asset as a CSS mask.",
+    clearMask: "Removes the current mask.",
+    clip: "Applies a CSS clip-path.",
+    clearClip: "Removes the current clip-path.",
+    filter: "Applies a CSS filter (e.g. blur(4px) grayscale(1)).",
+    clearFilter: "Removes the current filter.",
+    darken: "Fades a darkness overlay 0..1 (image / character targets only).",
+    circleReveal: "Circular reveal via an animated mask.",
+    circleClose: "Circular close via an animated mask.",
+    wipe: "Directional wipe reveal via an animated mask.",
+};
 
 const TEXT_OPERATION_OPTIONS: SelectOption[] = [
     { value: "create", label: "Create / update" },
@@ -275,15 +302,35 @@ function InspectorFields(props: {
                     label: character.profile.getName(),
                 })),
             ];
+            const pauseEnabled = payload.pauseAfter !== undefined;
+            const pauseMs = typeof payload.pauseAfter === "number" ? payload.pauseAfter : undefined;
             return (
-                <div className="grid gap-2 sm:grid-cols-2">
-                    <SelectField
-                        label="Character"
-                        options={characterOptions}
-                        value={payload.characterId ?? ""}
-                        onChange={value => props.onSetDialogueCharacter(String(value) || undefined)}
-                    />
-                    <TextIdReadout text={payload.text} />
+                <div className="grid gap-2">
+                    <FieldGrid cols={2}>
+                        <SelectField
+                            label="Character"
+                            options={characterOptions}
+                            value={payload.characterId ?? ""}
+                            onChange={value => props.onSetDialogueCharacter(String(value) || undefined)}
+                        />
+                        <TextIdReadout text={payload.text} />
+                    </FieldGrid>
+                    <Section title="Timing">
+                        <FieldGrid cols={2}>
+                            <CheckboxField
+                                label="Pause after line"
+                                checked={pauseEnabled}
+                                onChange={checked => props.onUpdatePayload({ ...payload, pauseAfter: checked ? true : undefined })}
+                            />
+                            {pauseEnabled ? (
+                                <NumberField
+                                    label="Pause ms (optional)"
+                                    value={pauseMs}
+                                    onChange={ms => props.onUpdatePayload({ ...payload, pauseAfter: ms === undefined ? true : ms })}
+                                />
+                            ) : null}
+                        </FieldGrid>
+                    </Section>
                 </div>
             );
         }
@@ -300,13 +347,34 @@ function InspectorFields(props: {
         }
         if (payload.action === "choiceOption") {
             return (
-                <TextSegmentEditor
-                    label="Option text"
-                    text={payload.text}
-                    role="choiceText"
-                    generateTextId={props.generateTextId}
-                    onChange={text => props.onUpdatePayload({ ...payload, text })}
-                />
+                <div className="grid gap-2">
+                    <TextSegmentEditor
+                        label="Option text"
+                        text={payload.text}
+                        role="choiceText"
+                        generateTextId={props.generateTextId}
+                        onChange={text => props.onUpdatePayload({ ...payload, text })}
+                    />
+                    <Section title="Conditions">
+                        <div className="grid gap-2">
+                            <div>
+                                <div className={FIELD_LABEL_CLASS}>Hidden when</div>
+                                <ConditionRefEditor
+                                    value={payload.hiddenWhen}
+                                    onChange={hiddenWhen => props.onUpdatePayload({ ...payload, hiddenWhen })}
+                                />
+                            </div>
+                            <div>
+                                <div className={FIELD_LABEL_CLASS}>Disabled when</div>
+                                <ConditionRefEditor
+                                    value={payload.disabledWhen}
+                                    onChange={disabledWhen => props.onUpdatePayload({ ...payload, disabledWhen })}
+                                />
+                            </div>
+                            <div className="text-[11px] text-slate-500">Leave a condition untouched to always show / enable this option.</div>
+                        </div>
+                    </Section>
+                </div>
             );
         }
     }
@@ -477,9 +545,10 @@ function ActionPayloadFields(props: {
         );
     }
     if (payload.action === "displayable") {
+        const isEffect = DISPLAYABLE_EFFECT_OPERATIONS.has(payload.operation);
         return (
             <div className="grid gap-3">
-                <div className="grid gap-2 sm:grid-cols-3">
+                <FieldGrid>
                     <SelectField
                         label="Operation"
                         options={DISPLAYABLE_OPERATION_OPTIONS}
@@ -493,17 +562,21 @@ function ActionPayloadFields(props: {
                         value={payload.target.kind ?? ""}
                         onChange={kind => props.onChange({ ...payload, target: { ...payload.target, kind: String(kind) ? kind as StoryDisplayableTargetKind : undefined } })}
                     />
-                </div>
-                <TransformPresetEditor
-                    value={payload.transform}
-                    motionTargetKind={payload.target.kind ?? "image"}
-                    motionLabel={`${payload.target.name || "Displayable"} ${payload.operation}`}
-                    storyId={props.document.id}
-                    sceneId={props.sceneId}
-                    blockId={props.block.id}
-                    storyName={props.document.name}
-                    onChange={transform => props.onChange({ ...payload, transform })}
-                />
+                </FieldGrid>
+                {isEffect ? (
+                    <DisplayableEffectEditor payload={payload} onChange={props.onChange} />
+                ) : (
+                    <TransformPresetEditor
+                        value={payload.transform}
+                        motionTargetKind={payload.target.kind ?? "image"}
+                        motionLabel={`${payload.target.name || "Displayable"} ${payload.operation}`}
+                        storyId={props.document.id}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        storyName={props.document.name}
+                        onChange={transform => props.onChange({ ...payload, transform })}
+                    />
+                )}
             </div>
         );
     }
@@ -1012,6 +1085,62 @@ function AssetField(props: {
                 multiple={false}
             />
         </div>
+    );
+}
+
+type DisplayableActionPayload = Extract<StoryActionPayload, { action: "displayable" }>;
+
+function DisplayableEffectEditor(props: {
+    payload: DisplayableActionPayload;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const payload = props.payload;
+    const op = payload.operation;
+    const setEffectParam = (patch: Record<string, StoryLiteralValue | undefined>) =>
+        props.onChange({ ...payload, effectProps: mergeParams(payload.effectProps, patch) });
+    return (
+        <Section title="Effect">
+            <FieldGrid cols={3}>
+                <NumberField label="Duration ms" value={payload.durationMs} onChange={durationMs => props.onChange({ ...payload, durationMs })} />
+                <SelectField
+                    label="Easing"
+                    options={EASING_OPTIONS}
+                    value={payload.easing ?? ""}
+                    onChange={easing => props.onChange({ ...payload, easing: String(easing) || undefined })}
+                />
+                {op === "mask" ? (
+                    <AssetField label="Mask image" assetType={AssetType.Image} assetId={payload.maskAssetId} onChange={maskAssetId => props.onChange({ ...payload, maskAssetId })} />
+                ) : null}
+                {op === "clip" ? (
+                    <TextField label="Clip path" value={payload.clipPath ?? ""} onChange={clipPath => props.onChange({ ...payload, clipPath: clipPath || undefined })} />
+                ) : null}
+                {op === "filter" ? (
+                    <TextField label="CSS filter" value={payload.filter ?? ""} onChange={filter => props.onChange({ ...payload, filter: filter || undefined })} />
+                ) : null}
+                {op === "darken" ? (
+                    <NumberField label="Darkness 0-1" value={payload.darkness} onChange={darkness => props.onChange({ ...payload, darkness })} />
+                ) : null}
+                {op === "circleReveal" || op === "circleClose" ? (
+                    <>
+                        <TextField label="Center" value={paramString(payload.effectProps, "center", "50% 50%")} onChange={center => setEffectParam({ center: center || undefined })} />
+                        <NumberField label="From radius" value={paramNumber(payload.effectProps, "from")} onChange={from => setEffectParam({ from })} />
+                        <NumberField label="To radius" value={paramNumber(payload.effectProps, "to")} onChange={to => setEffectParam({ to })} />
+                    </>
+                ) : null}
+                {op === "wipe" ? (
+                    <>
+                        <SelectField
+                            label="Direction"
+                            options={WIPE_DIRECTION_OPTIONS}
+                            value={paramString(payload.effectProps, "direction", "left")}
+                            onChange={direction => setEffectParam({ direction: String(direction) })}
+                        />
+                        <CheckboxField label="Reverse" checked={paramBool(payload.effectProps, "reverse")} onChange={reverse => setEffectParam({ reverse: reverse || undefined })} />
+                    </>
+                ) : null}
+            </FieldGrid>
+            <div className="mt-1.5 text-[11px] text-slate-500">{DISPLAYABLE_EFFECT_HINTS[op] ?? ""}</div>
+        </Section>
     );
 }
 

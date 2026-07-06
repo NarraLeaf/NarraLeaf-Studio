@@ -36,6 +36,10 @@ export function getStoryMotionDescriptor(block: StoryBlock): StoryMotionDescript
         };
     }
     if (payload.action === "displayable") {
+        if (payload.operation !== "show" && payload.operation !== "hide" && payload.operation !== "transform") {
+            // Effect operations (mask/filter/darken/...) do not carry a Transform.
+            return null;
+        }
         return {
             transform: payload.transform,
             targetKind: payload.target.kind ?? "image",

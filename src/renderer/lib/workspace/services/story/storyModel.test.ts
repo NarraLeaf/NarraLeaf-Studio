@@ -404,6 +404,51 @@ describe("storyModel", () => {
         }
     });
 
+    it("preserves dialogue pause and displayable effect fields through normalization", () => {
+        const now = "2026-06-08T00:00:00.000Z";
+        const document = createEmptyStoryDocument({
+            id: STORY_ID_1,
+            name: "Story",
+            now,
+            generateId: idFactory(),
+        });
+        const scene = document.scenes[document.entrySceneId!];
+        insertBlockInScene(scene, {
+            id: "say",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "dialogue",
+                characterId: "char-1",
+                pauseAfter: 400,
+                text: { textId: "t1", role: "dialogue", value: "Hi" },
+            },
+        }, { parentId: null });
+        insertBlockInScene(scene, {
+            id: "fx",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "displayable",
+                operation: "wipe",
+                target: { name: "hero", kind: "image" },
+                durationMs: 500,
+                easing: "easeOut",
+                effectProps: { direction: "right", reverse: true },
+            },
+        }, { parentId: null });
+
+        const normalized = normalizeStoryDocument(document, now);
+        const normalizedScene = normalized.scenes[document.entrySceneId!];
+
+        expect((normalizedScene.blocks.say.payload as any).pauseAfter).toBe(400);
+        expect((normalizedScene.blocks.fx.payload as any).operation).toBe("wipe");
+        expect((normalizedScene.blocks.fx.payload as any).effectProps).toEqual({ direction: "right", reverse: true });
+        expect((normalizedScene.blocks.fx.payload as any).durationMs).toBe(500);
+    });
+
     it("does not allow jump blocks to own children", () => {
         const document = createEmptyStoryDocument({
             id: STORY_ID_3,

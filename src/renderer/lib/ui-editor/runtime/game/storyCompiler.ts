@@ -328,8 +328,15 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
         const voiceUrl = block.payload.voiceAssetId
             ? await resolveAsset(ctx, block.payload.voiceAssetId, "audio", block.id)
             : null;
-        const config = voiceUrl ? { voice: Sound.voice(voiceUrl) } : undefined;
-        return [recordStatement(ctx, character.say(text, config), block, block.payload.text.textId)];
+        const config: Record<string, unknown> = {};
+        if (voiceUrl) {
+            config.voice = Sound.voice(voiceUrl);
+        }
+        if (block.payload.pauseAfter !== undefined) {
+            config.pause = block.payload.pauseAfter;
+        }
+        const sayConfig = Object.keys(config).length > 0 ? (config as any) : undefined;
+        return [recordStatement(ctx, character.say(text, sayConfig), block, block.payload.text.textId)];
     }
 
     return [];
@@ -378,7 +385,10 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
             diagnostic(ctx, "warning", block.id, `Displayable target not found: ${payload.target.name || "(empty)"}`);
             return [];
         }
-        const chain = compileDisplayableOperation(target, payload.operation, payload.transform, ctx, block.id);
+        if (isDisplayableEffectOperation(payload.operation)) {
+            return compileDisplayableEffect(ctx, block, payload, target);
+        }
+        const chain = compileDisplayableOperation(target, payload.operation as "show" | "hide" | "transform", payload.transform, ctx, block.id);
         return chain ? [recordStatement(ctx, chain, block)] : [];
     }
 
@@ -793,6 +803,108 @@ function getDisplayable(ctx: SceneCompileContext, name: string, kind?: string): 
     if (kind === "layer") return ctx.layers.get(normalized) ?? null;
     if (kind === "character") return ctx.images.get(normalized) ?? null;
     return null;
+}
+
+const DISPLAYABLE_EFFECT_OPS = new Set([
+    "mask", "clearMask", "clip", "clearClip", "filter", "clearFilter", "darken", "circleReveal", "circleClose", "wipe",
+]);
+
+function isDisplayableEffectOperation(operation: string): boolean {
+    return DISPLAYABLE_EFFECT_OPS.has(operation);
+}
+
+type DisplayablePayload = Extract<StoryActionPayload, { action: "displayable" }>;
+
+function effectVisualOptions(payload: DisplayablePayload): Record<string, unknown> {
+    const options: Record<string, unknown> = {};
+    if (payload.durationMs !== undefined) {
+        options.duration = Math.max(0, payload.durationMs);
+    }
+    if (payload.easing) {
+        options.ease = payload.easing;
+    }
+    return options;
+}
+
+function circleEffectOptions(payload: DisplayablePayload, base: Record<string, unknown>): Record<string, unknown> {
+    const props = payload.effectProps ?? {};
+    const options: Record<string, unknown> = { ...base };
+    const center = stringProp(props, "center", "");
+    if (center) {
+        options.center = center;
+    }
+    if (typeof props.from === "number") {
+        options.from = props.from;
+    }
+    if (typeof props.to === "number") {
+        options.to = props.to;
+    }
+    return options;
+}
+
+function wipeEffectOptions(payload: DisplayablePayload, base: Record<string, unknown>): Record<string, unknown> {
+    const props = payload.effectProps ?? {};
+    return {
+        ...base,
+        direction: stringProp(props, "direction", "left"),
+        reverse: boolProp(props, "reverse", false),
+    };
+}
+
+async function compileDisplayableEffect(
+    ctx: SceneCompileContext,
+    block: StoryBlock,
+    payload: DisplayablePayload,
+    target: any,
+): Promise<NlrStatement[]> {
+    const options = effectVisualOptions(payload);
+    const record = (chain: NlrStatement | null | undefined): NlrStatement[] => chain ? [recordStatement(ctx, chain, block)] : [];
+    switch (payload.operation) {
+        case "mask": {
+            if (!payload.maskAssetId) {
+                diagnostic(ctx, "warning", block.id, "Mask effect has no image asset.");
+                return [];
+            }
+            const src = await resolveAsset(ctx, payload.maskAssetId, "image", block.id);
+            return src ? record(target.mask(src, options)) : [];
+        }
+        case "clearMask":
+            return record(target.clearMask(options));
+        case "clip": {
+            if (!payload.clipPath) {
+                diagnostic(ctx, "warning", block.id, "Clip effect has no clip-path.");
+                return [];
+            }
+            return record(target.clip(payload.clipPath, options));
+        }
+        case "clearClip":
+            return record(target.clearClip(options));
+        case "filter": {
+            if (!payload.filter) {
+                diagnostic(ctx, "warning", block.id, "Filter effect has no CSS filter.");
+                return [];
+            }
+            return record(target.filter(payload.filter, options));
+        }
+        case "clearFilter":
+            return record(target.clearFilter(options));
+        case "darken": {
+            if (typeof target.darken !== "function") {
+                diagnostic(ctx, "warning", block.id, "Darken applies to image / character targets only.");
+                return [];
+            }
+            const darkness = Math.min(1, Math.max(0, payload.darkness ?? 0));
+            return record(target.darken(darkness, payload.durationMs, payload.easing as any));
+        }
+        case "circleReveal":
+            return record(target.circleReveal(circleEffectOptions(payload, options)));
+        case "circleClose":
+            return record(target.circleClose(circleEffectOptions(payload, options)));
+        case "wipe":
+            return record(target.wipe(wipeEffectOptions(payload, options)));
+        default:
+            return [];
+    }
 }
 
 function compileDisplayableOperation(
