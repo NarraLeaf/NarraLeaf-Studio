@@ -1,5 +1,6 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { StoryRichRun } from "@shared/types/story";
+import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import {
     domToRuns,
     getSelectionUnitRange,
@@ -12,7 +13,7 @@ import {
     unitOffsetOfElement,
 } from "./richText";
 
-export type ActiveMarks = { bold: boolean; italic: boolean };
+export type ActiveMarks = { bold: boolean; italic: boolean; color?: string };
 
 export type PauseClickInfo = {
     unit: number;
@@ -44,6 +45,8 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
 }>(function RichTextInput(props, ref) {
     const editorRef = useRef<HTMLDivElement | null>(null);
     const savedRange = useRef<{ start: number; end: number } | null>(null);
+    // Caret color mirrors the color mark at the caret so authors preview the color they'll type in.
+    const [caretColor, setCaretColor] = useState<string | null>(null);
     const onChangeRef = useRef(props.onChange);
     onChangeRef.current = props.onChange;
     const onActiveRef = useRef(props.onActiveMarksChange);
@@ -75,10 +78,20 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
 
     const reportActive = useCallback(() => {
         try {
+            let color: string | undefined;
+            try {
+                const raw = globalThis.document.queryCommandValue("foreColor");
+                const parsed = raw ? parseColorValue(String(raw), { hex: "", alpha: 1 }) : null;
+                color = parsed && parsed.hex ? parsed.hex : undefined;
+            } catch {
+                // queryCommandValue is best-effort in Chromium; ignore failures.
+            }
             onActiveRef.current?.({
                 bold: globalThis.document.queryCommandState("bold"),
                 italic: globalThis.document.queryCommandState("italic"),
+                color,
             });
+            setCaretColor(color ?? null);
         } catch {
             // queryCommandState can throw when there is no selection; ignore.
         }
@@ -181,6 +194,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         <div
             ref={editorRef}
             className={props.className}
+            style={{ caretColor: caretColor ?? undefined }}
             contentEditable
             suppressContentEditableWarning
             role="textbox"

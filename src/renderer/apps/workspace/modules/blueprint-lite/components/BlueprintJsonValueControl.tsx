@@ -375,7 +375,7 @@ function JsonTreeRow({
                     )}
                     {lockedKind ? (
                         <span
-                            className="w-[6.25rem] shrink-0 rounded border border-white/10 bg-[#0d1014] px-1.5 py-1 text-[10px] uppercase tracking-wide text-gray-500"
+                            className="w-[6.25rem] shrink-0 rounded border border-white/10 bg-[#0d1014] px-1.5 py-1 text-[10px] capitalize tracking-wide text-gray-500"
                             title="Schema field type"
                         >
                             {lockedKind}
@@ -694,7 +694,7 @@ function JsonEditorPortal({
             <JsonEditorScopeContext.Provider value={scopeId}>
                 <div className="mb-2 flex min-w-0 items-center gap-2 border-b border-white/10 pb-2">
                     <div className="min-w-0 flex-1">
-                        <div className="text-[10px] uppercase tracking-wide text-gray-500">JSON</div>
+                        <div className="text-[10px] tracking-wide text-gray-500">JSON</div>
                         <div className="truncate font-mono text-[10px] text-gray-300">
                             {summarizeJsonValue(root)}
                         </div>
@@ -772,7 +772,7 @@ export function BlueprintJsonValueControl({ value, onChange, schema }: Props) {
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
             <div className="min-w-0 flex-1 rounded border border-white/10 bg-[#111418] px-1.5 py-1">
-                <div className="text-[9px] uppercase tracking-wide text-gray-500">{kind}</div>
+                <div className="text-[9px] capitalize tracking-wide text-gray-500">{kind}</div>
                 <div className="truncate font-mono text-[10px] text-gray-300" title={summarizeJsonValue(root)}>
                     {summarizeJsonValue(root)}
                 </div>

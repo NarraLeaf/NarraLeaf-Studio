@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Trash2 } from "lucide-react";
 
@@ -17,6 +17,7 @@ export function PausePopover(props: {
 }) {
     const isWait = props.value !== true;
     const ms = typeof props.value === "number" ? props.value : 300;
+    const panelRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         const onKey = (event: KeyboardEvent) => {
@@ -29,18 +30,30 @@ export function PausePopover(props: {
         return () => window.removeEventListener("keydown", onKey, true);
     }, [props]);
 
+    // Light dismiss: close on any pointerdown outside the panel, but let the event fall through to
+    // whatever was clicked (toolbar button, editor text) so leaving the popover keeps edit focus.
+    useEffect(() => {
+        const onDown = (event: MouseEvent) => {
+            if (panelRef.current?.contains(event.target as Node)) {
+                return;
+            }
+            props.onClose();
+        };
+        globalThis.document.addEventListener("mousedown", onDown, true);
+        return () => globalThis.document.removeEventListener("mousedown", onDown, true);
+    }, [props]);
+
     const top = Math.min(props.anchor.bottom + 6, window.innerHeight - 140);
     const left = Math.min(props.anchor.left, window.innerWidth - 236);
 
     return createPortal(
-        <>
-            <div className="fixed inset-0 z-[60]" onMouseDown={props.onClose} />
-            <div
-                className="fixed z-[70] w-56 rounded-lg border border-white/15 bg-[#16191e] p-2 shadow-2xl"
-                style={{ top, left: Math.max(8, left) }}
-                onMouseDown={event => event.stopPropagation()}
-            >
-                <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">Pause</div>
+        <div
+            ref={panelRef}
+            className="fixed z-[70] w-56 rounded-lg border border-white/15 bg-[#16191e] p-2 shadow-2xl"
+            style={{ top, left: Math.max(8, left) }}
+            onMouseDown={event => event.stopPropagation()}
+        >
+                <div className="mb-1.5 text-[11px] font-medium tracking-wide text-slate-400">Pause</div>
                 <div className="mb-2 inline-flex overflow-hidden rounded-md border border-white/10 bg-[#101216]">
                     <button
                         type="button"
@@ -80,8 +93,7 @@ export function PausePopover(props: {
                     <Trash2 className="h-3 w-3" />
                     Remove pause
                 </button>
-            </div>
-        </>,
+        </div>,
         document.body,
     );
 }

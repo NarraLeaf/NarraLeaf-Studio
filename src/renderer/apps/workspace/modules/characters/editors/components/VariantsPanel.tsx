@@ -65,7 +65,7 @@ export function VariantsPanel({
                     >
                         {collapsed ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </button>
-                    {!collapsed && <span className="uppercase tracking-wide text-[11px] text-gray-400">Variants</span>}
+                    {!collapsed && <span className="tracking-wide text-[11px] text-gray-400">Variants</span>}
                 </div>
                 {!collapsed && (
                     <div className="flex items-center gap-2">
@@ -94,7 +94,7 @@ export function VariantsPanel({
                 <div className="p-3 space-y-3 overflow-y-auto">
                     {ungroupedVariants.length > 0 && (
                         <div className="space-y-2">
-                            <div className="text-[11px] uppercase tracking-wide text-gray-500 px-1">Ungrouped</div>
+                            <div className="text-[11px] tracking-wide text-gray-500 px-1">Ungrouped</div>
                             {ungroupedVariants.map(({ variant, group }) => {
                                 const asset = activeForm?.variantAssets[variant.name]?.data ?? null;
                                 const view = asset ? assetViews[asset.id] : null;

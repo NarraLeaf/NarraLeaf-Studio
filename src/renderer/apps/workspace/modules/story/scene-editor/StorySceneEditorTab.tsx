@@ -118,7 +118,7 @@ function StorySceneOverviewBlock(props: {
                             <FileText className="h-4 w-4 shrink-0 text-primary" />
                             <div className="min-w-0">
                                 <div className="truncate text-sm font-medium text-white">{document.name}</div>
-                                <div className="truncate text-[11px] text-slate-500">{scene.runtimeName || scene.id}</div>
+                                <div className="truncate text-[11px] text-slate-500">{scene.runtimeName || "Untitled scene"}</div>
                             </div>
                         </div>
                         <label className={SCENE_FIELD_LABEL_CLASS}>Scene name</label>
@@ -532,6 +532,11 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
                         Click or type to add a row...
                     </button>
                 )}
+                {/* Always keep roughly one screen (minus a row) of empty scroll space below the
+                    content so the last row can be scrolled up to the top of the editor. The height is
+                    a percentage of the (definite, flex-sized) scroll container, so no measurement is
+                    needed and scroll-position restore keeps working. */}
+                <div aria-hidden style={{ height: "calc(100% - 40px)" }} />
             </div>
         </div>
     );

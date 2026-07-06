@@ -105,6 +105,8 @@ export type ActionCommand = {
     icon: typeof Settings2;
     nlrCapability?: string;
     status?: "ready" | "comingSoon";
+    /** Slash aliases that jump straight to this command, e.g. "//" → Note. */
+    aliases?: string[];
 };
 
 export const ACTION_COMMAND_CATEGORIES: ActionCommandCategory[] = [
@@ -169,8 +171,34 @@ export const ACTION_COMMANDS: ActionCommand[] = [
     { id: "soundVolume", category: "media", label: "Sound volume", detail: "Set sound volume", icon: Volume2, nlrCapability: "Sound.setVolume" },
     { id: "soundRate", category: "media", label: "Sound rate", detail: "Set playback rate", icon: Volume2, nlrCapability: "Sound.setRate" },
     { id: "muteSound", category: "media", label: "Mute sound", detail: "Mute or unmute sound", icon: Volume2, nlrCapability: "Sound.mute" },
-    { id: "note", category: "utils", label: "Note", detail: "Studio-only note", icon: StickyNote },
+    { id: "note", category: "utils", label: "Note", detail: "Studio-only note", icon: StickyNote, aliases: ["//"] },
 ];
+
+/**
+ * Shared match used by both the inline "/" creator and the sidebar action palette.
+ *
+ * A query that begins with "/" means the author is typing a slash alias (e.g. "//" for Note). In the
+ * inline creator the leading "/" is consumed as the action trigger, so the alias arrives here as "/";
+ * in the sidebar search box it arrives as "//". Either way we match aliases exclusively so the alias
+ * lands directly on its command instead of every action whose label/detail happens to contain "/".
+ */
+export function actionCommandMatchesQuery(command: ActionCommand, rawQuery: string): boolean {
+    const query = rawQuery.trim().toLowerCase();
+    if (!query) {
+        return true;
+    }
+    if (query.startsWith("/")) {
+        return (command.aliases ?? []).some(alias => {
+            const normalized = alias.toLowerCase();
+            return normalized.startsWith(query) || query.startsWith(normalized);
+        });
+    }
+    return command.label.toLowerCase().includes(query) ||
+        command.id.toLowerCase().includes(query) ||
+        command.detail.toLowerCase().includes(query) ||
+        Boolean(command.nlrCapability?.toLowerCase().includes(query)) ||
+        (command.aliases ?? []).some(alias => alias.toLowerCase().includes(query));
+}
 
 export function getActionCommandCategory(categoryId: ActionCommandCategoryId): ActionCommandCategory {
     return ACTION_COMMAND_CATEGORIES.find(category => category.id === categoryId) ?? ACTION_COMMAND_CATEGORIES[0];

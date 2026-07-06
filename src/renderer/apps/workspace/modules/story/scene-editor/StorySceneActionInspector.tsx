@@ -767,12 +767,16 @@ function CharacterActionEditor(props: {
                 storyName={props.storyName}
                 onChange={transform => onChange({ ...payload, transform })}
             />
-            {payload.operation === "enter" ? null : (
+            {/* A transition only applies where the image source is set (NLR `char(src, transition)`),
+                i.e. changing a visible character's appearance. `exit` (`hide()`) and `move`
+                (`transform()`) take a transform, not a transition; `enter`'s entrance is driven by
+                its transform preset. So the transition editor is only meaningful for `expression`. */}
+            {payload.operation === "expression" ? (
                 <TransitionEditor
                     value={payload.transition}
                     onChange={transition => onChange({ ...payload, transition })}
                 />
-            )}
+            ) : null}
             <Disclosure title="Advanced">
                 <div className="max-w-sm">
                     <AssetField
@@ -1303,7 +1307,7 @@ function BackgroundActionEditor(props: {
                                 Loading...
                             </div>
                         ) : null}
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-[10px] uppercase tracking-[0.22em] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-[10px] tracking-[0.22em] text-white opacity-0 transition-opacity group-hover:opacity-100">
                             Change
                         </div>
                     </button>
@@ -1612,7 +1616,7 @@ function Section(props: { title?: string; right?: ReactNode; className?: string;
             {props.title || props.right ? (
                 <div className="mb-2 flex items-center justify-between gap-2">
                     {props.title ? (
-                        <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{props.title}</div>
+                        <div className="text-[11px] font-medium tracking-wide text-slate-400">{props.title}</div>
                     ) : <span />}
                     {props.right ?? null}
                 </div>
@@ -1626,7 +1630,7 @@ function Section(props: { title?: string; right?: ReactNode; className?: string;
 function Disclosure(props: { title: string; children: ReactNode }) {
     return (
         <details className="group">
-            <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500 transition-colors hover:text-slate-300 [&::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer select-none list-none items-center gap-1 text-[11px] font-medium tracking-wide text-slate-500 transition-colors hover:text-slate-300 [&::-webkit-details-marker]:hidden">
                 <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
                 {props.title}
             </summary>

@@ -278,7 +278,7 @@ function collectMagicElementRefs(input: {
             surfaceId: ref.surfaceId,
             elementId: ref.elementId,
             elementType: ref.elementType,
-            label: element.name?.trim() || `${element.type} (${element.id.slice(0, 8)})`,
+            label: element.name?.trim() || element.type,
         });
     }
     return out.sort((a, b) => a.label.localeCompare(b.label) || a.sourceNodeId.localeCompare(b.sourceNodeId));
@@ -312,7 +312,7 @@ function elementVariantOptions(
             supported: false,
             targetLabel,
             options: [],
-            message: `${targetLabel ?? element.name ?? element.id} does not support variants`,
+            message: `${targetLabel ?? element.name ?? element.type} does not support variants`,
         };
     }
     return {
@@ -1200,7 +1200,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             const revisionKey = `${node.id}:${ref.surfaceId}:${ref.elementId}:${uiDocumentRevision}`;
             previews[node.id] = {
                 revisionKey,
-                name: element.name?.trim() || element.id,
+                name: element.name?.trim() || element.type,
                 type: element.type,
                 text: typeof element.props?.text === "string" ? element.props.text : undefined,
                 layout: {
@@ -1230,7 +1230,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         const out: Record<string, BlueprintFlowNodeData["displayableTargetVariants"]> = {};
         for (const node of Object.values(activeIr.nodes ?? {})) {
             if (node.type === BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT) {
-                const label = widgetElement?.name?.trim() || widgetElement?.id;
+                const label = widgetElement?.name?.trim() || widgetElement?.type;
                 out[node.id] = elementVariantOptions(widgetElement, label);
                 continue;
             }
@@ -1257,7 +1257,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             }
             const ref = readBlueprintElementRefParams(sourceNode.params);
             const element = ref ? currentDocument.elements[ref.elementId] : undefined;
-            const label = element?.name?.trim() || element?.id || ref?.elementId;
+            const label = element?.name?.trim() || element?.type;
             out[node.id] = elementVariantOptions(element, label);
         }
         return out;
@@ -1344,10 +1344,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         const uiDocument = blueprintDocumentService.getDocument();
         const surfaceOptions: BlueprintInspectorParamSelectOption[] = uiDocument.surfaces
             .filter(s => s.kind === "appSurface")
-            .map(s => ({ value: s.id, label: s.name || s.id }));
+            .map(s => ({ value: s.id, label: s.name || "Untitled surface" }));
         const storyEntries = storyService.listStories();
         const storyOptions: BlueprintInspectorParamSelectOption[] = storyEntries
-            .map(story => ({ value: story.id, label: story.name || story.id }));
+            .map(story => ({ value: story.id, label: story.name || "Untitled story" }));
         const storySceneOptions: BlueprintInspectorParamSelectOption[] = [];
         for (const story of storyEntries) {
             const storyDocument = storyDocumentsById[story.id];
@@ -1377,7 +1377,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 }
                 storySceneOptions.push({
                     value: scene.id,
-                    label: scene.name || scene.runtimeName || scene.id,
+                    label: scene.name || scene.runtimeName || "Untitled scene",
                     meta: { storyId: story.id },
                 });
             }
@@ -1405,7 +1405,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         const el = uiDocument.elements[id];
                         if (!el) return;
                         if (el.type !== "nl.root") {
-                            result.push({ value: el.id, label: el.name || `${el.type} (${el.id.slice(0, 8)})` });
+                            result.push({ value: el.id, label: el.name || el.type });
                         }
                         for (const cid of el.childrenIds) visit(cid);
                     };

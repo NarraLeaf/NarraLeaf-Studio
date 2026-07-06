@@ -15,7 +15,7 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
 
     return (
         <div className="mt-2 space-y-2 border-t border-white/5 pt-3">
-            <p className="text-[10px] uppercase tracking-wide text-gray-500">Events</p>
+            <p className="text-[10px] tracking-wide text-gray-500">Events</p>
             <div className="flex flex-wrap gap-1.5">
                 {rows.map(row => (
                     <span

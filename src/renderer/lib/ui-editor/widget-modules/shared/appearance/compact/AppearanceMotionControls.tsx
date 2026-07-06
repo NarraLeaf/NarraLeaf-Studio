@@ -241,7 +241,7 @@ export function AppearanceFieldMotionButton({
                   ) : (
                       <div className="mt-3 space-y-3">
                           <div>
-                              <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
+                              <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
                                   Type
                               </label>
                               <Select
@@ -265,7 +265,7 @@ export function AppearanceFieldMotionButton({
                               <>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
+                                          <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
                                               Duration
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -288,7 +288,7 @@ export function AppearanceFieldMotionButton({
                                           />
                                       </div>
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
+                                          <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
                                               Delay
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -312,7 +312,7 @@ export function AppearanceFieldMotionButton({
                                       </div>
                                   </div>
                                   <div>
-                                      <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
+                                      <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
                                           Easing
                                       </label>
                                       <Select
@@ -336,7 +336,7 @@ export function AppearanceFieldMotionButton({
                               <>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
+                                          <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
                                               Stiffness
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -358,7 +358,7 @@ export function AppearanceFieldMotionButton({
                                           />
                                       </div>
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
+                                          <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
                                               Damping
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -382,7 +382,7 @@ export function AppearanceFieldMotionButton({
                                   </div>
                                   <div className="grid grid-cols-2 gap-2">
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
+                                          <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
                                               Mass
                                           </label>
                                           <NumericDraftEnhancedInput
@@ -405,7 +405,7 @@ export function AppearanceFieldMotionButton({
                                           />
                                       </div>
                                       <div className="min-w-0">
-                                          <label className="mb-1 block text-[10px] uppercase tracking-wide text-gray-500">
+                                          <label className="mb-1 block text-[10px] tracking-wide text-gray-500">
                                               Delay
                                           </label>
                                           <NumericDraftEnhancedInput

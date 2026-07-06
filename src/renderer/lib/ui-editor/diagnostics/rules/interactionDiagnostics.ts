@@ -37,7 +37,7 @@ export function collectInteractionDiagnostics(document: UIDocument, elements: UI
                 id: `ix:hidden-events:${el.id}`,
                 severity: "warning",
                 source: "interaction",
-                message: `Element “${el.name ?? el.id}” is not visible but still has interaction bindings`,
+                message: `Element “${el.name ?? el.type}” is not visible but still has interaction bindings`,
                 hint: "Remove events or make the element visible; runtime may never receive input.",
                 elementId: el.id,
             });
@@ -48,7 +48,7 @@ export function collectInteractionDiagnostics(document: UIDocument, elements: UI
                 id: `ix:opaque-events:${el.id}`,
                 severity: "warning",
                 source: "interaction",
-                message: `Element “${el.name ?? el.id}” is nearly invisible (opacity) but has interaction bindings`,
+                message: `Element “${el.name ?? el.type}” is nearly invisible (opacity) but has interaction bindings`,
                 hint: "Users may not see the control; verify in Dev Mode.",
                 elementId: el.id,
             });
@@ -59,7 +59,7 @@ export function collectInteractionDiagnostics(document: UIDocument, elements: UI
                 id: `ix:small-hit:${el.id}`,
                 severity: "warning",
                 source: "interaction",
-                message: `Element “${el.name ?? el.id}” has a small hit area with interactions`,
+                message: `Element “${el.name ?? el.type}” has a small hit area with interactions`,
                 hint: "Prefer at least ~24×24 px for touch targets.",
                 elementId: el.id,
             });

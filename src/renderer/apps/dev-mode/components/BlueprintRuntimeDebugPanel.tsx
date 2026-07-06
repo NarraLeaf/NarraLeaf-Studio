@@ -347,7 +347,7 @@ export function BlueprintRuntimeDebugPanel(props: BlueprintRuntimeDebugPanelProp
                         <KeyValueBlock title="Global" entries={globalSnap} />
                         <KeyValueBlock title="Persistence" entries={persistSnap} />
                         <div>
-                            <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">Widget</p>
+                            <p className="mb-1 text-[10px] tracking-wide text-gray-500">Widget</p>
                             <ul className="space-y-0.5 text-[10px] text-gray-400">
                                 <li>
                                     hover ·{" "}
@@ -435,7 +435,7 @@ function KeyValueBlock(props: {
     const keys = [...entries.keys()].sort();
     return (
         <div>
-            <p className="mb-1 text-[10px] uppercase tracking-wide text-gray-500">
+            <p className="mb-1 text-[10px] tracking-wide text-gray-500">
                 {title}
                 {surfaceId ? <span className="text-gray-600"> · {surfaceId.slice(0, 8)}…</span> : null}
             </p>

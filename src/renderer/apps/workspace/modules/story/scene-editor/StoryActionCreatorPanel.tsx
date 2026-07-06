@@ -8,6 +8,7 @@ import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsSe
 import {
     ACTION_COMMAND_CATEGORIES,
     ACTION_COMMANDS,
+    actionCommandMatchesQuery,
     getActionCommandCategory,
     type ActionCommand,
     type ActionCommandCategory,
@@ -70,7 +71,6 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
     ], []);
 
     const filteredCommands = useMemo(() => {
-        const normalizedQuery = query.trim().toLowerCase();
         return ACTION_COMMANDS.filter(command => {
             if (activeCategoryId === STARRED_CATEGORY_ID && !starredIds.has(command.id)) {
                 return false;
@@ -78,13 +78,7 @@ export function StoryActionCreatorPanel({ payload }: PanelComponentProps<StoryAc
             if (activeCategoryId !== STARRED_CATEGORY_ID && activeCategoryId !== "all" && command.category !== activeCategoryId) {
                 return false;
             }
-            if (!normalizedQuery) {
-                return true;
-            }
-            return command.label.toLowerCase().includes(normalizedQuery) ||
-                command.id.toLowerCase().includes(normalizedQuery) ||
-                command.detail.toLowerCase().includes(normalizedQuery) ||
-                command.nlrCapability?.toLowerCase().includes(normalizedQuery);
+            return actionCommandMatchesQuery(command, query);
         });
     }, [activeCategoryId, query, starredIds]);
 

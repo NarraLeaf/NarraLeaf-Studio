@@ -9,10 +9,12 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { resolveStoryMotionPreviewTarget } from "../../story-motion/storyMotionPreviewTarget";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import {
     ACTION_COMMAND_CATEGORIES,
     ACTION_COMMANDS,
+    actionCommandMatchesQuery,
     getActionCommandCategory,
     type ActionCommand,
     type ActionCommandCategory,
@@ -66,6 +68,8 @@ export function StoryBlockRow(props: {
     const block = row.block;
     const canFold = block.childrenIds.length > 0 && canAcceptChildren(block);
     const textSegment = getTextSegment(block);
+    // Plain narration and studio notes hide their badge icon (but keep its slot, for alignment).
+    const hideBadge = (block.kind === "nodeAction" && block.payload.action === "narration") || block.kind === "note";
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
         id: row.block.id,
     });
@@ -128,7 +132,7 @@ export function StoryBlockRow(props: {
             </div>
             <div className="min-w-0 py-1.5" style={{ paddingLeft: row.depth * 22 }}>
                 <div className="flex min-h-[28px] min-w-0 items-center gap-2">
-                    <BlockBadge block={block} characters={characters} />
+                    {hideBadge ? <span className="h-6 w-6 shrink-0" aria-hidden /> : <BlockBadge block={block} characters={characters} />}
                     {editing && textSegment ? (
                         <TextEditBox
                             editorRef={textInputRef}
@@ -145,6 +149,7 @@ export function StoryBlockRow(props: {
                         <BlockPreview
                             block={block}
                             scene={scene}
+                            document={document}
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
                             onTextDoubleClick={props.onStartTextEdit}
@@ -413,12 +418,7 @@ export function InsertRow(props: {
 }
 
 function getActionCommandOptions(query: string) {
-    const normalizedQuery = query.trim().toLowerCase();
-    return ACTION_COMMANDS.filter(command => !normalizedQuery ||
-        command.label.toLowerCase().includes(normalizedQuery) ||
-        command.id.toLowerCase().includes(normalizedQuery) ||
-        command.detail.toLowerCase().includes(normalizedQuery) ||
-        command.nlrCapability?.toLowerCase().includes(normalizedQuery));
+    return ACTION_COMMANDS.filter(command => actionCommandMatchesQuery(command, query));
 }
 
 function getCharacterOptions(characters: Character[], query: string) {
@@ -825,7 +825,9 @@ function BlockBadge({ block, characters }: { block: StoryBlock; characters: Char
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
     const characterId = block.kind === "nodeAction" && block.payload.action === "dialogue"
         ? block.payload.characterId
-        : undefined;
+        : block.kind === "action" && block.payload.action === "character"
+            ? block.payload.characterId
+            : undefined;
     const character = characterId
         ? characters.find(next => next.profile.getId() === characterId)
         : undefined;
@@ -903,18 +905,21 @@ function useServiceAssetObjectUrl(fileId: string | null): string | null {
     return url;
 }
 
-function toSortableTransform(transform: { x: number; y: number; scaleX?: number; scaleY?: number } | null): string | undefined {
+function toSortableTransform(transform: { x: number; y: number } | null): string | undefined {
     if (!transform) {
         return undefined;
     }
-    const scaleX = transform.scaleX ?? 1;
-    const scaleY = transform.scaleY ?? 1;
-    return `translate3d(0, ${transform.y}px, 0) scaleX(${scaleX}) scaleY(${scaleY})`;
+    // Translate vertically only. dnd-kit's FLIP layout animation encodes a size ratio in scaleX/scaleY
+    // (oldRect.height / currentRect.height); applying it stretches a row to a neighbour's height — e.g.
+    // when dragging past an expanded inspector — which visibly distorts the row. A vertical list only
+    // needs the Y offset, so we drop the scale (and keep x at 0 so rows never drift sideways).
+    return `translate3d(0, ${transform.y}px, 0)`;
 }
 
 function BlockPreview(props: {
     block: StoryBlock;
     scene: StoryScene;
+    document: StoryDocument;
     characters: Character[];
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     onTextDoubleClick: () => void;
@@ -953,6 +958,18 @@ function BlockPreview(props: {
     }
     if (block.kind === "action" && block.payload.action === "setBackground") {
         return <BackgroundBlockPreview payload={block.payload} />;
+    }
+    if (block.kind === "action" && block.payload.action === "displayable" && block.payload.operation === "transform") {
+        return (
+            <DisplayableTransformPreview
+                payload={block.payload}
+                sceneId={props.scene.id}
+                blockId={block.id}
+                document={props.document}
+                characters={props.characters}
+                fallback={describeBlock(block, props.characters, props.scene)}
+            />
+        );
     }
     return <span className="min-w-0 flex-1 truncate text-sm text-slate-300">{describeBlock(block, props.characters, props.scene)}</span>;
 }
@@ -993,6 +1010,77 @@ function BackgroundBlockPreview({ payload }: { payload: Extract<StoryActionPaylo
             ) : null}
             <span className="min-w-0 truncate">
                 Set background <span className={payload.assetId || payload.color ? "text-slate-100" : "italic text-slate-500"}>{label}</span>
+            </span>
+        </span>
+    );
+}
+
+function DisplayableTransformPreview(props: {
+    payload: Extract<StoryActionPayload, { action: "displayable" }>;
+    sceneId: StoryScene["id"];
+    blockId: StoryBlock["id"];
+    document: StoryDocument;
+    characters: Character[];
+    fallback: string;
+}) {
+    const { context, isInitialized } = useWorkspace();
+    const assetsService = useMemo(
+        () => context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null,
+        [context, isInitialized],
+    );
+
+    const target = props.payload.target;
+    const resolved = useMemo(
+        () => resolveStoryMotionPreviewTarget({
+            document: props.document,
+            sceneId: props.sceneId,
+            blockId: props.blockId,
+            fallbackKind: target.kind ?? "image",
+            fallbackLabel: target.name,
+        }),
+        [props.document, props.sceneId, props.blockId, target.kind, target.name],
+    );
+
+    // Character displayables usually carry no assetId on their actions (the image comes from the
+    // character profile), so fall back to the matched character's thumbnail to still show a face.
+    const characterThumbId = useMemo(() => {
+        if (resolved.assetId || resolved.kind !== "character") {
+            return null;
+        }
+        const character = props.characters.find(next =>
+            next.profile.getName().trim().toLowerCase() === resolved.label.trim().toLowerCase());
+        return character?.profile.getThumbnail() ?? null;
+    }, [resolved.assetId, resolved.kind, resolved.label, props.characters]);
+
+    const assetId = resolved.assetId ?? characterThumbId;
+    const asset = assetId ? assetsService?.getAssets()[AssetType.Image]?.[assetId] ?? null : null;
+    const { url } = useAssetObjectUrl(assetId ?? null);
+    const name = target.name || resolved.label;
+
+    // No resolvable image (e.g. a text/layer target or an unresolved name) — keep the plain description.
+    if (!assetId) {
+        return <span className="min-w-0 flex-1 truncate text-sm text-slate-300">{props.fallback}</span>;
+    }
+
+    return (
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-slate-300">
+            <span className="h-5 w-8 shrink-0 overflow-hidden rounded border border-white/10 bg-[#0f1115]">
+                {url ? (
+                    <img
+                        src={url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        draggable={false}
+                    />
+                ) : (
+                    <span className="flex h-full w-full items-center justify-center">
+                        <Image className="h-3 w-3 text-slate-600" />
+                    </span>
+                )}
+            </span>
+            <span className="min-w-0 truncate">
+                Transform <span className="text-slate-100">{name}</span>
+                {asset ? <span className="text-slate-500"> · {asset.name}</span> : null}
             </span>
         </span>
     );

@@ -141,7 +141,7 @@ export function SurfaceSnapSettingsTrigger({ stateService, detail }: Props) {
                 style={{ left: adjusted.x, top: adjusted.y }}
                 onMouseDown={e => e.stopPropagation()}
             >
-                <div className="border-b border-white/10 px-3 pb-2 text-[10px] font-medium uppercase tracking-wide text-gray-500">
+                <div className="border-b border-white/10 px-3 pb-2 text-[10px] font-medium tracking-wide text-gray-500">
                     Snap targets
                 </div>
                 <div className="pt-1">

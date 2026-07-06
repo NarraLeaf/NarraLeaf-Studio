@@ -289,7 +289,7 @@ export function AppearanceAuthoringPanel({
         );
     }
 
-    const variantOptions = model.variants.map(v => ({ value: v.id, label: v.name || v.id }));
+    const variantOptions = model.variants.map(v => ({ value: v.id, label: v.name || "Untitled variant" }));
 
     const handleAddVariant = () => {
         const base = selectedVariant ?? model.variants[0];
@@ -379,7 +379,7 @@ export function AppearanceAuthoringPanel({
             </div>
 
             <div className="min-w-0">
-                <label className="text-[10px] uppercase tracking-wide text-gray-500 block mb-1">Variant name</label>
+                <label className="text-[10px] tracking-wide text-gray-500 block mb-1">Variant name</label>
                 <EnhancedInput
                     key={selectedVariant?.id}
                     value={selectedVariant?.name ?? ""}

@@ -74,7 +74,7 @@ function previewTargetFromBlock(block: StoryBlock): StoryMotionPreviewTarget | n
     if (payload.action === "character") {
         return {
             kind: "character",
-            label: payload.objectName || payload.characterId || "Character",
+            label: payload.objectName || "Character",
             assetId: payload.assetId,
         };
     }

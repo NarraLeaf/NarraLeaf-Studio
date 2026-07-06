@@ -1,4 +1,4 @@
-import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Music, Route, Settings2, Sparkles, StickyNote, Type, UserRound, Variable, Video } from "lucide-react";
+import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Route, Settings2, Sparkles, StickyNote, Type, UserRound, Variable, Video } from "lucide-react";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StoryTextSegment } from "@shared/types/story";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -154,7 +154,10 @@ export function getBlockBadgeInfo(block: StoryBlock): { label: string; icon: typ
         if (block.payload.action === "setVariable") return withCategory("Variable", Variable, "data");
         if (block.payload.action === "wait") return withCategory("Wait", Clock, "control");
         if (block.payload.action === "image") return withCategory("Image", Image, "image");
-        if (block.payload.action === "displayable") return withCategory("Displayable", Eye, "image");
+        if (block.payload.action === "displayable") {
+            if (block.payload.operation === "transform") return withCategory("Transform", Move, "image");
+            return withCategory("Displayable", Eye, "image");
+        }
         if (block.payload.action === "text") return withCategory("Text", Type, "text");
         if (block.payload.action === "layer") return withCategory("Layer", Layers, "layer");
         if (block.payload.action === "video") return withCategory("Video", Video, "video");
@@ -222,7 +225,7 @@ export function getCharacterName(characters: Character[], characterId: string | 
     if (!characterId) {
         return "Unassigned character";
     }
-    return characters.find(character => character.profile.getId() === characterId)?.profile.getName() ?? characterId;
+    return characters.find(character => character.profile.getId() === characterId)?.profile.getName() ?? "Unknown character";
 }
 
 export function selectRange(rows: VisibleStoryRow[], fromId: StoryBlockId, toId: StoryBlockId): Set<StoryBlockId> {

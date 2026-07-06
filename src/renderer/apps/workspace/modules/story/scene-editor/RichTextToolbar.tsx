@@ -1,15 +1,23 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Bold, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Type } from "lucide-react";
 import { ProjectPalette } from "@/apps/workspace/modules/properties/framework/fields/ProjectPalette";
-import { addRecentColor } from "@/apps/workspace/modules/properties/framework/fields/recentColors";
+import { addRecentColor, useRecentColors } from "@/apps/workspace/modules/properties/framework/fields/recentColors";
+import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useRichToolbarExpanded } from "./storyEditorSessionStore";
 import type { ActiveMarks, RichTextInputHandle } from "./RichTextInput";
 
-const SWATCHES = ["#ffffff", "#f87171", "#fb923c", "#facc15", "#4ade80", "#38bdf8", "#a78bfa"];
+/** Fallback quick colors shown until the author has built up a recent-colors history. */
+const DEFAULT_SWATCHES = ["#ffffff", "#f87171", "#fb923c", "#facc15", "#4ade80", "#38bdf8", "#a78bfa"];
+const SWATCH_COUNT = 7;
 const BTN = "grid h-6 w-6 place-items-center rounded text-slate-300 hover:bg-white/10 hover:text-white";
 const BTN_ACTIVE = "grid h-6 w-6 place-items-center rounded bg-primary/25 text-primary";
+
+/** Case-insensitive normalized hex key so colors from mixed sources compare reliably. */
+function colorKey(color: string): string {
+    return parseColorValue(color, { hex: color, alpha: 1 }).hex.toLowerCase();
+}
 
 /** Keep the contentEditable selection alive when a toolbar control is pressed. */
 function keepFocus(event: { preventDefault: () => void }) {
@@ -32,8 +40,28 @@ export function RichTextToolbar(props: {
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
     const [palette, setPalette] = useState<{ top: number; left: number } | null>(null);
     const paletteBtnRef = useRef<HTMLButtonElement | null>(null);
-    const lastCustomColorRef = useRef<string | null>(null);
+    const palettePanelRef = useRef<HTMLDivElement | null>(null);
     const active = props.active ?? { bold: false, italic: false };
+    const recent = useRecentColors();
+    // Quick swatches favour the author's recently used colors, padded with defaults so the strip
+    // always stays full and stable-width.
+    const swatches = useMemo(() => {
+        const seen = new Set<string>();
+        const out: string[] = [];
+        for (const color of [...recent, ...DEFAULT_SWATCHES]) {
+            const key = colorKey(color);
+            if (seen.has(key)) {
+                continue;
+            }
+            seen.add(key);
+            out.push(color);
+            if (out.length >= SWATCH_COUNT) {
+                break;
+            }
+        }
+        return out;
+    }, [recent]);
+    const activeKey = active.color ? colorKey(active.color) : null;
 
     useLayoutEffect(() => {
         let raf1 = 0;
@@ -71,7 +99,6 @@ export function RichTextToolbar(props: {
     };
     const openPalette = () => {
         const rect = paletteBtnRef.current?.getBoundingClientRect();
-        lastCustomColorRef.current = null;
         if (props.commitGuard) {
             props.commitGuard.current = true;
         }
@@ -80,16 +107,36 @@ export function RichTextToolbar(props: {
             : { top: 120, left: 120 });
     };
     const closePalette = () => {
-        if (lastCustomColorRef.current) {
-            addRecentColor(lastCustomColorRef.current);
-            lastCustomColorRef.current = null;
-        }
         if (props.commitGuard) {
             props.commitGuard.current = false;
         }
         setPalette(null);
         props.editor.current?.focus();
     };
+
+    // Light dismiss: close the palette on any pointerdown outside it, but let the event fall through
+    // to whatever was clicked (a toolbar swatch, the editor) so the author keeps working without a
+    // second click. The nested color-picker panel and the palette button count as "inside".
+    useEffect(() => {
+        if (!palette) {
+            return;
+        }
+        const onDown = (event: MouseEvent) => {
+            const target = event.target as HTMLElement | null;
+            if (
+                palettePanelRef.current?.contains(target) ||
+                paletteBtnRef.current?.contains(target) ||
+                target?.closest?.("[data-color-picker-panel]")
+            ) {
+                return;
+            }
+            closePalette();
+        };
+        globalThis.document.addEventListener("mousedown", onDown, true);
+        return () => globalThis.document.removeEventListener("mousedown", onDown, true);
+        // closePalette is recreated each render but only reads stable refs/props.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [palette]);
 
     if (!pos) {
         return null;
@@ -112,18 +159,29 @@ export function RichTextToolbar(props: {
                 <Italic className="h-3.5 w-3.5" />
             </button>
             <div className="mx-0.5 h-4 w-px bg-white/10" />
-            {SWATCHES.map(color => (
-                <button
-                    key={color}
-                    type="button"
-                    className="h-4 w-4 rounded-full border border-white/25 transition-transform hover:scale-110"
-                    style={{ backgroundColor: color }}
-                    onClick={() => applyColor(color)}
-                    title={`Text color ${color}`}
-                />
-            ))}
-            <button ref={paletteBtnRef} type="button" className={BTN} onClick={openPalette} title="More colors — project palette">
+            {swatches.map(color => {
+                const isActive = activeKey !== null && colorKey(color) === activeKey;
+                return (
+                    <button
+                        key={color}
+                        type="button"
+                        className={`h-4 w-4 rounded-full border transition-transform hover:scale-110 ${
+                            isActive ? "scale-110 border-white ring-2 ring-white/80 ring-offset-1 ring-offset-[#16191e]" : "border-white/25"
+                        }`}
+                        style={{ backgroundColor: color }}
+                        onClick={() => applyColor(color)}
+                        title={`Text color ${color}`}
+                    />
+                );
+            })}
+            <button ref={paletteBtnRef} type="button" className={`${BTN} relative ${palette ? "bg-white/10 text-white" : ""}`} onClick={() => (palette ? closePalette() : openPalette())} title="More colors — project palette">
                 <Palette className="h-3.5 w-3.5" />
+                {active.color ? (
+                    <span
+                        className="pointer-events-none absolute bottom-0 right-0 h-1.5 w-1.5 rounded-full border border-black/50"
+                        style={{ backgroundColor: active.color }}
+                    />
+                ) : null}
             </button>
             <div className="mx-0.5 h-4 w-px bg-white/10" />
             <button type="button" className={BTN} onClick={() => props.editor.current?.insertPause(true)} title="Insert pause (waits for a click)">
@@ -150,26 +208,23 @@ export function RichTextToolbar(props: {
                 {strip}
             </div>
             {palette ? (
-                <>
-                    <div className="fixed inset-0 z-[60]" onMouseDown={closePalette} />
-                    <div
-                        className="fixed z-[70] w-52 rounded-lg border border-white/15 bg-[#16191e] p-2 shadow-2xl"
-                        style={{ top: palette.top, left: palette.left }}
-                        onMouseDown={event => event.stopPropagation()}
-                    >
-                        <ProjectPalette
-                            onPick={(color, commit) => {
-                                props.editor.current?.setColor(color);
-                                if (commit) {
-                                    addRecentColor(color);
-                                    closePalette();
-                                } else {
-                                    lastCustomColorRef.current = color;
-                                }
-                            }}
-                        />
-                    </div>
-                </>
+                <div
+                    ref={palettePanelRef}
+                    className="fixed z-[70] w-52 rounded-lg border border-white/15 bg-[#16191e] p-2 shadow-2xl"
+                    style={{ top: palette.top, left: palette.left }}
+                    onMouseDown={event => event.stopPropagation()}
+                >
+                    <ProjectPalette
+                        value={active.color}
+                        onPick={(color, commit) => {
+                            props.editor.current?.setColor(color);
+                            if (commit) {
+                                addRecentColor(color);
+                                closePalette();
+                            }
+                        }}
+                    />
+                </div>
             ) : null}
         </>,
         document.body,

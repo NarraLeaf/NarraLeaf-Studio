@@ -14,7 +14,7 @@ export function renderUnknownWidgetTypeContent(element: UIElement, children: Rea
         <>{children}</>
     ) : (
         <div className="flex items-center justify-center w-full h-full text-[11px] text-amber-200/85 px-2 text-center">
-            {element.name ?? element.id}
+            {element.name ?? element.type}
         </div>
     );
 

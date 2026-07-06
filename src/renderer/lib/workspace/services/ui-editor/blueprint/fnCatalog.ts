@@ -407,7 +407,7 @@ function fnScopeLabel(owner: BlueprintOwnerRef, uiDocument: UIDocument | undefin
         }
         case "widgetMain": {
             const element = uiDocument?.elements[owner.elementId];
-            return element?.name?.trim() || owner.elementId;
+            return element?.name?.trim() || element?.type || "Widget";
         }
         default:
             return owner.kind;

@@ -236,7 +236,7 @@ function PluginDetails({ plugin }: { plugin: PluginListItem }) {
             </div>
 
             <div>
-                <div className="mb-2 text-xs font-medium uppercase tracking-normal text-gray-500">Permissions</div>
+                <div className="mb-2 text-xs font-medium tracking-normal text-gray-500">Permissions</div>
                 <div className="overflow-hidden rounded-md border border-white/10 bg-white/[0.03]">
                     {permissions.map((permission, index) => (
                         <div key={`${permission}-${index}`} className="border-b border-white/10 px-3 py-2 text-sm text-gray-200 last:border-b-0">

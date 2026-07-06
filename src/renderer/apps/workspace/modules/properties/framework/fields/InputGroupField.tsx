@@ -68,7 +68,7 @@ export function InputGroupField<TData>({ field, data, onSaving }: InputGroupFiel
                     return (
                         <div key={item.id} className={itemClassNames}>
                             {item.label && (
-                                <span className="text-[10px] uppercase tracking-wider text-gray-500">
+                                <span className="text-[10px] tracking-wider text-gray-500">
                                     {item.label}
                                 </span>
                             )}
