@@ -15,8 +15,8 @@ import type {
     StoryTextSegment,
     StoryVariableScope,
 } from "@shared/types/story";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image as ImageIcon, Music, Palette, Trash2, Video } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Image as ImageIcon, Music, Palette, Trash2, Video, X } from "lucide-react";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
 import { useWorkspace } from "@/apps/workspace/context";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
@@ -190,18 +190,35 @@ export function ActionInspector(props: {
 
     return (
         <div
-            className="mt-2 max-w-3xl rounded-xl border border-white/10 bg-[#16191e] p-3 shadow-lg"
+            className="mt-2 max-w-3xl animate-scale-in rounded-xl border border-white/10 bg-[#16191e] p-3 shadow-lg"
             onClick={event => event.stopPropagation()}
             onMouseDown={event => event.stopPropagation()}
+            onKeyDown={event => {
+                if (event.key === "Escape") {
+                    event.stopPropagation();
+                    props.onClose();
+                }
+            }}
         >
             <div className="mb-3 flex items-center gap-2">
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04]">
+                <span
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.04]"
+                    style={{ boxShadow: `inset 0 0 0 1px ${iconColor}22` }}
+                >
                     <Icon className="h-4 w-4" style={{ color: iconColor }} />
                 </span>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium text-slate-100">{label}</div>
                     <div className="truncate text-xs text-slate-500">{describeBlock(block, props.characters)}</div>
                 </div>
+                <button
+                    type="button"
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-white/10 bg-white/[0.03] text-slate-400 transition-colors hover:border-white/20 hover:text-slate-200"
+                    title="Close editor"
+                    onClick={props.onClose}
+                >
+                    <X className="h-3.5 w-3.5" />
+                </button>
             </div>
             <InspectorFields
                 block={block}
@@ -228,6 +245,14 @@ function InspectorFields(props: {
     const { block } = props;
     if (block.kind === "nodeAction") {
         const payload = block.payload;
+        if (payload.action === "narration") {
+            return (
+                <div className="grid gap-2">
+                    <div className="text-xs text-slate-500">Double-click the row to edit narration text.</div>
+                    <TextIdReadout text={payload.text} />
+                </div>
+            );
+        }
         if (payload.action === "dialogue") {
             const characterOptions: SelectOption[] = [
                 { value: "", label: "Unassigned" },
@@ -548,11 +573,11 @@ function ActionPayloadFields(props: {
     if (payload.action === "nvl") {
         return (
             <div className="grid gap-3">
-                <div className="text-sm text-slate-400">Children of this row will run inside NLR NVL mode.</div>
+                <div className="text-xs text-slate-500">Child rows run inside NLR NVL mode. The transform below animates the NVL layer as it enters.</div>
                 <TransformPresetEditor
                     value={payload.transition}
                     motionTargetKind="layer"
-                    motionLabel="NVL transition"
+                    motionLabel="NVL enter animation"
                     storyId={props.document.id}
                     sceneId={props.sceneId}
                     blockId={props.block.id}
@@ -769,9 +794,8 @@ function CharacterVariantSelectors(props: {
     }
     const selectionMap = getVariantSelectionMap(props.selection, props.form);
     return (
-        <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
-            <div className="mb-2 text-xs font-medium text-slate-300">Variants</div>
-            <div className="grid gap-2 sm:grid-cols-3">
+        <Section title="Variants">
+            <FieldGrid>
                 {props.form.groups.map(group => {
                     const defaultVariant = group.defaultVariant && group.variants.some(variant => variant.name === group.defaultVariant)
                         ? group.defaultVariant
@@ -797,8 +821,8 @@ function CharacterVariantSelectors(props: {
                         />
                     );
                 })}
-            </div>
-        </div>
+            </FieldGrid>
+        </Section>
     );
 }
 
@@ -1004,9 +1028,8 @@ function TransformPresetEditor(props: {
                 onChange={props.onChange}
             />
             {value.mode === "animation" ? null : (
-                <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
-                    <div className="mb-2 text-xs font-medium text-slate-300">Preset Transform</div>
-                    <div className="grid gap-2 sm:grid-cols-4">
+                <Section title="Preset Transform">
+                    <FieldGrid cols={4}>
                         <SelectField
                             label="Preset"
                             options={TRANSFORM_PRESET_OPTIONS}
@@ -1033,8 +1056,8 @@ function TransformPresetEditor(props: {
                             value={propsText}
                             onChange={nextProps => props.onChange({ ...value, props: parsePropsText(nextProps) })}
                         />
-                    </div>
-                </div>
+                    </FieldGrid>
+                </Section>
             )}
         </div>
     );
@@ -1046,9 +1069,8 @@ function TransitionEditor(props: {
 }) {
     const value = props.value ?? { kind: "none" as const };
     return (
-        <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2">
-            <div className="mb-2 text-xs font-medium text-slate-300">Transition</div>
-            <div className="grid gap-2 sm:grid-cols-4">
+        <Section title="Transition">
+            <FieldGrid cols={4}>
                 <SelectField
                     label="Kind"
                     options={TRANSITION_OPTIONS}
@@ -1067,8 +1089,8 @@ function TransitionEditor(props: {
                     value={formatPropsText(value.props)}
                     onChange={nextProps => props.onChange({ ...value, kind: value.kind === "none" ? "dissolve" : value.kind, props: parsePropsText(nextProps) })}
                 />
-            </div>
-        </div>
+            </FieldGrid>
+        </Section>
     );
 }
 
@@ -1322,6 +1344,11 @@ function BackgroundActionEditor(props: {
                 </div>
             )}
 
+            <TransitionEditor
+                value={props.payload.transition}
+                onChange={transition => props.onChange({ ...props.payload, transition })}
+            />
+
             <AssetSelector
                 visible={selectorOpen}
                 assetType={AssetType.Image}
@@ -1562,4 +1589,31 @@ function LabeledTextarea(props: { label: string; value: string; onChange: (value
             />
         </div>
     );
+}
+
+/**
+ * A titled, boxed group used to organise the compact action editor into scannable
+ * sections (Basics / Appearance / Motion / Transition / Timing / ...).
+ */
+function Section(props: { title?: string; right?: ReactNode; className?: string; children: ReactNode }) {
+    return (
+        <section className={["rounded-lg border border-white/10 bg-white/[0.02] p-2.5", props.className ?? ""].join(" ")}>
+            {props.title || props.right ? (
+                <div className="mb-2 flex items-center justify-between gap-2">
+                    {props.title ? (
+                        <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{props.title}</div>
+                    ) : <span />}
+                    {props.right ?? null}
+                </div>
+            ) : null}
+            {props.children}
+        </section>
+    );
+}
+
+/** Standard dense responsive field grid used across every action editor. */
+function FieldGrid(props: { cols?: 2 | 3 | 4; className?: string; children: ReactNode }) {
+    const cols = props.cols ?? 3;
+    const colClass = cols === 2 ? "sm:grid-cols-2" : cols === 4 ? "sm:grid-cols-4" : "sm:grid-cols-3";
+    return <div className={["grid gap-x-3 gap-y-2", colClass, props.className ?? ""].join(" ")}>{props.children}</div>;
 }
