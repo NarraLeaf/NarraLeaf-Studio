@@ -11,6 +11,7 @@ import {
     MaskTransition,
     Menu,
     Narrator,
+    Pause,
     Persistent,
     Scene,
     Sound,
@@ -18,6 +19,7 @@ import {
     Text,
     Transform,
     Video,
+    Word,
 } from "narraleaf-react";
 import { blink, vignette } from "narraleaf-react/built-in";
 import type { DevModeCharacterSummary } from "@shared/types/devMode";
@@ -36,6 +38,8 @@ import type {
     StoryDocument,
     StoryLiteralValue,
     StoryScene,
+    StoryTextMarks,
+    StoryTextSegment,
     StoryTransitionRef,
     StoryTransformSequenceProps,
     StoryTransformRef,
@@ -312,11 +316,11 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
 
 async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "nodeAction" }>): Promise<NlrStatement[]> {
     if (block.payload.action === "narration") {
-        const text = block.payload.text.value;
-        if (!text.trim()) {
+        const segment = block.payload.text;
+        if (!segment.value.trim()) {
             return [];
         }
-        return [recordStatement(ctx, Narrator.say(text), block, block.payload.text.textId)];
+        return [recordStatement(ctx, Narrator.say(buildSentencePrompt(segment) as any), block, segment.textId)];
     }
 
     if (block.payload.action === "dialogue") {
@@ -336,10 +340,43 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
             config.pause = block.payload.pauseAfter;
         }
         const sayConfig = Object.keys(config).length > 0 ? (config as any) : undefined;
-        return [recordStatement(ctx, character.say(text, sayConfig), block, block.payload.text.textId)];
+        return [recordStatement(ctx, character.say(buildSentencePrompt(block.payload.text) as any, sayConfig), block, block.payload.text.textId)];
     }
 
     return [];
+}
+
+/** Build an NLR sentence prompt from a text segment: a plain string, or Word/Pause tokens. */
+function buildSentencePrompt(segment: StoryTextSegment): string | unknown[] {
+    if (!segment.rich || segment.rich.length === 0) {
+        return segment.value;
+    }
+    const prompt: unknown[] = [];
+    for (const run of segment.rich) {
+        if ("pause" in run) {
+            prompt.push(run.pause === true ? new Pause() : Pause.wait(run.pause));
+            continue;
+        }
+        if (!run.text) {
+            continue;
+        }
+        prompt.push(buildWord(run.text, run.marks));
+    }
+    return prompt.length > 0 ? prompt : segment.value;
+}
+
+function buildWord(text: string, marks: StoryTextMarks | undefined): string | Word {
+    if (!marks) {
+        return text;
+    }
+    const config: Record<string, unknown> = {};
+    if (marks.bold) config.bold = true;
+    if (marks.italic) config.italic = true;
+    if (marks.color) config.color = marks.color;
+    if (marks.ruby) config.ruby = marks.ruby;
+    if (typeof marks.cps === "number") config.cps = marks.cps;
+    if (typeof marks.fontSize === "number") config.fontSize = marks.fontSize;
+    return Object.keys(config).length > 0 ? new Word(text, config as any) : text;
 }
 
 async function compileStoryAction(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "action" }>): Promise<NlrStatement[]> {
