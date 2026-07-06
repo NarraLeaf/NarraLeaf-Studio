@@ -8,6 +8,7 @@ import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import type { StoryMotionPanelPayload } from "./storyMotionTypes";
 export { createStoryMotionEditorTab } from "./StoryMotionEditorTab";
 export { StoryMotionPicker } from "./StoryMotionPicker";
+export { MotionSelector, MotionField } from "./MotionSelector";
 export type { StoryMotionActionContext, StoryMotionEditorPayload, StoryMotionPanelPayload } from "./storyMotionTypes";
 
 export const STORY_MOTION_PANEL_ID = "narraleaf-studio:story-motion";
