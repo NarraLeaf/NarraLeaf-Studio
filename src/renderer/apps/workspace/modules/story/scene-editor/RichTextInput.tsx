@@ -1,13 +1,26 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import type { StoryRichRun } from "@shared/types/story";
-import { createPauseChip, domToRuns, normalizeRuns, renderRunsToElement, richRunsToPlain } from "./richText";
+import {
+    applyMarkToRange,
+    domToRuns,
+    getSelectionUnitRange,
+    normalizeRuns,
+    rangeHasMark,
+    renderRunsToElement,
+    richRunsToPlain,
+    setSelectionUnitRange,
+    spliceRuns,
+    totalUnits,
+} from "./richText";
 
 export type RichTextInputHandle = {
     focus: () => void;
-    toggleBold: () => void;
-    toggleItalic: () => void;
+    toggleMark: (mark: "bold" | "italic") => void;
     setColor: (color: string) => void;
     insertPause: (pause: number | true) => void;
+    /** Replace the pause chip at unit `unit` (0-based) with a new value. */
+    updatePauseAt: (unit: number, pause: number | true) => void;
+    removePauseAt: (unit: number) => void;
 };
 
 export const RichTextInput = forwardRef<RichTextInputHandle, {
@@ -17,12 +30,12 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     /** When set, Shift+Enter calls this; otherwise Shift+Enter inserts a line break. */
     onShiftEnter?: () => void;
     onChange: (value: string, runs: StoryRichRun[]) => void;
-    onCommit: () => void;
-    onCancel: () => void;
     onEnter: () => void;
+    onCancel: () => void;
+    onBlur: () => void;
 }>(function RichTextInput(props, ref) {
     const editorRef = useRef<HTMLDivElement | null>(null);
-    const savedRange = useRef<Range | null>(null);
+    const savedRange = useRef<{ start: number; end: number } | null>(null);
     const onChangeRef = useRef(props.onChange);
     onChangeRef.current = props.onChange;
 
@@ -31,42 +44,14 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         if (!el) {
             return;
         }
-        renderRunsToElement(el, normalizeRuns(props.initialRuns));
+        const runs = normalizeRuns(props.initialRuns);
+        renderRunsToElement(el, runs);
         el.focus();
-        const range = globalThis.document.createRange();
-        range.selectNodeContents(el);
-        range.collapse(false);
-        const selection = globalThis.window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-        savedRange.current = range.cloneRange();
-        // Render the initial content once; subsequent edits are DOM-driven.
+        const end = totalUnits(runs);
+        setSelectionUnitRange(el, end, end);
+        savedRange.current = { start: end, end };
+        // Render initial content once; edits are model/DOM driven from here.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    const saveSelection = useCallback(() => {
-        const el = editorRef.current;
-        const selection = globalThis.window.getSelection();
-        if (!el || !selection || selection.rangeCount === 0) {
-            return;
-        }
-        const range = selection.getRangeAt(0);
-        if (el.contains(range.commonAncestorContainer)) {
-            savedRange.current = range.cloneRange();
-        }
-    }, []);
-
-    const restoreSelection = useCallback(() => {
-        const el = editorRef.current;
-        if (!el) {
-            return;
-        }
-        el.focus();
-        const selection = globalThis.window.getSelection();
-        if (savedRange.current && selection) {
-            selection.removeAllRanges();
-            selection.addRange(savedRange.current);
-        }
     }, []);
 
     const emitChange = useCallback(() => {
@@ -78,44 +63,70 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         onChangeRef.current(richRunsToPlain(runs), runs);
     }, []);
 
-    const runCommand = useCallback((command: string, value?: string) => {
-        restoreSelection();
-        try {
-            globalThis.document.execCommand("styleWithCSS", false, "true");
-            globalThis.document.execCommand(command, false, value);
-        } catch {
-            // execCommand is best-effort in Chromium; ignore failures.
-        }
-        saveSelection();
-        emitChange();
-    }, [emitChange, restoreSelection, saveSelection]);
-
-    const insertPause = useCallback((pause: number | true) => {
-        restoreSelection();
-        const selection = globalThis.window.getSelection();
+    const saveSelection = useCallback(() => {
         const el = editorRef.current;
-        if (!el || !selection || selection.rangeCount === 0) {
+        if (!el) {
             return;
         }
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
-        const chip = createPauseChip(pause);
-        range.insertNode(chip);
-        range.setStartAfter(chip);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        savedRange.current = range.cloneRange();
+        const range = getSelectionUnitRange(el);
+        if (range) {
+            savedRange.current = range;
+        }
+    }, []);
+
+    /** Read runs + selection, apply a mutation, re-render, restore caret, emit. */
+    const mutate = useCallback((
+        fn: (runs: StoryRichRun[], range: { start: number; end: number }) => { runs: StoryRichRun[]; caret: [number, number] } | null,
+    ) => {
+        const el = editorRef.current;
+        if (!el) {
+            return;
+        }
+        el.focus();
+        const range = getSelectionUnitRange(el) ?? savedRange.current;
+        if (!range) {
+            return;
+        }
+        const result = fn(domToRuns(el), range);
+        if (!result) {
+            return;
+        }
+        renderRunsToElement(el, result.runs);
+        setSelectionUnitRange(el, result.caret[0], result.caret[1]);
+        savedRange.current = { start: result.caret[0], end: result.caret[1] };
         emitChange();
-    }, [emitChange, restoreSelection]);
+    }, [emitChange]);
 
     useImperativeHandle(ref, () => ({
         focus: () => { editorRef.current?.focus(); },
-        toggleBold: () => runCommand("bold"),
-        toggleItalic: () => runCommand("italic"),
-        setColor: (color: string) => runCommand("foreColor", color),
-        insertPause,
-    }), [insertPause, runCommand]);
+        toggleMark: (mark) => mutate((runs, range) => {
+            if (range.start === range.end) {
+                return null;
+            }
+            const active = rangeHasMark(runs, range.start, range.end, mark);
+            const next = applyMarkToRange(runs, range.start, range.end, marks => ({ ...marks, [mark]: active ? undefined : true }));
+            return { runs: next, caret: [range.start, range.end] };
+        }),
+        setColor: (color) => mutate((runs, range) => {
+            if (range.start === range.end) {
+                return null;
+            }
+            const next = applyMarkToRange(runs, range.start, range.end, marks => ({ ...marks, color: color || undefined }));
+            return { runs: next, caret: [range.start, range.end] };
+        }),
+        insertPause: (pause) => mutate((runs, range) => ({
+            runs: spliceRuns(runs, range.start, range.end, [{ pause }]),
+            caret: [range.start + 1, range.start + 1],
+        })),
+        updatePauseAt: (unit, pause) => mutate(runs => ({
+            runs: spliceRuns(runs, unit, unit + 1, [{ pause }]),
+            caret: [unit + 1, unit + 1],
+        })),
+        removePauseAt: (unit) => mutate(runs => ({
+            runs: spliceRuns(runs, unit, unit + 1, []),
+            caret: [unit, unit],
+        })),
+    }), [mutate]);
 
     return (
         <div
@@ -130,12 +141,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             onInput={emitChange}
             onKeyUp={saveSelection}
             onMouseUp={saveSelection}
-            onBlur={() => { saveSelection(); props.onCommit(); }}
-            onPaste={event => {
-                event.preventDefault();
-                const text = event.clipboardData.getData("text/plain");
-                globalThis.document.execCommand("insertText", false, text);
-            }}
+            onBlur={() => { saveSelection(); props.onBlur(); }}
             onKeyDown={event => {
                 if (event.key === "Escape") {
                     event.preventDefault();
@@ -147,8 +153,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                     if (props.onShiftEnter) {
                         props.onShiftEnter();
                     } else {
-                        globalThis.document.execCommand("insertText", false, "\n");
-                        emitChange();
+                        mutate((runs, range) => ({
+                            runs: spliceRuns(runs, range.start, range.end, [{ text: "\n" }]),
+                            caret: [range.start + 1, range.start + 1],
+                        }));
                     }
                     return;
                 }

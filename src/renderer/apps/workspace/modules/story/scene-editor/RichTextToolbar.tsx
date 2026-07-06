@@ -16,7 +16,7 @@ function keepFocus(event: { preventDefault: () => void }) {
  * by default; its expanded state is shared across the whole Studio session
  * (see {@link useRichToolbarExpanded}).
  */
-export function RichTextToolbar(props: { editor: RefObject<RichTextInputHandle | null> }) {
+export function RichTextToolbar(props: { editor: RefObject<RichTextInputHandle | null>; commitGuard?: RefObject<boolean> }) {
     const [expanded, setExpanded] = useRichToolbarExpanded();
 
     if (!expanded) {
@@ -43,10 +43,10 @@ export function RichTextToolbar(props: { editor: RefObject<RichTextInputHandle |
                 <ChevronDown className="h-3.5 w-3.5" />
             </button>
             <div className="mx-0.5 h-4 w-px bg-white/10" />
-            <button type="button" className={BTN} onClick={() => props.editor.current?.toggleBold()} title="Bold">
+            <button type="button" className={BTN} onClick={() => props.editor.current?.toggleMark("bold")} title="Bold">
                 <Bold className="h-3.5 w-3.5" />
             </button>
-            <button type="button" className={BTN} onClick={() => props.editor.current?.toggleItalic()} title="Italic">
+            <button type="button" className={BTN} onClick={() => props.editor.current?.toggleMark("italic")} title="Italic">
                 <Italic className="h-3.5 w-3.5" />
             </button>
             <div className="mx-0.5 h-4 w-px bg-white/10" />

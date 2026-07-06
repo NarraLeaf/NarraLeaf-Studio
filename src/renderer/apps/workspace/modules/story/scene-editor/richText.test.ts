@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { normalizeRuns, richIfMeaningful, richRunsToPlain, segmentToRuns } from "./richText";
+import type { StoryRichRun } from "@shared/types/story";
+import {
+    applyMarkToRange,
+    normalizeRuns,
+    rangeHasMark,
+    richIfMeaningful,
+    richRunsToPlain,
+    segmentToRuns,
+    spliceRuns,
+    totalUnits,
+} from "./richText";
 
 describe("richText", () => {
     it("projects rich runs to plain text (pauses contribute nothing)", () => {
@@ -37,5 +47,31 @@ describe("richText", () => {
             value: "hi",
             rich: [{ text: "hi", marks: { bold: true } }],
         })).toEqual([{ text: "hi", marks: { bold: true } }]);
+    });
+
+    it("splits overlapping marks into a combined middle run (mixed words)", () => {
+        // "Hello world" — bold over [0,8), then color over [4,11).
+        let runs: StoryRichRun[] = [{ text: "Hello world" }];
+        runs = applyMarkToRange(runs, 0, 8, marks => ({ ...marks, bold: true }));
+        runs = applyMarkToRange(runs, 4, 11, marks => ({ ...marks, color: "#f00" }));
+        expect(runs).toEqual([
+            { text: "Hell", marks: { bold: true } },
+            { text: "o wo", marks: { bold: true, color: "#f00" } },
+            { text: "rld", marks: { color: "#f00" } },
+        ]);
+    });
+
+    it("toggles a mark off when the whole range already carries it", () => {
+        const runs: StoryRichRun[] = [{ text: "abc", marks: { bold: true } }];
+        const active = rangeHasMark(runs, 0, 3, "bold");
+        expect(active).toBe(true);
+        expect(applyMarkToRange(runs, 0, 3, marks => ({ ...marks, bold: active ? undefined : true })))
+            .toEqual([{ text: "abc" }]);
+    });
+
+    it("splices a pause into the run stream and counts units", () => {
+        expect(spliceRuns([{ text: "abcd" }], 2, 2, [{ pause: 300 }]))
+            .toEqual([{ text: "ab" }, { pause: 300 }, { text: "cd" }]);
+        expect(totalUnits([{ text: "ab" }, { pause: true }, { text: "c" }])).toBe(4);
     });
 });
