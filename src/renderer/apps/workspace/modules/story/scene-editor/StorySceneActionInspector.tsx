@@ -33,7 +33,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
-import { StoryMotionPicker } from "../../story-motion";
+import { MotionField } from "../../story-motion";
 
 const FIELD_LABEL_CLASS = "block text-xs font-medium text-gray-400 mb-1";
 const TEXTAREA_CLASS = "w-full resize-none rounded-md border border-white/10 bg-[#1e1f22] px-3 py-2 text-sm text-gray-300 outline-none transition-colors focus:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -88,6 +88,20 @@ const TRANSITION_OPTIONS: SelectOption[] = [
     { value: "maskCircle", label: "Mask circle" },
     { value: "maskWipe", label: "Mask wipe" },
 ];
+
+const WIPE_DIRECTION_OPTIONS: SelectOption[] = [
+    { value: "left", label: "Left" },
+    { value: "right", label: "Right" },
+    { value: "top", label: "Top" },
+    { value: "bottom", label: "Bottom" },
+];
+
+const TRANSITION_HINTS: Record<string, string> = {
+    dissolve: "Crossfades from the previous image to the new one.",
+    fadeIn: "Fades the new image in from a start position offset.",
+    maskCircle: "Circular reveal / close driven by an animated mask radius.",
+    maskWipe: "Directional wipe reveal driven by an animated mask.",
+};
 
 const DISPLAYABLE_KIND_OPTIONS: SelectOption[] = [
     { value: "", label: "Infer" },
@@ -1012,54 +1026,65 @@ function TransformPresetEditor(props: {
     onChange: (value: StoryTransformRef | undefined) => void;
 }) {
     const value = props.value ?? { preset: "none" as StoryTransformPreset };
+    const mode: "preset" | "animation" = value.mode === "animation" ? "animation" : "preset";
     const propsText = formatPropsText(value.props);
+    const actionContext = {
+        storyId: props.storyId,
+        sceneId: props.sceneId,
+        blockId: props.blockId,
+        storyName: props.storyName,
+    };
     return (
-        <div className="grid gap-2">
-            <StoryMotionPicker
-                value={props.value}
-                targetKind={props.motionTargetKind}
-                motionLabel={props.motionLabel}
-                actionContext={{
-                    storyId: props.storyId,
-                    sceneId: props.sceneId,
-                    blockId: props.blockId,
-                    storyName: props.storyName,
-                }}
-                onChange={props.onChange}
-            />
-            {value.mode === "animation" ? null : (
-                <Section title="Preset Transform">
-                    <FieldGrid cols={4}>
-                        <SelectField
-                            label="Preset"
-                            options={TRANSFORM_PRESET_OPTIONS}
-                            value={value.preset ?? "none"}
-                            onChange={preset => props.onChange({
-                                ...value,
-                                mode: "preset",
-                                preset: preset as StoryTransformPreset,
-                            })}
-                        />
-                        <NumberField
-                            label="Duration ms"
-                            value={value.durationMs}
-                            onChange={durationMs => props.onChange({ ...value, durationMs })}
-                        />
-                        <SelectField
-                            label="Easing"
-                            options={EASING_OPTIONS}
-                            value={value.easing ?? ""}
-                            onChange={easing => props.onChange({ ...value, easing: String(easing) || undefined })}
-                        />
-                        <TextField
-                            label="Params"
-                            value={propsText}
-                            onChange={nextProps => props.onChange({ ...value, props: parsePropsText(nextProps) })}
-                        />
-                    </FieldGrid>
-                </Section>
+        <Section
+            title="Transform"
+            right={
+                <SegToggle
+                    value={mode}
+                    options={[
+                        { value: "preset", label: "Preset" },
+                        { value: "animation", label: "Motion" },
+                    ]}
+                    onChange={next => props.onChange(next === "animation"
+                        ? { ...value, mode: "animation", preset: undefined }
+                        : { ...value, mode: "preset", animationId: undefined, preset: value.preset ?? "none" })}
+                />
+            }
+        >
+            {mode === "animation" ? (
+                <MotionField
+                    value={props.value}
+                    targetKind={props.motionTargetKind}
+                    motionLabel={props.motionLabel}
+                    actionContext={actionContext}
+                    onChange={props.onChange}
+                />
+            ) : (
+                <FieldGrid cols={4}>
+                    <SelectField
+                        label="Preset"
+                        options={TRANSFORM_PRESET_OPTIONS}
+                        value={value.preset ?? "none"}
+                        onChange={preset => props.onChange({ ...value, mode: "preset", preset: preset as StoryTransformPreset })}
+                    />
+                    <NumberField
+                        label="Duration ms"
+                        value={value.durationMs}
+                        onChange={durationMs => props.onChange({ ...value, durationMs })}
+                    />
+                    <SelectField
+                        label="Easing"
+                        options={EASING_OPTIONS}
+                        value={value.easing ?? ""}
+                        onChange={easing => props.onChange({ ...value, easing: String(easing) || undefined })}
+                    />
+                    <TextField
+                        label="Params"
+                        value={propsText}
+                        onChange={nextProps => props.onChange({ ...value, props: parsePropsText(nextProps) })}
+                    />
+                </FieldGrid>
             )}
-        </div>
+        </Section>
     );
 }
 
@@ -1068,28 +1093,61 @@ function TransitionEditor(props: {
     onChange: (value: StoryTransitionRef | undefined) => void;
 }) {
     const value = props.value ?? { kind: "none" as const };
+    const kind = value.kind;
+    const realKind = kind === "none" ? "dissolve" : kind;
+    const setBase = (patch: Partial<StoryTransitionRef>) => props.onChange({ ...value, kind: realKind, ...patch });
+    const setParam = (patch: Record<string, StoryLiteralValue | undefined>) =>
+        props.onChange({ ...value, kind: realKind, props: mergeParams(value.props, patch) });
     return (
         <Section title="Transition">
             <FieldGrid cols={4}>
                 <SelectField
                     label="Kind"
                     options={TRANSITION_OPTIONS}
-                    value={value.kind}
-                    onChange={kind => props.onChange(kind === "none" ? undefined : { ...value, kind: kind as StoryTransitionRef["kind"] })}
+                    value={kind}
+                    onChange={next => next === "none"
+                        ? props.onChange(undefined)
+                        : props.onChange({ ...value, kind: next as StoryTransitionRef["kind"] })}
                 />
-                <NumberField label="Duration ms" value={value.durationMs} onChange={durationMs => props.onChange({ ...value, kind: value.kind === "none" ? "dissolve" : value.kind, durationMs })} />
-                <SelectField
-                    label="Easing"
-                    options={EASING_OPTIONS}
-                    value={value.easing ?? ""}
-                    onChange={easing => props.onChange({ ...value, kind: value.kind === "none" ? "dissolve" : value.kind, easing: String(easing) || undefined })}
-                />
-                <TextField
-                    label="Params"
-                    value={formatPropsText(value.props)}
-                    onChange={nextProps => props.onChange({ ...value, kind: value.kind === "none" ? "dissolve" : value.kind, props: parsePropsText(nextProps) })}
-                />
+                {kind === "none" ? null : (
+                    <>
+                        <NumberField label="Duration ms" value={value.durationMs} onChange={durationMs => setBase({ durationMs })} />
+                        <SelectField
+                            label="Easing"
+                            options={EASING_OPTIONS}
+                            value={value.easing ?? ""}
+                            onChange={easing => setBase({ easing: String(easing) || undefined })}
+                        />
+                    </>
+                )}
+                {kind === "fadeIn" ? (
+                    <>
+                        <NumberField label="Start X" value={paramNumber(value.props, "x")} onChange={x => setParam({ x })} />
+                        <NumberField label="Start Y" value={paramNumber(value.props, "y")} onChange={y => setParam({ y })} />
+                    </>
+                ) : null}
+                {kind === "maskCircle" ? (
+                    <>
+                        <TextField label="Center" value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label="From radius" value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
+                        <NumberField label="To radius" value={paramNumber(value.props, "to")} onChange={to => setParam({ to })} />
+                    </>
+                ) : null}
+                {kind === "maskWipe" ? (
+                    <>
+                        <SelectField
+                            label="Direction"
+                            options={WIPE_DIRECTION_OPTIONS}
+                            value={paramString(value.props, "direction", "left")}
+                            onChange={direction => setParam({ direction: String(direction) })}
+                        />
+                        <CheckboxField label="Reverse" checked={paramBool(value.props, "reverse")} onChange={reverse => setParam({ reverse: reverse || undefined })} />
+                    </>
+                ) : null}
             </FieldGrid>
+            {kind === "none" ? null : (
+                <div className="mt-1.5 text-[11px] text-slate-500">{TRANSITION_HINTS[realKind] ?? ""}</div>
+            )}
         </Section>
     );
 }
@@ -1616,4 +1674,66 @@ function FieldGrid(props: { cols?: 2 | 3 | 4; className?: string; children: Reac
     const cols = props.cols ?? 3;
     const colClass = cols === 2 ? "sm:grid-cols-2" : cols === 4 ? "sm:grid-cols-4" : "sm:grid-cols-3";
     return <div className={["grid gap-x-3 gap-y-2", colClass, props.className ?? ""].join(" ")}>{props.children}</div>;
+}
+
+/** Compact inline segmented toggle (e.g. Preset / Motion). */
+function SegToggle<T extends string>(props: { value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
+    return (
+        <div className="inline-flex overflow-hidden rounded-md border border-white/10 bg-[#101216]">
+            {props.options.map((option, index) => (
+                <button
+                    key={option.value}
+                    type="button"
+                    className={[
+                        "h-7 px-2.5 text-xs transition-colors",
+                        index > 0 ? "border-l border-white/10" : "",
+                        props.value === option.value ? "bg-primary/20 text-primary" : "text-slate-400 hover:bg-white/[0.05] hover:text-slate-100",
+                    ].join(" ")}
+                    onClick={() => props.onChange(option.value)}
+                >
+                    {option.label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+/** Merge a patch into a transition/transform props record, dropping empty values. */
+function mergeParams(
+    current: Record<string, StoryLiteralValue> | undefined,
+    patch: Record<string, StoryLiteralValue | undefined>,
+): Record<string, StoryLiteralValue> | undefined {
+    const next: Record<string, StoryLiteralValue> = { ...(current ?? {}) };
+    for (const [key, val] of Object.entries(patch)) {
+        if (val === undefined || val === "") {
+            delete next[key];
+        } else {
+            next[key] = val;
+        }
+    }
+    return Object.keys(next).length > 0 ? next : undefined;
+}
+
+function paramNumber(props: Record<string, StoryLiteralValue> | undefined, key: string): number | undefined {
+    const value = props?.[key];
+    if (typeof value === "number") {
+        return value;
+    }
+    if (typeof value === "string") {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : undefined;
+    }
+    return undefined;
+}
+
+function paramString(props: Record<string, StoryLiteralValue> | undefined, key: string, fallback: string): string {
+    const value = props?.[key];
+    if (typeof value === "string") {
+        return value;
+    }
+    return typeof value === "number" ? String(value) : fallback;
+}
+
+function paramBool(props: Record<string, StoryLiteralValue> | undefined, key: string): boolean {
+    return props?.[key] === true || props?.[key] === "true";
 }
