@@ -27,7 +27,7 @@ export function CollapsibleMiniSection({ title, defaultCollapsed = true, subtle,
                     {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </span>
                 <span
-                    className={`text-[11px] font-medium uppercase tracking-wide ${
+                    className={`text-[11px] font-medium tracking-wide ${
                         subtle ? "text-gray-500" : "text-gray-400"
                     }`}
                 >

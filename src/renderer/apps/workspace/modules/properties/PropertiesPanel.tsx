@@ -1004,7 +1004,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 <span className="text-xs text-gray-400">{panelTitle}</span>
             </div>
             {panelSubtitle && (
-                <span className="text-xs text-gray-500 uppercase">{panelSubtitle}</span>
+                <span className="text-xs text-gray-500">{panelSubtitle}</span>
             )}
             </div>
 

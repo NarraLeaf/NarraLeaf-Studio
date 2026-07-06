@@ -139,7 +139,7 @@ export function IconButtonSegGroup({
                         >
                             <span className="text-base leading-none">{option.icon}</span>
                             {showLabels && option.label ? (
-                                <span className="text-xs uppercase tracking-wide">{option.label}</span>
+                                <span className="text-xs tracking-wide">{option.label}</span>
                             ) : null}
                         </div>
                     </button>

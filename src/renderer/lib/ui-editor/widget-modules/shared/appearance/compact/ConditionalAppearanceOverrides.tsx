@@ -62,7 +62,7 @@ export function ConditionalAppearanceOverrides({
 
             <div className="space-y-3 min-w-0">
                 {groupsWithExtraRows.length > 0 ? (
-                    <div className="text-[10px] uppercase tracking-wide text-gray-500 px-0.5">Conditional rows</div>
+                    <div className="text-[10px] tracking-wide text-gray-500 px-0.5">Conditional rows</div>
                 ) : null}
                 {groupsWithExtraRows.map(group => {
                     const groupKey = group.key;
@@ -145,13 +145,13 @@ export function ConditionalAppearanceOverrides({
                 })}
 
                 <div className="rounded-md border border-white/5 bg-black/15 p-2 space-y-2 min-w-0">
-                    <div className="text-[10px] uppercase tracking-wide text-gray-500">Add row manually</div>
+                    <div className="text-[10px] tracking-wide text-gray-500">Add row manually</div>
                     <p className="text-[10px] text-gray-500 leading-snug">
                         Adds one conditional row for a single property key (default condition: hovered).
                     </p>
                 <div className="flex flex-wrap gap-2 items-end min-w-0 pt-1">
                     <div className="flex-1 min-w-[10rem]">
-                        <label className="text-[10px] uppercase tracking-wide text-gray-500 block mb-1">
+                        <label className="text-[10px] tracking-wide text-gray-500 block mb-1">
                             Property
                         </label>
                         <Select

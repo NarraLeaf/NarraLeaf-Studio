@@ -163,7 +163,7 @@ function AnimationPhaseBlock({
     return (
         <div className="space-y-2 rounded-md border border-white/10 bg-white/[0.025] p-2">
             <div className="flex min-h-7 items-center justify-between gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{label}</span>
+                <span className="text-[11px] font-semibold tracking-wide text-gray-400">{label}</span>
                 {showExitBlocking ? (
                     <label className="flex min-w-0 items-center gap-2 text-[11px] text-gray-400">
                         <span>Wait</span>
@@ -177,7 +177,7 @@ function AnimationPhaseBlock({
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_92px] gap-2">
                 <label className="min-w-0 space-y-1">
-                    <span className="block text-[10px] font-medium uppercase tracking-wide text-gray-500">Preset</span>
+                    <span className="block text-[10px] font-medium tracking-wide text-gray-500">Preset</span>
                     <Select
                         fullWidth
                         options={PRESET_OPTIONS}
@@ -187,7 +187,7 @@ function AnimationPhaseBlock({
                     />
                 </label>
                 <label className="min-w-0 space-y-1">
-                    <span className="block text-[10px] font-medium uppercase tracking-wide text-gray-500">Seconds</span>
+                    <span className="block text-[10px] font-medium tracking-wide text-gray-500">Seconds</span>
                     <NumericDraftEnhancedInput
                         committedDisplay={formatDurationSeconds(durationSeconds)}
                         onFiniteNumber={value => onDurationChange(normalizeDurationInput(value))}
@@ -204,7 +204,7 @@ function AnimationPhaseBlock({
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_76px] gap-2">
                 <div className="min-w-0 space-y-1">
-                    <span className="block text-[10px] font-medium uppercase tracking-wide text-gray-500">Direction</span>
+                    <span className="block text-[10px] font-medium tracking-wide text-gray-500">Direction</span>
                     <IconButtonSegGroup
                         options={DIRECTION_OPTIONS}
                         mode="single"
@@ -216,7 +216,7 @@ function AnimationPhaseBlock({
                     />
                 </div>
                 <label className="min-w-0 space-y-1">
-                    <span className="block text-[10px] font-medium uppercase tracking-wide text-gray-500">Angle</span>
+                    <span className="block text-[10px] font-medium tracking-wide text-gray-500">Angle</span>
                     <NumericDraftEnhancedInput
                         committedDisplay={formatAngleDegrees(angleDegrees)}
                         onFiniteNumber={value => onAngleChange(normalizeAngleInput(value))}

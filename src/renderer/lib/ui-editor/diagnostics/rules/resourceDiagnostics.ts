@@ -44,7 +44,7 @@ export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiag
                     id: `res:image:${el.id}`,
                     severity: "warning",
                     source: "resource",
-                    message: `Image widget “${el.name ?? el.id}” has no image asset`,
+                    message: `Image widget “${el.name ?? el.type}” has no image asset`,
                     hint: "Assign an image asset in the inspector.",
                     elementId: el.id,
                 });
@@ -59,7 +59,7 @@ export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiag
                         id: `res:container-image:${el.id}`,
                         severity: "warning",
                         source: "resource",
-                        message: `Container “${el.name ?? el.id}” uses image fill without an asset`,
+                        message: `Container “${el.name ?? el.type}” uses image fill without an asset`,
                         hint: "Pick an image asset or switch fill type.",
                         elementId: el.id,
                     });
@@ -81,7 +81,7 @@ export function collectResourceDiagnostics(elements: UIElement[]): UISurfaceDiag
                         id: `res:button-image:${el.id}`,
                         severity: "warning",
                         source: "resource",
-                        message: `Button “${el.name ?? el.id}” uses image background without an asset`,
+                        message: `Button “${el.name ?? el.type}” uses image background without an asset`,
                         hint: "Pick an image asset or switch background type.",
                         elementId: el.id,
                     });

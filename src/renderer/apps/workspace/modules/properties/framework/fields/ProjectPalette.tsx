@@ -1,7 +1,8 @@
+import { useRef, useState } from "react";
 import { ColorPickerTrigger } from "./ColorPickerField";
 import type { ColorValue } from "../types";
 import { colorValueToCss, parseColorValue } from "../utils/colorUtils";
-import { useRecentColors } from "./recentColors";
+import { addRecentColor, useRecentColors } from "./recentColors";
 
 /**
  * Project Palette — a curated color palette built on top of the project color picker. It offers
@@ -22,16 +23,23 @@ export const PROJECT_PALETTE_SECTIONS: { label: string; colors: string[] }[] = [
     },
 ];
 
-function Swatch(props: { color: string; onPick: (color: string, commit: boolean) => void }) {
+function Swatch(props: { color: string; active?: boolean; onPick: (color: string) => void }) {
     return (
         <button
             type="button"
-            className="h-5 w-5 rounded border border-white/20 transition-transform hover:scale-110"
+            className={`h-5 w-5 rounded border transition-transform hover:scale-110 ${
+                props.active ? "border-white ring-2 ring-white/80 ring-offset-1 ring-offset-[#16191e]" : "border-white/20"
+            }`}
             style={{ backgroundColor: props.color }}
             title={props.color}
-            onClick={() => props.onPick(props.color, true)}
+            onClick={() => props.onPick(props.color)}
         />
     );
+}
+
+/** Case-insensitive normalized hex key for comparing colors from mixed sources. */
+function colorKey(color: string): string {
+    return parseColorValue(color, { hex: color, alpha: 1 }).hex.toLowerCase();
 }
 
 export function ProjectPalette(props: {
@@ -40,36 +48,62 @@ export function ProjectPalette(props: {
     onPick: (color: string, commit: boolean) => void;
     className?: string;
 }) {
-    const parsed = parseColorValue(props.value ?? "#ffffff", { hex: "#ffffff", alpha: 1 });
-    const colorValue: ColorValue = { hex: parsed.hex, alpha: 1 };
     const recent = useRecentColors();
+    // Keep the custom picker's preview on the color the author is building, seeded from the
+    // currently-active color so re-opening the palette starts where they left off.
+    const [current, setCurrent] = useState(() => parseColorValue(props.value ?? "#ffffff", { hex: "#ffffff", alpha: 1 }).hex);
+    const colorValue: ColorValue = { hex: current, alpha: 1 };
+    const activeKey = colorKey(props.value ?? current);
+    // The last color the custom picker produced, recorded to Recent only when the picker commits.
+    const pendingCustomRef = useRef<string | null>(null);
+
+    const pickSwatch = (color: string) => {
+        setCurrent(parseColorValue(color, { hex: color, alpha: 1 }).hex);
+        props.onPick(color, true);
+    };
+
     return (
         <div className={props.className}>
             {PROJECT_PALETTE_SECTIONS.map(section => (
                 <div key={section.label} className="mb-2">
-                    <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">{section.label}</div>
+                    <div className="mb-1 text-[10px] font-medium tracking-wide text-slate-500">{section.label}</div>
                     <div className="flex flex-wrap gap-1">
-                        {section.colors.map(color => <Swatch key={color} color={color} onPick={props.onPick} />)}
+                        {section.colors.map(color => (
+                            <Swatch key={color} color={color} active={colorKey(color) === activeKey} onPick={pickSwatch} />
+                        ))}
                     </div>
                 </div>
             ))}
             <div className="mb-2">
-                <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">Recent</div>
+                <div className="mb-1 text-[10px] font-medium tracking-wide text-slate-500">Recent</div>
                 {recent.length > 0 ? (
                     <div className="flex flex-wrap gap-1">
-                        {recent.map(color => <Swatch key={color} color={color} onPick={props.onPick} />)}
+                        {recent.map(color => (
+                            <Swatch key={color} color={color} active={colorKey(color) === activeKey} onPick={pickSwatch} />
+                        ))}
                     </div>
                 ) : (
                     <div className="text-[10px] text-slate-600">No recent colors yet</div>
                 )}
             </div>
             <div className="mt-2 flex items-center gap-2 border-t border-white/10 pt-2">
-                <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Custom</span>
+                <span className="text-[10px] font-medium tracking-wide text-slate-500">Custom</span>
                 <ColorPickerTrigger
                     value={colorValue}
                     displayMode="icon-hex"
                     allowOpacity={false}
-                    onChange={next => props.onPick(colorValueToCss({ hex: next.hex, alpha: 1 }), false)}
+                    onChange={next => {
+                        const css = colorValueToCss({ hex: next.hex, alpha: 1 });
+                        setCurrent(next.hex);
+                        pendingCustomRef.current = css;
+                        props.onPick(css, false);
+                    }}
+                    onCommit={() => {
+                        if (pendingCustomRef.current) {
+                            addRecentColor(pendingCustomRef.current);
+                            pendingCustomRef.current = null;
+                        }
+                    }}
                 />
             </div>
         </div>

@@ -28,7 +28,7 @@ export function FormsPanel({
     return (
         <div className="border-r border-white/10 h-full bg-[#0f1115]">
             <div className={`text-xs text-gray-400 flex items-center justify-between ${collapsed ? "px-1 py-2" : "px-3 py-2"}`}>
-                {!collapsed && <span className="uppercase tracking-wide text-[11px] text-gray-400">Forms</span>}
+                {!collapsed && <span className="tracking-wide text-[11px] text-gray-400">Forms</span>}
                 <div className="flex items-center gap-1">
                     {!collapsed && (
                         <button

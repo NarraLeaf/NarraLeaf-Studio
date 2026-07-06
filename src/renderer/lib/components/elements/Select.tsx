@@ -513,7 +513,7 @@ export function SelectGroup({
 }) {
     return (
         <div className={className}>
-            <div className="px-3 py-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            <div className="px-3 py-1 text-xs font-semibold text-gray-400 tracking-wider">
                 {label}
             </div>
             <div className="mb-1">

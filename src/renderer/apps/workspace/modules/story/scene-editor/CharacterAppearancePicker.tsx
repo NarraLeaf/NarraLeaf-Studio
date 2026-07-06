@@ -145,7 +145,7 @@ export function CharacterAppearancePicker(props: {
     return (
         <div ref={scrollRef} className="flex gap-3 overflow-x-auto rounded-lg border border-white/10 bg-black/20 p-2">
             <div className={COLUMN}>
-                <div className="px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">Form</div>
+                <div className="px-1 text-[10px] font-medium tracking-wide text-slate-500">Form</div>
                 {forms.map(form => {
                     const active = form.name === selectedForm?.name;
                     return (
@@ -165,7 +165,7 @@ export function CharacterAppearancePicker(props: {
 
             {selectedForm ? (
                 <div className={COLUMN}>
-                    <div className="px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">Appearance</div>
+                    <div className="px-1 text-[10px] font-medium tracking-wide text-slate-500">Appearance</div>
                     {groups.map(group => {
                         const active = group.name === activeGroup;
                         const currentVariant = selectionMap[group.name] ?? group.defaultVariant ?? group.variants[0]?.name;
@@ -190,7 +190,7 @@ export function CharacterAppearancePicker(props: {
 
             {activeGroupObj && selectedForm ? (
                 <div className={COLUMN}>
-                    <div className="px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">{groupLabel(activeGroupObj.name)}</div>
+                    <div className="px-1 text-[10px] font-medium tracking-wide text-slate-500">{groupLabel(activeGroupObj.name)}</div>
                     {activeGroupObj.variants.map(variant => {
                         const active = selectionMap[activeGroupObj.name] === variant.name;
                         return (
@@ -210,7 +210,7 @@ export function CharacterAppearancePicker(props: {
 
             {selectedForm && selectedVariant ? (
                 <div className="flex w-44 shrink-0 flex-col gap-1">
-                    <div className="px-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">Preview</div>
+                    <div className="px-1 text-[10px] font-medium tracking-wide text-slate-500">Preview</div>
                     <div className="grid min-h-[8rem] flex-1 place-items-center rounded-md border border-white/10 bg-[#0f1115] p-2">
                         <Thumb assetId={variantAssetId(selectedForm, selectedVariant)} className="max-h-40 w-full" alt={selectedVariant} />
                     </div>

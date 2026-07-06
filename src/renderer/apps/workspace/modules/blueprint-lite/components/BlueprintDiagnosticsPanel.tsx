@@ -42,7 +42,7 @@ export function BlueprintDiagnosticsPanel({ diagnostics, onPick }: Props) {
 
     return (
         <div className="max-h-32 shrink-0 overflow-y-auto border-t border-white/10 bg-[#0b0d12] px-2 py-1.5">
-            <p className="mb-1 px-1 text-[10px] uppercase tracking-wide text-gray-500">
+            <p className="mb-1 px-1 text-[10px] tracking-wide text-gray-500">
                 Messages · {errors.length}E · {warnings.length}W · {infos.length}I
             </p>
             <div className="space-y-0.5">

@@ -87,6 +87,6 @@ export function listBlueprintSetFramePageTargetOptions(input: {
                 targetSurfaceId: surface.id,
             }) === null;
         })
-        .map(surface => ({ value: surface.id, label: surface.name || surface.id }));
+        .map(surface => ({ value: surface.id, label: surface.name || "Untitled surface" }));
 }
 

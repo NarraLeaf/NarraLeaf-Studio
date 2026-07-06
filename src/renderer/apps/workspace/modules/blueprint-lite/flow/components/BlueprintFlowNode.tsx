@@ -147,10 +147,6 @@ const BLUEPRINT_CARD_PIN_BODY_CLASS = "min-w-[200px] max-w-[280px]";
 const COMMENT_DEFAULT_WIDTH = 360;
 const COMMENT_DEFAULT_HEIGHT = 180;
 
-function shortAssetId(assetId: string): string {
-    return assetId.length > 10 ? `${assetId.slice(0, 8)}...` : assetId;
-}
-
 function useImageAssetDisplayName(assetId: string | null): string | null {
     let context: ReturnType<typeof useWorkspace>["context"] | null = null;
     try {
@@ -184,7 +180,7 @@ function ImageAssetPickerCard({
     const { url, loading, error } = useAssetObjectUrl(assetId);
     const [selectorOpen, setSelectorOpen] = useState(false);
     const anchorRef = useRef<HTMLButtonElement | null>(null);
-    const label = assetId ? assetName ?? shortAssetId(assetId) : "Select image";
+    const label = assetId ? assetName ?? "Image" : "Select image";
     const detail = assetId ? (error ? "Missing image asset" : "ImageAsset") : "No image asset";
     const heightClass = compact ? "h-[58px]" : "h-[82px]";
 
@@ -1133,7 +1129,7 @@ function InspectorParamOnCard({
             onMouseDownCapture={stopFlowNodePointerBubble}
             onPointerDownCapture={stopFlowNodePointerBubble}
         >
-            <div className="mb-0.5 text-[9px] uppercase tracking-wide text-gray-500">{spec.label}</div>
+            <div className="mb-0.5 text-[9px] tracking-wide text-gray-500">{spec.label}</div>
             {spec.kind === "select" && selectComponentOptions ? (
                 <Select
                     fullWidth
@@ -1317,7 +1313,7 @@ function opacityPercentParam(params: Record<string, unknown>, key: string, fallb
 }
 
 function CardFieldLabel({ children }: { children: ReactNode }) {
-    return <div className="mb-0.5 text-[9px] uppercase tracking-wide text-gray-500">{children}</div>;
+    return <div className="mb-0.5 text-[9px] tracking-wide text-gray-500">{children}</div>;
 }
 
 function CardNumberInput({
@@ -1932,7 +1928,7 @@ function BlueprintCommentNodeCard({
                 style={{ borderColor: color.border, background: color.header }}
             >
                 <div
-                    className="min-w-0 flex-1 truncate text-[10px] font-semibold uppercase"
+                    className="min-w-0 flex-1 truncate text-[10px] font-semibold"
                     style={{ color: color.text }}
                 >
                     {displayName}
@@ -2033,7 +2029,7 @@ function BlueprintElementLiteralNodeCard({
             aria-invalid={Boolean(firstNodeError)}
         >
             <div className="border-b border-white/10 px-2 py-1.5">
-                <div className="text-[10px] uppercase text-gray-500">{catalog.category}</div>
+                <div className="text-[10px] text-gray-500">{catalog.category}</div>
                 <div className="font-medium leading-tight text-gray-100">{catalog.displayName}</div>
                 <div className="mt-1 min-w-0 truncate text-[11px] text-gray-300">{boundLabel}</div>
                 <div className="min-w-0 truncate font-mono text-[10px] text-gray-500">{typeLabel}</div>
@@ -2101,7 +2097,7 @@ function BlueprintImageAssetLiteralNodeCard({
             aria-invalid={Boolean(firstNodeError)}
         >
             <div className="border-b border-white/10 px-2 py-1.5">
-                <div className="text-[10px] uppercase tracking-wide text-gray-500">{catalog.category}</div>
+                <div className="text-[10px] tracking-wide text-gray-500">{catalog.category}</div>
                 <div className="font-medium leading-tight text-gray-100">{catalog.displayName}</div>
             </div>
             <div className="mx-2 my-1.5">
@@ -2283,7 +2279,7 @@ export function BlueprintFlowNode({ data, selected }: NodeProps) {
             aria-invalid={Boolean(firstNodeError)}
         >
             <div className="border-b border-white/5 px-2 py-1.5">
-                <div className="text-[10px] uppercase tracking-wide text-gray-500">{catalog.category}</div>
+                <div className="text-[10px] tracking-wide text-gray-500">{catalog.category}</div>
                 <div className="font-medium leading-tight text-gray-100">{catalog.displayName}</div>
                 {showAnimatePropertyCard && onPatchNodeParam ? (
                     <DisplayableAnimatePropertyCard

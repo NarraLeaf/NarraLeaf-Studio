@@ -100,7 +100,7 @@ function CollapsibleSection({
 
     return (
         <section className="shrink-0">
-            <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-wide text-gray-500">
+            <div className="mb-1 flex items-center justify-between gap-2 text-[10px] tracking-wide text-gray-500">
                 <button
                     type="button"
                     className="flex min-w-0 flex-1 items-center gap-1 text-left hover:text-gray-300"
@@ -153,7 +153,7 @@ function BlueprintVariableRow({
         <div className="group rounded border border-white/10 bg-[#0d0f12] px-2 py-1.5 space-y-1.5">
             <div className="flex items-center justify-between gap-1">
                 <div className="flex min-w-0 items-center gap-1.5">
-                    <span className={`text-[9px] uppercase ${accentClass}`}>{scopeLabel}</span>
+                    <span className={`text-[9px] ${accentClass}`}>{scopeLabel}</span>
                     {v.valueType ? (
                         <span className="truncate rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[9px] text-gray-400">
                             {v.valueType}
@@ -717,7 +717,7 @@ export function BlueprintMemberTree({
                                             showMenu(e);
                                         }}
                                     >
-                                        {events[id]?.name ?? id.slice(0, 10)}
+                                        {events[id]?.name ?? "Unnamed event"}
                                         {errors > 0 ? (
                                             <span className="ml-1 text-red-400">- {errors} err</span>
                                         ) : warnings > 0 ? (

@@ -32,7 +32,7 @@ export function collectLayoutDiagnostics(
                 id: `layout:tiny:${el.id}`,
                 severity: "warning",
                 source: "layout",
-                message: `Element “${el.name ?? el.id}” has a very small size (${Math.round(width)}×${Math.round(height)})`,
+                message: `Element “${el.name ?? el.type}” has a very small size (${Math.round(width)}×${Math.round(height)})`,
                 hint: "Increase width and height for reliable layout and hit testing.",
                 elementId: el.id,
             });
@@ -47,7 +47,7 @@ export function collectLayoutDiagnostics(
                 id: `layout:oob:${el.id}`,
                 severity: "warning",
                 source: "layout",
-                message: `Element “${el.name ?? el.id}” is outside the Surface design bounds`,
+                message: `Element “${el.name ?? el.type}” is outside the Surface design bounds`,
                 hint: `Design size is ${dw}×${dh}. Move or resize the element.`,
                 elementId: el.id,
             });
