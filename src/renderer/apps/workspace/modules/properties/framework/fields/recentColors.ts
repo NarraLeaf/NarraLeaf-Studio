@@ -1,41 +1,33 @@
 import { useSyncExternalStore } from "react";
+import { RecentColorsService } from "@/lib/workspace/services/core/RecentColorsService";
 
 /**
- * Session-scoped list of recently used project colors (most-recent first, de-duplicated, capped).
- * Used by {@link ProjectPalette} in place of a static web-color list.
+ * Recently used project colors (most-recent first, de-duplicated, capped). Backed by the
+ * per-project {@link RecentColorsService} singleton, so the palette history is saved with the
+ * project and resets when switching projects. Used by ProjectPalette / the rich-text toolbar in
+ * place of a static web-color list.
  */
-const MAX_RECENT_COLORS = 16;
+function service(): RecentColorsService {
+    return RecentColorsService.getInstance();
+}
 
-let recent: string[] = [];
-const listeners = new Set<() => void>();
+// Module-level so the reference stays stable across renders (avoids useSyncExternalStore re-subscribes).
+function subscribe(listener: () => void): () => void {
+    return service().subscribe(listener);
+}
 
-function emit(): void {
-    for (const listener of listeners) {
-        listener();
-    }
+function getSnapshot(): string[] {
+    return service().getColors();
 }
 
 export function addRecentColor(color: string): void {
-    const value = color.trim();
-    if (!value) {
-        return;
-    }
-    const next = [value, ...recent.filter(existing => existing.toLowerCase() !== value.toLowerCase())].slice(0, MAX_RECENT_COLORS);
-    recent = next;
-    emit();
+    service().addColor(color);
 }
 
 export function getRecentColors(): string[] {
-    return recent;
-}
-
-function subscribe(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => {
-        listeners.delete(listener);
-    };
+    return service().getColors();
 }
 
 export function useRecentColors(): string[] {
-    return useSyncExternalStore(subscribe, getRecentColors, getRecentColors);
+    return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

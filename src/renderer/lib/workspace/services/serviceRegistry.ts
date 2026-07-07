@@ -9,6 +9,7 @@ import { ServiceAssetsService } from "./core/ServiceAssetsService";
 import { CharacterService } from "./core/CharacterService";
 import { UuidService } from "./core/UuidService";
 import { PanelStateService } from "./core/PanelStateService";
+import { RecentColorsService } from "./core/RecentColorsService";
 import { UIDocumentService } from "./ui-editor/UIDocumentService";
 import { UIRuntimeBridgeService } from "./ui-editor/UIRuntimeBridgeService";
 import { UIEditorStateService } from "./ui-editor/UIEditorStateService";
@@ -33,6 +34,7 @@ export class ServiceRegistry {
         [Services.Assets]: AssetsService.getInstance(),
         [Services.ServiceAssets]: ServiceAssetsService.getInstance(),
         [Services.PanelState]: PanelStateService.getInstance(),
+        [Services.RecentColors]: RecentColorsService.getInstance(),
         [Services.Story]: StoryService.getInstance(),
         [Services.Character]: CharacterService.getInstance(),
         [Services.UIDocument]: UIDocumentService.getInstance(),

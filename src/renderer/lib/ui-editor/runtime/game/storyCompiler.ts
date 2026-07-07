@@ -37,6 +37,7 @@ import type {
     StoryConditionRef,
     StoryControlPayload,
     StoryDocument,
+    StoryInterpolationRef,
     StoryLiteralValue,
     StoryScene,
     StoryTextMarks,
@@ -352,15 +353,15 @@ async function compileBlock(ctx: SceneCompileContext, blockId: string): Promise<
 async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "nodeAction" }>): Promise<NlrStatement[]> {
     if (block.payload.action === "narration") {
         const segment = block.payload.text;
-        if (!segment.value.trim()) {
+        if (!segment.value.trim() && !segmentHasInterpolation(segment)) {
             return [];
         }
-        return [recordStatement(ctx, Narrator.say(buildSentencePrompt(segment) as any), block, segment.textId)];
+        return [recordStatement(ctx, Narrator.say(buildSentencePrompt(segment, ctx, block.id) as any), block, segment.textId)];
     }
 
     if (block.payload.action === "dialogue") {
         const text = block.payload.text.value;
-        if (!text.trim()) {
+        if (!text.trim() && !segmentHasInterpolation(block.payload.text)) {
             return [];
         }
         const character = getCharacter(ctx, block.payload.characterId);
@@ -375,14 +376,14 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
             config.pause = block.payload.pauseAfter;
         }
         const sayConfig = Object.keys(config).length > 0 ? (config as any) : undefined;
-        return [recordStatement(ctx, character.say(buildSentencePrompt(block.payload.text) as any, sayConfig), block, block.payload.text.textId)];
+        return [recordStatement(ctx, character.say(buildSentencePrompt(block.payload.text, ctx, block.id) as any, sayConfig), block, block.payload.text.textId)];
     }
 
     return [];
 }
 
 /** Build an NLR sentence prompt from a text segment: a plain string, or Word/Pause tokens. */
-function buildSentencePrompt(segment: StoryTextSegment): string | unknown[] {
+function buildSentencePrompt(segment: StoryTextSegment, ctx: SceneCompileContext, blockId: string): string | unknown[] {
     if (!segment.rich || segment.rich.length === 0) {
         return segment.value;
     }
@@ -392,14 +393,62 @@ function buildSentencePrompt(segment: StoryTextSegment): string | unknown[] {
             prompt.push(run.pause === true ? new Pause() : Pause.wait(run.pause));
             continue;
         }
-        // PHASE 2 (reserved): a future `{ blueprintRef }` rich run compiles here to an NLR DynamicWord
-        // via `compileStoryActionBlueprintToValue`, wrapping the Return Value as inline interpolation.
+        if ("interpolation" in run) {
+            const word = buildInterpolationWord(ctx, run.interpolation, blockId);
+            if (word != null) {
+                prompt.push(word);
+            }
+            continue;
+        }
         if (!run.text) {
             continue;
         }
         prompt.push(buildWord(run.text, run.marks));
     }
     return prompt.length > 0 ? prompt : segment.value;
+}
+
+/** True when a segment carries an inline interpolation run (so an empty plain value is intentional). */
+function segmentHasInterpolation(segment: StoryTextSegment): boolean {
+    return Boolean(segment.rich?.some(run => "interpolation" in run));
+}
+
+/** Compile an inline interpolation run to an NLR word (a dynamic value shown in dialogue). */
+function buildInterpolationWord(ctx: SceneCompileContext, interp: StoryInterpolationRef, blockId: string): unknown | null {
+    if (interp.kind === "blueprint") {
+        // A blueprint's Return Value is produced by the async graph interpreter, which cannot back a
+        // synchronous NLR dynamic word. Inline blueprint interpolation needs a sync evaluator (follow-up).
+        diagnostic(ctx, "warning", blockId, "Blueprint text interpolation is not yet evaluated inline and was skipped.");
+        return null;
+    }
+    const target = interp.target;
+    if (target.scope === "scene") {
+        const def = ctx.scene.sceneVariables?.[target.variableId];
+        if (!def) {
+            diagnostic(ctx, "warning", blockId, "Scene variable not found; interpolation skipped.");
+            return null;
+        }
+        return ctx.nlrScene.local.toWord(def.storageKey as any);
+    }
+    if (target.scope === "saved") {
+        const def = ctx.document.savedVariables?.[target.variableId];
+        if (!def) {
+            diagnostic(ctx, "warning", blockId, "Saved variable not found; interpolation skipped.");
+            return null;
+        }
+        return ctx.savedPersistent.toWord(def.storageKey as any);
+    }
+    // Persistent (app-level): a dynamic word reading the shared host snapshot synchronously.
+    const persistence = ctx.persistence;
+    if (!persistence) {
+        diagnostic(ctx, "warning", blockId, "Persistent variables require Dev Mode host persistence; interpolation skipped.");
+        return null;
+    }
+    const storageKey = target.storageKey;
+    return new Word(((() => {
+        const value = persistence.get(storageKey);
+        return value === null || value === undefined ? "" : String(value);
+    }) as unknown) as any);
 }
 
 function buildWord(text: string, marks: StoryTextMarks | undefined): string | Word {

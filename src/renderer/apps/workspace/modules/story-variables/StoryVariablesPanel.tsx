@@ -6,8 +6,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, Trash2, Variable } from "lucide-react";
+import type { PanelComponentProps } from "../types";
+import { Select, type SelectOption } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
-import { useActiveEditorTab } from "@/apps/workspace/hooks/useUIService";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -18,8 +19,9 @@ import type {
     StorySceneVariableDefinition,
     StoryVariableValueType,
 } from "@shared/types/story";
+import type { StoryVariablesPanelPayload } from "./storyVariablesPanelId";
 
-const VALUE_TYPE_OPTIONS: { value: StoryVariableValueType; label: string }[] = [
+const VALUE_TYPE_OPTIONS: SelectOption[] = [
     { value: "boolean", label: "Boolean" },
     { value: "number", label: "Number" },
     { value: "string", label: "String" },
@@ -28,8 +30,6 @@ const VALUE_TYPE_OPTIONS: { value: StoryVariableValueType; label: string }[] = [
 
 const INPUT_CLASS =
     "h-7 min-w-0 flex-1 rounded border border-white/10 bg-[#1e1f22] px-2 text-xs text-gray-200 outline-none focus:border-primary/50";
-
-type ScenePayload = { storyId?: string; sceneId?: string };
 
 function defaultForType(valueType: StoryVariableValueType): StoryLiteralValue {
     if (valueType === "boolean") return false;
@@ -77,18 +77,14 @@ function VariableRowEditor(props: {
                 onChange={event => props.onRename(event.target.value)}
                 aria-label="Variable name"
             />
-            <select
-                className="h-7 rounded border border-white/10 bg-[#1e1f22] px-1 text-xs text-gray-200 outline-none focus:border-primary/50"
+            <Select
+                options={VALUE_TYPE_OPTIONS}
                 value={props.row.valueType}
-                onChange={event => props.onRetype(event.target.value as StoryVariableValueType)}
-                aria-label="Variable type"
-            >
-                {VALUE_TYPE_OPTIONS.map(option => (
-                    <option key={option.value} value={option.value}>
-                        {option.label}
-                    </option>
-                ))}
-            </select>
+                onChange={value => props.onRetype(String(value) as StoryVariableValueType)}
+                size="sm"
+                portalMenu
+                className="w-24 shrink-0"
+            />
             <input
                 className={INPUT_CLASS}
                 value={formatDefault(props.row.defaultValue, props.row.valueType)}
@@ -128,10 +124,8 @@ function SectionHeader(props: { title: string; hint: string; onAdd?: () => void 
     );
 }
 
-export function StoryVariablesPanel() {
+export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariablesPanelPayload>) {
     const { context, isInitialized } = useWorkspace();
-    const { tab } = useActiveEditorTab();
-    const payload = tab?.payload as ScenePayload | undefined;
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
 

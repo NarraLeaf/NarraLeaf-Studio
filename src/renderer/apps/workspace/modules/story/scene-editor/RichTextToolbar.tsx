@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
-import { Bold, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Type } from "lucide-react";
+import { Bold, Braces, ChevronDown, ChevronRight, Italic, Palette, Pause as PauseIcon, Type } from "lucide-react";
 import { ProjectPalette } from "@/apps/workspace/modules/properties/framework/fields/ProjectPalette";
 import { addRecentColor, useRecentColors } from "@/apps/workspace/modules/properties/framework/fields/recentColors";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
@@ -35,6 +35,8 @@ export function RichTextToolbar(props: {
     anchorRef: RefObject<HTMLElement | null>;
     commitGuard?: RefObject<boolean>;
     active?: ActiveMarks;
+    /** Whether any story variable is declared; the interpolation button hints when none exist. */
+    hasVariables?: boolean;
 }) {
     const [expanded, setExpanded] = useRichToolbarExpanded();
     const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -186,6 +188,14 @@ export function RichTextToolbar(props: {
             <div className="mx-0.5 h-4 w-px bg-white/10" />
             <button type="button" className={BTN} onClick={() => props.editor.current?.insertPause(true)} title="Insert pause (waits for a click)">
                 <PauseIcon className="h-3.5 w-3.5" />
+            </button>
+            <button
+                type="button"
+                className={BTN}
+                onClick={() => props.editor.current?.insertInterpolation({ kind: "variable", target: { scope: "scene", variableId: "" } })}
+                title={props.hasVariables ? "Insert variable value" : "Insert variable value (declare a variable first)"}
+            >
+                <Braces className="h-3.5 w-3.5" />
             </button>
         </div>
     ) : (
