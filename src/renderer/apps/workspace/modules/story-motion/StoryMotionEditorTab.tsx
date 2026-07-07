@@ -316,7 +316,8 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
                 return {
                     id: keyframe.id,
                     x: (value.xalign ?? 0.5) * stageSize.width + (value.xoffset ?? 0),
-                    y: (value.yalign ?? 0.55) * stageSize.height + (value.yoffset ?? 0),
+                    // SVG y runs top-down; the stage anchors from the bottom, so flip it.
+                    y: stageSize.height - ((value.yalign ?? 0.55) * stageSize.height + (value.yoffset ?? 0)),
                 };
             });
     }, [previewTimeline, stageSize]);
@@ -858,7 +859,9 @@ export function StoryMotionEditorTab({ tabId, payload }: EditorTabComponentProps
                 const position = {
                     ...startPreview.position,
                     xoffset: startPreview.position.xoffset + screenDx / stageZoom,
-                    yoffset: startPreview.position.yoffset + screenDy / stageZoom,
+                    // yoffset is measured up from the stage bottom (NLR origin), so dragging
+                    // the cursor down must decrease it for the frame to follow the pointer.
+                    yoffset: startPreview.position.yoffset - screenDy / stageZoom,
                 };
                 latestProperty = "position";
                 latestValue = position;

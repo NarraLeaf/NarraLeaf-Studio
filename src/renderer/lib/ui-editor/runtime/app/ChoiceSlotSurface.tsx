@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { GameMenu, Script, Word } from "narraleaf-react";
+import { GameMenu, Script, Word, useUIMenuContext, type ChoiceEvaluated } from "narraleaf-react";
 import type { UIStageSurface } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY } from "@shared/types/blueprint/hostApi";
 import {
@@ -9,21 +9,6 @@ import {
     useStageSlotSurfaceRuntime,
     type GameUiSlotHostOptions,
 } from "./StageSlotSurfaceShell";
-
-// TODO(nlr-gameui): restore the real imports once NLR publishes the Game UI Menu API.
-// `useUIMenuContext` and `ChoiceEvaluated` are not exported by narraleaf-react@0.10.0 yet (that
-// API is developed locally and unpublished). These local fallbacks keep Studio typechecking and
-// make the choice slot surface INERT (empty list, no-op choose) instead of crashing; delete them
-// and re-add the named imports above when the dependency ships.
-type ChoiceEvaluated = { words?: unknown; config?: unknown; [key: string]: unknown };
-type UIMenuContextLike = {
-    gameState: unknown;
-    evaluated: ChoiceEvaluated[];
-    choose: (choice: unknown) => void;
-};
-function useUIMenuContext(): UIMenuContextLike {
-    return { gameState: null, evaluated: [], choose: () => {} };
-}
 
 const CHOICE_LIST_WIDGET_TYPE = "nl.choice.list";
 

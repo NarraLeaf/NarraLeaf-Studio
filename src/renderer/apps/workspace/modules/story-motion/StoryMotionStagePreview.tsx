@@ -29,19 +29,39 @@ export function StoryMotionStagePreview(props: {
     const canvasScale = props.canvasScale ?? 1;
     const handleInvX = 1 / Math.max(0.05, Math.abs(canvasScale * props.preview.zoom * props.preview.scaleX));
     const handleInvY = 1 / Math.max(0.05, Math.abs(canvasScale * props.preview.zoom * props.preview.scaleY));
-    // NLR renders displayables at their natural resolution when zoom is 1, so the
-    // preview frame must adopt the image's intrinsic size instead of a fixed box.
     const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
     useEffect(() => {
         setNaturalSize(null);
     }, [url]);
     const naturalFrame = Boolean(url && naturalSize);
+    // NLR sizes an `autoFit` displayable to the full stage width (its configured width),
+    // taking only the aspect ratio from the image's intrinsic pixels; a non-autoFit image
+    // keeps its natural pixel footprint. Match whichever the bound target uses so the
+    // preview scale lines up with the runtime instead of appearing shrunk or blown up.
+    const autoFit = props.target.autoFit ?? props.target.kind === "character";
+    const stageWidth = props.stageSize?.width ?? 0;
+    const frameSize = useMemo(() => {
+        if (!naturalSize) {
+            return null;
+        }
+        if (autoFit && stageWidth > 0) {
+            return { width: stageWidth, height: stageWidth * naturalSize.height / naturalSize.width };
+        }
+        return naturalSize;
+    }, [autoFit, naturalSize, stageWidth]);
+    // The frame only carries placement (position, rotation, scale) so the control
+    // handles inherit it. Opacity and visual effects live on an inner wrapper so the
+    // handles are never dimmed, masked or filtered along with the displayable.
+    // Vertical placement is anchored from the bottom with a +50% translate to match NLR's
+    // default "bottom left" origin (yalign measured up from the bottom, +yoffset moves up).
     const targetStyle = useMemo<CSSProperties>(() => ({
         left: `calc(${props.preview.position.xalign * 100}% + ${props.preview.position.xoffset}px)`,
-        top: `calc(${props.preview.position.yalign * 100}% + ${props.preview.position.yoffset}px)`,
+        bottom: `calc(${props.preview.position.yalign * 100}% + ${props.preview.position.yoffset}px)`,
+        transform: `translate(-50%, 50%) rotate(${props.preview.rotation}deg) scale(${props.preview.zoom * props.preview.scaleX}, ${props.preview.zoom * props.preview.scaleY})`,
+        ...(naturalFrame && frameSize ? { width: frameSize.width, height: frameSize.height } : {}),
+    }), [frameSize, naturalFrame, props.preview]);
+    const contentStyle = useMemo<CSSProperties>(() => ({
         opacity: props.preview.opacity,
-        transform: `translate(-50%, -50%) rotate(${props.preview.rotation}deg) scale(${props.preview.zoom * props.preview.scaleX}, ${props.preview.zoom * props.preview.scaleY})`,
-        ...(naturalFrame ? { width: naturalSize!.width, height: naturalSize!.height } : {}),
         filter: props.preview.effects.filter,
         backdropFilter: props.preview.effects.backdropFilter,
         clipPath: props.preview.effects.clipPath,
@@ -51,7 +71,7 @@ export function StoryMotionStagePreview(props: {
         maskPosition: props.preview.effects.maskPosition,
         maskRepeat: props.preview.effects.maskRepeat,
         maskMode: props.preview.effects.maskMode as CSSProperties["maskMode"],
-    }), [naturalFrame, naturalSize, props.preview]);
+    }), [props.preview]);
 
     return (
         <div
@@ -77,12 +97,14 @@ export function StoryMotionStagePreview(props: {
                 style={targetStyle}
                 onPointerDown={interactive ? event => props.onPointerDrag(event, "position") : undefined}
             >
-                <PreviewContent
-                    target={props.target}
-                    url={url}
-                    fontColor={props.preview.effects.fontColor}
-                    onNaturalSize={setNaturalSize}
-                />
+                <div className="h-full w-full" style={contentStyle}>
+                    <PreviewContent
+                        target={props.target}
+                        url={url}
+                        fontColor={props.preview.effects.fontColor}
+                        onNaturalSize={setNaturalSize}
+                    />
+                </div>
                 {interactive ? (
                     <>
                         <div
