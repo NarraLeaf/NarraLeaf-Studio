@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
-import type { StoryTextMarks, StoryTextSegment } from "@shared/types/story";
+import { Braces, Pause } from "lucide-react";
+import type { StoryDocument, StorySceneId, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
+import { resolveInterpolationName } from "./storyInterpolation";
 
 function markStyle(marks: StoryTextMarks | undefined): CSSProperties | undefined {
     if (!marks) {
@@ -13,11 +15,20 @@ function markStyle(marks: StoryTextMarks | undefined): CSSProperties | undefined
     return Object.keys(style).length > 0 ? style : undefined;
 }
 
+const PAUSE_CHIP = "mx-0.5 inline-flex select-none items-center gap-0.5 rounded bg-primary/20 px-1 py-0.5 align-middle text-[10px] font-medium text-primary";
+const INTERP_CHIP = "mx-0.5 inline-flex select-none items-center gap-0.5 rounded bg-emerald-500/20 px-1 py-0.5 align-middle text-[10px] font-medium text-emerald-300";
+
 /**
  * Read-only WYSIWYG rendering of a text segment: rich marks (bold / italic / color / fontSize) are
- * applied inline; pause runs are omitted (they are not shown in the row preview).
+ * applied inline; pause and interpolation runs render as compact read-only chips (shown in the row
+ * preview). Pass `document` + `sceneId` to resolve interpolation variable names.
  */
-export function RichTextView(props: { segment: StoryTextSegment; className?: string }) {
+export function RichTextView(props: {
+    segment: StoryTextSegment;
+    className?: string;
+    document?: StoryDocument;
+    sceneId?: StorySceneId;
+}) {
     const { segment } = props;
     if (!segment.rich || segment.rich.length === 0) {
         return <span className={props.className}>{segment.value}</span>;
@@ -25,11 +36,27 @@ export function RichTextView(props: { segment: StoryTextSegment; className?: str
     return (
         <span className={props.className}>
             {segment.rich.map((run, index) => {
-                if (!("text" in run)) {
-                    return null;
+                if ("text" in run) {
+                    const style = markStyle(run.marks);
+                    return style ? <span key={index} style={style}>{run.text}</span> : <span key={index}>{run.text}</span>;
                 }
-                const style = markStyle(run.marks);
-                return style ? <span key={index} style={style}>{run.text}</span> : <span key={index}>{run.text}</span>;
+                if ("pause" in run) {
+                    return (
+                        <span key={index} className={PAUSE_CHIP} title={run.pause === true ? "Pause — waits for a click" : `Pause — ${run.pause}ms`}>
+                            <Pause className="h-2.5 w-2.5" />
+                            {run.pause === true ? null : <span>{run.pause}ms</span>}
+                        </span>
+                    );
+                }
+                const label = props.document && props.sceneId
+                    ? resolveInterpolationName(props.document, props.sceneId, [], run.interpolation)
+                    : "value";
+                return (
+                    <span key={index} className={INTERP_CHIP} title={`Inserted value: ${label}`}>
+                        <Braces className="h-2.5 w-2.5" />
+                        <span>{label}</span>
+                    </span>
+                );
             })}
         </span>
     );

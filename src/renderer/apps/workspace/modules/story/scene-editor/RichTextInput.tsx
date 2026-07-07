@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import type { StoryRichRun } from "@shared/types/story";
+import type { StoryInterpolationRef, StoryRichRun } from "@shared/types/story";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import {
     domToRuns,
@@ -12,6 +12,7 @@ import {
     spliceRuns,
     totalUnits,
     unitOffsetOfElement,
+    type ResolveInterpolationLabel,
 } from "./richText";
 
 export type ActiveMarks = { bold: boolean; italic: boolean; color?: string };
@@ -22,6 +23,12 @@ export type PauseClickInfo = {
     anchor: { top: number; left: number; bottom: number };
 };
 
+export type InterpolationClickInfo = {
+    unit: number;
+    value: StoryInterpolationRef;
+    anchor: { top: number; left: number; bottom: number };
+};
+
 export type RichTextInputHandle = {
     focus: () => void;
     toggleMark: (mark: "bold" | "italic") => void;
@@ -29,6 +36,9 @@ export type RichTextInputHandle = {
     insertPause: (pause: number | true) => void;
     updatePauseAt: (unit: number, pause: number | true) => void;
     removePauseAt: (unit: number) => void;
+    insertInterpolation: (interp: StoryInterpolationRef) => void;
+    updateInterpolationAt: (unit: number, interp: StoryInterpolationRef) => void;
+    removeInterpolationAt: (unit: number) => void;
 };
 
 export const RichTextInput = forwardRef<RichTextInputHandle, {
@@ -43,6 +53,8 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     onCancel: () => void;
     onBlur: () => void;
     onPauseClick?: (info: PauseClickInfo) => void;
+    onInterpolationClick?: (info: InterpolationClickInfo) => void;
+    resolveInterpolationLabel?: ResolveInterpolationLabel;
     onActiveMarksChange?: (marks: ActiveMarks) => void;
 }>(function RichTextInput(props, ref) {
     const editorRef = useRef<HTMLDivElement | null>(null);
@@ -53,6 +65,9 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     onChangeRef.current = props.onChange;
     const onActiveRef = useRef(props.onActiveMarksChange);
     onActiveRef.current = props.onActiveMarksChange;
+    // Kept in a ref so the DOM-render callbacks stay stable while labels refresh on rename.
+    const resolveLabelRef = useRef(props.resolveInterpolationLabel);
+    resolveLabelRef.current = props.resolveInterpolationLabel;
 
     useEffect(() => {
         const el = editorRef.current;
@@ -60,7 +75,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             return;
         }
         const runs = normalizeRuns(props.initialRuns);
-        renderRunsToElement(el, runs);
+        renderRunsToElement(el, runs, resolveLabelRef.current);
         el.focus();
         const end = totalUnits(runs);
         setSelectionUnitRange(el, end, end);
@@ -158,7 +173,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             return;
         }
         const runs = spliceRuns(domToRuns(el), start, start + deleteCount, insert);
-        renderRunsToElement(el, runs);
+        renderRunsToElement(el, runs, resolveLabelRef.current);
         if (globalThis.document.activeElement === el) {
             const pos = caretAfter ? start + insert.length : start;
             setSelectionUnitRange(el, pos, pos);
@@ -166,7 +181,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         emitChange();
     }, [emitChange]);
 
-    const insertPause = useCallback((pause: number | true) => {
+    const insertRun = useCallback((run: StoryRichRun) => {
         const el = editorRef.current;
         if (!el) {
             return;
@@ -176,12 +191,15 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         if (!range) {
             return;
         }
-        const runs = spliceRuns(domToRuns(el), range.start, range.end, [{ pause }]);
-        renderRunsToElement(el, runs);
+        const runs = spliceRuns(domToRuns(el), range.start, range.end, [run]);
+        renderRunsToElement(el, runs, resolveLabelRef.current);
         setSelectionUnitRange(el, range.start + 1, range.start + 1);
         savedRange.current = { start: range.start + 1, end: range.start + 1 };
         emitChange();
     }, [emitChange]);
+
+    const insertPause = useCallback((pause: number | true) => insertRun({ pause }), [insertRun]);
+    const insertInterpolation = useCallback((interp: StoryInterpolationRef) => insertRun({ interpolation: interp }), [insertRun]);
 
     useImperativeHandle(ref, () => ({
         focus: () => { editorRef.current?.focus(); },
@@ -190,7 +208,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         insertPause,
         updatePauseAt: (unit, pause) => spliceUnits(unit, 1, [{ pause }], true),
         removePauseAt: (unit) => spliceUnits(unit, 1, [], false),
-    }), [applyExec, insertPause, spliceUnits]);
+        insertInterpolation,
+        updateInterpolationAt: (unit, interp) => spliceUnits(unit, 1, [{ interpolation: interp }], true),
+        removeInterpolationAt: (unit) => spliceUnits(unit, 1, [], false),
+    }), [applyExec, insertPause, insertInterpolation, spliceUnits]);
 
     return (
         <div
@@ -213,6 +234,23 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                         value: chip.dataset.pause === "click" ? true : Number(chip.dataset.pause) || true,
                         anchor: { top: rect.top, left: rect.left, bottom: rect.bottom },
                     });
+                }
+                const interpChip = (event.target as HTMLElement).closest?.("[data-interp]") as HTMLElement | null;
+                if (el && interpChip && el.contains(interpChip) && props.onInterpolationClick) {
+                    let value: StoryInterpolationRef | null = null;
+                    try {
+                        value = JSON.parse(interpChip.dataset.interp ?? "") as StoryInterpolationRef;
+                    } catch {
+                        value = null;
+                    }
+                    if (value) {
+                        const rect = interpChip.getBoundingClientRect();
+                        props.onInterpolationClick({
+                            unit: unitOffsetOfElement(el, interpChip),
+                            value,
+                            anchor: { top: rect.top, left: rect.left, bottom: rect.bottom },
+                        });
+                    }
                 }
             }}
             onInput={emitChange}
