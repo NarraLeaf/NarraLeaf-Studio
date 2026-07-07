@@ -1,11 +1,38 @@
-import type { StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
+import type { StoryInterpolationRef, StoryRichRun, StoryTextMarks, StoryTextSegment } from "@shared/types/story";
 
 /** Pause chip class (a literal so Tailwind's content scan can see it). */
 const PAUSE_CHIP_CLASS = "story-rt-pause mx-0.5 inline-flex cursor-pointer select-none items-center rounded bg-primary/20 px-1 py-0.5 align-middle text-[10px] font-medium text-primary hover:bg-primary/30";
 const PAUSE_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="14" y="4" width="4" height="16" rx="1"></rect><rect x="6" y="4" width="4" height="16" rx="1"></rect></svg>';
 
+/** Interpolation chip class (variable / blueprint value). */
+const INTERP_CHIP_CLASS = "story-rt-interp mx-0.5 inline-flex cursor-pointer select-none items-center rounded bg-emerald-500/20 px-1 py-0.5 align-middle text-[10px] font-medium text-emerald-300 hover:bg-emerald-500/30";
+const INTERP_ICON_SVG = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1"></path><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"></path></svg>';
+
+export type ResolveInterpolationLabel = (interp: StoryInterpolationRef) => string;
+
 export function isTextRun(run: StoryRichRun): run is { text: string; marks?: StoryTextMarks } {
     return "text" in run;
+}
+
+export function isInterpolationRun(run: StoryRichRun): run is { interpolation: StoryInterpolationRef } {
+    return "interpolation" in run;
+}
+
+/** True for any atomic inline chip (pause or interpolation) that counts as a single unit. */
+function isChipElement(el: HTMLElement): boolean {
+    return el.dataset.pause !== undefined || el.dataset.interp !== undefined;
+}
+
+function parseInterpolation(raw: string): StoryInterpolationRef | null {
+    try {
+        const parsed = JSON.parse(raw) as StoryInterpolationRef;
+        if (parsed && (parsed.kind === "variable" || parsed.kind === "blueprint")) {
+            return parsed;
+        }
+    } catch {
+        // fall through
+    }
+    return null;
 }
 
 /** Plain-text projection of rich runs (pause runs contribute nothing). */
@@ -70,6 +97,8 @@ export function normalizeRuns(runs: StoryRichRun[]): StoryRichRun[] {
             } else {
                 out.push(marks ? { text: run.text, marks } : { text: run.text });
             }
+        } else if (isInterpolationRun(run)) {
+            out.push({ interpolation: run.interpolation });
         } else {
             out.push({ pause: run.pause });
         }
@@ -160,13 +189,31 @@ export function createPauseChip(pause: number | true): HTMLSpanElement {
     return span;
 }
 
+export function createInterpolationChip(interp: StoryInterpolationRef, label: string): HTMLSpanElement {
+    const span = globalThis.document.createElement("span");
+    span.dataset.interp = JSON.stringify(interp);
+    span.contentEditable = "false";
+    span.className = INTERP_CHIP_CLASS;
+    span.setAttribute("role", "button");
+    span.title = `Insert value: ${label}`;
+    // INTERP_ICON_SVG is a trusted static string; the label is set via textContent (no HTML injection).
+    span.innerHTML = INTERP_ICON_SVG;
+    const labelSpan = globalThis.document.createElement("span");
+    labelSpan.className = "ml-0.5";
+    labelSpan.textContent = label;
+    span.appendChild(labelSpan);
+    return span;
+}
+
 /** Render rich runs into a contentEditable root, replacing its content. */
-export function renderRunsToElement(root: HTMLElement, runs: StoryRichRun[]): void {
+export function renderRunsToElement(root: HTMLElement, runs: StoryRichRun[], resolveLabel?: ResolveInterpolationLabel): void {
     root.textContent = "";
     for (const run of runs) {
         if (isTextRun(run)) {
             const marks = cleanMarks(run.marks);
             root.appendChild(marks ? createMarkSpan(run.text, marks) : globalThis.document.createTextNode(run.text));
+        } else if (isInterpolationRun(run)) {
+            root.appendChild(createInterpolationChip(run.interpolation, resolveLabel?.(run.interpolation) ?? "value"));
         } else {
             root.appendChild(createPauseChip(run.pause));
         }
@@ -191,6 +238,13 @@ export function domToRuns(root: HTMLElement): StoryRichRun[] {
             const el = child as HTMLElement;
             if (el.dataset.pause !== undefined) {
                 runs.push({ pause: parsePauseValue(el.dataset.pause) });
+                return;
+            }
+            if (el.dataset.interp !== undefined) {
+                const interp = parseInterpolation(el.dataset.interp);
+                if (interp) {
+                    runs.push({ interpolation: interp });
+                }
                 return;
             }
             if (el.tagName === "BR") {
@@ -323,7 +377,7 @@ function countUnits(node: Node): number {
             total += child.textContent?.length ?? 0;
         } else if (child.nodeType === Node.ELEMENT_NODE) {
             const el = child as HTMLElement;
-            total += el.dataset.pause !== undefined ? 1 : countUnits(el);
+            total += isChipElement(el) ? 1 : countUnits(el);
         }
     });
     return total;
@@ -365,7 +419,7 @@ function pointAt(root: HTMLElement, target: number): { node: Node; offset: numbe
                 remaining -= len;
             } else if (child.nodeType === Node.ELEMENT_NODE) {
                 const el = child as HTMLElement;
-                if (el.dataset.pause !== undefined) {
+                if (isChipElement(el)) {
                     if (remaining === 0) {
                         result = { node, offset: index };
                         return;

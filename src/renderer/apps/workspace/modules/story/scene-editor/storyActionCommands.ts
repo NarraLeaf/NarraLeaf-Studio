@@ -45,6 +45,7 @@ export type ActionCommandId =
     | "soundRate"
     | "muteSound"
     | "setVariable"
+    | "executeScript"
     | "imageCreate"
     | "imageSetSource"
     | "imageShow"
@@ -141,6 +142,7 @@ export const ACTION_COMMANDS: ActionCommand[] = [
     { id: "waitDuration", category: "control", label: "Wait duration", detail: "Control.sleep milliseconds", icon: Clock, nlrCapability: "Control.sleep" },
     { id: "waitClick", category: "control", label: "Wait click", detail: "Control.waitForClick", icon: Clock, nlrCapability: "Control.waitForClick" },
     { id: "setVariable", category: "data", label: "Set variable", detail: "Scene local or Story persistent value", icon: Variable, nlrCapability: "Persistent.set" },
+    { id: "executeScript", category: "data", label: "Execute Script", detail: "Run a Story Action Blueprint", icon: Puzzle, nlrCapability: "Script.execute" },
     { id: "imageCreate", category: "image", label: "Image", detail: "Create or update a named stage image", icon: Image, nlrCapability: "Image" },
     { id: "imageSetSource", category: "image", label: "Image source", detail: "Change a named image source", icon: Image, nlrCapability: "Image.char" },
     { id: "imageShow", category: "image", label: "Image show", detail: "Show a named image", icon: Eye, nlrCapability: "Displayable.show" },
@@ -248,6 +250,8 @@ export function createBlockForCommand(commandId: ActionCommandId, generateId: ()
             return { ...base, kind: "action", payload: { action: "audio", operation: "muteSound", objectName: "sound", muted: true } };
         case "setVariable":
             return { ...base, kind: "action", payload: { action: "setVariable", target: { scope: "scene", variableId: "" }, value: initialText || true } };
+        case "executeScript":
+            return { ...base, kind: "action", payload: { action: "blueprint", blueprintId: "" } };
         case "imageCreate":
             return { ...base, kind: "action", payload: { action: "image", operation: "create", objectName: "image", transform: { preset: "center" } } };
         case "imageSetSource":

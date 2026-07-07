@@ -22,8 +22,11 @@ import {
     type ActionCommandId,
 } from "./storyActionCommands";
 import { ActionInspector } from "./StorySceneActionInspector";
-import { RichTextInput, type ActiveMarks, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
+import { RichTextInput, type ActiveMarks, type InterpolationClickInfo, type PauseClickInfo, type RichTextInputHandle } from "./RichTextInput";
 import { RichTextToolbar } from "./RichTextToolbar";
+import { InterpolationPopover } from "./InterpolationPopover";
+import { collectStoryVariableOptions, resolveInterpolationName, type PersistentVariableOption } from "./storyInterpolation";
+import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { RichTextView } from "./RichTextView";
 import { PausePopover } from "./PausePopover";
 import { segmentToRuns } from "./richText";
@@ -143,6 +146,8 @@ export function StoryBlockRow(props: {
                             onInsertDialogueAfterCurrent={props.onInsertDialogueAfterCurrent}
                             onInsertAfter={props.onInsertAfter}
                             block={block}
+                            scene={scene}
+                            document={document}
                             characters={characters}
                             onSetDialogueCharacter={props.onSetDialogueCharacter}
                         />
@@ -194,6 +199,8 @@ function TextEditBox(props: {
     onInsertDialogueAfterCurrent: () => void;
     onInsertAfter: () => void;
     block: StoryBlock;
+    scene: StoryScene;
+    document: StoryDocument;
     characters: Character[];
     onSetDialogueCharacter: (characterId: string | undefined) => void;
 }) {
@@ -202,6 +209,32 @@ function TextEditBox(props: {
         : null;
     const initialRuns = useMemo(() => segmentToRuns(getTextSegment(props.block)), [props.block]);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const { context, isInitialized } = useWorkspace();
+    const [persistentVars, setPersistentVars] = useState<PersistentVariableOption[]>([]);
+    useEffect(() => {
+        if (!context || !isInitialized) return;
+        const service = context.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const read = () =>
+            setPersistentVars(
+                service.listPersistentVariables().map(variable => ({
+                    storageKey: variable.storageKey,
+                    name: variable.name,
+                    valueType: (variable.valueType as PersistentVariableOption["valueType"]) ?? "string",
+                })),
+            );
+        read();
+        return service.onBlueprintHistoryChanged(read);
+    }, [context, isInitialized]);
+    const variableOptions = useMemo(
+        () => collectStoryVariableOptions(props.document, props.scene.id, persistentVars),
+        [props.document, props.scene.id, persistentVars],
+    );
+    const resolveInterpolationLabel = useMemo(
+        () => (interp: Parameters<typeof resolveInterpolationName>[3]) =>
+            resolveInterpolationName(props.document, props.scene.id, persistentVars, interp),
+        [props.document, props.scene.id, persistentVars],
+    );
+    const [interpEdit, setInterpEdit] = useState<InterpolationClickInfo | null>(null);
     // While a toolbar popover (color palette, pause config) is open, blur must not commit.
     const commitGuardRef = useRef(false);
     // Timestamp of the most recent pointerdown on the floating toolbar. Any blur that follows
@@ -233,6 +266,16 @@ function TextEditBox(props: {
         props.editorRef.current?.focus();
     };
 
+    const openInterp = (info: InterpolationClickInfo) => {
+        commitGuardRef.current = true;
+        setInterpEdit(info);
+    };
+    const closeInterp = () => {
+        commitGuardRef.current = false;
+        setInterpEdit(null);
+        props.editorRef.current?.focus();
+    };
+
     const handleBlur = () => {
         // Defer so focus can settle.
         window.setTimeout(() => {
@@ -254,7 +297,7 @@ function TextEditBox(props: {
 
     return (
         <div ref={containerRef} className="relative flex min-w-0 flex-1 items-stretch overflow-visible rounded border border-primary/50 bg-black/30">
-            <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} />
+            <RichTextToolbar editor={props.editorRef} anchorRef={containerRef} commitGuard={commitGuardRef} active={activeMarks} hasVariables={variableOptions.scene.length + variableOptions.saved.length + variableOptions.persistent.length > 0} />
             {dialoguePayload ? (
                 <CharacterSelectTrigger
                     characters={props.characters}
@@ -276,6 +319,8 @@ function TextEditBox(props: {
                 onEnter={() => { props.onCommitTextEdit(); props.onInsertAfter(); }}
                 onShiftEnter={dialoguePayload ? props.onInsertDialogueAfterCurrent : undefined}
                 onPauseClick={openPause}
+                onInterpolationClick={openInterp}
+                resolveInterpolationLabel={resolveInterpolationLabel}
                 onActiveMarksChange={setActiveMarks}
             />
             {pauseEdit ? (
@@ -291,6 +336,22 @@ function TextEditBox(props: {
                         closePause();
                     }}
                     onClose={closePause}
+                />
+            ) : null}
+            {interpEdit ? (
+                <InterpolationPopover
+                    anchor={interpEdit.anchor}
+                    value={interpEdit.value}
+                    options={variableOptions}
+                    onChange={interp => {
+                        props.editorRef.current?.updateInterpolationAt(interpEdit.unit, interp);
+                        setInterpEdit(current => (current ? { ...current, value: interp } : current));
+                    }}
+                    onRemove={() => {
+                        props.editorRef.current?.removeInterpolationAt(interpEdit.unit);
+                        closeInterp();
+                    }}
+                    onClose={closeInterp}
                 />
             ) : null}
         </div>
@@ -936,7 +997,7 @@ function BlockPreview(props: {
     const text = getTextSegment(block);
     const textStyle = useStoryEditorTextStyle();
     if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
-        const hasValue = Boolean(text?.value);
+        const hasValue = Boolean(text?.value) || Boolean(text?.rich && text.rich.length > 0);
         return (
             <div className="flex min-w-0 items-start gap-2 text-sm">
                 <CharacterSelectTrigger
@@ -949,20 +1010,20 @@ function BlockPreview(props: {
                     event.stopPropagation();
                     props.onTextDoubleClick();
                 }}>
-                    {hasValue && text ? <RichTextView segment={text} /> : "Double-click to enter dialogue"}
+                    {hasValue && text ? <RichTextView segment={text} document={props.document} sceneId={props.scene.id} /> : "Double-click to enter dialogue"}
                 </span>
             </div>
         );
     }
     if (text) {
-        const hasValue = Boolean(text.value);
+        const hasValue = Boolean(text.value) || Boolean(text.rich && text.rich.length > 0);
         const note = block.kind === "note";
         return (
             <span className={["min-w-0 flex-1 whitespace-pre-wrap break-words", note ? "italic text-slate-400" : hasValue ? "text-slate-100" : "italic text-slate-500"].join(" ")} style={textStyle} onDoubleClick={event => {
                 event.stopPropagation();
                 props.onTextDoubleClick();
             }}>
-                {hasValue ? <RichTextView segment={text} /> : getEmptyTextPlaceholder(block)}
+                {hasValue ? <RichTextView segment={text} document={props.document} sceneId={props.scene.id} /> : getEmptyTextPlaceholder(block)}
             </span>
         );
     }

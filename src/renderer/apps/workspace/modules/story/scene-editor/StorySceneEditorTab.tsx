@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { FileText, Image as ImageIcon, ListPlus, Plus, Trash2 } from "lucide-react";
+import { FileText, Image as ImageIcon, ListPlus, Plus, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
@@ -21,6 +21,7 @@ import {
     type StoryActionCreateRequestDetail,
 } from "./storyActionCreatorEvents";
 import { STORY_MOTION_PANEL_ID } from "../../story-motion";
+import { StoryVariablesPanel, STORY_VARIABLES_PANEL_ID } from "../../story-variables";
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { StoryEditorTextStyleProvider } from "./storyEditorTextStyle";
 import { getTextSegment } from "./storySceneBlockUtils";
@@ -334,6 +335,45 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
         }
         const uiService = editor.context.services.get<UIService>(Services.UI);
         uiService.panels.updatePayload(STORY_ACTION_CREATOR_PANEL_ID, {
+            tabId,
+            storyId: payload.storyId,
+            sceneId: payload.sceneId,
+            storyName: editor.document?.name,
+            sceneName: editor.scene?.name,
+        });
+    }, [editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
+
+    useEffect(() => {
+        if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+            return;
+        }
+        const uiService = editor.context.services.get<UIService>(Services.UI);
+        const unregister = uiService.panels.register({
+            id: STORY_VARIABLES_PANEL_ID,
+            title: "Story Variables",
+            icon: <Variable className="w-4 h-4" />,
+            position: PanelPosition.Right,
+            component: StoryVariablesPanel,
+            defaultVisible: false,
+            order: 11,
+            payload: {
+                tabId,
+                storyId: payload.storyId,
+                sceneId: payload.sceneId,
+            },
+        });
+        return () => {
+            uiService.panels.hide(STORY_VARIABLES_PANEL_ID);
+            unregister();
+        };
+    }, [editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId]);
+
+    useEffect(() => {
+        if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+            return;
+        }
+        const uiService = editor.context.services.get<UIService>(Services.UI);
+        uiService.panels.updatePayload(STORY_VARIABLES_PANEL_ID, {
             tabId,
             storyId: payload.storyId,
             sceneId: payload.sceneId,

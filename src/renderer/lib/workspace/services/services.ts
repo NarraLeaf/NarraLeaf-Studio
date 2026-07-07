@@ -96,6 +96,7 @@ enum Services {
     GlobalSettings = "globalSettings",
     ServiceAssets = "serviceAssets",
     PanelState = "panelState",
+    RecentColors = "recentColors",
     UIDocument = "uiDocument",
     RuntimeBridge = "runtimeBridge",
     UIEditorState = "uiEditorState",

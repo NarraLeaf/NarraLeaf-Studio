@@ -379,9 +379,19 @@ export type StoryTextMarks = {
     fontSize?: number;
 };
 
+/**
+ * Inline text interpolation (phase 2): a rich-text run that renders a computed value.
+ *  - "variable": the current value of a scene/saved/persistent variable (NLR dynamic word).
+ *  - "blueprint": the Return Value of a Story Action Blueprint's On Call graph.
+ */
+export type StoryInterpolationRef =
+    | { kind: "variable"; target: StoryVariableRef }
+    | { kind: "blueprint"; blueprintId: string };
+
 export type StoryRichRun =
     | { text: string; marks?: StoryTextMarks }
-    | { pause: number | true };
+    | { pause: number | true }
+    | { interpolation: StoryInterpolationRef };
 
 export type StoryVariableRef =
     | { scope: "scene"; variableId: string }
