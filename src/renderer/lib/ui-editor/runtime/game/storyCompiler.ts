@@ -50,7 +50,14 @@ import type {
 import { resolveDisplayableTargetRef } from "@shared/types/story";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
-import { compileStoryActionBlueprintToScript, collectSceneStoryActionFns, type StoryActionFnCatalog } from "./storyActionBlueprint";
+import type { ScriptCtx } from "narraleaf-react";
+import {
+    compileStoryActionBlueprintToScript,
+    collectSceneStoryActionFns,
+    evaluateStoryActionBlueprintValueSync,
+    type CompileStoryActionScriptInput,
+    type StoryActionFnCatalog,
+} from "./storyActionBlueprint";
 
 /**
  * App-level persistent variable bridge (shared with UI blueprints). `get` reads a cached snapshot
@@ -413,13 +420,47 @@ function segmentHasInterpolation(segment: StoryTextSegment): boolean {
     return Boolean(segment.rich?.some(run => "interpolation" in run));
 }
 
+/**
+ * Assemble the shared compile input for a scene's Story Action Blueprints — used by both block-level
+ * actions (compiled to a `Script`) and inline interpolations (evaluated synchronously). Callers must
+ * ensure `ctx.blueprintDocument` is present.
+ */
+function buildStoryActionScriptInput(
+    ctx: SceneCompileContext,
+    blueprintId: string,
+    onDiagnostic: (message: string) => void,
+): CompileStoryActionScriptInput {
+    return {
+        blueprintDocument: ctx.blueprintDocument as BlueprintDocument,
+        blueprintId,
+        nlrScene: ctx.nlrScene,
+        sceneFnCatalog: ctx.sceneFnCatalog,
+        sceneVariables: ctx.scene.sceneVariables ?? {},
+        savedVariables: ctx.document.savedVariables ?? {},
+        savedNamespace: SAVED_PERSISTENT_NAMESPACE,
+        persistence: ctx.persistence,
+        onDiagnostic,
+    };
+}
+
 /** Compile an inline interpolation run to an NLR word (a dynamic value shown in dialogue). */
 function buildInterpolationWord(ctx: SceneCompileContext, interp: StoryInterpolationRef, blockId: string): unknown | null {
     if (interp.kind === "blueprint") {
-        // A blueprint's Return Value is produced by the async graph interpreter, which cannot back a
-        // synchronous NLR dynamic word. Inline blueprint interpolation needs a sync evaluator (follow-up).
-        diagnostic(ctx, "warning", blockId, "Blueprint text interpolation is not yet evaluated inline and was skipped.");
-        return null;
+        if (!ctx.blueprintDocument) {
+            diagnostic(ctx, "warning", blockId, "Blueprint text interpolation needs the project blueprint document; interpolation skipped.");
+            return null;
+        }
+        // Inline blueprints are restricted to synchronous nodes, so the "On Call" Return Value can be
+        // evaluated in-line by a dynamic word. Any async node reached at runtime throws and renders empty.
+        const input = buildStoryActionScriptInput(ctx, interp.blueprintId, message => diagnostic(ctx, "warning", blockId, message));
+        return new Word((((scriptCtx: ScriptCtx) => {
+            try {
+                const value = evaluateStoryActionBlueprintValueSync(input, scriptCtx);
+                return value === null || value === undefined ? "" : String(value);
+            } catch {
+                return "";
+            }
+        }) as unknown) as any);
     }
     const target = interp.target;
     if (target.scope === "scene") {
@@ -496,17 +537,9 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
             diagnostic(ctx, "warning", block.id, "Story Action Blueprint needs the project blueprint document; the action was skipped.");
             return [];
         }
-        const script = compileStoryActionBlueprintToScript({
-            blueprintDocument: ctx.blueprintDocument,
-            blueprintId: payload.blueprintId,
-            nlrScene: ctx.nlrScene,
-            sceneFnCatalog: ctx.sceneFnCatalog,
-            sceneVariables: ctx.scene.sceneVariables ?? {},
-            savedVariables: ctx.document.savedVariables ?? {},
-            savedNamespace: SAVED_PERSISTENT_NAMESPACE,
-            persistence: ctx.persistence,
-            onDiagnostic: message => diagnostic(ctx, "warning", block.id, message),
-        });
+        const script = compileStoryActionBlueprintToScript(
+            buildStoryActionScriptInput(ctx, payload.blueprintId, message => diagnostic(ctx, "warning", block.id, message)),
+        );
         return script ? [recordStatement(ctx, script, block)] : [];
     }
 

@@ -582,7 +582,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
      * Ensure the implicit Story Action Blueprint exists for a story action. Self-referential owner:
      * the owner key equals the blueprint id. Seeds a single "On Call" event graph. Returns the id.
      */
-    public ensureStoryActionBlueprint(input?: { blueprintId?: string; displayName?: string }): string {
+    public ensureStoryActionBlueprint(input?: { blueprintId?: string; displayName?: string; mode?: "action" | "value" }): string {
         const uuid = this.getContext().services.get<UuidService>(Services.Uuid);
         const id = input?.blueprintId || uuid.generate();
         const key = storyActionOwnerKey(id);
@@ -595,21 +595,30 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             }
             const blueprint = createMainBlueprint({
                 id,
-                name: input?.displayName ?? "Story Action",
-                owner: { kind: "storyAction", blueprintId: id },
+                name: input?.displayName ?? (input?.mode === "value" ? "Story Value" : "Story Action"),
+                owner: { kind: "storyAction", blueprintId: id, ...(input?.mode ? { mode: input.mode } : {}) },
             });
             if (blueprint.program.kind === "graph") {
-                const headId = uuid.generate();
+                // Value mode (inline interpolation) opens ready to return a value: On Call → Return Value
+                // ← "" string literal. Action mode (a story action block) runs for side effects, so it
+                // only needs the On Call head.
+                const graph = input?.mode === "value"
+                    ? createValueGraphIr({
+                          headNodeType: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
+                          valueType: "string",
+                          literalValue: "",
+                          generateId: () => uuid.generate(),
+                      })
+                    : (() => {
+                          const headId = uuid.generate();
+                          return {
+                              nodes: { [headId]: { id: headId, type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL, params: {} } },
+                              edges: [],
+                              meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
+                          };
+                      })();
                 blueprint.program.graphs.events = {
-                    onCall: {
-                        id: "onCall",
-                        name: "On Call",
-                        graph: {
-                            nodes: { [headId]: { id: headId, type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL, params: {} } },
-                            edges: [],
-                            meta: { [BLUEPRINT_GRAPH_IR_META_KIND]: "event" },
-                        },
-                    },
+                    onCall: { id: "onCall", name: "On Call", graph },
                 };
             }
             doc.blueprints[id] = blueprint;

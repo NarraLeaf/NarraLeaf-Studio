@@ -261,6 +261,12 @@ export type BlueprintPaletteContext = {
     hasFunctionEntry?: boolean;
     /** Blueprint Value graphs have a restricted palette and value-return sink. */
     isBlueprintValueGraph?: boolean;
+    /**
+     * Sync-only graphs (e.g. inline story value blueprints) forbid async/"latent" nodes but still
+     * allow synchronous exec nodes (branches, Get/Set var). Distinct from `isBlueprintValueGraph`,
+     * which additionally restricts to the pure widget-value node whitelist.
+     */
+    isSyncOnlyGraph?: boolean;
     /** Current widget owner is rendered inside an nl.list item template. */
     listItemContextAvailable?: boolean;
     /** Bound Element Literal nodes in the active graph, same Surface only. */

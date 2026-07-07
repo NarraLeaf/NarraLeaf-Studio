@@ -22,6 +22,7 @@ import type {
 } from "@shared/types/story";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
 import { executeGraph } from "@/lib/ui-editor/behavior-graph/GraphExecutor";
+import { executeGraphSync } from "@/lib/ui-editor/behavior-graph/executeGraphSync";
 import { isBlueprintGraphExecutionCancelledError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import { writeBlueprintNodeOutputValues } from "@/lib/ui-editor/blueprint-nodes/nodeOutputValues";
 import { findBlueprintFnByRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
@@ -115,21 +116,40 @@ export function compileStoryActionBlueprintToScript(input: CompileStoryActionScr
 }
 
 /**
- * PHASE 2 (reserved): compile the same graph into a value producer for inline text interpolation.
- * Runs the "On Call" graph and resolves to the captured Return Value. No authoring UI is wired yet.
+ * Evaluate a Story Action Blueprint's "On Call" graph SYNCHRONOUSLY and return its captured Return
+ * Value. Used for inline text interpolation, where a NarraLeaf-React dynamic `Word` must produce a
+ * value in the same tick and cannot await. Inline blueprints are restricted to synchronous nodes at
+ * authoring time (no `isLatent`/async nodes); if an async node is nonetheless reached, `executeGraphSync`
+ * throws `AsyncNodeInSyncGraphError`, which the caller catches and renders as empty. Returns `undefined`
+ * when the blueprint is missing or is not a graph.
  */
-export function compileStoryActionBlueprintToValue(
-    input: CompileStoryActionScriptInput,
-): (ctx: ScriptCtx) => Promise<unknown> {
-    return async (ctx: ScriptCtx) => {
-        const bp = resolveActiveStoryActionBlueprint(input.blueprintDocument, input.blueprintId);
-        if (!bp || bp.program.kind !== "graph") {
-            return undefined;
+export function evaluateStoryActionBlueprintValueSync(input: CompileStoryActionScriptInput, ctx: ScriptCtx): unknown {
+    const bp = resolveActiveStoryActionBlueprint(input.blueprintDocument, input.blueprintId);
+    if (!bp || bp.program.kind !== "graph") {
+        return undefined;
+    }
+    // No async work runs synchronously, so a never-aborting signal suffices for the host adapter.
+    const hostAdapter = buildStoryActionHostAdapter(input, ctx, new AbortController().signal);
+    let lastReturn: unknown;
+    for (const eventGraph of Object.values(bp.program.graphs.events ?? {})) {
+        const ir = eventGraph.graph;
+        const headIds = collectStoryActionEventHeadNodeIdsForDispatch(ir?.nodes);
+        if (headIds.length === 0 || !ir) continue;
+        const graph = adaptBlueprintGraphIr(ir, `storyActionValue:${bp.id}:${eventGraph.id}`);
+        for (const headId of headIds) {
+            const result = executeGraphSync({
+                graph,
+                entry: { start: { nodeId: headId, port: "then" as const } },
+                hostAdapter,
+                blueprintLocals: {},
+                eventName: "onCall",
+                executionOwner: { blueprintId: bp.id },
+                persistentVariables: input.blueprintDocument.persistentVariables,
+            });
+            if (result.returnValueSet) lastReturn = result.returnValue;
         }
-        const abort = new AbortController();
-        const hostAdapter = buildStoryActionHostAdapter(input, ctx, abort.signal);
-        return runStoryActionOnCall({ input, hostAdapter, signal: abort.signal });
-    };
+    }
+    return lastReturn;
 }
 
 type StorableNamespaceLike = {

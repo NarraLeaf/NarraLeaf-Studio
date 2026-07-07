@@ -34,6 +34,7 @@ import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
+import { StoryActionBlueprintPreviewCard } from "./StoryActionBlueprintPreviewCard";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
@@ -407,7 +408,7 @@ function InspectorFields(props: {
         const payload = block.payload;
         if (payload.action === "narration") {
             return (
-                <div className="grid gap-2">
+                <div className="grid grid-cols-1 gap-2">
                     <div className="text-xs text-slate-500">Double-click the row to edit narration text.</div>
                     <TextIdReadout text={payload.text} />
                 </div>
@@ -424,7 +425,7 @@ function InspectorFields(props: {
             const pauseEnabled = payload.pauseAfter !== undefined;
             const pauseMs = typeof payload.pauseAfter === "number" ? payload.pauseAfter : undefined;
             return (
-                <div className="grid gap-2">
+                <div className="grid grid-cols-1 gap-2">
                     <FieldGrid cols={2}>
                         <SelectField
                             label="Character"
@@ -466,7 +467,7 @@ function InspectorFields(props: {
         }
         if (payload.action === "choiceOption") {
             return (
-                <div className="grid gap-2">
+                <div className="grid grid-cols-1 gap-2">
                     <TextSegmentEditor
                         label="Option text"
                         text={payload.text}
@@ -475,7 +476,7 @@ function InspectorFields(props: {
                         onChange={text => props.onUpdatePayload({ ...payload, text })}
                     />
                     <Section title="Conditions">
-                        <div className="grid gap-2">
+                        <div className="grid grid-cols-1 gap-2">
                             <div>
                                 <div className={FIELD_LABEL_CLASS}>Hidden when</div>
                                 <ConditionRefEditor
@@ -559,7 +560,7 @@ function SetVariableEditor(props: {
     const options = useStoryVariableOptions(props.document, props.sceneId);
     const valueType = resolveRefValueType(props.payload.target, options);
     return (
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="nl-field-grid">
             <VariableRefPicker
                 value={props.payload.target}
                 options={options}
@@ -592,18 +593,11 @@ function StoryActionBlueprintEditor(props: {
     }, [context, isInitialized, openBlueprint, props]);
     return (
         <Section title="Blueprint">
-            <div className="flex flex-col gap-2">
-                <div className="text-[11px] text-slate-500">
-                    Runs a Story Action Blueprint. Open the editor to author its On Call logic.
-                </div>
-                <button
-                    type="button"
-                    className="h-8 w-fit rounded-md border border-white/10 px-3 text-xs text-slate-200 hover:border-primary/50 hover:text-white"
-                    onClick={handleOpen}
-                >
-                    Open blueprint editor
-                </button>
-            </div>
+            <StoryActionBlueprintPreviewCard
+                blueprintId={props.payload.blueprintId}
+                onOpen={handleOpen}
+                note="Runs this blueprint's On Call logic when the action executes. Click to edit."
+            />
         </Section>
     );
 }
@@ -640,8 +634,8 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "audio") {
         return (
-            <div className="grid gap-3">
-                <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3">
+                <div className="nl-field-grid">
                     <SelectField
                         label="Operation"
                         options={AUDIO_OPERATION_OPTIONS}
@@ -672,7 +666,7 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "wait") {
         return (
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="nl-field-grid nl-field-grid-2">
                 <SelectField
                     label="Mode"
                     options={WAIT_MODE_OPTIONS}
@@ -685,8 +679,8 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "image") {
         return (
-            <div className="grid gap-3">
-                <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3">
+                <div className="nl-field-grid">
                     <SelectField
                         label="Operation"
                         options={IMAGE_OPERATION_OPTIONS}
@@ -721,7 +715,7 @@ function ActionPayloadFields(props: {
         const isEffect = DISPLAYABLE_EFFECT_OPERATIONS.has(payload.operation);
         const resolvedTarget = resolveDisplayableTargetRef(props.document.scenes[props.sceneId], payload.target);
         return (
-            <div className="grid gap-3">
+            <div className="grid grid-cols-1 gap-3">
                 <FieldGrid cols={2}>
                     <SelectField
                         label="Operation"
@@ -756,8 +750,8 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "text") {
         return (
-            <div className="grid gap-3">
-                <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3">
+                <div className="nl-field-grid">
                     <SelectField
                         label="Operation"
                         options={TEXT_OPERATION_OPTIONS}
@@ -787,8 +781,8 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "layer") {
         return (
-            <div className="grid gap-3">
-                <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3">
+                <div className="nl-field-grid">
                     <SelectField
                         label="Operation"
                         options={LAYER_OPERATION_OPTIONS}
@@ -813,7 +807,7 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "video") {
         return (
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="nl-field-grid">
                 <SelectField
                     label="Operation"
                     options={VIDEO_OPERATION_OPTIONS}
@@ -833,7 +827,7 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "nvl") {
         return (
-            <div className="grid gap-3">
+            <div className="grid grid-cols-1 gap-3">
                 <div className="text-xs text-slate-500">Child rows run inside NLR NVL mode. The transform below animates the NVL layer as it enters.</div>
                 <TransformPresetEditor
                     value={payload.transition}
@@ -850,7 +844,7 @@ function ActionPayloadFields(props: {
     }
     if (payload.action === "screenEffect") {
         return (
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="nl-field-grid">
                 <SelectField
                     label="Effect"
                     options={SCREEN_EFFECT_OPTIONS}
@@ -906,7 +900,7 @@ function CharacterActionEditor(props: {
     }, [onChange, payload, props.characters]);
 
     return (
-        <div className="grid gap-3">
+        <div className="grid grid-cols-1 gap-3">
             <FieldGrid cols={2}>
                 <SelectField
                     label="Character"
@@ -1170,7 +1164,7 @@ function TransformPresetEditor(props: {
                     onChange={props.onChange}
                 />
             ) : (
-                <div className="grid gap-2">
+                <div className="grid grid-cols-1 gap-2">
                     <FieldGrid cols={3}>
                         <SelectField
                             label="Preset"
@@ -1430,7 +1424,7 @@ function BackgroundActionEditor(props: {
     const imageLabel = selectedAsset?.name ?? (props.payload.assetId ? "Missing image" : "No image");
 
     return (
-        <div className="grid gap-3">
+        <div className="grid grid-cols-1 gap-3">
             <div className="inline-flex w-fit overflow-hidden rounded-md border border-white/10 bg-[#101216]">
                 <button
                     type="button"
@@ -1457,7 +1451,7 @@ function BackgroundActionEditor(props: {
             </div>
 
             {mode === "image" ? (
-                <div className="grid gap-2 sm:grid-cols-[minmax(220px,320px)_minmax(0,1fr)]">
+                <div className="nl-field-grid nl-field-grid-2">
                     <button
                         ref={imageButtonRef}
                         type="button"
@@ -1560,7 +1554,7 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
     if (props.payload.control !== "conditionBranch") {
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
         return (
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="nl-field-grid">
                 <SelectField
                     label="Control"
                     options={[
@@ -1590,7 +1584,7 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
     }
     const branchPayload = props.payload;
     return (
-        <div className="grid gap-3">
+        <div className="grid grid-cols-1 gap-3">
             <SelectField
                 label="Branch"
                 options={BRANCH_OPTIONS}
@@ -1627,7 +1621,7 @@ function ConditionRefEditor(props: {
         };
     const valueType = resolveRefValueType(value.target, options);
     return (
-        <div className="grid gap-2 sm:grid-cols-4">
+        <div className="nl-field-grid nl-field-grid-4">
             <VariableRefPicker
                 value={value.target}
                 options={options}
@@ -1647,7 +1641,7 @@ function ConditionRefEditor(props: {
                 />
             ) : null}
             {props.value?.kind === "expression" ? (
-                <div className="sm:col-span-4 rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
+                <div className="col-span-full rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
                     Legacy expression conditions are preserved in the document but are not part of the NLR action surface.
                 </div>
             ) : null}
@@ -1664,7 +1658,7 @@ function ConditionRefEditor(props: {
 
 function CodePayloadFields(props: { payload: StoryCodePayload; onChange: (payload: StoryBlock["payload"]) => void }) {
     return (
-        <div className="grid gap-2">
+        <div className="grid grid-cols-1 gap-2">
             <div className="max-w-xs">
                 <SelectField
                     label="Language"
@@ -1692,7 +1686,7 @@ function TextSegmentEditor(props: {
 }) {
     const text = props.text ?? { textId: props.generateTextId(), role: props.role, value: "" };
     return (
-        <div className="grid gap-2">
+        <div className="grid grid-cols-1 gap-2">
             <LabeledTextarea
                 label={props.label}
                 className="min-h-20"
@@ -1791,9 +1785,9 @@ function Section(props: { title?: string; right?: ReactNode; className?: string;
             {props.title || props.right ? (
                 <div className="mb-2 flex items-center justify-between gap-2">
                     {props.title ? (
-                        <div className="text-[11px] font-medium tracking-wide text-slate-400">{props.title}</div>
+                        <div className="min-w-0 truncate text-[11px] font-medium tracking-wide text-slate-400">{props.title}</div>
                     ) : <span />}
-                    {props.right ?? null}
+                    {props.right ? <div className="shrink-0">{props.right}</div> : null}
                 </div>
             ) : null}
             {props.children}
@@ -1814,11 +1808,15 @@ function Disclosure(props: { title: string; children: ReactNode }) {
     );
 }
 
-/** Standard dense responsive field grid used across every action editor. */
+/**
+ * Standard dense field grid used across every action editor. Columns respond to
+ * the property card's own width (see `.nl-field-grid` in styles.css), so a narrow
+ * editor pane collapses to fewer columns instead of overflowing horizontally.
+ */
 function FieldGrid(props: { cols?: 2 | 3 | 4; className?: string; children: ReactNode }) {
     const cols = props.cols ?? 3;
-    const colClass = cols === 2 ? "sm:grid-cols-2" : cols === 4 ? "sm:grid-cols-4" : "sm:grid-cols-3";
-    return <div className={["grid gap-x-3 gap-y-2", colClass, props.className ?? ""].join(" ")}>{props.children}</div>;
+    const colClass = cols === 2 ? "nl-field-grid-2" : cols === 4 ? "nl-field-grid-4" : "";
+    return <div className={["nl-field-grid", colClass, props.className ?? ""].join(" ")}>{props.children}</div>;
 }
 
 /** Compact inline segmented toggle (e.g. Preset / Motion). */
