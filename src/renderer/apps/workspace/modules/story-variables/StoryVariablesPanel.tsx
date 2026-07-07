@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, Variable } from "lucide-react";
+import { HelpCircle, Plus, Trash2, Variable } from "lucide-react";
 import type { PanelComponentProps } from "../types";
 import { Select, type SelectOption } from "@/lib/components/elements";
 import { useWorkspace } from "@/apps/workspace/context";
@@ -104,12 +104,36 @@ function VariableRowEditor(props: {
     );
 }
 
+/**
+ * A compact "?" affordance that reveals its explanation in a hover/focus popover, keeping the
+ * category header uncluttered (the description no longer sits as a permanent caption line).
+ */
+function HintPopover(props: { text: string }) {
+    return (
+        <span className="group/hint relative inline-flex">
+            <button
+                type="button"
+                aria-label={props.text}
+                className="flex h-4 w-4 items-center justify-center rounded-full text-gray-500 outline-none transition-colors hover:text-gray-300 focus-visible:text-gray-300"
+            >
+                <HelpCircle className="h-3.5 w-3.5" />
+            </button>
+            <span
+                role="tooltip"
+                className="pointer-events-none absolute left-0 top-full z-30 mt-1 w-44 rounded-md border border-white/10 bg-[#1e1f22] px-2 py-1.5 text-[10px] leading-snug text-gray-300 opacity-0 shadow-xl transition-opacity duration-100 group-hover/hint:opacity-100 group-focus-within/hint:opacity-100"
+            >
+                {props.text}
+            </span>
+        </span>
+    );
+}
+
 function SectionHeader(props: { title: string; hint: string; onAdd?: () => void }) {
     return (
         <div className="flex items-center justify-between">
-            <div>
-                <div className="text-xs font-medium text-gray-200">{props.title}</div>
-                <div className="text-[10px] text-gray-500">{props.hint}</div>
+            <div className="flex min-w-0 items-center gap-1">
+                <div className="truncate text-xs font-medium text-gray-200">{props.title}</div>
+                <HintPopover text={props.hint} />
             </div>
             {props.onAdd ? (
                 <button

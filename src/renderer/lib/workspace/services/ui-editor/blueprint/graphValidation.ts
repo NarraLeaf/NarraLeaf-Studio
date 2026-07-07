@@ -5,6 +5,7 @@ import type {
     BlueprintGraphIr,
     BlueprintOwnerRef,
 } from "@shared/types/blueprint/document";
+import { isStorySyncValueOwner } from "@shared/types/blueprint/document";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import {
     BLUEPRINT_NODE_PARAM_FN_NAME,
@@ -18,6 +19,7 @@ import {
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
     isBlueprintEventDispatchHeadType,
+    isStoryActionCallHeadType,
     readBlueprintFnSignatureSnapshot,
 } from "@shared/types/blueprint/graph";
 import {
@@ -156,6 +158,7 @@ function buildNodeValidationPaletteContext(ctx: {
         widgetBlueprintEvents: ctx.widgetBlueprintEvents,
         widgetEventLayerSlots: ctx.layerUiSlots,
         isBlueprintValueGraph: ctx.isBlueprintValueGraph ?? ctx.blueprintOwner.kind === "widgetValue",
+        isSyncOnlyGraph: isStorySyncValueOwner(ctx.blueprintOwner),
         isComponentDefinitionGraph: ctx.isComponentDefinitionGraph,
         hasEventHead: false,
         hasFunctionEntry: false,
@@ -465,8 +468,13 @@ export function validateBlueprintGraphIr(
 
     if (ctx.graphKind === "event") {
         // Fn heads are valid entry points too — a graph containing only fn declarations is fine.
+        // Story Action "On Call" is a valid head as well (it is deliberately kept out of the event
+        // dispatch head set, so it must be recognized explicitly here).
         const headNodes = Object.entries(nodes).filter(
-            ([, n]) => isBlueprintEventDispatchHeadType(n.type) || n.type === BLUEPRINT_NODE_TYPE_FN_HEAD,
+            ([, n]) =>
+                isBlueprintEventDispatchHeadType(n.type) ||
+                isStoryActionCallHeadType(n.type) ||
+                n.type === BLUEPRINT_NODE_TYPE_FN_HEAD,
         );
         if (headNodes.length === 0) {
             out.push({

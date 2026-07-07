@@ -6,6 +6,7 @@ import { ProjectPalette } from "@/apps/workspace/modules/properties/framework/fi
 import { addRecentColor, useRecentColors } from "@/apps/workspace/modules/properties/framework/fields/recentColors";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useRichToolbarExpanded } from "./storyEditorSessionStore";
+import { defaultInterpolationForKind, getLastInterpolationKind } from "./storyInterpolation";
 import type { ActiveMarks, RichTextInputHandle } from "./RichTextInput";
 
 /** Fallback quick colors shown until the author has built up a recent-colors history. */
@@ -192,8 +193,8 @@ export function RichTextToolbar(props: {
             <button
                 type="button"
                 className={BTN}
-                onClick={() => props.editor.current?.insertInterpolation({ kind: "variable", target: { scope: "scene", variableId: "" } })}
-                title={props.hasVariables ? "Insert variable value" : "Insert variable value (declare a variable first)"}
+                onClick={() => props.editor.current?.insertInterpolation(defaultInterpolationForKind(getLastInterpolationKind()))}
+                title={props.hasVariables ? "Insert inline value" : "Insert inline value (variable or blueprint)"}
             >
                 <Braces className="h-3.5 w-3.5" />
             </button>

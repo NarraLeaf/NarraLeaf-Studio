@@ -18,6 +18,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_SLIDER_GET_VALUE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL,
     BLUEPRINT_NODE_TYPE_LITERAL_NUMBER,
     BLUEPRINT_NODE_TYPE_LOCAL_DECLARE_VAR,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
@@ -52,6 +53,25 @@ describe("blueprint graph validation", () => {
         });
 
         expect(diagnostics.map(d => d.code)).toContain("edge.pin_multiple");
+    });
+
+    it("accepts the Story Action On Call head as a valid event head", () => {
+        registerCoreBlueprintNodes();
+        const ir: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ON_CALL },
+            },
+            edges: [],
+        };
+
+        const diagnostics = validateBlueprintGraphIr(ir, {
+            blueprintId: "bp",
+            graphKind: "event",
+            graphId: "onCall",
+            blueprintOwner: { kind: "storyAction", blueprintId: "bp", mode: "value" },
+        });
+
+        expect(diagnostics.map(d => d.code)).not.toContain("event.missing_event_nodes");
     });
 
     it("allows multiple outgoing edges from literal output pins", () => {

@@ -25,7 +25,6 @@ import {
     BLUEPRINT_NODE_TYPE_DATA_JSON_MAKE_OBJECT,
     BLUEPRINT_NODE_TYPE_DATA_JSON_MERGE_OBJECT,
     BLUEPRINT_NODE_TYPE_DATA_JSON_CLONE,
-    BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_FLOAT,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_INT,
     BLUEPRINT_NODE_TYPE_DATA_PARSE_JSON,
@@ -254,35 +253,8 @@ export const dataBlueprintNodes: BlueprintNodeDef[] = [
         pins: [out("value", "JSON", "json")],
         inspectorParams: [{ key: "value", label: "JSON", kind: "json" }],
     }),
-    {
-        type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
-        displayName: "Return Value",
-        category: "Data",
-        keywords: ["return", "value", "output", "result"],
-        graphKinds: ["event"],
-        isPure: false,
-        role: "valueReturn",
-        scope: { ownerKinds: ["widgetValue", "storyAction"] },
-        pins: [
-            { id: "in", kind: "input", semantic: "exec", label: "In" },
-            { id: "next", kind: "output", semantic: "exec", label: "Next" },
-            anyIn("value", "Value"),
-        ],
-        execute: ctx => {
-            const value = resolveDataPinValue(ctx.graph, ctx.node.id, "value", ctx.params, ctx.blueprintLocals, 0, {
-                hostAdapter: ctx.hostAdapter,
-                eventPayload: ctx.eventPayload,
-                listItemScope: ctx.listItemScope,
-                instanceKey: ctx.instanceKey,
-                executionOwner: ctx.executionOwner,
-                valueExecution: ctx.valueExecution,
-            });
-            ctx.valueExecution?.returnValue(value);
-            // Capture-and-continue: an unconnected `next` still ends the chain, but the story-action
-            // form can keep running side-effect nodes after producing its return value.
-            return { nextPort: "next" };
-        },
-    },
+    // Return Value lives with the Flow nodes (see controlFlowNodes.ts) — it is a terminal flow node,
+    // not a pure data node.
     dataNode({
         type: BLUEPRINT_NODE_TYPE_DATA_TO_FLOAT,
         displayName: "To Float",

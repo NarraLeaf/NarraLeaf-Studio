@@ -999,7 +999,7 @@ function BlockPreview(props: {
     if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
         const hasValue = Boolean(text?.value) || Boolean(text?.rich && text.rich.length > 0);
         return (
-            <div className="flex min-w-0 items-start gap-2 text-sm">
+            <div className="flex min-w-0 items-baseline gap-2 text-sm">
                 <CharacterSelectTrigger
                     characters={props.characters}
                     characterId={block.payload.characterId}
