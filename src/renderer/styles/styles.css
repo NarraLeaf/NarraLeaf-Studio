@@ -313,3 +313,32 @@ input[type="radio"]:focus {
 .ui-editor-node[data-ui-crop-dim="true"] {
     filter: brightness(0.5);
 }
+
+/*
+ * Container-responsive field grid used by the Story action property cards.
+ *
+ * Columns collapse based on the card's OWN width (auto-fit), not the window
+ * width, so a docked/narrow editor pane no longer forces multi-column rows.
+ * The `min(<track>, 100%)` guard clamps a single column to the available
+ * width, which guarantees the grid can never overflow horizontally; `> *
+ * { min-width: 0 }` lets each field's content truncate instead of pushing
+ * the row wider.
+ */
+.nl-field-grid {
+    display: grid;
+    column-gap: 0.75rem;
+    row-gap: 0.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+}
+
+.nl-field-grid-2 {
+    grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+}
+
+.nl-field-grid-4 {
+    grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+}
+
+.nl-field-grid > * {
+    min-width: 0;
+}

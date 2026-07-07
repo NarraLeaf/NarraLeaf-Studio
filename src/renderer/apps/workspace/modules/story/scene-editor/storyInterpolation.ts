@@ -15,6 +15,28 @@ export type PersistentVariableOption = { storageKey: string; name: string; value
 
 export type StoryVariableOption = { id: string; name: string; valueType: StoryVariableValueType };
 
+/**
+ * Session memory of the last interpolation kind (variable vs blueprint) the author picked, so a fresh
+ * "insert value" defaults to it instead of always starting on "variable". Module-level (per renderer
+ * session); intentionally not persisted to disk.
+ */
+let lastInterpolationKind: StoryInterpolationRef["kind"] = "variable";
+
+export function getLastInterpolationKind(): StoryInterpolationRef["kind"] {
+    return lastInterpolationKind;
+}
+
+export function rememberInterpolationKind(kind: StoryInterpolationRef["kind"]): void {
+    lastInterpolationKind = kind;
+}
+
+/** Default (empty) interpolation ref for a kind — used when inserting a fresh inline value. */
+export function defaultInterpolationForKind(kind: StoryInterpolationRef["kind"]): StoryInterpolationRef {
+    return kind === "blueprint"
+        ? { kind: "blueprint", blueprintId: "" }
+        : { kind: "variable", target: { scope: "scene", variableId: "" } };
+}
+
 export function collectStoryVariableOptions(
     document: StoryDocument,
     sceneId: StorySceneId,

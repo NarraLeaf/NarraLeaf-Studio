@@ -225,6 +225,12 @@ export function isBlueprintNodeAllowedInGraphContext(
     if (ctx.isBlueprintValueGraph && !isBlueprintNodeAllowedInBlueprintValueGraph(def)) {
         return false;
     }
+    // Sync-only graphs (inline story values) forbid async ("latent") nodes but keep synchronous exec
+    // nodes such as branches and Get/Set var, so an inline blueprint's Return Value can be evaluated
+    // in the same tick as the dialogue word that renders it.
+    if (ctx.isSyncOnlyGraph && def.isLatent) {
+        return false;
+    }
     if (ctx.graphKind === "function" && (def.isLatent || !def.isPure)) {
         return false;
     }
