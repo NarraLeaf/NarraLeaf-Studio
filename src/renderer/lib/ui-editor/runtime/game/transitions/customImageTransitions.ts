@@ -9,8 +9,9 @@ import type { CSSProperties } from "react";
  * (`inset()`/`circle()`) — there is no feathering, which is why the stock wipe
  * reads as a hard geometric cut rather than a soft erase. NLR does, however,
  * pass any resolver `style` straight onto the layer element and its render
- * pipeline whitelists `mask-image`, so a genuinely soft (feathered) wipe and
- * classic venetian "blinds" are expressible as animated CSS gradient masks.
+ * pipeline whitelists `mask-image`/`filter`, so a genuinely soft (feathered)
+ * wipe, venetian "blinds", a blur dissolve and a colour-hold ("through black")
+ * transition are all expressible as animated CSS masks/filters.
  *
  * A transition declares a set of single `start → end` animation channels plus
  * resolvers tagged {@link ImageTransition.asPrev} ("current"/outgoing) and
@@ -20,9 +21,9 @@ import type { CSSProperties } from "react";
  * into the resolver output, so a resolver only needs to return `style`.
  */
 
-// A single 1×1 transparent pixel; used as the `src` for the synthetic black
-// slat layer of the blackout transition (its visible colour comes from
-// `backgroundColor`, masked into slats).
+// A single 1×1 transparent pixel; used as the `src` for synthetic colour
+// overlay layers (their visible colour comes from `backgroundColor`, optionally
+// masked into a shape).
 const TRANSPARENT_PIXEL =
     "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
@@ -38,6 +39,7 @@ type AnimationChannel = ImageTransitionTask["animations"][number];
 
 export type WipeDirection = "left" | "right" | "top" | "bottom";
 export type BlindsOrientation = "horizontal" | "vertical";
+export type ThroughColorPattern = "plain" | "linear" | "blinds" | "iris";
 
 type Easing = AnimationChannel["ease"];
 
@@ -84,6 +86,51 @@ function blindsAxis(orientation: BlindsOrientation): string {
     return orientation === "vertical" ? "to right" : "to bottom";
 }
 
+// ---- Shared mask generators (progress/coverage ∈ [0,1]) --------------------
+
+/** Feathered linear wipe: `progress` 0 → fully hidden, 1 → fully covered. */
+function linearWipeMask(direction: WipeDirection, feather: number, progress: number): string {
+    const f = Math.max(0, feather);
+    // Sweep the opaque edge from just before the start to just past the end so
+    // the reveal is total at the extremes.
+    const edge = -f + clamp01(progress) * (100 + f);
+    return `linear-gradient(${wipeGradientDir(direction)}, #000 ${edge}%, transparent ${edge + f}%)`;
+}
+
+/** Venetian slats: `progress` 0 → open (hidden), 1 → shut (covered). */
+function blindsCoverMask(orientation: BlindsOrientation, slats: number, progress: number): string {
+    const pitch = 100 / Math.max(1, slats);
+    const cover = clamp01(progress) * pitch;
+    return `repeating-linear-gradient(${blindsAxis(orientation)}, #000 0, #000 ${cover}%, transparent ${cover}%, transparent ${pitch}%)`;
+}
+
+/** Iris that *covers* from the rim inward: `progress` 0 → hidden, 1 → covered. */
+function irisCoverMask(center: string, feather: number, progress: number): string {
+    const f = Math.max(0, feather);
+    const r = (1 - clamp01(progress)) * 150; // transparent hole shrinks to nothing
+    return `radial-gradient(circle at ${center}, transparent ${r - f}%, #000 ${r}%)`;
+}
+
+/** Iris that *reveals* from the centre out: `progress` 0 → hidden, 1 → shown. */
+function irisRevealMask(center: string, feather: number, progress: number): string {
+    const f = Math.max(0, feather);
+    const r = clamp01(progress) * 150; // opaque disc grows to cover
+    return `radial-gradient(circle at ${center}, #000 ${r - f}%, transparent ${r}%)`;
+}
+
+/** Full-bleed positioning for a synthetic overlay `<img>` layer. */
+function overlayBase(color: string): CSSProperties {
+    return {
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        width: "100%",
+        height: "100%",
+        transform: "translate(-50%, -50%)",
+        backgroundColor: color,
+    } as CSSProperties;
+}
+
 /**
  * A soft, feathered directional wipe. The incoming image is revealed over the
  * outgoing one through a moving `linear-gradient` alpha mask whose transition
@@ -100,19 +147,13 @@ export class SoftWipe extends ImageTransition<NumberChannel> {
     }
 
     createTask(): ImageTransitionTask {
-        const dir = wipeGradientDir(this.direction);
-        const feather = Math.max(0, this.feather);
         return {
             animations: [unitChannel(this.duration, this.easing)],
             resolve: [
                 this.asPrev<NumberChannel>(() => ({})),
-                this.asTarget<NumberChannel>((t: number) => {
-                    // Sweep the black (opaque → visible) edge from just before the
-                    // start to just past the end so the reveal is total at t=0/1.
-                    const edge = -feather + clamp01(t) * (100 + feather);
-                    const image = `linear-gradient(${dir}, #000 ${edge}%, transparent ${edge + feather}%)`;
-                    return { style: maskStyle(image) };
-                }),
+                this.asTarget<NumberChannel>((t: number) => ({
+                    style: maskStyle(linearWipeMask(this.direction, this.feather, t)),
+                })),
             ],
         };
     }
@@ -138,17 +179,13 @@ export class Blinds extends ImageTransition<NumberChannel> {
     }
 
     createTask(): ImageTransitionTask {
-        const axis = blindsAxis(this.orientation);
-        const pitch = 100 / Math.max(1, this.slats);
         return {
             animations: [unitChannel(this.duration, this.easing)],
             resolve: [
                 this.asPrev<NumberChannel>(() => ({})),
-                this.asTarget<NumberChannel>((t: number) => {
-                    const cover = clamp01(t) * pitch;
-                    const image = `repeating-linear-gradient(${axis}, #000 0, #000 ${cover}%, transparent ${cover}%, transparent ${pitch}%)`;
-                    return { style: maskStyle(image) };
-                }),
+                this.asTarget<NumberChannel>((t: number) => ({
+                    style: maskStyle(blindsCoverMask(this.orientation, this.slats, t)),
+                })),
             ],
         };
     }
@@ -159,33 +196,131 @@ export class Blinds extends ImageTransition<NumberChannel> {
 }
 
 /**
- * Blinds with a black hold (百叶窗黑屏). A dedicated opaque-black slat layer
- * closes over the outgoing image, holds a fully black frame, then opens to
- * reveal the incoming image — so the target background never appears until
- * after the black. `hold` is the fraction (0–1) of the duration spent fully
- * black; the outgoing/incoming images simply cross under the black at the
- * midpoint, invisible behind it.
+ * A soft, feathered iris: the incoming image is revealed over the outgoing one
+ * through an expanding `radial-gradient` circle with a feathered edge — the
+ * soft-edged counterpart of NLR's hard `MaskTransition.circle`.
  */
-export class BlindsBlackout extends ImageTransition<NumberChannel> {
+export class SoftIris extends ImageTransition<NumberChannel> {
     constructor(
         private readonly duration: number,
-        private readonly orientation: BlindsOrientation = "horizontal",
-        private readonly slats: number = 8,
-        private readonly hold: number = 0.3,
+        private readonly center: string = "50% 50%",
+        private readonly feather: number = 12,
         private readonly easing?: Easing,
     ) {
         super();
     }
 
     createTask(): ImageTransitionTask {
-        const axis = blindsAxis(this.orientation);
-        const pitch = 100 / Math.max(1, this.slats);
-        const hold = clamp01(this.hold);
-        const closeEnd = (1 - hold) / 2; // slats fully shut by here
-        const openStart = 1 - closeEnd; // slats begin to open here
-        const mid = 0.5; // fully black window → swap the images here, unseen
+        return {
+            animations: [unitChannel(this.duration, this.easing)],
+            resolve: [
+                this.asPrev<NumberChannel>(() => ({})),
+                this.asTarget<NumberChannel>((t: number) => ({
+                    style: maskStyle(irisRevealMask(this.center, this.feather, t)),
+                })),
+            ],
+        };
+    }
 
-        // Fraction (0–1) of a slat's pitch currently painted black.
+    copy(): SoftIris {
+        return new SoftIris(this.duration, this.center, this.feather, this.easing);
+    }
+}
+
+/**
+ * A blur dissolve: the outgoing image blurs out and fades while the incoming
+ * one sharpens in — the dreamy crossfade used for flashbacks / dream states.
+ */
+export class BlurDissolve extends ImageTransition<NumberChannel> {
+    constructor(
+        private readonly duration: number,
+        private readonly blur: number = 16,
+        private readonly easing?: Easing,
+    ) {
+        super();
+    }
+
+    createTask(): ImageTransitionTask {
+        const max = Math.max(0, this.blur);
+        return {
+            animations: [unitChannel(this.duration, this.easing)],
+            resolve: [
+                this.asPrev<NumberChannel>((t: number) => ({
+                    style: { opacity: 1 - clamp01(t), filter: `blur(${max * clamp01(t)}px)` } as CSSProperties,
+                })),
+                this.asTarget<NumberChannel>((t: number) => ({
+                    style: { opacity: clamp01(t), filter: `blur(${max * (1 - clamp01(t))}px)` } as CSSProperties,
+                })),
+            ],
+        };
+    }
+
+    copy(): BlurDissolve {
+        return new BlurDissolve(this.duration, this.blur, this.easing);
+    }
+}
+
+/** Per-pattern options for {@link ThroughColor}; each pattern reads only its own. */
+export type ThroughColorOptions = {
+    direction?: WipeDirection;
+    feather?: number;
+    orientation?: BlindsOrientation;
+    slats?: number;
+    center?: string;
+};
+
+/**
+ * The "through colour" engine (过色 / 黑场). A dedicated colour overlay covers
+ * the frame using the chosen `pattern`, holds a solid-colour frame, then
+ * uncovers to reveal the incoming image — so the target never appears until
+ * after the colour hold. The outgoing/incoming images simply swap opacity at
+ * the midpoint, unseen behind the fully-covered frame.
+ *
+ * `pattern` selects how the colour covers:
+ * - `plain`  — the overlay fades in/out          → fade through black/white, flash (hold ≈ 0)
+ * - `linear` — a feathered directional edge       → soft wipe through black
+ * - `blinds` — venetian slats                     → blinds black hold
+ * - `iris`   — a circle closing from the rim in    → iris to black
+ *
+ * `color` is the hold colour (black, white, any tint) and `hold` is the
+ * fraction (0–1) of the duration spent fully covered.
+ */
+export class ThroughColor extends ImageTransition<NumberChannel> {
+    constructor(
+        private readonly duration: number,
+        private readonly pattern: ThroughColorPattern = "plain",
+        private readonly color: string = "#000",
+        private readonly hold: number = 0.3,
+        private readonly options: ThroughColorOptions = {},
+        private readonly easing?: Easing,
+    ) {
+        super();
+    }
+
+    /** Style for the colour overlay at a given coverage (0 = clear, 1 = fully covered). */
+    private coverStyle(cover: number): CSSProperties {
+        const base = overlayBase(this.color);
+        if (this.pattern === "plain") {
+            return { ...base, opacity: clamp01(cover) } as CSSProperties;
+        }
+        let mask: string;
+        if (this.pattern === "linear") {
+            mask = linearWipeMask(this.options.direction ?? "left", this.options.feather ?? 12, cover);
+        } else if (this.pattern === "blinds") {
+            mask = blindsCoverMask(this.options.orientation ?? "horizontal", this.options.slats ?? 8, cover);
+        } else {
+            mask = irisCoverMask(this.options.center ?? "50% 50%", this.options.feather ?? 12, cover);
+        }
+        return { ...base, opacity: 1, ...maskStyle(mask) } as CSSProperties;
+    }
+
+    createTask(): ImageTransitionTask {
+        const hold = clamp01(this.hold);
+        const closeEnd = (1 - hold) / 2; // fully covered by here
+        const openStart = 1 - closeEnd; // starts uncovering here
+        const mid = 0.5; // fully covered window → swap the images here, unseen
+
+        // Coverage (0–1) of the colour overlay: cover → hold → uncover.
         const coverAt = (t: number): number => {
             if (t <= closeEnd) return closeEnd <= 0 ? 1 : t / closeEnd;
             if (t >= openStart) return openStart >= 1 ? 1 : (1 - t) / (1 - openStart);
@@ -195,43 +330,31 @@ export class BlindsBlackout extends ImageTransition<NumberChannel> {
         return {
             animations: [unitChannel(this.duration, this.easing)],
             resolve: [
-                // Outgoing image: visible until the frame is fully black, then gone.
+                // Outgoing image: visible until the frame is fully covered, then gone.
                 this.asPrev<NumberChannel>((t: number) => ({ style: { opacity: t < mid ? 1 : 0 } as CSSProperties })),
-                // Incoming image: swapped in behind the black, revealed as it opens.
+                // Incoming image: swapped in behind the colour, revealed as it uncovers.
                 this.asTarget<NumberChannel>((t: number) => ({ style: { opacity: t < mid ? 0 : 1 } as CSSProperties })),
-                // Black venetian slats on top: close → hold → open.
-                (t: number) => {
-                    const cover = clamp01(coverAt(t)) * pitch;
-                    const image = `repeating-linear-gradient(${axis}, #000 0, #000 ${cover}%, transparent ${cover}%, transparent ${pitch}%)`;
-                    return {
-                        src: TRANSPARENT_PIXEL,
-                        style: {
-                            position: "absolute",
-                            top: "50%",
-                            left: "50%",
-                            width: "100%",
-                            height: "100%",
-                            transform: "translate(-50%, -50%)",
-                            backgroundColor: "#000",
-                            ...maskStyle(image),
-                        } as CSSProperties,
-                    };
-                },
+                // Colour overlay on top: cover → hold → uncover.
+                (t: number) => ({ src: TRANSPARENT_PIXEL, style: this.coverStyle(coverAt(t)) }),
             ],
         };
     }
 
-    copy(): BlindsBlackout {
-        return new BlindsBlackout(this.duration, this.orientation, this.slats, this.hold, this.easing);
+    copy(): ThroughColor {
+        return new ThroughColor(this.duration, this.pattern, this.color, this.hold, this.options, this.easing);
     }
 }
 
 /**
  * A push / slide: the incoming image slides in from one edge while the outgoing
  * image slides out the opposite way, as if the camera panned. `direction` is
- * the direction the outgoing image travels toward. Distances use viewport units
- * so the slide spans the whole screen regardless of the fitted image size, and
- * the base `translate(-50%, -50%)` centring is preserved.
+ * the direction the outgoing image travels toward.
+ *
+ * The offset is applied via the independent CSS `translate` property (not
+ * `transform`) in viewport units. That composes additively with whatever base
+ * positioning NLR gives the layer instead of overriding it, and at offset `0`
+ * it is the identity — so neither image jumps at the start/end of the slide,
+ * regardless of how the background is anchored.
  */
 export class Slide extends ImageTransition<NumberChannel> {
     constructor(
@@ -256,23 +379,21 @@ export class Slide extends ImageTransition<NumberChannel> {
         }
     }
 
-    private translate(offset: string): CSSProperties {
-        const { axis } = this.axisUnit();
-        const x = axis === "x" ? `calc(-50% + ${offset})` : "-50%";
-        const y = axis === "y" ? `calc(-50% + ${offset})` : "-50%";
-        return { transform: `translate(${x}, ${y})` } as CSSProperties;
+    private translate(offset: number): CSSProperties {
+        const { axis, unit } = this.axisUnit();
+        const value = `${offset}${unit}`;
+        return { translate: axis === "x" ? `${value} 0px` : `0px ${value}` } as CSSProperties;
     }
 
     createTask(): ImageTransitionTask {
-        const { unit, sign } = this.axisUnit();
-        const span = 100 * sign; // outgoing travels a full viewport toward `direction`
+        const { sign } = this.axisUnit();
         return {
             animations: [unitChannel(this.duration, this.easing)],
             resolve: [
-                // Outgoing image slides from centre out toward `direction`.
-                this.asPrev<NumberChannel>((t: number) => ({ style: this.translate(`${span * clamp01(t)}${unit}`) })),
-                // Incoming image slides in from the opposite edge to centre.
-                this.asTarget<NumberChannel>((t: number) => ({ style: this.translate(`${-span * (1 - clamp01(t))}${unit}`) })),
+                // Outgoing image slides from rest out toward `direction` (offset 0 → ±100).
+                this.asPrev<NumberChannel>((t: number) => ({ style: this.translate(sign * 100 * clamp01(t)) })),
+                // Incoming image slides in from the opposite edge to rest (∓100 → offset 0).
+                this.asTarget<NumberChannel>((t: number) => ({ style: this.translate(-sign * 100 * (1 - clamp01(t))) })),
             ],
         };
     }

@@ -3,6 +3,7 @@ import type {
     StoryDisplayableTargetKind,
     StoryTransformRef,
 } from "@shared/types/story";
+import { layerActionTargetRef, resolveStoryLayerRef } from "@shared/types/story";
 
 export type StoryMotionDescriptor = {
     transform: StoryTransformRef | undefined;
@@ -58,10 +59,13 @@ export function getStoryMotionDescriptor(block: StoryBlock): StoryMotionDescript
         };
     }
     if (payload.action === "layer") {
+        const layerName = payload.operation === "create"
+            ? (payload.objectName || "Layer")
+            : (resolveStoryLayerRef(undefined, layerActionTargetRef(payload.target, payload.objectName)).name || "Layer");
         return {
             transform: payload.transform,
             targetKind: "layer",
-            label: `${payload.objectName || "Layer"} ${payload.operation}`,
+            label: `${layerName} ${payload.operation}`,
             operation: payload.operation === "hide" ? "hide" : payload.operation === "show" || payload.operation === "create" ? "show" : "transform",
             setTransform: transform => ({ ...payload, transform }),
         };

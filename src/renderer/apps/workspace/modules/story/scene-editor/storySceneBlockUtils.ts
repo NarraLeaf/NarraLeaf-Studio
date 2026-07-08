@@ -1,6 +1,6 @@
 import { Clock, Code, Eye, FileText, GitBranch, Image, Layers, MessageSquare, Move, Music, Puzzle, Route, Settings2, Sparkles, StickyNote, Type, UserRound, Variable, Video } from "lucide-react";
-import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
-import { resolveDisplayableTargetRef } from "@shared/types/story";
+import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment, StoryVariableRef } from "@shared/types/story";
+import { layerActionTargetRef, resolveDisplayableTargetRef, resolveStoryLayerRef } from "@shared/types/story";
 import { richIfMeaningful } from "./richText";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import type { StoryBlockTarget, VisibleStoryRow } from "./storySceneEditorTypes";
@@ -183,7 +183,7 @@ function variableRefShortLabel(ref: StoryVariableRef, scene?: StoryScene): strin
     return "persistent";
 }
 
-export function describeBlock(block: StoryBlock, characters: Character[], scene?: StoryScene): string {
+export function describeBlock(block: StoryBlock, characters: Character[], scene?: StoryScene, scenes?: Record<StorySceneId, StoryScene>): string {
     if (block.kind === "nodeAction") {
         const payload = block.payload;
         if (payload.action === "narration") return payload.text.value || "Narration";
@@ -204,7 +204,12 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         if (payload.action === "image") return `${payload.operation} image ${payload.objectName || "unnamed"}`;
         if (payload.action === "displayable") return `${payload.operation} ${resolveDisplayableTargetRef(scene, payload.target).name || "target"}`;
         if (payload.action === "text") return `${payload.operation} text ${payload.objectName || "unnamed"}`;
-        if (payload.action === "layer") return `${payload.operation} layer ${payload.objectName || "unnamed"}`;
+        if (payload.action === "layer") {
+            const layerName = payload.operation === "create"
+                ? (payload.objectName || "unnamed")
+                : (resolveStoryLayerRef(scene, layerActionTargetRef(payload.target, payload.objectName)).name || "unnamed");
+            return `${payload.operation} layer ${layerName}`;
+        }
         if (payload.action === "video") return `${payload.operation} video ${payload.objectName || "unnamed"}`;
         if (payload.action === "nvl") return "NVL block";
         if (payload.action === "blueprint") return "Blueprint";
@@ -216,7 +221,7 @@ export function describeBlock(block: StoryBlock, characters: Character[], scene?
         return block.payload.control;
     }
     if (block.kind === "jump") {
-        return `Jump ${block.payload.targetSceneId || "unassigned"}`;
+        return `Jump ${getSceneName(scenes, block.payload.targetSceneId)}`;
     }
     if (block.kind === "code") {
         return `${block.payload.language} code`;
@@ -232,6 +237,13 @@ export function getEmptyTextPlaceholder(block: StoryBlock): string {
     }
     if (block.kind === "note") return "Double-click to enter a note";
     return "Double-click to enter text";
+}
+
+export function getSceneName(scenes: Record<StorySceneId, StoryScene> | undefined, sceneId: string | undefined): string {
+    if (!sceneId) {
+        return "unassigned";
+    }
+    return scenes?.[sceneId]?.name || "unknown scene";
 }
 
 export function getCharacterName(characters: Character[], characterId: string | undefined): string {

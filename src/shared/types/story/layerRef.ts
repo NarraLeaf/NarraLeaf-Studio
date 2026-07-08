@@ -47,3 +47,19 @@ export function resolveStoryLayerRef(
         resolved: false,
     };
 }
+
+/**
+ * The layer a non-`create` `layer` action operates on: its explicit `target` ref when set, otherwise
+ * a legacy `objectName` promoted to an (unbound) custom ref so pre-target documents still resolve to
+ * the same name-keyed layer. Absent both, `undefined` — the scene's default displayable layer.
+ */
+export function layerActionTargetRef(
+    target: StoryLayerRef | undefined,
+    objectName: string | undefined,
+): StoryLayerRef | undefined {
+    if (target) {
+        return target;
+    }
+    const name = objectName?.trim();
+    return name ? { kind: "custom", name } : undefined;
+}

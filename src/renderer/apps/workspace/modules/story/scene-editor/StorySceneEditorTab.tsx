@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent } from "react";
 import { FileText, Image as ImageIcon, ListPlus, Plus, Trash2, Variable } from "lucide-react";
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -217,7 +217,7 @@ function StorySceneOverviewBlock(props: {
     );
 }
 
-export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<StorySceneEditorTabPayload | undefined>) {
+export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentProps<StorySceneEditorTabPayload | undefined>) {
     const editor = useStorySceneEditorController(tabId, payload);
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -310,8 +310,10 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
         idPrefix: `story-scene-editor-${tabId}`,
     });
 
+    // Side panels are global (keyed by fixed ids), so only the visible scene tab may own them —
+    // otherwise several kept-alive scene tabs would fight over the same registration. Gate on `active`.
     useEffect(() => {
-        if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
             return;
         }
         const uiService = editor.context.services.get<UIService>(Services.UI);
@@ -333,10 +335,10 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
             uiService.panels.hide(STORY_ACTION_CREATOR_PANEL_ID);
             unregister();
         };
-    }, [editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId]);
+    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId]);
 
     useEffect(() => {
-        if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
             return;
         }
         const uiService = editor.context.services.get<UIService>(Services.UI);
@@ -347,10 +349,10 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
             storyName: editor.document?.name,
             sceneName: editor.scene?.name,
         });
-    }, [editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
+    }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
 
     useEffect(() => {
-        if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
             return;
         }
         const uiService = editor.context.services.get<UIService>(Services.UI);
@@ -372,10 +374,10 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
             uiService.panels.hide(STORY_VARIABLES_PANEL_ID);
             unregister();
         };
-    }, [editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId]);
+    }, [active, editor.context, editor.isInitialized, payload?.sceneId, payload?.storyId, tabId]);
 
     useEffect(() => {
-        if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
             return;
         }
         const uiService = editor.context.services.get<UIService>(Services.UI);
@@ -386,10 +388,10 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
             storyName: editor.document?.name,
             sceneName: editor.scene?.name,
         });
-    }, [editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
+    }, [active, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId, tabId]);
 
     useEffect(() => {
-        if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
+        if (!active || !editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
             return;
         }
         const uiService = editor.context.services.get<UIService>(Services.UI);
@@ -400,7 +402,7 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
             storyName: editor.document?.name,
             sceneName: editor.scene?.name,
         });
-    }, [editor.activeBlockId, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId]);
+    }, [active, editor.activeBlockId, editor.context, editor.document?.name, editor.isInitialized, editor.scene?.name, payload?.sceneId, payload?.storyId]);
 
     useEffect(() => {
         const handleCreateRequest = (event: Event) => {
@@ -414,23 +416,34 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
         return () => window.removeEventListener(STORY_ACTION_CREATE_REQUEST_EVENT, handleCreateRequest);
     }, [editor.createActionFromSidebar, tabId]);
 
-    // Restore the author's place once the scene's rows are laid out. Scroll is anchored to the focus
-    // row (not a raw pixel offset), so it survives the rows re-flowing across the tab unmount/remount
-    // that a tab/page switch triggers (collapse state resets, rich text / image heights change). We
-    // re-apply on the next frame too, in case row heights only settle after the first paint.
+    // Cold-mount restore: reposition to the author's saved place once the scene's rows are laid out.
+    // With keep-alive tabs this runs only on a true cold mount (first open, app restart, or LRU
+    // eviction reopen) — in-session tab switches keep the DOM mounted and are handled by the
+    // hidden→shown restore below. Scroll is anchored to the focus row (not a raw pixel offset), so it
+    // survives rows re-flowing after mount; we re-apply over a few frames until the target sticks.
     const scrollContainerRef = editor.scrollContainerRef;
     const sceneId = editor.scene?.id;
     const rowCount = editor.visibleRows.length;
+    const deepLinkBlockId = payload?.activeBlockId ?? null;
     const panelStateService = useMemo(
         () => (editor.context && editor.isInitialized ? editor.context.services.get<PanelStateService>(Services.PanelState) : null),
         [editor.context, editor.isInitialized],
     );
     const scrollSaveRafRef = useRef<number | null>(null);
     const didRestoreRef = useRef<string | null>(null);
+    // Last real scrollTop while the tab was visible (display:none reports 0), so we can put the tab
+    // back where it was when it is shown again. Null until the tab has actually been scrolled/mounted.
+    const liveScrollTopRef = useRef<number | null>(null);
+    // Last element focused inside this editor, to restore keyboard focus that display:none blurred.
+    const lastFocusedRef = useRef<HTMLElement | null>(null);
+    const prevActiveRef = useRef(active);
+    const handledDeepLinkRef = useRef<string | null>(null);
 
     useLayoutEffect(() => {
         const el = scrollContainerRef.current;
-        if (!el || !sceneId || !panelStateService || rowCount === 0 || didRestoreRef.current === sceneId) {
+        // Skip the saved-anchor restore when opening via a deep link — the deep-link effect below
+        // positions the view on the target block instead.
+        if (!el || !sceneId || !panelStateService || rowCount === 0 || didRestoreRef.current === sceneId || deepLinkBlockId) {
             return;
         }
         didRestoreRef.current = sceneId;
@@ -460,11 +473,16 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
         };
         attempt();
         return () => window.cancelAnimationFrame(rafId);
-    }, [scrollContainerRef, sceneId, rowCount, panelStateService]);
+    }, [scrollContainerRef, sceneId, rowCount, panelStateService, deepLinkBlockId]);
 
     // Capture the scroll anchor at most once per frame while scrolling (querying row geometry on every
-    // raw scroll event would thrash layout on long scenes).
+    // raw scroll event would thrash layout on long scenes). The live scrollTop is recorded eagerly so
+    // the keep-alive restore has an accurate value even for the last scroll before a tab switch.
     const handleScroll = useCallback(() => {
+        const el = scrollContainerRef.current;
+        if (el) {
+            liveScrollTopRef.current = el.scrollTop;
+        }
         if (!sceneId || !panelStateService || scrollSaveRafRef.current !== null) {
             return;
         }
@@ -483,6 +501,56 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
             scrollSaveRafRef.current = null;
         }
     }, []);
+
+    // Record focus moves inside the editor so keyboard focus can be restored when the tab is shown.
+    const handleEditorFocusCapture = useCallback((event: ReactFocusEvent<HTMLElement>) => {
+        if (event.target instanceof HTMLElement) {
+            lastFocusedRef.current = event.target;
+        }
+    }, []);
+
+    // Keep-alive: when the tab goes from hidden to shown, put the scroll position and keyboard focus
+    // back. display:none preserves React state and the DOM subtree, but blurs focus and reports
+    // scrollTop as 0 while hidden — so we re-apply the last live values on the hidden→shown edge.
+    useLayoutEffect(() => {
+        const wasActive = prevActiveRef.current;
+        prevActiveRef.current = active;
+        if (!active || wasActive) {
+            return;
+        }
+        const el = scrollContainerRef.current;
+        if (el && liveScrollTopRef.current != null && Math.abs(el.scrollTop - liveScrollTopRef.current) > 1) {
+            el.scrollTop = liveScrollTopRef.current;
+        }
+        const target = lastFocusedRef.current;
+        if (target && target.isConnected) {
+            window.requestAnimationFrame(() => {
+                if (lastFocusedRef.current === target && target.isConnected) {
+                    target.focus();
+                }
+            });
+        }
+    }, [active, scrollContainerRef]);
+
+    // Deep-link navigation: bring the payload's target block into view and focus the editor once its
+    // row exists in the DOM (fresh open after the async load, or re-navigation to an already-open tab).
+    useLayoutEffect(() => {
+        if (!active || !deepLinkBlockId || handledDeepLinkRef.current === deepLinkBlockId) {
+            return;
+        }
+        const el = scrollContainerRef.current;
+        if (!el) {
+            return;
+        }
+        const row = el.querySelector<HTMLElement>(`[data-story-row-block-id="${CSS.escape(deepLinkBlockId)}"]`);
+        if (!row) {
+            return; // row not laid out yet (still loading / inside a collapsed parent); re-runs on row changes
+        }
+        handledDeepLinkRef.current = deepLinkBlockId;
+        editor.revealBlock(deepLinkBlockId);
+        row.scrollIntoView({ block: "center" });
+        editor.focusRoot();
+    }, [active, deepLinkBlockId, rowCount, scrollContainerRef, editor.revealBlock, editor.focusRoot]);
 
     if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
         return (
@@ -534,6 +602,7 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
             tabIndex={0}
             className="flex h-full min-h-0 flex-col bg-[#0d0f12] text-slate-100 outline-none"
             onFocus={editor.focusWorkspace}
+            onFocusCapture={handleEditorFocusCapture}
             onKeyDown={editor.handleKeyDown}
             onCopy={editor.copySelectionToClipboard}
             onPaste={editor.handlePaste}
