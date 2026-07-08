@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject, MouseEvent } from "react";
 import { ChevronDown, ChevronRight, GripVertical, Hash, Image, Plus } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
-import type { StoryActionPayload, StoryBlock, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
+import type { StoryActionPayload, StoryBlock, StoryBlockId, StoryDocument, StoryRichRun, StoryScene } from "@shared/types/story";
 import { useWorkspace } from "@/apps/workspace/context";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -66,6 +66,7 @@ export function StoryBlockRow(props: {
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     generateTextId: () => string;
+    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
     onInsertAfter: () => void;
 }) {
     const { row, scene, document, characters, selected, active, collapsed, editing, textInputRef, inspectorOpen } = props;
@@ -173,6 +174,7 @@ export function StoryBlockRow(props: {
                         onClose={props.onCloseInspector}
                         onSetDialogueCharacter={props.onSetDialogueCharacter}
                         generateTextId={props.generateTextId}
+                        onCreateLayer={props.onCreateLayer}
                     />
                 ) : null}
             </div>
@@ -352,6 +354,7 @@ function TextEditBox(props: {
                         closeInterp();
                     }}
                     onClose={closeInterp}
+                    onCommitTextEdit={props.onCommitTextEdit}
                 />
             ) : null}
         </div>

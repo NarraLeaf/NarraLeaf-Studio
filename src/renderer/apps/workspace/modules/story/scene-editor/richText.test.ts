@@ -69,6 +69,21 @@ describe("richText", () => {
             .toEqual([{ text: "abc" }]);
     });
 
+    it("styles an inline value chip like a word (marks apply to the atomic unit)", () => {
+        const interp = { kind: "variable" as const, target: { scope: "scene" as const, variableId: "gold" } };
+        let runs: StoryRichRun[] = [{ text: "You have " }, { interpolation: interp }];
+        // The chip is a single unit at offset 9 → apply color + bold across [9,10).
+        runs = applyMarkToRange(runs, 9, 10, marks => ({ ...marks, color: "#f00" }));
+        runs = applyMarkToRange(runs, 9, 10, marks => ({ ...marks, bold: true }));
+        expect(runs).toEqual([
+            { text: "You have " },
+            { interpolation: interp, marks: { bold: true, color: "#f00" } },
+        ]);
+        expect(rangeHasMark(runs, 9, 10, "bold")).toBe(true);
+        // normalizeRuns preserves interpolation marks.
+        expect(normalizeRuns(runs)).toEqual(runs);
+    });
+
     it("splices a pause into the run stream and counts units", () => {
         expect(spliceRuns([{ text: "abcd" }], 2, 2, [{ pause: 300 }]))
             .toEqual([{ text: "ab" }, { pause: 300 }, { text: "cd" }]);

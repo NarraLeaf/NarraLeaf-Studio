@@ -18,6 +18,7 @@ import {
     StoryConditionRef,
     StoryDocument,
     StoryId,
+    StoryLayerRef,
     StoryLibraryEntry,
     StoryLibraryIndex,
     StoryLiteralValue,
@@ -298,7 +299,14 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version >= STORY_DOCUMENT_SCHEMA_VERSION) {
         return document;
     }
-    return migrateStoryDocumentV1toV2(document);
+    let migrated = document;
+    if (version < 2) {
+        migrated = migrateStoryDocumentV1toV2(migrated);
+    }
+    if (version < 3) {
+        migrated = migrateStoryDocumentV2toV3(migrated);
+    }
+    return migrated;
 }
 
 function migrateStoryDocumentV1toV2(document: StoryDocument): StoryDocument {
@@ -331,6 +339,59 @@ function migrateStoryDocumentV1toV2(document: StoryDocument): StoryDocument {
     delete migrated.studioGlobals;
     delete migrated.gamePersistents;
     return migrated;
+}
+
+// ---------------------------------------------------------------------------
+// Schema migration (v2 → v3): stable layer references.
+//   image/text actions used to bind a render layer by free-text `layerName`. That becomes a
+//   StoryLayerRef bound to the stable id of the matching `layer` create block; when no block
+//   matches, the last-known name is kept so the compiler's name fallback still renders it.
+// ---------------------------------------------------------------------------
+
+type LegacyLayerNameFields = { layerName?: string };
+
+function migrateStoryDocumentV2toV3(document: StoryDocument): StoryDocument {
+    const scenes: Record<StorySceneId, StoryScene> = {};
+    for (const [sceneId, scene] of Object.entries(document.scenes)) {
+        const layerBlockIdsByName = collectLayerBlockIdsByName(scene);
+        const blocks: Record<StoryBlockId, StoryBlock> = {};
+        for (const [blockId, block] of Object.entries(scene.blocks)) {
+            blocks[blockId] = migrateBlockLayerRef(block, layerBlockIdsByName);
+        }
+        scenes[sceneId] = { ...scene, blocks };
+    }
+    return { ...document, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION, scenes };
+}
+
+function collectLayerBlockIdsByName(scene: StoryScene): Map<string, StoryBlockId> {
+    const byName = new Map<string, StoryBlockId>();
+    for (const [blockId, block] of Object.entries(scene.blocks)) {
+        if (block.kind === "action" && block.payload.action === "layer") {
+            const key = block.payload.objectName.trim().toLowerCase();
+            if (key && !byName.has(key)) {
+                byName.set(key, blockId);
+            }
+        }
+    }
+    return byName;
+}
+
+function migrateBlockLayerRef(block: StoryBlock, layerBlockIdsByName: Map<string, StoryBlockId>): StoryBlock {
+    if (block.kind !== "action" || (block.payload.action !== "image" && block.payload.action !== "text")) {
+        return block;
+    }
+    const legacy = block.payload as typeof block.payload & LegacyLayerNameFields;
+    if (typeof legacy.layerName !== "string") {
+        return block;
+    }
+    const name = legacy.layerName.trim();
+    const nextPayload = { ...legacy };
+    delete nextPayload.layerName;
+    if (name) {
+        const sourceBlockId = layerBlockIdsByName.get(name.toLowerCase());
+        nextPayload.layer = sourceBlockId ? { kind: "custom", sourceBlockId, name } : { kind: "custom", name };
+    }
+    return { ...block, payload: nextPayload } as StoryBlock;
 }
 
 function migrateLegacySceneVariables(scene: StoryScene): Record<string, StorySceneVariableDefinition> {

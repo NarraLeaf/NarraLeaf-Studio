@@ -28,6 +28,8 @@ export function InterpolationPopover(props: {
     onChange: (interp: StoryInterpolationRef) => void;
     onRemove: () => void;
     onClose: () => void;
+    /** Commit the in-progress text edit — called before navigating to the blueprint editor. */
+    onCommitTextEdit?: () => void;
 }) {
     const panelRef = useRef<HTMLDivElement | null>(null);
     const { context, isInitialized } = useWorkspace();
@@ -107,9 +109,13 @@ export function InterpolationPopover(props: {
             id = blueprintService?.ensureStoryActionBlueprint({ mode: "value" }) ?? "";
             props.onChange({ kind: "blueprint", blueprintId: id });
         }
-        if (id) {
-            openBlueprint({ blueprintId: id, ownerKind: "storyAction", title: "Story Value" });
+        if (!id) {
+            return;
         }
+        // Persist the (possibly just-created) binding before navigating to the blueprint editor —
+        // otherwise the uncommitted id is dropped and the entry shows "No blueprint" on return.
+        props.onCommitTextEdit?.();
+        openBlueprint({ blueprintId: id, ownerKind: "storyAction", title: "Story Value" });
     };
 
     const variableOptions: SelectOption[] = allVariables.length
@@ -145,7 +151,6 @@ export function InterpolationPopover(props: {
                     <StoryActionBlueprintPreviewCard
                         blueprintId={blueprintId}
                         onOpen={openEditor}
-                        note="On Call → Return Value, rendered inline. Synchronous nodes only."
                         heightClassName="h-[84px]"
                     />
                 )}

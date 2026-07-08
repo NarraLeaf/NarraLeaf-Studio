@@ -342,3 +342,14 @@ input[type="radio"]:focus {
 .nl-field-grid > * {
     min-width: 0;
 }
+
+/*
+ * Inline value / pause chips are contentEditable=false, so the browser draws no selection highlight
+ * on them. When the rich-text editor flags a chip as selected (`data-selected`), give it a themed
+ * highlight behind the whole chip, matching a text selection.
+ */
+.story-rt-interp[data-selected="true"],
+.story-rt-pause[data-selected="true"] {
+    background-color: var(--narraleaf-accent-weak);
+    box-shadow: inset 0 0 0 1px var(--narraleaf-accent-strong);
+}

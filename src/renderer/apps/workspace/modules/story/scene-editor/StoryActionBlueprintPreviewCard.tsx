@@ -6,7 +6,7 @@
  * same way. Comments in English per project convention.
  */
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
@@ -22,8 +22,6 @@ export function StoryActionBlueprintPreviewCard(props: {
     blueprintId: string;
     /** Ensure the blueprint exists (when needed) and open its editor. */
     onOpen: () => void;
-    /** Optional footer note, e.g. "On Call → value" for inline interpolation. */
-    note?: ReactNode;
     /** Preview height; defaults to the standard entry height. */
     heightClassName?: string;
 }) {
@@ -48,7 +46,6 @@ export function StoryActionBlueprintPreviewCard(props: {
             >
                 <BlueprintLayerPreview model={previewModel} heightClassName={props.heightClassName} />
             </button>
-            {props.note ? <div className="text-[10px] leading-snug text-slate-500">{props.note}</div> : null}
         </div>
     );
 }

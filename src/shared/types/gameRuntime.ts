@@ -69,10 +69,25 @@ export type GameRuntimePackV1 = {
     assets: {
         items: Record<string, GameRuntimeAssetManifestEntry>;
     };
+    /**
+     * Network policy for the packaged/previewed game. Absent on packs produced
+     * before this field existed — the runtime treats a missing value as the
+     * secure default ({@link GameRuntimeNetworkConfig} all disabled).
+     */
+    network?: GameRuntimeNetworkConfig;
     preview?: {
         controlPort: number;
         controlToken: string;
     };
+};
+
+export type GameRuntimeNetworkConfig = {
+    /**
+     * When false (default), the renderer is confined to the app protocol and
+     * every HTTP/HTTPS/WebSocket request is blocked (CSP + main-process
+     * webRequest). When true, remote resources over HTTP/HTTPS are permitted.
+     */
+    allowHttp: boolean;
 };
 
 export type GameRuntimeSaveBridge = {

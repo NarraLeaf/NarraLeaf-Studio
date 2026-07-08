@@ -3,6 +3,7 @@ import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneUpd
 import { useWorkspace } from "../../../context";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
@@ -24,6 +25,8 @@ import {
     updateTextPayload,
 } from "./storySceneBlockUtils";
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
+import { getStoryEditorViewState, patchStoryEditorViewState } from "./storyEditorSessionStore";
+import { richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode } from "./storySceneEditorTypes";
 import { useStorySceneClipboardHandlers } from "./useStorySceneClipboardHandlers";
@@ -49,6 +52,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const uiService = useMemo(() => (context && isInitialized ? context.services.get<UIService>(Services.UI) : null), [context, isInitialized]);
     const uuidService = useMemo(() => (context && isInitialized ? context.services.get<UuidService>(Services.Uuid) : null), [context, isInitialized]);
     const characterService = useMemo(() => (context && isInitialized ? context.services.get<CharacterService>(Services.Character) : null), [context, isInitialized]);
+    // Per-project persistent store for the editor's view state (focus/selection/scroll). Available on
+    // the first render — the workspace only mounts editors once services (incl. this one) are ready.
+    const panelStateService = useMemo(() => (context && isInitialized ? context.services.get<PanelStateService>(Services.PanelState) : null), [context, isInitialized]);
 
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
@@ -65,14 +71,37 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const redoStackRef = useRef<StorySceneHistoryState[]>([]);
     const [document, setDocument] = useState<StoryDocument | null>(null);
     const [loading, setLoading] = useState(false);
-    const [activeBlockId, setActiveBlockId] = useState<StoryBlockId | null>(payload?.activeBlockId ?? null);
-    const [selectedBlockIds, setSelectedBlockIds] = useState<Set<StoryBlockId>>(() => payload?.activeBlockId ? new Set([payload.activeBlockId]) : new Set());
+    // Seed the focused row + selection from the persisted view state so switching tabs/pages (which
+    // fully unmounts the editor) — and restarting Studio — keeps the author's place. An explicit
+    // `payload.activeBlockId` (e.g. deep-link navigation to a block) wins over the remembered focus.
+    const [activeBlockId, setActiveBlockId] = useState<StoryBlockId | null>(() => {
+        if (payload?.activeBlockId) {
+            return payload.activeBlockId;
+        }
+        return (panelStateService && sceneId ? getStoryEditorViewState(panelStateService, sceneId)?.activeBlockId : null) ?? null;
+    });
+    const [selectedBlockIds, setSelectedBlockIds] = useState<Set<StoryBlockId>>(() => {
+        if (payload?.activeBlockId) {
+            return new Set([payload.activeBlockId]);
+        }
+        const saved = panelStateService && sceneId ? getStoryEditorViewState(panelStateService, sceneId)?.selectedBlockIds : undefined;
+        return new Set(saved ?? []);
+    });
     const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<StoryBlockId>>(() => new Set());
     const [editorMode, setEditorMode] = useState<EditorMode>({ kind: "idle" });
     const [draggingBlockId, setDraggingBlockId] = useState<StoryBlockId | null>(null);
     const [dragSelectActive, setDragSelectActive] = useState(false);
     const [, setStatusText] = useState("Action row editor. Slash and hash only trigger on the first character.");
     const [characterRevision, setCharacterRevision] = useState(0);
+
+    // Persist the focused row + selection so they survive the tab unmounting when the author switches
+    // away and a Studio restart (paired with the seed above and the scroll persistence in the tab).
+    useEffect(() => {
+        if (!sceneId || !panelStateService) {
+            return;
+        }
+        patchStoryEditorViewState(panelStateService, sceneId, { activeBlockId, selectedBlockIds: [...selectedBlockIds] });
+    }, [panelStateService, sceneId, activeBlockId, selectedBlockIds]);
 
     useEffect(() => {
         if (!storyService || !storyId) {
@@ -365,7 +394,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         const block = scene.blocks[editorMode.blockId];
-        const payload = block ? updateTextPayload(block, editorMode.value, editorMode.rich) : null;
+        // Prefer the live editor DOM so a popover edit (e.g. binding an inline blueprint) that hasn't
+        // flushed into the draft is still committed — otherwise it is lost when we navigate away.
+        const liveRuns = textInputRef.current?.getRuns();
+        const value = liveRuns ? richRunsToPlain(liveRuns) : editorMode.value;
+        const rich = liveRuns ?? editorMode.rich;
+        const payload = block ? updateTextPayload(block, value, rich) : null;
         if (payload) {
             const changed = JSON.stringify(block.payload) !== JSON.stringify(payload);
             if (!changed) {
@@ -402,6 +436,26 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setStatusText(`Inserted ${describeBlock(block, characters)}.`);
         setEditorMode(openInspector ? { kind: "inspector", blockId: block.id } : { kind: "idle" });
     }, [characters, recordHistory, scene, sceneId, storyId, storyService]);
+
+    // Insert a `layer` create block immediately before `beforeBlockId` at the same nesting level and
+    // return its id, without stealing focus from the currently-open inspector. Used by the Layer
+    // picker's "Create new layer" action so an image/text can bind to a fresh layer inline.
+    const createLayerBeforeBlock = useCallback((beforeBlockId: StoryBlockId): StoryBlockId | null => {
+        if (!storyService || !storyId || !sceneId || !scene || !uuidService) {
+            return null;
+        }
+        const target = scene.blocks[beforeBlockId];
+        if (!target) {
+            return null;
+        }
+        const block = createBlockForCommand("layerCreate", () => uuidService.generate());
+        if (block.kind === "action" && block.payload.action === "layer") {
+            block.payload.objectName = nextLayerName(scene);
+        }
+        recordHistory();
+        storyService.insertBlock(storyId, sceneId, block, { parentId: target.parentId, beforeBlockId });
+        return block.id;
+    }, [recordHistory, scene, sceneId, storyId, storyService, uuidService]);
 
     const insertDialogueAfterCurrentTextEdit = useCallback(() => {
         if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
@@ -744,5 +798,21 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         insertDialogueAfterCurrentTextEdit, commitNarrationFromInsert, chooseCommand, chooseCharacterForInsert,
         createActionFromSidebar,
         moveDraggedBlockAfter, moveDraggedBlockToSortablePosition, startDraggingBlock, endDraggingBlock,
+        createLayerBeforeBlock,
     };
+}
+
+/** Pick a unique default name ("Layer 1", "Layer 2", …) for a freshly-created layer in a scene. */
+function nextLayerName(scene: StoryScene): string {
+    const existing = new Set<string>();
+    for (const block of Object.values(scene.blocks)) {
+        if (block.kind === "action" && block.payload.action === "layer") {
+            existing.add(block.payload.objectName.trim().toLowerCase());
+        }
+    }
+    let index = 1;
+    while (existing.has(`layer ${index}`)) {
+        index += 1;
+    }
+    return `Layer ${index}`;
 }

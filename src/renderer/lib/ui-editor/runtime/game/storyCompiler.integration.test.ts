@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DevTools } from "narraleaf-react";
-import type { StoryAnimationAsset, StoryBlock, StoryDocument } from "@shared/types/story";
+import type { StoryAnimationAsset, StoryBlock, StoryDocument, StoryTransitionRef } from "@shared/types/story";
 import { compileStudioStoryToNlr } from "@/lib/ui-editor/runtime/game/storyCompiler";
 
 function baseDocument(blocks: Record<string, StoryBlock>, rootBlockIds: string[] = Object.keys(blocks)): StoryDocument {
     return {
-        schemaVersion: 2,
+        schemaVersion: 3,
         id: "story-1",
         name: "Story",
         chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1", "scene-2"] }],
@@ -516,6 +516,43 @@ describe("compileStudioStoryToNlr", () => {
         expect(layerTransform?.sequences?.at(-1)?.props).not.toHaveProperty("opacity");
     });
 
+    it("resolves image/text layer refs to custom and built-in NLR layers", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            layer: {
+                id: "layer",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: { action: "layer", operation: "create", objectName: "Foreground", zIndex: 3 },
+            },
+            img: {
+                id: "img",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                // Custom layer bound by the create block's stable id.
+                payload: { action: "image", operation: "create", objectName: "hero", assetId: "asset-hero", layer: { kind: "custom", sourceBlockId: "layer" } },
+            },
+            caption: {
+                id: "caption",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                // Built-in NLR background layer.
+                payload: { action: "text", operation: "create", objectName: "cap", text: "Hi", layer: { kind: "default", layer: "background" } },
+            },
+        };
+
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["layer", "img", "caption"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        // Compiling touches Scene.backgroundLayer (built-in getter) + getLayer (custom) with no throw.
+        expect(compiled.diagnostics).toEqual([]);
+    });
+
     it("compiles displayable visual effects on an existing stage image", async () => {
         const blocks: Record<string, StoryBlock> = {
             show: {
@@ -761,5 +798,35 @@ describe("compileStudioStoryToNlr", () => {
                 message: "Code/Script blocks are not part of the NLR Story action surface and were skipped.",
             },
         ]);
+    });
+
+    it("maps the custom transition kinds onto real NLR transitions without diagnostics", async () => {
+        // Each new kind must be handled by createTransition; an unmapped kind
+        // falls through to a "not supported" diagnostic, which this guards against.
+        const kinds: StoryTransitionRef["kind"][] = ["softWipe", "blinds", "blindsBlackout", "slide"];
+        for (const kind of kinds) {
+            const bg: StoryBlock = {
+                id: "bg",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "setBackground",
+                    assetId: "asset-bg",
+                    transition: {
+                        kind,
+                        durationMs: 400,
+                        // Superset of every custom transition's params; each kind reads only its own.
+                        props: { direction: "right", orientation: "vertical", slats: 6, feather: 20, hold: 40 },
+                    },
+                },
+            };
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({ bg }, ["bg"]),
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+            expect(compiled.diagnostics, `kind=${kind}`).toEqual([]);
+        }
     });
 });

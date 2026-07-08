@@ -1,6 +1,8 @@
 import { FsRequestResult } from "@shared/types/os";
 import { FileDetails, FileStat } from "@shared/utils/fs";
-import { Porject, ProjectConfig, ProjectIconConfig, ProjectIconPlatform } from "../project/project";
+import { Porject, ProjectConfig, ProjectIconConfig, ProjectIconPlatform, ProjectMetadata } from "../project/project";
+import type { NetworkConfiguration } from "../project/configuration";
+import type { ProjectDependencyResolution, ProjectDependencyTable } from "@shared/types/pluginDependencies";
 import { Asset, AssetsMap, AssetSource } from "./assets/types";
 import { ServiceRegistry } from "./serviceRegistry";
 import { AssetData, AssetType } from "./assets/assetTypes";
@@ -118,6 +120,8 @@ enum Services {
     Story = "story",
     Character = "character",
     Assets = "assets",
+    /** Per-project plugin dependency table: scan, persist, and resolve compatibility */
+    ProjectDependency = "projectDependency",
     // Texture = "texture",
     // Audio = "audio",
     // Video = "video",
@@ -135,6 +139,9 @@ interface IProjectService extends IService {
     getProjectConfig(): ProjectConfig;
     updateProjectConfig(updater: (config: ProjectConfig) => ProjectConfig): Promise<ProjectConfig>;
     updateProjectName(name: string): Promise<ProjectConfig>;
+    updateProjectMetadata(patch: Partial<ProjectMetadata>): Promise<ProjectConfig>;
+    getNetworkConfiguration(): NetworkConfiguration;
+    updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
     importProjectIcon(platform: ProjectIconPlatform): Promise<{
         platform: ProjectIconPlatform;
         sourcePath: string;
@@ -144,6 +151,8 @@ interface IProjectService extends IService {
         bytes: Uint8Array;
     } | null>;
     readProjectIcon(platform: ProjectIconPlatform): Promise<Uint8Array | null>;
+    getDependencyTable(): ProjectDependencyTable | undefined;
+    setDependencyTable(table: ProjectDependencyTable | undefined): Promise<ProjectConfig>;
 }
 
 interface IUuidService extends IService {
@@ -800,6 +809,16 @@ interface IVersionControlService extends IService { }
 // Plugin Services
 interface IPluginService extends IService { }
 
+interface IProjectDependencyService extends IService {
+    getResolution(): ProjectDependencyResolution | null;
+    getSuppressedPluginIds(): string[];
+    onResolutionChanged(handler: () => void): () => void;
+    resolve(): Promise<ProjectDependencyResolution>;
+    previewResolve(): Promise<ProjectDependencyResolution>;
+    rescan(): Promise<ProjectDependencyTable>;
+    rescanAndPersist(): Promise<ProjectDependencyResolution>;
+}
+
 export {
     IAssetService, IAudioService, IBlueprintNodeCatalogService, IBuildService, ICommandService, IDebugService,
     IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
@@ -808,6 +827,7 @@ export {
     ITextureService, IUIService, IUuidService, IVersionControlService, IVideoService,
     ICharacterService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
+    IProjectDependencyService,
     Services, WorkspaceContext
 };
 

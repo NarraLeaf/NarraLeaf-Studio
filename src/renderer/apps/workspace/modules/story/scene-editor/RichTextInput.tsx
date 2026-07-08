@@ -3,9 +3,13 @@ import type { CSSProperties } from "react";
 import type { StoryInterpolationRef, StoryRichRun } from "@shared/types/story";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import {
+    applyMarkToRange,
     domToRuns,
     getSelectionUnitRange,
+    markSelectedChips,
     normalizeRuns,
+    rangeHasMark,
+    rangeMarkColor,
     renderRunsToElement,
     richRunsToPlain,
     setSelectionUnitRange,
@@ -39,6 +43,12 @@ export type RichTextInputHandle = {
     insertInterpolation: (interp: StoryInterpolationRef) => void;
     updateInterpolationAt: (unit: number, interp: StoryInterpolationRef) => void;
     removeInterpolationAt: (unit: number) => void;
+    /**
+     * Current rich runs read straight from the live editor DOM (bypasses any not-yet-flushed draft).
+     * Returns `null` when the editor is not mounted so callers fall back to their own state instead of
+     * committing an empty edit.
+     */
+    getRuns: () => StoryRichRun[] | null;
 };
 
 export const RichTextInput = forwardRef<RichTextInputHandle, {
@@ -95,6 +105,11 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
 
     const reportActive = useCallback(() => {
         try {
+            const el = editorRef.current;
+            const range = el ? getSelectionUnitRange(el) : null;
+            if (el) {
+                markSelectedChips(el, range);
+            }
             let color: string | undefined;
             try {
                 const raw = globalThis.document.queryCommandValue("foreColor");
@@ -103,11 +118,17 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             } catch {
                 // queryCommandValue is best-effort in Chromium; ignore failures.
             }
-            onActiveRef.current?.({
-                bold: globalThis.document.queryCommandState("bold"),
-                italic: globalThis.document.queryCommandState("italic"),
-                color,
-            });
+            let bold = globalThis.document.queryCommandState("bold");
+            let italic = globalThis.document.queryCommandState("italic");
+            if (el && range && range.start !== range.end) {
+                // A selection can include inline value chips (contentEditable=false), which execCommand's
+                // query state ignores — derive the active marks from the unit model instead.
+                const runs = domToRuns(el);
+                bold = rangeHasMark(runs, range.start, range.end, "bold");
+                italic = rangeHasMark(runs, range.start, range.end, "italic");
+                color = rangeMarkColor(runs, range.start, range.end);
+            }
+            onActiveRef.current?.({ bold, italic, color });
             setCaretColor(color ?? null);
         } catch {
             // queryCommandState can throw when there is no selection; ignore.
@@ -140,27 +161,47 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     }, [reportActive]);
 
     /**
-     * Apply an inline style via the browser's native command. execCommand carries the "typing
-     * state" for a collapsed caret (so continuing to type keeps the style) and, together with
-     * domToRuns' nested-mark merging, produces correct combined runs for overlapping styles.
+     * Apply a bold/italic/color mark. For a real selection we go through the unit model so inline value
+     * chips get styled too (execCommand can't touch contentEditable=false chips); a collapsed caret keeps
+     * execCommand's "typing state" so the next typed characters inherit the style.
      */
-    const applyExec = useCallback((command: string, value?: string) => {
+    const applyMark = useCallback((mark: "bold" | "italic" | "color", color?: string) => {
         const el = editorRef.current;
         if (!el) {
             return;
         }
         el.focus();
-        const live = getSelectionUnitRange(el);
-        if (!live && savedRange.current) {
+        let range = getSelectionUnitRange(el);
+        if (!range && savedRange.current) {
             // Focus was on a portal popover (color palette); restore the last real selection.
             setSelectionUnitRange(el, savedRange.current.start, savedRange.current.end);
+            range = savedRange.current;
         }
-        try {
-            globalThis.document.execCommand("styleWithCSS", false, "true");
-            globalThis.document.execCommand(command, false, value);
-        } catch {
-            // execCommand is best-effort in Chromium; ignore failures.
+        if (!range) {
+            return;
         }
+        if (range.start === range.end) {
+            try {
+                globalThis.document.execCommand("styleWithCSS", false, "true");
+                globalThis.document.execCommand(mark === "color" ? "foreColor" : mark, false, mark === "color" ? color : undefined);
+            } catch {
+                // execCommand is best-effort in Chromium; ignore failures.
+            }
+            saveSelection();
+            emitChange();
+            return;
+        }
+        const runs = domToRuns(el);
+        let next: StoryRichRun[];
+        if (mark === "color") {
+            const value = color || undefined;
+            next = applyMarkToRange(runs, range.start, range.end, marks => ({ ...marks, color: value }));
+        } else {
+            const active = rangeHasMark(runs, range.start, range.end, mark);
+            next = applyMarkToRange(runs, range.start, range.end, marks => ({ ...marks, [mark]: active ? undefined : true }));
+        }
+        renderRunsToElement(el, next, resolveLabelRef.current);
+        setSelectionUnitRange(el, range.start, range.end);
         saveSelection();
         emitChange();
     }, [emitChange, saveSelection]);
@@ -203,15 +244,16 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
 
     useImperativeHandle(ref, () => ({
         focus: () => { editorRef.current?.focus(); },
-        toggleMark: (mark) => applyExec(mark === "bold" ? "bold" : "italic"),
-        setColor: (color) => applyExec("foreColor", color),
+        toggleMark: (mark) => applyMark(mark),
+        setColor: (color) => applyMark("color", color),
         insertPause,
         updatePauseAt: (unit, pause) => spliceUnits(unit, 1, [{ pause }], true),
         removePauseAt: (unit) => spliceUnits(unit, 1, [], false),
         insertInterpolation,
         updateInterpolationAt: (unit, interp) => spliceUnits(unit, 1, [{ interpolation: interp }], true),
         removeInterpolationAt: (unit) => spliceUnits(unit, 1, [], false),
-    }), [applyExec, insertPause, insertInterpolation, spliceUnits]);
+        getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
+    }), [applyMark, insertPause, insertInterpolation, spliceUnits]);
 
     return (
         <div

@@ -7,6 +7,7 @@ import type { EditorComponentProps } from "../../types";
 import { PanelPosition } from "../../../registry/types";
 import { Services } from "@/lib/workspace/services/services";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
+import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
 import type { StoryDocument, StoryScene, StorySceneUpdate } from "@shared/types/story";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -25,7 +26,12 @@ import { StoryVariablesPanel, STORY_VARIABLES_PANEL_ID } from "../../story-varia
 import { InsertRow, StoryBlockRow } from "./StorySceneEditorRows";
 import { StoryEditorTextStyleProvider } from "./storyEditorTextStyle";
 import { getTextSegment } from "./storySceneBlockUtils";
-import { getStoryEditorScroll, setStoryEditorScroll } from "./storyEditorSessionStore";
+import {
+    captureStoryEditorScrollAnchor,
+    getStoryEditorViewState,
+    patchStoryEditorViewState,
+    resolveStoryEditorRestoreScrollTop,
+} from "./storyEditorSessionStore";
 import { useStorySceneEditorController } from "./useStorySceneEditorController";
 
 const SCENE_FIELD_LABEL_CLASS = "mb-1 block text-[11px] font-medium text-slate-500";
@@ -408,16 +414,75 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
         return () => window.removeEventListener(STORY_ACTION_CREATE_REQUEST_EVENT, handleCreateRequest);
     }, [editor.createActionFromSidebar, tabId]);
 
-    // Restore the saved scroll position once the scene's rows are laid out (keeps the author's
-    // place across tab switches / remounts).
+    // Restore the author's place once the scene's rows are laid out. Scroll is anchored to the focus
+    // row (not a raw pixel offset), so it survives the rows re-flowing across the tab unmount/remount
+    // that a tab/page switch triggers (collapse state resets, rich text / image heights change). We
+    // re-apply on the next frame too, in case row heights only settle after the first paint.
     const scrollContainerRef = editor.scrollContainerRef;
+    const sceneId = editor.scene?.id;
+    const rowCount = editor.visibleRows.length;
+    const panelStateService = useMemo(
+        () => (editor.context && editor.isInitialized ? editor.context.services.get<PanelStateService>(Services.PanelState) : null),
+        [editor.context, editor.isInitialized],
+    );
+    const scrollSaveRafRef = useRef<number | null>(null);
+    const didRestoreRef = useRef<string | null>(null);
+
     useLayoutEffect(() => {
         const el = scrollContainerRef.current;
-        const saved = getStoryEditorScroll(tabId);
-        if (el && saved != null) {
-            el.scrollTop = saved;
+        if (!el || !sceneId || !panelStateService || rowCount === 0 || didRestoreRef.current === sceneId) {
+            return;
         }
-    }, [scrollContainerRef, tabId, editor.scene?.id]);
+        didRestoreRef.current = sceneId;
+        const view = getStoryEditorViewState(panelStateService, sceneId);
+        if (!view) {
+            return;
+        }
+        // Mount-timing safety: the container's content grows to full height over the first few frames
+        // after mount (rows measure, the overview image sizes in), so a single scrollTop assignment can
+        // get clamped. Re-apply each frame — recomputing the target for the current layout — until it
+        // sticks (the container is tall enough to actually reach it) or we run out of the short window.
+        const MAX_FRAMES = 20;
+        let frame = 0;
+        let rafId = 0;
+        const attempt = () => {
+            const target = resolveStoryEditorRestoreScrollTop(el, view);
+            if (target == null) {
+                return;
+            }
+            if (Math.abs(el.scrollTop - target) > 1) {
+                el.scrollTop = target;
+            }
+            const stuck = Math.abs(el.scrollTop - target) <= 1;
+            if ((!stuck || frame < 2) && frame++ < MAX_FRAMES) {
+                rafId = window.requestAnimationFrame(attempt);
+            }
+        };
+        attempt();
+        return () => window.cancelAnimationFrame(rafId);
+    }, [scrollContainerRef, sceneId, rowCount, panelStateService]);
+
+    // Capture the scroll anchor at most once per frame while scrolling (querying row geometry on every
+    // raw scroll event would thrash layout on long scenes).
+    const handleScroll = useCallback(() => {
+        if (!sceneId || !panelStateService || scrollSaveRafRef.current !== null) {
+            return;
+        }
+        scrollSaveRafRef.current = window.requestAnimationFrame(() => {
+            scrollSaveRafRef.current = null;
+            const el = scrollContainerRef.current;
+            if (el && sceneId) {
+                patchStoryEditorViewState(panelStateService, sceneId, { scroll: captureStoryEditorScrollAnchor(el) });
+            }
+        });
+    }, [scrollContainerRef, sceneId, panelStateService]);
+
+    useEffect(() => () => {
+        if (scrollSaveRafRef.current !== null) {
+            window.cancelAnimationFrame(scrollSaveRafRef.current);
+            scrollSaveRafRef.current = null;
+        }
+    }, []);
 
     if (!editor.isInitialized || !editor.context || !payload?.storyId || !payload.sceneId) {
         return (
@@ -487,7 +552,7 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
                 ref={editor.scrollContainerRef}
                 className="min-h-0 flex-1 overflow-auto py-2"
                 onMouseDown={editor.focusRoot}
-                onScroll={event => setStoryEditorScroll(tabId, event.currentTarget.scrollTop)}
+                onScroll={handleScroll}
             >
                 <StorySceneOverviewBlock
                     document={document}
@@ -535,6 +600,7 @@ export function StorySceneEditorTab({ tabId, payload }: EditorComponentProps<Sto
                                     onUpdatePayload={payload => editor.updateBlockPayloadFor(row.block.id, payload)}
                                     onSetDialogueCharacter={characterId => editor.setDialogueCharacter(row.block, characterId)}
                                     generateTextId={() => editor.uuidService?.generate() ?? crypto.randomUUID()}
+                                    onCreateLayer={beforeBlockId => editor.createLayerBeforeBlock(beforeBlockId)}
                                     onInsertAfter={() => editor.startInsertAfter(row.block.id, true)}
                                 />
                                 {editor.shouldRenderActiveInsertSlot && editor.editorMode.kind === "insert" && editor.editorMode.slot.afterBlockId === row.block.id ? (

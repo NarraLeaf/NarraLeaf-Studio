@@ -1,6 +1,7 @@
 import type {
     StoryActionPayload,
     StoryBlock,
+    StoryBlockId,
     StoryCodePayload,
     StoryConditionRef,
     StoryControlPayload,
@@ -39,6 +40,7 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { describeBlock, getBlockBadgeInfo } from "./storySceneBlockUtils";
 import { CharacterAppearancePicker } from "./CharacterAppearancePicker";
 import { DisplayableTargetField } from "./DisplayableTargetField";
+import { StoryLayerField } from "./StoryLayerField";
 import { MotionField } from "../../story-motion";
 
 const FIELD_LABEL_CLASS = "block text-xs font-medium text-gray-400 mb-1";
@@ -191,7 +193,7 @@ const TRANSFORM_PRESET_OPTIONS: SelectOption[] = [
     { value: "darken", label: "Darken" },
     { value: "circleReveal", label: "Circle reveal" },
     { value: "circleClose", label: "Circle close" },
-    { value: "wipe", label: "Wipe" },
+    { value: "wipe", label: "Slide reveal" },
 ];
 
 const EASING_OPTIONS: SelectOption[] = [
@@ -214,7 +216,11 @@ const TRANSITION_OPTIONS: SelectOption[] = [
     { value: "dissolve", label: "Dissolve" },
     { value: "fadeIn", label: "Fade in" },
     { value: "maskCircle", label: "Mask circle" },
-    { value: "maskWipe", label: "Mask wipe" },
+    { value: "maskWipe", label: "Slide reveal" },
+    { value: "softWipe", label: "Soft wipe" },
+    { value: "blinds", label: "Blinds" },
+    { value: "blindsBlackout", label: "Blinds (black hold)" },
+    { value: "slide", label: "Push" },
 ];
 
 const WIPE_DIRECTION_OPTIONS: SelectOption[] = [
@@ -224,11 +230,20 @@ const WIPE_DIRECTION_OPTIONS: SelectOption[] = [
     { value: "bottom", label: "Bottom" },
 ];
 
+const BLINDS_ORIENTATION_OPTIONS: SelectOption[] = [
+    { value: "horizontal", label: "Horizontal" },
+    { value: "vertical", label: "Vertical" },
+];
+
 const TRANSITION_HINTS: Record<string, string> = {
     dissolve: "Crossfades from the previous image to the new one.",
     fadeIn: "Fades the new image in from a start position offset.",
     maskCircle: "Circular reveal / close driven by an animated mask radius.",
-    maskWipe: "Directional wipe reveal driven by an animated mask.",
+    maskWipe: "Hard-edged directional reveal — the new image is uncovered by a sweeping straight edge (no feather).",
+    softWipe: "Feathered directional wipe — the new image erases in with a soft gradient edge.",
+    blinds: "Venetian blinds reveal — slats widen to uncover the new image.",
+    blindsBlackout: "Blinds close to a black frame, hold, then open on the new image (the target appears only after the black).",
+    slide: "Push — the new image slides in from one edge as the old one slides out.",
 };
 
 const IMAGE_OPERATION_OPTIONS: SelectOption[] = [
@@ -251,7 +266,7 @@ const DISPLAYABLE_OPERATION_OPTIONS: SelectOption[] = [
     { value: "darken", label: "Darken" },
     { value: "circleReveal", label: "Circle reveal" },
     { value: "circleClose", label: "Circle close" },
-    { value: "wipe", label: "Wipe" },
+    { value: "wipe", label: "Slide reveal" },
 ];
 
 const DISPLAYABLE_EFFECT_OPERATIONS = new Set([
@@ -268,7 +283,7 @@ const DISPLAYABLE_EFFECT_HINTS: Record<string, string> = {
     darken: "Fades a darkness overlay 0..1 (image / character targets only).",
     circleReveal: "Circular reveal via an animated mask.",
     circleClose: "Circular close via an animated mask.",
-    wipe: "Directional wipe reveal via an animated mask.",
+    wipe: "Hard-edged directional reveal via an animated clip-path (no feather).",
 };
 
 const TEXT_OPERATION_OPTIONS: SelectOption[] = [
@@ -345,6 +360,7 @@ export function ActionInspector(props: {
     onClose: () => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     generateTextId: () => string;
+    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
 }) {
     const block = props.block;
     const { label, icon: Icon, iconColor } = getBlockBadgeInfo(block);
@@ -389,6 +405,7 @@ export function ActionInspector(props: {
                 onUpdatePayload={props.onUpdatePayload}
                 onSetDialogueCharacter={props.onSetDialogueCharacter}
                 generateTextId={props.generateTextId}
+                onCreateLayer={props.onCreateLayer}
             />
         </div>
     );
@@ -402,6 +419,7 @@ function InspectorFields(props: {
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
     onSetDialogueCharacter: (characterId: string | undefined) => void;
     generateTextId: () => string;
+    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
 }) {
     const { block } = props;
     if (block.kind === "nodeAction") {
@@ -511,6 +529,7 @@ function InspectorFields(props: {
                 payload={block.payload}
                 characters={props.characters}
                 onChange={props.onUpdatePayload}
+                onCreateLayer={props.onCreateLayer}
             />
         );
     }
@@ -596,7 +615,6 @@ function StoryActionBlueprintEditor(props: {
             <StoryActionBlueprintPreviewCard
                 blueprintId={props.payload.blueprintId}
                 onOpen={handleOpen}
-                note="Runs this blueprint's On Call logic when the action executes. Click to edit."
             />
         </Section>
     );
@@ -609,6 +627,7 @@ function ActionPayloadFields(props: {
     payload: StoryActionPayload;
     characters: Character[];
     onChange: (payload: StoryBlock["payload"]) => void;
+    onCreateLayer: (beforeBlockId: StoryBlockId) => string | null;
 }) {
     const payload = props.payload;
     if (payload.action === "setBackground") {
@@ -688,7 +707,14 @@ function ActionPayloadFields(props: {
                         onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "image" }>["operation"] })}
                     />
                     <TextField label="Image name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
-                    <TextField label="Layer" value={payload.layerName ?? ""} onChange={layerName => props.onChange({ ...payload, layerName: layerName || undefined })} />
+                    <StoryLayerField
+                        document={props.document}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        value={payload.layer}
+                        onChange={layer => props.onChange({ ...payload, layer })}
+                        onCreateLayer={() => props.onCreateLayer(props.block.id)}
+                    />
                     <AssetField
                         label="Image asset"
                         assetType={AssetType.Image}
@@ -759,7 +785,14 @@ function ActionPayloadFields(props: {
                         onChange={operation => props.onChange({ ...payload, operation: operation as Extract<StoryActionPayload, { action: "text" }>["operation"] })}
                     />
                     <TextField label="Text name" value={payload.objectName} onChange={objectName => props.onChange({ ...payload, objectName })} />
-                    <TextField label="Layer" value={payload.layerName ?? ""} onChange={layerName => props.onChange({ ...payload, layerName: layerName || undefined })} />
+                    <StoryLayerField
+                        document={props.document}
+                        sceneId={props.sceneId}
+                        blockId={props.block.id}
+                        value={payload.layer}
+                        onChange={layer => props.onChange({ ...payload, layer })}
+                        onCreateLayer={() => props.onCreateLayer(props.block.id)}
+                    />
                     <NumberField label="Font size" value={payload.fontSize} onChange={fontSize => props.onChange({ ...payload, fontSize })} />
                     <ColorTextField label="Font color" value={payload.fontColor ?? "#ffffff"} onChange={fontColor => props.onChange({ ...payload, fontColor })} />
                 </div>
@@ -1269,6 +1302,48 @@ function TransitionEditor(props: {
                         />
                         <CheckboxField label="Reverse" checked={paramBool(value.props, "reverse")} onChange={reverse => setParam({ reverse: reverse || undefined })} />
                     </>
+                ) : null}
+                {kind === "softWipe" ? (
+                    <>
+                        <SelectField
+                            label="Direction"
+                            options={WIPE_DIRECTION_OPTIONS}
+                            value={paramString(value.props, "direction", "left")}
+                            onChange={direction => setParam({ direction: String(direction) })}
+                        />
+                        <NumberField label="Feather %" value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "blinds" ? (
+                    <>
+                        <SelectField
+                            label="Orientation"
+                            options={BLINDS_ORIENTATION_OPTIONS}
+                            value={paramString(value.props, "orientation", "horizontal")}
+                            onChange={orientation => setParam({ orientation: String(orientation) })}
+                        />
+                        <NumberField label="Slats" value={paramNumber(value.props, "slats")} onChange={slats => setParam({ slats })} />
+                    </>
+                ) : null}
+                {kind === "blindsBlackout" ? (
+                    <>
+                        <SelectField
+                            label="Orientation"
+                            options={BLINDS_ORIENTATION_OPTIONS}
+                            value={paramString(value.props, "orientation", "horizontal")}
+                            onChange={orientation => setParam({ orientation: String(orientation) })}
+                        />
+                        <NumberField label="Slats" value={paramNumber(value.props, "slats")} onChange={slats => setParam({ slats })} />
+                        <NumberField label="Black hold %" value={paramNumber(value.props, "hold")} onChange={hold => setParam({ hold })} />
+                    </>
+                ) : null}
+                {kind === "slide" ? (
+                    <SelectField
+                        label="Direction"
+                        options={WIPE_DIRECTION_OPTIONS}
+                        value={paramString(value.props, "direction", "left")}
+                        onChange={direction => setParam({ direction: String(direction) })}
+                    />
                 ) : null}
             </FieldGrid>
             {kind === "none" ? null : (

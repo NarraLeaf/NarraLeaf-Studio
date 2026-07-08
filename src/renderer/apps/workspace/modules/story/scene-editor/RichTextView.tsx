@@ -51,10 +51,12 @@ export function RichTextView(props: {
                 const label = props.document && props.sceneId
                     ? resolveInterpolationName(props.document, props.sceneId, [], run.interpolation)
                     : "value";
+                // Marks style the value text only — never the chip background.
+                const labelStyle = markStyle(run.marks);
                 return (
                     <span key={index} className={INTERP_CHIP} title={`Inserted value: ${label}`}>
                         <Braces className="h-2.5 w-2.5" />
-                        <span>{label}</span>
+                        <span style={labelStyle}>{label}</span>
                     </span>
                 );
             })}

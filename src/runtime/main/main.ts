@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { nativeImage } from "electron";
-import { app, BrowserWindow, ipcMain, protocol } from "electron/main";
+import { app, BrowserWindow, ipcMain, protocol, session } from "electron/main";
 import { WebSocketServer } from "ws";
 import {
     GAME_RUNTIME_PROTOCOL,
@@ -12,6 +12,7 @@ import {
     resolveRuntimeAssetPath,
     resolveRuntimeStaticPath,
 } from "./runtimeProtocol";
+import { injectRuntimeCsp, installRuntimeNetworkPolicy } from "./networkPolicy";
 import {
     RuntimePersistenceStore,
     RuntimeSaveStore,
@@ -41,10 +42,14 @@ app.setPath("userData", userDataDir);
 
 void app.whenReady().then(async () => {
     const pack = await readPack();
+    const allowHttp = pack.network?.allowHttp === true;
     applyRuntimeAppIdentity(pack);
-    registerRuntimeProtocol();
+    registerRuntimeProtocol(allowHttp);
     registerRuntimeIpc();
     startPreviewControlServer(pack);
+    // Confine the renderer to the app protocol before it loads any document
+    // unless the project opted into HTTP.
+    installRuntimeNetworkPolicy(session.defaultSession, allowHttp);
     mainWindow = createWindow(pack);
     await mainWindow.loadURL(`${GAME_RUNTIME_PROTOCOL}://runtime/index.html`);
 });
@@ -141,12 +146,16 @@ function resolveInitialWindowSize(pack: GameRuntimePackV1): { width: number; hei
     return { width: 1280, height: 720 };
 }
 
-function registerRuntimeProtocol(): void {
+function registerRuntimeProtocol(allowHttp: boolean): void {
     protocol.handle(GAME_RUNTIME_PROTOCOL, async request => {
         const url = new URL(request.url);
         try {
             if (url.hostname === "runtime") {
-                return serveFile(resolveRuntimeStaticPath(appDir, decodeURIComponent(url.pathname)));
+                const pathname = decodeURIComponent(url.pathname);
+                if (isIndexDocument(pathname)) {
+                    return serveIndexDocument(resolveRuntimeStaticPath(appDir, pathname), allowHttp);
+                }
+                return serveFile(resolveRuntimeStaticPath(appDir, pathname));
             }
             if (url.hostname === "pack") {
                 return serveFile(packPath, "application/json");
@@ -169,6 +178,23 @@ async function serveFile(filePath: string, contentType = getMimeType(filePath)):
         status: 200,
         headers: {
             "Content-Type": contentType,
+            "Cache-Control": "no-store",
+        },
+    });
+}
+
+function isIndexDocument(pathname: string): boolean {
+    const normalized = pathname.replace(/^\/+/, "").toLowerCase();
+    return normalized === "" || normalized === "index.html";
+}
+
+/** Serve the runtime document with the gated Content-Security-Policy injected. */
+async function serveIndexDocument(filePath: string, allowHttp: boolean): Promise<Response> {
+    const html = await fs.readFile(filePath, "utf-8");
+    return new Response(injectRuntimeCsp(html, allowHttp), {
+        status: 200,
+        headers: {
+            "Content-Type": "text/html; charset=utf-8",
             "Cache-Control": "no-store",
         },
     });
